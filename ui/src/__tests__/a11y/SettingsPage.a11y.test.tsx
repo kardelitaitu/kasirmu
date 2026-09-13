@@ -58,6 +58,9 @@ vi.mock('@/api/settings', () => ({
   getReceiptSettingsScoped: vi.fn(() => Promise.resolve({ showCurrency: false, decimalSeparator: 'dot', showTax: true, footer: '', paperWidth: 'standard', showTableNumber: false, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 })),
   getStoreSettingsScoped: vi.fn(() => Promise.resolve({ name: 'Test Store', address: '', taxId: '', currency: 'IDR', branch: '' })),
   getUserPreferencesScoped: vi.fn(() => Promise.resolve({})),
+  // SettingsPage mounts SettingsProvider, which subscribes via this wrapper
+  // (ui/src/api/settings.ts); a11y tests do not exercise the event bus.
+  onSettingsUpdated: vi.fn(() => Promise.resolve(async () => {})),
 }));
 
 vi.mock('@/api/license', () => ({

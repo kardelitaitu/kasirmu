@@ -23,6 +23,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -484,12 +485,12 @@ func buildOtpEmail(from, to, code string) []byte {
 		code, int(webOtpTTL.Minutes()))
 
 	var sb strings.Builder
-	sb.WriteString("From: OZ-POS <" + from + ">\r\n")
-	sb.WriteString("To: " + to + "\r\n")
-	sb.WriteString("Subject: " + subject + "\r\n")
+	fmt.Fprintf(&sb, "From: OZ-POS <%s>\r\n", from)
+	fmt.Fprintf(&sb, "To: %s\r\n", to)
+	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	sb.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
+	fmt.Fprintf(&sb, "Date: %s\r\n", time.Now().UTC().Format(time.RFC1123Z))
 	sb.WriteString("\r\n")
 	sb.WriteString(body)
 	return []byte(sb.String())
@@ -591,6 +592,13 @@ func handleRequestOTP(app core.App) func(e *core.RequestEvent) error {
 		if tenant == nil || err != nil {
 			tenant, err = createTenantForEmail(app, email)
 			if err != nil {
+				if errors.Is(err, errReservedAdminEmail) {
+					// Reserved admin identity: never self-sign it.
+					// Same bare 200 as the non-active branch below —
+					// no enumeration, and no code is sent or stored.
+					log.Printf("/web/request-otp: refusing self-signup for reserved admin identity %q", email)
+					return e.JSON(http.StatusOK, map[string]any{"status": "ok"})
+				}
 				log.Printf("/web/request-otp: tenant registration failed for %q: %v", email, err)
 				return e.JSON(http.StatusInternalServerError, map[string]any{
 					"error": "could not register an account, please try again",
@@ -643,7 +651,51 @@ func createTenantForEmail(app core.App, email string) (*core.Record, error) {
 // ("" for OTP-only signups, set by /web/register and the webhook path).
 // If a concurrent request wins the unique-email race, the existing record
 // is returned instead of failing.
+// errReservedAdminEmail marks a createTenant call for the deployment's
+// admin identity. Callers answer it with their EXISTING enumeration-free
+// shapes: request-otp with the same bare 200 {"status":"ok"} it returns
+// for a non-active tenant (no code), and /web/register with its existing
+// 409 — which already reveals existence for every address, so nothing
+// new leaks.
+var errReservedAdminEmail = errors.New("tenants: email is reserved for the deployment admin identity")
+
+// reservedAdminEmails returns the lowercase set of emails createTenant
+// must never self-sign: the resolved admin target UNION the compiled
+// defaultAdminEmail. The env side comes from adminEmailTargetWithDefault,
+// the reservation-side wrapper over the shared resolver in
+// admin_tenant_lifecycle.go (the local duplicate this replaced was only
+// ever waiting for that rename). It is NOT isAdminTenantRecord's resolver:
+// the reserved set must keep the compiled default when the env is unset,
+// while the lifecycle guard refuses on an unset env. The default stays
+// reserved even when OZ_ADMIN_EMAIL is set so the guard is
+// order-independent with the deploy wave: while
+// the env is unset the admin identity IS the default, so reserving only
+// the resolved value would leave the hole open on exactly the deploys
+// that are exposed. Keys are lowercase and candidates are compared
+// through normalizeEmail, so a case variant cannot pass the guard while
+// still matching the EqualFold admin gate.
+func reservedAdminEmails() map[string]bool {
+	return map[string]bool{
+		strings.ToLower(defaultAdminEmail):             true,
+		strings.ToLower(adminEmailTargetWithDefault()): true,
+	}
+}
+
 func createTenant(app core.App, email, passwordHash string) (*core.Record, error) {
+	// ── Admin reservation guard — the self-signup chokepoint ──────
+	// createTenant is the one function both self-signup doors funnel
+	// into (/web/register and request-otp's register-or-login). Without
+	// this guard a caller mints an ACTIVE tenants row for the admin
+	// identity with THEIR OWN credentials (email_verified=false) and
+	// then passes the EqualFold admin match at login — two requests,
+	// zero inbox access. Refuse BEFORE the save: an existing row is
+	// never touched, and the unique-email race return below is
+	// untouched for every other address (a concurrent duplicate on a
+	// reserved address is the admin's own row and must never be handed
+	// to a registrant).
+	if reservedAdminEmails()[normalizeEmail(email)] {
+		return nil, errReservedAdminEmail
+	}
 	tenantColl, err := app.FindCollectionByNameOrId("tenants")
 	if err != nil {
 		return nil, fmt.Errorf("tenants collection not found: %w", err)

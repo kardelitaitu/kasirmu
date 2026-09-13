@@ -4,13 +4,20 @@ crate: oz-reporting | status: SAFE | lint: CLEAN
 findings: clean — parameterized queries, integer minor units, sibling tests per convention
 next: none | perf: N/A
 */
-//! Prometheus metrics collection for OZ-POS.
+//! Prometheus metrics registry for OZ-POS.
 //!
-//! Gauge and counter helpers that report key business and system
-//! metrics to a `/metrics` HTTP endpoint.
+//! Gauge, counter and histogram helpers over one global registry, plus
+//! [`gather_metrics`] to render that registry as Prometheus text.
 //!
-//! Feature-gated behind `metrics` — compiled out when the feature
-//! is not enabled.
+//! NO exporter is wired. `git grep gather_metrics` finds only its definition
+//! and its own unit test — no production caller — so an HTTP exposition is
+//! something a consumer must build, not something this module provides. Its
+//! only renderer was the metrics server in `platform/startup/src/metrics.rs`,
+//! deleted at c472485d0 (2026-09-12). Do not read the cloud server's
+//! `GET /metrics` as this surface: it renders `apps/cloud-server`'s own
+//! separate registry, and that crate does not depend on this one.
+//!
+//! Feature-gated behind `metrics` — compiled out when it is not enabled.
 
 use prometheus::{Histogram, HistogramOpts, IntCounter, IntGauge, Opts, Registry};
 

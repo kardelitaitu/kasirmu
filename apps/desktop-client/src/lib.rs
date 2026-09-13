@@ -16,6 +16,9 @@ next: none | perf: N/A
 //! 2. Add it to the `invoke_handler!` macro below in the same order as the
 //!    `commands` module re-exports.
 //! 3. Document the command in the `tauri-ipc` skill.
+//!
+//! After the Wave E/F extraction, `oz-bridge` carries the command logic; this
+//! shell keeps the daemon-residue modules (local_api, pg_sync) and the 448-entry `tauri::generate_handler` list.
 
 /// All `#[tauri::command]` handlers, organised by domain.
 pub mod commands;
@@ -399,6 +402,260 @@ pub fn run() {
                 });
             }
 
+            // ── Memo expiry sweep daemon ───────────────────────────────
+            // Runs every 5 minutes to transition published Memos past their
+            // `expires_at` to `expired` — the domain's Published → Expired
+            // edge — and then runs the two retention stages on the same tick:
+            // ended Memos (`stopped`/`expired`) → `archived` (stamping
+            // `archived_at`), and deletion of archives past the fixed 30-day
+            // window (ruled 2026-09-07). The display read path already filters
+            // by `expires_at`/status, so this is record hygiene: it makes
+            // `expired`/`archived` live statuses rather than values that only
+            // exist in the enum, keeps the partial `idx_memos_expiry`
+            // (status='published') from accumulating stale rows, and enforces
+            // the retention promise. Mirrors the session-cleanup and
+            // KDS-retention daemons; operates on the global identity DB where
+            // Memos live.
+            {
+                let db = app.state::<AppState>().db.clone();
+                platform_startup::spawn_daemon("memo expiry sweep", async move {
+                    let mut interval = tokio::time::interval(
+                        std::time::Duration::from_secs(300),
+                    );
+                    // Skip the first tick so startup isn't delayed.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        let now = chrono::Utc::now()
+                            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        // Phase 1 — local sweeps + snapshot, under one lock
+                        // acquisition with NO awaits inside the block: the
+                        // `Store` borrow of the guard is not `Send`, so the
+                        // guard must die here, lexically, before the HTTP
+                        // await below.
+                        let push_state = {
+                            let conn = db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            match store.sweep_all_expired(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("memo expiry sweep: expired {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(error = %e, "memo expiry sweep failed"),
+                            }
+                            match store.sweep_ended_to_archived(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("memo retention sweep: archived {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "memo retention sweep failed")
+                                }
+                            }
+                            match store.sweep_expired_archives(
+                                &now,
+                                oz_core::memo::RETENTION_WINDOW_DAYS,
+                            ) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "memo retention sweep: deleted {n} archived memo(s)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "memo retention delete failed")
+                                }
+                            }
+                            // Cloud reconciliation (2026-09-07 cloud-read
+                            // ruling): push the tenant's COMPLETE memo
+                            // state — the cloud upserts and deletes by
+                            // omission, so a previously failed push
+                            // self-corrects on this tick. Best-effort: a
+                            // failure only logs; the next tick re-pushes.
+                            match oz_core::sync_client::SyncConfig::from_settings(&store) {
+                                Ok(Some(config)) => match store.collect_memo_sync_snapshot() {
+                                    Ok(snapshot) => Some((config, snapshot)),
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "memo snapshot failed");
+                                        None
+                                    }
+                                },
+                                Ok(None) => None,
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "memo sync config read failed");
+                                    None
+                                }
+                            }
+                        };
+                        // Phase 2 — HTTP push, no lock or borrow held.
+                        if let Some((config, snapshot)) = push_state {
+                            let ack =
+                                oz_core::sync_client::push_memos_to_server(&config, &snapshot)
+                                    .await;
+                            match ack {
+                                Ok(ack) if ack.upserted > 0 || ack.deleted > 0 => {
+                                    tracing::info!(
+                                        "memo cloud push: {} upserted, {} deleted",
+                                        ack.upserted,
+                                        ack.deleted
+                                    )
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "memo cloud push failed (retries next tick)"
+                                ),
+                            }
+                        }
+                    }
+                });
+            }
+
+            // ── Topology revision retention (ADR #46 §4) ───────────────
+            // Deflates restorable snapshots beyond the newest
+            // TOPOLOGY_REVISION_RESTORABLE_KEEP per branch while keeping every
+            // row's who/when/why. Shape copied from the memo expiry sweep
+            // above, for two reasons that are not interchangeable:
+            //
+            // - `state.db` is the GLOBAL database, which is where
+            //   topology_revisions lives, keyed by branch_id. The kds health
+            //   loop walks per-store databases via open_store_ids() and is the
+            //   wrong handle for this table.
+            // - 300s is already generous for a configuration table pruned a few
+            //   times a month; startup-only pruning would be worse still, since
+            //   a desktop app may run for weeks without restarting.
+            {
+                let db = app.state::<AppState>().db.clone();
+                platform_startup::spawn_daemon(
+                    "topology revision retention",
+                    async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(300));
+                        // Skip the first tick so startup isn't delayed.
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let conn = db.lock().await;
+                            match commands::topology::cleanup_old_topology_revisions(
+                                &conn,
+                                commands::topology::TOPOLOGY_REVISION_RESTORABLE_KEEP,
+                            ) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "topology revision retention: deflated {n} snapshot(s)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "topology revision retention sweep failed"
+                                ),
+                            }
+                        }
+                    },
+                );
+            }
+
+            // ── Audit retention sweep daemon (todo-global-saas-2.md P1) ─
+            // Enforces the adopted tier schedule (Free purge-all, Plus 90d,
+            // Pro 180d, Premium 1y, Enterprise 3y default) on every DB that
+            // carries an audit_log table: the GLOBAL database (Memos-adjacent
+            // system events, api.write entries, sale/stock/product events from
+            // the module handlers) AND each open per-store database (the
+            // store-scoped entries the audit screen reads). Every 15 minutes —
+            // audit rows expire on day boundaries, so 5-minute sweeps would
+            // buy nothing. Same std-sync Mutex discipline as the KDS health
+            // daemon: the guard lives only inside a lexical block.
+            //
+            // Fail-closed asymmetry: an unreadable/tampered subscription row
+            // SKIPS the tick (a purge triggered by corrupted data would be
+            // irreversible; a skipped sweep just delays deletion to a later
+            // tick), while a validly-signed Free row purges everything.
+            {
+                let db = app.state::<AppState>().db.clone();
+                let db_manager = app.state::<AppState>().db_manager.clone();
+                platform_startup::spawn_daemon("audit retention sweep", async move {
+                    let mut interval =
+                        tokio::time::interval(std::time::Duration::from_secs(900));
+                    // Skip the first tick so startup isn't delayed.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        let now = chrono::Utc::now()
+                            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        // Resolve the tier ONCE per tick from the global DB,
+                        // the same read model the caps command projects from.
+                        // NOT fail-closed here, deliberately inverted: a
+                        // missing/tampered/unreadable row (`loaded == false`)
+                        // SKIPS the whole tick, because the fail-closed
+                        // projection is Free and a purge triggered by
+                        // corrupted data would be irreversible — a skipped
+                        // sweep only delays deletion to a later tick. A
+                        // validly-signed Free row purges, as the schedule
+                        // demands. debug_upgrade is false: the dev Free→Premium
+                        // promotion must never widen a purge.
+                        let tier = {
+                            let conn = db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            let ent = oz_core::entitlements::build_entitlements(
+                                &store,
+                                oz_core::availability::UsageCounts::default(),
+                                false,
+                            );
+                            if !ent.loaded {
+                                None
+                            } else {
+                                Some(ent.tier)
+                            }
+                        };
+                        let Some(tier) = tier else {
+                            tracing::warn!(
+                                "audit retention sweep: no valid subscription row — skipping tick (fail-closed)"
+                            );
+                            continue;
+                        };
+                        // Global DB first…
+                        {
+                            let conn = db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            match store.sweep_audit_retention(&tier, &now) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "audit retention sweep (global): deleted {n} expired audit row(s) (tier: {})",
+                                    tier.name()
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "audit retention sweep (global) failed"
+                                ),
+                            }
+                        }
+                        // …then every open per-store DB (the audit screen's
+                        // rows live there; closed stores are swept on open by
+                        // the next tick after re-open).
+                        for store_id in db_manager.open_store_ids() {
+                            let Ok(conn) = db_manager.open_store(&store_id) else {
+                                tracing::warn!(store_id, "audit retention sweep: store db unavailable");
+                                continue;
+                            };
+                            let Ok(db) = conn.lock() else {
+                                tracing::warn!(store_id, "audit retention sweep: store db lock poisoned");
+                                continue;
+                            };
+                            let store = oz_core::db::Store::new(&db);
+                            match store.sweep_audit_retention(&tier, &now) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    store_id,
+                                    "audit retention sweep: deleted {n} expired audit row(s) (tier: {})",
+                                    tier.name()
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e, store_id,
+                                    "audit retention sweep failed"
+                                ),
+                            }
+                        }
+                    }
+                });
+            }
+
             // ── LAN event forwarder ────────────────────────────────────
             // Read LAN server config from the settings table (C-4).
             // Default: loopback-only, no PSK. External bind requires
@@ -409,7 +666,19 @@ pub fn run() {
                 let bind = oz_core::Settings::get(&db, "lan_server.bind")
                     .unwrap_or(None)
                     .unwrap_or_else(|| "127.0.0.1".to_string());
-                let psk = oz_core::Settings::get(&db, "lan_server.psk")
+                // Read through the TYPED getter, not a raw Settings::get.
+                // `set_lan_server_psk` (platform/core/src/settings/typed.rs)
+                // encrypts at rest, so a raw read would hand the forwarder
+                // base64 ciphertext where it expects the PSK bytes.
+                //
+                // `get_lan_server_psk` is deliberately the *tolerant* form:
+                // decrypt-or-passthrough. That tolerance exists so an install
+                // that saved a plaintext PSK before this line changed keeps
+                // working — it is NOT evidence that the stored value is
+                // encrypted. A plaintext credential stays readable as
+                // plaintext here, indefinitely and silently; do not read this
+                // call as an at-rest guarantee for this key.
+                let psk = platform_core::settings::Settings::get_lan_server_psk(&db)
                     .unwrap_or(None)
                     .filter(|s| !s.is_empty());
                 // Reject external bind without a PSK.
@@ -423,7 +692,51 @@ pub fn run() {
                 };
                 (format!("{bind}:9180"), psk)
             };
-            let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk);
+            // ── kds-sync: discovery payload + live queue provider ──────
+            // The discovery response identifies this POS terminal to
+            // connecting KDS peers. `devices` stays empty for now —
+            // enrolment propagation over LAN is a known residual (see
+            // done-todo-kds-agents-2.md, "App wiring — 13-09-26").
+            // The queue provider answers a reconnecting peer's
+            // `{"op":"discover","want_queue":true}` from the in-memory
+            // snapshot that `commands/kds.rs` keeps fresh after every
+            // transition: it runs synchronously inside the per-peer
+            // accept task, so it only ever takes the cheap `std` read
+            // lock and never touches the async DB mutex.
+            let (kds_discovery_json, kds_queue_provider) = {
+                let state = app.state::<AppState>();
+                let restaurant_pos_id = state
+                    .terminal_id
+                    .try_lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .unwrap_or_default();
+                let discover = crate::lan_server::KdsDiscoverResponse {
+                    restaurant_pos_id,
+                    devices: Vec::new(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                    transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
+                    active_queue: None,
+                };
+                let json = serde_json::to_string(&discover).unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "kds-sync discovery payload failed to serialise"
+                    );
+                    "{}".to_string()
+                });
+                let cache = state.kds_queue_cache.clone();
+                let provider: crate::lan_server::KdsQueueProvider = std::sync::Arc::new(move || {
+                    cache
+                        .read()
+                        .map(|snapshot| snapshot.clone())
+                        .unwrap_or_default()
+                });
+                (json, provider)
+            };
+            let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk)
+                .with_discovery(kds_discovery_json)
+                .with_kds_queue(kds_queue_provider);
             let handle = forwarder.handle();
             platform_startup::spawn_daemon("LAN event forwarder", forwarder.run());
 
@@ -448,8 +761,12 @@ pub fn run() {
                             "order.course_fired",
                             Box::new(handle.course_fired_handler()),
                         );
+                        // kds-sync: forwards the four `kds.*` transitions
+                        // published by commands/kds.rs to LAN KDS peers,
+                        // station-filtered per peer subscription.
+                        bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
                         tracing::info!(
-                            "LAN event forwarder handlers registered for sale.completed and order.course_fired"
+                            "LAN event forwarder handlers registered for sale.completed, order.course_fired and kds.sync"
                         );
                         registered = true;
                         break;
@@ -528,6 +845,14 @@ pub fn run() {
             commands::audit::get_audit_review_status_scoped,
             commands::audit::mark_audit_reviewed_scoped,
             commands::audit::export_audit_log_scoped,
+            // Security-event CSV export (owner ruling D61-7): AUD-09
+            // narrowed to SECURITY_ACTIONS, reading the SAME global
+            // identity DB as the trail read below.
+            commands::audit::export_security_events_scoped,
+            // Organization-level security trail from the global identity DB
+            // (todo-global-saas-2.md P1). Reads a DIFFERENT file than the
+            // store-scoped audit list above — see the command doc.
+            commands::audit::list_security_events_scoped,
             commands::auth::staff_login,
             commands::auth::staff_check_username,
             commands::auth::has_users,
@@ -536,6 +861,10 @@ pub fn run() {
             commands::auth::session_keepalive,
             commands::auth::verify_pin,
             commands::auth::refresh_picker_ticket,
+            commands::auth::impersonate_user_scoped,
+            // SaaS-3 L194: multi-organization user switching.
+            commands::auth::list_organizations,
+            commands::auth::switch_organization,
             commands::branding::get_brand_settings_scoped,
             commands::branding::get_brand_settings,
             commands::branding::pick_logo_file,
@@ -578,6 +907,11 @@ pub fn run() {
             commands::data::import_data,
             commands::staff::list_staff_scoped,
             commands::staff::list_roles_scoped,
+            commands::staff::list_permission_keys_scoped,
+            commands::staff::create_role_scoped,
+            commands::staff::update_role_scoped,
+            commands::staff::delete_role_scoped,
+            commands::staff::list_role_holders_scoped,
             commands::staff::create_staff_scoped,
             commands::staff::update_staff_scoped,
             commands::staff::get_staff_profile_scoped,
@@ -627,6 +961,14 @@ pub fn run() {
             commands::stock_transfers::cancel_stock_transfer_scoped,
             commands::health::ping,
             commands::health::ping_scoped,
+            // `version` was the only health command registered without its ambient twin: every
+            // pair above and below is `x` + `x_scoped`. The UI calls `version` from four sites
+            // (useVersionStatus, UpdateBanner, LicenseActivationScreen, SessionLockScreen), so on
+            // desktop it threw "command not found" -- useVersionStatus caught that and displayed
+            // the app version as 0.0.0, while UpdateBanner's throw aborted the same try block that
+            // decides whether to show the rollback-recovery banner, so that feature never fired.
+            // tablet-client has registered `version` all along (lib.rs:409).
+            commands::health::version,
             commands::health::version_scoped,
             commands::health::get_device_id,
             commands::health::get_device_id_scoped,
@@ -687,6 +1029,8 @@ pub fn run() {
             commands::kds_device::deactivate_kds_device_scoped,
             commands::kds_device::ack_kds_order_scoped,
             commands::kds_routing::resolve_kds_targets_scoped,
+            commands::kds_routing::get_kds_routing_rules_scoped,
+            commands::kds_routing::save_kds_routing_rules_scoped,
             commands::history::list_sales_scoped,
             commands::history::get_sale_scoped,
             commands::history::export_daily_summary_scoped,
@@ -694,6 +1038,11 @@ pub fn run() {
             commands::history::export_eod_report_scoped,
             commands::void::void_sale_scoped,
             commands::hardware::print_sales_receipt_scoped,
+            commands::fiscal::get_document_number_sequence_scoped,
+            commands::fiscal::upsert_document_number_sequence_scoped,
+            commands::fiscal::list_document_number_sequences_scoped,
+            commands::fiscal::list_document_number_sequences_for_entity_scoped,
+            commands::fiscal::list_fiscal_schemes_scoped,
             commands::settings::get_receipt_settings_scoped,
             commands::settings::set_receipt_settings_scoped,
             commands::settings::get_store_settings_scoped,
@@ -706,6 +1055,7 @@ pub fn run() {
             commands::settings::set_user_preferences_scoped,
             commands::settings::set_setting_scoped,
             commands::settings::set_settings_scoped,
+            commands::settings::get_deployment_info,
             // Unscoped settings access for pre-login IPC callers (updater
             // banner, cloud-sync token, gateway status) — mirrors the tablet
             // registration; see review finding F-004.
@@ -738,6 +1088,7 @@ pub fn run() {
             commands::setup::seed_default_roles_scoped,
             commands::setup::get_setup_status,
             commands::tax::list_tax_rates_scoped,
+            commands::tax::list_tax_rate_rounding_modes_scoped,
             commands::tax::create_tax_rate_scoped,
             commands::tax::update_tax_rate_scoped,
             commands::tax::delete_tax_rate_scoped,
@@ -795,7 +1146,6 @@ pub fn run() {
             commands::analytics::get_staff_analytics_daily_scoped,
             commands::security::get_key_rotation_info,
             commands::security::get_key_rotation_info_scoped,
-            commands::security::rotate_encryption_key,
             commands::security::rotate_encryption_key_scoped,
             commands::shifts::open_shift_scoped,
             commands::shifts::close_shift_scoped,
@@ -843,12 +1193,24 @@ pub fn run() {
             commands::license::test_auth_connection,
             commands::license::test_auth_connection_scoped,
             commands::subscription::get_subscription_capabilities,
+            commands::subscription::explain_feature_availability_scoped,
+            commands::subscription::get_over_quota_report,
+            commands::subscription::get_over_quota_report_scoped,
             // The legacy unscoped save_topology command is intentionally not
             // registered. All production writes use the authenticated,
             // revision-aware apply_topology_diff command.
             commands::topology::load_topology,
             commands::topology::can_save_topology,
             commands::topology::apply_topology_diff,
+            // ADR #46 §1/§8 — read-only deploy history. Both gated on
+            // `audit:view` (who changed this, when, and why — the audit
+            // screen's own question), and both read the GLOBAL database,
+            // where topology_revisions lives beside the graph it describes.
+            commands::topology::list_topology_revisions,
+            commands::topology::load_topology_revision,
+            // ADR #46 §4: the pin that makes a revision a protected deploy.
+            // Gated on topology:write, unlike the two readers above.
+            commands::topology::pin_topology_revision,
             // ADR #45 §4.2 — diagram templates, persisted per branch in the
             // same settings namespace as the graph they seed.
             commands::topology::save_topology_template,
@@ -892,13 +1254,41 @@ pub fn run() {
             commands::shifts::get_shift_scoped,
             commands::shifts::create_cash_payout_scoped,
             commands::shifts::get_shift_report_scoped,
-            commands::store_profiles::list_store_profiles_scoped,
-            commands::store_profiles::get_store_profile_scoped,
-            commands::store_profiles::get_primary_store_scoped,
-            commands::store_profiles::create_store_profile_scoped,
-            commands::store_profiles::update_store_profile_scoped,
-            commands::store_profiles::set_primary_store_scoped,
-            commands::store_profiles::delete_store_profile_scoped,
+            commands::legal_entities::list_legal_entities_scoped,
+            commands::legal_entities::get_legal_entity_scoped,
+            commands::legal_entities::create_legal_entity_scoped,
+            commands::legal_entities::update_legal_entity_scoped,
+            commands::memo::create_memo_scoped,
+            commands::memo::publish_memo_scoped,
+            commands::memo::stop_memo_scoped,
+            commands::memo::revise_memo_scoped,
+            commands::memo::list_active_memos_scoped,
+            commands::memo::acknowledge_memo_scoped,
+            commands::memo::list_authored_memos_scoped,
+            commands::payables::list_payables_scoped,
+            commands::payables::create_payable_scoped,
+            commands::payables::record_payable_payment_scoped,
+            commands::payables::write_off_payable_scoped,
+            commands::locations::list_locations_scoped,
+            commands::locations::get_location_profile_scoped,
+            commands::locations::get_primary_location_scoped,
+            commands::locations::create_location_profile_scoped,
+            commands::locations::update_location_profile_scoped,
+            commands::locations::set_primary_location_scoped,
+            commands::locations::delete_location_profile_scoped,
+            commands::locations::get_location_ticket_prefix_scoped,
+            commands::locations::set_location_ticket_prefix_scoped,
+            // Regional configuration read model (slice 2, saas-2 design).
+            commands::regional::get_regional_config_scoped,
+            // Regional configuration write path (slice 3, saas-2 design).
+            commands::regional::set_regional_config_scoped,
+            // Local payment methods (slice 6, saas-2 design).
+            commands::local_payment::get_local_payment_methods_scoped,
+            commands::local_payment::set_local_payment_methods_scoped,
+            // Receipt format (receipt-format axis, saas-2 design).
+            commands::receipt_format::get_receipt_format_scoped,
+            commands::receipt_format::set_receipt_layout_scoped,
+            commands::receipt_format::set_receipt_content_scoped,
             // ── Hardware, scale, branding, product variants, bundles (H-1) ──
             commands::hardware::open_cash_drawer_scoped,
             commands::hardware::print_receipt_scoped,
@@ -920,6 +1310,8 @@ pub fn run() {
             commands::sync::get_pg_sync_settings_scoped,
             commands::sync::update_pg_sync_settings_scoped,
             commands::sync::pg_sync_status_scoped,
+            commands::sync::list_sync_conflicts_scoped,
+            commands::sync::resolve_sync_conflict_scoped,
             commands::sync::pg_sync_start_scoped,
             commands::sync::pg_sync_stop_scoped,
             commands::sync::pending_sync_count_scoped,
@@ -930,6 +1322,8 @@ pub fn run() {
             commands::sync::sync_run_scoped,
             commands::sync::sync_pull_scoped,
             commands::sync::settings_changed_sink_scoped,
+            commands::qris_auto::qris_auto_charge_scoped,
+            commands::qris_auto::qris_auto_status_scoped,
             commands::settings::get_hardware_settings_scoped,
             commands::purchasing::list_suppliers_scoped,
             commands::purchasing::get_supplier_scoped,

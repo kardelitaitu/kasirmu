@@ -136,3 +136,5 @@ practice — the rest are enforced at boot (the deploy fails fast if they're
 missing) — but keyword monitors on `"server_key_configured":false` (Midtrans)
 and `"secret_configured":false` (Paddle) page you if a billing secret is ever
 rotated out from under the running service.
+
+> last audited 18-08-26 by Buffy

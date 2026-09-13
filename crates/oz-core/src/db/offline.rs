@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (oz-core slice B5: offline queue deep read)
 crate: oz-core | status: SAFE | lint: CLEAN
-findings: sync plumbing production-grade — tenant-scoped variants throughout (SYNC-07: cross-tenant reads as NotFound/no-op), sync_applied_items idempotency ledger (INSERT OR IGNORE + in-tx variant co-located with the domain mutation), durable pull anchor with crash-safe write-after-apply ordering, atomic dead-letter requeue (predicate inside the DELETE) with anchor rewind; COR-20 INFO: enqueue dedup EXISTS check and observability summary degrade silently on DB errors (.unwrap_or(false)/.ok()) — benign direction (duplicate enqueue is replay-safe; dashboards show zeros) but errors are invisible
+findings: sync plumbing production-grade — tenant-scoped variants throughout (SYNC-07: cross-tenant reads as NotFound/no-op), sync_applied_items idempotency ledger (INSERT OR IGNORE + in-tx variant co-located with the domain mutation), durable pull anchor with crash-safe write-after-apply ordering, atomic dead-letter requeue (predicate inside the DELETE) with anchor rewind; COR-20 CLOSED 2026-09-06: the dedup EXISTS check and the observability summary still degrade to their benign defaults (duplicate enqueue is replay-safe; dashboards show zeros), but every degradation now logs op + underlying error via log_degraded, and query_or_none separates the normal QueryReturnedNoRows empty case from real DB errors that .ok() previously conflated
 next: none | perf: status summary is 4 small queries, fine at desktop scale
 */
 
@@ -13,6 +13,40 @@ use crate::error::CoreError;
 use crate::offline::{OfflineQueueItem, OfflineQueueStatus, SyncPriority};
 
 use super::Store;
+
+/// COR-20: a degraded observability query must be visible in the log.
+///
+/// The defaults chosen on DB error are deliberately benign — the dedup
+/// EXISTS check falls through to a normal enqueue (duplicate enqueues are
+/// replay-safe via the server's idempotency ledger), and the status summary
+/// reports zeros/None so dashboards degrade instead of failing. But a queue
+/// that silently reads "0 failed" because its database is unhealthy is
+/// exactly the hidden failure state the Phase 2 offline-sync spec forbids.
+/// Every degradation logs the operation name and the underlying error so
+/// the cause is discoverable without changing the benign behavior.
+fn log_degraded(operation: &str, err: &rusqlite::Error) {
+    tracing::warn!(
+        op = operation,
+        error = %err,
+        "offline_queue query degraded to default (COR-20)"
+    );
+}
+
+/// Run a single-row observability query whose "no rows" answer is normal.
+///
+/// `Ok` → value; `QueryReturnedNoRows` → `None` silently (an empty queue is the
+/// expected common case, not an error); any other DB error → `None` logged
+/// via [`log_degraded`]. This separates the conflation `.ok()` performed.
+fn query_or_none(operation: &str, result: Result<String, rusqlite::Error>) -> Option<String> {
+    match result {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => {
+            log_degraded(operation, &e);
+            None
+        }
+    }
+}
 
 /// Summary of offline queue status — counts by status and sync timing.
 /// Used by P1-6 sync observability dashboard widgets.
@@ -90,15 +124,20 @@ impl Store<'_> {
         action: &str,
         payload: &str,
     ) -> Result<Option<OfflineQueueItem>, CoreError> {
-        let exists: bool = self
-            .conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM offline_queue
-                  WHERE status = 'pending' AND action = ?1 AND payload = ?2)",
-                params![action, payload],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
+        let exists: bool = match self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM offline_queue
+              WHERE status = 'pending' AND action = ?1 AND payload = ?2)",
+            params![action, payload],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            // COR-20: a failed dedup check falls through to a normal enqueue
+            // (replay-safe), but the DB error must be visible.
+            Err(e) => {
+                log_degraded("enqueue_offline_dedup.exists", &e);
+                false
+            }
+        };
 
         if exists {
             return Ok(None);
@@ -196,6 +235,10 @@ impl Store<'_> {
         tenant_id: &str,
         priority: SyncPriority,
     ) -> Result<OfflineQueueItem, CoreError> {
+        // Enforce subscription offline grace period / read-only lock.
+        // Once the offline grace period expires, transactions cannot be enqueued.
+        self.enforce_pos_writable_for_tenant(tenant_id)?;
+
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
         self.conn.execute(
@@ -204,6 +247,141 @@ impl Store<'_> {
             params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
         )?;
         Ok(item)
+    }
+
+    /// OUTBOX PRIMITIVE: write the queue row inside a CALLER-OWNED
+    /// transaction, so the row is committed or rolled back together with the
+    /// business write it describes.
+    ///
+    /// Why it exists: sync for sales is outbox-only - push reads
+    /// `list_pending_offline` and nothing else, and there is no
+    /// reconciliation sweep anywhere in the tree (every sweep found is
+    /// session/memo expiry, audit retention or a cloud prune, and
+    /// `payment_settlements.rs:9` says "stubs until the reconciliation job
+    /// is implemented"). An enqueue that runs AFTER the sale commits - today
+    /// it runs in an event handler on a SEPARATE connection
+    /// (`platform/startup/src/lib.rs:112`), because the bus is in-process and
+    /// the settlement's DB lock is already dropped - can be lost forever by a
+    /// crash or a handler error in that window. `event_bus.rs:259-267` logs a
+    /// handler Err and continues and `:268-281` catches a handler panic and
+    /// continues, so the loss is silent; and it is invisible to the operator,
+    /// because the queue screen reports pending / synced / failed /
+    /// oldest-pending and a sale that was never enqueued contributes to none
+    /// of them.
+    ///
+    /// Tenant is a REQUIRED argument on purpose. `enqueue_offline_priority`
+    /// hardcodes `"default"` while the `SaleCompleted` event carries a
+    /// `store_id`, so a multi-store caller that reaches for the priority
+    /// helper enqueues another store's sale under `"default"` - a real
+    /// pre-existing bug, found here and NOT fixed here because its callers are
+    /// outside this change. This helper cannot be called that way by accident.
+    ///
+    /// Deliberately does NOT call `enforce_pos_writable_for_tenant`: the
+    /// settlement path already enforced it on its own transaction
+    /// (`sales_lifecycle.rs:176`), and re-checking through `self.conn` here
+    /// would read outside the very transaction whose atomicity is the point.
+    pub fn enqueue_offline_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        action: &str,
+        payload: &str,
+        tenant_id: &str,
+        priority: SyncPriority,
+    ) -> Result<OfflineQueueItem, CoreError> {
+        let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
+        item.priority = priority;
+        tx.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
+        )?;
+        Ok(item)
+    }
+
+    /// OUTBOX: write this sale's `complete_sale` row inside the settlement
+    /// transaction, so the sync row and the sale are one atomic unit.
+    ///
+    /// Position is deliberate: the doors call this AFTER the sale row and its
+    /// lines are written but BEFORE the payment inserts, so a failure later in
+    /// the same transaction (a UNIQUE collision on payments.idempotency_key,
+    /// say) takes the outbox row down with the sale. Placed just before
+    /// `tx.commit()` it would be equally atomic but untestable - nothing can
+    /// fail after it - so the earlier seat buys a real rollback proof.
+    ///
+    /// Tenant comes from the sale row, not from a literal: the queue is read
+    /// per tenant and `enqueue_offline_priority` hardcodes "default".
+    ///
+    /// The payload is SHAPED like the one SaleSyncEnqueuer builds today
+    /// (sale_id / total_minor / currency / customer_id / line_items with the
+    /// same five line keys) so the apply side cannot tell the two writers
+    /// apart. It is NOT relied on to be byte-identical to it - which is why
+    /// the guard below keys on the sale id and not on the string.
+    pub fn enqueue_sale_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        sale: &crate::Sale,
+        currency: &str,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![sale.id],
+            |row| row.get(0),
+        )?;
+        let line_items: Vec<serde_json::Value> = sale
+            .lines
+            .iter()
+            .map(|l| {
+                serde_json::json!({
+                    "sku": l.sku,
+                    "qty": l.qty,
+                    "unit_price_minor": l.unit_price.minor_units,
+                    "tax_minor": l.tax_amount.minor_units,
+                    "tax_rate_id": l.tax_rate_id,
+                })
+            })
+            .collect();
+        let payload = serde_json::json!({
+            "sale_id": sale.id,
+            "total_minor": sale.total.minor_units,
+            "currency": currency,
+            "customer_id": sale.customer_id,
+            "line_items": line_items,
+        })
+        .to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "complete_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: does a still-pending row for this action already exist for
+    /// THIS SALE?
+    ///
+    /// Keyed on the sale id inside the payload rather than on the whole
+    /// payload string, on purpose: `enqueue_offline_dedup` compares
+    /// `action + payload` byte-for-byte, and the two writers of this row build
+    /// the JSON from different places (a settlement from the `Sale` struct,
+    /// the handler from the event), so any shape or key-order drift between
+    /// them would silently turn "skip" into "second row" and push the sale
+    /// twice. A substring probe on the quoted sale id needs no JSON1
+    /// extension, cannot match a prefix of a longer id because the closing
+    /// quote is part of the needle, and makes the invariant a property of the
+    /// queue rather than a property of the caller.
+    pub fn has_pending_outbox_row_for_sale(
+        &self,
+        action: &str,
+        sale_id: &str,
+    ) -> Result<bool, CoreError> {
+        let needle = format!("\"sale_id\":\"{sale_id}\"");
+        let exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM offline_queue
+              WHERE status = 'pending' AND action = ?1 AND instr(payload, ?2) > 0)",
+            params![action, needle],
+            |row| row.get(0),
+        )?;
+        Ok(exists)
     }
 
     /// List all pending (unsynced) offline queue items, oldest first.
@@ -381,7 +559,15 @@ impl Store<'_> {
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
-            .filter_map(|r| r.ok())
+            .filter_map(|r| match r {
+                Ok(v) => Some(v),
+                // COR-20: a row that fails to read must not silently vanish
+                // from the counts the dashboard renders.
+                Err(e) => {
+                    log_degraded("offline_queue_status_summary.counts_row", &e);
+                    None
+                }
+            })
             .collect();
 
         let mut pending_count: i64 = 0;
@@ -397,44 +583,50 @@ impl Store<'_> {
         }
 
         // Total retry count across all failed items
-        let total_retry_count: i64 = self
-            .conn
-            .query_row(
-                "SELECT COALESCE(SUM(retry_count), 0) FROM offline_queue WHERE status = 'failed'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let total_retry_count: i64 = match self.conn.query_row(
+            "SELECT COALESCE(SUM(retry_count), 0) FROM offline_queue WHERE status = 'failed'",
+            [],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                log_degraded("offline_queue_status_summary.total_retry_count", &e);
+                0
+            }
+        };
 
         // Last synced at (most recent synced_at timestamp)
-        let last_synced_at: Option<String> = self
-            .conn
-            .query_row(
+        let last_synced_at: Option<String> = query_or_none(
+            "offline_queue_status_summary.last_synced_at",
+            self.conn.query_row(
                 "SELECT synced_at FROM offline_queue WHERE status = 'synced' AND synced_at IS NOT NULL ORDER BY synced_at DESC LIMIT 1",
                 [],
                 |row| row.get(0),
-            )
-            .ok();
+            ),
+        );
 
         // Oldest pending at (earliest created_at among pending items)
-        let oldest_pending_at: Option<String> = self
-            .conn
-            .query_row(
+        let oldest_pending_at: Option<String> = query_or_none(
+            "offline_queue_status_summary.oldest_pending_at",
+            self.conn.query_row(
                 "SELECT created_at FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
                 [],
                 |row| row.get(0),
-            )
-            .ok();
+            ),
+        );
 
         // P1-3: Count items resolved via conflict (last_error starts with "resolved: conflict")
-        let conflict_count: i64 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM offline_queue WHERE last_error LIKE 'resolved: conflict%'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let conflict_count: i64 = match self.conn.query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE last_error LIKE 'resolved: conflict%'",
+            [],
+            |row| row.get(0),
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                log_degraded("offline_queue_status_summary.conflict_count", &e);
+                0
+            }
+        };
 
         Ok(SyncStatusSummary {
             pending_count,

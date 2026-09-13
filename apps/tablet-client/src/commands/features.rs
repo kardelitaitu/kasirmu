@@ -50,7 +50,18 @@ pub async fn list_all_features(
     state: State<'_, AppState>,
 ) -> Result<ListAllFeaturesResult, AppError> {
     let db = state.db.lock().await;
-    let store = Store::new(&db);
+    run_list_all_features(&db)
+}
+
+/// Shared body for the ambient and session-scoped variants.
+///
+/// Extracted so the two cannot drift, matching this file's peers and `desktop-client`, which already
+/// factors the same work into `build_feature_list`. Note the scoped variant below authenticates but
+/// performs no permission check -- deliberately matching `desktop-client`'s
+/// `list_all_features_scoped` (commands/features.rs:631), which also only calls `resolve_scope`.
+/// Adding `SETTINGS_EDIT` here would make the two shells reject different callers.
+fn run_list_all_features(db: &rusqlite::Connection) -> Result<ListAllFeaturesResult, AppError> {
+    let store = Store::new(db);
     let reg = store.load_features()?;
 
     let features = all_feature_metadata()
@@ -74,6 +85,21 @@ pub async fn list_all_features(
         .collect();
 
     Ok(ListAllFeaturesResult { features })
+}
+
+/// Session-scoped variant of [`list_all_features`] (ADR #7).
+///
+/// `desktop-client` has registered this since the ADR #7 sweep; tablet never defined it, so wiring
+/// the UI to call it would have thrown there -- the same cross-shell asymmetry recorded in item 66,
+/// in the opposite direction.
+#[command]
+pub async fn list_all_features_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<ListAllFeaturesResult, AppError> {
+    let _session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    run_list_all_features(&db)
 }
 
 // ── Set feature ──────────────────────────────────────────────────────

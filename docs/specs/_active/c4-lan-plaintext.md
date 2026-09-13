@@ -169,3 +169,5 @@ grep -rn 'TcpListener::bind' apps/desktop-client/src/
   setting will live)
 - `crates/oz-core/src/db/settings.rs` (`Settings::get_lan_server_bind`
   and `Settings::set_lan_server_bind` to be added)
+
+> last audited 22-07-26 by Hermes-Agent

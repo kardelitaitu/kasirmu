@@ -83,8 +83,28 @@ payment-change = Change
 payment-insufficient = Insufficient amount
 payment-qris-description = Generate a QRIS QR code for the customer to scan with their payment app.
 payment-qris-pay = Pay with QR
+payment-qris-dynamic-pay = Pay with dynamic QR
+payment-qris-countdown = Expires in { $seconds }s
+payment-qris-expired-title = The QR code expired
+payment-qris-reissue = Generate a new QR
+payment-qris-cancel = Cancel payment
+payment-qris-auto-charge-failed = QRIS Auto charge failed: { $reason }
+payment-qris-auto-no-payload = The payment gateway returned no QR payload
+payment-qris-auto-cancelled = QRIS payment cancelled — pending sale voided
+
+# EDC card-present flow (agents-3 3.2)
+payment-edc-description = Charge the total on the connected card terminal — tap, insert or swipe.
+payment-edc-pay = Pay on card terminal
+payment-edc-preflight = Checking card terminal…
+payment-edc-waiting = Please tap, insert or swipe the card…
+payment-edc-declined = Card declined
+payment-edc-not-ready = Card terminal is not ready ({ $status })
+payment-edc-failed = Card payment failed: { $reason }
+payment-edc-dismiss = Back to payment
 payment-qris-scan = Scan with your payment app
 payment-qris-waiting = Waiting for payment...
+payment-qris-manual-confirm = I received the payment
+payment-qris-not-configured = Merchant static QR not configured — set it under Settings › Local payment methods.
 payment-qris-dialog-aria = QRIS QR payment
 payment-qris-close-aria = Close QR payment
 payment-qris-qr-aria = QR code
@@ -263,6 +283,9 @@ sales-history-line-cost = Cost
 sales-history-line-margin = Margin
 sales-history-line-margin-pct = Margin %
 sales-history-line-tax = Tax
+# F2-7 — the audit-stamp badge: shown on the detail's tax line when core
+# stamped the sale as computed against a non-fresh tax estimate.
+sales-history-tax-estimated-badge = Estimated
 sales-history-status-all = All
 sales-history-status-completed = Completed
 sales-history-status-pending = Pending
@@ -868,7 +891,6 @@ retail-product-add-aria = Add { $name } to cart
 retail-product-edit-title = Edit Product
 retail-product-edit-aria = Edit { $name }
 retail-product-weigh-aria = Weigh { $name }
-retail-price-volatility-hint = Price changed recently
 retail-edit-modal-close-aria =
     .aria-label = Close
 

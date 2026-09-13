@@ -1,4 +1,5 @@
 # App Store Registration & Distribution Guide
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Finding: §3 asserted ".github/workflows/android.yml builds a signed aarch64 APK on v* tag push" in present tense; the checker (.agents/skills/docs-auditor/scripts/check-ci-claims.py) flagged it because GitHub reads only *.yml and that file is .github/workflows/android.yml.bak (renamed by 23c963303 on 2026-09-02, git log --name-status shows R100) · Repaired by stating what is live and what is not, with the header of the live release workflow as the citation (.github/workflows/release.yml:24 says Mobile is "Never part of this file"), and by leaving the honest local-build route in place of the deleted automation · VERIFIED from the files: live set is exactly dev-ci.yml + release.yml; release.yml triggers push tags v* with jobs release-validate / release-build / release-publish; dev-ci.yml triggers pull_request branches [main] + workflow_dispatch and has no push trigger; no live workflow mentions ndk, android cargo-ndk, or an IPA step (git grep -in android -- .github/workflows/dev-ci.yml .github/workflows/release.yml → only the release.yml:24 comment) · NOT FIXED, FLAGGED: §2.5 still tells the reader to paste release notes for "Version 0.0.25" while the repo version is locked at 0.0.37 — a stale example in a store-listing step, outside this pass's CI-claim scope · LEFT ALONE: the Partner Center / Play Console manual steps, which are external-process facts no file in this repo can confirm. -->
 
 > **Target Audience:** Developers, Release Engineers, and Store Admins publishing OZ-POS to official App Stores.
 
@@ -80,11 +81,24 @@ cargo tauri android build --apk --target aarch64
 
 ## 🚀 3. CI/CD Automated Store Build Workflows
 
-OZ-POS provides automated GitHub Actions workflows for continuous integration and release artifacts:
+Only two GitHub Actions workflows are live, and **neither produces a mobile artifact**:
 
-- **Android Automated Build**: `.github/workflows/android.yml` builds a signed `aarch64` APK on `v*` tag push (AAB/Play bundles pending NDK stabilisation).
-- **Desktop Release Automated Build**: `.github/workflows/release.yml` compiles Windows MSI installers automatically.
+- **Desktop Release Automated Build — LIVE**: `.github/workflows/release.yml` runs on a `v*` tag
+  push and compiles the Tauri desktop installers (Linux, Windows MSI, macOS), signs the updater
+  manifests, attests provenance and publishes the GitHub Release. Its jobs are `release-validate`,
+  `release-build` and `release-publish`. It was restored desktop-only by `3b10ea3a2` on 2026-09-04
+  after `23c963303` had retired it; mobile was never part of the restoration — the file's own header
+  says so at `.github/workflows/release.yml:24`.
+- **Android Automated Build — RETIRED: nothing builds an APK or AAB for you.** The Android workflow
+  is inert (`.github/workflows/android.yml.bak`, renamed by `23c963303` on 2026-09-02, and GitHub never
+  executes a `.bak` file), so a `v*` tag push yields desktop installers only. Build it locally instead
+  (`cargo tauri android build --apk|--aab`, see `apps/tablet-client/AGENTS.md`) and upload through
+  Partner Center. iOS is in the identical state (`ios.yml.bak`, also retired, and the `gen/apple/`
+  scaffold it needs has never been committed).
+- **Dev CI — LIVE but not a release path**: `.github/workflows/dev-ci.yml` validates a PR targeting
+  `main` (plus manual dispatch) and builds no installers at all. There is no push trigger, so pushing
+  a branch — including `main` — runs nothing.
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+> last audited 09-09-26 by docs-auditor

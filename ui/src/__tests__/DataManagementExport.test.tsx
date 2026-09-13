@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DataManagementScreen from '@/features/settings/DataManagementScreen';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
+import type * as SubscriptionContextModule from '@/contexts/SubscriptionContext';
 
 // ── Shared mocks ─────────────────────────────────────────────────
 
@@ -16,6 +18,11 @@ const mockPickImportFile = vi.fn();
 vi.mock('@/api/data', () => ({
   getBackupStatus: () => mockGetBackupStatus(),
   createBackup: () => mockCreateBackup(),
+  // See DataManagementBackup.test.tsx for why both twins must be exported: the screen calls
+  // them whenever a session token is present, and a missing mock export is a hard error that
+  // takes down every test in the file, not just the scoped ones.
+  getBackupStatusScoped: (token: string) => mockGetBackupStatus(token),
+  createBackupScoped: (token: string) => mockCreateBackup(token),
   exportData: (args: unknown) => mockExportData(args),
   importPreview: (filePath: string, password: string) => mockImportPreview(filePath, password),
   importData: (filePath: string, password: string) => mockImportData(filePath, password),
@@ -29,8 +36,21 @@ vi.mock('@/frontend/shared/Toast', () => ({
   useToast: () => ({ addToast: mockAddToast }),
 }));
 
+// §B gate: defaults OPEN for the regular screen tests; the gate test
+// overrides per-test. AdminLockedFeature strings resolve through the
+// @fluent/react mock below (mockStrings entry).
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof SubscriptionContextModule>();
+  return {
+    ...actual,
+    useAdminGate: vi.fn().mockReturnValue({ locked: false, state: 'active' }),
+  };
+});
+const adminGate = vi.mocked(useAdminGate);
+
 vi.mock('@fluent/react', () => {
   const mockStrings: Record<string, string> = {
+    'admin-locked-title': 'Administrative features locked',
     'data-mgmt-export-select-all': 'Select all / none',
     'data-mgmt-type-products': 'Products',
     'data-mgmt-type-categories': 'Categories',
@@ -102,6 +122,22 @@ beforeEach(() => {
 });
 
 // ── Helpers ──────────────────────────────────────────────────────
+
+describe('DataManagementScreen §B administrative gate', () => {
+  afterEach(() => {
+    adminGate.mockReturnValue({ locked: false, state: 'active' });
+  });
+
+  it('locks the screen while the subscription is not active (grace)', () => {
+    // §B: Data Management is an administrative SaaS feature — it locks at
+    // expiresAt (grace onward) while operational POS runtime continues.
+    adminGate.mockReturnValue({ locked: true, state: 'grace' });
+    render(<DataManagementScreen />);
+    expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    // The export surface must not render behind the lock.
+    expect(screen.queryByText('Select all / none')).not.toBeInTheDocument();
+  });
+});
 
 describe('DataManagement — Export', () => {
   // ═══════════════════════════════════════════════════════════════

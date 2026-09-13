@@ -97,6 +97,9 @@ vi.mock('@/api/settings', () => ({
   getReceiptSettingsScoped: vi.fn(() => Promise.resolve({ showCurrency: false, decimalSeparator: 'dot', showTax: true, footer: '', paperWidth: 'standard', showTableNumber: false, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 })),
   getStoreSettingsScoped: vi.fn(() => Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '' })),
   getUserPreferencesScoped: vi.fn(() => Promise.resolve({ cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased' })),
+  // SettingsProvider subscribes via this wrapper (ui/src/api/settings.ts);
+  // this test does not exercise the event bus — resolve to a no-op unlisten.
+  onSettingsUpdated: vi.fn(() => Promise.resolve(async () => {})),
 }));
 vi.mock('@/api/offline', () => ({ getSyncSettingsScoped: vi.fn(() => Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false })) }));
 vi.mock('@/api/currency', () => ({ listCurrenciesScoped: vi.fn(() => Promise.resolve([{ code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' }])) }));

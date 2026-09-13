@@ -50,6 +50,7 @@ impl Store<'_> {
             items_summary: row.get("items_summary")?,
             item_count: row.get("item_count")?,
             display_number: row.get("display_number")?,
+            ticket_prefix: row.get("ticket_prefix")?,
             received_at: row.get("received_at")?,
             started_at: row.get("started_at")?,
             ready_at: row.get("ready_at")?,
@@ -151,10 +152,23 @@ impl Store<'_> {
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
 
+        // W2-A: the prefix is a fact ABOUT THIS TICKET, not a display-time
+        // lookup. `locations.ticket_prefix` is the config; a chit already in the
+        // kitchen tray must keep the label it was given, so the value in force
+        // now is copied onto the row - the same reason display_number below is
+        // a frozen counter read rather than a re-derived one (D16). Read through
+        // the landed getter INSIDE this transaction: the prefix a ticket gets is
+        // the one the same tx would have written. No store id (legacy single-
+        // store callers) means no prefix: there is no location to ask, and
+        // guessing the primary would relabel tickets for another branch.
+        let ticket_prefix = match input.store_id.as_deref() {
+            Some(store_id) => self.location_ticket_prefix(store_id)?.unwrap_or_default(),
+            None => String::new(),
+        };
         tx.execute(
             "INSERT INTO kds_orders (id, sale_id, store_id, target_instance_id, status, items_summary, item_count,
-                                     display_number, received_at, kitchen_zone, notes, table_number, priority)
-             VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                                     display_number, received_at, kitchen_zone, notes, table_number, priority, ticket_prefix)
+             VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 id,
                 input.sale_id,
@@ -168,6 +182,7 @@ impl Store<'_> {
                 input.notes,
                 input.table_number,
                 input.priority,
+                ticket_prefix,
             ],
         )?;
 
@@ -176,7 +191,7 @@ impl Store<'_> {
         let mut stmt = tx.prepare(
             "SELECT id, sale_id, store_id, target_instance_id, status, items_summary, item_count, display_number,
                     received_at, started_at, ready_at, served_at,
-                    prep_time_seconds, kitchen_zone, notes, table_number, priority
+                    prep_time_seconds, kitchen_zone, notes, table_number, priority, ticket_prefix
              FROM kds_orders WHERE id = ?1",
         )?;
         let order = stmt.query_row(params![id], Self::row_to_kds_order)?;

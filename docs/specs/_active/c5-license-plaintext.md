@@ -2,7 +2,7 @@
 
 # C-5 — License material: encrypt SQLite at rest + move API key to OS credential store
 
-- **Status:** TODO
+- **Status:** TODO — **partly overtaken, corrected 2026-09-12: the SQLCipher half was rejected outright (`docs/archived/sqlcipher-migration-plan.md`, NEVER ADOPTED) and no box for it will ever be ticked; the OS-credential-store half was never done; and a third thing not on this card shipped instead — `license.api_key` is now encrypted at rest inside its settings row, machine-bound, since `e105109f6` (2026-08-29). Read the Acceptance criteria correction before treating anything below as outstanding work.**
 - **Sprint:** 0.0.5-rc
 - **Severity:** CRITICAL
 - **Owner:** TBD (audit-triage)
@@ -41,24 +41,41 @@ injection, but the entropy is too low).
 
 ## Acceptance criteria
 
-- [ ] SQLite database is encrypted at rest using SQLCipher
-      (rusqlite `bundled-sqlcipher` feature or `sqlcipher` crate)
+> **CORRECTION 2026-09-12 — every criterion below that assumes whole-file encryption is a goal that was rejected, not work outstanding. The database file is NOT encrypted and no criterion that tests for it can pass.** Re-verified against the tree: no `Cargo.toml` in the workspace mentions sqlcipher in any form (`git grep -i sqlcipher -- '*.toml'` matches nothing; the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`), the `keyring` crate is in no manifest either, `crates/oz-core/src/db/encryption.rs` (step 7's target) does not exist, and neither does `docs/security/LICENSE-ENCRYPTION.md`. `docs/archived/sqlcipher-migration-plan.md` records the decision: SQLCipher at-rest encryption did not ship, status NEVER ADOPTED. What shipped instead, and is why the criteria marked ⚠ below are now wrong in the opposite direction, is **field-level** encryption of named secrets through their typed accessors, via `crates/oz-crypto` since `e105109f6` (2026-08-29) — a per-column measure, not the per-file one this card asks for. See the correction on ADR #4 §5 for the whole-file vs field-level distinction and for the fail-open read path that follows from it.
+
+- [ ] ~~SQLite database is encrypted at rest using SQLCipher
+      (rusqlite `bundled-sqlcipher` feature or `sqlcipher` crate)~~
+      **REJECTED, not pending — 2026-09-12: the feature named here is not enabled
+      anywhere and the plan that would have enabled it was never adopted
+      (`docs/archived/sqlcipher-migration-plan.md`, NEVER ADOPTED). A fresh
+      database from this build still begins with the ordinary
+      `SQLite format 3\0` header.**
 - [ ] Existing unencrypted databases are migrated to encrypted on
       first run (no data loss)
 - [ ] `license.api_key` is moved out of the SQLite settings table
       and stored in the OS credential store via the `keyring` crate
       (Windows Credential Manager / macOS Keychain / Linux
       Secret Service)
-- [ ] `license.payload`, `license.signature`, and `license.tenant_id`
+- [ ] ~~`license.payload`, `license.signature`, and `license.tenant_id`
       may remain in the encrypted SQLite (they are not credentials
       per se, but signatures; storing them encrypted-at-rest is
-      sufficient)
+      sufficient)~~ **PREMISE FALSE AS WRITTEN — 2026-09-12: they remain in the
+      UNencrypted SQLite, which is a materially different sentence. Those three
+      columns are plaintext in the file today.**
 - [ ] Machine-id entropy is ≥128 bits (use a cryptographically
       secure RNG; the existing wmic/reg-based 60-bit value is
       insufficient)
 - [ ] License is re-keyed on machine identity change
-- [ ] New unit test: SQLite file header is the SQLCipher magic
-      (not the standard SQLite header) after the migration
+- [ ] ⚠ ~~New unit test: SQLite file header is the SQLCipher magic
+      (not the standard SQLite header) after the migration~~
+      **CANNOT PASS as written — 2026-09-12: the header is the standard SQLite
+      one. Note the two criteria immediately below are equally stale in the
+      other direction: `license.api_key` IS still a row in the settings table
+      (`crates/oz-bridge/src/license.rs` writes it through
+      `Settings::set_batch`), so "not in the settings table" is false and
+      "is in the OS credential store" is false — what is true is that its
+      VALUE is stored as machine-bound ciphertext rather than plaintext, which
+      is a field-level measure and not the keyring move this card specifies.**
 - [ ] New unit test: `license.api_key` is NOT in the settings table
       after a license set
 - [ ] New unit test: `license.api_key` IS in the OS credential
@@ -124,6 +141,14 @@ injection, but the entropy is too low).
    to mark C-5 CLOSED in §2, §6, §7, and §10.
 
 ## Verification (post-implementation)
+
+> **CORRECTION 2026-09-12 — do not run this expecting it to pass.** Every assertion
+> below describes the rejected design: step 1 expects a SQLCipher magic header,
+> and a fresh database from this build returns the standard `SQLite format 3\0`,
+> because nothing encrypts the file; step 2 expects zero rows for
+> `license.api_key`, and the settings table still holds that row. What a run
+> today actually shows is an unencrypted file containing one machine-bound
+> ciphertext value plus several plaintext license columns.
 
 ```bash
 # 1. SQLite is encrypted at rest
@@ -196,3 +221,5 @@ cargo fmt --all -- --check
 - `docs/security/LICENSE-ENCRYPTION.md` (to be created)
 - SQLCipher: <https://www.zetetic.net/sqlcipher/>
 - `keyring` crate: <https://crates.io/crates/keyring>
+
+> last audited 22-07-26 by Hermes-Agent

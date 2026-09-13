@@ -5,7 +5,7 @@ import {
   topologySaveReducer,
   initialTopologySaveState,
   type TopologySaveState,
-} from '@/features/stores/nodeTopologyEditorSaveState';
+} from '@/features/locations/nodeTopologyEditorSaveState';
 
 describe('useTopologyEditorSaveLifecycle', () => {
   let hook: { result: { current: ReturnType<typeof useTopologyEditorSaveLifecycle> } };

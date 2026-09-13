@@ -20,16 +20,17 @@ rustc-wrapper = "sccache"
 # ------------------------------------------------------------------
 # Fast linkers (local dev only)
 # ------------------------------------------------------------------
-# Uncomment the [target] sections below after installing the linker.
-# One-time install:
-#   sudo apt install mold        # Debian / Ubuntu
-#   brew install llvm            # macOS -- then add to PATH
-#
+# Windows MSVC (uses bundled rust-lld for fast, consistent linking)
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
+# Linux (mold):
 # [target.x86_64-unknown-linux-gnu]
 # linker = "mold"
-#
+
+# macOS (lld):
 # [target.x86_64-apple-darwin]
 # linker = "ld64.lld"
-#
+
 # [target.aarch64-apple-darwin]
 # linker = "ld64.lld"

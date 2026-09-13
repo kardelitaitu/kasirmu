@@ -1,54 +1,72 @@
 //! Customer management commands — list, get, create, update, delete.
 //!
-//! Delegates to `oz_core::db::Store` for all CRUD operations.
+//! Wave B / B1: the bodies now live in the headless `oz_bridge::customers`
+//! module (backed by `oz_core::db::Store`). Each `#[tauri::command]` below
+//! keeps its exact name, parameter list and `Result<_, AppError>` return so
+//! the registered IPC surface and the serialized error shape are unchanged; it
+//! borrows a `BridgeCtx` from `AppState`, calls the bridge, and maps
+//! `BridgeError` back to `AppError` variant-for-variant. The DTOs moved with
+//! the bodies and are re-exported so `use super::*` in `customers_tests.rs`
+//! still resolves them, and the two module helpers stay here as thin
+//! `AppError`-returning adapters under the extraction contract.
+//!
+//! The mixed gate shapes are deliberately unchanged: the five legacy commands
+//! still authorize the caller-supplied `user_id` against the GLOBAL identity
+//! DB with the non-scope-aware `Store::require_permission`, the session-scoped
+//! writes/read/search/history commands gate through `require_customer_permission`
+//! on that same global DB, and `get_customer_scoped` alone keeps the
+//! scope-aware `require_permission_for_session` (ADR #35 D5) it always had.
 
+// Retained for the sibling test module, which reaches these through
+// `use super::*`; the command bodies themselves no longer name them.
+#[allow(unused_imports)]
+use foundation::validate_not_empty;
+#[allow(unused_imports)]
+use oz_core::Customer;
+#[allow(unused_imports)]
+use oz_core::db::Store;
+#[allow(unused_imports)]
+use oz_core::permissions;
+#[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use oz_core::Customer;
-use oz_core::db::Store;
-use oz_core::permissions;
-
-use crate::commands::authz::require_permission_for_session;
-use foundation::validate_not_empty;
-
-use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// ── DTO for the front-end ───────────────────────────────────────────
+pub use oz_bridge::customers::{
+    CreateCustomerArgs, CreateCustomerScopedArgs, CustomerDto, CustomerHistoryDto,
+    CustomerLoyaltySummaryDto, CustomerSaleSummaryDto, CustomerSearchPage, DeleteCustomerArgs,
+    UpdateCustomerArgs, UpdateCustomerScopedArgs,
+};
 
-/// Customer as seen by the front-end.
-#[derive(Debug, Serialize)]
-pub struct CustomerDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 last-update timestamp.
-    pub updated_at: String,
+/// Verify a customer permission against the global identity database.
+///
+/// Thin adapter over `oz_bridge::customers::require_customer_permission`: the
+/// name, parameter list and `Result<_, AppError>` type are unchanged so the
+/// gate stays reachable through `AppState`.
+#[allow(dead_code)] // retained by the Wave-B extraction contract for sibling tests
+async fn require_customer_permission(
+    state: &AppState,
+    user_id: &str,
+    permission: &str,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::require_customer_permission(&ctx, user_id, permission)
+        .await
+        .map_err(AppError::from)
 }
 
-impl From<Customer> for CustomerDto {
-    fn from(c: Customer) -> Self {
-        Self {
-            id: c.id,
-            name: c.name,
-            email: c.email.map(|e| e.to_string()),
-            phone: c.phone.map(|p| p.to_string()),
-            notes: c.notes,
-            created_at: c.created_at,
-            updated_at: c.updated_at,
-        }
-    }
+/// Validate fields shared by customer create and update commands.
+///
+/// Thin adapter over `oz_bridge::customers::validate_customer_fields`.
+#[allow(dead_code)] // retained by the Wave-B extraction contract for sibling tests
+fn validate_customer_fields(
+    name: &str,
+    email: Option<&str>,
+    phone: Option<&str>,
+) -> Result<(), AppError> {
+    oz_bridge::customers::validate_customer_fields(name, email, phone).map_err(AppError::from)
 }
 
 // ── List customers ──────────────────────────────────────────────────
@@ -58,11 +76,10 @@ impl From<Customer> for CustomerDto {
 ///
 /// **Deprecated for multi-store (ADR #7):** Use `list_customers_scoped`.
 pub async fn list_customers(state: State<'_, AppState>) -> Result<Vec<CustomerDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let customers = store.list_customers()?;
-    drop(db);
-    Ok(customers.into_iter().map(CustomerDto::from).collect())
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::list_global(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// List customers for the store resolved from a session token. ADR #7.
@@ -76,16 +93,10 @@ pub async fn list_customers_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CustomerDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let customers = store.list_customers()?;
-    drop(db);
-    Ok(customers.into_iter().map(CustomerDto::from).collect())
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::list_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Get single customer ─────────────────────────────────────────────
@@ -96,43 +107,13 @@ pub async fn get_customer(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<CustomerDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let customer = store.get_customer(&id)?;
-    drop(db);
-    Ok(customer.map(CustomerDto::from))
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::get_global(&ctx, &id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Create customer ─────────────────────────────────────────────────
-
-/// Arguments for creating a customer in the session's store.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateCustomerScopedArgs {
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Createcustomerargs.
-pub struct CreateCustomerArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
 
 #[tauri::command]
 /// Create customer.
@@ -143,63 +124,13 @@ pub async fn create_customer(
     args: CreateCustomerArgs,
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    if let Some(ref email) = args.email {
-        foundation::Email::new(email).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-    if let Some(ref phone) = args.phone {
-        foundation::Phone::new(phone).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::CUSTOMERS_CREATE)?;
-
-    let customer = store.create_customer(
-        args.name.trim(),
-        args.email.as_deref(),
-        args.phone.as_deref(),
-        args.notes.as_deref(),
-    )?;
-    drop(db);
-    Ok(CustomerDto::from(customer))
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::create_global(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Update customer ─────────────────────────────────────────────────
-
-/// Arguments for updating a customer in the session's store.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCustomerScopedArgs {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Updatecustomerargs.
-pub struct UpdateCustomerArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
 
 #[tauri::command]
 /// Update customer.
@@ -210,40 +141,13 @@ pub async fn update_customer(
     args: UpdateCustomerArgs,
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    if let Some(ref email) = args.email {
-        foundation::Email::new(email).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-    if let Some(ref phone) = args.phone {
-        foundation::Phone::new(phone).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::CUSTOMERS_EDIT)?;
-
-    let customer = store.update_customer(
-        &args.id,
-        args.name.trim(),
-        args.email.as_deref(),
-        args.phone.as_deref(),
-        args.notes.as_deref(),
-    )?;
-    drop(db);
-    Ok(CustomerDto::from(customer))
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::update_global(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Delete customer ─────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Deletecustomerargs.
-pub struct DeleteCustomerArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Unique identifier.
-    pub id: String,
-}
 
 #[tauri::command]
 /// Delete customer.
@@ -254,14 +158,10 @@ pub async fn delete_customer(
     args: DeleteCustomerArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::CUSTOMERS_DELETE)?;
-
-    store.delete_customer(&args.id)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::delete_global(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Store-scoped mutations (ADR #7) ─────────────────────────────────
@@ -276,21 +176,10 @@ pub async fn create_customer_scoped(
     args: CreateCustomerScopedArgs,
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
-    validate_customer_fields(&args.name, args.email.as_deref(), args.phone.as_deref())?;
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_CREATE).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let customer = store.create_customer(
-        args.name.trim(),
-        args.email.as_deref(),
-        args.phone.as_deref(),
-        args.notes.as_deref(),
-    )?;
-    Ok(CustomerDto::from(customer))
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::create_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update a customer in the store resolved from a session token. ADR #7.
@@ -300,22 +189,10 @@ pub async fn update_customer_scoped(
     args: UpdateCustomerScopedArgs,
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
-    validate_customer_fields(&args.name, args.email.as_deref(), args.phone.as_deref())?;
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_EDIT).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let customer = store.update_customer(
-        &args.id,
-        args.name.trim(),
-        args.email.as_deref(),
-        args.phone.as_deref(),
-        args.notes.as_deref(),
-    )?;
-    Ok(CustomerDto::from(customer))
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::update_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Delete a customer from the store resolved from a session token. ADR #7.
@@ -325,28 +202,13 @@ pub async fn delete_customer_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_DELETE).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.delete_customer(&id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::delete_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Search (CUST-06) ──────────────────────────────────────────────
-
-/// Bounded page of search results (CUST-06) — server-side query with an
-/// explicit sort order and total count for pagination.
-#[derive(Debug, Serialize)]
-pub struct CustomerSearchPage {
-    /// Matching customers on this page.
-    pub items: Vec<CustomerDto>,
-    /// Total number of matches across all pages.
-    pub total: u64,
-}
 
 /// Search customers in the store resolved from a session token. ADR #7.
 ///
@@ -360,63 +222,13 @@ pub async fn search_customers_scoped(
     offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<CustomerSearchPage, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let (items, total) =
-        store.search_customers(&query, limit.unwrap_or(50), offset.unwrap_or(0))?;
-    Ok(CustomerSearchPage {
-        items: items.into_iter().map(CustomerDto::from).collect(),
-        total,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::search_scoped(&ctx, &session_token, &query, limit, offset)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Customer history (CUST-05) ────────────────────────────────────
-
-/// Summary of a single sale for the history view.
-#[derive(Debug, Serialize)]
-pub struct CustomerSaleSummaryDto {
-    /// Sale id.
-    pub id: String,
-    /// Total in minor units.
-    pub total_minor: i64,
-    /// Currency code (e.g. "USD") for the total.
-    pub currency: String,
-    /// Status string (e.g. "Completed").
-    pub status: String,
-    /// Number of line items.
-    pub line_count: i64,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-}
-
-/// Loyalty summary for the history view (CUST-05).
-#[derive(Debug, Serialize)]
-pub struct CustomerLoyaltySummaryDto {
-    /// Current redeemable points.
-    pub points: i64,
-    /// Lifetime points earned.
-    pub lifetime_points: i64,
-    /// Current tier name (None when unassigned).
-    pub tier_name: Option<String>,
-}
-
-/// Read-only customer history: profile, loyalty summary, recent sales.
-#[derive(Debug, Serialize)]
-pub struct CustomerHistoryDto {
-    /// The customer profile.
-    pub customer: CustomerDto,
-    /// Loyalty account summary, if any.
-    pub loyalty: Option<CustomerLoyaltySummaryDto>,
-    /// Recent sales for this customer (most recent first).
-    pub sales: Vec<CustomerSaleSummaryDto>,
-    /// Total number of sales across all pages.
-    pub sales_total: u64,
-}
 
 /// Get the read-only history for a customer (CUST-05). ADR #7.
 ///
@@ -431,82 +243,11 @@ pub async fn get_customer_history_scoped(
     offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<CustomerHistoryDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let customer =
-        store
-            .get_customer(&customer_id)?
-            .ok_or_else(|| oz_core::error::CoreError::NotFound {
-                entity: "customer",
-                id: customer_id.clone(),
-            })?;
-
-    let loyalty =
-        store
-            .get_loyalty_account(&customer_id)?
-            .map(|details| CustomerLoyaltySummaryDto {
-                points: details.account.points,
-                lifetime_points: details.account.lifetime_points,
-                tier_name: details.tier.map(|t| t.name),
-            });
-
-    let (sales, sales_total) =
-        store.list_sales_for_customer(&customer_id, limit.unwrap_or(20), offset.unwrap_or(0))?;
-
-    Ok(CustomerHistoryDto {
-        customer: CustomerDto::from(customer),
-        loyalty,
-        sales: sales
-            .into_iter()
-            .map(|s| CustomerSaleSummaryDto {
-                id: s.id,
-                total_minor: s.total.minor_units,
-                currency: s.total.currency.to_string(),
-                status: format!("{:?}", s.status),
-                line_count: s.line_count,
-                created_at: s.created_at,
-            })
-            .collect(),
-        sales_total,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::history_scoped(&ctx, &session_token, &customer_id, limit, offset)
+        .await
+        .map_err(Into::into)
 }
-
-/// Users and roles are global authentication records (ADR #4 / ADR #7);
-/// customer business data is read from the store-scoped connection after
-/// this check succeeds. Mirror of `require_tax_permission` in tax.rs.
-async fn require_customer_permission(
-    state: &AppState,
-    user_id: &str,
-    permission: &str,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, user_id, permission)
-}
-
-/// Validate fields shared by customer create and update commands.
-fn validate_customer_fields(
-    name: &str,
-    email: Option<&str>,
-    phone: Option<&str>,
-) -> Result<(), AppError> {
-    validate_not_empty("name", name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    if let Some(email) = email {
-        foundation::Email::new(email).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-    if let Some(phone) = phone {
-        foundation::Phone::new(phone).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-    Ok(())
-}
-
-// ── Tests ───────────────────────────────────────────────────────────
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
 
@@ -518,18 +259,8 @@ pub async fn get_customer_scoped(
     state: State<'_, AppState>,
 ) -> Result<Option<CustomerDto>, AppError> {
     // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::CUSTOMERS_VIEW).await?;
-    let (_session, _conn) = state.resolve_scope(&session_token)?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let customer = store.get_customer(&id)?;
-    drop(db);
-    Ok(customer.map(CustomerDto::from))
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::get_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "customers_tests.rs"]
-mod tests;

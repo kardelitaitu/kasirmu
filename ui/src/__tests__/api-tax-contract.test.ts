@@ -6,7 +6,9 @@ vi.mock('@/utils/logged-invoke', () => ({
 }));
 
 import {
+  CART_TAX_NO_SESSION_MESSAGE,
   computeCartTax,
+  listTaxRateRoundingModesScoped,
   listTaxRatesScoped,
   createTaxRateScoped,
   updateTaxRateScoped,
@@ -107,5 +109,55 @@ describe('tax.ts API contract', () => {
   it('propagates errors', async () => {
     mockInvoke.mockRejectedValue(new Error('invalid rate'));
     await expect(computeCartTax(TOKEN, [], 'IDR')).rejects.toThrow('invalid rate');
+  });
+
+  it('listTaxRateRoundingModesScoped calls correct command (E1-5)', async () => {
+    mockInvoke.mockResolvedValue({ 'r-1': 'half_up', 'r-2': null });
+    const result = await listTaxRateRoundingModesScoped(TOKEN, ['r-1', 'r-2']);
+    expect(mockInvoke).toHaveBeenCalledWith('list_tax_rate_rounding_modes_scoped', {
+      sessionToken: TOKEN,
+      rateIds: ['r-1', 'r-2'],
+    });
+    // half_up passes verbatim; null = the preference applies (never a
+    // claimed directive) — the JS half of the E1-5 wire contract.
+    expect(result).toEqual({ 'r-1': 'half_up', 'r-2': null });
+  });
+
+  it('computeCartTax REJECTS on a null session token — the F2-2 silent-zero door', async () => {
+    mockInvoke.mockClear();
+    await expect(computeCartTax(null, [], 'IDR')).rejects.toThrow(
+      CART_TAX_NO_SESSION_MESSAGE,
+    );
+    // The door closes BEFORE the IPC: no compute command is attempted,
+    // so a caller can never mistake the missing session for a real zero.
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('createTaxRateScoped carries an optional roundingMode (E1-6)', async () => {
+    mockInvoke.mockResolvedValue({ id: 't1', name: 'PPN' });
+    await createTaxRateScoped(TOKEN, {
+      name: 'PPN',
+      rateBps: 1100,
+      isDefault: false,
+      isInclusive: true,
+      roundingMode: 'truncate',
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('create_tax_rate_scoped', {
+      sessionToken: TOKEN,
+      args: expect.objectContaining({ roundingMode: 'truncate' }),
+    });
+  });
+
+  it('createTaxRateScoped omits roundingMode on the preference arm (E1-6)', async () => {
+    mockInvoke.mockResolvedValue({ id: 't1', name: 'PPN' });
+    await createTaxRateScoped(TOKEN, {
+      name: 'PPN',
+      rateBps: 1100,
+      isDefault: false,
+      isInclusive: true,
+      roundingMode: '',
+    });
+    const call = mockInvoke.mock.calls.find((c) => c[0] === 'create_tax_rate_scoped');
+    expect(call?.[1].args).not.toHaveProperty('roundingMode');
   });
 });

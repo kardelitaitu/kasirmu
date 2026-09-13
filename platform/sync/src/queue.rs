@@ -1,21 +1,59 @@
 //! Sync Queue — local change log for offline-first replication.
 /*
-last audited 25-07-26 by RSA-Agent (platform-sync slice B: queue deep read)
+last audited 26-09-06 by DSH (offline-sync spec verification pass; prior slice-B deep read by RSA-Agent 25-07-26)
 crate: platform-sync | status: SAFE | lint: CLEAN
-findings: exemplary — apply_remote_atomic_full runs quarantine gate, receipt-exists check, domain mutation, and receipt insert in ONE transaction (crash-safe replay protection); failure path drops the tx then records the failure with retry budget 3 for dead-lettering; CRDT delta merge arms for stock payloads; SYNC-10 settings with non-fatal delta write (savepoint-safe inside caller tx); finalize_sale idempotent pending-to-completed only; unsupported actions fail closed; apply_push_conflict is the single SYNC-02 shared resolver entry; apply_remote is the deprecated non-atomic legacy mirror. Minor note: pull-item product payloads take unwrap_or empty-string for sku and name (server-trusted; snapshot path is RUST-04 validated but pull items are not)
-next: consider payload validation parity for pull items | perf: prepared upserts
+findings: exemplary — apply_remote_atomic_full runs quarantine gate, receipt-exists check, domain mutation, and receipt insert in ONE transaction (crash-safe replay protection); failure path drops the tx then records the failure with retry budget 3 for dead-lettering; CRDT delta merge arms for stock payloads; SYNC-10 settings with non-fatal delta write (savepoint-safe inside caller tx); finalize_sale idempotent pending-to-completed only; unsupported actions fail closed; apply_push_conflict is the single SYNC-02 shared resolver entry; apply_remote is the deprecated non-atomic legacy mirror. CORRECTED prior note: the earlier "pull items are not validated" concern was WRONG — the product.created arm's unwrap_or("")/unwrap_or(-1) payload defaults are fully caught at the storage boundary: create_product_if_absent_in_tx rejects blank/oversize sku+name, negative price_minor and initial_stock, and returns CoreError::Conflict on a same-sku-different-data replay (a remote update that disagrees is NOT silently overwritten — it fails and dead-letters visibly). Every other pull arm parses a typed serde struct (missing required fields fail deserialization) or a validating store fn, so the whole pull path is fail-closed and conflict-visible without a separate payload-validation layer.
+next: malformed/conflicting pull items are permanent failures but still burn the retry-3 budget before dead-lettering — consider classifying apply-time Validation/Conflict errors as non-retryable to fail fast (low value, behavior change in the highest-risk path, deliberately not done here) | perf: prepared upserts
 */
 //!
 //! Wraps the `oz_core` offline queue Store methods into a clean interface
 //! with additional tracking for conflict resolution and last-sync timing.
+//!
+//! Settings items are the one action type that is NOT applied verbatim: both
+//! dispatchers (`apply_remote_in_tx` and the legacy `apply_remote`) write through
+//! `Settings::set_with_policy(..., IngestPolicy::RemoteSync)`, the sealed policy
+//! owned by platform-core and delegated by the `oz_core::Settings` facade, so a
+//! remote item cannot plant a credential
+//! (`local_api.secret`, `license.api_key`, the gateway keys) or a device-bound
+//! identity (`machine_id`, `sync_terminal_id`) on this install. Nothing in
+//! `transport` or `sync_api` signs or MACs an item, so the sender is not an
+//! authority. A refusal warns and continues — it never aborts the batch and
+//! never logs the value.
 
 use oz_core::db::Store;
 use oz_core::db::offline::SyncStatusSummary;
 use oz_core::error::CoreError;
 use oz_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 use oz_core::settings::Settings;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use serde::Deserialize;
 use serde_json::Value;
+
+/// The ONE remote-ingest gate for the sync lane.
+///
+/// Delegates to the sealed [`IngestPolicy::RemoteSync`] policy owned by
+/// platform-core (re-exported through `oz_core::settings`), which refuses every
+/// credential in `SECRET_KEY_DENY_LIST`, every device-bound identity in
+/// `NON_EXPORTABLE_DEVICE_KEYS` (`machine_id`, `sync_terminal_id`) and every
+/// lifecycle-manager prefix (`local_api.*`, `lan_server.*`). This lane owns no
+/// key list of its own.
+///
+/// Both dispatchers now WRITE through the funnel accessor
+/// `Settings::set_with_policy(..., IngestPolicy::RemoteSync)`, which decides and
+/// warns in one place (delegated to platform-core through the `oz_core::Settings`
+/// facade, so this crate needs no `platform-core` dependency edge). This
+/// boundary remains for the one place that must ask the question WITHOUT
+/// writing: [`settings_change_of`], which must not report a refused key as a
+/// change. It is the same predicate the accessor applies, so the two cannot
+/// disagree.
+///
+/// A refusal is warn-and-continue, never an error: the precedent is the
+/// unsupported-action arm at the foot of `apply_remote` and the non-fatal delta
+/// write in both settings arms. Aborting a pull over one disallowed key would
+/// let the server deny service to the whole tenant.
+fn remote_sync_admits(key: &str) -> bool {
+    IngestPolicy::RemoteSync.admits(key)
+}
 
 #[derive(Deserialize)]
 struct SalePayload {
@@ -34,6 +72,80 @@ struct SaleLinePayload {
 struct StockAdjustmentPayload {
     sku: String,
     delta: i64,
+    /// Optional per-location scope (ADR-19). ADR-19-aware senders and CRDT
+    /// envelope sides name the location the delta belongs to; OLDER senders
+    /// omit it (serde default), and the delta then keeps today's behaviour
+    /// of landing at the canonical default location.
+    #[serde(default)]
+    location_id: Option<String>,
+}
+/// Apply one stock.adjusted delta inside the caller's transaction.
+///
+/// A delta that names a location_id routes through the canonical
+/// per-location writer adjust_stock_at_location_with_reason, which upserts
+/// stock_summary at the composite (item_id, location_id) key and recomputes
+/// the legacy inventory aggregate as the SUM over per-location rows - never
+/// an aggregate stamp (ADR-19 s3.1, the writer the store-level contract
+/// test proves correct).
+///
+/// A delta WITHOUT a location keeps the pre-ADR-19 target (the canonical
+/// default location) and picks the writer by install shape:
+///
+/// - no stock_summary rows for the product (legacy single-location
+///   install): adjust_stock_in_tx - its aggregate stamp is consistent
+///   there because the default row is the only row;
+/// - rows exist (multi-location install): the canonical writer AT the
+///   canonical default location - the legacy stamp would overwrite the
+///   default row with the cross-location aggregate and re-create the
+///   reader-vs-SUM disagreement this dispatch exists to prevent.
+#[allow(deprecated)]
+fn apply_stock_adjustment_delta_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    sub: &StockAdjustmentPayload,
+) -> Result<(), CoreError> {
+    let has_location_rows = product_has_location_rows(tx, &sub.sku)?;
+    let canonical_at = |location: &str| -> Result<(), CoreError> {
+        Store::new(tx).adjust_stock_at_location_with_reason(
+            tx,
+            &sub.sku,
+            sub.delta,
+            &oz_core::inventory::LocationId::from(location),
+            None,
+            None,
+            None,
+            None,
+        )?;
+        Ok(())
+    };
+    match sub.location_id.as_deref() {
+        Some(location) => canonical_at(location)?,
+        None if has_location_rows => {
+            canonical_at(oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID)?
+        }
+        None => {
+            Store::new(tx).adjust_stock_in_tx(tx, &sub.sku, sub.delta)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether the product behind sku already has any per-location
+/// stock_summary row (i.e. the install tracks per-location stock for it).
+///
+/// Delegates to `Store::product_has_location_rows` in oz-core — the ONE
+/// item_id-scoped existence predicate, shared with the Layer-1 pre-check, the
+/// batch Phase-1 pre-read and the legacy bridge gate. This lane keeps only the
+/// sku-to-id resolution, because the sync payload carries a sku and the
+/// predicate takes an id; the SQL itself exists in exactly one place now.
+/// An unknown sku resolves to `false`, which is what the in-line EXISTS over a
+/// subselect returned before, so a delta for a product that does not exist
+/// here still takes the same path.
+fn product_has_location_rows(tx: &rusqlite::Transaction<'_>, sku: &str) -> Result<bool, CoreError> {
+    let product_id = Store::new(tx).product_id_by_sku(sku)?;
+    match product_id {
+        Some(id) => Store::product_has_location_rows(tx, &id),
+        None => Ok(false),
+    }
 }
 
 /// Payload for the `stock.movement` sync action (ADR #6 cross-store routing).
@@ -336,7 +448,7 @@ impl SyncQueue {
                 let apply_one = |value: Value| -> Result<(), CoreError> {
                     let sub: StockAdjustmentPayload = serde_json::from_value(value)
                         .map_err(|e| CoreError::Internal(format!("invalid stock payload: {e}")))?;
-                    Store::new(tx).adjust_stock_in_tx(tx, &sub.sku, sub.delta)?;
+                    apply_stock_adjustment_delta_in_tx(tx, &sub)?;
                     Ok(())
                 };
                 if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
@@ -412,8 +524,16 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
-                Settings::set(tx, &payload.key, &payload.value)?;
-                if let Err(e) =
+                // The funnel accessor decides AND warns (key + policy label,
+                // never the value). A false return is a refusal — the row and its
+                // delta are both skipped and the batch continues; an Err is a SQL
+                // failure, which `?` propagates exactly as before.
+                if Settings::set_with_policy(
+                    tx,
+                    &payload.key,
+                    &payload.value,
+                    IngestPolicy::RemoteSync,
+                )? && let Err(e) =
                     Settings::write_delta(tx, &payload.key, &payload.value, &payload.terminal_id)
                 {
                     tracing::warn!(
@@ -476,20 +596,22 @@ impl SyncQueue {
             "stock.adjusted" => {
                 let payload: Value = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid stock payload: {e}")))?;
-                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                    for side in ["local", "remote"] {
-                        let sub: StockAdjustmentPayload = serde_json::from_value(
-                            payload.get(side).cloned().unwrap_or(Value::Null),
-                        )
-                        .map_err(|e| {
-                            CoreError::Internal(format!("invalid crdt stock delta: {e}"))
-                        })?;
-                        store.adjust_stock(&sub.sku, sub.delta)?;
-                    }
-                } else {
-                    let sub: StockAdjustmentPayload = serde_json::from_value(payload)
+                let apply_one = |value: Value| -> Result<(), CoreError> {
+                    let sub: StockAdjustmentPayload = serde_json::from_value(value)
                         .map_err(|e| CoreError::Internal(format!("invalid stock payload: {e}")))?;
-                    store.adjust_stock(&sub.sku, sub.delta)?;
+                    // Same dispatch as the atomic arm: both pull paths must
+                    // land a delta identically, located or not. Each delta
+                    // commits in its own rusqlite transaction.
+                    let tx = store.conn().unchecked_transaction()?;
+                    apply_stock_adjustment_delta_in_tx(&tx, &sub)?;
+                    tx.commit()?;
+                    Ok(())
+                };
+                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
+                    apply_one(payload.get("local").cloned().unwrap_or(Value::Null))?;
+                    apply_one(payload.get("remote").cloned().unwrap_or(Value::Null))?;
+                } else {
+                    apply_one(payload)?;
                 }
                 Ok(())
             }
@@ -565,7 +687,21 @@ impl SyncQueue {
             "settings.update" | "settings.change" => {
                 let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid settings payload: {e}")))?;
-                Settings::set(store.conn(), &payload.key, &payload.value)?;
+                // Same accessor as the atomic arm, and the ONLY value write
+                // on this arm: a refusal returns false (the accessor warned,
+                // nothing was written) and the early return consumes the item
+                // rather than retrying it forever; an admit has already
+                // written the row through the funnel, so only the delta
+                // remains. No raw second write may follow — a refused key must
+                // never reach the database through any writer on this lane.
+                if !Settings::set_with_policy(
+                    store.conn(),
+                    &payload.key,
+                    &payload.value,
+                    IngestPolicy::RemoteSync,
+                )? {
+                    return Ok(());
+                }
                 if let Err(e) = Settings::write_delta(
                     store.conn(),
                     &payload.key,
@@ -611,6 +747,12 @@ fn settings_change_of(item: &OfflineQueueItem) -> Option<(String, String)> {
         return None;
     }
     let payload: SettingsUpdatePayload = serde_json::from_str(&item.payload).ok()?;
+    // A refused key was never applied, so it must not be reported as a change:
+    // the daemon publishes `SettingsUpdated` from this and the UI would refetch
+    // a value that the ingest gate deliberately did not write.
+    if !remote_sync_admits(&payload.key) {
+        return None;
+    }
     Some((payload.key, payload.terminal_id))
 }
 
@@ -623,3 +765,7 @@ impl Default for SyncQueue {
 #[cfg(test)]
 #[path = "queue_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "sync_client_divergence_tests.rs"]
+mod divergence_tests;

@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (drift repaired) · FIXED 31-08: crate tree +oz-crypto/oz-media/oz-notification/oz-plugin; rlua->mlua; oz-payment +Paddle (tree + prose); HAL device list 'NFC' -> real (barcode/printer/drawer/display/scale/EDC); migrations 98 -> 19 SQL files (131 squashed into init.sql); IPC endpoints 618 -> 505 unique (385 desktop + 369 tablet, 49 modules) · NOTE: this condensed guides/ARCHITECTURE.md coexists with a fuller root ARCHITECTURE.md (reorg 28147fe4 copied an archived version here); README links to THIS file · verified against HEAD Cargo.toml + generate_handler! + crates/oz-core/migrations/ · 31-08 (dc07f32a/bb7ce92d): Registry + platform-startup sections updated for the new apply_config()/HardwareConfig bootstrap path (discover() is auto-probe, not startup registration) · 31-08: module count 9 -> 14 (all wired in platform-startup; added giftcards/kitchen/loyalty/promotions/purchasing); feature flags 32 -> 39 and store presets 4 -> 5 (verified against crates/oz-core/src/features.rs); ui/api 'pos.ts THE ONLY place that calls invoke()' -> per-domain <domain>.ts wrappers; locales 48 -> 50 .ftl files · 31-08 (cont): caught two body spots the first pass missed — crate-tree '20 migrations' -> 19 (was inconsistent with the §Migrations '19 files' line) and 'SQL migration files (001–098)' -> 'date-stamped (19, 2026-08-13 → 2026-08-27)'; the files are named 20260813_init.sql … 20260827_refunds_tenant.sql, not numbered 001–098 · 01-09 (1844626d): traits line listed 3 of the 6 real device traits; Registry section updated for discover_scanners(), the scanner registration path that apply_config deliberately does not cover -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · Carries forward the 2026-08-31/09-01 work, which was real and mostly still true: crate tree +oz-crypto/oz-media/oz-notification/oz-plugin; rlua→mlua; oz-payment +Paddle; HAL 'NFC' → the five real device traits; IPC 618→505 (superseded again — see api-reference.md; the registered surface is 451 as measured 08-09-26); module count 14 (re-verified today: 14 dirs under modules/ with a Cargo.toml); ui/api 'pos.ts is the only invoke() caller' → per-domain wrappers; Registry/platform-startup updated for apply_config()/HardwareConfig and discover(); 3 of 6 device traits → 6. · REPAIRED TODAY: (1) §Migrations said '19 embedded SQL files … squashed into init.sql … executed on startup by platform-startup' — all three clauses are wrong now. There are 44 SQLite .sql files embedded via include_str! in crates/oz-core/src/migrations.rs (45 entries incl. the generated PG one); the squash target is 20260813_init.sql; and migrations run at AppState construction (desktop state.rs:212, tablet state.rs:117, cloud db.rs:134, oz-api lib.rs:457) — platform/startup only calls the fresh_db() test helper. (2) The .github/workflows tree still named ci.yml and security.yml as live ten days after 23c963303 retired them; now it names the two live workflows and marks the rest retired. (3) '5 store presets' → 6. · THE INTERESTING PART about (1): the previous stamp records the fix 'migrations 98 -> 19 SQL files (131 squashed into init.sql)' and a second pass 'crate-tree 20 migrations -> 19, consistent with §Migrations'. The auditor did the work, twice, carefully — and wrote down a precise count that was true for exactly one day before the next migration landed. The count is 44 today. That is why §Migrations now cites the file it counts and the call sites that run it rather than asserting a number nobody can refresh. · CODE FINDING FLAGGED NOT PATCHED: features.rs's own //! says 'all 32 toggleable features' while the enum has 39 variants — the doc comment is what rotted here, not the doc. -->
 
 # OZ-POS – Codebase Architecture
 
@@ -41,9 +41,9 @@ oz-pos/
 │   │   │   ├── refund.rs    # Refund domain type
 │   │   │   ├── settings.rs  # Settings persistence layer
 │   │   │   ├── features.rs  # Feature enum (39 flags), registry, presets
-│   │   │   ├── migrations.rs# Embedded SQL migration runner (19 migrations)
+│   │   │   ├── migrations.rs# Embedded SQL migration runner (59 .sql files as measured 2026-09-13; ls crates/oz-core/migrations/*.sql | wc -l)
 │   │   │   └── error.rs     # CoreError enum
-│   │   └── migrations/      # Date-stamped SQL migration files (19, 2026-08-13 → 2026-08-27)
+│   │   └── migrations/      # Date-stamped SQL migration files (59, 2026-08-13 → 2026-10-05)
 │   ├─ oz-hal/               # Hardware Abstraction Layer
 │   │   ├─ Cargo.toml
 │   │   └─ src/
@@ -138,8 +138,11 @@ oz-pos/
 │   └─ QUICKSTART.md         # First-time local setup
 ├─ .github/
 │   └─ workflows/
-│       ├─ ci.yml            # Lint → test → build (Linux, Windows, macOS matrix)
-│       └─ security.yml      # Weekly cargo audit + cargo deny
+│       ├─ dev-ci.yml        # LIVE: the only workflow on pull_request + workflow_dispatch
+│       ├─ release.yml         # LIVE: v* tags, desktop installers + updater manifests
+│       └─ (10 more)           # retired to .bak on 2026-09-02 by 23c963303, including
+                                      # ci.yml and security.yml, which this tree named as
+                                      # live until 08-09-26. See docs/operations/ci-pipeline.md
 ├─ .agents/
 │   └─ skills/               # Agent skill definitions
 ├─ README.md                 # Project overview
@@ -158,9 +161,18 @@ oz-pos/
   - `Cart` / `CartLine` — in-memory sale pipeline with currency matching.
   - `Sale` / `SaleLine` — transaction lifecycle state machine: `Pending → Active → Completed | Voided`.
   - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
-  - `Feature` — 39 toggleable feature flags with dependency resolution and 5 store presets (simple_retail, restaurant, full_store, cafe, franchise).
+  - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/oz-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (keys in `ui/src/locales/settings.ftl`, array in `ui/src/features/setup/SetupWizard.tsx:70`). This line said 5 until 08-09-26, the same stale count corrected in `docs/guides/admin-guide.md` the same day.
   - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
-- **Migrations**: 19 embedded SQL files in `crates/oz-core/migrations/` (the original 131 were squashed into `init.sql`). Registered and run by `migrations.rs`; executed on startup by `platform-startup`.
+- **Migrations**: 58 SQLite `.sql` files plus the generated PG file, 59 in all as measured
+  2026-09-13 (`ls crates/oz-core/migrations/*.sql | wc -l`), embedded by the
+  `include_str!` list in `crates/oz-core/src/migrations.rs` (59 entries: the 58 SQLite plus the
+  generated `20260813_init.pg.sql`). The 131-file history was squashed into
+  `20260813_init.sql` — not `init.sql`. `oz_core::migrations::run(conn)` is invoked at
+  **application-state construction**, not by a platform subsystem:
+  `apps/desktop-client/src/state.rs:212`, `apps/tablet-client/src/state.rs:117`,
+  `apps/cloud-server/src/db.rs:134`, `crates/oz-api/src/lib.rs:457` and `crates/oz-cli`.
+  `platform/startup` does **not** run migrations — it only calls the
+  `migrations::fresh_db()` test helper in `event_handlers_tests.rs`.
 - **Rules**: `#![deny(unsafe_code)]` in `lib.rs`; `missing_docs = "warn"` comes from the root `[workspace.lints]` via `[lints] workspace = true` in every member manifest.
 
 ### oz-hal
@@ -263,10 +275,18 @@ cargo tauri dev          # launches Tauri dev window
 ## License & Commercial Governance
 - **Proprietary & Confidential (`All Rights Reserved`)**: See [`LICENSE`](../../LICENSE) for terms.
 - No commercial deployment, redistribution, or modification is permitted without an executed commercial license agreement from OZ-POS Contributors.
-- Internal developer contributions are governed under proprietary contributor agreements; all code strictly adheres to pre-commit quality gates (`cargo fmt + clippy + i18n lint + bundle parity`).
+- Internal developer contributions are governed under proprietary contributor agreements; all code strictly adheres to quality gates enforced at pre-commit and beyond (pre-commit: LF normalization, bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, FTL orphan lint; pre-push/CI additionally check `cargo fmt` and clippy — fmt left pre-commit on 2026-09-13).
 
 ---
-*Document generated on 2026‑06‑29.*
+*Document generated on 2026‑06‑29.*  The gap between that line and the audit
+footer below is the point: the prose has been re-stamped twice since it was written while
+its own generation date stayed at June. Structural claims were re-verified 08-09-26 —
+all 49 path references in this file resolve against the tree, and the migration count in
+the layout block was corrected from 19 to 44 (the same fact is stated in
+`docs/README.md`-adjacent files; `AGENTS.md` said 28 and `README.md` said 19, so three
+documents carried three different answers).
 
-> last audited 31-08-26 by docs-auditor
+> Count note (2026-09-13): the 09-08 stamp recorded 44 and that sentence stands; the measured count today is 59 (`ls crates/oz-core/migrations/*.sql | wc -l`), of which 58 are SQLite and one is the generated PG file. The layout block and §Migrations now carry 59.
+
+> last audited 08-09-26 by docs-auditor
 

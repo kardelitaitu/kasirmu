@@ -93,6 +93,9 @@ pub enum Command {
     },
     /// Seed demo data for analytics and report development.
     SeedDemo(SeedDemoArgs),
+    /// Report (default) or delete (--confirm) credential-key rows in the settings delta ledger.
+    #[command(long_about = crate::commands::credential_deltas::LONG_HELP.as_str())]
+    CredentialDeltas(CredentialDeltasArgs),
 }
 
 #[derive(Debug, Args)]
@@ -109,6 +112,13 @@ pub struct SeedDemoArgs {
     /// Number of days of history to generate (default: 90).
     #[arg(long, default_value = "90")]
     pub days: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct CredentialDeltasArgs {
+    /// Delete the matched ledger rows. Without this flag the command only reports.
+    #[arg(long)]
+    pub confirm: bool,
 }
 
 #[derive(Debug, Args)]

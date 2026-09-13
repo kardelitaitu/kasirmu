@@ -13,7 +13,7 @@ import { hasChanges } from './helpers';
 
 // ── Local types ──────────────────────────────────────────────────────
 
-type DisplayDensity = 'comfortable' | 'compact';
+type DisplayDensity = number;
 
 interface KdsDraftState {
   soundEnabled: boolean;
@@ -28,7 +28,7 @@ const DEFAULT_KDS: KdsDraftState = {
   yellowThresholdMin: 5,
   redThresholdMin: 10,
   autoAcknowledge: false,
-  density: 'comfortable',
+  density: 3,
 };
 
 // ── Component ────────────────────────────────────────────────────────
@@ -41,7 +41,9 @@ const DEFAULT_KDS: KdsDraftState = {
  */
 export function WorkspaceKdsSettings({
   sessionToken,
-  userId,
+  // `userId` is intentionally not destructured: it is a required prop that the body never reads,
+  // and the dependency array above was its only use. Left on the interface so SettingsPage's call
+  // sites are unaffected; removing the prop is a wider, separate cleanup.
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
@@ -61,6 +63,9 @@ export function WorkspaceKdsSettings({
   // the load must never silently revert these (draft-overwrite race).
   const touchedRef = useRef<Set<keyof KdsDraftState>>(new Set());
   const [originalsLoaded, setOriginalsLoaded] = useState(false);
+  // The session originals were seeded for; replaces originalsLoaded as the fetch guard so a
+  // store switch re-seeds. originalsLoaded stays for the dirty memo below.
+  const originalsLoadedForRef = useRef<string | null | undefined>(undefined);
   const dirty = useMemo(() => hasChanges(
     draft as unknown as Record<string, unknown>,
     originalsRef.current as unknown as Record<string, unknown>,
@@ -69,9 +74,10 @@ export function WorkspaceKdsSettings({
   // ── Initialise from backend ─────────────────────────────────
 
   useEffect(() => {
-    // Only seed initial values once; subsequent re-runs must not
-    // overwrite user edits.
-    if (originalsLoaded) return;
+    // Only seed initial values once per session; subsequent re-runs must not
+    // overwrite user edits. "Once" is scoped to the token, not to the mount.
+    if (originalsLoadedForRef.current === sessionToken) return;
+    originalsLoadedForRef.current = sessionToken;
 
     // Load all 5 KDS settings from the backend, then set originals
     // to the loaded values so dirty tracking doesn't fire on mount.
@@ -87,7 +93,7 @@ export function WorkspaceKdsSettings({
         yellowThresholdMin: parseInt(yellow ?? '', 10) || DEFAULT_KDS.yellowThresholdMin,
         redThresholdMin: parseInt(red ?? '', 10) || DEFAULT_KDS.redThresholdMin,
         autoAcknowledge: ack === 'true',
-        density: (density === 'comfortable' || density === 'compact') ? density : DEFAULT_KDS.density,
+        density: Math.min(5, Math.max(1, parseInt(density ?? '', 10) || DEFAULT_KDS.density)),
       };
       // Seed the loaded values, but never overwrite fields the user has
       // already edited while the load was in flight — otherwise a fast
@@ -107,8 +113,13 @@ export function WorkspaceKdsSettings({
     }).finally(() => {
       setOriginalsLoaded(true);
     });
+    // The suppression on the previous line was hiding this: the effect reads sessionToken five
+    // times (:79-:83) and its deps listed only the one-way latch originalsLoaded. eslint could
+    // not report it, which is why the sweep's count understated the class -- the real total was
+    // 11, not 10. Latching on the token makes a store switch re-seed; originalsLoaded stays for
+    // the dirty memo at :67, and the touchedRef guard in the .then() is already built for re-entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [originalsLoaded]);
+  }, [originalsLoaded, sessionToken]);
 
   // ── Update helpers ───────────────────────────────────────────
 
@@ -127,7 +138,14 @@ export function WorkspaceKdsSettings({
         'kds.yellow_threshold_min': String(draft.yellowThresholdMin),
         'kds.red_threshold_min': String(draft.redThresholdMin),
         'kds.auto_acknowledge': String(draft.autoAcknowledge),
-        'kds.density': draft.density,
+        // `density` became a number when the comfortable/compact union turned into a
+        // 1-5 column stepper (fcfddf79). The read path (L90) and the control
+        // (L269/L270) were converted; this write-back was not. setSettingsScoped takes
+        // Record<string, string> and the Rust command deserializes
+        // HashMap<String, String> (commands/settings.rs:1054), so a bare number here
+        // failed serde for the WHOLE batch -- every KDS setting save errored, not just
+        // the density one, because all five keys go in a single call.
+        'kds.density': String(draft.density),
       });
       originalsRef.current = { ...draft };
       setDirtyVersion((v) => v + 1);
@@ -147,7 +165,11 @@ export function WorkspaceKdsSettings({
     } finally {
       setSaving(false);
     }
-  }, [userId, draft, onSaved, addToast, l10n, markSettingsUpdated]);
+  // sessionToken is read at :125 by setSettingsScoped. `userId` was already listed and is a
+  // different value, so it never covered the token -- saving after a store switch wrote to the
+  // previous store (or failed on the destroyed session) while the UI reported success. `userId` is
+  // now gone from this array: nothing in the component read it, and its only "use" was this entry.
+  }, [draft, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   const isCompact = variant === 'inspector-drawer';
 
@@ -259,18 +281,21 @@ export function WorkspaceKdsSettings({
             </span>
           </div>
 
-          {/* Density */}
+          {/* Column count */}
           <div className="settings-field settings-field--horizontal">
             <label htmlFor="kds-density" className="settings-label">
-              <Localized id="workspace-kds-density">Density</Localized>
+              <Localized id="workspace-kds-density">Column</Localized>
             </label>
             <SettingsSelect
               id="kds-density"
-              value={draft.density}
-              onChange={(v) => update('density', v as DisplayDensity)}
+              value={String(draft.density)}
+              onChange={(v) => update('density', parseInt(v, 10) || DEFAULT_KDS.density)}
               options={[
-                { value: 'comfortable', label: 'Comfortable' },
-                { value: 'compact', label: 'Compact' },
+                { value: '1', label: '1' },
+                { value: '2', label: '2' },
+                { value: '3', label: '3' },
+                { value: '4', label: '4' },
+                { value: '5', label: '5' },
               ]}
             />
           </div>

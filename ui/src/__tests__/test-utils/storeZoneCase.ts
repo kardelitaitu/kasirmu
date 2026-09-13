@@ -16,7 +16,7 @@
  */
 
 export interface StoreZoneCase {
-  /** IANA-ish fixed offset to feed getPrimaryStoreScoped mocks. */
+  /** IANA-ish fixed offset to feed getPrimaryLocationScoped mocks. */
   offset: string;
   /** Hours to shift, signed -- used to compute the expected date. */
   hours: number;

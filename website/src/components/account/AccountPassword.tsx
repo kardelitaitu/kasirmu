@@ -73,7 +73,7 @@ export default function AccountPassword({ locale, email, pw, pwConfirm, msg, sav
         <button
           type="submit"
           disabled={saving || !isStrongPassword(pw) || !passwordsMatch(pw, pwConfirm)}
-          className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-60"
         >
           {saving ? '…' : t(locale, 'account.passwordSave')}
         </button>

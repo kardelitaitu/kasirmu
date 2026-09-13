@@ -56,8 +56,10 @@ AUTO_PATCH_CATS=("versions" "audit-date" "cross-refs" "missing-crates")
 # Audit-footer regex shared by Check 9 (skills) and Check 10 (project docs).
 # If you change this line, both call sites stay in sync because they
 # reference $AUDIT_RE. This is the SHAPE check only — date VALUE
-# (DD 01-31, MM 01-12) is enforced by the audit_date_of +
-# is_real_audit_date helpers below, called by both Check 9 and Check 10.
+# (DD 01-31, MM 01-12) is enforced by batch_validate_audit_dates below,
+# called by both Check 9 and Check 10. (An earlier revision of this comment
+# named two helpers, `audit_date_of` and `is_real_audit_date`, that the
+# script never defined; the value check has always been the batched one.)
 AUDIT_RE='^> last audited [0-9]{2}-[0-9]{2}-[0-9]{2} by [^[:space:]]+$'
 
 # Shared Python interpreter for date-validity checks (Check 8,
@@ -116,14 +118,40 @@ esac
 
 # Audit-footer validation helpers (used by Check 9 and Check 10).
 # Two-pass validation: $AUDIT_RE catches SHAPE failures (missing fields,
-# wrong separators, year prefix), then `is_real_audit_date` catches VALUE
-# failures (day/month out of range, invented dates like 00-00-00 / 99-99-99).
-# Both helpers fail-closed when Python is missing (see $PYTHON_BIN above).
+# wrong separators, year prefix), then `batch_validate_audit_dates` catches
+# VALUE failures (day/month out of range, invented dates like 00-00-00 /
+# 99-99-99) in a single Python call. Both passes fail-closed when Python is
+# missing (see $PYTHON_BIN above).
 
-# Pull the DD-MM-YY substring from a footer (e.g. "> last audited 28-06-26 by x" → "28-06-26").
-# Returns the substring or an empty string if no date is present.
-audit_date_of() {
-  echo "$1" | grep -oE '[0-9]{2}-[0-9]{2}-[0-9]{2}' | head -1
+# The line that marks an audit footer. ONE definition, used by both the
+# Check 10 prefilter and the per-file scan below: if the prefilter pattern
+# ever drifted narrower than the scan's, files would be skipped and findings
+# lost silently — the exact failure mode this whole exercise is about.
+FOOTER_RE='^> last audited '
+
+# Project-doc *.md files that actually carry an audit footer, newline-separated.
+#
+# The grep is folded into `find -exec … +` rather than looping per file: only
+# ~104 of ~2000 project markdown files have a footer at all, so the old
+# one-grep-per-file loop spawned ~1900 empty greps and, on Windows, that
+# process-creation cost dominated the whole script (90s for Check 10 alone,
+# ~5min for the bats suite — which is why runs kept getting killed).
+#
+# `-exec … +` is deliberately used instead of `xargs`: it is POSIX, batches
+# the same way, and — unlike xargs — never invokes the command when the set is
+# empty. BSD/macOS xargs has no `-r`, so there an empty corpus would hand grep
+# no file arguments and it would block forever reading stdin.
+#
+# $FOOTER_RE is shared with the per-file scan below, so the prefilter can
+# never drift narrower than the check and silently drop findings.
+md_footer_files() {
+  find . -name '*.md' \
+    -not -path './.git/*' \
+    -not -path './.agents/skills/*' \
+    -not -path './node_modules/*' \
+    -not -path './target/*' \
+    -not -path './dist/*' \
+    -exec grep -lE "$FOOTER_RE" {} + 2>/dev/null
 }
 
 # Batched Python validation for shape-pass audit-footer dates.
@@ -145,6 +173,12 @@ batch_validate_audit_dates() {
     # PYTHON_BIN empty → every date is INVALID (fail-closed).
     awk -F'\t' '{print "INVALID\t" $0}' "$pairs_file" > "$res_file"
   else
+    # `| tr -d '\r'` is load-bearing, not cosmetic: a native Windows Python
+    # writes CRLF through a pipe, so `read -r res` below yields $'INVALID\r'
+    # and the string comparison never matches. Every invented-date footer then
+    # validated as CLEAN on Windows — Checks 9/10's VALUE pass was silently
+    # dead on that host while the SHAPE pass (pure grep) kept working, which
+    # is exactly why only the value-check test caught it.
     cut -f1 "$pairs_file" | "$PYTHON_BIN" -c '
 import sys
 from datetime import datetime
@@ -158,9 +192,12 @@ for line in sys.stdin:
         print("OK")
     except Exception:
         print("INVALID")
-' > "$res_file"
+' | tr -d '\r' > "$res_file"
   fi
+  # Defensive: normalise CR on the result column too, so a future writer of
+  # res_file cannot re-introduce the same silent pass-through.
   while IFS=$'\t' read -r res date context; do
+    res="${res%$'\r'}"
     [ "$res" = "INVALID" ] && FINDINGS[$cat]+="${context}"$'\n'
   done < <(paste "$res_file" "$pairs_file" 2>/dev/null)
   rm -f "$res_file"
@@ -182,19 +219,29 @@ audit_footer_check_in_file() {
   local file="$2"
   local pairs_file="$3"
   [ -f "$file" ] || return 0
-  while read -r line; do
+  local line footer date_part
+  # IFS= keeps leading whitespace, -r keeps backslashes.
+  while IFS= read -r line; do
     [ -z "$line" ] && continue
-    footer="$(echo "$line" | sed 's/[[:space:]]*$//')"
-    if ! echo "$footer" | grep -qE "$AUDIT_RE"; then
+    # Trailing-whitespace strip as a pure builtin (was `echo | sed`).
+    footer="${line%"${line##*[![:space:]]}"}"
+    # `[[ =~ ]]` instead of `echo | grep -qE` — same ERE, no subprocess.
+    # $AUDIT_RE MUST stay unquoted: quoting it makes bash match it as a
+    # literal string, so every footer would "fail" the shape check.
+    if [[ ! $footer =~ $AUDIT_RE ]]; then
       FINDINGS[$cat]+="${file}: footer violates DD-MM-YY + by-clause convention: \`${footer}\`"$'\n'
     else
-      date_part="$(audit_date_of "$footer")"
+      # A shape-passing footer is exactly `> last audited DD-MM-YY by <who>`,
+      # so the date is the one token after the prefix — no grep needed
+      # (was: `audit_date_of` → echo | grep -oE | head -1).
+      date_part="${footer#> last audited }"
+      date_part="${date_part%% *}"
       if [ -n "$date_part" ]; then
         printf '%s\t%s: shape OK but date [%s] is not a real calendar DD-MM-YY: [%s]\n' \
           "$date_part" "$file" "$date_part" "$footer" >> "$pairs_file"
       fi
     fi
-  done < <(grep -E '^> last audited ' "$file" 2>/dev/null)
+  done < <(grep -E "$FOOTER_RE" "$file" 2>/dev/null)
 }
 
 # Findings: associative array of category -> lines
@@ -209,20 +256,32 @@ done
 if should_run paths; then
   while read -r skill; do
     [ -z "$skill" ] && continue
-    grep -oE '[a-zA-Z_.-]+(/[a-zA-Z0-9_.-]+){1,}' "$skill" 2>/dev/null | sort -u | \
-      while read -r path; do
+    # Process substitution, NOT `grep | while`: the FINDINGS write must land
+    # in the parent shell. A pipeline runs the loop body in a subshell, so
+    # `FINDINGS[paths]+=…` there is discarded when the loop exits and the
+    # check silently reports clean. Same invariant as
+    # batch_validate_audit_dates above.
+    while read -r path; do
+      case "$path" in
+        http*|https*|file://*|node_modules*|target/*|dist/*) continue ;;
+      esac
+      # Skip regex-truncation artifacts. The extractor has no notion of a
+      # glob or an ellipsis, so `crates/oz-*` yields `crates/oz-` and prose
+      # like `bash scripts/...` yields `scripts/...`. A real path never ends
+      # in `-`, `.` or an ellipsis, so dropping these cannot mask genuine
+      # drift — it only stops the check crying wolf on every run.
+      case "$path" in
+        *[-.]|*...|*..) continue ;;
+      esac
+      if [ ! -e "$path" ]; then
+        # only flag if the path looks like a project path
         case "$path" in
-          http*|https*|file://*|node_modules*|target/*|dist/*) continue ;;
+          src*|ui/*|crates/*|migrations/*|hal/*|docs/*|src-tauri/*|.github/*|scripts/*)
+            FINDINGS[paths]+="${skill}: ${path}"$'\n'
+            ;;
         esac
-        if [ ! -e "$path" ]; then
-          # only flag if the path looks like a project path
-          case "$path" in
-            src*|ui/*|crates/*|migrations/*|hal/*|docs/*|src-tauri/*|.github/*|scripts/*)
-              FINDINGS[paths]+="${skill}: ${path}"$'\n'
-              ;;
-          esac
-        fi
-      done
+      fi
+    done < <(grep -oE '[a-zA-Z_.-]+(/[a-zA-Z0-9_.-]+){1,}' "$skill" 2>/dev/null | sort -u)
   done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 fi
 
@@ -252,11 +311,15 @@ if should_run api; then
   # Look for code blocks that call known public functions
   while read -r skill; do
     [ -z "$skill" ] && continue
-    # Catch calls to Money::from_major / checked_add / zero so we can flag if any change
-    grep -nE 'Money::(from_major|checked_add|zero|new)' "$skill" 2>/dev/null | \
-      while read -r line; do
-        FINDINGS[api]+="${skill}: ${line} (verify signature in oz-core/src/money.rs)"$'\n'
-      done
+    # Catch calls to Money::from_major / checked_add / zero so we can flag if any change.
+    # Taxonomy #4 is about a skill's CODE EXAMPLE going stale, so scan only inside
+    # ``` fences — a bare grep also matched prose that merely names a constructor
+    # (e.g. "`#[must_use]` on every Money constructor"), which is not a signature
+    # claim and produced a permanent stream of un-actionable findings.
+    # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+    while read -r line; do
+      FINDINGS[api]+="${skill}: ${line} (verify signature in foundation/src/money.rs, re-exported by oz-core/src/money.rs)"$'\n'
+    done < <(awk '/^```/{f=!f; next} f && /Money::(from_major|checked_add|zero|new)/{print NR": "$0}' "$skill" 2>/dev/null)
   done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 fi
 
@@ -267,15 +330,17 @@ if should_run versions; then
   if [ -f "Cargo.toml" ]; then
     while read -r skill; do
       [ -z "$skill" ] && continue
-      grep -hoE '"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null | sort -u | \
-        while read -r ver; do
-          # strip quotes
-          v="${ver//\"/}"
-          # crude: see if this exact version is still in Cargo.toml
-          if ! grep -q "$v" Cargo.toml; then
-            FINDINGS[versions]+="${skill}: quoted version ${ver} not in Cargo.toml"$'\n'
-          fi
-        done
+      # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+      # This category is also in AUTO_PATCH_CATS, so a swallowed write
+      # silently disables that auto-patch path too.
+      while read -r ver; do
+        # strip quotes
+        v="${ver//\"/}"
+        # crude: see if this exact version is still in Cargo.toml
+        if ! grep -q "$v" Cargo.toml; then
+          FINDINGS[versions]+="${skill}: quoted version ${ver} not in Cargo.toml"$'\n'
+        fi
+      done < <(grep -hoE '"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null | sort -u)
     done < <(find .agents/skills -name SKILL.md 2>/dev/null)
   fi
 fi
@@ -303,24 +368,41 @@ fi
 # Check 6 — Cross-reference integrity
 # ---------------------------------------------------------------------------
 if should_run refs; then
-  # onboarding-guide should reference only existing skills
-  og=".agents/skills/onboarding-guide/SKILL.md"
+  # onboarding-guide should reference only existing skills.
+  # Overridable for the same reason as Cargo_FILE in Check 2: it lets the
+  # test suite point the check at a throwaway fixture instead of mutating
+  # the real onboarding-guide (a backup/restore there can leak a probe line
+  # into a tracked file if the run is killed mid-test).
+  og="${OG_FILE:-.agents/skills/onboarding-guide/SKILL.md}"
   if [ -f "$og" ]; then
-    grep -oE '`[a-z][a-z-]+`' "$og" 2>/dev/null | sort -u | \
+    # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+    # Also in AUTO_PATCH_CATS — a swallowed write disables that path too.
+    while read -r ref; do
+      case "$ref" in
+        rust-backend|tauri-ipc|ui-components|hal-drivers|project-scaffold|onboarding-guide|skill-drift-guard) continue ;;
+      esac
+      # Heuristic: anything else in backticks inside the router table is a skill reference
+      if [ -d ".agents/skills/$ref" ]; then continue; fi
+      # …but only if it resolves to NOTHING else real. The guide backtick-names
+      # workspace members (`oz-core`), dependencies (`mlua`, `rusqlite`,
+      # `async-trait`) and CI keys (`static-gates`, `continue-on-error`) in the
+      # same voice it uses for skills, and token shape cannot tell them apart.
+      # Without this, every one of those is a permanent false positive and the
+      # check's exit code stops meaning anything. Taxonomy #8 is about a
+      # reference to a SKILL that does not exist — not about every kebab token.
+      if [ -d "crates/$ref" ] || [ -d "modules/$ref" ] || [ -d "platform/$ref" ] \
+         || [ -d "apps/$ref" ] || [ "$ref" = "foundation" ]; then continue; fi
+      if grep -qE "^[[:space:]]*\"?${ref}\"?[[:space:]]*=" Cargo.toml 2>/dev/null; then continue; fi
+      if grep -rqE "^[[:space:]]+${ref}:" .github/workflows/ 2>/dev/null; then continue; fi
+      # skip common non-skill backticks
+      case "$ref" in
+        src|ui|crates|hal|src-tauri|AGENTS.md|README.md|WHITEPAPER.md|ARCHITECTURE.md|ROADMAP.md) continue ;;
+        async|await|pub|fn|let|mut|use|match|impl|trait) continue ;;   # Rust keywords
+      esac
+      FINDINGS[refs]+="onboarding-guide: possible missing skill ref \`${ref}\`"$'\n'
+    done < <(grep -oE '`[a-z][a-z-]+`' "$og" 2>/dev/null | sort -u | \
       grep -vE '^\`(feat|fix|docs|chore|test|refactor|perf|style|ci|revert|build)\`$' | \
-      tr -d '`' | \
-      while read -r ref; do
-        case "$ref" in
-          rust-backend|tauri-ipc|ui-components|hal-drivers|project-scaffold|onboarding-guide|skill-drift-guard) continue ;;
-        esac
-        # Heuristic: anything else in backticks inside the router table is a skill reference
-        if [ -d ".agents/skills/$ref" ]; then continue; fi
-        # skip common non-skill backticks
-        case "$ref" in
-          src|ui|crates|hal|src-tauri|AGENTS.md|README.md|WHITEPAPER.md|ARCHITECTURE.md|ROADMAP.md) continue ;;
-        esac
-        FINDINGS[refs]+="onboarding-guide: possible missing skill ref \`${ref}\`"$'\n'
-      done
+      tr -d '`')
   fi
 fi
 
@@ -337,13 +419,13 @@ if should_run fluent; then
     while read -r skill; do
       [ -z "$skill" ] && continue
       # Permissive pattern: any non-empty id. Trust the FTL to define the format.
-      grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
-        sed 's/id="//;s/"$//' | \
-        while read -r ftl_id; do
-          if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
-            FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in ui/src/locales/"$'\n'
-          fi
-        done
+      # `< <(…)` not `grep | while`: see the subshell note in Check 1.
+      while read -r ftl_id; do
+        if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
+          FINDINGS[fluent]+="${skill}: Fluent id '${ftl_id}' not found in ui/src/locales/"$'\n'
+        fi
+      done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
+        sed 's/id="//;s/"$//')
     done < <(find .agents/skills -name SKILL.md 2>/dev/null)
   fi
   # else: no front-end yet, silently skip
@@ -418,16 +500,15 @@ if should_run doc-audit; then
   pairs_file="$(mktemp 2>/tmp/mktemp.err)" || { echo "detect.sh: mktemp failed for doc-audit: $(cat /tmp/mktemp.err)" >&2; rm -f /tmp/mktemp.err; exit 1; }
   rm -f /tmp/mktemp.err
   PAIRS_FILES+=("$pairs_file")  # tracked for EXIT-trap cleanup if killed mid-run
-  while read -r file; do
+  # Corpus is prefiltered to footer-bearing files — see md_footer_files above.
+  # Accepted limitation: `grep -l` delimits its output with newlines, so a
+  # filename containing a literal newline would be mis-parsed here. The
+  # prefilter is a set-membership test only; every file it does hand to the
+  # helper is still read and scanned in full below.
+  while IFS= read -r file; do
     [ -z "$file" ] && continue
     audit_footer_check_in_file doc-audit "$file" "$pairs_file"
-  done < <(find . -name '*.md' \
-              -not -path './.git/*' \
-              -not -path './.agents/skills/*' \
-              -not -path './node_modules/*' \
-              -not -path './target/*' \
-              -not -path './dist/*' \
-              2>/dev/null)
+  done < <(md_footer_files)
   batch_validate_audit_dates doc-audit "$pairs_file"
   rm -f "$pairs_file"
 fi

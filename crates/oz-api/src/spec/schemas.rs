@@ -54,6 +54,107 @@ pub(super) fn build_base_schemas() -> Value {
                 "currency": { "type": "string", "description": "ISO 4217 currency code", "example": "USD" }
             }
         },
+        "MemoSyncEnvelope": {
+            "type": "object",
+            "required": ["memos"],
+            "properties": {
+                "memos": { "type": "array", "items": { "$ref": "#/components/schemas/MemoSyncRow" }, "description": "The pushing database's complete non-deleted memo state; absence from the array deletes the memo" }
+            }
+        },
+        "MemoSyncRow": {
+            "type": "object",
+            "required": ["id", "author_user_id", "author_role", "title", "body", "status", "duration", "revision", "created_at", "updated_at"],
+            "properties": {
+                "id": { "type": "string", "description": "Memo id (UUID v7, desktop-minted) — the cloud's primary key" },
+                "author_user_id": { "type": "string" },
+                "author_role": { "type": "string", "description": "Author's role snapshot at publish time" },
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "status": { "type": "string", "enum": ["draft", "published", "expired", "stopped", "archived"] },
+                "duration": { "type": "string", "enum": ["12h", "24h", "3d", "7d", "30d"] },
+                "revision": { "type": "integer", "format": "int64" },
+                "published_at": { "type": ["string", "null"], "format": "date-time" },
+                "expires_at": { "type": ["string", "null"], "format": "date-time" },
+                "stopped_at": { "type": ["string", "null"], "format": "date-time" },
+                "stopped_by": { "type": ["string", "null"] },
+                "archived_at": { "type": ["string", "null"], "format": "date-time", "description": "The retention-deletion clock" },
+                "created_at": { "type": "string", "format": "date-time" },
+                "updated_at": { "type": "string", "format": "date-time" },
+                "location_ids": { "type": "array", "items": { "type": "string" }, "description": "Targeted locations; empty = Organization Memo" },
+                "recipients": { "type": "array", "items": { "$ref": "#/components/schemas/MemoRecipientSyncRow" } }
+            }
+        },
+        "MemoRecipientSyncRow": {
+            "type": "object",
+            "required": ["id", "terminal_id", "delivery_status"],
+            "properties": {
+                "id": { "type": "string", "description": "Recipient row id (desktop-minted)" },
+                "terminal_id": { "type": "string", "description": "The addressed terminal" },
+                "delivery_status": { "type": "string", "enum": ["pending", "delivered", "acknowledged"] },
+                "delivered_at": { "type": ["string", "null"], "format": "date-time" },
+                "acknowledged_at": { "type": ["string", "null"], "format": "date-time" },
+                "acknowledged_by": { "type": ["string", "null"] }
+            }
+        },
+        "MemoSyncResult": {
+            "type": "object",
+            "required": ["upserted", "deleted"],
+            "properties": {
+                "upserted": { "type": "integer", "format": "int64", "description": "Memos upserted (the snapshot size)" },
+                "deleted": { "type": "integer", "format": "int64", "description": "Memos deleted because the desktop no longer has them" }
+            }
+        },
+        "MemoDisplayEnvelope": {
+            "type": "object",
+            "required": ["memos", "cadence"],
+            "properties": {
+                "memos": { "type": "array", "items": { "$ref": "#/components/schemas/MemoActive" }, "description": "Location memos stacked above Organization memos, newest-published first" },
+                "cadence": { "$ref": "#/components/schemas/MemoCadence" }
+            }
+        },
+        "MemoActive": {
+            "type": "object",
+            "required": ["id", "location_ids", "author_user_id", "author_role", "title", "body", "duration", "revision", "created_at", "delivery_status"],
+            "properties": {
+                "id": { "type": "string" },
+                "location_ids": { "type": "array", "items": { "type": "string" }, "description": "Targeted locations; empty = Organization Memo" },
+                "author_user_id": { "type": "string" },
+                "author_role": { "type": "string" },
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "duration": { "type": "string", "enum": ["12h", "24h", "3d", "7d", "30d"] },
+                "revision": { "type": "integer", "format": "int64" },
+                "published_at": { "type": ["string", "null"], "format": "date-time" },
+                "expires_at": { "type": ["string", "null"], "format": "date-time" },
+                "created_at": { "type": "string", "format": "date-time" },
+                "delivery_status": { "type": "string", "enum": ["pending", "delivered", "acknowledged"], "description": "The asking terminal's delivery state for this memo" }
+            }
+        },
+        "MemoCadence": {
+            "type": "object",
+            "required": ["base_interval_secs", "kds_interval_secs"],
+            "properties": {
+                "base_interval_secs": { "type": "integer", "format": "int64", "description": "Base notification interval in seconds" },
+                "kds_interval_secs": { "type": "integer", "format": "int64", "description": "KDS interval — derived as 2 × base" }
+            }
+        },
+        "MemoAckRequest": {
+            "type": "object",
+            "properties": {
+                "acknowledged_by": { "type": ["string", "null"], "description": "The staff user at the terminal who acknowledged — informational only (terminal tokens carry no user identity)" }
+            }
+        },
+        "MemoAckResult": {
+            "type": "object",
+            "required": ["memo_id", "terminal_id", "delivery_status", "acknowledged_at", "changed"],
+            "properties": {
+                "memo_id": { "type": "string" },
+                "terminal_id": { "type": "string", "description": "The terminal whose recipient row moved (from the token claim)" },
+                "delivery_status": { "type": "string", "enum": ["acknowledged"] },
+                "acknowledged_at": { "type": "string", "format": "date-time" },
+                "changed": { "type": "boolean", "description": "True when THIS call moved the row; false on an idempotent re-ack" }
+            }
+        },
         "CreateTokenRequest": {
             "type": "object",
             "required": ["label"],

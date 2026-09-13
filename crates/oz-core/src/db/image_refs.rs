@@ -10,6 +10,47 @@
 use super::Store;
 use crate::error::CoreError;
 
+/// The smallest SQLite ceiling this module must keep working on:
+/// `SQLITE_MAX_VARIABLE_NUMBER` is 32 766 on the bundled rusqlite
+/// 3.4x engine but **999** on any pre-3.32 build, so a data-driven statement
+/// has to fit under 999 to be portable across the engines this crate ships on.
+const SQLITE_MAX_VARIABLES: usize = 999;
+
+/// Parameters a chunked `IN` statement binds BESIDES the chunk — the
+/// leading `?1` tenant id in `Store::missing_hashes`.
+/// Placeholder numbering starts at `1 + IMAGE_REFS_LEAD_PARAMS`, so
+/// the ceiling check counts them too.
+const IMAGE_REFS_LEAD_PARAMS: usize = 1;
+
+/// How many values one data-driven `IN (…)` list in this module may
+/// bind at a time.
+///
+/// `Store::missing_hashes`'s candidate hashes bind ONE PARAMETER PER
+/// HASH, and the list length comes from DATA — every distinct image hash in a
+/// tenant's catalog on `GET /api/v1/products` (its
+/// `list_products` has no LIMIT), or a caller-supplied
+/// `?hashes=a,b,c` on `GET /api/v1/images:missing` — not
+/// from a fixed schema. Above the SQLite ceiling
+/// ([`SQLITE_MAX_VARIABLES`]) the statement stops executing: the
+/// handler answers 500, or — where the caller swallows the error with
+/// `unwrap_or_default()` — silently answers the empty set. 900 plus
+/// the lead parameter stays under even the historical 999 ceiling; see
+/// `missing_hashes_survives_a_list_longer_than_the_chunk`.
+///
+/// This is a CHUNK SIZE, never a threshold that switches the filter off: a
+/// long list is read in MORE chunks, not in an unscoped sweep that would
+/// return rows outside the tenant or the whole table.
+const IMAGE_REFS_IN_CHUNK: usize = 900;
+
+/// Pin the invariant at COMPILE time: a chunk plus the leading parameters it
+/// also binds must stay under the smallest supported ceiling, or the chunking
+/// is itself the bug. A `const` assert fails every build, not only a
+/// test run someone remembers.
+const _: () = assert!(
+    IMAGE_REFS_IN_CHUNK + IMAGE_REFS_LEAD_PARAMS < SQLITE_MAX_VARIABLES,
+    "IMAGE_REFS_IN_CHUNK must stay below SQLite's 999-variables-per-statement ceiling (pre-3.32 builds)"
+);
+
 // ── Image refs (cloud content spine) ─────────────────────────────────
 
 impl Store<'_> {
@@ -59,6 +100,16 @@ impl Store<'_> {
     /// does NOT have an active reference for (set-difference: candidates -
     /// present). Used by the server to compute `missing_hashes` on the
     /// catalog snapshot response.
+    ///
+    /// The candidate list is data-driven and unbounded (see
+    /// [`IMAGE_REFS_IN_CHUNK`]), so it is read in chunks inside ONE
+    /// transaction: each chunk rebuilds its placeholders and argument vector
+    /// and feeds the same `present` set, and the result is projected
+    /// at the end in the CALLER'S candidate order. The statement never ordered
+    /// or deduplicated rows (no `ORDER BY`, no `DISTINCT` —
+    /// the single-statement version had neither), so chunking changes no
+    /// result shape: a hash duplicated in the input still flows through
+    /// duplicated, exactly as before; both real callers dedup upstream.
     pub fn missing_hashes<'a>(
         &self,
         tenant_id: &str,
@@ -68,24 +119,37 @@ impl Store<'_> {
             return Ok(vec![]);
         }
         use std::collections::HashSet;
-        // Build parameterised query with placeholders for each candidate
-        let placeholders: Vec<String> = (1..=candidates.len())
-            .map(|i| format!("?{}", i + 1)) // ?1 = tenant_id, ?2.. = hashes
-            .collect();
-        let sql = format!(
-            "SELECT hash FROM image_refs WHERE tenant_id = ?1 AND hash IN ({}) AND refcount > 0",
-            placeholders.join(", ")
-        );
-        let mut stmt = self.conn.prepare(&sql)?;
-        let mut param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            vec![&tenant_id as &dyn rusqlite::types::ToSql];
-        for c in candidates {
-            param_refs.push(c);
+        // ONE transaction around the whole chunk loop: every chunk reads the
+        // same snapshot, so a concurrent ref/unref between chunks cannot split
+        // the answer.
+        let tx = self.conn.unchecked_transaction()?;
+        // THE CHUNK LOOP, and the ACCUMULATOR the chunks feed. Chunks are
+        // DISJOINT by hash and this query is a pure filter, so the union of
+        // the per-chunk hits is exactly the set one query over the whole list
+        // returns — there is no fallback to a tenant-wide statement when the
+        // list is long; that would be the hole the filter exists to close.
+        let mut present: HashSet<String> = HashSet::new();
+        for chunk in candidates.chunks(IMAGE_REFS_IN_CHUNK) {
+            let placeholders: Vec<String> = (1..=chunk.len())
+                .map(|i| format!("?{}", i + IMAGE_REFS_LEAD_PARAMS)) // ?1 = tenant_id, ?2.. = hashes
+                .collect();
+            let sql = format!(
+                "SELECT hash FROM image_refs WHERE tenant_id = ?1 AND hash IN ({}) AND refcount > 0",
+                placeholders.join(", ")
+            );
+            let mut stmt = tx.prepare(&sql)?;
+            let mut param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                Vec::with_capacity(chunk.len() + IMAGE_REFS_LEAD_PARAMS);
+            param_refs.push(&tenant_id as &dyn rusqlite::types::ToSql);
+            for c in chunk {
+                param_refs.push(c);
+            }
+            let rows: Vec<String> = stmt
+                .query_map(param_refs.as_slice(), |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            present.extend(rows);
         }
-        let present: HashSet<String> = stmt
-            .query_map(param_refs.as_slice(), |row| row.get::<_, String>(0))?
-            .filter_map(|r| r.ok())
-            .collect();
+        tx.commit()?;
         Ok(candidates
             .iter()
             .filter(|c| !present.contains(**c))

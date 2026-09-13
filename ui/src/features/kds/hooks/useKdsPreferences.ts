@@ -26,10 +26,28 @@ const DEFAULTS: KdsPreferences = {
   acknowledgeDelayMin: 2,
 };
 
-const STORAGE_KEY_PREFIX = 'oz-kds-prefs-';
+/**
+ * Exported for testing. KdsPreferencesReadLocalPrefs.test.ts declared its own copy -- and
+ * unlike a copied function, a copied storage key fails in the least visible way possible:
+ * the test writes and reads through its own constant, so it stays green forever while
+ * production reads a different key. It survives a rename of the real value with nothing to
+ * catch it, because both sides of the assertion come from the same copy.
+ */
+export const STORAGE_KEY_PREFIX = 'oz-kds-prefs-';
 
-/** Read KDS preferences from localStorage, or null if missing/invalid. */
-function readLocalPrefs(userId: string): KdsPreferences | null {
+/**
+ * Read KDS preferences from localStorage, or null if missing/invalid.
+ *
+ * Exported for testing. It was module-private, and rather than export it the first suite
+ * that covered it (KdsPreferencesReadLocalPrefs.test.ts) copied the body into the test file
+ * and asserted against the copy -- so all ten of its "contract" tests passed while exercising
+ * no production code at all. The copy is already different from this function: it enumerates
+ * six `?? default` fields, whereas the real one returns `{ ...DEFAULTS, ...parsed }` and so
+ * lets any unknown stored key through into the result. That gap is invisible today and turns
+ * into a silent divergence the first time KdsPreferences gains a seventh field, because
+ * DEFAULTS grows and a hand-written copy does not.
+ */
+export function readLocalPrefs(userId: string): KdsPreferences | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PREFIX + userId);
     if (!raw) return null;
@@ -42,8 +60,8 @@ function readLocalPrefs(userId: string): KdsPreferences | null {
   }
 }
 
-/** Write KDS preferences to localStorage. */
-function writeLocalPrefs(userId: string, prefs: KdsPreferences): void {
+/** Write KDS preferences to localStorage. Exported for testing. */
+export function writeLocalPrefs(userId: string, prefs: KdsPreferences): void {
   try {
     localStorage.setItem(STORAGE_KEY_PREFIX + userId, JSON.stringify(prefs));
   } catch {

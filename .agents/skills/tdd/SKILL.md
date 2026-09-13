@@ -88,6 +88,18 @@ The core cycle. Use the fast loop (below) so each iteration is seconds, not minu
 
 ### Phase 4 — Verify
 
+> 🛑 **On Windows, run these through Git's bash by full path.** Bare `bash scripts/...` resolves to
+> `C:\Windows\System32\bash.exe` — WSL, not Git Bash — and it **hangs** rather than failing:
+> `c:\windows\system32\bash.exe -c 'echo wsl-ok'` never returned in 12s, while
+> `C:\Program Files\Git\bin\bash.exe -c 'echo gitbash-ok'` returned instantly. A hang attributes to
+> the script, so the reasonable-looking conclusion is "wtree-guard is broken", which is false — and
+> skipping the drift check because it hangs loses exactly the protection it exists to give. Use
+> `& 'C:\Program Files\Git\bin\bash.exe' -c 'bash scripts/wtree-guard.sh check'`. See
+> [`AGENTS.md`](../../../AGENTS.md) § *Running CLI Tools on Windows*; the same root cause produced
+> an opposite-looking symptom on 2026-08-22 (WSL runs the Linux node against Windows-built
+> UI dependencies, so vitest crashes on the missing `rollup-linux-x64` binary and the i18n gate
+> appears red when nothing in the repo is wrong).
+
 Confirm the fix and no regressions — **scoped to the area you changed**. Full `scripts/check.sh` is **not** part of routine TDD validation.
 
 Required during the loop:
@@ -137,7 +149,7 @@ Small, focused, well-described — while context is fresh.
 - Branch naming: `feat/<name>`, `fix/<name>`, `test/<name>`, `refactor/<name>`, `docs/<name>`, `chore/<name>`.
 - Conventional Commits: `fix(sync): quarantine poison remote items after retry budget` — summary ≤ 72 chars, imperative mood, body explains *why*.
 - One behavior per commit. The commit is the unit of review and bisect.
-- The `.githooks/pre-commit` hook (cargo fmt re-stage, LF normalization, i18n lint, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard — plus a Go gate when license-server files are staged) runs automatically if `core.hooksPath` is set — don't bypass with `--no-verify`; fix the issue instead.
+- The `.githooks/pre-commit` hook runs automatically if `core.hooksPath` is set — don't bypass with `--no-verify`; fix the issue instead. **Source of truth is the hook itself: `grep -n '^# ──' .githooks/pre-commit`, and `AGENTS.md` enumerates every step with its rationale.** As of 0.0.37 there are seven: LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, and FTL orphan lint (step 7, fires only when a `.ftl` is staged). cargo fmt was a pre-commit step until 2026-09-13, when it was removed — the step ran `cargo fmt --all`, the whole workspace, so under concurrent agents it reformatted every other session's in-flight `.rs` files in the working tree; formatting is now check-only (`cargo fmt --all -- --check`) in pre-push/CI/`check.sh`/`release.sh`. Heavy UI typecheck and Vitest i18n run under pre-push (`scripts/run-pre-push.py`) and CI. `scripts/verify-agents-mirrors.py` polices `AGENTS.md` and its mirrors against the hook, so a restated count that disagrees is a red build.
 - **Never run `git push` without an explicit, direct user order.** The default end state is a local commit plus a report; the human pushes.
 
 ---

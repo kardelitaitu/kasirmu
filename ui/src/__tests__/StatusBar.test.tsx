@@ -31,6 +31,15 @@ vi.mock('@/frontend/shell/ThemeToggle', () => ({
   default: () => <button type="button" aria-label="Toggle theme">🌓</button>,
 }));
 
+// Service-health contracts (saas-3): the unified status row gained payment +
+// device pills; mocked out here — this file asserts the shell bar's segments.
+vi.mock('@/hooks/usePaymentConnection', () => ({
+  usePaymentConnection: () => ({ state: 'connected', latencyMs: null, cause: null, gateways: 1, retryNow: () => {} }),
+}));
+vi.mock('@/hooks/useDevicesConnection', () => ({
+  useDevicesConnection: () => ({ state: 'connected', latencyMs: null, cause: null, devices: 1, retryNow: () => {} }),
+}));
+
 vi.mock('@/frontend/shared/Toast', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));

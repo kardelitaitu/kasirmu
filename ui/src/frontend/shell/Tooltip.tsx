@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useId, useLayoutEffect, type ReactNode, type ReactElement, cloneElement } from 'react';
+import { useState, useRef, useCallback, useId, useEffect, useLayoutEffect, type ReactNode, type ReactElement, cloneElement } from 'react';
 import { createPortal } from 'react-dom';
 import './Tooltip.css';
 
@@ -24,6 +24,13 @@ export interface TooltipProps {
   portal?: boolean;
   /** Prevent the tooltip text from wrapping onto multiple lines. */
   nowrap?: boolean;
+  /** Layout footprint of the wrapper element.
+   *  'block' (default) — full-width flex row, correct for sidebar/nav rows.
+   *  'inline' — shrink-to-fit, for triggers that must keep their own box:
+   *  toolbar buttons, badges, inline spans. Without this, wrapping a small
+   *  button in the default full-width flex row stretches it and breaks the
+   *  surrounding layout. */
+  fit?: 'block' | 'inline';
   /** The element that triggers the tooltip on hover/focus. */
   children: ReactElement;
 }
@@ -49,6 +56,7 @@ export default function Tooltip({
   portal = false,
   nowrap = false,
   align = 'center',
+  fit = 'block',
   children,
 }: TooltipProps) {
   const [visible, setVisible] = useState(false);
@@ -59,6 +67,19 @@ export default function Tooltip({
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+
+  // Clear pending show/hide timers on unmount. A Tooltip can disappear
+  // mid-interaction (nav search filtering a row, section switch, sidebar
+  // collapse) while an 800ms show timer is still armed; without this the
+  // timer fires setState against a dead component and any companion state
+  // (portal rect) can end up inconsistent for the next mount.
+  useEffect(
+    () => () => {
+      clearTimeout(showTimer.current);
+      clearTimeout(hideTimer.current);
+    },
+    [],
+  );
 
   const startShow = useCallback(() => {
     // Capture trigger position before showing (portal needs viewport coords)
@@ -147,7 +168,11 @@ export default function Tooltip({
     }
 
     setClamped({ left, top });
-  }, [visible, portal, position, triggerRect]);
+    // `align` is read by the top/bottom branches above (left / center / right
+    // horizontal anchoring). Without it in the array, changing `align` while a
+    // portal tooltip is visible leaves the bubble at the old offset until some
+    // other dep fires.
+  }, [visible, portal, position, triggerRect, align]);
 
   const tooltipNode = (
     <div
@@ -176,6 +201,14 @@ export default function Tooltip({
       }
       role="tooltip"
       onMouseEnter={() => {
+        // Guard against the "stuck tooltip" bug: this handler must only
+        // count when the bubble is genuinely hoverable (visible). While
+        // hidden the bubble is opacity:0 + pointer-events:none (Tooltip.css),
+        // so in a real browser this only fires for a visible bubble — but a
+        // synthetic event (test, E2E, automation) can still reach a hidden
+        // one and would force-show a tooltip with no trigger under the
+        // cursor, and with the trigger far away no mouseleave ever arrives.
+        if (!visible) return;
         clearTimeout(hideTimer.current);
         clearTimeout(showTimer.current);
         setVisible(true);
@@ -189,7 +222,7 @@ export default function Tooltip({
 
   return (
     <div
-      className="tooltip-wrapper"
+      className={`tooltip-wrapper${fit === 'inline' ? ' tooltip-wrapper--inline' : ''}`}
       onMouseEnter={startShow}
       onMouseLeave={startHide}
       onFocus={startShow}

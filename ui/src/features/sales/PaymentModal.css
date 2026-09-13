@@ -1052,3 +1052,114 @@
   flex-shrink: 0;
   font-weight: 500;
 }
+
+/* ── EDC card-present flow (agents-3 3.2) ─────────────────────────── */
+
+.payment-edc-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.payment-edc-description {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+/* Same primary-action skin as the QRIS buttons — deliberately not a new
+   pattern: "pay on terminal" and "pay with QR" are sibling choices. */
+.payment-edc-btn {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-fg);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-out);
+}
+
+.payment-edc-btn:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.payment-edc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.payment-edc-btn--dismiss {
+  width: auto;
+  margin-top: var(--space-3);
+}
+
+/* Fixed-position scrim over everything (the modal keeps scrolling behind).
+   The panel is --color-paper — the same theme-invariant surface the QR
+   uses: the terminal moment is transaction-critical UI, it must not flip
+   with the POS theme. No box-shadow on purpose: elevated surfaces carry
+   noise-dither selector obligations, and a scrim-isolated paper panel
+   needs no shadow to read. */
+.payment-edc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+}
+
+.payment-edc-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--color-paper);
+  border-radius: var(--radius-lg);
+}
+
+.payment-edc-spinner {
+  width: var(--space-8);
+  height: var(--space-8);
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: payment-edc-spin 0.9s linear infinite;
+}
+
+@keyframes payment-edc-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .payment-edc-spinner {
+    animation: none;
+  }
+}
+
+.payment-edc-waiting-text {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg);
+}
+
+.payment-edc-declined-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+}
+
+.payment-edc-declined-reason {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}

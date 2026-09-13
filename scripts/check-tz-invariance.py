@@ -29,6 +29,13 @@ TESTS = [
     "src/__tests__/SalesReportScreen.test.tsx",
     "src/__tests__/CustomReportScreen.test.tsx",
     "src/__tests__/MenuEngineeringScreen.test.tsx",
+    # Added in 0.0.37. AnalyticsScreen is the screen R36-01 was originally about,
+    # and it was the one anchoring screen with no component-level test: its store
+    # fetch hit real invoke, rejected, and storeTz silently stayed null, so only
+    # the UTC fallback was ever exercised across 2000 lines of tests. Registering
+    # it here is what makes the new test mean anything -- a file that is never
+    # replayed under another zone cannot demonstrate host-independence.
+    "src/__tests__/AnalyticsScreen.test.tsx",
 ]
 
 # Chosen to straddle the date line and both sides of UTC, and to include the
@@ -51,21 +58,22 @@ ZONES = ["UTC", "Asia/Jakarta", "Pacific/Kiritimati", "America/Los_Angeles"]
 
 NPMX = "npm.cmd" if os.name == "nt" else "npm"
 
+from concurrent.futures import ThreadPoolExecutor
+
 results: dict[str, str] = {}
 failed = False
 
-print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones) ===")
-for tz in ZONES:
+def check_zone(tz: str) -> tuple[str, str, bool]:
     env = {**os.environ, "TZ": tz}
     r = subprocess.run(
         [NPMX, "exec", "--silent", "--", "vitest", "run", *TESTS, "--reporter=json"],
         cwd=UI, env=env, capture_output=True, text=True,
     )
-    # vitest's json reporter prints its own banner lines; find the JSON object.
     out = r.stdout
     start = out.find("{")
     end = out.rfind("}")
     summary = "PARSE-ERROR"
+    zone_failed = False
     if start != -1 and end > start:
         import json
         try:
@@ -74,19 +82,31 @@ for tz in ZONES:
             broken = data.get("numFailedTests", 0)
             summary = f"{passed} passed, {broken} failed"
             if broken:
-                failed = True
+                zone_failed = True
                 for res in data.get("testResults", []):
                     for a in res.get("assertionResults", []):
                         if a.get("status") == "failed":
                             summary += " | FAIL: " + a.get("title", "?")[:60]
         except Exception as exc:  # noqa: BLE001
             summary = f"PARSE-ERROR ({exc})"
+            zone_failed = True
     else:
-        failed = True
+        zone_failed = True
         summary = f"NO JSON (exit {r.returncode}) :: " + (r.stderr or out)[-200:]
+    return (tz, summary, zone_failed)
 
-    results[tz] = summary
-    print(f"  TZ={tz:22s} {summary}")
+is_ci = os.environ.get("CI") is not None
+max_concurrency = 1 if is_ci else 2
+
+print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
+with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
+    for tz, summary, zone_failed in pool.map(check_zone, ZONES):
+        results[tz] = summary
+        if zone_failed:
+            failed = True
+        print(f"  TZ={tz:22s} {summary}")
+
+
 
 print()
 distinct = set(results.values())

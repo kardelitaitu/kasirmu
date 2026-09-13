@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import { ReactLocalization, LocalizationProvider } from '@fluent/react';
 import AuditLogScreen from '@/features/audit/AuditLogScreen';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import {
   ACTION_FLUENT_IDS,
   ACTION_FALLBACK_ID,
@@ -13,14 +14,17 @@ import {
 } from '@/features/audit/auditCatalog';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
+import subscriptionFtl from '@/locales/subscription.ftl?raw';
 import type { AuditEntryDto, AuditLogPageDto } from '@/api/audit';
+import type * as SubscriptionContextModule from '@/contexts/SubscriptionContext';
 
-const { mockListAuditLogScoped, mockGetAuditReviewStatusScoped, mockMarkAuditReviewedScoped, mockExportAuditLogScoped } =
+const { mockListAuditLogScoped, mockGetAuditReviewStatusScoped, mockMarkAuditReviewedScoped, mockExportAuditLogScoped, mockExportSecurityEventsScoped } =
   vi.hoisted(() => ({
     mockListAuditLogScoped: vi.fn(),
     mockGetAuditReviewStatusScoped: vi.fn(),
     mockMarkAuditReviewedScoped: vi.fn(),
     mockExportAuditLogScoped: vi.fn(),
+    mockExportSecurityEventsScoped: vi.fn(),
   }));
 
 vi.mock('@/api/audit', () => ({
@@ -29,11 +33,27 @@ vi.mock('@/api/audit', () => ({
   getAuditReviewStatusScoped: (token: string) => mockGetAuditReviewStatusScoped(token),
   markAuditReviewedScoped: (token: string, args: unknown) => mockMarkAuditReviewedScoped(token, args),
   exportAuditLogScoped: (token: string, args: unknown) => mockExportAuditLogScoped(token, args),
+  exportSecurityEventsScoped: (token: string, args: unknown) => mockExportSecurityEventsScoped(token, args),
 }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok' }),
 }));
+
+// Forwarding partial mock: `useAdminGate` defaults to OPEN for the regular
+// screen tests (the §B gate test overrides it per-test), `useSubscription`
+// forwards to the real hook.
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof SubscriptionContextModule>();
+  const adminGateMock = vi.fn().mockReturnValue({ locked: false, state: 'active' });
+  return {
+    ...actual,
+    useAdminGate: adminGateMock,
+    useSubscription: vi.fn((...args: unknown[]) =>
+      (actual.useSubscription as (...a: unknown[]) => unknown)(...args),
+    ),
+  };
+});
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -54,6 +74,23 @@ function makeL10n(locale: string, ftl: string): ReactLocalization {
   bundle.addResource(new FluentResource(ftl));
   return new ReactLocalization([bundle]);
 }
+
+const adminGate = vi.mocked(useAdminGate);
+
+describe('AuditLogScreen §B administrative gate', () => {
+  afterEach(() => {
+    adminGate.mockReturnValue({ locked: false, state: 'active' });
+  });
+
+  it('locks the screen while the subscription is not active (grace)', async () => {
+    adminGate.mockReturnValue({ locked: true, state: 'grace' });
+    renderScreen(makeL10n('en-US', `${subscriptionFtl}\n${sharedFtl}`));
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Audit Log')).not.toBeInTheDocument();
+  });
+});
 
 const l10n = makeL10n('en-US', sharedFtl);
 
@@ -613,6 +650,68 @@ describe('AuditLogScreen', () => {
     );
     // The table is still rendered — the notice did not replace the content.
     expect(document.querySelector('.audit-log-table')).toBeDefined();
+  });
+
+  // ── Security-event export (ruling D61-7 / D84) ─────────────────
+
+  it('shows the security-export control under the same gate as the AUD-09 export button', async () => {
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeDefined());
+    // Same `isManager &&` JSX gate, same visibility window: the security
+    // control exists exactly when the AUD-09 export button exists.
+    expect(screen.getByText('Export security CSV')).toBeDefined();
+    expect(screen.getByLabelText('Actor (user ID)')).toBeDefined();
+    expect(screen.getByLabelText('From (inclusive)')).toBeDefined();
+    expect(screen.getByLabelText('To (exclusive)')).toBeDefined();
+  });
+
+  it('sends the exact actor and date bounds to the security export and downloads the CSV', async () => {
+    mockExportSecurityEventsScoped.mockResolvedValue({
+      csv: '\uFEFFid,created_at\n',
+      row_count: 0,
+      generated_at: '2026-09-10T00:00:00.000Z',
+      requested_by: 'user-1',
+    });
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Export security CSV')).toBeDefined());
+
+    // D84 ruling 2: the actor input is free text holding an exact user_id
+    // (or "system"); date inputs are YYYY-MM-DD, normalized at the IPC layer.
+    fireEvent.change(screen.getByLabelText('Actor (user ID)'), { target: { value: 'system' } });
+    fireEvent.change(screen.getByLabelText('From (inclusive)'), { target: { value: '2026-09-01' } });
+    fireEvent.change(screen.getByLabelText('To (exclusive)'), { target: { value: '2026-09-10' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Export security CSV' }));
+
+    await waitFor(() => {
+      expect(mockExportSecurityEventsScoped).toHaveBeenCalledWith(
+        'tok',
+        { actor: 'system', dateFrom: '2026-09-01', dateTo: '2026-09-10' },
+      );
+    });
+    expect(createUrl).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeUrl).toHaveBeenCalled();
+
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+    clickSpy.mockRestore();
+  });
+
+  it('shows the localized security-export error notice (D61-7)', async () => {
+    mockExportSecurityEventsScoped.mockRejectedValue(new Error('security export boom'));
+    mockListAuditLogScoped.mockResolvedValue(makePage([makeEntry()]));
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText('Export security CSV')).toBeDefined());
+    await userEvent.click(screen.getByRole('button', { name: 'Export security CSV' }));
+    await waitFor(() =>
+      expect(screen.getByText('Security event export failed. Please try again.')).toBeDefined(),
+    );
   });
 
   // ── Action/outcome catalog parity (AUD-08) ──────────────────────

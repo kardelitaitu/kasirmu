@@ -1,5 +1,7 @@
 # E2E Test Suite
 
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · The CI Pipeline section described the e2e job in .github/workflows/ci.yml in present tense. ci.yml is retired (ci.yml.bak, by 23c96330 on 09-02), e2e-pr.yml likewise, and neither live workflow contains an e2e job: dev-ci.yml's jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy and release.yml's are release-validate, release-build, release-publish. AGENTS.md already states the consequence - E2E, a11y, security and nightly are not enforced in CI - so the README contradicted a rule the repo itself documents, and the practical effect is that a red E2E suite produces no artifact and no failure signal anywhere in CI. Steps kept verbatim as the shape of a run with the local equivalent named (npm run e2e from ui/, plus scripts/check.sh), and step 5 relabelled CI-only because a local run writes traces to the Playwright output dir rather than uploading with 7-day retention. · Everything else on the page re-confirmed: workers 4 local / 2 CI matches e2e/playwright.config.ts, storageState per-worker auth caching is real in fixtures.ts, and the spec-file table's filenames exist under ui/e2e/. · Found while sweeping every live doc for claims about CI jobs that do not exist, after CONTRIBUTING.md (bd7fddae3) turned out to contain one my own 08-09-26 audit had stamped as accurate. Same sweep also produced one near-miss I did NOT report: signpath-onboarding.md:211 points at a release-build job, and release-build is genuinely live in release.yml - checking job membership against the file, not against a remembered list, is the only reason that one stayed out of the fix list. -->
+
 Playwright-based end-to-end tests for OZ-POS. Tests run against the Vite
 dev server with mocked Tauri IPC (`dev-mock/tauri-api.ts`) — no Rust backend
 required.
@@ -75,14 +77,30 @@ Each test file is fully isolated:
 - `storageState` in `fixtures.ts` provides per-worker auth caching
 - `workers: 4` (local) or `workers: 2` (CI) runs tests in parallel
 
-### CI Pipeline
+### CI Pipeline — retired; nothing runs E2E in CI
 
-The `e2e` job in `.github/workflows/ci.yml`:
+> ⚠️ **This describes a pipeline that no longer executes.** The `e2e` job lived in
+> `.github/workflows/ci.yml`, which `23c96330` retired to `ci.yml.bak` on 09-02; `e2e-pr.yml`
+> went the same way. GitHub never reads a `.bak` file, and neither live workflow defines an
+> `e2e` job — `dev-ci.yml`'s jobs are `changes`, `website`, `cargo-check`, `cargo-nextest`, <!-- ci-claim: ok: this line enumerates the live jobs to prove e2e is absent -->
+> `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`;
+> `release.yml`'s are `release-validate`, `release-build`, `release-publish`. `AGENTS.md` says
+> so directly: "E2E, a11y, security and nightly suites are NOT enforced in CI — a green Dev CI
+> run is not proof those passed." The steps below are kept because they are still the shape of a
+> run, and `npm run e2e` reproduces 1–5 locally.
+
+What a run does (locally today; in CI before 09-02):
 1. Installs Playwright browsers (Chromium)
 2. Starts Docker E2E backend (cloud-server + license-server)
 3. Starts Vite dev server
 4. Runs `npx playwright test --config e2e/playwright.config.ts --project=desktop`
-5. Uploads traces on failure (7-day retention)
+5. Uploads traces on failure (7-day retention) — CI-only; locally traces land in the Playwright
+   output directory instead, so the retention line does not apply to a local run.
+
+Because step 5 is the only artifact and no CI run produces it, **a red E2E suite is invisible to
+CI today**: the guard is `npm run e2e` from `ui/`, plus `scripts/check.sh` for the full matrix.
+Note also that the local run is stale-image-guarded — `run-e2e.mjs` exits 3 rather than running
+against an outdated image; see `AGENTS.md`.
 
 ## Spec Files
 
@@ -141,3 +159,5 @@ and runs only the Playwright tests against the Vite dev server.
    fails.
 5. **Clean up after yourself** — dismiss modals, close drawers, reset forms
    so subsequent tests in the same worker start clean.
+
+> last audited 09-09-26 by docs-auditor

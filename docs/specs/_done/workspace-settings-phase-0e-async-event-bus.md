@@ -79,4 +79,6 @@ Simplest change. No API changes to `EventBus`. The handler itself is responsible
 - `platform/core/src/settings.rs`
 - ADR #2 (`docs/decisions/2026-02-01-event-bus-design.md`)
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

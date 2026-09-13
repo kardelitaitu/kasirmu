@@ -114,6 +114,42 @@ pub(crate) struct SnapshotTaxRate {
     created_at: Option<String>,
     /// ISO-8601 last-update timestamp.
     updated_at: Option<String>,
+    /// Scope: the legal entity, or `None` when this row is not entity-scoped.
+    /// Mirrors `platform_sync::transport::SnapshotTaxRate` — the two structs
+    /// are the two ends of one contract and must stay column-for-column.
+    ///
+    /// `#[serde(default)]` is the back-compat ruling, stated once and pinned by
+    /// a test: a payload carrying NONE of the four scope/window keys lands as
+    /// the tenant-global legacy row, which is exactly what every row written
+    /// before 20260921 is. Absence here is not "unknown scope" and not an
+    /// error — it is the pre-scoping shape.
+    #[serde(default)]
+    legal_entity_id: Option<String>,
+    /// Scope: the location, or `None` when this row is not location-scoped.
+    /// With the entity column this is one-or-the-other-or-neither;
+    /// [`crate::db::tax::TaxRateScope`] is the type that cannot hold both.
+    #[serde(default)]
+    location_id: Option<String>,
+    /// Validity window start, business date `YYYY-MM-DD`; `None` = no lower
+    /// bound.
+    #[serde(default)]
+    effective_from: Option<String>,
+    /// Validity window end, business date `YYYY-MM-DD`, EXCLUSIVE; `None` =
+    /// does not expire. Carried verbatim rather than re-derived, so the
+    /// boundary-day rule stays a single decision made in
+    /// `crate::db::tax` and not one per transport.
+    #[serde(default)]
+    effective_to: Option<String>,
+    /// E1 statutory rounding directive stored on the rate (`''` =
+    /// no directive, the store preference applies; else a `RoundingMode`
+    /// serde snake_case name). D64 binding condition (a): this field exists
+    /// so a hub-authored mode reaches branches instead of landing `''`
+    /// silently. Same back-compat ruling as the scope fields: payloads
+    /// written before 20260929 carry no key, and absence IS the empty
+    /// sentinel — every pre-E1 row. The branch-side reader refuses a value
+    /// outside the statutory alphabet (see `upsert_tax_rates`).
+    #[serde(default)]
+    rounding_mode: String,
 }
 
 /// Placeholder written into `users.pin_hash` for snapshot-imported users.
@@ -302,25 +338,89 @@ fn upsert_products(
     Ok(count)
 }
 
+/// Whether a snapshot tax rate's scope can be honoured in THIS database.
+///
+/// `true` means the row may be written. Three cases return `false`:
+///
+/// * the row is scoped to an entity or location that does not exist locally —
+///   writing it would fail the FK, and NULLing the scope out instead is the
+///   exact bug this function exists to prevent: a rate meant for one location
+///   silently becoming the tenant-global answer for every location;
+/// * the row is scoped to BOTH (ambiguous — no tier may claim it, so the
+///   branch refuses it rather than guessing, matching
+///   [`crate::db::tax::TaxRateScope::classify`]).
+///
+/// Skipping is safe in a way flattening is not: the resolver's answer for "no
+/// scoped row matches" is the tenant-global row, which is the same answer the
+/// branch had before the pull. Nothing is priced with a rate meant for
+/// somewhere else.
+fn snapshot_tax_rate_scope_is_applicable(
+    tx: &rusqlite::Transaction<'_>,
+    rate: &SnapshotTaxRate,
+) -> Result<bool, CoreError> {
+    let exists = |sql: &str, id: &str| -> Result<bool, CoreError> {
+        match tx.query_row(sql, rusqlite::params![id], |_| Ok(())) {
+            Ok(()) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    };
+    match (rate.legal_entity_id.as_deref(), rate.location_id.as_deref()) {
+        (None, None) => Ok(true),
+        (Some(_), Some(_)) => Ok(false),
+        (Some(entity), None) => exists("SELECT 1 FROM legal_entities WHERE id = ?1", entity),
+        (None, Some(location)) => exists("SELECT 1 FROM locations WHERE id = ?1", location),
+    }
+}
+
 fn upsert_tax_rates(
     tx: &rusqlite::Transaction<'_>,
     rows: &[SnapshotTaxRate],
 ) -> Result<usize, CoreError> {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let mut count = 0usize;
+    let mut skipped: Vec<String> = Vec::new();
+    let mut skipped_rounding: Vec<(String, String)> = Vec::new();
     let mut stmt = tx.prepare(
         "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive,
-                                created_at, updated_at)
+                                created_at, updated_at,
+                                legal_entity_id, location_id,
+                                effective_from, effective_to,
+                                rounding_mode)
          VALUES (?1, ?2, ?3, ?4, ?5,
-                 COALESCE(?6, ?8), COALESCE(?7, ?8))
+                 COALESCE(?6, ?8), COALESCE(?7, ?8),
+                 ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(id) DO UPDATE SET
-             name         = excluded.name,
-             rate_bps     = excluded.rate_bps,
-             is_default   = excluded.is_default,
-             is_inclusive = excluded.is_inclusive,
-             updated_at   = COALESCE(excluded.updated_at, ?8)",
+             name            = excluded.name,
+             rate_bps        = excluded.rate_bps,
+             is_default      = excluded.is_default,
+             is_inclusive    = excluded.is_inclusive,
+             updated_at      = COALESCE(excluded.updated_at, ?8),
+             legal_entity_id = excluded.legal_entity_id,
+             location_id     = excluded.location_id,
+             effective_from  = excluded.effective_from,
+             effective_to    = excluded.effective_to,
+             rounding_mode   = excluded.rounding_mode",
     )?;
     for r in rows {
+        if !snapshot_tax_rate_scope_is_applicable(tx, r)? {
+            skipped.push(r.id.clone());
+            continue;
+        }
+        // E1: a directive outside the statutory alphabet would fail the
+        // schema CHECK mid-pull; skipping keeps the rest of the snapshot
+        // importing and is logged below. Flattening to '' is what is NOT
+        // allowed — that would round a statutory rate with the preference.
+        if !matches!(r.rounding_mode.as_str(), "" | "half_up" | "truncate") {
+            skipped_rounding.push((r.id.clone(), r.rounding_mode.clone()));
+            continue;
+        }
+        // The four scope/window columns are assigned UNCONDITIONALLY on
+        // conflict, deliberately NOT COALESCE(excluded.x, tax_rates.x). The
+        // server is the authoritative copy here (that is the whole premise of
+        // a pull), so a scope REMOVED at the hub must clear at the branch;
+        // COALESCE would keep a stale scope alive forever and the branch would
+        // keep applying a location rate it was told to stop scoping.
         stmt.execute(rusqlite::params![
             r.id,
             r.name,
@@ -330,12 +430,35 @@ fn upsert_tax_rates(
             r.created_at,
             r.updated_at,
             now,
+            r.legal_entity_id,
+            r.location_id,
+            r.effective_from,
+            r.effective_to,
+            r.rounding_mode,
         ])?;
         count += 1;
     }
     stmt.finalize()?;
+    if !skipped.is_empty() {
+        tracing::warn!(
+            tax_rate_ids = ?skipped,
+            count = skipped.len(),
+            "snapshot tax rates skipped: their scope target is absent locally, or the              row is scoped to both an entity and a location. Flattening the scope would              make a rate meant for one location answer for every location, so the row is              refused instead and the tenant-global rate keeps applying."
+        );
+    }
+    if !skipped_rounding.is_empty() {
+        tracing::warn!(
+            skipped = ?skipped_rounding,
+            count = skipped_rounding.len(),
+            "snapshot tax rates skipped: rounding_mode outside the statutory              alphabet ('', 'half_up', 'truncate'). Flattening it to '' would round a              statutory rate with the store preference, so the row is refused and the              local copy, if any, keeps its current value."
+        );
+    }
     Ok(count)
 }
+
+#[cfg(test)]
+#[path = "sync_pull_tests.rs"]
+mod tests;
 
 fn upsert_users(tx: &rusqlite::Transaction<'_>, rows: &[SnapshotUser]) -> Result<usize, CoreError> {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

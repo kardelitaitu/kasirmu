@@ -5,7 +5,7 @@ import {
   useTopologyEditorDrag,
   initialTopologyDragState,
   type TopologyDragState,
-} from '@/features/stores/nodeTopologyEditorDragState';
+} from '@/features/locations/nodeTopologyEditorDragState';
 
 describe('topologyDragReducer', () => {
   it('starts with an empty drag set (no drag in flight)', () => {

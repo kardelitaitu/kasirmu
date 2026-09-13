@@ -5,19 +5,17 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  * E2E: Admin Workflows — Settings Sidebar Screens
  *
  * Tests the settings sidebar screens accessible from the Admin workspace.
- * The sidebar has three collapsible categories:
- *   Business:  General, Appearance
- *   Operations: Receipt, Cloud Sync, Email, Store POS, Restaurant POS, Inventory
- *   System:    About, License, Topology
+ * The sidebar is a flat nav list (the category accordion was removed):
+ *   General, Appearance, Receipt, Cloud Sync, Email, Store POS,
+ *   Restaurant POS, Inventory, About, License, Diagnostics, Topology, Local API
  *
  * CSS contract per screen:
  *   License:  .settings-section-title (contains "License")
  *   About:    .settings-section-title (contains "System")
  *   Topology: .node-topology-editor (tested in adr22-workspace-settings.spec.ts)
  *
- * Navigation: sidebar categories are collapsible accordions. The
- * System category (About, License, Topology) is collapsed by default.
- * We expand it first via `.settings-sidebar-section-header` with text "System".
+ * Navigation: every nav item is always visible — click `.settings-nav-item`
+ * with its label directly, no category expansion step.
  */
 
 const SIDEBAR_TIMEOUT = 10_000;
@@ -35,26 +33,7 @@ async function navigateToSettings(page: Page) {
   await page.waitForSelector('[data-testid="settings-sidebar"]', { timeout: SIDEBAR_TIMEOUT });
 }
 
-async function expandCategory(page: Page, categoryName: string) {
-  // Expand a collapsed sidebar category by its header text.
-  const header = page.locator('.settings-sidebar-section-header')
-    .filter({ hasText: categoryName });
-  const isExpanded = await header
-    .getAttribute('aria-expanded')
-    .then((v) => v === 'true')
-    .catch(() => false);
-  if (!isExpanded) {
-    await header.click();
-    await page.waitForTimeout(300);
-  }
-}
-
-async function clickSidebarNav(page: Page, sectionName: string, category?: string) {
-  // Expand the parent category first if specified.
-  if (category) {
-    await expandCategory(page, category);
-  }
-
+async function clickSidebarNav(page: Page, sectionName: string) {
   const nav = page.locator('.settings-nav-item').filter({ hasText: sectionName });
   await expect(nav).toBeVisible({ timeout: 5_000 });
   await nav.click();
@@ -68,23 +47,19 @@ test.describe('Admin Settings Screens', () => {
     await navigateToSettings(page);
   });
 
-  // ── Settings sidebar renders with categories ──────────────
+  // ── Settings sidebar renders the flat nav list ────────────
 
-  test('settings sidebar has multiple nav items and categories', async ({ page }) => {
+  test('settings sidebar has multiple nav items', async ({ page }) => {
     const navItems = page.locator('.settings-nav-item');
     const count = await navItems.count();
-    // Must have at least 5 items (General, Appearance, Receipt, Cloud Sync, About, License, etc.).
-    expect(count).toBeGreaterThanOrEqual(5);
-
-    // Must have at least 2 category headers (Business, Operations, System).
-    const categoryHeaders = page.locator('.settings-sidebar-section-header');
-    expect(await categoryHeaders.count()).toBeGreaterThanOrEqual(2);
+    // All 13 flat items render without any category expansion step.
+    expect(count).toBeGreaterThanOrEqual(13);
   });
 
-  // ── License (System category) ─────────────────────────────
+  // ── License ───────────────────────────────────────────────
 
   test('License section renders after loading', async ({ page }) => {
-    await clickSidebarNav(page, 'License', 'System');
+    await clickSidebarNav(page, 'License');
 
     // License section heading must be visible (post-load, not skeleton).
     const licenseHeading = page.locator('.settings-section-header-title, .settings-section-title').filter({ hasText: 'License' });
@@ -94,40 +69,40 @@ test.describe('Admin Settings Screens', () => {
     await expect(page.locator('.settings-section-header-title, .settings-section-title').first()).toBeVisible();
   });
 
-  // ── About (System category) ───────────────────────────────
+  // ── About ─────────────────────────────────────────────────
 
   test('About section renders version info', async ({ page }) => {
-    await clickSidebarNav(page, 'About', 'System');
+    await clickSidebarNav(page, 'About');
 
     // About section heading must be visible ("System & License Ownership").
     const aboutHeading = page.locator('.settings-section-header-title, .settings-section-title').filter({ hasText: 'System' });
     await expect(aboutHeading.first()).toBeVisible({ timeout: SCREEN_TIMEOUT });
   });
 
-  // ── General (Business category) ───────────────────────────
+  // ── General ───────────────────────────────────────────────
 
   test('General section renders store settings', async ({ page }) => {
-    await clickSidebarNav(page, 'General', 'Business');
+    await clickSidebarNav(page, 'General');
 
     // General section must render with a heading.
     const heading = page.locator('.settings-section-header-title, .settings-section-title').filter({ hasText: 'General' });
     await expect(heading.first()).toBeVisible({ timeout: SCREEN_TIMEOUT });
   });
 
-  // ── Appearance (Business category) ────────────────────────
+  // ── Appearance ────────────────────────────────────────────
 
   test('Appearance section renders display settings', async ({ page }) => {
-    await clickSidebarNav(page, 'Appearance', 'Business');
+    await clickSidebarNav(page, 'Appearance');
 
     // Appearance section must render.
     const appearanceHeading = page.locator('.settings-section-header-title, .settings-section-title').filter({ hasText: 'Appearance' });
     await expect(appearanceHeading.first()).toBeVisible({ timeout: SCREEN_TIMEOUT });
   });
 
-  // ── Receipt (Operations category) ─────────────────────────
+  // ── Receipt ───────────────────────────────────────────────
 
   test('Receipt section renders receipt settings', async ({ page }) => {
-    await clickSidebarNav(page, 'Receipt', 'Operations');
+    await clickSidebarNav(page, 'Receipt');
 
     // Receipt section heading must be visible.
     const receiptHeading = page.locator('.settings-section-header-title, .settings-section-title').filter({ hasText: 'Receipt' });

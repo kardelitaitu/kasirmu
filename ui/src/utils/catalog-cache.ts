@@ -1,4 +1,4 @@
-import { listProductsScoped, listCategories, type ProductDto, type CategoryDto } from '@/api/products';
+import { listProductsScoped, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
 
 /**
  * PERF-08 — Scoped catalog cache.
@@ -39,7 +39,11 @@ export function loadCatalog(token: string): Promise<CatalogSnapshot> {
   const pending = inflight.get(token);
   if (pending) return pending;
 
-  const promise = Promise.all([listProductsScoped(token), listCategories()]).then(
+  // Both reads must be scoped. `token` is a required parameter, so unlike the ADR #7 screens there
+  // is no no-token branch to fall back to: the ambient listCategories() was simply wrong, and
+  // because desktop-client registers no list_categories command the whole cache rejected on
+  // desktop. Products already used the scoped twin in this same expression.
+  const promise = Promise.all([listProductsScoped(token), listCategoriesScoped(token)]).then(
     ([products, categories]) => {
       const snapshot: CatalogSnapshot = { products, categories };
       cache.set(token, snapshot);

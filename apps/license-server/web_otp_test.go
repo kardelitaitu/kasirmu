@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -966,8 +967,10 @@ func TestOTPStore_SweepRemovesExpired(t *testing.T) {
 
 func TestWindowLimiter_AllowsThenBlocks(t *testing.T) {
 	wl := &windowLimiter{entries: make(map[string]*windowEntry), limit: 2, window: time.Minute}
-	if !wl.allow("k") || !wl.allow("k") {
-		t.Error("first two should be allowed")
+	first := wl.allow("k")
+	second := wl.allow("k")
+	if !first || !second {
+		t.Errorf("first two should be allowed, got %v then %v", first, second)
 	}
 	if wl.allow("k") {
 		t.Error("third should be blocked")
@@ -1048,5 +1051,276 @@ func TestBuildOtpEmail_RFC5322LineEndings(t *testing.T) {
 				t.Errorf("header at line %d missing \r before \n (RFC 5322 requires CRLF)", i)
 			}
 		}
+	}
+}
+
+// ── admin identity reservation (self-signup squat guard) ────────────
+
+// TestRequestOTP_ReservedAdminEmailCreatesNoRow drives the createTenant
+// guard through request-otp with OZ_ADMIN_EMAIL unset: the compiled
+// default admin address keeps its enumeration-free 200 {"status":"ok"}
+// shape, but no tenants row is self-signed and no code is sent or stored.
+func TestRequestOTP_ReservedAdminEmailCreatesNoRow(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	// Deliberately unset: the resolved admin identity IS the compiled
+	// default, which is exactly the address an unguarded deploy lets an
+	// attacker squat with their own credentials.
+	t.Setenv("OZ_ADMIN_EMAIL", "")
+
+	var sentCode string
+	restore := stubOTPEmail(t, &sentCode)
+	defer restore()
+
+	rec := webRequest(t, se, http.MethodPost, "/api/v1/web/request-otp",
+		`{"email":"`+defaultAdminEmail+`"}`, "http://localhost:4321", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected the enumeration-free 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("bad response JSON: %v", err)
+	}
+	if resp.Status != "ok" || resp.Error != "" {
+		t.Errorf("expected {\"status\":\"ok\"} with no error, got %s", rec.Body.String())
+	}
+	if sentCode != "" {
+		t.Errorf("no code may be sent for the reserved admin address, got %q", sentCode)
+	}
+	if tenant, _ := app.FindFirstRecordByData("tenants", "email", defaultAdminEmail); tenant != nil {
+		t.Error("no tenants row may be created for the reserved admin address")
+	}
+	webOtpStore.mu.Lock()
+	_, stored := webOtpStore.codes[defaultAdminEmail]
+	webOtpStore.mu.Unlock()
+	if stored {
+		t.Error("no pending code may be stored for the reserved admin address")
+	}
+}
+
+// TestRequestOTP_ReservedAdminVariantsRefused proves the guard compares
+// lowercase to lowercase through the same normalization the callers feed:
+// case and whitespace variants of the reserved address must not walk past
+// it while still matching the EqualFold admin gate.
+func TestRequestOTP_ReservedAdminVariantsRefused(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_EMAIL", "")
+
+	var sentCode string
+	restore := stubOTPEmail(t, &sentCode)
+	defer restore()
+
+	// Exactly the per-email request-otp budget: every variant normalizes
+	// onto the same reserved address, so a 4th would rate-limit instead
+	// of exercising the guard.
+	variants := []string{
+		strings.ToUpper(defaultAdminEmail), // upper-case
+		"  " + defaultAdminEmail + "  ",    // surrounding whitespace
+		"AdiKaradWiatmaJa@Gmail.Com",       // mixed case (mirrors defaultAdminEmail)
+	}
+	for _, v := range variants {
+		rec := webRequest(t, se, http.MethodPost, "/api/v1/web/request-otp",
+			`{"email":"`+v+`"}`, "http://localhost:4321", "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("variant %q: expected the enumeration-free 200, got %d: %s", v, rec.Code, rec.Body.String())
+		}
+		if sentCode != "" {
+			t.Errorf("variant %q: no code may be sent for the reserved admin address, got %q", v, sentCode)
+			sentCode = ""
+		}
+		if tenant, _ := app.FindFirstRecordByData("tenants", "email", defaultAdminEmail); tenant != nil {
+			t.Errorf("variant %q: no tenants row may be created for the reserved admin address", v)
+		}
+	}
+}
+
+// TestRequestOTP_ReservedSetUnionsEnvOverrideWithDefault proves the
+// reserved set is the UNION of the resolved admin target and the compiled
+// defaultAdminEmail: with OZ_ADMIN_EMAIL pointed elsewhere, BOTH stay
+// reserved (order independence with the deploy wave that flips the env
+// on), while a non-reserved address still self-signs — the guard is
+// reserved-set-scoped, not a blanket removal of register-or-login.
+func TestRequestOTP_ReservedSetUnionsEnvOverrideWithDefault(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_EMAIL", "deployowner@example.com")
+
+	var sentCode string
+	restore := stubOTPEmail(t, &sentCode)
+	defer restore()
+
+	for _, reserved := range []string{"deployowner@example.com", defaultAdminEmail} {
+		rec := webRequest(t, se, http.MethodPost, "/api/v1/web/request-otp",
+			`{"email":"`+reserved+`"}`, "http://localhost:4321", "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("reserved %q: expected 200, got %d: %s", reserved, rec.Code, rec.Body.String())
+		}
+		if sentCode != "" {
+			t.Errorf("reserved %q: no code may be sent, got %q", reserved, sentCode)
+			sentCode = ""
+		}
+		if tenant, _ := app.FindFirstRecordByData("tenants", "email", reserved); tenant != nil {
+			t.Errorf("reserved %q: no tenants row may be created", reserved)
+		}
+	}
+
+	// A plain address keeps the register-or-login behaviour the login
+	// page's OTP tab depends on (AuthForm.tsx register-first).
+	rec := webRequest(t, se, http.MethodPost, "/api/v1/web/request-otp",
+		`{"email":"plainselfsignup@example.com"}`, "http://localhost:4321", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("non-reserved address: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if sentCode == "" || len(sentCode) != 6 {
+		t.Fatalf("non-reserved address: expected a 6-digit code, got %q", sentCode)
+	}
+	tenant, err := app.FindFirstRecordByData("tenants", "email", "plainselfsignup@example.com")
+	if err != nil || tenant == nil {
+		t.Fatalf("non-reserved address: expected a tenant to be created: %v", err)
+	}
+	if tenant.GetString("status") != "active" || tenant.GetBool("email_verified") {
+		t.Errorf("expected an active unverified tenant, got status=%q verified=%v",
+			tenant.GetString("status"), tenant.GetBool("email_verified"))
+	}
+}
+
+// TestCreateTenant_RefusesReservedAdminEmail is the chokepoint unit test:
+// createTenant itself must refuse the reserved set (normalized) and must
+// still create plain addresses — the guard is not a blanket removal.
+func TestCreateTenant_RefusesReservedAdminEmail(t *testing.T) {
+	resetRateLimiters()
+	app, _ := setupDirectApp(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_EMAIL", "")
+
+	rec, err := createTenant(app, defaultAdminEmail, "")
+	if err == nil || !errors.Is(err, errReservedAdminEmail) {
+		t.Fatalf("expected errReservedAdminEmail for the default admin address, got %v", err)
+	}
+	if rec != nil {
+		t.Errorf("no record may be returned for a refused create, got id=%s", rec.Id)
+	}
+	// Mixed case must normalize onto the reserved set, not slip past.
+	if _, err := createTenant(app, strings.ToUpper(defaultAdminEmail), ""); !errors.Is(err, errReservedAdminEmail) {
+		t.Fatalf("expected errReservedAdminEmail for a case variant, got %v", err)
+	}
+	if tenant, _ := app.FindFirstRecordByData("tenants", "email", defaultAdminEmail); tenant != nil {
+		t.Error("no tenants row may be created for the reserved admin address")
+	}
+
+	// A plain address still creates an ACTIVE, unverified tenant — the
+	// same shape the self-signup flow has always produced.
+	got, err := createTenant(app, "chokepointplain@example.com", "")
+	if err != nil {
+		t.Fatalf("expected a plain address to still create, got %v", err)
+	}
+	if got.GetString("status") != "active" || got.GetBool("email_verified") {
+		t.Errorf("expected an active unverified tenant, got status=%q verified=%v",
+			got.GetString("status"), got.GetBool("email_verified"))
+	}
+}
+
+// TestCreateTenant_RaceReturnsExistingRowWithoutError pins the unique-email
+// race path the guard must never disturb: when a row already exists (the
+// Save loses the race), createTenant returns that existing row with a nil
+// error — no 500, and no refusal for a non-reserved address.
+func TestCreateTenant_RaceReturnsExistingRowWithoutError(t *testing.T) {
+	resetRateLimiters()
+	app, _ := setupDirectApp(t)
+	defer app.Cleanup()
+
+	// The Go-built test fixture omits the production unique email index
+	// (pb_schema.json carries idx_tenants_email; createTestCollections
+	// deliberately keeps the fixture minimal), so attach it here — the
+	// race branch only exists because that index rejects the second save.
+	col, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		t.Fatalf("tenants collection not found: %v", err)
+	}
+	col.Indexes = append(col.Indexes, "CREATE UNIQUE INDEX idx_tenants_email ON tenants (email)")
+	if err := app.Save(col); err != nil {
+		t.Fatalf("failed to attach the production email index: %v", err)
+	}
+
+	seedTenant(t, app, "racetenant00001", "racekey0000001", "active")
+	existing, err := app.FindFirstRecordByData("tenants", "email", "racetenant00001@example.com")
+	if err != nil || existing == nil {
+		t.Fatalf("seeded tenant not found: %v", err)
+	}
+
+	got, err := createTenant(app, "racetenant00001@example.com", "not-a-real-hash")
+	if err != nil {
+		t.Fatalf("race path must return the existing row without error, got %v", err)
+	}
+	if got == nil || got.Id != existing.Id {
+		t.Fatalf("expected the existing row id=%s, got id=%s", existing.Id, got.Id)
+	}
+	// Exactly one row for the address: the race returned the seed, it did
+	// not mint a duplicate and it did not 500.
+	dupes, _ := app.FindRecordsByFilter("tenants", "email = {:email}", "", 0, 0,
+		map[string]any{"email": "racetenant00001@example.com"})
+	if len(dupes) != 1 {
+		t.Errorf("expected exactly 1 row after the race, got %d", len(dupes))
+	}
+}
+
+// TestRequestOTP_SendFailurePinsKnownHazard_ActiveUnverifiedRowSquatsEmail is a
+// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT (review finding parked as a
+// decision, not a deferred task): request-otp's register-or-login door
+// self-signs the tenant via createTenant with status="active" (web_otp.go)
+// BEFORE sendOTPEmail is attempted (create at :593, send at :626), so a
+// merchant whose mail relay is misconfigured gets a 500 yet the email is now
+// HELD by an ACTIVE, email_verified=false row nobody proved inbox ownership
+// for. Unlike /web/register this door sets no password, so the row cannot log
+// in — the hazard here is the active row squatting the identity while the
+// owner is told the code could not be delivered. The ordering repair (create
+// the tenant non-active, activate on verification) is a schema change —
+// tenants.status is a validated PocketBase select — plus a boot migration,
+// deliberately parked behind an operator decision. If this test fails because
+// the ordering changed, that is the intended loud outcome — update this pin
+// deliberately, not silently.
+func TestRequestOTP_SendFailurePinsKnownHazard_ActiveUnverifiedRowSquatsEmail(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+
+	// The SMTP gate passes (OZ_SMTP_HOST set) but the send itself fails.
+	t.Setenv("OZ_SMTP_HOST", "test.local")
+	orig := sendOTPEmail
+	sendOTPEmail = func(to, code string) error { return errors.New("smtp relay down (simulated)") }
+	defer func() { sendOTPEmail = orig }()
+
+	rec := webRequest(t, se, http.MethodPost, "/api/v1/web/request-otp",
+		`{"email":"otpfailpin@example.com"}`, "http://localhost:4321", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when the send fails, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert on the record read back, not the return value — the finding is
+	// precisely that the two disagree.
+	tenant, err := app.FindFirstRecordByData("tenants", "email", "otpfailpin@example.com")
+	if err != nil || tenant == nil {
+		t.Fatalf("hazard pin: tenant exists after a failed send: %v", err)
+	}
+	if tenant.GetString("status") != "active" {
+		t.Errorf("hazard pin: status = %q, want active (tenant created before the send)", tenant.GetString("status"))
+	}
+	if tenant.GetBool("email_verified") {
+		t.Error("hazard pin: email_verified should stay false — no inbox proof happened")
+	}
+
+	// The failed send must not leave a dead code behind (deleteCode path).
+	webOtpStore.mu.Lock()
+	_, codeStored := webOtpStore.codes["otpfailpin@example.com"]
+	webOtpStore.mu.Unlock()
+	if codeStored {
+		t.Error("hazard pin: a failed send must not leave a pending code")
 	}
 }

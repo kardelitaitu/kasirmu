@@ -5,12 +5,15 @@
 //! All commands have scoped variants (ADR #7) that use the session token
 //! pattern. Old commands are preserved with deprecation notices.
 
-use tauri::State;
+// Wave F: the bodies moved to oz_bridge::tables. The three read commands
+// stay GATE-FREE (no permission check by design — resolve_store alone);
+// the six write commands keep their TABLES_* gates in the bridge fn.
 
 use oz_core::Table;
+#[allow(unused_imports)] // sibling tables_tests.rs depends on it
 use oz_core::db::Store;
+use tauri::State;
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -23,14 +26,10 @@ pub async fn list_tables_scoped(
     section: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Table>, AppError> {
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let tables = store.list_tables(section.as_deref())?;
-    drop(db);
-    Ok(tables)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::list_tables_scoped(&ctx, &session_token, section)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get a table from the store resolved from a session token. ADR #7.
@@ -40,14 +39,10 @@ pub async fn get_table_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<Table>, AppError> {
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let table = store.get_table(&id)?;
-    drop(db);
-    Ok(table)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::get_table_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// List sections for the store resolved from a session token. ADR #7.
@@ -56,14 +51,10 @@ pub async fn list_sections_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let sections = store.list_sections()?;
-    drop(db);
-    Ok(sections)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::list_sections_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Write Commands ───────────────────────────────────────────────────
@@ -75,20 +66,10 @@ pub async fn create_table_scoped(
     table: Table,
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_CREATE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let result = store.create_table(&table)?;
-    drop(db);
-    Ok(result)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::create_table_scoped(&ctx, &session_token, table)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update a table in the store resolved from a session token. ADR #7.
@@ -98,20 +79,10 @@ pub async fn update_table_scoped(
     table: Table,
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_EDIT).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let result = store.update_table(&table)?;
-    drop(db);
-    Ok(result)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::update_table_scoped(&ctx, &session_token, table)
+        .await
+        .map_err(Into::into)
 }
 
 /// Delete a table in the store resolved from a session token. ADR #7.
@@ -121,20 +92,10 @@ pub async fn delete_table_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_DELETE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.delete_table(&id)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::delete_table_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update a table's status in the store resolved from a session token. ADR #7.
@@ -145,20 +106,10 @@ pub async fn update_table_status_scoped(
     status: String,
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_CLOSE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let table = store.update_table_status(&id, &status)?;
-    drop(db);
-    Ok(table)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::update_table_status_scoped(&ctx, &session_token, &id, &status)
+        .await
+        .map_err(Into::into)
 }
 
 /// Assign an order to a table in the store resolved from a session token. ADR #7.
@@ -169,20 +120,10 @@ pub async fn assign_table_order_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_ASSIGN).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let table = store.assign_table_order(&table_id, &sale_id)?;
-    drop(db);
-    Ok(table)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::assign_table_order_scoped(&ctx, &session_token, &table_id, &sale_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Release a table in the store resolved from a session token. ADR #7.
@@ -192,22 +133,8 @@ pub async fn release_table_scoped(
     table_id: String,
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::TABLES_CLOSE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let table = store.release_table(&table_id)?;
-    drop(db);
-    Ok(table)
+    let ctx = state.bridge_ctx();
+    oz_bridge::tables::release_table_scoped(&ctx, &session_token, &table_id)
+        .await
+        .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "tables_tests.rs"]
-mod tests;

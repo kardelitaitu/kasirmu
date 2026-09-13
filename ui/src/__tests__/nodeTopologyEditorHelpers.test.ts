@@ -9,7 +9,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import type { TopologyNodeData, TopologyWireData } from '../features/stores/NodeTopologyEditor';
+import type { TopologyNodeData, TopologyWireData } from '../features/locations/NodeTopologyEditor';
 import {
   computeAlignmentGuides,
   diagramOverflowsCanvas,
@@ -19,7 +19,7 @@ import {
   polylineD,
   prefersReducedMotion,
   validateEditorGraph,
-} from '../features/stores/NodeTopologyEditor';
+} from '../features/locations/topologyEditorHelpers';
 
 /* ── normalizeVisualPort ─────────────────────────────────────────── */
 

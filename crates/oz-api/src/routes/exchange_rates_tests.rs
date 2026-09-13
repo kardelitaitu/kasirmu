@@ -156,6 +156,30 @@ async fn latest_rate_path_is_case_insensitive() {
 }
 
 #[tokio::test]
+async fn latest_rate_created_lowercase_is_visible_to_uppercase_lookup() {
+    let s = state();
+    seed_currency(&s, "EUR", "978", "Euro").await;
+    // M1 regression: uppercase-normalization of the write site. Creating a
+    // rate with lowercase codes must NOT store raw lowercase, or the pair
+    // becomes invisible to the (uppercase) GET /latest lookup.
+    let _ = create_rate(
+        State(s.clone()),
+        empty_headers(),
+        admin_claims(),
+        Json(create("usd", "eur", 920_000, Some("2026-08-01"))),
+    )
+    .await
+    .into_response();
+    let resp = latest_rate(State(s.clone()), Path(("USD".into(), "EUR".into())))
+        .await
+        .into_response();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json["from_currency"], "USD");
+    assert_eq!(json["to_currency"], "EUR");
+}
+
+#[tokio::test]
 async fn latest_rate_unknown_pair_is_404() {
     // EUR→JPY: both valid ISO codes, but no seeded rate — the 404 path
     // (not the 400 validation path).

@@ -14,6 +14,8 @@ next: none | perf: N/A
 //! The public key is embedded at build time via `LICENSE_PUBLIC_KEY_PEM`.
 //! The server URL is `LICENSE_SERVER_URL` with env var override.
 
+use std::collections::HashMap;
+
 use base64::Engine;
 use rsa::RsaPublicKey;
 use rsa::pkcs1v15::VerifyingKey;
@@ -50,12 +52,23 @@ pub fn license_server_url() -> String {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LicensePingResult {
-    /// Whether the server responded successfully.
+    /// Whether the server answered with a 2xx. Deliberately unchanged by
+    /// the addition of [`Self::state`]: existing callers render a connected
+    /// pill from this field, and redefining it would silently recolour a
+    /// degraded server as healthy everywhere at once. `ok` answers "did the
+    /// HTTP call succeed"; `state` answers "is the service well". They
+    /// disagree exactly when the server is up and reporting a broken
+    /// subsystem, which is the case that used to be invisible.
     pub ok: bool,
     /// Status text (e.g. "Connected", "Connection refused", ...).
     pub status: String,
     /// Round-trip latency in milliseconds, if the ping succeeded.
     pub latency_ms: Option<u64>,
+    /// The health state, from the payload rather than the status code.
+    pub state: crate::service_health::HealthState,
+    /// What is wrong, when [`Self::state`] is not
+    /// [`HealthState::Operational`](crate::service_health::HealthState::Operational).
+    pub cause: Option<String>,
 }
 
 /// Ping the license server's `/api/health` endpoint to verify reachability.
@@ -65,6 +78,8 @@ pub struct LicensePingResult {
 /// connection pill uses it so it shows green as soon as the auth server is
 /// reachable, before any license is activated.
 pub async fn ping_license_server() -> LicensePingResult {
+    use crate::service_health::{HealthState, classify_license_health};
+
     let health_url = format!("{}/api/health", license_server_url().trim_end_matches('/'));
     let start = std::time::Instant::now();
     let client = reqwest::Client::builder()
@@ -73,31 +88,56 @@ pub async fn ping_license_server() -> LicensePingResult {
     match client {
         Ok(client) => match client.get(&health_url).send().await {
             Ok(resp) => {
+                // Measured before the body read, so latency stays a
+                // round-trip figure and not a download figure.
                 let latency = start.elapsed().as_millis() as u64;
-                if resp.status().is_success() {
-                    LicensePingResult {
-                        ok: true,
-                        status: format!("Connected ({latency}ms)"),
-                        latency_ms: Some(latency),
-                    }
-                } else {
-                    LicensePingResult {
-                        ok: false,
-                        status: format!("Server returned {}", resp.status()),
-                        latency_ms: Some(latency),
-                    }
+                let code = resp.status().as_u16();
+                let ok = resp.status().is_success();
+                // Read the body on a failure too. The server answers 503
+                // *with* its full health payload when its database is down,
+                // and that body is the only thing distinguishing "up but
+                // unhealthy" from "not there". Discarding it is what made
+                // the two render identically.
+                let parsed = resp
+                    .text()
+                    .await
+                    .ok()
+                    .and_then(|t| serde_json::from_str(&t).ok());
+                let (state, cause) = classify_license_health(code, parsed.as_ref());
+                let status = match state {
+                    HealthState::Operational => format!("Connected ({latency}ms)"),
+                    HealthState::Degraded => format!(
+                        "Degraded: {} ({latency}ms)",
+                        cause.clone().unwrap_or_else(|| "reported degraded".into())
+                    ),
+                    other => format!(
+                        "{}: {}",
+                        other.as_str(),
+                        cause.clone().unwrap_or_else(|| format!("HTTP {code}"))
+                    ),
+                };
+                LicensePingResult {
+                    ok,
+                    status,
+                    latency_ms: Some(latency),
+                    state,
+                    cause,
                 }
             }
             Err(e) => LicensePingResult {
                 ok: false,
                 status: format!("Connection failed: {e}"),
                 latency_ms: None,
+                state: HealthState::Unavailable,
+                cause: Some("connection failed".into()),
             },
         },
         Err(e) => LicensePingResult {
             ok: false,
             status: format!("HTTP client init failed: {e}"),
             latency_ms: None,
+            state: HealthState::Unavailable,
+            cause: Some("http client init failed".into()),
         },
     }
 }
@@ -230,9 +270,38 @@ pub struct LicenseStatusResponse {
     /// When the grace period ends (RFC 3339).
     #[serde(default)]
     pub grace_until: Option<String>,
-    /// Maximum stores allowed.
-    #[serde(default)]
-    pub max_stores: i64,
+    /// Tier location quota, primary wire name. The 1g rename made this
+    /// the license-server wire name; the server dual-emits both names at
+    /// the same value during the client rotation window, and pre-rename
+    /// servers send only `max_stores`. Resolve with
+    /// [`Self::effective_max_locations`] — a bare `serde(alias)` cannot
+    /// be used here because serde rejects a document carrying BOTH
+    /// names (duplicate field), which is exactly the dual-emit shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_locations: Option<i64>,
+    /// Legacy pre-rename wire name (`max_stores`), kept so payloads from
+    /// un-upgraded servers keep parsing; the server sends it alongside
+    /// `max_locations` with the same value during the rotation window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_stores: Option<i64>,
+}
+
+impl SignedSubscriptionPayload {
+    /// The location quota regardless of which wire name carried it.
+    /// 0 when neither name is present — the pre-1g `#[serde(default)]`
+    /// behavior (0 reads as unlimited server-side).
+    pub fn effective_max_locations(&self) -> i64 {
+        self.max_locations.or(self.max_stores).unwrap_or(0)
+    }
+}
+
+impl LicenseStatusResponse {
+    /// The location quota regardless of which wire name carried it.
+    /// 0 when neither name is present — the pre-1g `#[serde(default)]`
+    /// behavior (0 reads as unlimited server-side).
+    pub fn effective_max_locations(&self) -> i64 {
+        self.max_locations.or(self.max_stores).unwrap_or(0)
+    }
 }
 
 /// The subscription payload structure signed by the license server.
@@ -245,9 +314,17 @@ pub struct SignedSubscriptionPayload {
     pub tier_key: String,
     /// The subscription status.
     pub status: String,
-    /// Maximum number of stores allowed.
-    #[serde(default)]
-    pub max_stores: i64,
+    /// Tier location quota, primary 1g wire name
+    /// (Go `SubscriptionPayload.MaxLocations`). See the field docs on
+    /// [`LicenseStatusResponse`] for the dual-name compat shape; resolve
+    /// with [`Self::effective_max_locations`] and persist into the local
+    /// `max_locations` column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_locations: Option<i64>,
+    /// Legacy pre-rename wire name, dual-emitted by the Go side with the
+    /// same value during the rotation window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_stores: Option<i64>,
     /// Maximum POS register instances allowed.
     #[serde(default)]
     pub max_pos_instances: i64,
@@ -267,6 +344,31 @@ pub struct SignedSubscriptionPayload {
     pub grace_until: String,
     /// When this payload was issued.
     pub issued_at: String,
+    /// Phase C (todo-global-saas-2.md): whether this subscription period is
+    /// a trial. Defaults to `false` when the field is absent, which is both
+    /// a paid subscription and any payload signed before Phase C — the
+    /// additive wire change needs no dual-read. The tier/quota answer is
+    /// unaffected: a trial tier still resolves to Free.
+    #[serde(default)]
+    pub is_trial: bool,
+    /// When the trial ends, RFC3339, from the signed payload. `None` when
+    /// the field is absent or empty (i.e. not a trial, or a pre-Phase-C
+    /// payload). Validated by [`crate::subscription::TenantSubscription`]
+    /// rather than here: an unparseable value fails closed to `None`.
+    #[serde(default)]
+    pub trial_ends_at: Option<String>,
+    /// Phase D1 (todo-global-saas-2.md): the server's explicit
+    /// per-feature instructions, keyed by the canonical
+    /// [`crate::availability::AvailabilityFeature`] wire name (e.g.
+    /// `"supports_analytics"`). `Some(false)` withholds where the tier
+    /// would allow, `Some(true)` grants beyond tier, and a key that is
+    /// simply absent leaves the tier's own answer in place.
+    ///
+    /// `serde(default)` so a payload signed before Phase D1 — or one the
+    /// current server emits today, since authoring is not yet wired —
+    /// deserializes to an empty map rather than failing.
+    #[serde(default)]
+    pub features: HashMap<String, bool>,
 }
 
 // ── Signature Verification ──────────────────────────────────────────
@@ -474,18 +576,45 @@ pub async fn check_license_status(api_key: &str) -> Result<LicenseStatusResponse
     })
 }
 
-/// Store a signed subscription payload and API key in the local database.
+/// Store a signed subscription payload in the local `tenant_subscription`
+/// table after an activation or a renewal.
 ///
-/// Updates the `tenant_subscription` table with the payload and key
-/// received from the license server after activation or renewal.
+/// It deliberately does NOT take, or write, the API key. The live key is
+/// sealed once into the machine-bound `license.api_key` settings row by the
+/// bridge lane, which is the only reader of it; a second, unencrypted copy in
+/// this table duplicated the secret for no consumer. The
+/// `tenant_subscription.api_key` column is left out of the INSERT below, so
+/// a row written here gets the column's empty default — but "the column
+/// keeps its empty default" is true only of a FRESH install, and only of a
+/// row this function has just written. Read the writers together:
+///
+/// - the `INSERT OR REPLACE` below DOES clear a legacy value, on activate
+///   and on renew, because the omitted column falls back to its default;
+/// - the only production `UPDATE` of this table,
+///   `refresh_subscription_status_from_server` below, is partial and leaves
+///   the column exactly as it found it;
+/// - pause and resume never touch this table at all —
+///   `crates/oz-bridge/src/license.rs` (`pause_subscription` and
+///   `resume_subscription`) read the sealed settings key and write nothing
+///   locally.
+///
+/// So the window is real: an install that activated BEFORE `5e054714e` and
+/// has not re-activated or renewed since still carries a cleartext API key
+/// in this column, and nothing scrubs it — no code path and no migration.
+/// Closing it is a data mutation, not a doc fix, and is parked together with
+/// dropping the column (dropping would mutate hosted merchant databases, and
+/// `TenantSubscription::load` still selects it, so the field stays on the
+/// struct either way).
 pub fn store_subscription(
     conn: &rusqlite::Connection,
     tenant_id: &str,
     signed_payload: &str,
     signature: &str,
-    api_key: &str,
 ) -> Result<(), CoreError> {
-    // Parse the payload to extract tier info
+    // Parse the payload to extract tier info. The 1g primary wire name
+    // is `max_locations`, with the legacy `max_stores` still accepted
+    // from pre-rename servers; either lands in the local
+    // `max_locations` column.
     let payload: SignedSubscriptionPayload = serde_json::from_str(signed_payload)
         .map_err(|e| CoreError::Internal(format!("failed to parse signed payload: {e}")))?;
 
@@ -494,24 +623,61 @@ pub fn store_subscription(
 
     conn.execute(
         "INSERT OR REPLACE INTO tenant_subscription
-         (tenant_id, tier_key, status, expires_at, max_stores,
+         (tenant_id, tier_key, status, expires_at, max_locations,
           max_pos_instances, allowed_types_json, signature, signed_payload,
-          api_key, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+          updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         rusqlite::params![
             tenant_id,
             payload.tier_key,
             payload.status,
             payload.expires_at,
-            payload.max_stores,
+            payload.effective_max_locations(),
             payload.max_pos_instances,
             allowed_types_json,
             signature,
             signed_payload,
-            api_key,
         ],
     )?;
 
+    Ok(())
+}
+
+/// Refresh the local cache from a successful `/api/v1/license/status` response.
+///
+/// The status endpoint returns authoritative `status` and `expires_at` data
+/// but does NOT re-issue a signed payload. We apply a partial UPDATE to the
+/// local `tenant_subscription` row so that the next call to
+/// `get_subscription_capabilities` reads up-to-date lifecycle information
+/// without requiring a full re-activation. The signed payload and signature
+/// remain unchanged (they carry quota data that only changes on
+/// activation/renewal); only the server-authoritative fields are refreshed.
+///
+/// Runs inside a transaction per the DB-write policy. A missing row is a
+/// no-op (the caller already handled the no-license-activated path before
+/// the network call).
+///
+/// # Arguments
+/// * `conn` — global identity database connection.
+/// * `tenant_id` — the tenant key in the row (always `"default"` for now).
+/// * `status` — the raw status string from the server (e.g. `"active"`, `"canceled"`).
+/// * `expires_at` — RFC 3339 expiry timestamp from the server, if present.
+pub fn refresh_subscription_status_from_server(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+    status: &str,
+    expires_at: Option<&str>,
+) -> Result<(), CoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "UPDATE tenant_subscription
+         SET status = ?1,
+             expires_at = ?2,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE tenant_id = ?3",
+        rusqlite::params![status, expires_at, tenant_id],
+    )?;
+    tx.commit()?;
     Ok(())
 }
 

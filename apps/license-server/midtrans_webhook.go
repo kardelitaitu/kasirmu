@@ -460,12 +460,12 @@ func midtransProvision(app core.App, n midtransNotification) error {
 	// POS trusts the same payload shape regardless of how the bundle got
 	// there (checkout webhook or trial activation).
 	maxStores, maxPOS, allowedTypes := tierQuotas(tier, bundle)
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(tier, mustParseTime(expiresAt)).Format(time.RFC3339)
 	payload := SubscriptionPayload{
 		TenantID:        tenant.Id,
 		TierKey:         tier,
 		Status:          "active",
-		MaxStores:       maxStores,
+		MaxLocations:    maxStores,
 		MaxPOSInstances: maxPOS,
 		AllowedTypes:    allowedTypes,
 		StartsAt:        startsAt,
@@ -473,6 +473,8 @@ func midtransProvision(app core.App, n midtransNotification) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, tenant.Id)
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign subscription: %w", err)
@@ -576,7 +578,7 @@ func midtransSetGrace(app core.App, n midtransNotification) error {
 		TenantID:        subRecord.GetString("tenant_id"),
 		TierKey:         subRecord.GetString("tier_key"),
 		Status:          "grace_period",
-		MaxStores:       subRecord.GetInt("max_stores"),
+		MaxLocations:    subRecord.GetInt("max_stores"),
 		MaxPOSInstances: subRecord.GetInt("max_pos_instances"),
 		AllowedTypes:    parseAllowedTypes(subRecord.GetString("allowed_types")),
 		StartsAt:        subRecord.GetString("starts_at"),
@@ -584,6 +586,8 @@ func midtransSetGrace(app core.App, n midtransNotification) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, subRecord.GetString("tenant_id"))
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign grace subscription: %w", err)

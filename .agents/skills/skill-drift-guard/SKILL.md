@@ -5,7 +5,10 @@ description: Meta-skill that detects and patches drift in the other OZ-POS skill
 
 <!-- Superseded audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE at audit time (1 noted finding, doc-staleness) · its F1 claimed crates/oz-hal did not exist — obsolete since the HAL crate landed (see rev-2 stamp above) -->
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — supersedes rev-1 stamp, whose F1 claimed the oz-hal crate did not exist; the crate DOES exist with traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs, transport/, drivers/ incl. edc/, bootstrap.rs, registry.rs — that finding is obsolete) · rev-2 fixes: bare detect.sh / lib.sh / run-tests.sh references qualified to the skill-local .agents/skills/skill-drift-guard/scripts/ location; Check 7 snippets rewritten so the id-extraction pattern no longer matches the guard's own Fluent-id detector; version auto-patch example uses OLD/NEW variables (no invented 0.32); CI integration retargeted to the one active workflow dev-ci.yml (ci.yml is dormant .bak); pitfall #2's planned-path example generalized (the customer display shipped as drivers/serial_display.rs); pitfalls list re-joined (item 8 had drifted after a horizontal rule); 'seven checks' → ten · verified this pass: scripts/{detect.sh,run-tests.sh}, tests/{clean-baseline,invented-date,shape-violation,audit-date-stale}.bats, .agents/skills/skill-drift-guard/scripts/* all present; detect.sh implements Checks 1–10 with shared AUDIT_RE/audit_footer_check_in_file/batch_validate_audit_dates helpers -->
+<!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — supersedes rev-1 stamp, whose F1 claimed the oz-hal crate did not exist; the crate DOES exist with traits/{barcode,printer,cash_drawer,customer_display,weight_scale,edc}.rs, transport/, drivers/ incl. edc/, bootstrap.rs, registry.rs — that finding is obsolete) · rev-2 fixes: bare detect.sh / lib.sh / run-tests.sh references qualified to the skill-local .agents/skills/skill-drift-guard/scripts/ location; Check 7 snippets rewritten so the id-extraction pattern no longer matches the guard's own Fluent-id detector; version auto-patch example uses OLD/NEW variables (no invented 0.32); CI integration retargeted to the one active workflow dev-ci.yml (ci.yml is dormant .bak); pitfall #2's planned-path example generalized (the customer display shipped as drivers/serial_display.rs); pitfalls list re-joined (item 8 had drifted after a horizontal rule); 'seven checks' → ten · verified this pass: scripts/{detect.sh,run-tests.sh}, tests/{clean-baseline,invented-date,shape-violation,audit-date-stale}.bats, .agents/skills/skill-drift-guard/scripts/* all present; detect.sh implements Checks 1–10 with shared AUDIT_RE/audit_footer_check_in_file/batch_validate_audit_dates helpers · SUPERSEDED by rev 3: its closing claim “detect.sh implements Checks 1–10” was false — five of those checks were dead -->
+
+<!-- Audit stamp: 2026-09-07 · skill-drift-guard · status: INACCURATE-AT-AUDIT, NOW FIXED (rev 3 — supersedes rev 2, whose closing claim "detect.sh implements Checks 1–10" was FALSE: five of the ten checks were dead) · THE FINDING: Checks 1 (paths), 3 (api), 4 (versions), 6 (refs) and 7 (fluent) accumulated into FINDINGS[cat] inside a `grep … | while read` pipeline, i.e. in a subshell, so every write was discarded on loop exit and each check reported "No drift detected" forever — exit 0, green CI, committed-clean reports (823cacf5). Symptom of the bug was success, which is why it survived an audit that "verified" the script by running it. · SECOND, INDEPENDENT BUG: batch_validate_audit_dates compared Python's output with `[ "$res" = "INVALID" ]`, but native Windows python3 writes CRLF through a pipe, so res was $'INVALID\r' and never matched — Checks 9/10's VALUE pass was silently dead on Windows only (SHAPE pass is pure grep and kept working, and Linux CI stayed green). tests/invented-date.bats had been failing on this host the whole time; it passes now. · rev-3 fixes: all five loops converted to `< <(…)`; `| tr -d '\r'` plus a defensive `${res%$'\r'}` on the value check; Check 1 now skips regex-truncation artifacts (`crates/oz-*`→`crates/oz-`, `scripts/...`) which are not paths; Check 3 scans fenced code blocks only (taxonomy #4 is about code EXAMPLES, and prose mentions of Money:: made it permanently red) and its hint path corrected to foundation/src/money.rs (crates/oz-core/src/money.rs is a 6-line `pub use` shim with no signatures in it); Check 6 now excludes tokens that resolve to a workspace member, a Cargo.toml dependency or a workflow key — 11 of its 11 findings were false positives of the "any backtick is a skill ref" heuristic; Check 6 gained an OG_FILE override mirroring Check 2's Cargo_FILE so tests need not mutate the tracked onboarding-guide · REAL DRIFT FOUND AND PATCHED once the checks worked: project-scaffold/SKILL.md pinned workspace version 0.0.36 while Cargo.toml is 0.0.37 (line 59 example + line 185 branch example); docs/plans/0.0.36-backlog.md left alone — it is a real filename, not drift · NEW: tests/dead-check-regression.bats (8 cases: behavioural inject-and-assert-fires for each dead check + a structural awk pass that fails detect.sh if ANY FINDINGS-writing loop is pipeline-fed, which is what catches the class for checks added later) · verified this pass: full bats suite 14/14 green, detect.sh exits 0 on a genuinely clean tree, and the new suite fails 6/8 when reverted to HEAD's detect.sh (a test that cannot fail is not a test) · pitfalls #9 and #10 added · SAME-DAY FOLLOW-UP (perf): Check 10 took 90s and the bats suite ~5min because it spawned one grep per *.md — 2002 files, only 104 of which carry a footer at all, so ~1900 greps produced nothing and Windows process-creation cost dominated; runs were being killed mid-suite as a result. Fixed by (a) md_footer_files, which folds `grep -l` into `find -exec … +` — chosen over xargs because BSD/macOS xargs has no `-r` and would invoke grep with no files on an empty corpus and block on stdin forever, and (b) rewriting audit_footer_check_in_file to bash builtins (`${line%…}` for the trailing-space strip, `[[ =~ $AUDIT_RE ]]` for the shape test, parameter expansion for the date) so each footer costs 0 subprocesses instead of ~8; audit_date_of was inlined and deleted. Result 90s → 6s (15x), full run ~2m20s → 20s. Verified by equivalence, not just timing: an 11-case footer matrix (valid, 30-02-26, 00-00-00, 31-04-26, 29-02-24 leap vs 29-02-25 non-leap, YYYY-MM-DD, missing by-clause, multi-word by-clause, double space, trailing whitespace) produced BYTE-IDENTICAL output against a faithful two-pass reproduction of the old helper, and the prefiltered and un-prefiltered loops were diffed over the whole corpus with identical results. Two new bats cases pin the perf shape and the shared-$FOOTER_RE invariant; both were mutation-tested (revert the prefilter → only case 1 fails; duplicate the pattern literal → only case 2 fails). Also corrected two comments naming `is_real_audit_date`, a helper this script has never defined -->
+
 
 # Skill Drift Guard
 
@@ -61,18 +64,27 @@ Once the Rust workspace and UI scaffold land, all checks become active without a
 ```bash
 # For each skill, extract every path-looking token and verify it exists
 for skill in .agents/skills/*/SKILL.md; do
-  grep -oE '[a-zA-Z_-]+(/[a-zA-Z0-9_.-]+)+' "$skill" \
-    | sort -u \
-    | while read -r path; do
-        # skip web URLs and obvious non-paths
-        case "$path" in
-          http*|https*|file://*) continue ;;
-        esac
-        # check the repo
-        if [ ! -e "$path" ] && [ ! -d "$path" ]; then
-          echo "MISSING: $skill references $path (no such file or dir)"
-        fi
-      done
+  # `< <(…)` and NOT `grep | while`: a pipeline runs the loop body in a
+  # subshell, so `FINDINGS[paths]+=…` there is silently discarded when the
+  # loop exits. See pitfall #9 — this exact bug made Checks 1/3/4/6/7 report
+  # "No drift detected" forever.
+  while read -r path; do
+    # skip web URLs and obvious non-paths
+    case "$path" in
+      http*|https*|file://*) continue ;;
+    esac
+    # skip regex-truncation artifacts: the extractor has no notion of a glob
+    # or an ellipsis, so `crates/oz-*` yields `crates/oz-` and prose
+    # `bash scripts/...` yields `scripts/...`. A real path never ends in
+    # `-`, `.` or an ellipsis.
+    case "$path" in
+      *[-.]|*...|*..) continue ;;
+    esac
+    # check the repo
+    if [ ! -e "$path" ] && [ ! -d "$path" ]; then
+      echo "MISSING: $skill references $path (no such file or dir)"
+    fi
+  done < <(grep -oE '[a-zA-Z_-]+(/[a-zA-Z0-9_.-]+)+' "$skill" | sort -u)
 done
 ```
 
@@ -101,16 +113,27 @@ diff /tmp/skills-claim.txt /tmp/workspace-has.txt
 For each public type that a skill's code example uses, confirm the type still has the same shape.
 
 ```bash
-# Extract the public items from oz-core
-cargo doc --no-deps --document-private-items 2>/dev/null
-grep -E '^pub (struct|enum|fn|trait) ' crates/oz-core/src/lib.rs \
-  | sed 's|{.*||;s|;.*||' > /tmp/core-public.txt
+# Scan only fenced code blocks — taxonomy #4 is about a skill's CODE EXAMPLE
+# going stale. A bare grep also matches prose that merely names a constructor
+# ("`#[must_use]` on every Money constructor"), which is not a signature claim
+# and produced a permanent stream of un-actionable findings.
+for skill in .agents/skills/*/SKILL.md; do
+  awk '/^```/{f=!f; next} f && /Money::(from_major|checked_add|zero|new)/{print NR": "$0}' "$skill"
+done
 
-# Compare to what rust-backend/SKILL.md implies
-# (manual: the skill should mention each public type it uses)
+# Extract the public items to compare against
+cargo doc --no-deps --document-private-items 2>/dev/null
+grep -E '^pub (fn|struct|enum|trait) ' foundation/src/money.rs \
+  | sed 's|{.*||;s|;.*||' > /tmp/money-public.txt
 ```
 
 **Output:** a list of types the skill references that are not in the public API (renamed, removed, or made private). Each is `CODE DRIFT`.
+
+> **Note on the canonical path.** `Money` lives in `foundation/src/money.rs`;
+> `crates/oz-core/src/money.rs` is a six-line `pub use foundation::money::*;`
+> re-export shim kept for migration compatibility. Pointing a reader at the
+> shim used to be the hint this check emitted, which sent them to a file with
+> no signatures in it.
 
 ### Check 4 — Dependency version drift
 
@@ -148,12 +171,25 @@ done > /tmp/skills-rules.txt
 ### Check 6 — Cross-reference integrity
 
 ```bash
-# Every <skill-name> reference in onboarding-guide must point to an existing skill
-for ref in $(grep -oE 'rust-backend\|tauri-ipc\|ui-components\|hal-drivers\|project-scaffold\|onboarding-guide\|skill-drift-guard' .agents/skills/onboarding-guide/SKILL.md | sort -u); do
-  if [ ! -d ".agents/skills/$ref" ]; then
-    echo "BROKEN REF: onboarding-guide mentions $ref but no such skill exists"
-  fi
-done
+# Every <skill-name> reference in onboarding-guide must point to an existing skill.
+# OG_FILE overrides the scanned path (same convention as Cargo_FILE in Check 2)
+# so the test suite can drive this check from a fixture instead of editing the
+# tracked onboarding-guide.
+og="${OG_FILE:-.agents/skills/onboarding-guide/SKILL.md}"
+while read -r ref; do
+  [ -d ".agents/skills/$ref" ] && continue
+  # A backtick token is only a SKILL reference if it resolves to nothing else
+  # real. The guide backtick-names workspace members (`oz-core`), dependencies
+  # (`mlua`, `rusqlite`, `async-trait`) and CI keys (`static-gates`,
+  # `continue-on-error`) in the same voice it uses for skills, and token shape
+  # cannot tell them apart — without these three exclusions the check emits a
+  # permanent wall of false positives and its exit code stops meaning anything.
+  { [ -d "crates/$ref" ] || [ -d "modules/$ref" ] || [ -d "platform/$ref" ] \
+    || [ -d "apps/$ref" ] || [ "$ref" = "foundation" ]; } && continue
+  grep -qE "^[[:space:]]*\"?${ref}\"?[[:space:]]*=" Cargo.toml && continue
+  grep -rqE "^[[:space:]]+${ref}:" .github/workflows/ && continue
+  echo "BROKEN REF: onboarding-guide mentions $ref but no such skill exists"
+done < <(grep -oE '`[a-z][a-z-]+`' "$og" | sort -u | tr -d '`')
 ```
 
 **Output:** a list of broken skill-to-skill references.
@@ -167,13 +203,13 @@ done
 #  so this teaching snippet does not itself contain the id-attribute byte
 #  sequence that Check 7 would flag when the guard scans this skill.)
 for skill in .agents/skills/*/SKILL.md; do
-  grep -hoE 'id=["][^"]+["]' "$skill" | sort -u | \
-    sed 's/^id=["]//;s/["]$//' | \
-    while read -r ftl_id; do
-      if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
-        echo "MISSING: $skill references Fluent id '$ftl_id' (not in ui/src/locales/)"
-      fi
-    done
+  # `< <(…)` not `grep | while` — see pitfall #9.
+  while read -r ftl_id; do
+    if ! grep -rqE "^${ftl_id}\s*=" ui/src/locales/ 2>/dev/null; then
+      echo "MISSING: $skill references Fluent id '$ftl_id' (not in ui/src/locales/)"
+    fi
+  done < <(grep -hoE 'id=["][^"]+["]' "$skill" | sort -u | \
+             sed 's/^id=["]//;s/["]$//')
 done
 ```
 
@@ -234,25 +270,30 @@ rm -f "$pairs_file"
 ```bash
 # Same two-pass batched validation as Check 9, applied to every `*.md` file
 # outside `.agents/skills/`. Catches a future wrong-format or invalid-dated
-# footer in CONTRIBUTING.md, AGENTS.md, docs/guides/QUICKSTART.md, or any crate/app/
-# module/README.md — anywhere the convention is documented should also be
-# enforced. $AUDIT_RE, audit_date_of, and batch_validate_audit_dates are
-# defined at the top of detect.sh and shared with Check 9.
+# footer in CONTRIBUTING.md, AGENTS.md, docs/guides/QUICKSTART.md, or any
+# crate/app/module/README.md - anywhere the convention is documented should
+# also be enforced. $AUDIT_RE, $FOOTER_RE, md_footer_files and
+# batch_validate_audit_dates are defined at the top of detect.sh, shared with
+# Check 9, and used by both.
 pairs_file="$(mktemp)"
-find . -name '*.md' \
-     -not -path './.git/*' \
-     -not -path './.agents/skills/*' \
-     -not -path './node_modules/*' \
-     -not -path './target/*' \
-     -not -path './dist/*' \
-  2>/dev/null | while read -r file; do
+# `< <(...)` not `find | while`: the helper writes into FINDINGS, and a
+# pipeline would run it in a subshell and discard every write (pitfall #9).
+#
+# md_footer_files is the PREFILTER: it folds `grep -l` into `find -exec ... +`
+# so only footer-bearing files (~104 of ~2000 here) reach the helper at all.
+# `-exec ... +` rather than xargs because BSD/macOS xargs has no `-r` and
+# would invoke grep with no files on an empty corpus, blocking on stdin.
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
   audit_footer_check_in_file doc-audit "$file" "$pairs_file"
-done
+done < <(md_footer_files)
 batch_validate_audit_dates doc-audit "$pairs_file"
 rm -f "$pairs_file"
 ```
 
-**Output:** a list of `FOOTER_VIOLATION:` and `DATE_INVALID:` lines, one per wrong-shaped or invalid-dated audit-footer in any project `*.md` file. The shape regex and value check are shared with Check 9 so any future tightening to either is enforced consistently across skills and docs. Both checks make a single Python call per check (not per footer), so the value check is O(1) Python invocations regardless of corpus size.
+**Output:** a list of `FOOTER_VIOLATION:` and `DATE_INVALID:` lines, one per wrong-shaped or invalid-dated audit-footer in any project `*.md` file. The shape regex and value check are shared with Check 9 so any future tightening to either is enforced consistently across skills and docs. Both checks make a single Python call per check (not per footer), so the value check is O(1) Python invocations regardless of corpus size - and the corpus is prefiltered to footer-bearing files, so the scan is O(files-with-footers), not O(files).
+
+> **The prefilter has one sharp edge.** It decides which files are ever read, so if its pattern drifts *narrower* than the per-file scan's, files get skipped and findings vanish silently - pitfall #9's failure mode wearing a different hat. Both sides therefore read the same `$FOOTER_RE`, and `dead-check-regression.bats` asserts that sharing plus the exact `-exec ... +` form.
 
 **Why a separate check from Check 9:** the "documents" exception in [What this skill explicitly does NOT do](#what-this-skill-explicitly-does-not-do) keeps doc-content drift out of the drift guard's scope, but the audit-date format is one specific project-wide convention with zero interpretation — its maintainers (CONTRIBUTING.md + onboarding-guide) already document it as such, so enforcement belongs here.
 
@@ -376,7 +417,7 @@ The detection script has an integration test suite under `tests/` that pins the 
 
 #### What's covered
 
-Four scenarios under `tests/`:
+Five scenarios under `tests/`:
 
 | File | Pins |
 |------|------|
@@ -384,8 +425,9 @@ Four scenarios under `tests/`:
 | `invented-date.bats` | `30-02-26` (real-shape, invalid-calendar) injected into a fixture.md → fires under `doc-audit` with `shape OK but date` and NOT the shape-violation message. Pins the 2-pass invariant (shape passes → Python validates → INVALID). |
 | `shape-violation.bats` | `(extra)` in the by-clause → fires under `doc-audit` with `DD-MM-YY + by-clause` and NOT the value-check message. Pins the SHAPE-first invariant (no Python call when shape fails). |
 | `audit-date-stale.bats` | `03-06-26` (~35 days before 08-07-26, > 30-day threshold) appended to `hal-drivers/SKILL.md` → fires under `audit-date` with `days ago` and the stale date. Pins Check 8's strptime parse + 30-day threshold + `tail -1` "latest wins" extraction invariant. |
+| `dead-check-regression.bats` | The **silent-death** guard. Behavioural half: injects one piece of drift per category into a probe skill and asserts Checks 1, 3, 4, 6, 7 each FIRE (they had been reporting "No drift detected" forever because their `FINDINGS[cat]+=…` ran in a pipeline subshell and the write was discarded). Structural half: an awk pass over `detect.sh` that fails if ANY `while read` loop whose body writes `FINDINGS[` is fed by a pipeline — so the class cannot come back via a check added later. Also asserts every declared category still has a `should_run` block. *Perf:* pins Check 10's corpus prefilter (`md_footer_files` and the exact `find -exec … +` form) and asserts the prefilter and the per-file scan share the single `$FOOTER_RE` definition — a prefilter that drifts narrower than its scan skips files and loses findings exactly as quietly as a swallowed write did. |
 
-Each test uses bats' `setup` / `teardown` to backup + restore CONTRIBUTING.md inside `$BATS_TEST_TMPDIR` so the suite is hermetic — no test leak survives between runs.
+Each test uses bats' `setup` / `teardown` to backup + restore CONTRIBUTING.md inside `$BATS_TEST_TMPDIR` so the suite is hermetic — no test leak survives between runs. `dead-check-regression.bats` goes further and touches **no tracked file at all**: its probe is a self-contained skill directory, and it drives Check 6 through the `OG_FILE` override rather than editing `onboarding-guide` (a backup/restore of a tracked file leaks a probe line if the run is killed mid-test, which then turns `clean-baseline.bats` red for the next contributor).
 
 #### Install bats
 
@@ -415,7 +457,7 @@ For each new invariant worth pinning:
 2. Use `setup` / `teardown` for fixtures — backup to `$BATS_TEST_TMPDIR`, restore in `teardown`.
 3. Prefer substring assertions (`[[ "$output" == *"marker"* ]]`) over exact-string match — message templates can evolve without breaking the test, while the marker survives.
 
-If a future change needs to source helper functions directly, the convention is to extract them into `.agents/skills/skill-drift-guard/scripts/lib.sh` and `source "$(dirname "${BATS_TEST_FILENAME}")/../scripts/lib.sh"` from the test. (No `lib.sh` exists today — detect.sh is self-contained; this paragraph defines the convention for when that changes.)
+If a future change needs to source helper functions directly, the convention is to extract them into `.agents/skills/skill-drift-guard/scripts/lib.sh` and `source "$(dirname "${BATS_TEST_FILENAME}")/../scripts/lib.sh"` from the test. (No `lib.sh` exists today — detect.sh is self-contained; this paragraph defines the convention for when that changes.)  <!-- dead-ref: ok: a conditional convention; lib.sh is the file a future change would CREATE, not one that exists -->
 
 ---
 
@@ -461,7 +503,9 @@ The drift guard should be self-extending: every discovery becomes a new check, s
 6. **Comparing `last audited` dates as strings.** They're `dd-mm-yy`, which doesn't sort lexicographically. Parse them or use ISO-8601 (`2026-06-28`) and convert for display.
 7. **Patching the onboarding-guide's router table** when a skill is added. Yes, do this — but also patch every skill that mentions the new skill as a "see also" cross-reference. The graph is bidirectional.
 8. **Trusting Check 8's date parser to catch wrong formats.** Check 8's grep `'last audited [0-9]{2}-[0-9]{2}-[0-9]{2}'` matches a substring of `> last audited 2026-07-07 by x` as `26-07-07`, which Python then parses as July 7, 2026 → coincidentally recent → silenced. Check 9 fires the format violation even when Check 8 reads it as recent. Always trust Check 9's regex match over Check 8's parsed value when they disagree — the regex is the source of truth on shape.
+9. **Accumulating findings inside a pipeline.** `grep … | while read …; do FINDINGS[cat]+=…; done` runs the loop body in a **subshell**, so every write is discarded when the loop exits. The check then reports "No drift detected" forever — exit 0, green CI, no error, no hint. This is the single most dangerous bug a drift guard can have, because its symptom is *success*. Five of the ten checks were dead this way simultaneously. The script already documents the correct form in `batch_validate_audit_dates`; the rule is: **any loop that writes `FINDINGS[` must read via `< <(...)`, never via a pipe.** `dead-check-regression.bats` enforces this structurally as well as behaviourally.
+10. **Assuming a check that passes is a check that runs.** Both silent-death bugs above were invisible from the report — a green run is not evidence of a working scanner. Verify a check by *injecting* the drift it claims to catch and confirming it fires, before trusting its silence. Corollary: on a Windows host, pipe a native `python3` through `read` and look at it with `od -c` — it emits CRLF, and `$'INVALID\r' = INVALID` is false. That one killed Checks 9/10's value pass only on Windows, so Linux CI stayed green.
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 07-09-26 by skill-drift-guard

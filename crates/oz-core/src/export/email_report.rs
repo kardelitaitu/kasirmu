@@ -48,8 +48,12 @@ pub struct SmtpConfig {
     /// Optional SMTP username (for authenticated relays).
     pub username: Option<String>,
     /// Optional SMTP password (for authenticated relays).
-    /// Stored as plaintext in the local settings database — encrypted
-    /// at rest is planned for a future security sprint.
+    ///
+    /// Encrypted at rest by [`Store::save_smtp_config`] and decrypted
+    /// transparently by [`Store::get_smtp_config`]. `None` on a save does
+    /// NOT mean "clear it" — it means the masked front-end field was not
+    /// modified, so the stored secret is carried over. See
+    /// [`merge_smtp_password_with_stored`].
     pub password: Option<String>,
     /// From-address for outgoing emails.
     pub from: String,
@@ -106,6 +110,160 @@ impl SmtpConfig {
 
 /// Settings key used to persist SMTP configuration.
 pub const SMTP_CONFIG_SETTINGS_KEY: &str = "smtp_config";
+/// Server-side keep-on-blank merge for a raw `smtp_config` JSON write.
+///
+/// `smtp_config` sits on the credential deny list
+/// (`platform_core::settings::keys::SECRET_KEY_DENY_LIST`), so the email-report
+/// card can never read the stored blob back: `get_setting_scoped` refuses the
+/// whole key, the form renders empty fields, and the save posts a blob whose
+/// optional fields are `null`. Without this merge that write blanks the stored
+/// secret and mail silently stops sending — and it blanked the stored
+/// account too, which is the same failure one field over: a relay password
+/// with no username authenticates as nobody.
+///
+/// So the rule covers EVERY optional field of [`SmtpConfig`], and it is
+/// derived rather than enumerated. `SmtpConfig` declares no serde defaults, so
+/// a required field cannot be absent or `null` in a blob that has just
+/// deserialized into it — which means "absent or null after a successful
+/// parse" IS the optional set, read off the struct by [`optional_smtp_fields`].
+/// No per-field list lives here, and an `Option` added to the struct tomorrow
+/// is preserved by this code with no edit — the class of silent gap this
+/// file has been chasing all week.
+///
+/// Per field the rule is the one the sync credentials already use
+/// (`crates/oz-bridge/src/sync.rs:72-74` for the API key, `:157-159` for the PG
+/// password): ABSENT or `null` means "the masked field was not modified", so
+/// the stored value is carried over verbatim; a genuinely supplied value
+/// replaces it; an explicit empty string clears it — keep-on-blank is not
+/// keep-forever. Exactly one field carries a different policy, and it is not a
+/// keep-on-blank difference: `password` is encrypted at rest, so a supplied one
+/// is replaced by its ciphertext. That is the only per-field branch in the
+/// body, it is numbered (2), and it reads the REQUEST rather than the merged
+/// blob so a carried-over secret is never re-encrypted.
+///
+/// The carried-over value is copied AS STORED (ciphertext or legacy plaintext)
+/// and is never decrypted, so preserving a secret cannot fail closed on a
+/// corrupt one. A newly supplied password is encrypted at rest; the F-029
+/// fail-closed rule still applies.
+///
+/// `incoming` is the JSON the caller wants persisted; `stored` is the raw value
+/// currently in the settings table. An unparseable `incoming` is an error; an
+/// unparseable `stored` is treated as nothing to preserve, since a blob that
+/// cannot be read holds no recoverable secret.
+pub fn merge_smtp_password_json(incoming: &str, stored: Option<&str>) -> Result<String, CoreError> {
+    let config: SmtpConfig = serde_json::from_str(incoming)
+        .map_err(|e| CoreError::Internal(format!("failed to deserialize SMTP config: {e}")))?;
+    // The same bytes read a second time as what the caller SUPPLIED, which is
+    // not the same question as what the struct holds after deserialising:
+    // an absent key and a `null` key both become `None` in `config`, and only
+    // the raw view can tell "not sent" from "sent as empty".
+    let requested: serde_json::Value = serde_json::from_str(incoming)
+        .map_err(|e| CoreError::Internal(format!("failed to deserialize SMTP config: {e}")))?;
+    let stored_blob: Option<serde_json::Value> =
+        stored.and_then(|raw| serde_json::from_str(raw).ok());
+
+    let mut merged = serde_json::to_value(&config)
+        .map_err(|e| CoreError::Internal(format!("failed to serialize SMTP config: {e}")))?;
+    let Some(fields) = merged.as_object_mut() else {
+        return Err(CoreError::Internal(
+            "SMTP config did not serialize to an object".to_string(),
+        ));
+    };
+
+    // (1) keep-on-blank, for the WHOLE optional set — see the doc comment.
+    for field in optional_smtp_fields() {
+        let Some(slot) = fields.get_mut(field.as_str()) else {
+            continue;
+        };
+        match requested.get(&field) {
+            // Not sent, or sent as null: carry the stored value forward
+            // exactly as stored. Nothing worth carrying means the field is
+            // null, not the empty string.
+            None | Some(serde_json::Value::Null) => {
+                *slot = stored_blob
+                    .as_ref()
+                    .and_then(|s| s.get(&field))
+                    .and_then(carriable_value)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+            }
+            // Sent as the empty string: the documented clear.
+            Some(serde_json::Value::String(s)) if s.is_empty() => {
+                *slot = serde_json::Value::Null;
+            }
+            // Sent with a value: `slot` already holds it, canonically.
+            Some(_) => {}
+        }
+    }
+
+    // (2) The one per-field policy, and it is not a keep-on-blank rule:
+    // `password` is encrypted at rest, so a SUPPLIED password is replaced by
+    // its ciphertext. It reads `requested`, never `merged`, and runs after the
+    // carry loop, so a value that was only carried over is never re-encrypted
+    // (F-029 fail-closed: an encrypt failure is an error, never plaintext).
+    if let Some(serde_json::Value::String(pwd)) = requested.get("password")
+        && !pwd.is_empty()
+    {
+        let encrypted = crate::crypto::encrypt_smtp_at_rest(pwd)
+            .map_err(|e| CoreError::Internal(format!("failed to encrypt SMTP password: {e}")))?;
+        fields.insert("password".to_string(), serde_json::Value::String(encrypted));
+    }
+
+    serde_json::to_string(&merged)
+        .map_err(|e| CoreError::Internal(format!("failed to serialize SMTP config: {e}")))
+}
+
+/// The optional fields of [`SmtpConfig`], read off the struct instead of
+/// listed: [`SmtpConfig::default`] puts `None` in every optional field and a
+/// real value in every required one, so the keys that serialise to `null` in
+/// the default blob ARE the optional set. A field added to the struct joins
+/// this set with no edit anywhere below, which is the point — the
+/// password-only version of the merge left `username` behind, and the next
+/// `Option` would have been left behind too, silently.
+///
+/// The one assumption is the convention the struct already follows: an
+/// `Option` field defaults to `None`. An optional field that defaulted to
+/// `Some(..)` would read as required here, and the merge would not preserve
+/// it. `SmtpConfig::default` is the place to check if that ever changes.
+fn optional_smtp_fields() -> Vec<String> {
+    serde_json::to_value(SmtpConfig::default())
+        .ok()
+        .and_then(|v| {
+            v.as_object().map(|map| {
+                map.iter()
+                    .filter(|(_, val)| val.is_null())
+                    .map(|(key, _)| key.clone())
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
+}
+
+/// A stored value worth carrying forward: present, not `null`, and not the
+/// empty string, which preserves nothing.
+fn carriable_value(value: &serde_json::Value) -> Option<&serde_json::Value> {
+    match value {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(s) if s.is_empty() => None,
+        other => Some(other),
+    }
+}
+
+/// The raw `password` field of a stored `smtp_config` blob, exactly as stored.
+///
+/// Deliberately NOT decrypted: [`merge_smtp_password_json`] carries the value
+/// forward untouched, and [`Store::smtp_password_configured`] reduces it to a
+/// boolean so the secret itself never leaves the backend.
+fn stored_password_field(raw: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .ok()
+        .and_then(|v| {
+            v.get("password")
+                .and_then(|p| p.as_str())
+                .map(str::to_owned)
+        })
+        .filter(|p| !p.is_empty())
+}
 
 impl Store<'_> {
     /// Save the SMTP config to the settings table.
@@ -116,18 +274,70 @@ impl Store<'_> {
     ///
     /// F-029: encryption fails closed — an encrypt failure returns an
     /// error instead of storing the plaintext password.
+    ///
+    /// Keep-on-blank: a `None` password on a save means "the masked field was
+    /// not modified", so the stored secret is carried over rather than
+    /// overwritten with null. See [`merge_smtp_password_json`].
     pub fn save_smtp_config(&self, config: &SmtpConfig) -> Result<(), CoreError> {
-        let mut config = config.clone();
-        if let Some(ref pwd) = config.password
-            && !pwd.is_empty()
-        {
-            config.password = Some(crate::crypto::encrypt_smtp_at_rest(pwd).map_err(|e| {
-                CoreError::Internal(format!("failed to encrypt SMTP password: {e}"))
-            })?);
-        }
-        let json = serde_json::to_string(&config)
+        let incoming = serde_json::to_string(config)
             .map_err(|e| CoreError::Internal(format!("failed to serialize SMTP config: {e}")))?;
+        self.save_smtp_config_json(&incoming)
+    }
+
+    /// Save an SMTP config given as raw JSON, applying the keep-on-blank
+    /// merge against whatever is stored under [`SMTP_CONFIG_SETTINGS_KEY`].
+    ///
+    /// This is the entry point for callers that hold the serialized blob rather
+    /// than a [`SmtpConfig`] — notably any generic settings-write surface the
+    /// email-report card posts through. Routing those writes here instead of
+    /// straight into `set_setting` is what stops a save that omits the
+    /// password from destroying it.
+    pub fn save_smtp_config_json(&self, incoming: &str) -> Result<(), CoreError> {
+        let stored = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)?;
+        let json = merge_smtp_password_json(incoming, stored.as_deref())?;
         self.set_setting(SMTP_CONFIG_SETTINGS_KEY, &json)
+    }
+
+    /// Merge an incoming `smtp_config` blob with the stored one and return the
+    /// JSON that should actually be persisted, WITHOUT writing it.
+    ///
+    /// This is the seam the generic settings-write surface needs. Both shells
+    /// own that write through `Settings::set_tracked`, which also records the
+    /// ADR #22 delta, so neither can call [`Store::save_smtp_config_json`]
+    /// without losing the delta. Asking here and writing themselves keeps both
+    /// halves: the keep-on-blank merge AND the tracked write.
+    ///
+    /// Lenient by design, unlike [`Self::save_smtp_config_json`]: a value that
+    /// is not a [`SmtpConfig`] blob at all is passed through unchanged rather
+    /// than rejected. The generic setter has never required this key to hold
+    /// parseable JSON, and making it do so would turn a data-loss fix into a
+    /// write-path contract change for every other caller of the key. The warn
+    /// names the shape, never the value.
+    pub fn merged_smtp_password_json(&self, incoming: &str) -> Result<String, CoreError> {
+        if serde_json::from_str::<SmtpConfig>(incoming).is_err() {
+            tracing::warn!(
+                "smtp_config write is not a SmtpConfig blob — stored verbatim, no keep-on-blank merge"
+            );
+            return Ok(incoming.to_string());
+        }
+        let stored = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)?;
+        merge_smtp_password_json(incoming, stored.as_deref())
+    }
+
+    /// Whether an SMTP password is stored — a boolean, never the secret.
+    ///
+    /// The email-report card cannot answer this by reading the key back:
+    /// `smtp_config` is deny-listed against the raw `get_setting` IPC surface,
+    /// so the read refuses the whole blob. This is the read-back such a surface
+    /// may expose instead, the same shape `gateway_status` uses for
+    /// `stripe.api_key` (`crates/oz-bridge/src/settings.rs:731-738`) and
+    /// `SyncSettingsDto` uses for `has_api_key` (`crates/oz-bridge/src/sync.rs:36`).
+    pub fn smtp_password_configured(&self) -> Result<bool, CoreError> {
+        Ok(self
+            .get_setting(SMTP_CONFIG_SETTINGS_KEY)?
+            .as_deref()
+            .and_then(stored_password_field)
+            .is_some())
     }
 
     /// Load the SMTP config from the settings table.

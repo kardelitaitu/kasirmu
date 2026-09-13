@@ -39,6 +39,11 @@ Usage:
     python3 scripts/verify-commit-subjects.py --range origin/main..HEAD
     python3 scripts/verify-commit-subjects.py --base <sha> [--head <sha>]
     python3 scripts/verify-commit-subjects.py --self-test
+
+Exits: 0 read and conforming, 1 read and non-conforming (a verdict), 2 nothing was
+graded -- a bad argument, or a git read that could not produce the corpus. The corpus
+is what this gate reads, so a failed read is refused rather than reported as a range
+holding no commits; see `git()`.
 """
 
 from __future__ import annotations
@@ -57,10 +62,46 @@ ROOT = Path(__file__).resolve().parent.parent
 HOOK = ".githooks/commit-msg"
 
 
-def git(*args: str) -> str:
-    r = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True,
-                       text=True, encoding="utf-8", errors="replace")
-    return r.stdout
+class GitUnreadable(Exception):
+    """A git read this gate depends on failed -- not a verdict about any commit.
+
+    Raised where the argument resolves, before the walk: whether git could produce a
+    corpus at all is a property of the read, not of the review, so it is refused there
+    rather than discovered downstream as a count of zero.
+    """
+
+
+def git(*args: str) -> str | None:
+    """The stdout of a git command run in ROOT, or None when git could not produce it.
+
+    None is a REFUSAL condition, not an empty string. `git log` writes its complaint to
+    stderr and NOTHING to stdout when a revision is unknown or the checkout is not a
+    repository, so returning `.stdout` alone -- the shape this helper had, with no
+    `check=` and `returncode` never read -- made "the corpus could not be read" and
+    "this range holds no commits" byte-identical to `check_range`, which then printed
+    `0 commit(s) checked, 0 non-conforming subject(s)` on stdout and raised its own
+    empty-range message at exit 1 -- the exit this file reserves for a verdict that WAS
+    reached over a corpus it did read. Same law as
+    scripts/verify-migration-column-types.py:204-222 and the `staged_diff()` fix in
+    scripts/verify-ftl-orphans.py.
+    """
+    cmd = ["git", *args]
+    try:
+        proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
+                              text=True, encoding="utf-8", errors="replace",
+                              check=True)
+    except Exception as exc:  # no git on PATH, no repository at ROOT, or a non-zero exit
+        # The words below are git's own, quoted from its stderr -- a complaint about the
+        # command or the checkout, not this gate's verdict on anyone's subject.
+        print(f"error: cannot read the commit corpus (`{' '.join(cmd)}` in {ROOT}): {exc}",
+              file=sys.stderr)
+        raw = getattr(exc, "stderr", "") or ""
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        for line in str(raw).splitlines()[:3]:
+            print(f"  git: {line}", file=sys.stderr)
+        return None
+    return proc.stdout
 
 
 # ── Read the rule out of the hook ───────────────────────────────────────────
@@ -139,6 +180,13 @@ def hook_intro() -> str | None:
     age, not a list of excuses.
     """
     out = git("log", "--diff-filter=A", "--format=%H", "--", HOOK)
+    if out is None:
+        # Distinct from a successful read that named nothing: that reaches the
+        # `return sha or None` below as None, meaning "the hook's arrival is not in this
+        # history", so there is nothing to grandfather -- a correct answer. A failed read
+        # has no answer at all, and silently dropping the floor would grade pre-rule
+        # commits the rule cannot reach, then call the result clean.
+        raise GitUnreadable(f"the grandfathering floor (`git log --diff-filter=A -- {HOOK}`)")
     sha = out.split("\n")[0].strip()
     return sha or None
 
@@ -156,10 +204,14 @@ def check_range(rng: str, floor: str | None = "auto") -> tuple[int, int, list[st
     # skipping anything that is not a descendant of the floor commit.
     skip_before = None
     if floor:
-        skip_before = {l.strip() for l in git("rev-list", floor).splitlines()
-                       if l.strip()}
+        listing = git("rev-list", floor)
+        if listing is None:
+            raise GitUnreadable(f"the pre-rule commit set (`git rev-list {floor}`)")
+        skip_before = {l.strip() for l in listing.splitlines() if l.strip()}
 
     out = git("log", "--format=%H%x00%s", rng)
+    if out is None:
+        raise GitUnreadable(f"the commit corpus in the range `{rng}`")
     total = bad = grandfathered = 0
     offenders: list[str] = []
     for line in out.splitlines():
@@ -181,6 +233,18 @@ def check_range(rng: str, floor: str | None = "auto") -> tuple[int, int, list[st
     detail = (f" ({grandfathered} pre-rule commit(s) skipped)"
               if grandfathered else "")
     print(f"  {total} commit(s) checked{detail}, {bad} non-conforming subject(s)")
+    # An empty range is not a pass, it is a gate that checked nothing. Found by
+    # accident: a fixture repo where `main` WAS HEAD made `main..HEAD` empty, the
+    # script exited 0, and every downstream assertion read as a detector failure
+    # rather than a fixture bug. In CI the same shape appears if a checkout is
+    # shallow (fetch-depth 1 makes base..HEAD empty) or if the event payload lacks
+    # the shas -- all of which would report green forever.
+    if total == 0:
+        raise SystemExit(
+            f"range {rng} resolved to 0 commits. Refusing to report success: a "
+            f"subject gate that inspects nothing passes no matter what is pushed. "
+            f"Check that the checkout has enough history (fetch-depth: 0) and that "
+            f"both ends of the range exist.")
     return total, bad, [f"{s}: {t!r}" for s, t in offenders], exemptions
 
 
@@ -202,7 +266,19 @@ def main() -> int:
 
     hook_text = io.open(ROOT / HOOK, encoding="utf-8", errors="replace").read()
     types = hook_types(hook_text)
-    total, bad, offenders, _ex = check_range(rng)
+    # Three exits, and only two of them are verdicts: 0 when the range was read and every
+    # subject in it conformed, 1 when it was read and did not, 2 when it could not be read
+    # at all. A refusal borrows no verdict's exit code -- exit 1 here is what a real
+    # non-conforming subject prints, and an unreadable corpus has reached no conclusion
+    # about anyone's commit message. Same split the sibling gates established.
+    try:
+        total, bad, offenders, _ex = check_range(rng)
+    except GitUnreadable as exc:
+        print(f"verify-commit-subjects: REFUSED -- git could not read {exc}, so the corpus "
+              f"is unknown, and an unknown corpus is not an empty one. Nothing was graded "
+              f"here; git's own words, on stderr, name the command that failed.",
+              file=sys.stderr)
+        return 2
     print(f"  rule extracted from {HOOK}: {len(types)} types ({', '.join(types)})")
     print(f"  range {rng}: {total} commit(s), {bad} non-conforming subject(s)")
     if offenders:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { computeAutoLayout, LAYOUT_GRID, type NodePlacement } from '@/features/stores/nodeTopologyLayout';
-import { NODE_HEIGHT, NODE_WIDTH } from '@/features/stores/nodeTopologyClamp';
+import { computeAutoLayout, LAYOUT_GRID, type NodePlacement } from '@/features/locations/nodeTopologyLayout';
+import { NODE_HEIGHT, NODE_WIDTH } from '@/features/locations/nodeTopologyClamp';
 
 // The topology editor's one-click Auto-layout: a layered wire-direction
 // engine. Sources rank 0, each wire target ranks one deeper (BFS), every

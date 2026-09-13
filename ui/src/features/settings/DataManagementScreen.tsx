@@ -17,7 +17,9 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/frontend/shared/Toast';
 import {
   getBackupStatus,
+  getBackupStatusScoped,
   createBackup,
+  createBackupScoped,
   exportData,
   importPreview,
   importData,
@@ -25,6 +27,8 @@ import {
   pickImportFile,
 } from '@/api/data';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
 
@@ -144,7 +148,18 @@ function checkIcon(): React.ReactNode {
 // ── Component ──────────────────────────────────────────────────────
 
 /** Data management screen — encrypted export wizard, import wizard with dry-run preview, and one-click backup status. */
+/**
+ * §B administrative gate (todo-global-saas-1.md): Data Management is an
+ * administrative SaaS feature — it locks while the subscription is not
+ * `active` while POS operational runtime continues through grace.
+ */
 export default function DataManagementScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <DataManagementScreenContent />;
+}
+
+function DataManagementScreenContent() {
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
@@ -208,7 +223,26 @@ export default function DataManagementScreen() {
   // ── Load backup status on mount ─────────────────────────────────
 
   useEffect(() => {
-    getBackupStatus()
+    // NOT a designed gradation. The three lines this replaced called the shape
+    // "ADR #7 conditional scoping", as if falling back were the plan. Measured, it is
+    // a hole: the workspace token is NOT guaranteed for an authenticated owner. It is
+    // minted only when an instance is resolvable — ui/src/contexts/WorkspaceContext.tsx
+    // :469-473 bails without ever minting one, :463 bails without a user id, and :215,
+    // :274, :319, :507 null an EXISTING token while the shell and this screen stay
+    // mounted. So the else branch is reachable in a normal install, not a corner, and
+    // it calls get_backup_status, which checks nothing: permissions::DATA_EXPORT is
+    // skipped here and at :262. This page's requiredRole: 'owner' gate
+    // (features/settings/register.tsx:31) is a DIFFERENT credential — AppShell.tsx:368
+    // reads session?.role_name, never this token — so passing the gate proves nothing
+    // about holding one. Ledger: scripts/verify-scoped-coverage.sh:57, allowlisted at
+    // :100 alongside create_backup. Left OPEN on purpose: gating it would deny backup
+    // to installs that can never hold a token (offline, no admin instance). It is now
+    // LOUD — event backup_ungated_no_session in crates/oz-bridge/src/data.rs — and
+    // pinned by a known-hazard test in ui/src/__tests__/DataManagementBackup.test.tsx.
+    const fetchStatus = sessionToken
+      ? () => getBackupStatusScoped(sessionToken)
+      : () => getBackupStatus();
+    fetchStatus()
       .then((status) => {
         setBackup((prev) => ({
           ...prev,
@@ -220,16 +254,26 @@ export default function DataManagementScreen() {
         setBackup((prev) => ({ ...prev, lastBackup: null }));
         addToast({ message: l10n.getString('data-mgmt-toast-backup-status-fail'), type: 'error' });
       });
-    // Effect runs once on mount; addToast and l10n are stable references.
+    // addToast and l10n stay excluded, as the original comment said -- but the reason is now
+    // narrower than "they are stable": l10n is NOT reliably stable in this codebase
+    // (FastPINOverlay.tsx:334 documents an infinite re-render loop from it), so listing it here
+    // would refetch backup status on every locale change. sessionToken is the one that must be
+    // present, because it selects which command runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionToken]);
 
   // ── Backup handlers ─────────────────────────────────────────────
 
   const handleBackup = useCallback(async () => {
     setBackup((prev) => ({ ...prev, backingUp: true }));
     try {
-      const result = await createBackup();
+      // create_backup writes a full copy of the database to disk and, unscoped, checks no
+      // permission whatsoever. create_backup_scoped (added in 62e30fd7 for F-017) enforces
+      // permissions::DATA_EXPORT; until this line called it, that check existed only in code
+      // nothing reached.
+      const result = sessionToken
+        ? await createBackupScoped(sessionToken)
+        : await createBackup();
       setBackup({
         lastBackup: new Date().toLocaleString(),
         lastBackupSize: `${(result.sizeBytes / 1024 / 1024).toFixed(1)} MB`,
@@ -241,7 +285,7 @@ export default function DataManagementScreen() {
       setBackup((prev) => ({ ...prev, backingUp: false }));
       addToast({ message: l10n.getString('data-mgmt-toast-backup-fail'), type: 'error' });
     }
-  }, [addToast, l10n, triggerFlash]);
+  }, [addToast, l10n, triggerFlash, sessionToken]);
 
   // ── Toggle data type selection ──────────────────────────────────
 

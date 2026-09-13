@@ -14,6 +14,12 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
  *
  * This widget is designed to be rendered inside a container Card
  * provided by the host dashboard page.
+ *
+ * ACCESS: this component renders, it does not decide. `requiredPermission:
+ * 'reports:export'` on the `daily-total` registration (features/sales/widgets/
+ * index.ts) is enforced by the widget registry via `passesGate`, so SalesDashboardScreen
+ * never mounts this tile for a session that lacks the key - and therefore never
+ * calls `export_daily_summary_scoped`, which would refuse it.
  */
 export default function DailyTotalWidget() {
   const { l10n } = useLocalization();

@@ -178,7 +178,7 @@ async fn session_permission_checks_global_identity_db_not_store_db() {
 /// closed on EVERY command, not just at the picker.
 #[tokio::test]
 async fn session_gate_enforces_scoped_assignment_workspace_dimension() {
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
     use oz_core::session::SessionContext;
 
     use crate::state::AppState;
@@ -204,6 +204,8 @@ async fn session_gate_enforces_scoped_assignment_workspace_dimension() {
                     branches: vec![],
                     workspaces_all: false,
                     workspaces: vec!["store-pos".into()],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -245,7 +247,7 @@ async fn session_gate_enforces_scoped_assignment_workspace_dimension() {
 
 #[tokio::test]
 async fn session_gate_enforces_scoped_assignment_branch_dimension() {
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
     use oz_core::session::SessionContext;
 
     use crate::state::AppState;
@@ -271,6 +273,8 @@ async fn session_gate_enforces_scoped_assignment_branch_dimension() {
                     branches: vec!["store-a".into()],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -315,7 +319,7 @@ async fn session_gate_passes_global_and_legacy_users_unrestricted() {
     // Note: "unrestricted" refers to SCOPE (no assignment row = global
     // scope), not permissions — legacy role-staff is checkout-only and is
     // still denied staff:* grants.
-    use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
     use oz_core::session::SessionContext;
 
     use crate::state::AppState;
@@ -341,6 +345,8 @@ async fn session_gate_passes_global_and_legacy_users_unrestricted() {
                     branches: vec![],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();

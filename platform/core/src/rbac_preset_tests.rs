@@ -338,3 +338,41 @@ fn terminal_read_follows_terminal_manage_b1() {
         );
     }
 }
+
+#[test]
+fn memo_stop_follows_the_a2_ruling_owner_admin_only() {
+    // Early-stop ruling (2026-09-07, option A2): `memo:stop` covers stopping
+    // ANOTHER author's published Memo, so it must be an Owner/Admin grant —
+    // Manager keeps `memo:write` (authors can stop their own via the
+    // command's author short-circuit) but never gains `memo:stop`. Staff,
+    // Auditor, and the bare Custom preset stay deny-by-default, and no
+    // role carries a `memo:*` family wildcard (the family has no sensitive
+    // keys, but explicit grants are the preset convention).
+    let admin = ROLE_PRESETS
+        .iter()
+        .find(|p| p.id == builtin_roles::ADMIN)
+        .unwrap_or_else(|| panic!("preset admin"));
+    assert!(
+        admin.permissions.contains(&permissions::MEMO_STOP),
+        "Admin must grant memo:stop"
+    );
+    for role_id in [
+        builtin_roles::MANAGER,
+        builtin_roles::STAFF,
+        builtin_roles::AUDITOR,
+        builtin_roles::CUSTOM,
+    ] {
+        let preset = ROLE_PRESETS
+            .iter()
+            .find(|p| p.id == role_id)
+            .unwrap_or_else(|| panic!("preset {role_id}"));
+        assert!(
+            !preset.permissions.contains(&permissions::MEMO_STOP),
+            "{role_id} must not grant memo:stop"
+        );
+        assert!(
+            !preset.permissions.contains(&"memo:*"),
+            "{role_id} must not carry a memo family wildcard"
+        );
+    }
+}

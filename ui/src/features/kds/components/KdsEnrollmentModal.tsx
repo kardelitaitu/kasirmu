@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { requiredLocalized } from '@/frontend/shared';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { animDuration } from '@/utils/animation';
 import {
   registerKdsDeviceScoped,
   type KdsDevice,
@@ -28,6 +29,13 @@ export interface KdsEnrollmentModalProps {
 type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
 
 /**
+ * Exit-fade length in ms. Mirrors `var(--duration-200)` on the
+ * `--exiting` rules in KdsEnrollmentModal.css — the two must stay in
+ * step, or the surface unmounts mid-animation (or lingers after it).
+ */
+const EXIT_MS = 200;
+
+/**
  * KdsEnrollmentModal — handles new KDS device registration via QR-code
  * pairing. The flow is:
  * 1. User enters a display name and selects stations
@@ -35,6 +43,42 @@ type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
  * 3. QR code is displayed for the KDS device to scan
  * 4. KDS device connects with the token, completing enrollment
  */
+/**
+ * Add a station name to the list. Trims whitespace, rejects empty strings and
+ * duplicates. Returns the updated list (or the original if unchanged).
+ * Exported for testing.
+ */
+export function addStationToList(
+  stations: string[],
+  input: string,
+): string[] {
+  const trimmed = input.trim();
+  if (!trimmed || stations.includes(trimmed)) return stations;
+  return [...stations, trimmed];
+}
+
+/**
+ * Compute seconds remaining until token expiry, clamped to 0.
+ * Exported for testing.
+ */
+export function secondsUntilExpiry(tokenExpiry: string, now: number = Date.now()): number {
+  return Math.max(0, Math.floor((new Date(tokenExpiry).getTime() - now) / 1000));
+}
+
+/**
+ * Whether the "Done" button in the QR/error step should fire onEnrolled.
+ * Fires only when we're still on the QR step and an enrolled device exists —
+ * i.e. the operator reached the QR screen and is leaving by choice, not
+ * abandoning after a generation failure (error step) or without a device.
+ * Exported for testing.
+ */
+export function shouldFireOnEnrolledOnDone(
+  step: EnrollmentStep,
+  enrolledDevice: KdsDevice | null,
+): boolean {
+  return step === 'qr' && enrolledDevice != null;
+}
+
 export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   sessionToken,
   restaurantPosId,
@@ -45,6 +89,56 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   const { l10n } = useLocalization();
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, isOpen, onClose);
+
+  // ── Exit animation (see .agents/skills/exit-animation-pattern) ──────
+  // The parent owns `isOpen`, so every dismiss path (X, Cancel, Done,
+  // backdrop, Escape) still calls `onClose()` synchronously — the modal
+  // only defers its OWN unmount by one mirror fade. `animDuration()`
+  // returns 0 under `prefers-reduced-motion`, where the CSS `--exiting`
+  // rules are also gated off, so the surface snaps away instead.
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOpenRef = useRef(isOpen);
+
+  // Unmount cleanup: never setState against an unmounted component
+  // (React 18 strict mode double-mounts in dev). Empty deps → runs only
+  // on unmount, so it can never cancel the fade mid-flight.
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // true → false: play the exit fade, then retire the surface.
+  // false → true (reopened during the fade): cancel the pending timer and
+  // drop the `--exiting` class so the modal stays put. Both branches read
+  // only refs and setters, so `[isOpen]` is a complete dependency list —
+  // the transition is driven purely by the parent's state.
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+    if (isOpen) {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setExiting(false);
+      return;
+    }
+    if (!wasOpen) return;
+    setExiting(true);
+    // Rapid re-dismiss: retire the stale timer before scheduling anew.
+    if (exitTimerRef.current !== null) {
+      clearTimeout(exitTimerRef.current);
+    }
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      setExiting(false);
+    }, animDuration(EXIT_MS));
+  }, [isOpen]);
 
   const [step, setStep] = useState<EnrollmentStep>('form');
   const [name, setName] = useState('');
@@ -89,9 +183,9 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
   }, [step, tokenExpiry]);
 
   const addStation = useCallback(() => {
-    const trimmed = stationInput.trim();
-    if (trimmed && !stations.includes(trimmed)) {
-      setStations((prev) => [...prev, trimmed]);
+    const next = addStationToList(stations, stationInput);
+    if (next !== stations) {
+      setStations(next);
       setStationInput('');
     }
   }, [stationInput, stations]);
@@ -168,18 +262,22 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
     [onClose],
   );
 
-  if (!isOpen) return null;
+  // Stay mounted for exactly one exit fade after `isOpen` drops.
+  if (!isOpen && !exiting) return null;
 
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="kds-enrollment-overlay"
+      className={`kds-enrollment-overlay${exiting ? ' kds-enrollment-overlay--exiting' : ''}`}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-label={requiredLocalized(l10n, 'kds-enrollment-title')}
     >
-      <div className="kds-enrollment-modal" ref={panelRef}>
+      <div
+        className={`kds-enrollment-modal${exiting ? ' kds-enrollment-modal--exiting' : ''}`}
+        ref={panelRef}
+      >
         {/* Header */}
         <div className="kds-enrollment-header">
           <h2 className="kds-enrollment-title">
@@ -189,6 +287,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
             className="kds-enrollment-close"
             onClick={onClose}
             aria-label={requiredLocalized(l10n, 'kds-enrollment-close-aria')}
+            data-testid="kds-enrollment-close"
           >
             &times;
           </button>
@@ -219,6 +318,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                   l10n,
                   'kds-enrollment-name-aria',
                 )}
+                data-testid="kds-enrollment-name-input"
               />
             </div>
 
@@ -242,6 +342,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                     l10n,
                     'kds-enrollment-stations-aria',
                   )}
+                  data-testid="kds-enrollment-station-input"
                 />
               </div>
               {stations.length > 0 && (
@@ -258,6 +359,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                           'kds-enrollment-station-remove-aria',
                           { station: s },
                         )}
+                        data-testid="kds-enrollment-station-remove"
                       >
                         &times;
                       </button>
@@ -281,6 +383,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                     setError(null);
                     setStep('form');
                   }}
+                  data-testid="kds-enrollment-error-retry"
                 >
                   {requiredLocalized(l10n, 'retry')}
                 </button>
@@ -315,8 +418,13 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                 })}
                 size={200}
                 level="M"
-                bgColor="var(--kds-bg, #ffffff)"
-                fgColor="var(--kds-text, #111827)"
+                /* Literal hex on purpose, not var(--token): qrcode.react writes these
+                   onto SVG `fill` presentation attributes, where var() never resolves
+                   — both paths are then dropped and inherit black, so the code renders
+                   as a solid square. A pairing code must also stay dark-on-paper-white
+                   in EVERY theme; no semantic token is theme-invariant like that. */
+                bgColor="#ffffff"
+                fgColor="#111827"
                 aria-label={requiredLocalized(
                   l10n,
                   'kds-enrollment-qr-aria',
@@ -344,6 +452,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
               <button
                 className="kds-enrollment-cancel"
                 onClick={onClose}
+                data-testid="kds-enrollment-cancel"
               >
                 {requiredLocalized(l10n, 'kds-enrollment-cancel')}
               </button>
@@ -351,6 +460,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                 className="kds-enrollment-confirm"
                 onClick={handleEnroll}
                 disabled={!name.trim()}
+                data-testid="kds-enrollment-create"
               >
                 {requiredLocalized(l10n, 'kds-enrollment-create-btn')}
               </button>
@@ -368,6 +478,7 @@ export const KdsEnrollmentModal = memo(function KdsEnrollmentModal({
                 }
                 onClose();
               }}
+              data-testid="kds-enrollment-done"
             >
               {requiredLocalized(l10n, 'kds-enrollment-done')}
             </button>

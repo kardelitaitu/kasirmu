@@ -3,6 +3,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { formatMoney } from '@/types/domain';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { requiredLocalized } from '@/frontend/shared';
+import { animDuration } from '@/utils/animation';
 import './ItemModifierModal.css';
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -180,22 +181,73 @@ export default function ItemModifierModal({
     }
   }, [open, groups]);
 
-  // ── Focus trap (Escape + Tab cycling) ─────────────────────────
-  const panelRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(panelRef, open, onClose);
+  // ── Exit animation (dismiss fade) ─────────────────────────────
+  // Mirrors the useExitAnimation shape (WorkspaceSettingsModal /
+  // RefundModal) with one deviation required by this modal's test
+  // contract: ItemModifierModal.test.tsx asserts onClose fires
+  // SYNCHRONOUSLY on Cancel / backdrop / X, while the shared hook
+  // defers onClose until after the fade. requestClose() therefore
+  // notifies the parent immediately and reproduces the hook's
+  // "stay mounted until the fade finishes" half locally via the
+  // exiting flag + the render gate below. Reopening during the
+  // fade cancels the exit (same semantics as the shared hook).
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  if (!open) return null;
+  // Reopen during the fade (or a fresh open): cancel any in-flight
+  // exit so the modal stays mounted without its --exiting class.
+  useEffect(() => {
+    if (!open) return;
+    if (exitTimerRef.current !== null) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    setExiting(false);
+  }, [open]);
+
+  // Unmount cleanup — never setState against an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (exiting) return; // already closing
+    setExiting(true);
+    // Notify the parent synchronously (see deviation note above);
+    // the gate below holds the surface mounted for the fade, and
+    // animDuration(200) returns 0 under prefers-reduced-motion so
+    // reduced-motion users snap away instantly.
+    onClose();
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      setExiting(false);
+    }, animDuration(200));
+  }, [exiting, onClose]);
+
+  // ── Focus trap (Escape + Tab cycling; suspended while exiting) ─
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open && !exiting, () => requestClose());
+
+  // Render gate: stay mounted while the exit fade plays
+  // (shouldRender semantics from the shared hook).
+  if (!open && !exiting) return null;
 
   return (
     <div
-      className="modifier-overlay"
+      className={`modifier-overlay${exiting ? ' modifier-overlay--exiting' : ''}`}
       role="presentation"
+      aria-hidden={!open}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <div
-        className="modifier-modal"
+        className={`modifier-modal${exiting ? ' modifier-modal--exiting' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={requiredLocalized(l10n, 'modifier-dialog-aria', { productName })}
@@ -207,7 +259,7 @@ export default function ItemModifierModal({
           <button
             type="button"
             className="modifier-close-btn"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label={requiredLocalized(l10n, 'close')}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -343,7 +395,7 @@ export default function ItemModifierModal({
             <button
               type="button"
               className="modifier-cancel-btn"
-              onClick={onClose}
+              onClick={requestClose}
             >
               <Localized id="cancel">
                 <span>Cancel</span>

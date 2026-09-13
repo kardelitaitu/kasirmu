@@ -26,6 +26,10 @@ fn is_expected_sensitive(key: &str) -> bool {
                 | permissions::GIFTCARDS_ISSUE
                 | permissions::SECURITY_MANAGE
                 | permissions::DATA_EXPORT
+                // AP write-off forgives a vendor debt (money destruction),
+                // so it is never wildcard-eligible — mirrors giftcards:issue.
+                | permissions::PAYABLES_WRITEOFF
+                | permissions::OPERATOR_IMPERSONATE
     )
 }
 
@@ -457,6 +461,7 @@ fn all_expected_sensitive_keys_are_flagged() {
         permissions::GIFTCARDS_ISSUE,
         permissions::SECURITY_MANAGE,
         permissions::DATA_EXPORT,
+        permissions::OPERATOR_IMPERSONATE,
     ] {
         assert!(is_sensitive(key), "{} must be classified sensitive", key);
     }
@@ -713,6 +718,11 @@ fn every_enforced_key_is_granted_by_at_least_one_preset() {
         permissions::PLAN_READ,
         permissions::CATEGORIES_READ,
         permissions::DATA_EXPORT,
+        // AP write keys are Owner-only (payment-methods-plan §2c), mirroring
+        // purchasing's reality; owners hand them out via Custom roles.
+        permissions::PAYABLES_CREATE,
+        permissions::PAYABLES_SETTLE,
+        permissions::PAYABLES_WRITEOFF,
     ];
 
     // Collect all permissions granted by any preset.
@@ -742,7 +752,7 @@ fn every_enforced_key_is_granted_by_at_least_one_preset() {
 fn every_family_has_operational_key() {
     // Known all-sensitive families: every key in these families is
     // sensitive by design (ADR #35 D2). Family wildcards are rejected.
-    let all_sensitive_families: &[&str] = &["data", "security"];
+    let all_sensitive_families: &[&str] = &["data", "security", "operator"];
 
     for family in families() {
         if all_sensitive_families.contains(&family) {

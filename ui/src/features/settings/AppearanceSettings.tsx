@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import {
-  getBrandSettings,
+  getBrandSettingsScoped,
   setBrandPrimaryColour,
   setBrandLogoPath,
   setBrandStoreName,
   pickLogoFile,
+  pickLogoFileScoped,
 } from '@/api/branding';
 import { useBrand } from '@/contexts/BrandContext';
-import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { deriveAccentPalette, applyAccentPalette, clearAccentPalette, applyThemeContrasts } from '@/utils/color';
 import { Button } from '@/components/Button';
 import { useAppZoom } from '@/contexts/ZoomContext';
 import type { ZoomLevel } from '@/contexts/ZoomContext';
@@ -55,7 +57,9 @@ export function AppearanceSettings({
   onStoreNameChange,
 }: AppearanceSettingsProps) {
   const { refreshBrandSettings } = useBrand();
-  const [colour, setColour] = useState('#147EFB');
+  // `null` = no brand override — the UI follows the active theme's own
+  // primary (light #147EFB, dark #1155CC). Persisted as "" on save.
+  const [colour, setColour] = useState<string | null>(null);
   const [logoPath, setLogoPath] = useState<string | null>(null);
   const [storeName, setStoreName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -64,6 +68,10 @@ export function AppearanceSettings({
   const { zoomLevel, setZoomLevel } = useAppZoom();
   const { enabled: hwAccelEnabled, setEnabled: setHwAccelEnabled } = useHardwareAccel();
   const { addToast } = useToast();
+  // Brand setters are session-scoped (SETTINGS_EDIT) — the unscoped
+  // commands are not registered, so every save needs the live token.
+  const { sessionToken: rawToken } = useWorkspace();
+  const sessionToken = rawToken ?? '';
   const cm = useContextMenu();
   const cmInput = useMemo(() => ({
     autoComplete: 'off' as const,
@@ -75,12 +83,12 @@ export function AppearanceSettings({
 
   useEffect(() => {
     if (embedded) return;
-    getBrandSettings().then((s) => {
-      setColour(s.primary_colour);
+    getBrandSettingsScoped(sessionToken).then((s) => {
+      setColour(s.primary_colour || null);
       setLogoPath(s.logo_path);
       setStoreName(s.store_name);
     });
-  }, [embedded]);
+  }, [embedded, sessionToken]);
 
   // In embedded mode, sync the logo path from BrandContext so the
   // preview shows the previously uploaded logo on re-visit.
@@ -94,10 +102,21 @@ export function AppearanceSettings({
   const activeColour = embedded ? (colourProp ?? colour) : colour;
   const activeStoreName = embedded ? (storeNameProp ?? storeName) : storeName;
 
+  // What the picker/hex input shows: the live colour, or the theme's own
+  // primary when no override is set (hex field reads the CSS token).
+  const displayColour = useMemo(() => {
+    if (activeColour) return activeColour;
+    return (
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-primary')
+        .trim() || DEFAULT_COLOUR
+    );
+  }, [activeColour]);
+
   // Contrast text is absolute — light accent needs dark text, dark accent needs
   // light text, regardless of theme. Centralised as CSS variables instead of
   // duplicated inline styles.
-  const isLightBg = parseInt(activeColour.slice(1), 16) > 0x7fffff;
+  const isLightBg = parseInt(displayColour.slice(1), 16) > 0x7fffff;
   const previewBtnText = isLightBg ? '#0a0a0a' : '#ffffff';
 
   const updateColour = useCallback((c: string) => {
@@ -108,6 +127,18 @@ export function AppearanceSettings({
     }
     const palette = deriveAccentPalette(c);
     applyAccentPalette(palette);
+    applyThemeContrasts();
+  }, [embedded, onColourChange]);
+
+  const clearOverride = useCallback(() => {
+    if (embedded) {
+      onColourChange?.('');
+    } else {
+      setColour(null);
+    }
+    // Follow the active theme again: drop every inline override.
+    clearAccentPalette();
+    applyThemeContrasts();
   }, [embedded, onColourChange]);
 
   // ── Localized helper for reset button tooltip ─────────────
@@ -123,16 +154,21 @@ export function AppearanceSettings({
 
   const handlePickLogo = useCallback(async () => {
     try {
-      const path = await pickLogoFile();
+      // ADR #7 conditional scoping, matching setBrandLogoPath on the very next line, which
+      // already passes this same sessionToken. pick_logo_file_scoped enforces SETTINGS_EDIT;
+      // the unscoped command opens a native dialog and checks no permission whatsoever.
+      const path = sessionToken
+        ? await pickLogoFileScoped(sessionToken)
+        : await pickLogoFile();
       if (path) {
         setLogoPath(path);
-        await setBrandLogoPath(path);
+        await setBrandLogoPath(sessionToken, path);
         refreshBrandSettings();
       }
     } catch {
       // File picker dialog was dismissed or failed — no action needed.
     }
-  }, [refreshBrandSettings]);
+  }, [refreshBrandSettings, sessionToken]);
 
   const colourRef = useRef(activeColour);
   colourRef.current = activeColour;
@@ -142,8 +178,8 @@ export function AppearanceSettings({
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await setBrandPrimaryColour(colourRef.current);
-      await setBrandStoreName(nameRef.current);
+      await setBrandPrimaryColour(sessionToken, colourRef.current ?? '');
+      await setBrandStoreName(sessionToken, nameRef.current);
       refreshBrandSettings();
       addToast({ message: l10n.getString('appearance-save-success'), type: 'success' });
     } catch {
@@ -151,7 +187,7 @@ export function AppearanceSettings({
     } finally {
       setSaving(false);
     }
-  }, [refreshBrandSettings, addToast, l10n]);
+  }, [refreshBrandSettings, addToast, l10n, sessionToken]);
 
   const handleResetAll = useCallback(() => {
     setShowResetConfirm(true);
@@ -163,23 +199,24 @@ export function AppearanceSettings({
     try {
       // Update parent state in embedded mode so SettingsPage tracks changes.
       if (embedded) {
-        onColourChange?.(DEFAULT_COLOUR);
+        onColourChange?.('');
         onStoreNameChange?.('');
       } else {
-        setColour(DEFAULT_COLOUR);
+        setColour(null);
         setStoreName('');
       }
       setLogoPath(null);
 
-      // Persist changes via backend.
-      await setBrandPrimaryColour(DEFAULT_COLOUR);
-      await setBrandStoreName('');
-      await setBrandLogoPath('');
+      // Persist changes via backend. Empty colour = follow the theme.
+      await setBrandPrimaryColour(sessionToken, '');
+      await setBrandStoreName(sessionToken, '');
+      await setBrandLogoPath(sessionToken, '');
 
-      // Refresh brand context and apply palette.
+      // Refresh brand context and drop every inline override so the
+      // per-theme primary tokens show through again.
       refreshBrandSettings();
-      const palette = deriveAccentPalette(DEFAULT_COLOUR);
-      applyAccentPalette(palette);
+      clearAccentPalette();
+      applyThemeContrasts();
 
       addToast({ message: l10n.getString('appearance-reset-all-success'), type: 'success' });
     } catch {
@@ -187,7 +224,7 @@ export function AppearanceSettings({
     } finally {
       setResetting(false);
     }
-  }, [embedded, onColourChange, onStoreNameChange, refreshBrandSettings, addToast, l10n]);
+  }, [embedded, onColourChange, onStoreNameChange, refreshBrandSettings, addToast, l10n, sessionToken]);
 
   // ── Card body slices (shared between embedded and non-embedded) ──
   // Defined after all callbacks to avoid TDZ errors.
@@ -204,7 +241,7 @@ export function AppearanceSettings({
               <input
                 id="brand-colour"
                 type="color"
-                value={activeColour}
+                value={displayColour}
                 onChange={(e) => updateColour(e.target.value)}
                 aria-label={l10n.getString('primary-colour-picker-aria')}
                 className="appearance-colour-picker"
@@ -215,7 +252,7 @@ export function AppearanceSettings({
                 id="appearance-colour-hex"
                 name="appearance-colour-hex"
                 type="text"
-                value={activeColour}
+                value={displayColour}
                 onChange={(e) => {
                   const normalised = normaliseHex(e.target.value);
                   if (normalised) updateColour(normalised);
@@ -225,23 +262,43 @@ export function AppearanceSettings({
                 {...cmInput}
               />
             </Localized>
-            <Localized id="appearance-reset-colour-aria" attrs={{ 'aria-label': true }}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                iconOnly
-                className="appearance-colour-reset"
-                onClick={() => updateColour(DEFAULT_COLOUR)}
-                aria-label={l10n.getString('reset-colour-aria')}
-                title={l10n.getString('appearance-reset-colour')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
-                </svg>
-              </Button>
-            </Localized>
+            {activeColour ? (
+              <Localized id="appearance-reset-colour-aria" attrs={{ 'aria-label': true }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  className="appearance-colour-reset"
+                  onClick={clearOverride}
+                  aria-label={l10n.getString('reset-colour-aria')}
+                  title={l10n.getString('appearance-reset-colour')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
+                  </svg>
+                </Button>
+              </Localized>
+            ) : (
+              <Localized id="appearance-follow-theme-aria" attrs={{ 'aria-label': true }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  className="appearance-colour-reset appearance-colour-follow"
+                  onClick={clearOverride}
+                  aria-label={l10n.getString('appearance-follow-theme-aria')}
+                  title={l10n.getString('appearance-follow-theme')}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" />
+                  </svg>
+                </Button>
+              </Localized>
+            )}
           </div>
         </span>
       </div>
@@ -348,10 +405,10 @@ export function AppearanceSettings({
         <div
           className="appearance-preview-box"
           style={{
-            '--preview-colour': activeColour,
+            '--preview-colour': displayColour,
             '--preview-btn-text': previewBtnText,
-            '--preview-colour-alpha-10': `${activeColour}1a`,
-            '--preview-colour-alpha-20': `${activeColour}33`,
+            '--preview-colour-alpha-10': `${displayColour}1a`,
+            '--preview-colour-alpha-20': `${displayColour}33`,
           } as React.CSSProperties}
         >
           <div className="appearance-preview-sample">

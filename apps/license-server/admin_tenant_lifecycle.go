@@ -24,16 +24,89 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// isAdminTenantRecord reports whether the record is the admin tenant
-// (OZ_ADMIN_EMAIL) — the account adminAuth maps sessions to. Its email
-// must never change (it would break the auth mapping) and it must never
-// be deleted (it would lock every admin session out).
-func isAdminTenantRecord(tenant *core.Record) bool {
-	adminEmail := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
-	if adminEmail == "" {
-		adminEmail = defaultAdminEmail
+// adminEmailTarget resolves the deployment's admin email for the
+// tenant-lifecycle guards: OZ_ADMIN_EMAIL trimmed, and ok=false when the
+// operator set nothing (absent, empty, or whitespace-only).
+//
+// It DELIBERATELY does NOT apply the compiled defaultAdminEmail. The old
+// inline fallback made "unset" indistinguishable from "set to the literal
+// address in the binary", which is why an unset env silently protected a
+// row nobody named and left every other row editable. A guard that needs to
+// know whether the deployment declared an admin identity must get that
+// false, so it can fail closed on it.
+//
+// TRIM, and that is a behaviour change: the readers of this variable
+// disagree today — admin_dashboard.go:87 already TrimSpaces its env read
+// while web_password.go:176 does not. Trimming here moves the guard toward
+// the refusing side (a padded env value now resolves to the address the
+// operator meant instead of matching nothing), which is the direction that
+// cannot cost an operator the protection.
+func adminEmailTarget() (string, bool) {
+	v := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
+	if v == "" {
+		return "", false
 	}
-	return strings.EqualFold(tenant.GetString("email"), adminEmail)
+	return v, true
+}
+
+// adminEmailTargetWithDefault is the reservation-side resolution:
+// OZ_ADMIN_EMAIL trimmed, falling back to the compiled defaultAdminEmail. It
+// exists so reservedAdminEmails (web_otp.go) can build the set, and it is now
+// LOAD-BEARING FOR THREE CONSUMERS — the signup reservation, the
+// isAdminTenantRecord guard and the rename-target check in
+// handleAdminUpdateTenant all reach the address through it. A later cleanup
+// that deletes this wrapper and points those callers at adminEmailTarget
+// instead would silently narrow the guard to the env side and reopen BOTH
+// faults this file has now had: the phantom-403 outage on every ordinary row
+// and the rename-into-admin mint path.
+//
+// It is kept separate from adminEmailTarget on purpose: the set needs a value
+// that is never unknown, while the resolver that reports whether the operator
+// NAMED an address has to be able to say no.
+func adminEmailTargetWithDefault() string {
+	if v, ok := adminEmailTarget(); ok {
+		return v
+	}
+	return defaultAdminEmail
+}
+
+// isAdminTenantRecord reports whether the record carries one of the
+// deployment RESERVED admin addresses — the account adminAuth maps sessions
+// to. Its email must never change (it would break the auth mapping) and it
+// must never be deleted (it would lock every admin session out).
+//
+// ONE SET, ONE READER: membership is tested against reservedAdminEmails
+// (web_otp.go) — OZ_ADMIN_EMAIL trimmed UNION the compiled defaultAdminEmail,
+// lowercase, reached through adminEmailTargetWithDefault. The signup
+// reservation, this guard and the rename-target check in
+// handleAdminUpdateTenant all read that one function, so the two-resolver
+// split cannot come back: there is no reservation address and no guard
+// address, only the set.
+//
+// The guard is deliberately a SUPERSET of what authentication anchors on.
+// Auth picks ONE address (env, else the compiled default); the guard protects
+// that address AND the compiled default when the env names elsewhere. That is
+// the safe direction — a row auth would never map a session to can still
+// refuse to be renamed or deleted, while a row auth WOULD map to is always
+// protected.
+//
+// WHY NOT "protect every row when the env is unset", which is what this
+// function did for exactly one commit: on a default deploy the admin identity
+// is NOT unknown, because auth anchors on the compiled default. Blanket
+// refusal was therefore not caution, it was an outage — every offboarding
+// delete answered 403 and every email rename 400 on rows that are provably
+// not the admin tenant, and the admin SPA renders a 403 as a global Access
+// denied screen (admin-utils.js treats 401 and 403 alike), so the operator
+// lost the whole content pane rather than one button. Refusing on an unset
+// variable protected nothing that the set does not already protect.
+//
+// PARKED, do not reuse for authentication: the auth-semantics wave may change
+// what an unset OZ_ADMIN_EMAIL does at the GATE. Routing adminAuth through
+// this function, or adding a parameter that would let it, would silently pick
+// one of the two semantics. Authentication sites keep their own inline
+// resolution until that wave lands.
+func isAdminTenantRecord(tenant *core.Record) bool {
+	return reservedAdminEmails()[normalizeEmail(tenant.GetString("email"))]
 }
 
 // parseAllowedTypesJSON decodes the subscriptions.allowed_types JSON
@@ -106,6 +179,23 @@ func handleAdminUpdateTenant(app core.App) func(e *core.RequestEvent) error {
 				map[string]any{"email": email})
 			if len(dupes) > 0 {
 				return e.JSON(http.StatusConflict, map[string]any{"error": "email already in use"})
+			}
+			// ── The mint path, closed ─────────────────────────────────
+			// Renaming an ordinary row ONTO a reserved admin address is
+			// how a tenant becomes the admin tenant without anyone
+			// touching a server: adminAuth maps a session by an EqualFold
+			// comparison on the resolved address, so whichever row holds
+			// that address holds the admin identity. Nothing on this path
+			// checked the TARGET — the guard above looks only at the
+			// source row, and the createTenant reservation gates SIGNUP,
+			// so it never sees a rename. Only the unoccupied case reaches
+			// here: if some row already held the address, the 409 above
+			// answered. Fail-closed masked this, because while every
+			// rename 400ed nobody attempted the one that mattered.
+			if reservedAdminEmails()[email] {
+				return e.JSON(http.StatusBadRequest, map[string]any{
+					"error": "email is reserved for the deployment admin identity",
+				})
 			}
 			tenant.Set("email", email)
 		}
@@ -243,12 +333,12 @@ func handleAdminGrantSubscription(app core.App) func(e *core.RequestEvent) error
 		maxStores, maxPOS, allowedTypes := tierQuotas(req.TierKey, "")
 		startsAt := now.Format(time.RFC3339)
 		expires := expiresAt.Format(time.RFC3339)
-		grace := calculateGraceUntil(expiresAt).Format(time.RFC3339)
+		grace := calculateGraceUntil(req.TierKey, expiresAt).Format(time.RFC3339)
 		payload := SubscriptionPayload{
 			TenantID:        tenant.Id,
 			TierKey:         req.TierKey,
 			Status:          "active",
-			MaxStores:       maxStores,
+			MaxLocations:    maxStores,
 			MaxPOSInstances: maxPOS,
 			AllowedTypes:    allowedTypes,
 			StartsAt:        startsAt,
@@ -256,6 +346,8 @@ func handleAdminGrantSubscription(app core.App) func(e *core.RequestEvent) error
 			GraceUntil:      grace,
 			IssuedAt:        startsAt,
 		}
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		payload.Features = featureGrantsForTenant(app, tenant.Id)
 		payloadStr, signature, err := signSubscription(payload)
 		if err != nil {
 			log.Printf("/admin/tenants/%s/grant-subscription: sign failed: %v", tenant.Id, err)
@@ -385,4 +477,77 @@ func handleAdminDeleteTenant(app core.App) func(e *core.RequestEvent) error {
 			"sessions_dropped": sessionsDropped,
 		})
 	}
+}
+
+// ── Tenant health (saas-3 support box) ────────────────────────────
+
+// summaryStatus extracts the status string from a dashboard summary map
+// (licenseSummary / subscriptionSummary), or "none" when the tenant has
+// no such record. Same "none" vocabulary the account page fallback uses.
+func summaryStatus(v any) string {
+	if m, ok := v.(map[string]any); ok {
+		if s, ok := m["status"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return "none"
+}
+
+// tenantHealth aggregates the four per-tenant signals the admin hub can
+// see TODAY into one row for the support tenant-health view (owner go
+// D95; R5 dossier: nothing previously joined these per tenant):
+// license status, subscription verdict, device last-seen, and the
+// deployed app version.
+//
+// HONESTY RULE (brief hard rule): the hub only learns app_version from
+// trial_registrations — trial claims are the ONLY device→hub report
+// that carries it (pb_schema.json app_version lives solely there). A
+// tenant without a trial registration reports version "unknown": never
+// fabricated from the server build, the subscription tier, or another
+// tenant's row. Closing that gap (a real device→hub version report on
+// /status) is a named follow-up — this slice adds NO new reporting
+// protocol and aggregates ONLY stored data.
+func tenantHealth(app core.App, rec *core.Record) map[string]any {
+	health := map[string]any{
+		"tenantStatus":       rec.GetString("status"),
+		"licenseStatus":      summaryStatus(licenseSummary(app, rec.Id)),
+		"subscriptionStatus": summaryStatus(subscriptionSummary(app, rec.Id)),
+	}
+
+	// Devices: total + revoked count + the most recent last-seen (the
+	// sync pulse the hub already stores on every machine row).
+	machines, err := app.FindRecordsByFilter("tenant_machines",
+		"tenant_id = {:tid}", "-created", 0, 0,
+		map[string]any{"tid": rec.Id})
+	devicesTotal, devicesRevoked := 0, 0
+	lastSeen := ""
+	if err == nil {
+		for _, m := range machines {
+			devicesTotal++
+			if formatDateField(m, "revoked_at") != "" {
+				devicesRevoked++
+			}
+			if ls := formatDateField(m, "last_seen_at"); ls != "" && (lastSeen == "" || ls > lastSeen) {
+				lastSeen = ls
+			}
+		}
+	}
+	health["devices"] = devicesTotal
+	health["devicesRevoked"] = devicesRevoked
+	health["lastSeenAt"] = lastSeen
+
+	// Deployed version: only where a trial registration reported it.
+	// Absence is "unknown" — the newest claim wins if several exist.
+	// Sorted by first_seen_at: trial_registrations carries NO created
+	// autodate field, and an invalid sort silently yields zero rows.
+	version := "unknown"
+	if trials, err := app.FindRecordsByFilter("trial_registrations",
+		"tenant_id = {:tid}", "-first_seen_at", 1, 0,
+		map[string]any{"tid": rec.Id}); err == nil && len(trials) > 0 {
+		if v := trials[0].GetString("app_version"); v != "" {
+			version = v
+		}
+	}
+	health["appVersion"] = version
+	return health
 }

@@ -10,14 +10,24 @@ const mockSetBrandPrimaryColour = vi.fn();
 const mockSetBrandLogoPath = vi.fn();
 const mockSetBrandStoreName = vi.fn();
 const mockPickLogoFile = vi.fn();
+// Distinct from mockPickLogoFile rather than delegating to it: a mirror registers a call on the
+// unscoped spy, which makes `expect(mockPickLogoFile).not.toHaveBeenCalled()` unprovable and the
+// test would pass whether or not the permission check ran. See DataManagementBackup.test.tsx.
+const mockPickLogoFileScoped = vi.fn();
 const mockRefreshBrandSettings = vi.fn();
 
 vi.mock('@/api/branding', () => ({
   getBrandSettings: () => mockGetBrandSettings(),
-  setBrandPrimaryColour: (c: string) => mockSetBrandPrimaryColour(c),
-  setBrandLogoPath: (p: string) => mockSetBrandLogoPath(p),
-  setBrandStoreName: (n: string) => mockSetBrandStoreName(n),
+  getBrandSettingsScoped: (t: string) => mockGetBrandSettings(t),
+  setBrandPrimaryColour: (t: string, c: string) => mockSetBrandPrimaryColour(t, c),
+  setBrandLogoPath: (t: string, p: string) => mockSetBrandLogoPath(t, p),
+  setBrandStoreName: (t: string, n: string) => mockSetBrandStoreName(t, n),
   pickLogoFile: () => mockPickLogoFile(),
+  pickLogoFileScoped: (t: string) => mockPickLogoFileScoped(t),
+}));
+
+vi.mock('@/contexts/WorkspaceContext', () => ({
+  useWorkspace: () => ({ sessionToken: 'tok-appearance' }),
 }));
 
 vi.mock('@/contexts/ZoomContext', () => ({
@@ -50,6 +60,7 @@ vi.mock('@fluent/react', () => ({
           'primary-colour-picker-aria': 'Primary colour picker',
           'colour-hex-aria': 'Colour hex value',
           'reset-colour-aria': 'Reset colour to default',
+          'appearance-follow-theme-aria': 'Following theme colour — pick a colour to override',
           'pick-logo-aria': 'Pick logo file',
           'reset-appearance-aria': 'Reset all appearance settings',
           'save-appearance-aria': 'Save appearance',
@@ -63,10 +74,13 @@ vi.mock('@fluent/react', () => ({
 
 const mockDeriveAccentPalette = vi.fn();
 const mockApplyAccentPalette = vi.fn();
+const mockClearAccentPalette = vi.fn();
 
 vi.mock('@/utils/color', () => ({
   deriveAccentPalette: (base: string) => mockDeriveAccentPalette(base),
   applyAccentPalette: (palette: unknown) => mockApplyAccentPalette(palette),
+  clearAccentPalette: (...args: unknown[]) => mockClearAccentPalette(...args),
+  applyThemeContrasts: vi.fn(),
 }));
 
 vi.mock('@/frontend/shared/Toast', () => ({
@@ -273,12 +287,24 @@ describe('AppearanceSettings', () => {
 
     await user.click(screen.getByLabelText('Pick logo file'));
 
-    expect(mockPickLogoFile).toHaveBeenCalled();
+    // pick_logo_file opens a native file dialog and, unscoped, checks no permission at all;
+    // pick_logo_file_scoped (branding.rs:271) enforces permissions::SETTINGS_EDIT. The very next
+    // statement in the handler already passes sessionToken to setBrandLogoPath
+    // (AppearanceSettings.tsx:134), so the token is in hand at this exact point -- the unscoped
+    // call was the lone outlier, not a deliberate choice.
+    // 'tok-appearance', not HARNESS_SESSION_TOKEN: this file overrides useWorkspace at L31 with
+    // its own token, and the sibling assertions at L308/367/368 already assert against it.
+    // Matching the block's own convention is what makes the assertion meaningful here.
+    expect(mockPickLogoFileScoped).toHaveBeenCalledWith('tok-appearance');
+    expect(mockPickLogoFile).not.toHaveBeenCalled();
   });
 
   it('sets logo path and refreshes brand when pickLogoFile returns a path', async () => {
     const user = userEvent.setup();
     mockPickLogoFile.mockResolvedValue('/new/logo.png');
+    // The component takes the scoped branch under this file's session token, so the scenario has
+    // to be configured there too.
+    mockPickLogoFileScoped.mockResolvedValue('/new/logo.png');
     render(<AppearanceSettings />);
     await waitFor(() => {
       expect(screen.getByLabelText('Pick logo file')).toBeInTheDocument();
@@ -287,7 +313,8 @@ describe('AppearanceSettings', () => {
     await user.click(screen.getByLabelText('Pick logo file'));
 
     await waitFor(() => {
-      expect(mockSetBrandLogoPath).toHaveBeenCalledWith('/new/logo.png');
+      // RED (round AD): logo-path persistence is also session-scoped.
+      expect(mockSetBrandLogoPath).toHaveBeenCalledWith('tok-appearance', '/new/logo.png');
       expect(mockRefreshBrandSettings).toHaveBeenCalled();
     });
   });
@@ -344,8 +371,10 @@ describe('AppearanceSettings', () => {
     await user.click(screen.getByLabelText('Save appearance'));
 
     await waitFor(() => {
-      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('#147EFB');
-      expect(mockSetBrandStoreName).toHaveBeenCalledWith('');
+      // RED (round AD): the Rust commands require a session token
+      // (SETTINGS_EDIT) — the token must lead every setter call.
+      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('tok-appearance', '#147EFB');
+      expect(mockSetBrandStoreName).toHaveBeenCalledWith('tok-appearance', '');
       expect(mockRefreshBrandSettings).toHaveBeenCalled();
     });
   });
@@ -395,7 +424,8 @@ describe('AppearanceSettings', () => {
     await user.click(screen.getByLabelText('Save appearance'));
 
     await waitFor(() => {
-      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('#aabbcc');
+      // RED (round AD): token must flow through the updated-values path too.
+      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('tok-appearance', '#aabbcc');
     });
   });
 
@@ -481,3 +511,48 @@ describe('AppearanceSettings', () => {
     expect(mockGetBrandSettings).not.toHaveBeenCalled();
   });
 });
+
+  // ── Follow-theme sentinel (round AH) ─────────────────────────────
+
+  it('treats empty loaded colour as follow-theme: shows theme primary, not a stale hex', async () => {
+    // jsdom resolves tokens.css custom props to '' — falls back to
+    // DEFAULT_COLOUR, never to the old hardcoded initial state.
+    mockGetBrandSettings.mockResolvedValue({ ...defaultBrandResponse, primary_colour: '' });
+    render(<AppearanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Colour hex value')).toBeInTheDocument();
+    });
+    const hexInput = screen.getByLabelText('Colour hex value') as HTMLInputElement;
+    expect(hexInput.value).toBe('#147EFB');
+    // Reset control becomes the follow-theme (sun) indicator.
+    expect(screen.getByLabelText('Following theme colour — pick a colour to override')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Reset colour to default')).not.toBeInTheDocument();
+  });
+
+  it('clear button restores follow-theme: clears palette and saves empty colour', async () => {
+    mockGetBrandSettings.mockResolvedValue({ ...defaultBrandResponse, primary_colour: '#ff0000' });
+    render(<AppearanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Reset colour to default')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('Reset colour to default'));
+
+    expect(mockClearAccentPalette).toHaveBeenCalled();
+    // Instant local state → null (hex shows theme primary via mock).
+    expect(screen.getByLabelText('Following theme colour — pick a colour to override')).toBeInTheDocument();
+  });
+
+  it('save with follow-theme persists the empty sentinel', async () => {
+    mockGetBrandSettings.mockResolvedValue({ ...defaultBrandResponse, primary_colour: '' });
+    render(<AppearanceSettings />);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Save appearance')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('Save appearance'));
+
+    await waitFor(() => {
+      expect(mockSetBrandPrimaryColour).toHaveBeenCalledWith('tok-appearance', '');
+    });
+  });

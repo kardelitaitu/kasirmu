@@ -299,6 +299,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensureAddonsField(app); err != nil {
 			return err
 		}
+		// Phase D2: feature_grants json field on subscriptions (prod boot mirror).
+		if err := ensureFeatureGrantsField(app); err != nil {
+			return err
+		}
 
 		se.Router.POST("/api/v1/license/activate", handleActivate(app))
 		// LSE-11 phase A: recovery-code endpoint — mirror production boot.
@@ -332,6 +336,8 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/tier-override", handleAdminTierOverride(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/grant-subscription", handleAdminGrantSubscription(app))
+		// Phase D2: per-feature grant authoring (admin-only, OZ_ADMIN_KEY).
+		se.Router.POST("/api/v1/admin/subscriptions/{id}/feature-grants", handleAdminSetFeatureGrants(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/devices/{deviceId}/revoke", handleAdminRevokeDevice(app))
 		se.Router.DELETE("/api/v1/admin/tenants/{id}", handleAdminDeleteTenant(app))
 		se.Router.GET("/api/v1/admin/health", handleAdminHealth(app))
@@ -1049,6 +1055,15 @@ func TestStatusHandler_WithSubscription(t *testing.T) {
 	if _, ok := body["grace_until"]; !ok {
 		t.Error("expected grace_until in response")
 	}
+	// 1g dual-emit: the status endpoint serves both wire names with the
+	// same value until the client fleet has rotated. seedSubscription
+	// stores max_stores=5.
+	if body["max_locations"] != float64(5) {
+		t.Errorf("expected max_locations 5, got %v", body["max_locations"])
+	}
+	if body["max_stores"] != float64(5) {
+		t.Errorf("expected legacy max_stores 5, got %v", body["max_stores"])
+	}
 }
 
 // resetLimiterBuckets clears only the in-memory rate-limiter buckets,
@@ -1262,8 +1277,13 @@ func TestRenewHandler_WithSubscription(t *testing.T) {
 		if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
 			t.Errorf("failed to parse signed_payload: %v", err)
 		} else {
+			if sp.MaxLocations != 5 {
+				t.Errorf("expected max_locations=5 in renewal payload, got %d", sp.MaxLocations)
+			}
+			// 1g dual-emit: the legacy wire name must ride along at the same
+			// value so pre-rename clients keep parsing the quota.
 			if sp.MaxStores != 5 {
-				t.Errorf("expected max_stores=5 in renewal payload, got %d", sp.MaxStores)
+				t.Errorf("expected legacy max_stores=5 in renewal payload, got %d", sp.MaxStores)
 			}
 			if sp.MaxPOSInstances != 3 {
 				t.Errorf("expected max_pos_instances=3 in renewal payload, got %d", sp.MaxPOSInstances)
@@ -1346,8 +1366,8 @@ func TestRenewHandler_PlusTier(t *testing.T) {
 	if sp.TierKey != "plus" {
 		t.Errorf("expected tier_key=plus in renewal payload, got %q", sp.TierKey)
 	}
-	if sp.MaxStores != 1 {
-		t.Errorf("expected max_stores=1 in renewal payload, got %d", sp.MaxStores)
+	if sp.MaxLocations != 1 {
+		t.Errorf("expected max_locations=1 in renewal payload, got %d", sp.MaxLocations)
 	}
 	if sp.MaxPOSInstances != 2 {
 		t.Errorf("expected max_pos_instances=2 in renewal payload, got %d", sp.MaxPOSInstances)
@@ -1416,8 +1436,8 @@ func TestRenewHandler_TierChange_UsesNewKeyLimits(t *testing.T) {
 
 		// M5 audit assertion: quotas must come from the NEW Enterprise
 		// key, NOT from the OLD Pro subscription (which had 5/3/2).
-		if sp.MaxStores != 20 {
-			t.Errorf("Pro→Enterprise upgrade: expected max_stores=20 (from NEW key), got %d", sp.MaxStores)
+		if sp.MaxLocations != 20 {
+			t.Errorf("Pro→Enterprise upgrade: expected max_locations=20 (from NEW key), got %d", sp.MaxLocations)
 		}
 		if sp.MaxPOSInstances != 10 {
 			t.Errorf("Pro→Enterprise upgrade: expected max_pos_instances=10 (from NEW key), got %d", sp.MaxPOSInstances)
@@ -1463,8 +1483,8 @@ func TestRenewHandler_TierChange_UsesNewKeyLimits(t *testing.T) {
 
 		// M5 audit assertion: quotas must come from the NEW Pro key,
 		// NOT from the OLD Enterprise subscription (which had 20/10/3).
-		if sp.MaxStores != 5 {
-			t.Errorf("Enterprise→Pro downgrade: expected max_stores=5 (from NEW key), got %d", sp.MaxStores)
+		if sp.MaxLocations != 5 {
+			t.Errorf("Enterprise→Pro downgrade: expected max_locations=5 (from NEW key), got %d", sp.MaxLocations)
 		}
 		if sp.MaxPOSInstances != 3 {
 			t.Errorf("Enterprise→Pro downgrade: expected max_pos_instances=3 (from NEW key), got %d", sp.MaxPOSInstances)
@@ -1690,8 +1710,8 @@ func TestActivateHandler_Success(t *testing.T) {
 		if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
 			t.Errorf("failed to parse signed_payload: %v", err)
 		} else {
-			if sp.MaxStores != 5 {
-				t.Errorf("expected max_stores=5 in payload, got %d", sp.MaxStores)
+			if sp.MaxLocations != 5 {
+				t.Errorf("expected max_locations=5 in payload, got %d", sp.MaxLocations)
 			}
 			if sp.MaxPOSInstances != 3 {
 				t.Errorf("expected max_pos_instances=3 in payload, got %d", sp.MaxPOSInstances)
@@ -1832,8 +1852,8 @@ func TestTrialVerticalSegmentation(t *testing.T) {
 			// Quota block must come from the segmented tier, not the key's
 			// default (plus = 1 store / 2 registers, pro = unlimited + kds).
 			expectedStores, expectedPOS, expectedTypes := tierQuotas(tc.tier, "")
-			if sp.MaxStores != expectedStores {
-				t.Errorf("vertical %q: expected max_stores=%d, got %d", tc.vertical, expectedStores, sp.MaxStores)
+			if sp.MaxLocations != expectedStores {
+				t.Errorf("vertical %q: expected max_locations=%d, got %d", tc.vertical, expectedStores, sp.MaxLocations)
 			}
 			if sp.MaxPOSInstances != expectedPOS {
 				t.Errorf("vertical %q: expected max_pos_instances=%d, got %d", tc.vertical, expectedPOS, sp.MaxPOSInstances)
@@ -1879,6 +1899,151 @@ func TestTrialVerticalSegmentation(t *testing.T) {
 				t.Fatalf("expected a persisted %s subscription, err=%v", tc.tier, err)
 			}
 		})
+	}
+}
+
+// TestSignedPayload_CarriesTrialState verifies Phase C (todo-global-saas-2
+// md, "trial state, client-visible"): a trial-key activation publishes
+// is_trial and trial_ends_at INSIDE the signed payload, so the client can
+// render trial UI without the tier collapse throwing the fact away
+// (SubscriptionTier::from_db("trial") => Free stays the quota answer).
+// trial_ends_at must be valid RFC3339 and the trial's own deadline — the
+// same instant as expires_at, not a billing period.
+func TestSignedPayload_CarriesTrialState(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux failed: %v", err)
+	}
+
+	seedTrialKey(t, app, "OZ-TRIALPC-001", "plus", "unused", "2099-12-31 23:59:59.000Z")
+	body := strings.NewReader(`{
+		"key": "OZ-TRIALPC-001",
+		"email": "trialphasec001@example.com",
+		"machine_id": "trialpcmach0001",
+		"trial_vertical": ""
+	}`)
+	req := httptest.NewRequest("POST", "/api/v1/license/activate", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	payloadStr, ok := resp["signed_payload"].(string)
+	if !ok {
+		t.Fatal("expected signed_payload in response")
+	}
+
+	// Assert on the RAW JSON, not just a decoded struct: a key that is
+	// absent and a key that is present-but-false are the same answer to the
+	// client but different claims about what the server actually emitted.
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(payloadStr), &raw); err != nil {
+		t.Fatalf("failed to parse signed_payload: %v", err)
+	}
+	if v, present := raw["is_trial"]; !present {
+		t.Error("trial payload must carry is_trial")
+	} else if v != true {
+		t.Errorf("expected is_trial=true, got %v", v)
+	}
+	endRaw, present := raw["trial_ends_at"]
+	if !present {
+		t.Fatal("trial payload must carry trial_ends_at")
+	}
+	endStr, isStr := endRaw.(string)
+	if !isStr {
+		t.Fatalf("expected trial_ends_at to be a string, got %T", endRaw)
+	}
+
+	var sp SubscriptionPayload
+	if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
+		t.Fatalf("failed to parse signed_payload: %v", err)
+	}
+	if !sp.IsTrial {
+		t.Error("decoded IsTrial must be true for a trial key")
+	}
+	endAt, err := time.Parse(time.RFC3339, endStr)
+	if err != nil {
+		t.Fatalf("trial_ends_at must be RFC3339, got %q: %v", endStr, err)
+	}
+	expAt, err := time.Parse(time.RFC3339, sp.ExpiresAt)
+	if err != nil {
+		t.Fatalf("failed to parse expires_at: %v", err)
+	}
+	if d := endAt.Sub(expAt); d > time.Second || d < -time.Second {
+		t.Errorf("trial_ends_at (%v) must be the trial's own expiry (%v), diff %v", endAt, expAt, d)
+	}
+	// Blank vertical mints a 14-day Plus trial (§4), so the deadline is
+	// ~14 days out — proving it tracked the segmented trial length rather
+	// than the key's own expiry (seeded at 2099).
+	if d := time.Until(endAt); d < 13*24*time.Hour || d > 15*24*time.Hour {
+		t.Errorf("expected trial_ends_at ~14 days out, got %v", d)
+	}
+}
+
+// TestSignedPayload_PaidKeyOmitsTrialFields verifies the other half of
+// Phase C: a paid activation carries NEITHER field. Both are omitempty, so
+// a paid payload is byte-identical to a pre-Phase-C payload and the client
+// needs no dual-read — "absent" and "not a trial" are one code path.
+func TestSignedPayload_PaidKeyOmitsTrialFields(t *testing.T) {
+	resetRateLimiters()
+	app, se := setupDirectApp(t)
+	defer app.Cleanup()
+	mux, err := se.Router.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux failed: %v", err)
+	}
+
+	seedLicenseKey(t, app, "OZ-PAIDPC-001", "pro", "unused", "2099-12-31 23:59:59.000Z")
+	body := strings.NewReader(`{
+		"key": "OZ-PAIDPC-001",
+		"email": "paidphasec001@example.com",
+		"machine_id": "paidpcmach0001"
+	}`)
+	req := httptest.NewRequest("POST", "/api/v1/license/activate", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	payloadStr, ok := resp["signed_payload"].(string)
+	if !ok {
+		t.Fatal("expected signed_payload in response")
+	}
+	if strings.Contains(payloadStr, "is_trial") {
+		t.Errorf("paid payload must not carry is_trial: %s", payloadStr)
+	}
+	if strings.Contains(payloadStr, "trial_ends_at") {
+		t.Errorf("paid payload must not carry trial_ends_at: %s", payloadStr)
+	}
+
+	var sp SubscriptionPayload
+	if err := json.Unmarshal([]byte(payloadStr), &sp); err != nil {
+		t.Fatalf("failed to parse signed_payload: %v", err)
+	}
+	if sp.IsTrial {
+		t.Error("a paid key must never decode as a trial")
+	}
+	if sp.TrialEndsAt != "" {
+		t.Errorf("expected empty TrialEndsAt, got %q", sp.TrialEndsAt)
+	}
+	// The paid period's own expiry is untouched by the new fields.
+	if _, err := time.Parse(time.RFC3339, sp.ExpiresAt); err != nil {
+		t.Errorf("paid expires_at must still be RFC3339: %v", err)
 	}
 }
 
@@ -1928,8 +2093,8 @@ func TestTrialVerticalSegmentation_PaidKeyIgnored(t *testing.T) {
 	if sp.TierKey != "pro" {
 		t.Errorf("paid key must keep tier pro, got %q", sp.TierKey)
 	}
-	if sp.MaxStores != 5 {
-		t.Errorf("paid key must keep max_stores=5, got %d", sp.MaxStores)
+	if sp.MaxLocations != 5 {
+		t.Errorf("paid key must keep max_locations=5, got %d", sp.MaxLocations)
 	}
 	if sp.MaxPOSInstances != 3 {
 		t.Errorf("paid key must keep max_pos_instances=3, got %d", sp.MaxPOSInstances)

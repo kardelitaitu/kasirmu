@@ -19,6 +19,7 @@ import * as shiftsApi from '@/api/shifts';
 import * as settingsApi from '@/api/settings';
 import * as salesApi from '@/api/sales';
 import * as productsApi from '@/api/products';
+import * as kdsApi from '@/api/kds';
 
 import type * as HardwareModule from '@/api/hardware';
 import { mockedBarcode } from '@/__tests__/test-utils/mocks/barcodeScanner';
@@ -142,11 +143,20 @@ vi.mock('@/api/settings', async () => {
 
 vi.mock('@/api/sales', async () => {
   const { createSalesApiMock } = await import('@/__tests__/test-utils/mocks/api');
-  return {
-    ...createSalesApiMock(),
-    createKdsOrderFromSaleScoped: vi.fn(() => Promise.resolve({})),
-    createKdsOrderFromSale: vi.fn(() => Promise.resolve({})),
-  };
+  return createSalesApiMock();
+});
+
+// The two createKdsOrderFromSale* entries used to live in the @/api/sales mock
+// above, which did nothing: @/api/sales exports neither of them (36 exports,
+// checked), and PaymentModal.tsx:10 imports them from @/api/kds -- the module this
+// file never mocked. So the mock configured a surface nobody read from, while the
+// real module ran and threw on every checkout, swallowed by the caller's .catch.
+// Same root cause as the retail factory: a mock attached to the wrong module looks
+// like coverage and provides none.
+vi.mock('@/api/kds', async (importOriginal) => {
+  const { createKdsApiMock } = await import('@/__tests__/test-utils/mocks/api');
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  return { ...(await importOriginal<typeof import('@/api/kds')>()), ...createKdsApiMock() };
 });
 
 vi.mock('@/api/tax', () => ({
@@ -545,6 +555,28 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
 
     // 11. Verify shift is still open
     expect(screen.getByText('0m')).toBeInTheDocument();
+
+    // 12. The kitchen ticket must actually be requested. This assertion could not
+    // pass before: the two createKdsOrderFromSale* mocks sat on the @/api/sales
+    // module, which exports neither, while @/api/kds -- the module PaymentModal
+    // really imports from -- was left unmocked. So the real module ran and threw
+    // on every checkout, and PaymentModal's catch took its FAILURE branch
+    // (console.error plus the payment-toast-kds-failed warning). Every sale in
+    // this file was therefore validating the "kitchen ticket failed" path while
+    // reading as a clean checkout.
+    //
+    // Covers the cash path (PaymentModal.tsx:1030). The QR path (:756) is a
+    // separate branch with its own catch, and is NOT covered here -- removing one
+    // call site leaves this test green, confirmed by sabotage.
+    await waitFor(() => {
+      expect(kdsApi.createKdsOrderFromSaleScoped).toHaveBeenCalledWith(
+        expect.any(String),
+        'sale-1',
+      );
+    });
+    // And the failure toast must NOT have fired, otherwise the assertion above
+    // passed while the branch under test was still the error path.
+    expect(screen.queryByText('payment-toast-kds-failed')).toBeNull();
   });
 
   it('adds multiple products, shows correct subtotal, opens payment', async () => {

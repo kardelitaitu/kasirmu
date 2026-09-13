@@ -347,7 +347,7 @@ func TestResumeSubscription_ExtendsExpiryByPausedDuration(t *testing.T) {
 	}
 
 	// grace_until must be recomputed from the new expiry.
-	wantGrace := calculateGraceUntil(newExpiry)
+	wantGrace := calculateGraceUntil("plus", newExpiry)
 	graceDiff := resumed.GetDateTime("grace_until").Time().Sub(wantGrace)
 	if graceDiff < -2*time.Minute || graceDiff > 2*time.Minute {
 		t.Errorf("grace_until not recomputed: got %v, want %v",

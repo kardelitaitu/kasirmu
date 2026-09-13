@@ -62,9 +62,11 @@ vi.mock('@/api/sales', async () => {
   return createSalesApiMock();
 });
 
-vi.mock('@/api/kds', async () => {
+vi.mock('@/api/kds', async (importOriginal) => {
   const { createRetailKdsApiMock } = await import('@/__tests__/test-utils/mocks/retailPos');
-  return createRetailKdsApiMock();
+  // Spread the real module so a future @/api/kds export cannot be missing here.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  return createRetailKdsApiMock(await importOriginal<typeof import('@/api/kds')>());
 });
 
 vi.mock('@/features/tables/TableManagementScreen', async () => {

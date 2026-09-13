@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { animDuration } from '@/utils/animation';
 import { listProductsScoped, type ProductDto } from '@/api/products';
 import { type CreateKdsLineItemInput, type KdsModifier } from '@/api/kds';
 import './KdsProductPickerModal.css';
@@ -34,6 +35,13 @@ export interface KdsProductPickerModalProps {
   pending?: boolean;
 }
 
+/**
+ * Exit-fade length in ms. Mirrors `var(--duration-200)` on the
+ * `--exiting` rules in KdsProductPickerModal.css — the two must stay in
+ * step, or the surface unmounts mid-animation (or lingers after it).
+ */
+const EXIT_MS = 200;
+
 /** Selected product entry in the picker. */
 interface PickedEntry {
   sku: string;
@@ -51,6 +59,82 @@ const COURSE_OPTIONS: { value: string | null; labelId: string }[] = [
   { value: 'dessert', labelId: 'kds-course-dessert' },
   { value: 'beverage', labelId: 'kds-course-beverage' },
 ];
+
+/**
+ * Resolve a product category string to a KDS course ID.
+ * Exported for testing — the inline logic in `addProduct` used to be a
+ * closure-only block, so no unit test could exercise the category mapping
+ * without rendering the full modal and adding products.
+ */
+/**
+ * Add a product to the picked list. If the SKU already exists, increment qty.
+ * Otherwise append a new entry. Exported for testing.
+ */
+export function addOrUpdatePicked(
+  picked: PickedEntry[],
+  product: { sku: string; name: string; category?: string | null },
+): PickedEntry[] {
+  const existing = picked.find((e) => e.sku === product.sku);
+  if (existing) {
+    return picked.map((e) =>
+      e.sku === product.sku ? { ...e, qty: e.qty + 1 } : e,
+    );
+  }
+  return [
+    ...picked,
+    {
+      sku: product.sku,
+      display_name: product.name,
+      qty: 1,
+      course: resolveCourseFromCategory(product.category),
+    },
+  ];
+}
+
+/** Resolve a product category string to a KDS course ID. */
+export function resolveCourseFromCategory(category: string | null | undefined): string | null {
+  const c = (category ?? '').toLowerCase();
+  if (c.includes('appetizer') || c.includes('starter')) return 'appetizer';
+  if (c.includes('main') || c.includes('entree')) return 'main';
+  if (c.includes('side')) return 'side';
+  if (c.includes('dessert')) return 'dessert';
+  if (c.includes('drink') || c.includes('beverage')) return 'beverage';
+  return null;
+}
+
+/**
+ * Clamp a line-item quantity to the allowed positive range.
+ * Quantities below 1 are rejected (no change); quantities at/above 1
+ * are passed through unchanged — the picker never allows 0 or negative
+ * quantities, and never auto-boosts beyond what the user set.
+ * Non-finite values (NaN, Infinity) are rejected.
+ * Exported for testing.
+ */
+export function clampQty(qty: number): number | null {
+  if (!isFinite(qty) || qty < 1) return null;
+  return qty;
+}
+
+/**
+ * Update one PickedEntry's quantity, returning a new array.
+ * If the clamped quantity is null (i.e. < 1, NaN, or non-finite), the
+ * entry list is unchanged (returned as-is, no allocation).
+ * If the SKU is not found, the list is also returned unchanged.
+ * Exported for testing — the inline clamp in `updateQty` used to be a
+ * closure-only guard, so no unit test could exercise the rejection path
+ * without rendering the full modal and clicking the stepper.
+ */
+export function updateQtyEntry(
+  picked: PickedEntry[],
+  sku: string,
+  qty: number,
+): PickedEntry[] {
+  const clamped = clampQty(qty);
+  if (clamped === null) return picked;
+  const found = picked.some((e) => e.sku === sku);
+  if (!found) return picked;
+  return picked.map((e) => (e.sku === sku ? { ...e, qty: clamped } : e));
+}
 
 /**
  * KdsProductPickerModal — searchable product selector for adding items
@@ -71,6 +155,55 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   const { l10n } = useLocalization();
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, isOpen, onClose);
+
+  // ── Exit animation (see .agents/skills/exit-animation-pattern) ──────
+  // The parent owns `isOpen`, so every dismiss path (X, Cancel, backdrop,
+  // Escape) still calls `onClose()` synchronously — the modal only defers
+  // its OWN unmount by one mirror fade. `animDuration()` returns 0 under
+  // `prefers-reduced-motion`, where the CSS `--exiting` rules are gated
+  // off too, so the surface snaps away instead of fading.
+  const [exiting, setExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevOpenRef = useRef(isOpen);
+
+  // Unmount cleanup: never setState against an unmounted component
+  // (React 18 strict mode double-mounts in dev). Empty deps → runs only
+  // on unmount, so it can never cancel the fade mid-flight.
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // true → false: play the exit fade, then retire the surface.
+  // false → true (reopened during the fade): cancel the pending timer and
+  // drop the `--exiting` class so the modal stays put. Both branches read
+  // only refs and setters, so `[isOpen]` is a complete dependency list.
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = isOpen;
+    if (isOpen) {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setExiting(false);
+      return;
+    }
+    if (!wasOpen) return;
+    setExiting(true);
+    // Rapid re-dismiss: retire the stale timer before scheduling anew.
+    if (exitTimerRef.current !== null) {
+      clearTimeout(exitTimerRef.current);
+    }
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      setExiting(false);
+    }, animDuration(EXIT_MS));
+  }, [isOpen]);
 
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,27 +251,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   );
 
   const addProduct = useCallback((product: ProductDto) => {
-    setPicked((prev) => {
-      const existing = prev.find((e) => e.sku === product.sku);
-      if (existing) {
-        return prev.map((e) =>
-          e.sku === product.sku ? { ...e, qty: e.qty + 1 } : e,
-        );
-      }
-      // Resolve course from product category.
-      const category = product.category?.toLowerCase() ?? '';
-      let course: string | null = null;
-      if (category.includes('appetizer') || category.includes('starter')) course = 'appetizer';
-      else if (category.includes('main') || category.includes('entree')) course = 'main';
-      else if (category.includes('side')) course = 'side';
-      else if (category.includes('dessert')) course = 'dessert';
-      else if (category.includes('drink') || category.includes('beverage')) course = 'beverage';
-
-      return [
-        ...prev,
-        { sku: product.sku, display_name: product.name, qty: 1, course },
-      ];
-    });
+    setPicked((prev) => addOrUpdatePicked(prev, product));
   }, []);
 
   const removeProduct = useCallback((sku: string) => {
@@ -146,10 +259,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   }, []);
 
   const updateQty = useCallback((sku: string, qty: number) => {
-    if (qty < 1) return;
-    setPicked((prev) =>
-      prev.map((e) => (e.sku === sku ? { ...e, qty } : e)),
-    );
+    setPicked((prev) => updateQtyEntry(prev, sku, qty));
   }, []);
 
   const updateCourse = useCallback((sku: string, course: string | null) => {
@@ -181,7 +291,8 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
   // do NOT add a second Escape handler here; it would fire onClose twice
   // per keypress (regression pinned by KdsProductPickerModal.test.tsx).
 
-  if (!isOpen) return null;
+  // Stay mounted for exactly one exit fade after `isOpen` drops.
+  if (!isOpen && !exiting) return null;
 
   return (
     // Backdrop click is a convenience — keyboard users close via the Close
@@ -189,13 +300,17 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
     // keyboard twin here.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
-      className="kds-picker-overlay"
+      className={`kds-picker-overlay${exiting ? ' kds-picker-overlay--exiting' : ''}`}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-label={requiredLocalized(l10n, 'kds-picker-title')}
+      data-testid="kds-picker-backdrop"
     >
-      <div className="kds-picker-modal" ref={panelRef}>
+      <div
+        className={`kds-picker-modal${exiting ? ' kds-picker-modal--exiting' : ''}`}
+        ref={panelRef}
+      >
         {/* ── Header ────────────────────────────────────────────── */}
         <div className="kds-picker-header">
           <h2 className="kds-picker-title">
@@ -205,6 +320,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
             className="kds-picker-close"
             onClick={onClose}
             aria-label={requiredLocalized(l10n, 'kds-picker-close-aria')}
+            data-testid="kds-picker-close"
           >
             &times;
           </button>
@@ -220,6 +336,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
             onChange={(e) => setSearch(e.target.value)}
             placeholder={requiredLocalized(l10n, 'kds-picker-search-placeholder')}
             aria-label={requiredLocalized(l10n, 'kds-picker-search-aria')}
+            data-testid="kds-picker-search"
           />
         </div>
 
@@ -231,6 +348,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
               type="button"
               className="kds-picker-retry"
               onClick={() => loadProducts()}
+              data-testid="kds-picker-retry"
             >
               {requiredLocalized(l10n, 'retry')}
             </button>
@@ -255,6 +373,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                     type="button"
                     className="kds-picker-clear-search"
                     onClick={() => setSearch('')}
+                    data-testid="kds-picker-clear-search"
                   >
                     {requiredLocalized(l10n, 'kds-picker-clear-search')}
                   </button>
@@ -269,6 +388,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                     className={`kds-picker-product${isPicked ? ' kds-picker-product--picked' : ''}`}
                     onClick={() => addProduct(product)}
                     aria-label={`${product.name}${isPicked ? ` (${requiredLocalized(l10n, 'kds-picker-added-label')})` : ''}`}
+                    data-testid={`kds-picker-product-${product.sku}`}
                   >
                     <span className="kds-picker-product-name">{product.name}</span>
                     <span className="kds-picker-product-course">
@@ -304,6 +424,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                           updateCourse(entry.sku, e.target.value || null)
                         }
                         aria-label={requiredLocalized(l10n, 'kds-picker-course-aria')}
+                        data-testid={`kds-picker-course-${entry.sku}`}
                       >
                         {COURSE_OPTIONS.map((opt) => (
                           <option key={String(opt.value)} value={opt.value ?? ''}>
@@ -318,6 +439,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                           onClick={() => updateQty(entry.sku, entry.qty - 1)}
                           disabled={entry.qty <= 1}
                           aria-label={requiredLocalized(l10n, 'kds-picker-qty-decrease')}
+                          data-testid={`kds-picker-qty-dec-${entry.sku}`}
                         >
                           &minus;
                         </button>
@@ -328,6 +450,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                           className="kds-picker-qty-btn"
                           onClick={() => updateQty(entry.sku, entry.qty + 1)}
                           aria-label={requiredLocalized(l10n, 'kds-picker-qty-increase')}
+                          data-testid={`kds-picker-qty-inc-${entry.sku}`}
                         >
                           +
                         </button>
@@ -337,6 +460,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
                         className="kds-picker-picked-remove"
                         onClick={() => removeProduct(entry.sku)}
                         aria-label={requiredLocalized(l10n, 'kds-picker-remove-aria', { name: entry.display_name })}
+                        data-testid={`kds-picker-remove-${entry.sku}`}
                       >
                         <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
                           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -355,6 +479,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
           <button
             className="kds-picker-cancel"
             onClick={onClose}
+            data-testid="kds-picker-footer-close"
           >
             {requiredLocalized(l10n, 'kds-picker-cancel')}
           </button>
@@ -362,6 +487,7 @@ export const KdsProductPickerModal = memo(function KdsProductPickerModal({
             className="kds-picker-confirm"
             onClick={handleConfirm}
             disabled={picked.length === 0 || pending}
+            data-testid="kds-picker-confirm"
           >
             {requiredLocalized(l10n, 'kds-picker-add-btn', { count: picked.length })}
           </button>

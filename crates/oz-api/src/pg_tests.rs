@@ -1,5 +1,89 @@
 use super::*;
 
+/// Cluster-wide advisory-lock key ("OZTESTSQ") serializing EVERY DDL window in
+/// the PG integration suite — the `PG_INIT` schema apply, `CREATE`/`DROP
+/// DATABASE` and `CREATE`/`DROP ROLE`. Roles and databases live in the
+/// CLUSTER catalogs (`pg_authid`/`pg_database`), not in one test database, so
+/// every window takes the lock in the SAME database (the base DB) where it
+/// actually contends.
+///
+/// Why: the CI PG service starts EMPTY, so under nextest every worker process
+/// drives its own init against the SAME shared base DB at the same time. The
+/// collision surfaces as `Db("db error")` / deadpool's "Error occurred while
+/// creating a new object: db error" (deadpool-0.12 `PoolError::Backend`) — a
+/// `pool.get()` that failed because a concurrent worker's DDL dropped or
+/// recreated what this test was connecting to. Locally the base DB is already
+/// migrated and the windows are short, so the race never reproduces.
+///
+/// Release: the guard's dedicated connection is closed at the end of the
+/// window, which ends the session and releases the lock server-side;
+/// `PgDdlGuard::release` unlocks explicitly first so release is deterministic
+/// rather than dependent on the FIN arriving. Test bodies still run fully in
+/// parallel — only the DDL windows serialize.
+const SCHEMA_LOCK_KEY: i64 = 0x4f5a_5445_5354_5351;
+
+/// How long a DDL window waits for the lock before proceeding unlocked. A
+/// wedged holder must never turn a flaky suite into a hung CI job.
+const SCHEMA_LOCK_TIMEOUT: &str = "120s";
+
+/// A held cluster-wide DDL serialization lock. See `SCHEMA_LOCK_KEY`.
+struct PgDdlGuard {
+    /// `None` when the connection could not be opened or the lock could not be
+    /// taken: the window then runs unserialized, exactly as it did before this
+    /// guard existed, so the lock can never add a new skip or failure mode.
+    client: Option<tokio_postgres::Client>,
+}
+
+impl PgDdlGuard {
+    /// Explicitly unlock, then close the dedicated connection.
+    async fn release(mut self) {
+        if let Some(client) = self.client.take() {
+            let _ = client
+                .batch_execute(&format!("SELECT pg_advisory_unlock({SCHEMA_LOCK_KEY});"))
+                .await;
+        }
+    }
+}
+
+/// Take the cluster-wide DDL lock on a DEDICATED connection to `base_url`
+/// (the shared base DB — the database every worker actually contends in).
+///
+/// Best-effort: connect/lock failures are logged and the caller proceeds
+/// unlocked. Dropping the returned guard (or calling `release`) ends the
+/// window. Never hold it across a test body: it serializes, so short windows
+/// only.
+async fn pg_ddl_guard(base_url: &str) -> PgDdlGuard {
+    let (client, conn) = match tokio_postgres::connect(base_url, tokio_postgres::NoTls).await {
+        Ok(pair) => pair,
+        Err(e) => {
+            eprintln!("PG DDL lock: no serialization connection ({e}); continuing");
+            return PgDdlGuard { client: None };
+        }
+    };
+    // Drive the connection on a background task; dropping the client ends the
+    // session, and with it the session-level advisory lock.
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
+    let _ = client
+        .batch_execute(&format!("SET lock_timeout = '{SCHEMA_LOCK_TIMEOUT}';"))
+        .await;
+    match client
+        .batch_execute(&format!("SELECT pg_advisory_lock({SCHEMA_LOCK_KEY});"))
+        .await
+    {
+        Ok(()) => PgDdlGuard {
+            client: Some(client),
+        },
+        Err(e) => {
+            // Timed out or refused: fall back to the pre-lock behaviour rather
+            // than failing an otherwise healthy test.
+            eprintln!("PG DDL lock: pg_advisory_lock failed ({e}); continuing unserialized");
+            PgDdlGuard { client: None }
+        }
+    }
+}
+
 /// Build a deadpool pool from a `postgres://` URL (plaintext — the test
 /// DB runs locally in Docker, mirroring `sync_store`'s integration test).
 ///
@@ -20,11 +104,15 @@ async fn test_pool(url: &str) -> Option<deadpool_postgres::Pool> {
         .expect("pool build");
     match pool.get().await {
         Ok(client) => {
-            // Serialize PG_INIT across test processes (same fixed key as
-            // sync_store's integration tests use for their schema apply).
-            const SCHEMA_LOCK_KEY: i64 = 0x4f5a_5445_5354_5351; // "OZTESTSQ"
+            // Serialize PG_INIT across test processes (module-level fixed key,
+            // shared with the CREATE/DROP DATABASE and CREATE/DROP ROLE
+            // windows below). Bounded by lock_timeout so a wedged holder
+            // degrades to the pre-lock behaviour instead of hanging.
             let _ = client
-                .batch_execute(&format!("SELECT pg_advisory_lock({SCHEMA_LOCK_KEY});"))
+                .batch_execute(&format!(
+                    "SET lock_timeout = '{SCHEMA_LOCK_TIMEOUT}';\n\
+                     SELECT pg_advisory_lock({SCHEMA_LOCK_KEY});"
+                ))
                 .await;
             let apply = client.batch_execute(oz_core::migrations::PG_INIT).await;
             let _ = client
@@ -90,6 +178,14 @@ async fn throwaway_test_pool(
     let admin_pool = raw_pool(url).await?;
     let admin = admin_pool.get().await.ok()?;
 
+    // ── Cluster DDL window ─────────────────────────────────────────────
+    // The stale sweep and CREATE DATABASE below touch the SHARED cluster
+    // catalog (pg_database), where every other worker process is doing the
+    // same at once; that interleaving is the mid-init collision behind the
+    // terse Db("db error"). Serialize it, and release before the schema
+    // apply so only this window pays for the lock.
+    let ddl = pg_ddl_guard(url).await;
+
     // Sweep throwaway databases a crashed run left behind (only tests
     // with this prefix create them), so stale DBs cannot accumulate or
     // collide with a fresh run after an OS PID is reused.
@@ -125,9 +221,11 @@ async fn throwaway_test_pool(
         .is_err()
     {
         eprintln!("PG integration skipped: cannot CREATE DATABASE");
+        ddl.release().await;
         return None;
     }
     drop(admin);
+    ddl.release().await;
 
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -452,6 +550,9 @@ async fn pg_integration_rest_roundtrip() {
     }
 
     // Cleanup: drop the throwaway database.
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
     drop(pool);
     admin_pool
         .get()
@@ -460,13 +561,16 @@ async fn pg_integration_rest_roundtrip() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await
         .expect("drop throwaway database should succeed");
+    ddl.release().await;
 }
 
 /// Integration test: the REST layer works under RLS as a NON-OWNER role
 /// because every tenant-scoped transaction sets `SET LOCAL oz.tenant_id`.
 ///
-/// The init schema enables RLS + the `tenant_isolation` policy on all 15
-/// tenant tables, but a non-owner connection sees nothing until the
+/// The init schema enables RLS + the `tenant_isolation` policy on every
+/// table in `RLS_TABLES` (`scripts/generate-pg-migration.py` — the source
+/// of truth; do not hardcode the count here), but a non-owner connection
+/// sees nothing until the
 /// `oz.tenant_id` GUC is set. Each REST function now opens a transaction
 /// and sets the GUC first; this test drives the real functions through a
 /// pool that connects as a restricted `oz_rest_probe` role (password
@@ -499,7 +603,12 @@ async fn pg_integration_rest_rls_non_owner() {
     let currency: Currency = "USD".parse().unwrap();
 
     // Restricted role (idempotent): DML on the tenant tables + the
-    // non-RLS `sale_lines` and `roles` tables the REST layer touches.
+    // non-tenant `roles` table the REST layer touches (sale_lines is
+    // RLS-covered too — the functions stamp tenant_id explicitly).
+    // Cluster DDL window: `oz_rest_probe` is a CLUSTER-wide role shared
+    // with `pg_isolates_locations_by_tenant`, so this setup races that
+    // test and every other worker’s throwaway-DB DDL. Serialize it.
+    let ddl = pg_ddl_guard(&url).await;
     let owner = pool.get().await.expect("owner connection");
     owner
         .batch_execute(
@@ -519,6 +628,8 @@ async fn pg_integration_rest_rls_non_owner() {
         )
         .await
         .expect("probe role setup should succeed");
+
+    ddl.release().await;
 
     // Probe connections must target the THROWAWAY DB (where PG_INIT was
     // applied and the owner's rows live), not the base DB behind `url` —
@@ -663,7 +774,10 @@ async fn pg_integration_rest_rls_non_owner() {
     assert_eq!(fetched_sale.status, SaleStatus::Pending);
 
     // Cleanup: owner removes the namespaced rows, then the probe role
-    // (DROP OWNED clears its grants first, so the drop can't fail).
+    // (DROP OWNED clears its grants first, so the drop can't fail). Both the
+    // role drop and the DROP DATABASE are cluster DDL, so take the same
+    // lock; it releases when `_ddl` drops at the end of the test.
+    let _ddl = pg_ddl_guard(&url).await;
     owner
         .batch_execute(&format!(
             "DELETE FROM sale_lines WHERE sale_id = '{}' AND sale_id IN \
@@ -678,6 +792,9 @@ async fn pg_integration_rest_rls_non_owner() {
         .expect("cleanup should succeed");
 
     // Cleanup: drop the throwaway database.
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
     drop(pool);
     admin_pool
         .get()
@@ -686,6 +803,7 @@ async fn pg_integration_rest_rls_non_owner() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await
         .expect("drop throwaway database should succeed");
+    ddl.release().await;
 }
 
 /// Concurrent `adjust_stock` calls must not lose updates: the whole
@@ -713,6 +831,10 @@ async fn pg_integration_concurrent_adjust_stock() {
         return;
     };
     let admin = admin_pool.get().await.expect("admin client");
+
+    // Cluster DDL window: the sweep + CREATE DATABASE below race the same
+    // cluster-catalog DDL every other worker process runs mid-init.
+    let ddl = pg_ddl_guard(&url).await;
 
     // Sweep throwaway databases a crashed run left behind (only this test
     // creates `oz_race_%`), so stale DBs cannot accumulate or collide
@@ -759,6 +881,8 @@ async fn pg_integration_concurrent_adjust_stock() {
         Some(q) => format!("{head}/{db_name}?{q}"),
         None => format!("{head}/{db_name}"),
     };
+    ddl.release().await;
+
     // `test_pool` applies PG_INIT (full schema) to the throwaway DB.
     let Some(pool) = test_pool(&db_url).await else {
         eprintln!("PG concurrent adjust test skipped: cannot connect to {db_name}");
@@ -846,6 +970,8 @@ async fn pg_integration_concurrent_adjust_stock() {
     );
 
     // Cleanup: drop the throwaway database (and any lingering handles).
+    // Cluster DDL: same lock as the create path above.
+    let ddl = pg_ddl_guard(&url).await;
     drop(pool);
     drop(admin);
     admin_pool
@@ -855,6 +981,7 @@ async fn pg_integration_concurrent_adjust_stock() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await
         .expect("drop throwaway database should succeed");
+    ddl.release().await;
 }
 
 /// Two concurrent transitions of the same sale must not both validate
@@ -943,6 +1070,9 @@ async fn pg_integration_concurrent_sale_status_transition() {
         .unwrap();
 
     // Cleanup: drop the throwaway database.
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
     drop(pool);
     admin_pool
         .get()
@@ -951,6 +1081,7 @@ async fn pg_integration_concurrent_sale_status_transition() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await
         .expect("drop throwaway database should succeed");
+    ddl.release().await;
 }
 
 /// Two tenants can hold the same product SKU and the same username; each
@@ -1119,6 +1250,9 @@ async fn pg_integration_tenant_sku_isolation() {
         .unwrap();
 
     // Cleanup: drop the throwaway database.
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
     drop(pool);
     admin_pool
         .get()
@@ -1127,6 +1261,7 @@ async fn pg_integration_tenant_sku_isolation() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await
         .expect("drop throwaway database should succeed");
+    ddl.release().await;
 }
 
 /// RED (TDD): terminal credential verification must survive RLS cutover.
@@ -1147,6 +1282,10 @@ async fn pg_integration_terminal_auth_survives_rls_cutover() {
         return;
     };
     let admin = admin_pool.get().await.expect("admin client");
+
+    // Cluster DDL window: sweep + DROP ROLE + CREATE DATABASE all touch
+    // the shared cluster catalogs alongside every other worker process.
+    let ddl = pg_ddl_guard(&url).await;
 
     // Sweep stale DBs and the probe role.
     let stale: Vec<String> = admin
@@ -1199,12 +1338,17 @@ async fn pg_integration_terminal_auth_survives_rls_cutover() {
         Some(q) => format!("{head}/{db_name}?{q}"),
         None => format!("{head}/{db_name}"),
     };
+    ddl.release().await;
     drop(admin);
 
     // Schema pool on the throwaway DB.
     let Some(pool) = test_pool(&db_url).await else {
         return;
     };
+    // Cluster DDL window: `oz_term_auth_probe` is cluster-wide, and the
+    // CREATE ROLE / ALTER TABLE ... FORCE RLS below run while other
+    // workers are still mid-init on the shared base DB.
+    let ddl = pg_ddl_guard(&url).await;
     let mut owner = pool.get().await.expect("owner client");
 
     // Set up the restricted role + FORCE RLS on sync_terminals.
@@ -1239,6 +1383,7 @@ async fn pg_integration_terminal_auth_survives_rls_cutover() {
         ))
         .await
         .expect("terminal-auth probe role setup should succeed");
+    ddl.release().await;
 
     // Seed a terminal, owner + GUC (FORCE applies to owner). The secret
     // hash must match what verify_terminal_credentials computes
@@ -1296,7 +1441,9 @@ async fn pg_integration_terminal_auth_survives_rls_cutover() {
         "terminal auth must return the correct tenant"
     );
 
-    // Cleanup: drop handles, then throwaway DB, then roles.
+    // Cleanup: drop handles, then throwaway DB, then roles — under the
+    // cluster DDL lock (released when `_ddl` drops at the end of the test).
+    let _ddl = pg_ddl_guard(&url).await;
     drop(app_pool);
     let admin = admin_pool.get().await.unwrap();
     admin
@@ -1415,4 +1562,474 @@ async fn pg_exchange_rates_roundtrip() {
         get_latest_exchange_rate_pg(&pool, "USD", "IDR").await,
         Err(PgError::NotFound)
     ));
+}
+
+/// Integration test: `locations` and `user_location_access` are tenant-scoped
+/// under RLS (Phase 1 P0 — protect tenant isolation at location scope). The
+/// column was added by the 20260907 SQLite migration and enabled in RLS_TABLES,
+/// so the generator emits the `tenant_isolation` policy for both tables.
+///
+/// Proofs (mirrors `pg_integration_rest_rls_non_owner`):
+/// 1. A restricted probe connection with no `oz.tenant_id` GUC sees ZERO
+///    location rows (even the cloud seed row, which is tenant 'default') and an
+///    INSERT is rejected by WITH CHECK.
+/// 2. With the GUC set to tenant A, only A's row is visible; switching the GUC
+///    to tenant B hides A's row entirely — genuine cross-tenant isolation.
+#[tokio::test]
+async fn pg_isolates_locations_by_tenant() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_loc_rls").await else {
+        eprintln!("PG location RLS test skipped (Postgres unreachable at {url})");
+        return;
+    };
+
+    let tenant_a = unique_id("pg-loc-a");
+    let tenant_b = unique_id("pg-loc-b");
+
+    // Restricted role (idempotent): DML on the location-scope tenant tables.
+    // Cluster DDL window: `oz_rest_probe` is a CLUSTER-wide role shared
+    // with `pg_integration_rest_rls_non_owner`, whose setup would otherwise
+    // race this one (CREATE ROLE → "already exists", DROP ROLE out from
+    // under a connecting probe pool).
+    let ddl = pg_ddl_guard(&url).await;
+    let owner = pool.get().await.expect("owner connection");
+    owner
+        .batch_execute(
+            "DO $$\n\
+             BEGIN\n\
+                 IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oz_rest_probe') THEN\n\
+                     EXECUTE 'DROP OWNED BY oz_rest_probe';\n\
+                     EXECUTE 'DROP ROLE oz_rest_probe';\n\
+                 END IF;\n\
+             END $$;\n\
+             CREATE ROLE oz_rest_probe LOGIN PASSWORD 'oz_rest_probe_pw';\n\
+             GRANT USAGE ON SCHEMA public TO oz_rest_probe;\n\
+             GRANT SELECT, INSERT, UPDATE, DELETE ON locations, user_location_access\n\
+                 TO oz_rest_probe;",
+        )
+        .await
+        .expect("probe role setup should succeed");
+
+    ddl.release().await;
+
+    // Probe connection must target the THROWAWAY DB (where PG_INIT was applied).
+    let (base, _old_db) = url.rsplit_once('/').expect("URL must have a database path");
+    let db_url = format!("{base}/{db_name}");
+    let scheme_end = db_url.find("://").expect("URL has a scheme") + 3;
+    let at = db_url.find('@').expect("URL has credentials");
+    let probe_url = format!(
+        "{}oz_rest_probe:oz_rest_probe_pw@{}",
+        &db_url[..scheme_end],
+        &db_url[at + 1..]
+    );
+
+    let (probe_raw, conn) = tokio_postgres::connect(&probe_url, tokio_postgres::NoTls)
+        .await
+        .expect("dedicated probe connection");
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
+    probe_raw
+        .batch_execute("SET ROLE oz_rest_probe")
+        .await
+        .expect("SET ROLE should succeed");
+
+    // Proof 1a: no GUC → the seed row (tenant 'default') is hidden.
+    let visible: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count should succeed")
+        .get(0);
+    assert_eq!(
+        visible, 0,
+        "RLS must hide all location rows when oz.tenant_id is unset"
+    );
+
+    // Proof 1b: an INSERT without the GUC is rejected by WITH CHECK.
+    let insert_err = probe_raw
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id) VALUES ($1, 'Intruder', $2)",
+            &[&unique_id("pg-loc-x"), &tenant_a],
+        )
+        .await
+        .expect_err("RLS must reject the write when oz.tenant_id is unset");
+    assert!(
+        insert_err
+            .as_db_error()
+            .is_some_and(|d| d.message().contains("row-level security")),
+        "expected an RLS violation, got: {insert_err:?}"
+    );
+
+    // Proof 2: with the GUC set, tenant A owns exactly its own row.
+    probe_raw
+        .batch_execute("BEGIN")
+        .await
+        .expect("begin tenant A");
+    probe_raw
+        .query("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_a])
+        .await
+        .expect("set GUC tenant A");
+    let loc_a = unique_id("pg-loc-row-a");
+    probe_raw
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id) VALUES ($1, 'Loc A', $2)",
+            &[&loc_a, &tenant_a],
+        )
+        .await
+        .expect("insert location for tenant A");
+    let count_a: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count tenant A")
+        .get(0);
+    assert_eq!(count_a, 1, "tenant A must see only its own location");
+
+    // Switch the GUC to tenant B in a fresh transaction: A's row must vanish.
+    probe_raw
+        .batch_execute("COMMIT")
+        .await
+        .expect("commit tenant A");
+    probe_raw
+        .batch_execute("BEGIN")
+        .await
+        .expect("begin tenant B");
+    probe_raw
+        .query("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_b])
+        .await
+        .expect("set GUC tenant B");
+    let count_b: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count tenant B")
+        .get(0);
+    assert_eq!(
+        count_b, 0,
+        "tenant B must not see tenant A's location (cross-tenant isolation)"
+    );
+    let loc_b = unique_id("pg-loc-row-b");
+    probe_raw
+        .execute(
+            "INSERT INTO locations (id, name, tenant_id) VALUES ($1, 'Loc B', $2)",
+            &[&loc_b, &tenant_b],
+        )
+        .await
+        .expect("insert location for tenant B");
+    let count_b2: i64 = probe_raw
+        .query_one("SELECT COUNT(*) FROM locations", &[])
+        .await
+        .expect("count tenant B after insert")
+        .get(0);
+    assert_eq!(count_b2, 1, "tenant B must see only its own location");
+    probe_raw
+        .batch_execute("ROLLBACK")
+        .await
+        .expect("rollback tenant B");
+
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+    ddl.release().await;
+}
+
+// ── Memo cloud-read serving layer (2026-09-07 cloud-read ruling) ────
+
+/// PG round-trip for the cloud memo serving layer: the desktop's
+/// reconciling push (`sync_memos`) followed by the terminal read
+/// (`list_active_memos_for_terminal`), plus the two invariants the
+/// design pins — delete-by-omission propagation (a dropped desktop row,
+/// including a retention delete, must vanish from the cloud) and RLS
+/// tenant isolation (another tenant's terminal must see nothing).
+#[tokio::test]
+async fn pg_integration_memo_sync_and_active_read() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_memo").await else {
+        eprintln!("PG memo integration test skipped (Postgres unreachable at {url})");
+        return;
+    };
+
+    let tenant = unique_id("pg-memo");
+    let other_tenant = unique_id("pg-memo-other");
+    let terminal = unique_id("pg-memo-term");
+
+    // memo_recipients.terminal_id references terminals(id) — seed the
+    // receiving terminal (the FK is global; the tenancy that RLS isolates
+    // is the memo/recipient rows', not the terminal row's).
+    {
+        let client = pool.get().await.unwrap();
+        client
+            .execute(
+                "INSERT INTO terminals (id, name, device_id, tenant_id) VALUES ($1, $2, $3, $4)",
+                &[
+                    &terminal,
+                    &"Receiving Terminal",
+                    &format!("dev-{terminal}"),
+                    &tenant,
+                ],
+            )
+            .await
+            .expect("seed terminal");
+    }
+
+    let now = "2026-09-07T08:00:00.000Z";
+    let memo = crate::pg::MemoSyncRow {
+        id: unique_id("memo"),
+        author_user_id: "user-manager".into(),
+        author_role: "role-manager".into(),
+        title: "Heads up".into(),
+        body: "Close early tonight".into(),
+        status: "published".into(),
+        duration: "24h".into(),
+        revision: 1,
+        published_at: Some("2026-09-07T07:00:00.000Z".into()),
+        expires_at: Some("2026-09-08T07:00:00.000Z".into()),
+        stopped_at: None,
+        stopped_by: None,
+        archived_at: None,
+        created_at: "2026-09-07T06:00:00.000Z".into(),
+        updated_at: "2026-09-07T07:00:00.000Z".into(),
+        location_ids: vec![],
+        recipients: vec![crate::pg::MemoRecipientSyncRow {
+            id: unique_id("recipient"),
+            terminal_id: terminal.clone(),
+            delivery_status: "pending".into(),
+            delivered_at: None,
+            acknowledged_at: None,
+            acknowledged_by: None,
+        }],
+    };
+
+    // ── Push: the desktop's full-state snapshot (one memo). ──
+    let ack = crate::pg::sync_memos(&pool, &tenant, std::slice::from_ref(&memo))
+        .await
+        .expect("sync_memos push");
+    assert_eq!(ack.upserted, 1);
+    assert_eq!(ack.deleted, 0);
+
+    // ── Read: the receiving terminal sees the memo (Location-above-
+    // Organization ordering collapses to this one Organization memo),
+    // with the delivery state the desktop's fan-out carried.
+    let active = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("list_active_memos_for_terminal");
+    assert_eq!(active.len(), 1);
+    let served = &active[0];
+    assert_eq!(served.id, memo.id);
+    assert_eq!(served.title, "Heads up");
+    assert_eq!(served.delivery_status, "pending");
+    assert_eq!(served.revision, 1);
+    assert_eq!(served.created_at, "2026-09-07T06:00:00.000Z");
+    assert!(served.location_ids.is_empty(), "Organization memo");
+
+    // A terminal with no recipient row sees nothing.
+    let stranger =
+        crate::pg::list_active_memos_for_terminal(&pool, &tenant, "no-such-terminal", now)
+            .await
+            .expect("stranger read");
+    assert!(stranger.is_empty());
+
+    // ── Acknowledgement upstream (2026-09-07 ruling): the terminal acks
+    // through the cloud, the desktop's stale push must not downgrade it.
+    // Ack from `pending` backfills `delivered_at` — an ack proves receipt.
+    let acked = crate::pg::ack_memo(&pool, &tenant, &memo.id, &terminal, Some("user-staff"))
+        .await
+        .expect("ack_memo");
+    assert!(acked.changed);
+    assert_eq!(acked.delivery_status, "acknowledged");
+    let (status, delivered, acked_by): (String, Option<String>, Option<String>) = {
+        let client = pool.get().await.unwrap();
+        let row = client
+            .query_one(
+                "SELECT delivery_status, delivered_at, acknowledged_by FROM memo_recipients
+                 WHERE memo_id = $1 AND terminal_id = $2",
+                &[&memo.id, &terminal],
+            )
+            .await
+            .expect("recipient row");
+        (row.get(0), row.get(1), row.get(2))
+    };
+    assert_eq!(status, "acknowledged");
+    assert!(delivered.is_some(), "delivered_at backfilled by the ack");
+    assert_eq!(acked_by.as_deref(), Some("user-staff"));
+
+    // A second ack is a no-op success, not a 404.
+    let again = crate::pg::ack_memo(&pool, &tenant, &memo.id, &terminal, None)
+        .await
+        .expect("re-ack");
+    assert!(!again.changed, "second ack must report changed=false");
+    // A terminal with no recipient row acking → NotFound.
+    assert!(matches!(
+        crate::pg::ack_memo(&pool, &tenant, &memo.id, "no-such-terminal", None).await,
+        Err(PgError::NotFound)
+    ));
+
+    // The desktop's next push still carries the stale `pending` row: the
+    // monotonic merge must keep the cloud-side acknowledgement.
+    let stale_push = crate::pg::sync_memos(&pool, &tenant, std::slice::from_ref(&memo))
+        .await
+        .expect("stale re-push");
+    assert_eq!(stale_push.upserted, 1);
+    let after = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("read after stale re-push");
+    assert_eq!(after.len(), 1);
+    assert_eq!(
+        after[0].delivery_status, "acknowledged",
+        "the desktop's stale pending push must NOT downgrade the cloud-side ack"
+    );
+
+    // ── Reconciliation: dropping the memo from the snapshot deletes it —
+    // the path a desktop-side retention delete rides.
+    let ack = crate::pg::sync_memos(&pool, &tenant, &[])
+        .await
+        .expect("sync_memos reconciliation");
+    assert_eq!(ack.deleted, 1, "the unpushed memo must be deleted");
+    let active = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("read after delete-by-omission");
+    assert!(active.is_empty());
+
+    // ── Tenant isolation: a memo pushed by another tenant is invisible
+    // here even with a recipient row naming this tenant's terminal.
+    let intruder = crate::pg::MemoSyncRow {
+        id: unique_id("memo"),
+        recipients: vec![crate::pg::MemoRecipientSyncRow {
+            id: unique_id("recipient"),
+            terminal_id: terminal.clone(),
+            delivery_status: "pending".into(),
+            delivered_at: None,
+            acknowledged_at: None,
+            acknowledged_by: None,
+        }],
+        ..memo.clone()
+    };
+    crate::pg::sync_memos(&pool, &other_tenant, &[intruder])
+        .await
+        .expect("other-tenant push");
+    let cross = crate::pg::list_active_memos_for_terminal(&pool, &tenant, &terminal, now)
+        .await
+        .expect("cross-tenant read");
+    assert!(
+        cross.is_empty(),
+        "code-level tenant isolation must hide another tenant's memo even when a recipient row names this terminal"
+    );
+
+    // Cleanup: drop the throwaway database.
+    // DROP DATABASE is cluster DDL too: take the same lock so a
+    // concurrent worker's CREATE DATABASE cannot interleave with it.
+    let ddl = pg_ddl_guard(&url).await;
+    drop(pool);
+    admin_pool
+        .get()
+        .await
+        .expect("cleanup admin client")
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await
+        .expect("drop throwaway database should succeed");
+    ddl.release().await;
+}
+
+// ── E1-9: rounding_mode boundary (pure validation, no database) ──
+
+#[test]
+fn validate_tax_rate_write_rounding_mode_boundaries() {
+    // None and '' both mean "store preference applies" (the column default).
+    assert!(validate_tax_rate_write(None, None, None, None, None).is_ok());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("")).is_ok());
+    // The two statutory modes, byte-exact.
+    assert!(validate_tax_rate_write(None, None, None, None, Some("half_up")).is_ok());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("truncate")).is_ok());
+    // A stored '' round-trips as empty (not None) so the write path binds
+    // '' consistently without special-casing.
+    let write = validate_tax_rate_write(None, None, None, None, Some("")).unwrap();
+    assert_eq!(write.rounding_mode, "");
+    let write = validate_tax_rate_write(None, None, None, None, Some("half_up")).unwrap();
+    assert_eq!(write.rounding_mode, "half_up");
+    // Anything outside the CHECK set is a clean 400 at the boundary —
+    // never normalized, never silently stored as ''.
+    assert!(validate_tax_rate_write(None, None, None, None, Some("bankers")).is_err());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("HALF_UP")).is_err());
+    assert!(validate_tax_rate_write(None, None, None, None, Some("half-up")).is_err());
+}
+// ── Dynamic `IN (…)` chunking (pure, no database) ────────────────────────
+
+/// The chunk size is a CHUNK SIZE, never a threshold that switches the filter
+/// off: a list longer than [`PG_IN_CHUNK`] must be split, and the split must bind
+/// every value exactly once, in order, with no chunk bleeding into the next.
+///
+/// The server-side half of this needs a live Postgres (`OZ_TEST_PG_URL`) and
+/// skips in this suite, so the invariant is pinned by assertion on the arithmetic
+/// the two chunked sites actually run — placeholder numbering, parameters bound
+/// per statement, and the total — rather than by a fixture that cannot execute
+/// here.
+// The chunk/ceiling comparison below has constant operands on purpose:
+// `clippy::assertions_on_constants` would rather see `const { assert!(..) }`,
+// but the compile-time guard already lives in `pg.rs` and this line exists so a
+// *test run* fails too. The level sits on the function because, as a statement
+// attribute on `assert!` itself, rustc reports `unused_attribute`.
+#[allow(clippy::assertions_on_constants)]
+#[test]
+fn pg_in_chunking_survives_a_list_longer_than_the_chunk() {
+    // THE INVARIANT, pinned directly: raising `PG_IN_CHUNK` past the ceiling fails
+    // here as well as at compile time via `const _: () = assert!(…)` in pg.rs.
+    assert_eq!(PG_MAX_PARAMS, 65_535);
+    assert!(PG_IN_CHUNK + PG_LEAD_PARAMS < PG_MAX_PARAMS);
+
+    // One value past a boundary, so the loop MUST run twice.
+    let values: Vec<String> = (0..PG_IN_CHUNK + 100).map(|i| format!("h{i:06}")).collect();
+    let mut bound: Vec<String> = Vec::new();
+    let mut chunks = 0usize;
+    for chunk in values.chunks(PG_IN_CHUNK) {
+        chunks += 1;
+        assert!(chunk.len() <= PG_IN_CHUNK, "a chunk outgrew the chunk size");
+        // Exactly what `list_missing_hashes` builds: tenant at $1, then the list.
+        let placeholders = pg_placeholders(1 + PG_LEAD_PARAMS, chunk.len());
+        let names: Vec<&str> = placeholders.split(", ").collect();
+        assert_eq!(names.len(), chunk.len(), "one placeholder per value");
+        let mut params: Vec<&str> = vec!["tenant"];
+        params.extend(chunk.iter().map(|s| s.as_str()));
+        assert_eq!(params.len(), chunk.len() + PG_LEAD_PARAMS);
+        // The statement may never declare more parameters than the wire allows.
+        assert!(params.len() < PG_MAX_PARAMS);
+        for (offset, name) in names.iter().enumerate() {
+            let n = 1 + PG_LEAD_PARAMS + offset;
+            assert_eq!(*name, format!("${n}"), "placeholder numbering broke");
+            // NO BLEED: $n resolves to THIS chunk's value, never a neighbour's.
+            assert_eq!(params[n - 1], chunk[offset].as_str());
+        }
+        bound.extend(chunk.iter().cloned());
+    }
+    assert_eq!(
+        chunks, 2,
+        "PG_IN_CHUNK + 100 must cross exactly one boundary"
+    );
+    assert_eq!(bound.len(), values.len(), "every value bound exactly once");
+    assert_eq!(bound, values, "no chunk skipped, reordered or duplicated");
+}
+
+/// Placeholder numbering is the other half of the fix. `$1` is the tenant id in
+/// `list_missing_hashes`, so its hash list starts at `$2`; numbering it from `$1`
+/// (as it was) made the first candidate bind the tenant value AND left one more
+/// parameter than the statement declared, which PostgreSQL rejects at Bind time —
+/// so every non-empty call failed and both callers answered an empty
+/// `missing_hashes`. `attach_product_images` has no leading parameter, so its
+/// list starts at `$1`.
+#[test]
+fn pg_placeholders_number_from_their_start_index() {
+    assert_eq!(pg_placeholders(1, 1), "$1");
+    assert_eq!(pg_placeholders(1, 3), "$1, $2, $3");
+    assert_eq!(pg_placeholders(1 + PG_LEAD_PARAMS, 3), "$2, $3, $4");
+    assert_eq!(pg_placeholders(2, 0), "", "an empty chunk binds nothing");
+    for len in [1usize, 2, 9, 10, 11, 99, 100, PG_IN_CHUNK] {
+        assert_eq!(pg_placeholders(2, len).split(", ").count(), len);
+    }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import React from 'react';
+import type React from 'react';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 // ── Mocks ──────────────────────────────────────────────────────────────

@@ -47,7 +47,7 @@ pub async fn list_kds_orders_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&*db_guard);
+    let store = Store::new(&db_guard);
     let orders = store.list_kds_orders_for_instance(status.as_deref(), &session.instance_id)?;
     Ok(orders)
 }
@@ -65,7 +65,7 @@ pub async fn get_kds_queue_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&*db_guard);
+    let store = Store::new(&db_guard);
     let orders = store.get_kds_queue_for_instance(kds_zone.as_deref(), &session.instance_id)?;
     Ok(orders)
 }
@@ -86,7 +86,7 @@ pub async fn update_kds_status_scoped(
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&*db_guard);
+        let store = Store::new(&db_guard);
         store.update_kds_status_for_instance(&id, &status, &session.instance_id)?
     }; // guard released before the emit
 
@@ -115,7 +115,7 @@ pub async fn create_kds_order_from_sale_scoped(
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&*db_guard);
+        let store = Store::new(&db_guard);
         store.complete_sale_to_kds(&sale_id, Some(&session.store_id))?
     }; // guard released before the emit
 
@@ -139,7 +139,11 @@ pub async fn get_kds_order_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&*db_guard);
+    let store = Store::new(&db_guard);
     let order = store.get_kds_order_for_instance(&id, &session.instance_id)?;
     Ok(order)
 }
+
+#[cfg(test)]
+#[path = "kds_tests.rs"]
+mod tests;

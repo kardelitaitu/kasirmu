@@ -3,6 +3,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { LocalizedErrorBoundary } from '@/components/LocalizedErrorBoundary';
 import { GlobalErrorReporter } from '@/components/GlobalErrorReporter';
 import { LocaleProvider } from '@/i18n/LocaleContext';
+import { OrgLocaleSync } from '@/i18n/OrgLocaleSync';
 import { BrandProvider } from '@/contexts/BrandContext';
 import { ThemeProvider } from '@/frontend/shell/ThemeProvider';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
@@ -13,6 +14,8 @@ import { WorkspaceProvider } from '@/contexts/WorkspaceContext';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { ZoomProvider } from '@/contexts/ZoomContext';
 import { HardwareAccelProvider } from '@/contexts/HardwareAccelContext';
+import { ImpersonationProvider } from '@/contexts/ImpersonationContext';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 
 interface AppProvidersProps {
   children: ReactNode;
@@ -65,10 +68,17 @@ export function AppProviders({ children }: AppProvidersProps) {
                     token into refresh() so per-store defaults (CUR-03)
                     reach useCurrency consumers without a page reload. */}
                 <CurrencyWorkspaceSync />
+                {/* Regional slice 4: feeds the org/entity default locale
+                    (one read of the slice-1 chain) into the locale
+                    negotiation BELOW the stored per-user choice. */}
+                <OrgLocaleSync />
                 <SubscriptionProvider>
                   <ZoomProvider>
                     <HardwareAccelProvider>
-                      {children}
+                      <ImpersonationProvider>
+                        <ImpersonationBanner />
+                        {children}
+                      </ImpersonationProvider>
                     </HardwareAccelProvider>
                   </ZoomProvider>
                 </SubscriptionProvider>

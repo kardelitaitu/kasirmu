@@ -20,6 +20,44 @@
   overflow: hidden;
 }
 
+/* ── Locked settings card (role gate) ───────────────────────
+   Rendered INSTEAD of the whole settings shell for sessions below
+   the admin floor (manager/staff/auditor); margin:auto centers it
+   inside the flex page root. Tokens only. */
+.settings-locked-card {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  max-width: 26rem;
+  padding: var(--space-6);
+  text-align: center;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-fg-secondary);
+}
+
+.settings-locked-card svg {
+  width: 2rem;
+  height: 2rem;
+  color: var(--color-fg-tertiary);
+}
+
+.settings-locked-card h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.settings-locked-card p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
 /* ── Loading skeleton ─────────────────────────────────────── */
 
 .settings-loading {
@@ -458,21 +496,6 @@
 .settings-content .promo-mgmt {
   padding: 0;
   max-width: none;
-}
-
-/* ── Full-screen section override ─────────────────────────── */
-.settings-section-content--full {
-  padding: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-section-content--full > div {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .settings-topology-container {

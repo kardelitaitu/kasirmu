@@ -12,23 +12,87 @@ export interface TaxRateDto {
   display_rate: string;
   created_at: string;
   updated_at: string;
+  /** The rate's authoring scope (Option B side-channel join — the
+   *  backend composes it from list_tax_rate_scopes, it is not stored on
+   *  the core struct). null when the active row has no scope entry. */
+  scope: TaxRateScope | null;
+  /** The rate's validity window, joined the same way. */
+  window: TaxRateWindow | null;
 }
 
-/** Arguments for creating a new tax rate. */
+/** The authoring scope of a tax-rate row. Mirrors the backend's
+ *  TaxRateScopeDto (camelCase wire). */
+export interface TaxRateScope {
+  /** "global" | "legal_entity" | "location". */
+  scope: string;
+  /** The owning legal entity, for entity-scoped rows. */
+  legalEntityId: string | null;
+  /** The owning location, for location-scoped rows. */
+  locationId: string | null;
+}
+
+/** The validity window of a tax-rate row. Mirrors the backend's
+ *  TaxRateWindowDto (camelCase wire). */
+export interface TaxRateWindow {
+  /** Inclusive first business date, "YYYY-MM-DD". null = no lower bound. */
+  effectiveFrom: string | null;
+  /** EXCLUSIVE last business date, "YYYY-MM-DD". null = never expires. */
+  effectiveTo: string | null;
+}
+
+/** Arguments for creating a new tax rate.
+ *
+ *  Scope/window fields are OPTIONAL and mutually exclusive:
+ *  legalEntityId XOR locationId (sending both is refused with a typed
+ *  validation error); omitting every scope/window field keeps the legacy
+ *  tenant-global write. Dates are strict "YYYY-MM-DD"; the exclusive end
+ *  must be after the start. */
 export interface CreateTaxRateArgs {
   name: string;
   rateBps: number;
   isDefault: boolean;
   isInclusive: boolean;
+  /** Scope the rate to this legal entity (mutually exclusive with
+   *  locationId; omit both for the tenant-global arm). */
+  legalEntityId?: string;
+  /** Scope the rate to this location (mutually exclusive with
+   *  legalEntityId). */
+  locationId?: string;
+  /** Inclusive first business date, "YYYY-MM-DD". undefined = no bound. */
+  effectiveFrom?: string;
+  /** EXCLUSIVE last business date, "YYYY-MM-DD". undefined = never
+   *  expires. */
+  effectiveTo?: string;
+  /** E1-6: statutory rounding directive for the device-global authoring
+   *  arm only. ''/undefined = the store preference applies and the key
+   *  is omitted from the payload. Wire-additive: the backend Args do not
+   *  carry the field yet and serde drops unknown keys, so sending it is
+   *  a no-op until that slice lands. */
+  roundingMode?: RoundingModeKey | '';
 }
 
-/** Arguments for updating an existing tax rate. */
+/** Arguments for updating an existing tax rate. Optional scope/window
+ *  fields follow the same routing rule as {@link CreateTaxRateArgs}.
+ *  NOTE: moving a rate between tiers silently empties the vacated tier's
+ *  default — the configuration UI must warn before saving. */
 export interface UpdateTaxRateArgs {
   id: string;
   name: string;
   rateBps: number;
   isDefault: boolean;
   isInclusive: boolean;
+  /** New legal-entity scope (mutually exclusive with locationId). */
+  legalEntityId?: string;
+  /** New location scope (mutually exclusive with legalEntityId). */
+  locationId?: string;
+  /** New inclusive first business date, "YYYY-MM-DD". */
+  effectiveFrom?: string;
+  /** New exclusive last business date, "YYYY-MM-DD". */
+  effectiveTo?: string;
+  /** E1-6: see {@link CreateTaxRateArgs.roundingMode} — same
+   *  device-global-arm-only rule; '' = clear back to the preference.
+   *  Wire-additive until the backend Args slice lands. */
+  roundingMode?: RoundingModeKey | '';
 }
 
 /** A product category and its assigned tax rate identifiers. */
@@ -69,7 +133,23 @@ export interface CartTaxResult {
   hasExclusive: boolean;
 }
 
-/** Compute total tax for a set of cart lines (live preview) using the scoped variant (ADR #7). */
+/** The rejection message when computeCartTax is called without a session
+ *  token. F2-2 closes the third silent-zero door (D64 c): a null token
+ *  used to RESOLVE a claimed `{ taxMinor: 0 }`, indistinguishable from a
+ *  real computed zero. */
+export const CART_TAX_NO_SESSION_MESSAGE =
+  'cart tax unavailable: no session token (cannot compute without a session)';
+
+/** Compute total tax for a set of cart lines (live preview) using the scoped variant (ADR #7).
+ *
+ *  F2-2: a null sessionToken now REJECTS with
+ *  {@link CART_TAX_NO_SESSION_MESSAGE} instead of resolving a silent
+ *  zero, so a caller can distinguish "no tax applied" (a resolved
+ *  CartTaxResult) from "could not compute" (this rejection) — the
+ *  distinction the useCartTax failure-window classification needs.
+ *  Additive: the resolved shape is unchanged, and the failure now
+ *  lands in callers' existing catch paths (which already render a
+ *  non-claimed fallback) instead of a fabricated success. */
 export const computeCartTax = (
   sessionToken: string | null,
   lines: CartLineTaxInput[],
@@ -77,25 +157,63 @@ export const computeCartTax = (
 ): Promise<CartTaxResult> =>
   sessionToken
     ? loggedInvoke<CartTaxResult>('compute_cart_tax_scoped', { sessionToken, lines, currency })
-    : Promise.resolve({ taxMinor: 0, hasExclusive: false });
+    : Promise.reject(new Error(CART_TAX_NO_SESSION_MESSAGE));
+
+/** The statutory rounding directive of a rate row (E1-5), verbatim from
+ *  the core RoundingMode serde snake_case spellings. */
+export type RoundingModeKey = 'half_up' | 'truncate';
+
+/** Batch-read the statutory rounding directive of each named rate
+ *  (E1-5, over the E1-2 core batch door): `'half_up'` / `'truncate'` =
+ *  the row carries a statutory directive that outranks the store
+ *  preference; `null` = the '' column or an id that matched no live
+ *  row — the preference applies, and a null is never a claimed
+ *  directive. Unknown and absent read identically by contract. */
+export const listTaxRateRoundingModesScoped = (
+  sessionToken: string,
+  rateIds: string[],
+): Promise<Record<string, RoundingModeKey | null>> =>
+  loggedInvoke<Record<string, RoundingModeKey | null>>(
+    'list_tax_rate_rounding_modes_scoped',
+    { sessionToken, rateIds },
+  );
 
 /** List all tax rates for the store resolved from a session token. ADR #7. */
 export const listTaxRatesScoped = (sessionToken: string): Promise<TaxRateDto[]> =>
   loggedInvoke<TaxRateDto[]>('list_tax_rates_scoped', { sessionToken });
 
-/** Create a tax rate in the store resolved from a session token. ADR #7. */
+/** Create a tax rate in the store resolved from a session token. ADR #7.
+ *
+ *  E1-6: the payload never carries `roundingMode: ''` — the empty value
+ *  (the store-preference arm) is dropped at this boundary, so no caller
+ *  can accidentally wire a claimed-directive-shaped key with an empty
+ *  value. The backend column accepts ''|half_up|truncate either way,
+ *  but omit is the contract the screen's select already renders. */
 export const createTaxRateScoped = (
   sessionToken: string,
   args: CreateTaxRateArgs,
-): Promise<TaxRateDto> =>
-  loggedInvoke<TaxRateDto>('create_tax_rate_scoped', { sessionToken, args });
+): Promise<TaxRateDto> => {
+  const { roundingMode, ...rest } = args;
+  return loggedInvoke<TaxRateDto>('create_tax_rate_scoped', {
+    sessionToken,
+    args: roundingMode ? { ...rest, roundingMode } : rest,
+  });
+};
 
-/** Update a tax rate in the store resolved from a session token. ADR #7. */
+/** Update a tax rate in the store resolved from a session token. ADR #7.
+ *
+ *  E1-6: same boundary rule as {@link createTaxRateScoped} — `''`/absent
+ *  roundingMode is omitted from the payload, never sent as a claim. */
 export const updateTaxRateScoped = (
   sessionToken: string,
   args: UpdateTaxRateArgs,
-): Promise<TaxRateDto> =>
-  loggedInvoke<TaxRateDto>('update_tax_rate_scoped', { sessionToken, args });
+): Promise<TaxRateDto> => {
+  const { roundingMode, ...rest } = args;
+  return loggedInvoke<TaxRateDto>('update_tax_rate_scoped', {
+    sessionToken,
+    args: roundingMode ? { ...rest, roundingMode } : rest,
+  });
+};
 
 /** Delete a tax rate in the store resolved from a session token. ADR #7. */
 export const deleteTaxRateScoped = (sessionToken: string, id: string): Promise<void> =>

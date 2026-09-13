@@ -1,0 +1,260 @@
+/* ── Deploy history browser (ADR #46 §2) ─────────────────────────────
+   Deliberately carries NO `animation:` declarations. animationCompliance's
+   Pattern B exempts a whole stylesheet that contains a reduced-motion block,
+   which is exactly how the apply-confirm animations stayed ungated for their
+   entire life (see 0fce9b59). A new sheet with no animations cannot repeat
+   that mistake, and a history panel does not need to slide in. */
+
+.topology-rev-browser-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
+}
+
+.topology-rev-browser {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.topology-rev-browser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topology-rev-browser-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.topology-rev-browser-close {
+  border: none;
+  background: none;
+  padding: 0 var(--space-2);
+  font-size: var(--text-lg);
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.topology-rev-browser-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.topology-rev-browser-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+}
+
+.topology-rev-browser-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.topology-rev-browser-row-main.is-selected {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.topology-rev-browser-rev {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.topology-rev-browser-note {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  text-overflow: ellipsis;
+}
+
+.topology-rev-browser-note-empty {
+  color: var(--color-text-muted);
+}
+
+.topology-rev-browser-meta,
+.topology-rev-browser-counts {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.topology-rev-browser-pruned {
+  align-self: flex-start;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 18%, transparent);
+  font-size: var(--text-xs);
+  color: var(--color-warning);
+}
+
+.topology-rev-browser-pin {
+  padding: 0 var(--space-3);
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  background: none;
+  font-size: var(--text-md);
+  color: var(--color-warning);
+  cursor: pointer;
+}
+
+.topology-rev-browser-detail {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 40%, transparent);
+}
+
+.topology-rev-browser-detail-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.topology-rev-browser-status,
+.topology-rev-browser-identical,
+.topology-rev-browser-diff-summary,
+.topology-rev-browser-pruned-detail {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.topology-rev-browser-error {
+  margin: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.topology-rev-browser-geometry {
+  margin-left: var(--space-2);
+}
+
+.topology-rev-browser-changes {
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.topology-rev-browser-change {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) 0;
+  font-size: var(--text-xs);
+}
+
+.topology-rev-browser-change-kind {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-border) 40%, transparent);
+  color: var(--color-text-muted);
+}
+
+.topology-rev-browser-change-kind--node-removed,
+.topology-rev-browser-change-kind--wire-removed {
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  color: var(--color-danger);
+}
+
+.topology-rev-browser-change-kind--node-added,
+.topology-rev-browser-change-kind--wire-added {
+  background: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+
+.topology-rev-browser-change-label {
+  color: var(--color-text);
+}
+
+.topology-rev-browser-change-fields {
+  color: var(--color-text-muted);
+}
+
+.topology-rev-browser-preview {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* ── ADR #46 Phase 2: restore-to-draft + pruned-snapshot messaging ── */
+
+/* The two detail actions (preview + restore) read as one row of equal
+   peers — restore is deliberately NOT styled as a primary CTA: §5 makes
+   it a load-onto-canvas, and the publish decision stays in the Apply
+   dialog where the PIN lives. */
+.topology-rev-browser-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.topology-rev-browser-restore {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.topology-rev-browser-restore:disabled {
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+  cursor: default;
+}
+
+/* §7: a revision authored under an older contract may fail today's
+   validation — a note, not an error: restoring is still offered. */
+.topology-rev-browser-old-contract {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* §4's remedy: how to keep the NEXT snapshot restorable. */
+.topology-rev-browser-pruned-remedy {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}

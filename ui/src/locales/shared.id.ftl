@@ -29,6 +29,7 @@ nav-sales = Riwayat Penjualan
 nav-products = Produk
 nav-categories = Kategori
 nav-staff = Staf
+nav-roles = Peran
 nav-customers = Pelanggan
 nav-inventory = Stok
 nav-general = Umum
@@ -54,7 +55,7 @@ staff-login-license-inactive = Lisensi tidak aktif
 statusbar-conflict-count = { $count } konflik sinkronisasi terselesaikan
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Status aplikasi
-statusbar-version = v0.0.36
+statusbar-version = v0.0.37
 statusbar-sync-name = Sinkronisasi
 statusbar-gateway-name = Stripe
 statusbar-license = Lisensi Proprietary
@@ -64,8 +65,21 @@ statusbar-version-label = Versi
 statusbar-checking-msg = { $name } · Memeriksa…
 statusbar-offline-msg = { $name } · Luring
 statusbar-latency-msg = { $name } · { $ms }ms
+# Server tetap menjawab dan menyebut subsistem yang rusak. Beda dari "Luring":
+# layanan yang terganggu masih melayani, jadi pesan ini tidak boleh terbaca
+# sebagai mati. $cause adalah label subsistem dari server (mis. "database").
+statusbar-degraded-msg = { $name } · Terganggu — { $cause }
 statusbar-version-latest-msg = Versi terbaru
 statusbar-version-update-msg = Pembaruan tersedia
+# Kontrak kesehatan layanan (saas-3): pill pembayaran + konektivitas perangkat
+statusbar-payment-label = Pembayaran
+statusbar-devices-label = Perangkat
+# Mengklik pill layanan langsung memeriksa ulang; petunjuk itu muncul saat hover.
+statusbar-retry-hint = Klik untuk mencoba lagi
+statusbar-retry-queued = Mencoba ulang { $name }…
+statusbar-payment-gateway-msg = { $name } · { $count } gateway aktif
+statusbar-payment-unconfigured-msg = { $name } · Tidak ada gateway terkonfigurasi
+statusbar-devices-count-msg = { $name } · { $count } perangkat
 
 # POS Cart Line Items
 shared-loading = Memuat…
@@ -163,6 +177,54 @@ update-banner-rollback-desc = Versi sebelumnya { $version } tersedia untuk diund
 update-banner-rollback = Pulihkan Versi Sebelumnya
 update-banner-rollback-aria = Unduh versi sebelumnya dari GitHub
 
+# Memo Banner
+memo-banner-open-aria = Baca memo lengkap: { $title }
+memo-banner-open-aria-plain = Baca memo lengkap
+memo-banner-acknowledge-aria = Konfirmasi memo ini
+
+# Memos (authoring)
+memos-title = Memo
+memos-refresh = Segarkan
+memos-new-heading = Memo baru
+memos-label-title = Judul
+memos-placeholder-title = mis. tutup laci pukul 22.00
+memos-label-body = Pesan
+memos-placeholder-body = Tulis pesan yang akan dilihat staf…
+memos-label-scope = Penerima
+memos-scope-hint = Biarkan semua lokasi tidak dicentang untuk menjangkau semuanya (Organisasi).
+memos-scope-org = Organisasi
+memos-label-duration = Durasi
+memos-duration-12h = 12 jam
+memos-duration-24h = 24 jam
+memos-duration-3d = 3 hari
+memos-duration-7d = 7 hari
+memos-duration-30d = 30 hari
+memos-create = Buat draf
+memos-publish = Terbitkan
+memos-stop = Hentikan
+memos-revise-heading = Revisi memo
+memos-revise-note = Koreksi menerbitkan revisi baru; durasi dan penerima tidak berubah.
+memos-revise = Terbitkan revisi
+memos-revise-cancel = Batal
+memos-revise-row = Revisi
+memos-col-title = Judul
+memos-col-scope = Penerima
+memos-col-status = Status
+memos-col-duration = Durasi
+memos-col-revision = Revisi
+memos-col-created = Dibuat
+memos-col-actions = Tindakan
+memos-status-draft = Draf
+memos-status-published = Terbit
+memos-status-expired = Kedaluwarsa
+memos-status-stopped = Dihentikan
+memos-status-archived = Arsip
+memos-table-aria = Daftar memo
+memos-empty = Belum ada memo. Buat memo pertama Anda dengan formulir di atas.
+memos-error-load = Gagal memuat memo
+memos-error-action = Tindakan memo gagal. Silakan coba lagi.
+memos-retry = Coba lagi
+
 # Accessibility
 a11y-skip-to-content = Lewati ke konten utama
 # Shared right-click menu (see shared.ftl).
@@ -194,10 +256,12 @@ nav-exchange-rates = Nilai Tukar
 nav-loyalty = Loyalitas
 nav-gift-cards = Kartu Hadiah
 nav-terminals = Terminal
-nav-stores = Toko
+nav-locations = Lokasi
 nav-features = Fitur
 nav-data = Data
 nav-audit-log = Log Audit
+nav-security-trail = Jejak Keamanan
+nav-memos = Memo
 nav-offline-queue = Antrian Offline
 nav-shifts = Shift
 nav-bundles = Bundel
@@ -255,8 +319,24 @@ audit-log-count-of = { $shown } dari { $total } entri
 audit-log-export = Ekspor CSV
 audit-log-export-error = Ekspor gagal. Silakan coba lagi.
 audit-log-export-progress = Mengekspor log audit…
+audit-log-security-export = Ekspor CSV keamanan
+audit-log-security-export-actor = Aktor (ID pengguna)
+audit-log-security-export-from = Dari (inklusif)
+audit-log-security-export-to = Hingga (eksklusif)
+audit-log-security-export-error = Ekspor kejadian keamanan gagal. Silakan coba lagi.
 audit-log-table-label = Entri log audit
+# ── Jejak keamanan (audit baseline) ───────────────────────────────
+# Setengah permukaan audit yang berlaku untuk seluruh tenant. Labelnya ditaruh
+# di sini, berdekatan dengan log audit toko, karena katalog aksi juga dibaca di
+# sana — lihat auditCatalog.test.ts.
+security-trail-title = Jejak Keamanan
+security-trail-scope-note = Masuk, keluar, impersonasi, dan perubahan akun staf di semua lokasi pada organisasi ini.
+security-trail-empty = Tidak ada peristiwa keamanan yang cocok dengan filter ini.
+audit-action-logout = Keluar dari sesi
+audit-action-impersonate-start = Impersonasi dimulai
+audit-action-impersonate-stop = Impersonasi dihentikan
 audit-log-search-placeholder = Cari tindakan, target, atau pengguna…
+
 audit-log-search-label = Cari log audit
 audit-log-filter-label = Saring berdasarkan hasil
 
@@ -454,12 +534,15 @@ workspace-home-staff-title = Manajemen Staf
 workspace-home-staff-desc = Kelola staf, peran, dan izin
 workspace-home-settings-title = Pengaturan
 workspace-home-settings-desc = Konfigurasi sistem dan preferensi
+# Mirrors setup-feature-cloud-sync / -desc above, the established Indonesian wording.
+workspace-home-cloud-sync-title = Sinkronisasi Cloud
+workspace-home-cloud-sync-desc = Sinkronkan data ke PostgreSQL cloud dengan cadangan
 workspace-home-audit-title = Log Audit
 workspace-home-audit-desc = Lihat aktivitas sistem dan riwayat perubahan
 workspace-home-terminals-title = Terminal
 workspace-home-terminals-desc = Kelola terminal dan perangkat POS
-workspace-home-stores-title = Toko
-workspace-home-stores-desc = Kelola lokasi toko dan cabang
+workspace-home-locations-title = Lokasi
+workspace-home-locations-desc = Kelola lokasi fisik dan cabang
 workspace-home-shifts-title = Shift
 workspace-home-shifts-desc = Kelola shift dan jadwal staf
 workspace-home-tax-config-title = Tarif Pajak
@@ -476,6 +559,24 @@ workspace-home-data-management-title = Data
 workspace-home-data-management-desc = Cadangkan, ekspor, dan impor data
 workspace-home-workspaces-section = Workspace
 workspace-home-tools-section = Alat
+# Header grup Tools — arsitektur informasi yang disepakati
+# (todo-tools.md): Operasional / Wawasan / Konfigurasi.
+workspace-home-tools-group-operations = Operasional
+workspace-home-tools-group-insights = Wawasan
+workspace-home-tools-group-configuration = Konfigurasi
+# Kartu tool terkunci: kartu di bawah tier minimum tetap terlihat
+# (redup, tidak dapat diklik) dengan badge tier minimum; kartu dengan
+# langganan tidak aktif atau di bawah peran minimum punya alasan sendiri.
+workspace-home-tools-requires-tier-plus = Perlu paket Plus
+workspace-home-tools-requires-tier-pro = Perlu paket Pro
+workspace-home-tools-requires-tier-premium = Perlu paket Premium
+workspace-home-tools-requires-tier-enterprise = Perlu paket Enterprise
+workspace-home-tools-subscription-inactive = Langganan tidak aktif
+workspace-home-tools-requires-role = Butuh akses Admin
+workspace-home-topology-title = Editor Topologi
+workspace-home-topology-desc = Rancang lokasi, workspace, dan tautan perangkat
+workspace-home-memo-title = Memo
+workspace-home-memo-desc = Tulis pemberitahuan untuk terminal dan lokasi
 workspace-home-add-workspace = Tambah Workspace
 workspace-home-add-workspace-desc = Konfigurasi workspace di editor topologi
 workspace-home-add-workspace-aria = Tambah workspace melalui editor topologi

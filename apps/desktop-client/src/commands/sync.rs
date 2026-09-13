@@ -5,17 +5,29 @@
 //! the server's snapshot of products / tax rates / users and replaces
 //! the local cache. The settings commands let the user configure the
 //! server URL and API key.
+//!
+//! Wave F: thirteen of the sixteen commands live in the headless
+//! `oz_bridge::sync` module. Each `#[tauri::command]` below keeps its exact
+//! name, parameter list and `Result<_, AppError>` return, so the registered
+//! IPC surface and the serialized error shape are unchanged; a shim borrows a
+//! `BridgeCtx` from `AppState`, calls the bridge and maps `BridgeError` back
+//! to `AppError` variant-for-variant. The three `pg_sync_*` commands KEEP
+//! THEIR BODIES HERE — they drive the `PgSyncDaemon` handle on `AppState`,
+//! which lives in `platform-sync`, a crate the bridge does not depend on; the
+//! same goes for `settings_changed_sink`, which the shell's lib.rs uses to
+//! build that daemon's sink. The DTOs moved to the bridge and come back
+//! through `pub use`; the free functions `sync_tests.rs` calls directly stay
+//! as `AppError`-returning adapters over the bridge originals.
 
 use std::sync::Arc;
 
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 
-use oz_core::db::Store;
 use oz_core::events::SettingsUpdated;
+#[allow(unused_imports)] // sibling sync_tests.rs depends on it
 use oz_core::settings::Settings;
-use oz_core::sync_client::{self, PullResult, SyncAttemptResult, SyncConfig};
+use oz_core::sync_client::{self, PullResult, SyncAttemptResult};
 use platform_sync::daemon::SettingsChangedSink;
 use platform_sync::pg_daemon::PgDaemonStatus;
 
@@ -24,17 +36,10 @@ use crate::error::AppError;
 use crate::state::AppState;
 use oz_core::permissions;
 
-/// Get the current sync configuration settings.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncSettingsDto {
-    /// Server Url.
-    pub server_url: Option<String>,
-    /// Has Api Key.
-    pub has_api_key: bool,
-    /// Enabled.
-    pub enabled: bool,
-}
+pub use oz_bridge::sync::{
+    PgSyncSettingsDto, SyncPullArgs, SyncSettingsDto, UpdatePgSyncSettingsArgs,
+    UpdateSyncSettingsArgs,
+};
 
 /// Get sync settings resolved from a session token. ADR #7.
 #[tauri::command]
@@ -42,47 +47,22 @@ pub async fn get_sync_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<SyncSettingsDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let server_url = Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty());
-    let api_key = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
-    let enabled = Settings::is_sync_enabled(&db)?;
-    drop(db);
-    Ok(SyncSettingsDto {
-        server_url,
-        has_api_key: api_key.is_some(),
-        enabled,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::get_sync_settings_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update sync settings.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateSyncSettingsArgs {
-    /// Server Url.
-    pub server_url: Option<String>,
-    /// Api Key.
-    pub api_key: Option<String>,
-    /// Enabled.
-    pub enabled: bool,
-}
-
 #[tauri::command]
-/// Update sync settings.
 pub async fn update_sync_settings(
     args: UpdateSyncSettingsArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    update_sync_settings_data(&db, &args)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::update_sync_settings(&ctx, args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Persist sync settings (server URL, API key, enabled flag) atomically.
@@ -94,86 +74,26 @@ pub async fn update_sync_settings(
 /// row-presence contract is what `sync_bootstrap::should_auto_provision`
 /// relies on to distinguish a cleared+disabled install from a fresh one.
 ///
-/// Extracted as a free function so the atomicity + clearing contract can
-/// be tested without a Tauri runtime
-/// (see `update_sync_settings_data_clear_url_writes_empty_row`).
+/// Adapter over `oz_bridge::sync::update_sync_settings_data`: the name,
+/// parameter list and `AppError` return are unchanged so `sync_tests.rs`
+/// keeps exercising the atomicity + clearing contract without a Tauri runtime.
+#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 pub fn update_sync_settings_data(
     conn: &Connection,
     args: &UpdateSyncSettingsArgs,
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-    // Always update server URL (passing `null` or empty string clears it).
-    let url = args.server_url.as_deref().unwrap_or("");
-    Settings::set_sync_server_url(&tx, url)?;
-    // Only update API key if `Some(key)` was passed from the UI.
-    // When `args.api_key` is `None` (the masked API field on the front-end was not modified),
-    // preserve the existing key stored in the database.
-    if let Some(ref key) = args.api_key {
-        Settings::set_sync_api_key(&tx, key)?;
-    }
-    Settings::set_sync_enabled(&tx, args.enabled)?;
-    tx.commit()?;
-    Ok(())
+    oz_bridge::sync::update_sync_settings_data(conn, args).map_err(Into::into)
 }
 
 // ── PostgreSQL sync settings & daemon commands ──────────────────
 
-/// PostgreSQL sync configuration (the PG transport's connection settings).
-/// `has_password` reports whether a secret is stored — the password itself
-/// is never echoed back to the front-end.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PgSyncSettingsDto {
-    /// Whether PostgreSQL sync is enabled.
-    pub enabled: bool,
-    /// PostgreSQL hostname or IP.
-    pub host: Option<String>,
-    /// PostgreSQL port.
-    pub port: Option<String>,
-    /// PostgreSQL database name.
-    pub dbname: Option<String>,
-    /// PostgreSQL user.
-    pub user: Option<String>,
-    /// Whether a password is stored (never echoed back).
-    pub has_password: bool,
-    /// Whether the transport requires a TLS connection to PostgreSQL.
-    pub require_tls: bool,
-}
-
 /// Business logic for `get_pg_sync_settings` (extracted for testing).
+///
+/// Adapter over `oz_bridge::sync::run_get_pg_sync_settings`, kept
+/// `AppError`-returning for `sync_tests.rs`.
+#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 fn run_get_pg_sync_settings(conn: &Connection) -> Result<PgSyncSettingsDto, AppError> {
-    Ok(PgSyncSettingsDto {
-        enabled: Settings::is_pg_sync_enabled(conn)?,
-        host: Settings::get_pg_sync_host(conn)?.filter(|s| !s.is_empty()),
-        port: Settings::get_pg_sync_port(conn)?.filter(|s| !s.is_empty()),
-        dbname: Settings::get_pg_sync_dbname(conn)?.filter(|s| !s.is_empty()),
-        user: Settings::get_pg_sync_user(conn)?.filter(|s| !s.is_empty()),
-        has_password: Settings::get_pg_sync_password(conn)?.is_some_and(|s| !s.is_empty()),
-        require_tls: Settings::get_pg_sync_require_tls(conn)?,
-    })
-}
-
-/// Update PG sync settings.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdatePgSyncSettingsArgs {
-    /// Whether PostgreSQL sync is enabled.
-    pub enabled: bool,
-    /// PostgreSQL hostname or IP (`None` clears).
-    pub host: Option<String>,
-    /// PostgreSQL port (`None` clears).
-    pub port: Option<String>,
-    /// PostgreSQL database name (`None` clears).
-    pub dbname: Option<String>,
-    /// PostgreSQL user (`None` clears).
-    pub user: Option<String>,
-    /// PostgreSQL password — written only when `Some`, so the UI's masked
-    /// untouched field never blanks the stored secret (mirror of the
-    /// HTTP sync API-key handling).
-    pub password: Option<String>,
-    /// Whether the transport requires a TLS connection to PostgreSQL.
-    /// Written on every update (defaults to `false` when absent).
-    pub require_tls: Option<bool>,
+    oz_bridge::sync::run_get_pg_sync_settings(conn).map_err(Into::into)
 }
 
 /// Persist PG sync settings atomically in a single transaction.
@@ -181,25 +101,12 @@ pub struct UpdatePgSyncSettingsArgs {
 /// Extracted as a free function so the persistence contract (optional
 /// field clearing + password preservation) can be tested without a Tauri
 /// runtime, mirroring `update_sync_settings_data`.
+#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 pub fn update_pg_sync_settings_data(
     conn: &Connection,
     args: &UpdatePgSyncSettingsArgs,
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-    Settings::set_pg_sync_enabled(&tx, args.enabled)?;
-    // `None` (or an empty string) clears the field — the same row-presence
-    // contract the HTTP sync URL handling uses.
-    Settings::set_pg_sync_host(&tx, args.host.as_deref().unwrap_or(""))?;
-    Settings::set_pg_sync_port(&tx, args.port.as_deref().unwrap_or(""))?;
-    Settings::set_pg_sync_dbname(&tx, args.dbname.as_deref().unwrap_or(""))?;
-    Settings::set_pg_sync_user(&tx, args.user.as_deref().unwrap_or(""))?;
-    if let Some(ref password) = args.password {
-        Settings::set_pg_sync_password(&tx, password)?;
-    }
-    // Write require_tls on every update (defaults to false when absent).
-    Settings::set_pg_sync_require_tls(&tx, args.require_tls.unwrap_or(false))?;
-    tx.commit()?;
-    Ok(())
+    oz_bridge::sync::update_pg_sync_settings_data(conn, args).map_err(Into::into)
 }
 
 /// SYNC-10 settings sink shared by the SQLite and PG daemons: a settings
@@ -218,64 +125,28 @@ pub fn settings_changed_sink(app: &tauri::AppHandle) -> SettingsChangedSink {
     })
 }
 
-// Debug-only fallback URL used by the status-bar health probe so the sync
-// indicator can recover while auto-provisioning is still writing the
-// persisted settings row. Points at the unified cloud server.
-#[cfg(debug_assertions)]
-const LOCAL_DEV_SYNC_URL: &str = "https://license.ozpos.my.id";
-
 /// Resolve the URL used by the status-bar health probe.
 ///
 /// Explicitly supplied and persisted URLs always win. The debug-only local
 /// fallback is intentionally added here rather than in the frontend so the
 /// status indicator can recover even while auto-provisioning is still writing
 /// the persisted settings row.
+#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 fn resolve_sync_probe_url(
     candidate: Option<String>,
     saved: Option<String>,
     allow_local_fallback: bool,
 ) -> Option<String> {
-    if let Some(url) = candidate.filter(|url| !url.trim().is_empty()) {
-        return Some(url);
-    }
-    if let Some(url) = saved.filter(|url| !url.trim().is_empty()) {
-        return Some(url);
-    }
-
-    // The health indicator must be able to probe the cloud server before
-    // the asynchronous bootstrap has persisted URL/key settings. Keep this
-    // fallback debug-only so production never probes an unexpected URL.
-    // An empty URL is unconfigured; an explicit opt-out is represented by
-    // keeping a configured URL and disabling sync.
-    #[cfg(debug_assertions)]
-    if allow_local_fallback {
-        return Some(LOCAL_DEV_SYNC_URL.to_string());
-    }
-
-    None
-}
-
-/// Arguments for `sync_pull`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncPullArgs {
-    /// Must be `true` to proceed with the destructive pull.
-    /// Prevents accidental local-data overwrite from UI double-clicks
-    /// or programmatic calls without user consent (H-2).
-    pub confirm_destructive: bool,
+    oz_bridge::sync::resolve_sync_probe_url(candidate, saved, allow_local_fallback)
 }
 
 /// Reject a pull that lacks explicit destructive consent (H-2).
 ///
 /// Extracted as a free function so the consent gate can be unit-tested
 /// without a Tauri runtime.
+#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
 fn validate_pull_consent(args: &SyncPullArgs) -> Result<(), AppError> {
-    if !args.confirm_destructive {
-        return Err(AppError::Invalid(
-            "confirm_destructive must be true to proceed with sync pull".into(),
-        ));
-    }
-    Ok(())
+    oz_bridge::sync::validate_pull_consent(args).map_err(Into::into)
 }
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
@@ -287,19 +158,10 @@ pub async fn update_sync_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    update_sync_settings_data(&db, &args)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::update_sync_settings_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get PG sync settings (scoped).
@@ -308,15 +170,10 @@ pub async fn get_pg_sync_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<PgSyncSettingsDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_get_pg_sync_settings(&db)
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::get_pg_sync_settings_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update PG sync settings (scoped).
@@ -326,19 +183,10 @@ pub async fn update_pg_sync_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    update_pg_sync_settings_data(&db, &args)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::update_pg_sync_settings_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 /// PG sync status (scoped).
@@ -364,7 +212,14 @@ pub async fn pg_sync_start_scoped(
     state.resolve_scope(&session_token)?;
     let db = state.db.clone();
     let sink = settings_changed_sink(&app_handle);
-    state.pg_sync_daemon.start_with_sink(db, sink).await;
+    if !state.pg_sync_daemon.start_with_sink(db, sink).await {
+        // The daemon reports an explicit `false` when a start landed on a
+        // live daemon; surfacing it as an error — never a silent `Ok(())` —
+        // lets the UI tell "spawned" from "already running".
+        return Err(AppError::Invalid(
+            "pg sync daemon is already running".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -378,7 +233,14 @@ pub async fn pg_sync_stop_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
     state.resolve_scope(&session_token)?;
-    state.pg_sync_daemon.stop().await;
+    if !state.pg_sync_daemon.stop().await {
+        // stop() only reports `false` when the run loop failed to exit
+        // within its stop grace period; pretending it stopped would leave
+        // the UI showing a daemon that is still finishing its cycle.
+        return Err(AppError::Internal(
+            "pg sync daemon did not confirm shutdown within its stop grace period; it is still exiting in the background".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -388,18 +250,10 @@ pub async fn pending_sync_count_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<i64, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.pending_offline_count()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::pending_sync_count_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Request a sync token (scoped).
@@ -408,30 +262,10 @@ pub async fn request_sync_token_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<sync_client::TokenResult, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let resolved = {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty())
-    }; // conn + db dropped here — std::sync::MutexGuard is not Send
-    match resolved {
-        Some(u) => {
-            Ok(sync_client::request_token(&u, sync_client::admin_key_from_env().as_deref()).await)
-        }
-        None => Ok(sync_client::TokenResult {
-            ok: false,
-            token: None,
-            status: "No server URL configured".into(),
-            expires_at: None,
-        }),
-    }
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::request_sync_token_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get sync plan (scoped).
@@ -440,32 +274,10 @@ pub async fn get_sync_plan_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<sync_client::TenantPlanResult, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let (url, api_key) = {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        let config = SyncConfig::from_settings(&store)?;
-        match config {
-            Some(c) => (Some(c.server_url), c.api_key),
-            None => (None, None),
-        }
-    };
-    match (url, api_key) {
-        (Some(u), Some(key)) => Ok(sync_client::fetch_tenant_plan(&u, &key).await),
-        _ => Ok(sync_client::TenantPlanResult {
-            ok: false,
-            plan: None,
-            status: "Sync is not configured".into(),
-        }),
-    }
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::get_sync_plan_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Test the cloud sync connection by pinging the configured server
@@ -476,24 +288,10 @@ pub async fn get_sync_plan_scoped(
 pub async fn test_sync_connection(
     state: State<'_, AppState>,
 ) -> Result<sync_client::PingResult, AppError> {
-    let (saved, allow_local_fallback) = {
-        let db = state.db.lock().await;
-        let saved = Settings::get_sync_server_url(&db)?;
-        let allow_local_fallback = saved
-            .as_deref()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true);
-        (saved, allow_local_fallback)
-    }; // db lock dropped here
-    let resolved = resolve_sync_probe_url(None, saved, allow_local_fallback);
-    match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
-        None => Ok(sync_client::PingResult {
-            ok: false,
-            status: "No server URL configured".into(),
-            latency_ms: None,
-        }),
-    }
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::test_sync_connection(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Test sync connection (scoped).
@@ -502,33 +300,10 @@ pub async fn test_sync_connection_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<sync_client::PingResult, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let (saved, allow_local_fallback) = {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let saved = Settings::get_sync_server_url(&db)?;
-        let allow_local_fallback = saved
-            .as_deref()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true);
-        (saved, allow_local_fallback)
-    }; // conn + db dropped here
-    let resolved = resolve_sync_probe_url(None, saved, allow_local_fallback);
-    match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
-        None => Ok(sync_client::PingResult {
-            ok: false,
-            status: "No server URL configured".into(),
-            latency_ms: None,
-        }),
-    }
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::test_sync_connection_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Sync run (scoped — 3-phase with auth refresh).
@@ -537,273 +312,203 @@ pub async fn sync_run_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<SyncAttemptResult, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    // Phase 1: Read pending items and config from DB (brief lock).
-    let (pending_items, config_opt) = {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        let pending = store.list_pending_offline()?;
-        let config = SyncConfig::from_settings(&store)?;
-        (pending, config)
-    };
-
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            return Ok(SyncAttemptResult {
-                synced: 0,
-                failed: 0,
-                error: Some("Sync is not configured or disabled".into()),
-                plan_required: false,
-            });
-        }
-    };
-
-    if pending_items.is_empty() {
-        return Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: None,
-            plan_required: false,
-        });
-    }
-
-    // Phase 2: Async HTTP push (no DB lock held).
-    let mut outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
-
-    // ADR sync-auth-hardening P1: refresh token once on 401.
-    if matches!(outcomes, Err(sync_client::SyncHttpError::AuthExpired)) {
-        let client_credentials = {
-            let session = state.resolve_session(&session_token)?;
-            let conn = state
-                .db_manager
-                .open_store(&session.store_id)
-                .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-            let db = conn
-                .lock()
-                .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-            match (
-                Settings::get_sync_terminal_id(&db)?,
-                Settings::get_sync_terminal_secret(&db)?,
-            ) {
-                (Some(id), Some(secret)) => Some((id, secret)),
-                _ => None,
-            }
-        };
-        let fresh_key = sync_client::request_refresh_token(
-            &config.server_url,
-            client_credentials
-                .as_ref()
-                .map(|(id, secret)| (id.as_str(), secret.as_str())),
-        )
-        .await;
-        if let Some(fresh_key) = fresh_key {
-            {
-                let session = state.resolve_session(&session_token)?;
-                let conn = state
-                    .db_manager
-                    .open_store(&session.store_id)
-                    .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-                let db = conn
-                    .lock()
-                    .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-                sync_client::persist_refreshed_api_key(&db, &fresh_key)?;
-            }
-            let retry_config = {
-                let session = state.resolve_session(&session_token)?;
-                let conn = state
-                    .db_manager
-                    .open_store(&session.store_id)
-                    .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-                let db = conn
-                    .lock()
-                    .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-                let store = Store::new(&db);
-                SyncConfig::from_settings(&store)?
-            };
-            if let Some(cfg) = retry_config {
-                outcomes = sync_client::send_items_to_server(&cfg, &pending_items).await;
-            }
-        }
-    }
-
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    match outcomes {
-        Ok(outcomes) => Ok(sync_client::apply_sync_outcomes(
-            &store,
-            &pending_items,
-            &outcomes,
-        )?),
-        Err(sync_client::SyncHttpError::PlanRequired) => Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        }),
-        Err(e) => Ok(sync_client::mark_all_failed(
-            &store,
-            &pending_items,
-            &e.to_string(),
-        )?),
-    }
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::sync_run_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
-/// Sync pull (scoped — 4-phase with auth refresh + backup).
+/// Sync pull (scoped — 4-phase with auth refresh + backup, then disposal).
+///
+/// `state.db_path` is passed only so the bridge can recognise and sweep the
+/// LEGACY backup family (`oz-pos.sync-pull-*.backup.db`), which pre-fix builds
+/// wrote for every store under this shell's main database name. The backup a
+/// pull takes now is named after the store database it clones
+/// (`store-<id>.sync-pull-<ts>.backup.db`, derived by the bridge from
+/// `StoreDatabaseManager::store_db_path`) and is deleted on success or
+/// retained one-per-store on failure — see `oz_bridge::sync::dispose_pre_pull_backup`.
 #[tauri::command]
 pub async fn sync_pull_scoped(
     args: SyncPullArgs,
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<PullResult, AppError> {
-    // F-017: enforce per-domain permission on this scoped command.
+    let ctx = state.bridge_ctx();
+    let db_path = state.db_path.clone();
+    oz_bridge::sync::sync_pull_scoped(&ctx, &session_token, args, &db_path)
+        .await
+        .map_err(Into::into)
+}
+
+// ── Sync conflict review (scoped) ────────────────────────────────────────
+//
+// Thin, read-mostly client for the cloud conflict endpoints. Conflicts are
+// recorded server-side (table `sync_conflicts`), so the desktop has no local
+// copy to read — these commands exist only so the UI never holds a server URL
+// or an API key of its own.
+//
+// Money is never merged here and never summed: a conflict is surfaced for a
+// manager to decide, and this layer only transports that decision.
+
+/// Filters accepted by [`list_sync_conflicts_scoped`].
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct ListSyncConflictsArgs {
+    /// `open` | `resolved` | `dismissed`; omitted means every status.
+    pub status: Option<String>,
+    /// `high` | `medium` | `low`; omitted means every severity.
+    pub severity: Option<String>,
+}
+
+/// Arguments for [`resolve_sync_conflict_scoped`].
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ResolveSyncConflictArgs {
+    /// Row to resolve.
+    pub id: String,
+    /// The chosen side or a custom merge, stored verbatim on the row.
+    pub resolution: String,
+}
+
+/// One flagged divergence, as returned by the cloud.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SyncConflictDto {
+    /// Row id.
+    pub id: String,
+    /// Entity type, e.g. `stock.adjusted`.
+    pub entity_type: String,
+    /// Entity the two mutations disagree about.
+    pub entity_id: String,
+    /// Terminal that produced the stored side.
+    pub local_terminal_id: String,
+    /// JSON version vector of the stored side. Never parsed client-side.
+    pub local_vector: String,
+    /// JSON version vector of the incoming side. Never parsed client-side.
+    pub remote_vector: String,
+    /// JSON body of the stored side.
+    pub local_payload: String,
+    /// JSON body of the incoming side.
+    pub remote_payload: String,
+    /// `high` | `medium` | `low`.
+    pub severity: String,
+    /// `open` | `resolved` | `dismissed`.
+    pub status: String,
+    /// Chosen side, once resolved.
+    pub resolution: Option<String>,
+    /// Who resolved it.
+    pub resolved_by: Option<String>,
+    /// When it was resolved.
+    pub resolved_at: Option<String>,
+    /// When the row was created.
+    pub created_at: String,
+}
+
+/// The configured sync server URL and API key.
+///
+/// Returns `None` when no server is configured — an unconfigured terminal has
+/// no cloud to ask, so callers treat that as "no conflicts" rather than an
+/// error, exactly as a disconnected terminal does today.
+async fn sync_server_credentials(
+    state: &State<'_, AppState>,
+) -> Result<Option<(String, Option<String>)>, AppError> {
+    let db = state.db.lock().await;
+    let url = oz_core::settings::Settings::get_sync_server_url(&db)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let key = oz_core::settings::Settings::get_sync_api_key(&db)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    drop(db);
+
+    let url = url.unwrap_or_default().trim_end_matches('/').to_string();
+    if url.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some((url, key)))
+    }
+}
+
+/// List conflicts flagged for manager review (scoped).
+#[tauri::command]
+pub async fn list_sync_conflicts_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+    args: ListSyncConflictsArgs,
+) -> Result<Vec<SyncConflictDto>, AppError> {
+    // The conflict queue is a management surface: it carries both sides of a
+    // divergence the store has not yet accepted, so the read is gated like
+    // the resolve beside it. `028056eaae` shipped this without the gate and
+    // the registration-gate ratchet caught it on both shells (desktop 70 vs
+    // ceiling 69, tablet 126 vs 125) — this is the repair.
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    validate_pull_consent(&args)?;
 
-    // Phase 1: Read config from DB (brief lock).
-    let config_opt = {
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        SyncConfig::from_settings(&store)?
+    let Some((base, key)) = sync_server_credentials(&state).await? else {
+        return Ok(Vec::new());
     };
 
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            return Ok(PullResult {
-                products_pulled: 0,
-                tax_rates_pulled: 0,
-                users_pulled: 0,
-                error: Some("Sync is not configured or disabled".into()),
-            });
-        }
-    };
-
-    // Phase 2: Async HTTP fetch (no DB lock held).
-    let mut snapshot = sync_client::fetch_snapshot_from_server(&config).await;
-
-    // ADR sync-auth-hardening P1: refresh token once on 401.
-    if matches!(snapshot, Err(sync_client::SyncHttpError::AuthExpired)) {
-        let client_credentials = {
-            let session = state.resolve_session(&session_token)?;
-            let conn = state
-                .db_manager
-                .open_store(&session.store_id)
-                .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-            let db = conn
-                .lock()
-                .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-            match (
-                Settings::get_sync_terminal_id(&db)?,
-                Settings::get_sync_terminal_secret(&db)?,
-            ) {
-                (Some(id), Some(secret)) => Some((id, secret)),
-                _ => None,
-            }
-        };
-        let fresh_key = sync_client::request_refresh_token(
-            &config.server_url,
-            client_credentials
-                .as_ref()
-                .map(|(id, secret)| (id.as_str(), secret.as_str())),
-        )
-        .await;
-        if let Some(fresh_key) = fresh_key {
-            {
-                let session = state.resolve_session(&session_token)?;
-                let conn = state
-                    .db_manager
-                    .open_store(&session.store_id)
-                    .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-                let db = conn
-                    .lock()
-                    .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-                sync_client::persist_refreshed_api_key(&db, &fresh_key)?;
-            }
-            let retry_config = {
-                let session = state.resolve_session(&session_token)?;
-                let conn = state
-                    .db_manager
-                    .open_store(&session.store_id)
-                    .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-                let db = conn
-                    .lock()
-                    .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-                let store = Store::new(&db);
-                SyncConfig::from_settings(&store)?
-            };
-            if let Some(cfg) = retry_config {
-                snapshot = sync_client::fetch_snapshot_from_server(&cfg).await;
-            }
-        }
+    let mut request = reqwest::Client::new().get(format!("{base}/api/sync/conflicts"));
+    if let Some(status) = &args.status {
+        request = request.query(&[("status", status)]);
+    }
+    if let Some(severity) = &args.severity {
+        request = request.query(&[("severity", severity)]);
+    }
+    if let Some(key) = key {
+        request = request.bearer_auth(key);
     }
 
-    // Phase 3: Create a pre-pull backup (defence in depth — H-2).
-    {
-        let session = state.resolve_session(&session_token)?;
-        let conn = state
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        let mut backup_path = state.db_path.clone();
-        let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
-        let ext = format!("sync-pull-{timestamp}.backup.db");
-        backup_path.set_extension(&ext);
-        store
-            .backup(&backup_path.display().to_string())
-            .map_err(|e| {
-                tracing::warn!(backup = %backup_path.display(), error = %e, "sync-pull backup failed");
-                AppError::Internal(format!("sync-pull backup failed: {e}"))
-            })?;
-        tracing::info!(backup = %backup_path.display(), "pre-pull backup created");
+    let response = request
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("conflict list request failed: {e}")))?;
+
+    #[derive(serde::Deserialize)]
+    struct Body {
+        conflicts: Vec<SyncConflictDto>,
     }
 
-    // Phase 4: Apply snapshot to DB (brief lock).
+    let body: Body = response
+        .json()
+        .await
+        .map_err(|e| AppError::Internal(format!("conflict list decode failed: {e}")))?;
+    Ok(body.conflicts)
+}
+
+/// Record a manager's decision on a conflict (scoped).
+///
+/// Returns `false` when the row was not open — it may already have been
+/// resolved on another terminal. The UI must treat that as "someone else got
+/// there first", not as a failure to retry blindly.
+#[tauri::command]
+pub async fn resolve_sync_conflict_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+    args: ResolveSyncConflictArgs,
+) -> Result<bool, AppError> {
+    // Resolving a conflict is an administrative act: it decides which version
+    // of the store's data is true.
     let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    match snapshot {
-        Ok(s) => Ok(sync_client::apply_snapshot(&store, &s)?),
-        Err(e) => Ok(PullResult {
-            products_pulled: 0,
-            tax_rates_pulled: 0,
-            users_pulled: 0,
-            error: Some(e.to_string()),
-        }),
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+
+    let Some((base, key)) = sync_server_credentials(&state).await? else {
+        return Ok(false);
+    };
+
+    let mut request = reqwest::Client::new()
+        .post(format!("{base}/api/sync/conflicts/{}/resolve", args.id))
+        .json(&serde_json::json!({ "resolution": args.resolution }));
+    if let Some(key) = key {
+        request = request.bearer_auth(key);
     }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("conflict resolve request failed: {e}")))?;
+
+    // 404 means the row is unknown, belongs to another tenant, or was already
+    // closed — all of which are "nothing to resolve", not errors.
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    Ok(response.status().is_success())
 }
 
 /// Settings changed sink (scoped — no-op for session-validated callers).
@@ -814,10 +519,8 @@ pub async fn settings_changed_sink_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    state.resolve_scope(&session_token)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::sync::settings_changed_sink_scoped(&ctx, &session_token, &_key, _value)
+        .await
+        .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "sync_tests.rs"]
-mod tests;

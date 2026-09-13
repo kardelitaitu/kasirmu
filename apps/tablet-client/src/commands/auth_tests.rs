@@ -85,6 +85,18 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// Sign a picker ticket valid under the AppState::for_test secret
+/// (`b"test-picker-ticket-secret"`), bound to `user_id` — the same mint
+/// staff_login performs. create_session's H-3 gate (restored in Phase 3.3
+/// T5) verifies this ticket before any session is minted.
+fn test_ticket(user_id: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    picker_ticket::sign_picker_ticket(b"test-picker-ticket-secret", user_id, now + 300)
+}
+
 #[tokio::test]
 async fn staff_login_mints_verifiable_picker_ticket() {
     // audit-open-findings (parity with the desktop client): the picker ticket
@@ -191,11 +203,13 @@ async fn create_session_rejects_forged_role_id() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-cashier".into(),
+            picker_ticket: test_ticket("user-cashier"),
             role_id: "role-owner".into(), // forged
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
+            org_id: None,
         },
         app.state(),
     )
@@ -224,11 +238,13 @@ async fn create_session_rejects_unknown_user() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "ghost-user".into(),
+            picker_ticket: test_ticket("ghost-user"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
+            org_id: None,
         },
         app.state(),
     )
@@ -253,11 +269,13 @@ async fn create_session_allows_real_owner() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
             type_key: "restaurant-pos".into(),
             terminal_id: "terminal-1".into(),
+            org_id: None,
         },
         app.state(),
     )
@@ -285,11 +303,13 @@ async fn create_session_denies_tier_disallowed_workspace_type() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-kds".into(),
             type_key: "kds".into(),
             terminal_id: "terminal-1".into(),
+            org_id: None,
         },
         app.state(),
     )
@@ -332,11 +352,13 @@ async fn create_session_rejects_tampered_subscription_signature() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-kds".into(),
             type_key: "kds".into(),
             terminal_id: "terminal-1".into(),
+            org_id: None,
         },
         app.state(),
     )
@@ -355,4 +377,837 @@ async fn create_session_rejects_tampered_subscription_signature() {
         AppError::Core { .. } => {}
         other => panic!("expected AppError::Invalid/Core, got {other:?}"),
     }
+}
+// ── Basic security events on the auth paths (todo-global-saas-2.md P1) ─
+//
+// Pins that staff_login and destroy_session actually WRITE audit rows. The
+// core recorder has its own suite in oz-core; what matters here is the
+// wiring and the tablet half of the per-client divergence: the tablet passes
+// debug_upgrade: false, so unlike the desktop it records NOTHING on a Free
+// row even in a debug build.
+
+/// Move the seeded subscription onto another tier. The signature covers
+/// `signed_payload` only, never `tier_key`, so this keeps the row loaded and
+/// changes only the projected tier.
+fn set_tier(conn: &rusqlite::Connection, tier_key: &str) {
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
+        [tier_key],
+    )
+    .unwrap();
+}
+
+/// A global DB with built-in roles, one PIN-able owner, and an optional tier.
+fn login_app(tier_key: Option<&str>) -> tauri::App<tauri::test::MockRuntime> {
+    let conn = migrations::fresh_db();
+    if let Some(tier) = tier_key {
+        set_tier(&conn, tier);
+    }
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', ?1, 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [hash],
+    )
+    .unwrap();
+    tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+/// Every audit row in the global DB.
+async fn audit_rows(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> Vec<(String, String, String, String, String)> {
+    let state = app.state::<AppState>();
+    let db = state.db.lock().await;
+    let mut stmt = db
+        .prepare(
+            "SELECT user_id, action, outcome, COALESCE(target_id,''), COALESCE(details,'{}')
+             FROM audit_log ORDER BY created_at ASC",
+        )
+        .unwrap();
+    stmt.query_map([], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+    })
+    .unwrap()
+    .map(|r| r.unwrap())
+    .collect()
+}
+
+#[tokio::test]
+async fn staff_login_records_a_success_event_for_a_paid_tier() {
+    let app = login_app(Some("pro"));
+    staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "1234".into(),
+            device_id: Some("tablet-2".into()),
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let rows = audit_rows(&app).await;
+    assert_eq!(rows.len(), 1, "one login event, got {rows:?}");
+    let (user_id, action, outcome, target_id, details) = &rows[0];
+    assert_eq!(user_id, "user-owner");
+    assert_eq!(action, "login", "the value auditCatalog.ts already labels");
+    assert_eq!(outcome, "success");
+    assert_eq!(target_id, "user-owner");
+    assert!(
+        details.contains("tablet-2"),
+        "device id recorded: {details}"
+    );
+    assert!(
+        !details.contains("1234"),
+        "the PIN must never reach the table"
+    );
+}
+
+#[tokio::test]
+async fn staff_login_records_a_failure_event_with_its_classifier() {
+    let app = login_app(Some("pro"));
+    let err = staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "9999".into(),
+            device_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("invalid username or PIN"),
+        "the client still gets the uniform message, got {err}"
+    );
+
+    let rows = audit_rows(&app).await;
+    assert_eq!(rows.len(), 1);
+    let (_, action, outcome, _, details) = &rows[0];
+    assert_eq!(action, "login.failed");
+    assert_eq!(outcome, "failure");
+    assert!(
+        details.contains("wrong_pin"),
+        "classifier recorded: {details}"
+    );
+}
+
+#[tokio::test]
+async fn free_tier_records_nothing_even_in_a_debug_build() {
+    // The per-client divergence, pinned from the tablet side. The desktop
+    // promotes its own active Free row in debug builds; the tablet must not
+    // mirror it (dfbc41b2), so a Free tenant writes no security events here
+    // in ANY build profile. If the tablet helper ever starts passing
+    // debug_upgrade: true, this test goes red in dev where it is green today.
+    let app = login_app(Some("free"));
+    staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "1234".into(),
+            device_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        audit_rows(&app).await.len(),
+        0,
+        "the tablet never promotes Free, so nothing is recorded"
+    );
+}
+
+#[tokio::test]
+async fn destroy_session_records_a_logout_for_a_paid_tier() {
+    let app = login_app(Some("premium"));
+    {
+        let state = app.state::<AppState>();
+        state.session_store.write().unwrap().insert(
+            "tok-1".into(),
+            SessionContext::new(
+                "user-owner".into(),
+                "role-owner".into(),
+                "tablet-1".into(),
+                "default".into(),
+                "instance-1".into(),
+                "pos".into(),
+                None,
+                0,
+            ),
+        );
+    }
+
+    destroy_session(app.state(), "tok-1".into()).await.unwrap();
+
+    let rows = audit_rows(&app).await;
+    assert_eq!(rows.len(), 1, "one logout event, got {rows:?}");
+    let (user_id, action, outcome, _, details) = &rows[0];
+    assert_eq!(action, "logout");
+    assert_eq!(outcome, "success", "a logout is not a failure");
+    assert_eq!(user_id, "user-owner");
+    assert!(details.contains("tablet-1"), "terminal recorded: {details}");
+}
+
+#[tokio::test]
+async fn destroy_session_with_an_unknown_token_records_nothing() {
+    // A replayed or already-evicted logout must not manufacture phantom
+    // events — and it must still return Ok, exactly as it did before this
+    // wiring.
+    let app = login_app(Some("premium"));
+    destroy_session(app.state(), "never-issued".into())
+        .await
+        .unwrap();
+    assert!(audit_rows(&app).await.is_empty());
+}
+
+#[tokio::test]
+async fn an_unreadable_subscription_row_still_records_on_the_tablet() {
+    // Fail-open arm, reached from the client rather than the core suite: a
+    // tenant that corrupts its own subscription row must not be able to turn
+    // the security trail off. The tablet's debug_upgrade: false is irrelevant
+    // here — the gate keys on `loaded`, not on the promotion.
+    let app = login_app(Some("premium"));
+    {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().await;
+        db.execute(
+            "UPDATE tenant_subscription SET signature = 'not-a-signature' WHERE tenant_id = 'default'",
+            [],
+        )
+        .unwrap();
+    }
+    staff_login(
+        StaffLoginArgs {
+            username: "owner".into(),
+            pin: "1234".into(),
+            device_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(audit_rows(&app).await.len(), 1, "the trail stays on");
+}
+// ── SaaS-3 L194: multi-Organization switching — isolation suite (tablet) ─
+//
+// Tablet mirror of the desktop L194 isolation suite. The tablet create_session
+// trusts args.user_id directly (no picker ticket), but the fail-closed org gate
+// and switch_organization are identical in authority: old token dead before new
+// session (invalidate-then-mint), authority re-derived from the assignment, no
+// credential carryover, enumerated-list-only, integrity re-check on switch.
+
+use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+
+/// Seed a legal entity owned by `tenant_id` with the given id and name.
+fn seed_legal_entity(conn: &rusqlite::Connection, tenant_id: &str, id: &str, name: &str) {
+    conn.execute(
+        "INSERT INTO legal_entities (id, tenant_id, name, legal_name, status)
+         VALUES (?1, ?2, ?3, ?4, 'active')",
+        rusqlite::params![id, tenant_id, name, name],
+    )
+    .unwrap();
+}
+
+/// Override a user's assignment: None -> Organization-wide; Some(org_id) ->
+/// single LegalEntity scope covering only that org.
+fn set_user_assignment(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    role_id: &str,
+    org_id: Option<&str>,
+) {
+    let store = Store::new(conn);
+    let spec = AssignmentSpec {
+        scope_mode: ScopeMode::Global,
+        branches_all: true,
+        branches: vec![],
+        workspaces_all: true,
+        workspaces: vec![],
+        scope_type: match org_id {
+            Some(_) => ScopeType::LegalEntity,
+            None => ScopeType::Organization,
+        },
+        scope_id: org_id.map(|s| s.to_string()),
+    };
+    store.set_assignment(user_id, role_id, &spec).unwrap();
+}
+
+/// Build an app with an owner (role-owner) scoped by `org_scope`. Returns the
+/// app and the real uuid user_id (tablet create_session consumes it directly).
+fn l194_app_with(
+    conn: rusqlite::Connection,
+    org_scope: Option<&str>,
+) -> (tauri::App<tauri::test::MockRuntime>, String) {
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    let hash = oz_core::auth::hash_pin("1234").unwrap();
+    let user = store
+        .create_user("alice", &hash, "Alice", "role-owner")
+        .unwrap();
+    let user_id = user.id.clone();
+    set_user_assignment(&conn, &user_id, "role-owner", org_scope);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+    (app, user_id)
+}
+
+#[tokio::test]
+async fn l194_list_organizations_device_local_only() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    seed_legal_entity(&conn, "default", "org-b", "Bravo Co");
+    let (app, _uid) = l194_app_with(conn, None);
+
+    let orgs = list_organizations(app.state()).await.unwrap();
+    let ids: Vec<&String> = orgs.iter().map(|o| &o.id).collect();
+    assert!(
+        ids.iter().any(|i| *i == "org-a"),
+        "org-a must surface: {ids:?}"
+    );
+    assert!(
+        ids.iter().any(|i| *i == "org-b"),
+        "org-b must surface: {ids:?}"
+    );
+    assert!(
+        !ids.iter().any(|i| i.starts_with("other:")),
+        "no foreign-tenant entity may surface: {ids:?}"
+    );
+    assert!(orgs.iter().any(|o| o.name == "Alpha Co"));
+    assert!(orgs.iter().any(|o| o.name == "Bravo Co"));
+}
+
+#[tokio::test]
+async fn l194_list_organizations_excludes_other_tenant() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    seed_legal_entity(&conn, "other", "org-x", "Cross-Tenant");
+    let (app, _uid) = l194_app_with(conn, None);
+
+    let orgs = list_organizations(app.state()).await.unwrap();
+    let ids: Vec<&String> = orgs.iter().map(|o| &o.id).collect();
+    assert!(
+        ids.iter().any(|i| *i == "org-a"),
+        "device-tenant entity must surface"
+    );
+    assert!(
+        !ids.iter().any(|i| *i == "org-x"),
+        "cross-tenant entity must not surface"
+    );
+    assert!(
+        !ids.iter().any(|i| i.starts_with("other:")),
+        "no foreign-tenant entity may surface"
+    );
+}
+
+#[tokio::test]
+async fn l194_create_session_org_wide_user_gets_label() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let result = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: Some("org-a".into()),
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.context.org_label.as_deref(), Some("Alpha Co"));
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn l194_create_session_org_denied_without_assignment_coverage() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    seed_legal_entity(&conn, "default", "org-b", "Bravo Co");
+    let (app, uid) = l194_app_with(conn, Some("org-a"));
+
+    let result = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: Some("org-b".into()),
+        },
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "org-b is outside the user's assignment — must be refused"
+    );
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        0,
+        "no session token may be created without assignment coverage"
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_old_token_dead() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    let old_token = login.session_token.clone();
+    assert!(
+        app.state::<AppState>().resolve_session(&old_token).is_ok(),
+        "old token live before switch"
+    );
+
+    let switched = switch_organization(
+        old_token.clone(),
+        "org-a".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+    let new_token = switched.session_token.clone();
+
+    assert_eq!(switched.context.org_label.as_deref(), Some("Alpha Co"));
+    assert!(
+        app.state::<AppState>().resolve_session(&old_token).is_err(),
+        "old token must be dead after switch"
+    );
+    assert!(
+        app.state::<AppState>().resolve_session(&new_token).is_ok(),
+        "new token must be live after switch"
+    );
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_records_an_org_switch_event() {
+    // todo-global-saas-3.md L227 follow-up: a successful organization
+    // switch is a session-lifecycle security event — the operator
+    // re-authenticated in full and re-scoped their data authority. The
+    // row names the actor in user_id and the TARGET ORG in target_id,
+    // so an investigator can answer "who entered which org" without
+    // parsing the details blob.
+    let conn = migrations::fresh_db();
+    // A paid tier: the tablet records on paid tiers only (its helper passes
+    // debug_upgrade=false, so a Free row would be skipped, not recorded).
+    set_tier(&conn, "premium");
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    switch_organization(
+        login.session_token.clone(),
+        "org-a".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let rows = audit_rows(&app).await;
+    let hit = rows
+        .iter()
+        .find(|(_, action, ..)| *action == oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH)
+        .expect("a successful switch must record an org.switch row");
+    let (user_id, action, outcome, target_id, _details) = hit;
+    assert_eq!(
+        action,
+        &oz_core::db::audit_security::SECURITY_ACTION_ORG_SWITCH
+    );
+    assert_eq!(outcome, &"success");
+    assert_eq!(user_id, &uid, "the row names the operator who switched");
+    assert_eq!(target_id, &"org-a", "target_id carries the org entered");
+}
+
+#[tokio::test]
+async fn l194_switch_organization_wrong_pin_keeps_old_token() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    let old_token = login.session_token.clone();
+
+    let result = switch_organization(
+        old_token.clone(),
+        "org-a".into(),
+        "0000".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "wrong PIN must not switch"
+    );
+    assert!(
+        app.state::<AppState>().resolve_session(&old_token).is_ok(),
+        "old session must survive a failed switch"
+    );
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_enumerated_list_only() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    let old_token = login.session_token.clone();
+
+    let result = switch_organization(
+        old_token.clone(),
+        "org-z".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "org not in device-local enumerated set must be refused"
+    );
+    assert!(
+        app.state::<AppState>().resolve_session(&old_token).is_ok(),
+        "old session must survive a refused switch"
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_requires_assignment_coverage() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    seed_legal_entity(&conn, "default", "org-b", "Bravo Co");
+    let (app, uid) = l194_app_with(conn, Some("org-a"));
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    let old_token = login.session_token.clone();
+
+    let result = switch_organization(
+        old_token.clone(),
+        "org-b".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "switch to an uncovered org must be refused"
+    );
+    assert!(
+        app.state::<AppState>().resolve_session(&old_token).is_ok(),
+        "old session must survive a refused switch"
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_no_grant_carryover() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(login.context.org_label, None, "login session had no org");
+    let old_token = login.session_token.clone();
+
+    let switched = switch_organization(old_token, "org-a".into(), "1234".into(), app.state())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        switched.context.org_label.as_deref(),
+        Some("Alpha Co"),
+        "new session org_label is computed from the assignment, not copied"
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_rejects_tampered_db() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+    let old_token = login.session_token.clone();
+
+    {
+        let app_state = app.state::<AppState>();
+        let db = app_state.db.lock().await;
+        db.execute(
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, tenant_id, created_at, updated_at)
+             VALUES ('evil-uuid', 'evil', 'hash', 'Evil', 'role-owner', 'evil', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let result = switch_organization(
+        old_token.clone(),
+        "org-a".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "switch must refuse when tenant integrity is violated"
+    );
+    assert!(
+        app.state::<AppState>().resolve_session(&old_token).is_ok(),
+        "live session must survive a refused switch"
+    );
+}
+
+#[tokio::test]
+async fn l194_switch_organization_happy_path_returns_label_and_token() {
+    let conn = migrations::fresh_db();
+    seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
+    let (app, uid) = l194_app_with(conn, None);
+
+    let login = create_session(
+        CreateSessionArgs {
+            user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            org_id: None,
+        },
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let switched = switch_organization(
+        login.session_token.clone(),
+        "org-a".into(),
+        "1234".into(),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    assert!(!switched.session_token.is_empty());
+    assert_eq!(switched.context.org_label.as_deref(), Some("Alpha Co"));
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        1
+    );
+    assert!(
+        app.state::<AppState>()
+            .session_store
+            .read()
+            .unwrap()
+            .contains_key(&switched.session_token)
+    );
+}
+
+#[tokio::test]
+async fn create_session_rejects_forged_picker_ticket() {
+    // H-3 regression (Phase 3.3 T5): the tablet DTO silently dropped the
+    // picker_ticket the UI always sends, so this shell minted sessions
+    // with NO ticket verification while the desktop/bridge twin failed
+    // closed. A ticket signed for a DIFFERENT user must not mint a
+    // session for user-owner — identity binding, not just signature
+    // validity — and the denial must be uniform (no oracle).
+    let conn = migrations::fresh_db();
+    seed_owner(&conn);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let forged = CreateSessionArgs {
+        user_id: "user-owner".into(),
+        role_id: "role-owner".into(),
+        store_id: "default".into(),
+        instance_id: "default-restaurant-pos".into(),
+        type_key: "restaurant-pos".into(),
+        terminal_id: "terminal-1".into(),
+        // valid signature, WRONG bound identity
+        picker_ticket: test_ticket("user-somebody-else"),
+        org_id: None,
+    };
+    let result = create_session(forged, app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "a ticket bound to another user must not mint a session"
+    );
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        0,
+        "no session token may be created on a mismatched ticket"
+    );
+
+    // And a garbage ticket is denied the same uniform way.
+    let garbage = CreateSessionArgs {
+        user_id: "user-owner".into(),
+        role_id: "role-owner".into(),
+        store_id: "default".into(),
+        instance_id: "default-restaurant-pos".into(),
+        type_key: "restaurant-pos".into(),
+        terminal_id: "terminal-1".into(),
+        picker_ticket: "not-a-ticket".into(),
+        org_id: None,
+    };
+    let result = create_session(garbage, app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "a garbage ticket must be denied"
+    );
+}
+
+#[test]
+fn create_session_args_require_the_ui_wire_picker_ticket() {
+    // The wire contract pin: the UI (ui/src/api/staff.ts) declares
+    // picker_ticket mandatory and always sends it. The DTO must accept
+    // the snake_case wire, and a payload WITHOUT the ticket must fail —
+    // this is the regression shape that let the field vanish silently.
+    let json = r#"{"user_id":"u","role_id":"r","store_id":"s","instance_id":"i","type_key":"t","terminal_id":"x","picker_ticket":"tk","org_id":null}"#;
+    let args: CreateSessionArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.picker_ticket, "tk");
+
+    let missing = r#"{"user_id":"u","role_id":"r","store_id":"s","instance_id":"i","type_key":"t","terminal_id":"x","org_id":null}"#;
+    let err = serde_json::from_str::<CreateSessionArgs>(missing).unwrap_err();
+    assert!(
+        err.to_string().contains("picker_ticket"),
+        "absent ticket must fail loudly, got: {err}"
+    );
 }

@@ -399,3 +399,87 @@ fn update_terminal_empty_name_rejected() {
     let err = store(&conn).update_terminal(&t).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }
+
+#[test]
+fn enforce_terminal_quota_allows_within_tier_limit() {
+    let conn = fresh();
+    let s = store(&conn);
+    // 0 terminals: Free allows 1
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Free).is_ok());
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Plus).is_ok());
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Pro).is_ok());
+    assert!(
+        s.enforce_terminal_quota(&SubscriptionTier::Enterprise)
+            .is_ok()
+    );
+}
+
+#[test]
+fn enforce_terminal_quota_blocks_at_limit() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_terminal(&make_terminal("t1", "Term 1", "dev-1"))
+        .unwrap();
+
+    // 1 terminal: Free (limit 1) is blocked; Plus (limit 2) allows it
+    let err_free = s
+        .enforce_terminal_quota(&SubscriptionTier::Free)
+        .unwrap_err();
+    assert!(matches!(
+        err_free,
+        CoreError::SubscriptionLimitExceeded(msg) if msg.contains("1 registers")
+    ));
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Plus).is_ok());
+
+    // 2 terminals: Plus (limit 2) is blocked; Pro (limit 5) allows it
+    s.create_terminal(&make_terminal("t2", "Term 2", "dev-2"))
+        .unwrap();
+    let err_plus = s
+        .enforce_terminal_quota(&SubscriptionTier::Plus)
+        .unwrap_err();
+    assert!(matches!(
+        err_plus,
+        CoreError::SubscriptionLimitExceeded(msg) if msg.contains("2 registers")
+    ));
+    assert!(s.enforce_terminal_quota(&SubscriptionTier::Pro).is_ok());
+}
+
+#[test]
+fn create_terminal_tx_veto_closes_limit_race() {
+    // W7-B: mirror of the locations/products veto (9264b8f67). The gate arms
+    // the tier; create_terminal consumes it inside its own transaction, so a
+    // registration that lands over the cap is refused in-tx and never commits.
+    // Filling to the cap happens un-armed on purpose: the pre-tx fast path has
+    // its own suites, and this test must pin the door, not the gate.
+    let conn = fresh();
+    let s = store(&conn);
+    let tier = SubscriptionTier::Free;
+    let limit = QuotaDimension::PosRegisters.limit_for(&tier).unwrap();
+    let baseline = s.count_terminals().unwrap();
+    assert!(
+        baseline < limit,
+        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+    );
+    for i in baseline..limit {
+        s.create_terminal(&make_terminal(
+            &format!("term-{i}"),
+            "Register",
+            &format!("device-{i}"),
+        ))
+        .unwrap();
+    }
+    assert_eq!(s.count_terminals().unwrap(), limit);
+    s.arm_creation_quota(QuotaDimension::PosRegisters, tier.clone());
+    let err = s
+        .create_terminal(&make_terminal("term-over", "Over", "device-over"))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Free at the register cap must be refused in-tx: {err:?}"
+    );
+    assert_eq!(
+        s.count_terminals().unwrap(),
+        limit,
+        "the over-cap register must not persist"
+    );
+}

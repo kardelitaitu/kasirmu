@@ -3,10 +3,7 @@ name: project-scaffold
 description: Project scaffolding, Cargo workspace layout, CI configuration, and Git conventions for OZ-POS. Use when setting up the initial repo, adding a new crate, configuring GitHub Actions, or committing changes.
 ---
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (workspace-layout example repaired) · FIXED 31-08: license MIT -> "SEE LICENSE IN LICENSE" (proprietary — an agent scaffolding with MIT would mislicense the codebase); version 0.0.1 -> 0.0.33 (locked); rust-version 1.85 -> 1.88 (axum/time require >=1.88); members explicit-8 -> real globs (crates/*, modules/*, platform/*, foundation, apps listed explicitly since Go license-server breaks an apps/* glob); rusqlite features +backup; migrations moved from phantom repo-root to crates/oz-core/migrations/; oz-lua rlua -> mlua · verified against HEAD Cargo.toml + ui/package.json · F6 (node-version) not present in skill body (it lives in .github/workflows) -->
-
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.33 → 0.0.35; branch policy aligned with the never-create-branches repo rule; CI section rewritten against the real single active workflow .github/workflows/dev-ci.yml (website/cargo-check/cargo-nextest/ui-test/northflank-deploy, ubuntu, node 24, PG 17 service, RUSTFLAGS -D warnings; ci.yml/security.yml/release.yml exist only as .bak); workspace tree fixed — ARCHITECTURE.md at root, no ROADMAP/WHITEPAPER, docs/ carries guides|specs|decisions|records; spec workflow fixed — the phantom spec `_template` dir removed (does not exist; drafts go straight into `_active`), example swapped to the real 0043-architecture-boundary-checker; lockfile guidance corrected to single committed root Cargo.lock) · verified this pass: Cargo.toml (members globs, exclude, workspace.package, workspace.lints missing_docs, rusqlite 0.31 bundled+backup, thiserror/anyhow/tracing), scripts/check.sh + check.ps1, docs/specs/_active/0043-architecture-boundary-checker (spec.yaml + plan.md + validation.md), .gitignore -->
-
+<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — version lock corrected 0.0.33 → 0.0.35; branch policy aligned with the never-create-branches repo rule; CI section rewritten against the real single active workflow .github/workflows/dev-ci.yml (website/cargo-check/cargo-nextest/ui-test/northflank-deploy, ubuntu, node 24, PG 17 service, RUSTFLAGS -D warnings; ci.yml/security.yml/release.yml exist only as .bak); workspace tree fixed — ARCHITECTURE.md at root, no ROADMAP/WHITEPAPER, docs/ carries guides|specs|decisions|records; spec workflow fixed — the phantom spec `_template` dir removed (does not exist; drafts go straight into `_active`), example swapped to the real 0043-architecture-boundary-checker; lockfile guidance corrected to single committed root Cargo.lock) · verified this pass: Cargo.toml (members globs, exclude, workspace.package, workspace.lints missing_docs, rusqlite 0.31 bundled+backup, thiserror/anyhow/tracing), scripts/check.sh + check.ps1, docs/specs/_active/0043-architecture-boundary-checker (spec.yaml + plan.md + validation.md), .gitignore · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-08-31] · docs-auditor · status: ACCURATE (workspace-layout example repaired) · FIXED 31-08: license MIT -> "SEE LICENSE IN LICENSE" (proprietary — an agent scaffolding with MIT would mislicense the codebase); version 0.0.1 -> 0.0.33 (locked); rust-version 1.85 -> 1.88 (axum/time require >=1.88); members explicit-8 -> real globs (crates/*, modules/*, platform/*, foundation, apps listed explicitly since Go license-server breaks an apps/* glob); rusqlite features +backup; migrations moved from phantom repo-root to crates/oz-core/migrations/; oz-lua rlua -> mlua · verified against HEAD Cargo.toml + ui/package.json · F6 (node-version) not present in skill body (it lives in .github/workflows) -->
 # Project Scaffold, CI & Git
 
 OZ-POS is a multi-crate Cargo workspace with a Tauri front-end, a strict style policy, and a CI pipeline that catches mistakes before they merge. This skill covers the workspace layout, the CI matrix, and the Git workflow.
@@ -30,7 +27,7 @@ OZ-POS is a multi-crate Cargo workspace with a Tauri front-end, a strict style p
 |---|------|-----|
 | 1 | **Work on the currently active branch. Never create or switch branches** unless the user explicitly orders it. | Repo policy (AGENTS.md). When a branch name is genuinely requested, use `feat/<name>`, `fix/<name>`, `docs/<name>`, `chore/<name>`, `test/<name>`, `refactor/<name>`. |
 | 2 | **Commit messages follow Conventional Commits.** | Auto-generated changelogs, semantic versioning. |
-| 3 | **PRs pass CI before merge.** | The `dev-ci.yml` gates: website check, cargo check, cargo nextest, UI tests. |
+| 3 | **PRs pass CI before merge.** | `dev-ci.yml`'s **ten** jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. Derive rather than restate: `awk '/^jobs:/{f=1;next} /^[^[:space:]]/{f=0} f && /^  [a-z][a-z0-9_-]*:$/{gsub(/[: ]/,"");print}' .github/workflows/dev-ci.yml`. **Do not use a bare two-space key grep** — it also returns `pull_request`, `workflow_dispatch` and `run` as if they were jobs, because the `on:` block is indented the same way. This cell listed four and went stale as the rest were restored; `ci-docs-drift` is advisory and `northflank-deploy` does **not** depend on it. |
 | 4 | **Never commit `.env`, secrets, or SQLite database files.** | PCI-DSS, basic hygiene. |
 | 5 | **One crate per `oz-*` responsibility.** | Compile-time boundaries, fast incremental builds. |
 
@@ -56,7 +53,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.36"          # locked — do not bump without an explicit order
+version = "0.0.37"          # locked — do not bump without an explicit order
 edition = "2024"
 rust-version = "1.88"       # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"   # proprietary — NOT open source
@@ -182,7 +179,7 @@ subdirectory is a Cargo crate.
 
 ### Branch naming
 
-> **Repo policy (AGENTS.md): never create new branches, never switch branches.** Always work directly on the currently active branch — the version branch, e.g. `0.0.36` — and let the user manage branching. The table below applies only when the user explicitly requests a named branch.
+> **Repo policy (AGENTS.md): never create new branches, never switch branches.** Always work directly on the currently active branch — the version branch, e.g. `0.0.37` — and let the user manage branching. The table below applies only when the user explicitly requests a named branch.
 
 | Prefix | When to use | Example |
 |--------|-------------|---------|
@@ -259,7 +256,7 @@ Jobs (all on `ubuntu-latest`, Node pinned to **24**):
 | `cargo-check` | Installs Tauri's Linux system libs, creates the frontend build-output stubs (the `ui` dist folders) for the Tauri macro, then `cargo check --workspace --all-targets --all-features` with sccache + Swatinem/rust-cache. |
 | `cargo-nextest` | Same environment plus a `postgres:17-alpine` service (`OZ_TEST_PG_URL`), then `cargo nextest run --workspace --all-features`. |
 | `ui-test` | `ui/` npm ci → `npm test` (Vitest suite). |
-| `northflank-deploy` | Needs all four jobs; on `main` or `0.0.*` pushes / dispatch, triggers the Northflank cloud build via its API (skips gracefully without `NORTHFLANK_API_TOKEN`). |
+| `northflank-deploy` | Needs **seven** jobs — `changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates` — so it excludes `ci-docs-drift` (advisory by design) and `release-readiness` (unexplained; see `docs/plans/0.0.36-backlog.md`). Triggers on **`workflow_dispatch` only in practice**: the `if:` at `dev-ci.yml:653` still carries a `github.event_name == 'push'` branch, but the workflow has no push trigger, so that half is dead code the file's own comment at L647 admits to. Calls the Northflank API; skips gracefully without `NORTHFLANK_API_TOKEN`. |
 
 **Rules:**
 - `RUSTFLAGS: -D warnings` means warnings fail the workflow even where no explicit clippy job runs.
@@ -271,7 +268,7 @@ Jobs (all on `ubuntu-latest`, Node pinned to **24**):
 
 ## Local verification
 
-- **`.githooks/pre-commit`** runs on every commit (see `onboarding-guide` for the gate list): cargo fmt re-stage, LF normalization, i18n lint, staged bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard, plus a Go gate when license-server files are staged.
+- **`.githooks/pre-commit`** runs on every commit. **Source of truth is the hook itself — `grep -n '^# ──' .githooks/pre-commit` — and [`AGENTS.md`](../../../AGENTS.md) § Quick Setup enumerates every step with its rationale.** As of 0.0.37 there are seven: LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard, Go, and FTL orphan lint (heavy UI typecheck and Vitest i18n are offloaded to pre-push and CI). cargo fmt was a pre-commit step until 2026-09-13, when it was removed — it ran `cargo fmt --all` workspace-wide under concurrent agents, reformating other sessions' in-flight `.rs` files; formatting is now check-only in pre-push/CI/`check.sh`/`release.sh`. `scripts/verify-agents-mirrors.py` now polices skill files against the hook, so a restated count that disagrees is a red build rather than a wrong belief.
 - **`scripts/check.sh`** (POSIX) / **`scripts/check.ps1`** (Windows) mirror the full verification matrix for pre-push use — fmt, workspace clippy with `-D warnings`, repo-specific boundary gates (no-raw-params, scoped coverage, IPC parity, architecture boundaries), i18n, and the UI suite. Run the relevant script before pushing; CI runs on Linux only, so a local pass is what protects the other platforms.
 
 Run these before pushing. The CI workflow is the merge gate, but a local pass catches the bulk of issues.
@@ -383,4 +380,4 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 07-09-26 by skill-drift-guard

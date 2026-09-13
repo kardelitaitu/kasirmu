@@ -351,9 +351,9 @@
 
   cursor: pointer;
   transition:
-    background var(--duration-120) var(--ease-out),
-    border-color var(--duration-120) var(--ease-out),
-    transform var(--duration-120) var(--ease-out);
+    background var(--duration-100) var(--ease-out),
+    border-color var(--duration-100) var(--ease-out),
+    transform var(--duration-100) var(--ease-out);
 
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -481,6 +481,14 @@
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-tertiary);
   letter-spacing: var(--tracking-tight);
+}
+
+/* Mirrors .staff-login-footer-copyright so the lock screen footer reads as the
+   same version + copyright pair as the login screen. */
+.session-lock-footer-copyright {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+  opacity: 0.7;
 }
 
 .session-lock-footer-right {

@@ -5,7 +5,7 @@ import {
   topologyDragReducer,
   initialTopologyDragState,
   type TopologyDragState,
-} from '@/features/stores/nodeTopologyEditorDragState';
+} from '@/features/locations/nodeTopologyEditorDragState';
 
 describe('useTopologyEditorDrag', () => {
   let hook: { result: { current: ReturnType<typeof useTopologyEditorDrag> } };

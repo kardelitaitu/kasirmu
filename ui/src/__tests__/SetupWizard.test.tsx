@@ -389,6 +389,7 @@ describe('SetupWizard — QRIS gate (Free → Plus)', () => {
   beforeEach(() => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: null,
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -406,6 +407,7 @@ describe('SetupWizard — QRIS gate (Free → Plus)', () => {
   it('locks QRIS setup with an upgrade CTA on the Free tier', () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'free', supportsQris: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -429,6 +431,7 @@ describe('SetupWizard — QRIS gate (Free → Plus)', () => {
   it('shows the included badge on Plus+ tiers', () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'plus', supportsQris: true }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

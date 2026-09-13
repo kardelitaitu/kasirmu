@@ -1,6 +1,6 @@
 # Extending OZ-POS — Scripting & Integration Guide
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: UPDATED (local API wired + shared OpenAPI source with x-oz-scope; same-day review fixes: primary-store DB targeting, lifecycle op-lock, managed-key guard; then: outbound webhooks on cloud (§7.4), API-write audit + store selector on desktop (§2.2), smoke-found spec/guide drift) · every claim below cross-referenced against: crates/oz-api/src/{lib.rs,auth.rs,read_tiers.rs,api_audit.rs,spec/mod.rs}, crates/oz-api/src/routes/{tokens.rs,terminals.rs,sales.rs,settings.rs,products.rs,tax_rates.rs,exchange_rates.rs,users.rs,images.rs}, apps/cloud-server/src/{main.rs,openapi.rs,openapi_tests.rs,sync_api.rs,outbound_webhooks.rs,outbox.rs}, apps/desktop-client/src/{local_api.rs,commands/local_api.rs}, foundation/src/money.rs, crates/oz-lua/README.md, crates/oz-cli/README.md, docs/guides/plugin-guide.md, docs/specs/_active/0047-openapi-drift-guard-and-read-tiers.md · spec-vs-code drift findings recorded here were repaired the same day (see §10); the §7 recipes are executed verbatim against a live playground by target/smoke-local-api.ps1 (22/22) -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (3 findings, all repaired) · re-verified the 2026-09-03 audit rather than trusting it, and it held on ~20 claims: READ_KEY_MAP in crates/oz-api/src/read_tiers.rs, require_admin_write at routes/tokens.rs:134, ApiTokenClaims at auth.rs:58, DEFAULT_EXPIRY_HOURS=24, JWT_CACHE_TTL_SECS=60, OZ_TERMINAL_READ_TIER at routes/tokens.rs:205, plan endpoint really is free|pro only (plans.rs:111; enterprise -> 400 unknown_plan), the six-event vocabulary matches EVENT_ACTIONS exactly and in order (apps/cloud-server/src/outbound_webhooks.rs:36-43), 10 s receiver timeout, backoff 120*2^attempt capped at 3600 s (outbox.rs:45-48), Lua INSTRUCTION_LIMIT=100_000 and MEMORY_LIMIT=10 MiB (crates/oz-lua/src/lib.rs:53-57), sale.before_complete at crates/oz-plugin/src/manager.rs:411, ErrorEnvelope forward-declared while handlers emit flat errors, all six reserved tags still declare zero paths so §10.2 stands five days on · REPAIRED: §2.2 resolved the served store via store_profiles.is_primary but the query is SELECT id FROM locations WHERE is_primary = 1 (apps/desktop-client/src/local_api.rs:95-98), the store->location rename; §1 said 505 IPC commands, registered is 450 (425 desktop / 297 tablet / 272 both); §3.2 omitted the three /api/v1/memos/* routes from the 2026-09-07 cloud-read ruling, which spec/paths.rs already declared · EVIDENCE CORRECTION: the previous stamp claimed §7 is executed verbatim by target/smoke-local-api.ps1 (22/22) — that file is untracked inside a gitignored build dir (.gitignore:2 /target/), so the claim was true once and is unreproducible by anyone else; promote it to scripts/ before citing it as proof · original 2026-09-03 anchors retained: crates/oz-api/src/{lib.rs,auth.rs,read_tiers.rs,api_audit.rs,spec/mod.rs}, crates/oz-api/src/routes/{tokens.rs,terminals.rs,sales.rs,settings.rs,products.rs,tax_rates.rs,exchange_rates.rs,users.rs,images.rs}, apps/cloud-server/src/{main.rs,openapi.rs,openapi_tests.rs,sync_api.rs,outbound_webhooks.rs,outbox.rs}, apps/desktop-client/src/{local_api.rs,commands/local_api.rs}, foundation/src/money.rs, docs/specs/_active/0047-openapi-drift-guard-and-read-tiers.md -->
 
 This guide is for people writing **their own scripts** against an OZ-POS
 installation — automation on the counter machine, a dashboard against the
@@ -16,7 +16,7 @@ status of each (what is live today vs. wired-but-not-started).
 | Read/write products, stock, sales, rates from an **external process** (KDS, scanner, dashboard, sync job) | REST API (`crates/oz-api`) | Live on **cloud-server**; on the **desktop app** it runs loopback-only behind Settings → Local API (off by default, §2.1); tablet: not started |
 | Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `oz` CLI (`crates/oz-cli`) | Stable — see [oz-cli README](../../crates/oz-cli/README.md) |
 | Drive custom hardware (printer, scanner, drawer, display) | Rust HAL traits (`crates/oz-hal`) | Stable — plugin-guide §HAL |
-| Call the app's internals (505 Tauri IPC commands) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
+| Call the app's internals (Tauri IPC commands — 450 registered as measured 08-09-26: 425 desktop, 297 tablet, 272 in both. **This moves with every command**; re-run `.agents/skills/docs-auditor/scripts/check-api-surface.py`, which prints the current three numbers) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
 
 ## 2. REST API at a glance
 
@@ -48,7 +48,9 @@ deployment, by design:
 - **loopback-only** bind — nothing on your LAN can reach it;
 - it serves **one store's database at a time** — by default the
   **primary store**, the same `store-{id}.sqlite` file the register
-  reads (resolved via `store_profiles.is_primary`); multi-store
+  reads (resolved via `locations.is_primary` in the **global** DB — `primary_store_id()`
+  at `apps/desktop-client/src/local_api.rs:95` runs
+  `SELECT id FROM locations WHERE is_primary = 1 LIMIT 1`); multi-store
   installs can switch the served store in the same Settings panel
   (restarts the server against the new file). Scripts see exactly what
   the UI shows. One caveat: `POST /api/v1/users` writes the store DB's
@@ -149,6 +151,16 @@ subset when it is wired):
 | GET | `/api/v1/images:pack?hashes=…` | `products:read` | ≤ 64 files / 2 MB, binary frames |
 | GET | `/api/v1/images:missing?hashes=…` | `products:read` | set-difference helper |
 | GET | `/api/v1/images/{hash16}` | `products:read` | immutable WebP, `Cache-Control: max-age=31536000, immutable` |
+| POST | `/api/v1/memos/sync` | — | **operator-adjacent**: `require_tenant_write` — desktop pushes its COMPLETE memo state, server reconciles by upsert + delete-by-omission. `tenant_id` comes from the claims, never the body, so a terminal token cannot spoof another tenant |
+| GET | `/api/v1/memos/active?terminal_id=` | any valid token | the memos a terminal should currently display, same DTO shape as the desktop command so the banner consumes one type on every surface |
+| POST | `/api/v1/memos/{memo_id}/ack` | — | **terminal tokens only** — an admin-minted token has no terminal identity and cannot ack |
+
+> The three `memos` routes were added by the 2026-09-07 cloud-read ruling, four days
+> after this page's last audit, and were missing from it until 08-09-26. Note that
+> `crates/oz-api/src/spec/paths.rs` already declared them: the machine-readable
+> contract stayed current while the prose table drifted. When the two disagree,
+> `GET /api/openapi.json` wins — that is what the router→spec coverage guard enforces,
+> and it has no reason to police a Markdown table.
 
 Cloud-only additions (not part of the `oz-api` crate):
 
@@ -302,13 +314,19 @@ over HTTP as in the recipes below (open in the dev playground; with
 `X-Admin-Key: $OZ_ADMIN_KEY` in production). Desktop Local API: click
 **Generate Token** in Settings → Local API — HTTP minting there requires
 the per-install secret as `X-Admin-Key`, and the panel deliberately
-never displays it. When scripts need the secret itself (HTTP minting,
-master-data writes), read it from the global database:
+never displays it. Scripts that need a *setting value* read it from the global
+database (the desktop `oz-pos.db`, the same file `--db` targets):
 
 ```bash
 sqlite3 "$APPDATA/com.ozpos.app/oz-pos.db" \
-  "SELECT value FROM settings WHERE key='local_api.secret'"
+  "SELECT key, value FROM settings WHERE key='currency.default'"
 ```
+
+> ⚠️ Do not substitute `local_api.secret` (or any credential or device-bound key) for
+> that key just to collect a value for a ticket or a chat window: the `settings` table
+> also holds encrypted and non-exportable values, and printing one puts a live secret
+> into shell history and scrollback. Mint a token from the panel instead — if a secret
+> has to move, rotate it rather than extract it.
 
 The desktop server binds `127.0.0.1` only — use that literal IP in
 scripts; `localhost` may resolve to `::1` first on IPv6-preferring
@@ -417,7 +435,9 @@ with headers `X-OZ-Event`, `X-OZ-Event-Id`, and
 receiver must answer 2xx within 10 s; anything else retries with
 exponential backoff (2^n minutes, 5 attempts) and then dead-letters in
 the outbox for operator inspection. Ordering is not guaranteed — dedupe
-on `id`.
+on `id`. (Backoff is `120 * 2^attempt` seconds, capped at 3600 s by
+`BACKOFF_CAP_SECS` in `apps/cloud-server/src/outbox.rs:48` — the cap never binds inside
+the 5-attempt budget, so the formula above is the whole story in practice.)
 
 **Verify in Python** (Flask receiver):
 
@@ -493,7 +513,8 @@ Documented so scripts don't build on sand:
 > **Repaired 2026-09-03** (same day these were first recorded here):
 > **outbound webhooks are live on the cloud surface** (§7.4) — endpoint
 > registry (`/api/webhooks`, admin-key gated), sync-push fan-out through
-> the transactional outbox (ADR #43 D7), HMAC-SHA256 signed delivery with
+> the transactional outbox (ADR #43 D7 — `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md`;
+> note `#43` is claimed by two ADRs, see `docs/decisions/README.md`), HMAC-SHA256 signed delivery with
 > retry/backoff/dead-letter, and the PG outbox drainer wired (previously
 > built but never started);
 > the local terminal API is now **wired** — the desktop app embeds
@@ -520,4 +541,4 @@ Documented so scripts don't build on sand:
 [spec 0047](../specs/_active/0047-openapi-drift-guard-and-read-tiers.md) ·
 [oz-api README](../../crates/oz-api/README.md)
 
-> last audited 03-09-26 by DSH
+> last audited 08-09-26 by DSH

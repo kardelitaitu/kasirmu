@@ -58,18 +58,26 @@ use crate::money::Currency;
 pub mod analytics;
 pub mod assignments;
 pub mod audit;
+/// Basic security events on the auth paths — the authentication-outcome
+/// class of the audit baseline. Writes through the same append-only
+/// `audit_log` path as `audit`, gated on the tier retention entitlement.
+pub mod audit_security;
 /// Active cart persistence (survives restarts).
 pub mod cart;
 /// Cash payout CRUD (open / close / list).
 pub mod cash_payouts;
 /// Customer CRUD and lookups.
 pub mod customers;
+/// Downgrade assessment gatherer — reads live per-dimension counts.
+pub mod downgrade;
 /// Gift cards — issue, redeem, top-up, freeze, balance checks.
 pub mod gift_cards;
 /// Inventory management CRUD (locations, shifts, thresholds, transaction logs).
 pub mod inventory;
 /// Kitchen Display System order CRUD.
 pub mod kds;
+/// KDS routing rules CRUD — per-restaurant explicit station assignments.
+pub mod kds_rules;
 /// Loyalty points / rewards CRUD.
 pub mod loyalty;
 /// Offline queue and sync state.
@@ -79,12 +87,26 @@ pub mod stripe;
 pub use offline::RemoteSyncFailure;
 /// EDC terminal configuration CRUD — PLANNED (stubs).
 pub mod edc_terminals;
+/// Fiscalization and statutory numbering — legal-entity schemes and the
+/// race-free document-number claim (slice 5).
+pub mod fiscal;
 /// Cloud image content spine — refcount + push queue (spec 0046b §3.7).
 pub mod image_refs;
+/// Organization/Tenant-scoped Legal Entity CRUD and location assignment.
+pub mod legal_entities;
+/// Location profile CRUD.
+pub mod locations;
 /// Media asset (image) CRUD — PLANNED (stubs).
 pub mod media;
+/// Memo lifecycle repository — create/publish/stop, revisions, recipients.
+pub mod memos;
+/// Accounts Payable (Hutang) repository — create/settle/age supplier debts.
+pub mod payables;
 /// Payment gateway configuration CRUD — PLANNED (stubs).
 pub mod payment_gateways;
+/// Local payment methods — the market rail surface with entity→location
+/// inheritance and the tier/credential separations (slice 6).
+pub mod payment_methods;
 /// Payment settlement ledger CRUD — PLANNED (stubs).
 pub mod payment_settlements;
 /// Payment CRUD (tenders, transactions).
@@ -100,12 +122,24 @@ pub mod profile;
 pub mod promotions;
 /// CRUD for purchase orders.
 pub mod purchase_orders;
+/// Central creation-quota gate (W4-S1) — one decision point for every
+/// dimension gate, with the batch-aware `ensure_quota_allows` variant.
+pub mod quota_gate;
+/// Receipt formats — statutory content on the entity, presentational layout
+/// on workspace/terminal, with the pinned legacy-settings fallback (the last
+/// missing L167 axis).
+pub mod receipt_formats;
 /// Recipe / modifier CRUD.
 pub mod recipes;
 /// Refund CRUD.
 pub mod refunds;
+/// Regional-configuration reads — the effective locale / timezone / currency
+/// for a location, resolved across the §H scopes.
+pub mod regional;
 /// Report generation queries.
 pub mod reports;
+/// Role authoring — update / delete for custom roles (ADR #47 ruling 4).
+pub mod roles;
 /// Sale CRUD (transactions, lines, taxes).
 pub mod sales;
 /// Settings key/value CRUD.
@@ -118,8 +152,6 @@ pub mod staff;
 pub mod stock_counts;
 /// CRUD for stock transfers between terminals/stores.
 pub mod stock_transfers;
-/// Store profile CRUD.
-pub mod store_profiles;
 /// CRUD for suppliers.
 pub mod suppliers;
 /// CRUD for restaurant tables (floor plan, status management).
@@ -171,6 +203,16 @@ pub struct Store<'a> {
     /// Passed through to `Cache::publish_inventory_change` so other
     /// terminals can skip their own messages.
     pub terminal_id: Option<String>,
+    /// W4-S4 TOCTOU closure: the tier a pre-tx quota gate armed for the NEXT
+    /// creation on this Store, consumed inside the create transaction (so the
+    /// check and the write commit atomically). Mutex keeps `Store` Sync;
+    /// un-armed stores behave exactly as before W4-S4.
+    armed_quota: std::sync::Mutex<
+        Option<(
+            crate::downgrade::QuotaDimension,
+            crate::subscription::SubscriptionTier,
+        )>,
+    >,
 }
 
 impl<'a> Store<'a> {
@@ -180,6 +222,7 @@ impl<'a> Store<'a> {
             conn,
             cache: None,
             terminal_id: None,
+            armed_quota: std::sync::Mutex::new(None),
         }
     }
 
@@ -189,6 +232,7 @@ impl<'a> Store<'a> {
             conn,
             cache: Some(cache),
             terminal_id: None,
+            armed_quota: std::sync::Mutex::new(None),
         }
     }
 
@@ -376,6 +420,15 @@ pub(crate) fn row_to_product(row: &rusqlite::Row) -> rusqlite::Result<crate::Pro
     // Use Option<String> for nullable column — reads NULL as None
     // rather than swallowing errors via .ok().
     let product_type_str: Option<String> = row.get("product_type")?;
+    // One bad row must not take a listing down: keep mapping it and let
+    // parse_stored_or_default warn (its docs carry why the Retail fallback is
+    // ambiguous). Parsed here rather than in the literal below because
+    // `sku_str` moves into `Sku::new` there.
+    let product_type = crate::ProductType::parse_stored_or_default(
+        product_type_str.as_deref(),
+        &sku_str,
+        "db::row_to_product",
+    );
     Ok(crate::Product {
         id: row.get("id")?,
         sku: crate::Sku::new(sku_str),
@@ -394,10 +447,7 @@ pub(crate) fn row_to_product(row: &rusqlite::Row) -> rusqlite::Result<crate::Pro
         updated_at: row.get("updated_at")?,
         price_updated_at: row.get("price_updated_at")?,
         track_serial: row.get("track_serial").unwrap_or(false),
-        product_type: product_type_str
-            .as_deref()
-            .and_then(crate::ProductType::parse_str)
-            .unwrap_or_default(),
+        product_type,
         version: row.get("version").unwrap_or(1),
         cost_minor: row.get("cost_minor").unwrap_or(0),
         brand: row.get("brand").unwrap_or(None),

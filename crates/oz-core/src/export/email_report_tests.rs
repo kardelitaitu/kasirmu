@@ -144,6 +144,367 @@ fn smtp_config_roundtrip_none_values() {
     assert!(loaded.password.is_none());
     assert!(!loaded.use_tls);
 }
+// ── Keep-on-blank merge (the smtp_config data-loss guard) ───────────────────
+
+/// The bug this pins: `smtp_config` is on `SECRET_KEY_DENY_LIST`, so the
+/// email-report card cannot read the stored password back. It renders an
+/// empty field and saves a blob whose `password` is null. Before the merge,
+/// that write replaced the stored secret with null and mail silently stopped
+/// sending; now the stored password survives and every other field updates.
+#[test]
+fn save_smtp_config_null_password_preserves_stored_password() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.old.com".into(),
+        port: 465,
+        username: Some("ops@mystore.com".into()),
+        password: Some("stored-secret".into()),
+        from: "reports@mystore.com".into(),
+        use_tls: true,
+    })
+    .unwrap();
+
+    // What the card posts when the operator edits host/from and never
+    // touches the (unreadable) password field.
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.new.com".into(),
+        port: 587,
+        username: Some("new-user@mystore.com".into()),
+        password: None,
+        from: "changed@mystore.com".into(),
+        use_tls: false,
+    })
+    .unwrap();
+
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(
+        loaded.password.as_deref(),
+        Some("stored-secret"),
+        "an absent/null password means the masked field was not modified, not clear it"
+    );
+    // The rest of the blob must still update — the merge is password-only.
+    assert_eq!(loaded.host, "smtp.new.com");
+    assert_eq!(loaded.port, 587);
+    assert_eq!(loaded.username.as_deref(), Some("new-user@mystore.com"));
+    assert_eq!(loaded.from, "changed@mystore.com");
+    assert!(!loaded.use_tls);
+}
+
+/// The same guard on the raw-JSON entry point the generic settings write
+/// surface uses: a blob with an explicit `"password":null` keeps the secret.
+#[test]
+fn save_smtp_config_json_null_password_preserves_stored_password() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.old.com".into(),
+        from: "reports@mystore.com".into(),
+        password: Some("stored-secret".into()),
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+
+    s.save_smtp_config_json(
+        r#"{"host":"smtp.new.com","port":2525,"username":null,"password":null,"from":"x@mystore.com","use_tls":false}"#,
+    )
+    .unwrap();
+
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(loaded.password.as_deref(), Some("stored-secret"));
+    assert_eq!(loaded.host, "smtp.new.com");
+    assert_eq!(loaded.port, 2525);
+    assert_eq!(loaded.from, "x@mystore.com");
+}
+
+/// Keep-on-blank must not become keep-forever: a genuinely supplied password
+/// still overwrites the stored one, and it is still encrypted at rest.
+#[test]
+fn save_smtp_config_supplied_password_still_overwrites() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.old.com".into(),
+        from: "reports@mystore.com".into(),
+        password: Some("old-secret".into()),
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.old.com".into(),
+        from: "reports@mystore.com".into(),
+        password: Some("rotated-secret".into()),
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(loaded.password.as_deref(), Some("rotated-secret"));
+    let raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    assert!(
+        !raw.contains("rotated-secret"),
+        "a supplied password must still be encrypted at rest, got: {raw}"
+    );
+
+    // An explicit empty string is the one shape that means clear.
+    s.save_smtp_config_json(
+        r#"{"host":"smtp.old.com","port":587,"username":null,"password":"","from":"reports@mystore.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let cleared = s.get_smtp_config().unwrap().unwrap();
+    assert!(
+        cleared.password.is_none(),
+        "an explicit empty password is a clear, not a keep"
+    );
+}
+
+/// The bug the password-only merge left behind: `SmtpConfig` has TWO optional
+/// fields and the carry-over named one of them. A relay account is not a
+/// secret, but a stored password with a nulled account authenticates as
+/// nobody, and the card cannot read either back (the whole key is
+/// deny-listed). The rule is now derived from the struct, so this test is
+/// about the SHAPE of the fix, not about `username`: any optional field added
+/// to `SmtpConfig` later is preserved by the same code path with no edit here.
+#[test]
+fn merge_preserves_every_absent_optional_field_not_just_the_password() {
+    let stored = r#"{"host":"smtp.old.com","port":587,"username":"relay-account","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#;
+    // A save that moves the relay and supplies neither optional field.
+    let merged = merge_smtp_password_json(
+        r#"{"host":"smtp.new.com","port":465,"from":"changed@mystore.com","use_tls":false}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&merged).unwrap();
+    assert_eq!(parsed.username.as_deref(), Some("relay-account"));
+    assert_eq!(parsed.password.as_deref(), Some("stored-secret"));
+    // The supplied fields still move.
+    assert_eq!(parsed.host, "smtp.new.com");
+    assert_eq!(parsed.port, 465);
+    assert_eq!(parsed.from, "changed@mystore.com");
+    assert!(!parsed.use_tls);
+    // And an explicit null behaves exactly like an absent key.
+    let also = merge_smtp_password_json(
+        r#"{"host":"smtp.new.com","port":465,"username":null,"password":null,"from":"changed@mystore.com","use_tls":false}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let also: SmtpConfig = serde_json::from_str(&also).unwrap();
+    assert_eq!(also.username.as_deref(), Some("relay-account"));
+    assert_eq!(also.password.as_deref(), Some("stored-secret"));
+}
+
+/// Keep-on-blank must not become keep-forever on the field that was never
+/// covered: a supplied account still replaces the stored one, and an explicit
+/// empty string still clears it.
+#[test]
+fn merge_supplied_username_overwrites_and_empty_username_clears() {
+    let stored = r#"{"host":"smtp.old.com","port":587,"username":"relay-account","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#;
+    let rotated = merge_smtp_password_json(
+        r#"{"host":"smtp.old.com","port":587,"username":"new-account","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&rotated).unwrap();
+    assert_eq!(
+        parsed.username.as_deref(),
+        Some("new-account"),
+        "a supplied username must replace the stored one"
+    );
+
+    let cleared = merge_smtp_password_json(
+        r#"{"host":"smtp.old.com","port":587,"username":"","password":"stored-secret","from":"reports@mystore.com","use_tls":true}"#,
+        Some(stored),
+    )
+    .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&cleared).unwrap();
+    assert!(
+        parsed.username.is_none(),
+        "an explicit empty username is a clear, not a keep: {cleared}"
+    );
+
+    // The password in this blob is SUPPLIED, not absent, so it takes the one
+    // per-field branch the merge has: it is replaced by its ciphertext. That
+    // is the only way this assertion differs from the absent-password one
+    // above, and pinning it here keeps the two policies from being conflated.
+    let supplied = parsed
+        .password
+        .as_deref()
+        .expect("a supplied password must survive the merge");
+    assert_ne!(
+        supplied, "stored-secret",
+        "a supplied password must be encrypted at rest, never written as cleartext: {cleared}"
+    );
+    assert_eq!(
+        crate::crypto::decrypt_smtp_at_rest(supplied).unwrap(),
+        "stored-secret",
+        "the ciphertext must decode to the password the caller supplied"
+    );
+}
+
+/// The generic settings write stores whatever blob it is handed, so a password
+/// saved from the card lands as PLAINTEXT in the settings row — only
+/// `save_smtp_config` encrypts. This pins the two properties that make the
+/// routed path safe to switch on, using the same row the generic path writes.
+///
+/// NOTE: `save_smtp_config_json` has no production caller yet. The shells route
+/// `smtp_config` through `run_set_setting` -> `Settings::set_tracked`, which
+/// writes the blob verbatim. Until that routing lands this test pins the
+/// CONTRACT of the routed path, not the behaviour of the shipped card.
+#[test]
+fn plaintext_blob_from_the_generic_path_is_readable_then_encrypted_on_save() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+
+    // Exactly what set_setting_scoped leaves in the settings row: the card
+    // posts a blob, the generic setter writes it verbatim, no encryption.
+    s.set_setting(
+        SMTP_CONFIG_SETTINGS_KEY,
+        r#"{"host":"smtp.legacy.com","port":587,"username":"ops","password":"plaintext-pass","from":"a@b.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    assert!(
+        raw.contains("plaintext-pass"),
+        "the generic path stores the password in cleartext, got: {raw}"
+    );
+
+    // Still readable: decrypt_smtp_at_rest passes non-ciphertext through, so a
+    // cleartext legacy value is not a parse failure.
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(loaded.password.as_deref(), Some("plaintext-pass"));
+
+    // Keep-on-blank over a cleartext blob carries it forward verbatim rather
+    // than nulling it — the merge never decrypts what it is only preserving.
+    s.save_smtp_config_json(
+        r#"{"host":"smtp.changed.com","port":465,"username":"ops","password":null,"from":"a@b.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let kept = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(
+        kept.password.as_deref(),
+        Some("plaintext-pass"),
+        "a cleartext stored password must survive a password-less save"
+    );
+    assert_eq!(kept.host, "smtp.changed.com");
+
+    // The next save that DOES supply a password closes the cleartext hole.
+    s.save_smtp_config_json(
+        r#"{"host":"smtp.changed.com","port":465,"username":"ops","password":"rotated-pass","from":"a@b.com","use_tls":true}"#,
+    )
+    .unwrap();
+    let raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    assert!(
+        !raw.contains("rotated-pass"),
+        "must not store cleartext: {raw}"
+    );
+    assert!(
+        !raw.contains("plaintext-pass"),
+        "cleartext must be replaced: {raw}"
+    );
+    let upgraded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(upgraded.password.as_deref(), Some("rotated-pass"));
+}
+
+/// The seam BOTH shells route `smtp_config` through. This is the call that
+/// actually closes the data-loss bug: the card writes through the generic
+/// settings setter, which asks here for the value to persist and then does its
+/// own tracked write.
+#[test]
+fn merged_smtp_password_json_keeps_the_secret_for_a_passwordless_blob() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.old.com".into(),
+        from: "a@b.com".into(),
+        password: Some("stored-secret".into()),
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+
+    let merged = s
+        .merged_smtp_password_json(
+            r#"{"host":"smtp.new.com","port":25,"username":null,"password":null,"from":"b@c.com","use_tls":false}"#,
+        )
+        .unwrap();
+    let parsed: SmtpConfig = serde_json::from_str(&merged).unwrap();
+    assert_eq!(parsed.host, "smtp.new.com");
+    assert_eq!(parsed.port, 25);
+    assert_eq!(parsed.from, "b@c.com");
+    assert!(!parsed.use_tls);
+
+    // Carried AS STORED — the seam never decrypts what it is only preserving,
+    // so the field is byte-identical to the stored ciphertext, not cleartext.
+    let stored_raw = s.get_setting(SMTP_CONFIG_SETTINGS_KEY).unwrap().unwrap();
+    let stored: SmtpConfig = serde_json::from_str(&stored_raw).unwrap();
+    assert_eq!(
+        parsed.password, stored.password,
+        "the password field must be carried over verbatim, not re-derived"
+    );
+    assert!(
+        stored.password.is_some(),
+        "the stored blob must hold a secret"
+    );
+    assert!(
+        !merged.contains("stored-secret"),
+        "the merged blob must not contain a cleartext secret: {merged}"
+    );
+
+    // The point of the whole exercise: what the generic writer persists with
+    // this value still reads back as the operator's password.
+    s.set_setting(SMTP_CONFIG_SETTINGS_KEY, &merged).unwrap();
+    let loaded = s.get_smtp_config().unwrap().unwrap();
+    assert_eq!(
+        loaded.password.as_deref(),
+        Some("stored-secret"),
+        "a passwordless save routed through the seam must keep the secret"
+    );
+    assert_eq!(loaded.host, "smtp.new.com");
+}
+
+/// Lenient by contract: the generic setter has never required this key to hold
+/// parseable JSON, so a non-blob value must pass through unchanged rather than
+/// turning a data-loss fix into a write-path contract change. This is what
+/// keeps `get_setting_redacts_secret_keys` — which stores the bare string
+/// "smtp-secret" under this key — green.
+#[test]
+fn merged_smtp_password_json_passes_a_non_blob_value_through_unchanged() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    assert_eq!(
+        s.merged_smtp_password_json("smtp-secret").unwrap(),
+        "smtp-secret"
+    );
+    assert_eq!(s.merged_smtp_password_json("").unwrap(), "");
+}
+
+/// The masked read-back ships a boolean and nothing else — the deny list
+/// stays intact, so no surface returns the password itself.
+#[test]
+fn smtp_password_configured_reports_boolean_only() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    assert!(!s.smtp_password_configured().unwrap());
+
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.test.com".into(),
+        from: "t@t.com".into(),
+        password: Some("a-secret".into()),
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+    assert!(s.smtp_password_configured().unwrap());
+
+    // A save that omits the password leaves the indicator true.
+    s.save_smtp_config(&SmtpConfig {
+        host: "smtp.other.com".into(),
+        from: "t@t.com".into(),
+        password: None,
+        ..SmtpConfig::default()
+    })
+    .unwrap();
+    assert!(s.smtp_password_configured().unwrap());
+}
 
 fn sample_bundle() -> AnalyticsBundle {
     let conn = migrations::fresh_db();

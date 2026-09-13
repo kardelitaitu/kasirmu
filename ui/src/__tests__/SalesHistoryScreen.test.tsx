@@ -8,6 +8,11 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 vi.mock('@/api/sales', () => ({
   listSales: vi.fn(),
   getSale: vi.fn(),
+  // Added so the scoped/ambient choice is assertable. The block originally listed the ambient
+  // pair alongside voidSaleScoped and listRefundsScoped, which encoded the same asymmetry the
+  // screen had: writes scoped, reads not.
+  listSalesScoped: vi.fn(),
+  getSaleScoped: vi.fn(),
   printSalesReceipt: vi.fn(),
   listRefundsScoped: vi.fn(),
   voidSaleScoped: vi.fn(),
@@ -41,12 +46,14 @@ vi.mock('@/features/sales/RefundModal', () => ({
 }));
 
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
-import { listSales, getSale, listRefundsScoped } from '@/api/sales';
+import { listSales, getSale, listSalesScoped, getSaleScoped, listRefundsScoped } from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
 
 const mockListSales = listSales as ReturnType<typeof vi.fn>;
 const mockGetSale = getSale as ReturnType<typeof vi.fn>;
+const mockListSalesScoped = listSalesScoped as ReturnType<typeof vi.fn>;
+const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockListRefunds = listRefundsScoped as ReturnType<typeof vi.fn>;
 const mockListStaff = listStaffScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.fn>;
@@ -99,7 +106,7 @@ describe('SalesHistoryScreen', () => {
   // ── Rendering ─────────────────────────────────────────────────
 
   it('renders the title', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText('Sales History')).toBeInTheDocument();
@@ -107,7 +114,7 @@ describe('SalesHistoryScreen', () => {
   });
 
   it('shows loading skeleton', async () => {
-    mockListSales.mockReturnValue(new Promise(() => {}));
+    mockListSalesScoped.mockReturnValue(new Promise(() => {}));
     const { container } = renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     const skeleton = container.querySelector('.sales-history-loading-skeleton');
     expect(skeleton).toBeInTheDocument();
@@ -115,7 +122,7 @@ describe('SalesHistoryScreen', () => {
   });
 
   it('shows empty state when no sales exist', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText('No sales recorded yet')).toBeInTheDocument();
@@ -125,7 +132,7 @@ describe('SalesHistoryScreen', () => {
   // ── C1.2 history-cap teaser ──────────────────────────────────
 
   it('shows the 3-month history cap teaser with an upgrade CTA (C1.2)', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: true });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: true });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText(/more than 3 months of sales history/i)).toBeInTheDocument();
@@ -134,7 +141,7 @@ describe('SalesHistoryScreen', () => {
   });
 
   it('hides the history cap teaser when the tier is unlimited (C1.2)', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getAllByText('Alice').length).toBeGreaterThanOrEqual(1);
@@ -145,7 +152,7 @@ describe('SalesHistoryScreen', () => {
   // ── Table rendering ──────────────────────────────────────────
 
   it('displays sales in the table with cashier names', async () => {
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       // Cashier names appear in table cells AND the cashier filter dropdown.
@@ -158,7 +165,7 @@ describe('SalesHistoryScreen', () => {
   });
 
   it('shows status filter chips', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText('All')).toBeInTheDocument();
@@ -171,7 +178,7 @@ describe('SalesHistoryScreen', () => {
 
   it('filters sales by status when a filter chip is clicked', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
 
     await waitFor(() => {
@@ -193,7 +200,7 @@ describe('SalesHistoryScreen', () => {
   });
 
   it('shows search input and cashier dropdown', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByRole('combobox')).toBeInTheDocument();
@@ -203,7 +210,7 @@ describe('SalesHistoryScreen', () => {
   });
 
   it('shows export CSV button', async () => {
-    mockListSales.mockResolvedValue({ sales: [], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [], salesHistoryCapped: false });
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.getByText('Export CSV')).toBeInTheDocument();
@@ -212,7 +219,7 @@ describe('SalesHistoryScreen', () => {
 
   it('exports per-line cost and margin columns to CSV', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
     mockGetSaleLineMargins.mockResolvedValue([
       {
         sale_line_id: 'line-1', sku: 'SKU-001', name: 'Widget', qty: 2,
@@ -253,8 +260,8 @@ describe('SalesHistoryScreen', () => {
 
   it('opens detail modal when View is clicked', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockListRefunds.mockResolvedValue([]);
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
 
@@ -273,8 +280,8 @@ describe('SalesHistoryScreen', () => {
 
   it('shows line items in detail modal', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockListRefunds.mockResolvedValue([]);
     mockGetSaleLineMargins.mockResolvedValue([]);
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
@@ -293,8 +300,8 @@ describe('SalesHistoryScreen', () => {
 
   it('shows cost and margin columns when the margin report loads', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockListRefunds.mockResolvedValue([]);
     mockGetSaleLineMargins.mockResolvedValue([
       {
@@ -319,10 +326,61 @@ describe('SalesHistoryScreen', () => {
     expect(screen.getByText('Rp 15.000')).toBeInTheDocument();
   });
 
+  // ── F2-7: the estimated-stamp badge ─────────────────────────────────
+  it('shows the estimated badge on a sale stamped as tax-estimated', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    // The core-authored stamp shape (F2-5): client claim + core-verified delta.
+    mockGetSaleScoped.mockResolvedValue({
+      ...sampleDetail,
+      taxTotal: { minor_units: 1200, currency: 'IDR' },
+      taxEstimateNote: '{"estimated":true,"claim":1200,"verified":1180,"delta":-20}',
+    });
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByText('Estimated')).toBeInTheDocument();
+    });
+  });
+
+  it('shows no estimated badge when the sale is unstamped or live-computed', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    // Plain detail (no taxEstimateNote at all — the pre-F2-6 wire shape).
+    mockGetSaleScoped.mockResolvedValue({
+      ...sampleDetail,
+      // Positive tax so the tax row (and thus the badge slot) renders — the
+      // badge's absence is then the stamp logic's doing, not the row's.
+      taxTotal: { minor_units: 1200, currency: 'IDR' },
+    });
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockResolvedValue([]);
+    renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+
+    await waitFor(() => {
+      // Detail is open (the total renders as the formatMoney id-ID shape;
+      // the list row carries the same figure, so assert on ANY instance).
+      expect(screen.getAllByText('Rp 50.000').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('Estimated')).not.toBeInTheDocument();
+  });
+
   it('shows a negative margin in red for loss-leader lines', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockListRefunds.mockResolvedValue([]);
     mockGetSaleLineMargins.mockResolvedValue([
       {
@@ -347,8 +405,8 @@ describe('SalesHistoryScreen', () => {
 
   it('shows Reprint Receipt and Refund buttons in detail', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockListRefunds.mockResolvedValue([]);
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
 
@@ -368,8 +426,8 @@ describe('SalesHistoryScreen', () => {
 
   it('opens refund modal when Refund is clicked in detail', async () => {
     const user = userEvent.setup();
-    mockListSales.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
-    mockGetSale.mockResolvedValue(sampleDetail);
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
     mockListRefunds.mockResolvedValue([]);
     renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
 
@@ -386,6 +444,53 @@ describe('SalesHistoryScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /refund-modal/i })).toBeInTheDocument();
+    });
+  });
+
+  // ADR #7: a screen holding a session token must read through the scoped command so the store is
+  // resolved from the session. This screen already applies the pattern to listStaffScoped two lines
+  // from where it forgets it on listSales (see load(), SalesHistoryScreen.tsx:211-216), and reads
+  // sale detail through the ambient getSale. The asymmetry inside a single Promise.all is what makes
+  // the omission a slip rather than a policy.
+  describe('ADR #7: reads are session-scoped when a workspace token exists', () => {
+    beforeEach(() => {
+      mockListSales.mockClear();
+      mockGetSale.mockClear();
+      mockListSalesScoped.mockClear();
+      mockGetSaleScoped.mockClear();
+    });
+
+    it('loads the list through list_sales_scoped, not the ambient list_sales', async () => {
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1');
+      });
+      expect(mockListSales).not.toHaveBeenCalled();
+    });
+
+    it('opens sale detail through get_sale_scoped', async () => {
+      const user = userEvent.setup();
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      mockListRefunds.mockResolvedValue([]);
+      renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+      await waitFor(() => {
+        // The token is asserted exactly -- that is what the case is about. The id is matched
+        // loosely because the screen sorts by date, so the first rendered row is not
+        // sampleSales[0]; pinning the id would test the sort order, not the scoping.
+        expect(mockGetSaleScoped).toHaveBeenCalledWith(
+          'session-1',
+          expect.stringMatching(/^sale-00\d-/),
+        );
+      });
+      expect(mockGetSale).not.toHaveBeenCalled();
     });
   });
 });

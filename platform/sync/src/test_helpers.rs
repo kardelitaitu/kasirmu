@@ -116,3 +116,54 @@ pub async fn spawn_anchor_then_redirect_server(new_url: &str) -> String {
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     format!("http://localhost:{port}")
 }
+
+/// Spawn a mock server like [`spawn_redirect_server`] but answering with **an
+/// arbitrary status code** instead of always 421, still carrying the ADR #11
+/// `{"error":"server_migrated","new_url":...}` body.
+///
+/// Additive on purpose: the existing ADR #11 tests depend on
+/// [`spawn_redirect_server`]'s exact shape, so this sibling exists to let a test
+/// ask the one question that helper cannot — does the client check the status at
+/// all? Returns the server's URL.
+pub async fn spawn_status_migration_server(new_url: &str, status: u16) -> String {
+    use axum::{
+        Json, Router,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::{get, post},
+    };
+
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let state = (new_url.to_owned(), status);
+
+    async fn handler(
+        axum::extract::State((url, status)): axum::extract::State<(String, u16)>,
+    ) -> impl IntoResponse {
+        (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(serde_json::json!({
+                "error": "server_migrated",
+                "new_url": url,
+            })),
+        )
+    }
+
+    async fn health_handler() -> impl IntoResponse {
+        (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
+    }
+
+    let app = Router::new()
+        .route("/api/health", get(health_handler))
+        .route("/api/sync/push", post(handler))
+        .route("/api/sync/pull", post(handler))
+        .route("/api/sync/snapshot", get(handler))
+        .with_state(state);
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    format!("http://localhost:{port}")
+}

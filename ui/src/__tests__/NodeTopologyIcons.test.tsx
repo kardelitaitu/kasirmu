@@ -17,7 +17,7 @@ import {
   PlusIcon,
   MinusIcon,
   WarningIcon,
-} from '@/features/stores/NodeTopologyIcons';
+} from '@/features/locations/NodeTopologyIcons';
 
 // ── All icons render SVG ──────────────────────────────────────────
 

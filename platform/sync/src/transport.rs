@@ -25,20 +25,11 @@ use serde::{Deserialize, Serialize};
 use crate::SyncError;
 
 /// Outcome of pushing a single item to the server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "outcome", rename_all = "snake_case")]
-pub enum PushOutcome {
-    /// Item was accepted and applied by the server.
-    Accepted,
-    /// Item conflicted with the server version. The server's version is
-    /// returned for local conflict resolution.
-    Conflict(OfflineQueueItem),
-    /// Item was rejected with a reason.
-    Rejected {
-        /// Human-readable reason for the rejection (e.g. "duplicate id").
-        reason: String,
-    },
-}
+///
+/// Single definition lives in [`oz_core::sync_client::PushOutcome`]; this
+/// re-export keeps the `platform_sync::transport::PushOutcome` import path
+/// compiling for cloud-server and in-crate callers.
+pub use oz_core::sync_client::PushOutcome;
 
 /// Response from the push endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,6 +179,41 @@ pub struct SnapshotTaxRate {
     /// ISO-8601 last-update timestamp.
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// Scope: the legal entity this rate applies to, or `None` when it is not
+    /// entity-scoped. With [`Self::location_id`] this is
+    /// one-or-the-other-or-neither — `oz_core::db::tax::TaxRateScope` is the
+    /// type that cannot represent both.
+    ///
+    /// These four fields exist because a scoped rate that travels WITHOUT its
+    /// scope lands as NULL, and NULL scope means **tenant-global**: a Jakarta
+    /// rate would silently price every branch that pulled it. Absence of the
+    /// keys in a payload is therefore read as tenant-global — which is exactly
+    /// what every pre-scoping row is — so an older server keeps working and
+    /// keeps the same answer.
+    #[serde(default)]
+    pub legal_entity_id: Option<String>,
+    /// Scope: the location this rate applies to, or `None` when it is not
+    /// location-scoped.
+    #[serde(default)]
+    pub location_id: Option<String>,
+    /// Validity window start, business date `YYYY-MM-DD`; `None` = no lower
+    /// bound. Compared as a DATE, never as text — see
+    /// `oz_core::db::tax::parse_effective_date`.
+    #[serde(default)]
+    pub effective_from: Option<String>,
+    /// Validity window end, business date `YYYY-MM-DD`, EXCLUSIVE; `None` =
+    /// does not expire.
+    #[serde(default)]
+    pub effective_to: Option<String>,
+    /// E1 statutory rounding directive stored on the rate (`''` = no
+    /// directive, the store preference applies; else a `RoundingMode` serde
+    /// snake_case name, the alphabet the 20260929 schema CHECK enforces).
+    /// D64 binding condition (a): the mode must travel or a hub-authored
+    /// directive lands `''` at the branch silently. Same back-compat ruling
+    /// as the scope fields: payloads written before 20260929 carry no key,
+    /// and absence IS the empty sentinel — every pre-E1 row.
+    #[serde(default)]
+    pub rounding_mode: String,
 }
 
 /// A user row in a server snapshot (typed, RUST-04).
@@ -239,9 +265,12 @@ pub struct SyncSnapshotResponse {
 ///
 /// This produces actionable diagnostics instead of the raw `reqwest` error string,
 /// helping operators understand *why* a sync failed (server down vs network issue).
-fn classify_transport_error(e: &reqwest::Error, url: &str) -> String {
+/// `timeout_secs` is the deadline the caller's client was actually configured
+/// with, so the timeout branch reports the time that really applied (30s for
+/// sync requests, 5s for health probes) rather than a hardcoded guess.
+fn classify_transport_error(e: &reqwest::Error, url: &str, timeout_secs: u64) -> String {
     if e.is_timeout() {
-        format!("request timed out after 30s to {url}")
+        format!("request timed out after {timeout_secs}s to {url}")
     } else if e.is_connect() {
         let msg = e.to_string().to_lowercase();
         if msg.contains("connection refused") {
@@ -260,6 +289,20 @@ fn classify_transport_error(e: &reqwest::Error, url: &str) -> String {
 pub struct SyncTransport {
     client: reqwest::Client,
     base_url: String,
+    /// Sender identity + logical counter for conflict detection. `None`
+    /// disables stamping, which is the historical behaviour — the server then
+    /// treats every item as coming from a peer that predates vector support
+    /// and skips detection for it.
+    stamp: Option<VectorStamp>,
+}
+
+/// State needed to stamp outgoing payloads with causality metadata.
+struct VectorStamp {
+    terminal_id: String,
+    /// Monotonic per push. Seeded from the persisted clock so a restart does
+    /// not rewind it: a rewound counter would make the server classify every
+    /// push as stale and detection would silently stop working.
+    counter: std::sync::atomic::AtomicU64,
 }
 
 impl SyncTransport {
@@ -292,7 +335,35 @@ impl SyncTransport {
         Ok(Self {
             client,
             base_url: server_url.trim_end_matches('/').to_owned(),
+            stamp: None,
         })
+    }
+
+    /// Highest counter stamped so far, or `None` when stamping is disabled.
+    ///
+    /// The caller must persist this after a successful push. If it does not,
+    /// the next process starts from the old value, the server sees a counter
+    /// it has already passed, classifies every push as stale, and detection
+    /// silently stops for this terminal.
+    pub fn last_stamped_counter(&self) -> Option<u64> {
+        self.stamp
+            .as_ref()
+            .map(|s| s.counter.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// Enable conflict-detection stamping on outgoing pushes.
+    ///
+    /// `initial_counter` must come from the persisted clock, not from zero:
+    /// the server compares counters per terminal, so a counter that rewinds on
+    /// restart makes every subsequent push look older than what is already
+    /// stored — it would be classified `Stale` and detection would quietly
+    /// stop for this terminal.
+    pub fn with_vector_stamping(mut self, terminal_id: &str, initial_counter: u64) -> Self {
+        self.stamp = Some(VectorStamp {
+            terminal_id: terminal_id.to_string(),
+            counter: std::sync::atomic::AtomicU64::new(initial_counter),
+        });
+        self
     }
 
     /// Convenience constructor for tests and [`crate::SyncEngine::new`].
@@ -318,13 +389,35 @@ impl SyncTransport {
         items: &[OfflineQueueItem],
     ) -> Result<Vec<PushOutcome>, SyncError> {
         let url = format!("{}/api/sync/push", self.base_url);
+
+        // Stamp only when enabled, and once per item: the counter advances per
+        // item so two items in one batch do not carry the same logical instant.
+        let stamped = match &self.stamp {
+            Some(stamp) => {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    let counter = stamp
+                        .counter
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                        .saturating_add(1);
+                    let mut copy = item.clone();
+                    copy.payload =
+                        crate::crdt::stamp_payload(&item.payload, &stamp.terminal_id, counter);
+                    out.push(copy);
+                }
+                Some(out)
+            }
+            None => None,
+        };
+        let body = stamped.as_deref().unwrap_or(items);
+
         let resp = self
             .client
             .post(&url)
-            .json(items)
+            .json(body)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 30)))?;
 
         if !resp.status().is_success() {
             // Read the body once; 401/403 classification, the migration
@@ -364,9 +457,6 @@ impl SyncTransport {
 
     /// Pull updates from the server since the given timestamp.
     ///
-    /// Pass `None` to pull all available data (initial sync).
-    /// Pull updates from the server since the given timestamp.
-    ///
     /// Pass `None` for `since` to pull all available data (initial sync).
     /// Pass `cursor` for paginated subsequent pages (P-3).
     pub async fn pull_updates(
@@ -386,7 +476,7 @@ impl SyncTransport {
             .json(&request)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 30)))?;
 
         // P-1 retention: 410 Gone means the client's anchor has expired
         // (data older than the `since` timestamp has been pruned).
@@ -456,7 +546,7 @@ impl SyncTransport {
             .get(&url)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 5)))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -481,7 +571,7 @@ impl SyncTransport {
             .get(&url)
             .send()
             .await
-            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
+            .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url, 30)))?;
 
         if !resp.status().is_success() {
             // Read the body once; 401/403 classification, the migration

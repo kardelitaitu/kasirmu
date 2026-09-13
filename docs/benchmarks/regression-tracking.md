@@ -1,4 +1,7 @@
 # Benchmark Regression Tracking
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding from .agents/skills/docs-auditor/scripts/check-ci-claims.py) · Repaired: §CI Integration asserted in present tense that "The nightly CI job `benchmarks` runs cargo bench -p oz-core and uploads the full target/criterion/ directory as an artifact", told the reader to "Download the baseline artifact from a previous nightly run", and pointed at .github/workflows/nightly.yml — that file is inert .bak (renamed by 23c963303 on 2026-09-02; git log --name-status shows R100), GitHub reads only *.yml, and the live workflow set is dev-ci.yml + release.yml with no schedule trigger anywhere. The job it described is real history, cited by line at .github/workflows/nightly.yml.bak:547-580 (cargo bench at :561, artifact upload at :572-580) · Verified against the files, not another doc: dev-ci.yml on: block is pull_request branches [main] + workflow_dispatch with no push and no schedule; release.yml on: is push tags v* only · Kept: the 2026-08-08 note above already conceded the baseline JSONs do not exist, and the Threshold Policy table stays as written guidance — now labelled advisory prose rather than a gate, because nothing measures anything · Not touched: this is docs/, so the missing nightly workflow is a CODE/CONFIG gap for whoever owns CI, flagged not fixed. -->
+<!-- dead-ref-prefix-ok: docs/benchmarks/baseline -->
+<!-- dead-ref-prefix-ok: target/criterion/ -->
 
 > Historical tracking of all OZ-POS Criterion.rs benchmarks. Each entry
 > records the baseline, deltas since previous measurement, and any
@@ -71,20 +74,38 @@ any relevant change context.
 
 ---
 
-## CI Integration
+## CI Integration — **there is none today**
 
-The nightly CI job `benchmarks` runs `cargo bench -p oz-core` and uploads
-the full `target/criterion/` directory as an artifact. To compare CI runs:
+This section described a job that used to run and no longer does. The retired
+`benchmarks` job lived in `nightly.yml.bak` (renamed there by `23c963303` on
+2026-09-02), and GitHub never executes a `.bak` file. Its definition is still
+readable at `nightly.yml.bak:547-580`: it ran `cargo bench -p oz-core` (step at
+`:558-561`), wrote timings to `$GITHUB_STEP_SUMMARY`, and uploaded
+`benchmark-output.txt` + `target/criterion/` as an artifact with 30-day retention
+(`:572-580`).
 
-1. Download the baseline artifact from a previous nightly run
-2. Extract `target/criterion/` to a local directory
-3. Run:
+Nothing in the live CI replaces it. There are exactly two live workflows —
+`dev-ci.yml` (triggers: `pull_request` targeting `main` + `workflow_dispatch`) and
+`release.yml` (trigger: `v*` tags) — neither declares a `schedule`, and neither
+runs `cargo bench`. Re-measure with
+`git grep -in 'cargo bench' -- .github/workflows/dev-ci.yml .github/workflows/release.yml`
+→ no matches.
+
+**The consequence, stated plainly:** no benchmark is measured on any cadence. The
+baseline entry above cannot be extended from CI, no artifact exists to download,
+and a regression past the Threshold Policy table below goes undetected until a
+human happens to run `cargo bench -p oz-core` locally. The threshold table is
+therefore advisory prose, not an enforced gate.
+
+To compare runs today, produce both sides locally:
+
+1. Run `cargo bench -p oz-core`, then copy `target/criterion/` somewhere durable
+   and name it the baseline (there is no nightly artifact to download)
+2. Later, re-run the same command and compare:
    ```bash
    critcmp --load baseline_criterion baseline
    critcmp baseline current
    ```
-
-See `.github/workflows/nightly.yml` for the CI job definition.
 
 ## Threshold Policy
 
@@ -100,3 +121,5 @@ A benchmark regression is considered actionable when:
 > **Note:** Thresholds are guidelines, not hard gates. A 5% regression
 > across 10 benchmarks may be noise; a 50% regression in one benchmark
 > warrants immediate investigation.
+
+> last audited 09-09-26 by docs-auditor

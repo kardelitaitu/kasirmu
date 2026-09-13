@@ -126,6 +126,11 @@ audit-log-count-of = { $shown } of { $total } entr{ $shown ->
 audit-log-export = Export CSV
 audit-log-export-error = Export failed. Please try again.
 audit-log-export-progress = Exporting audit log…
+audit-log-security-export = Export security CSV
+audit-log-security-export-actor = Actor (user ID)
+audit-log-security-export-from = From (inclusive)
+audit-log-security-export-to = To (exclusive)
+audit-log-security-export-error = Security event export failed. Please try again.
 
 # Update Banner
 update-banner-title = Update available
@@ -146,6 +151,54 @@ update-banner-rollback-title = Update may have failed
 update-banner-rollback-desc = Previous version { $version } available for download. Click to restore.
 update-banner-rollback = Restore Previous Version
 update-banner-rollback-aria = Download previous version from GitHub
+
+# Memo Banner
+memo-banner-open-aria = Read the full memo: { $title }
+memo-banner-open-aria-plain = Read the full memo
+memo-banner-acknowledge-aria = Acknowledge this memo
+
+# Memos (authoring)
+memos-title = Memos
+memos-refresh = Refresh
+memos-new-heading = New memo
+memos-label-title = Title
+memos-placeholder-title = e.g. close the drawer at 10 PM
+memos-label-body = Message
+memos-placeholder-body = Write the message staff will see…
+memos-label-scope = Audience
+memos-scope-hint = Leave every location unchecked to reach all of them (Organization).
+memos-scope-org = Organization
+memos-label-duration = Duration
+memos-duration-12h = 12 hours
+memos-duration-24h = 24 hours
+memos-duration-3d = 3 days
+memos-duration-7d = 7 days
+memos-duration-30d = 30 days
+memos-create = Create draft
+memos-publish = Publish
+memos-stop = Stop
+memos-revise-heading = Revise memo
+memos-revise-note = Corrections publish a new revision; the duration and audience stay unchanged.
+memos-revise = Publish revision
+memos-revise-cancel = Cancel
+memos-revise-row = Revise
+memos-col-title = Title
+memos-col-scope = Audience
+memos-col-status = Status
+memos-col-duration = Duration
+memos-col-revision = Revision
+memos-col-created = Created
+memos-col-actions = Actions
+memos-status-draft = Draft
+memos-status-published = Published
+memos-status-expired = Expired
+memos-status-stopped = Stopped
+memos-status-archived = Archived
+memos-table-aria = Memo list
+memos-empty = No memos yet. Create your first memo with the form above.
+memos-error-load = Failed to load memos
+memos-error-action = The memo action failed. Please try again.
+memos-retry = Retry
 
 # Toast
 toast-dismiss-aria = Dismiss notification
@@ -227,11 +280,14 @@ nav-customers = Customers
 nav-loyalty = Loyalty
 nav-gift-cards = Gift Cards
 nav-staff = Staff
+nav-roles = Roles
 nav-terminals = Terminals
-nav-stores = Stores
+nav-locations = Locations
 nav-features = Features
 nav-data = Data
 nav-audit-log = Audit Log
+nav-security-trail = Security Trail
+nav-memos = Memos
 nav-offline-queue = Offline Queue
 nav-shifts = Shifts
 nav-bundles = Bundles
@@ -309,7 +365,7 @@ staff-login-license-inactive = License inactive
 statusbar-conflict-count = { $count } sync conflict(s) resolved
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Application status
-statusbar-version = v0.0.36
+statusbar-version = v0.0.37
 statusbar-sync-name = Sync
 statusbar-gateway-name = Stripe
 statusbar-license = Proprietary License
@@ -319,8 +375,21 @@ statusbar-version-label = Version
 statusbar-checking-msg = { $name } · Checking…
 statusbar-offline-msg = { $name } · Offline
 statusbar-latency-msg = { $name } · { $ms }ms
+# The server is answering and told us which subsystem is broken. Distinct from
+# "Offline": a degraded service still serves, so this must not read as down.
+# $cause is the server's own subsystem label (e.g. "database"), passed through.
+statusbar-degraded-msg = { $name } · Degraded — { $cause }
 statusbar-version-latest-msg = Version up to date
 statusbar-version-update-msg = Update available
+# Service-health contracts (saas-3): payment + device-connectivity pills
+statusbar-payment-label = Payment
+statusbar-devices-label = Devices
+# Clicking a service pill re-probes it now; the hint says so on hover.
+statusbar-retry-hint = Click to retry
+statusbar-retry-queued = Retrying { $name }…
+statusbar-payment-gateway-msg = { $name } · { $count } gateway(s) active
+statusbar-payment-unconfigured-msg = { $name } · No gateway configured
+statusbar-devices-count-msg = { $name } · { $count } device(s)
 
 # Audit Action Labels
 audit-action-sale-void = Void Sale
@@ -348,6 +417,18 @@ audit-log-outcome-success = Success
 audit-log-outcome-failure = Failure
 audit-log-outcome-unknown = Unknown
 audit-log-table-label = Audit log entries
+# ── Security trail (audit baseline) ───────────────────────────────
+# The tenant-global half of the audit surface. Its labels live here beside the
+# store audit log's because that is where the action catalog resolves — see
+# auditCatalog.test.ts.
+security-trail-title = Security Trail
+security-trail-scope-note = Sign-ins, sign-outs, impersonation and staff account changes for every location in this organization.
+# Deliberately not reusing audit-log-empty-none: that sentence names sales and
+# voids, the store log's vocabulary, which is wrong for a trail of access events.
+security-trail-empty = No security events match these filters.
+audit-action-logout = Logged out
+audit-action-impersonate-start = Impersonation started
+audit-action-impersonate-stop = Impersonation stopped
 audit-log-search-placeholder = Search actions, targets, or users…
 audit-log-search-label = Search audit log
 audit-log-filter-label = Filter by outcome
@@ -460,12 +541,16 @@ workspace-home-staff-title = Staff Management
 workspace-home-staff-desc = Manage staff, roles, and permissions
 workspace-home-settings-title = Settings
 workspace-home-settings-desc = System configuration and preferences
+# Reuses the wording already approved for this feature at setup-feature-cloud-sync
+# and -desc above, rather than inventing new copy for the same capability.
+workspace-home-cloud-sync-title = Cloud Sync
+workspace-home-cloud-sync-desc = Sync data to cloud PostgreSQL with backup
 workspace-home-audit-title = Audit Log
 workspace-home-audit-desc = View system activity and change history
 workspace-home-terminals-title = Terminals
 workspace-home-terminals-desc = Manage POS terminals and devices
-workspace-home-stores-title = Stores
-workspace-home-stores-desc = Manage store locations and branches
+workspace-home-locations-title = Locations
+workspace-home-locations-desc = Manage physical locations and branches
 workspace-home-shifts-title = Shifts
 workspace-home-shifts-desc = Manage staff shifts and schedules
 workspace-home-tax-config-title = Tax Rates
@@ -482,6 +567,24 @@ workspace-home-data-management-title = Data
 workspace-home-data-management-desc = Back up, export, and import data
 workspace-home-workspaces-section = Workspaces
 workspace-home-tools-section = Tools
+# Tools group headers — the agreed information architecture
+# (todo-tools.md): Operations / Insights / Configuration.
+workspace-home-tools-group-operations = Operations
+workspace-home-tools-group-insights = Insights
+workspace-home-tools-group-configuration = Configuration
+# Locked tool cards: tier-ineligible cards stay visible (greyed,
+# non-clickable) with a minimum-tier badge; subscription-invalid and
+# role-locked cards show their own reason.
+workspace-home-tools-requires-tier-plus = Requires Plus plan
+workspace-home-tools-requires-tier-pro = Requires Pro plan
+workspace-home-tools-requires-tier-premium = Requires Premium plan
+workspace-home-tools-requires-tier-enterprise = Requires Enterprise plan
+workspace-home-tools-subscription-inactive = Subscription inactive
+workspace-home-tools-requires-role = Admin access required
+workspace-home-topology-title = Topology Editor
+workspace-home-topology-desc = Design locations, workspaces, and device links
+workspace-home-memo-title = Memos
+workspace-home-memo-desc = Write notices for terminals and locations
 workspace-home-add-workspace = Add Workspace
 workspace-home-add-workspace-desc = Configure workspaces in the topology editor
 workspace-home-add-workspace-aria = Add workspace via topology editor

@@ -143,6 +143,9 @@ vi.mock('@/api/settings', () => ({
   getUserPreferencesScoped: vi.fn(() => Promise.resolve({
     cardsize: '2', fontsize: '1', 'font-smoothing': 'antialiased',
   })),
+  // SettingsProvider subscribes via this wrapper (ui/src/api/settings.ts);
+  // these tests do not exercise the event bus — resolve to a no-op unlisten.
+  onSettingsUpdated: vi.fn(() => Promise.resolve(async () => {})),
 }));
 
 vi.mock('@/api/offline', () => ({

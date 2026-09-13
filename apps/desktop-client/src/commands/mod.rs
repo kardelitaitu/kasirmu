@@ -35,6 +35,8 @@ pub mod email;
 pub mod exchange_rates;
 /// Feature-flag commands.
 pub mod features;
+/// Fiscal scheme + statutory numbering commands.
+pub mod fiscal;
 /// Gift-card management commands.
 pub mod gift_cards;
 /// Hardware / peripheral commands.
@@ -53,14 +55,24 @@ pub mod kds;
 pub mod kds_device;
 /// KDS order routing resolution.
 pub mod kds_routing;
+/// Organization/Tenant Legal Entity commands.
+pub mod legal_entities;
 /// License commands.
 pub mod license;
 /// Local REST API server commands (loopback `oz-api` embed).
 pub mod local_api;
+/// Local payment method commands (slice 6).
+pub mod local_payment;
+/// Location-profile commands.
+pub mod locations;
 /// Loyalty / rewards commands.
 pub mod loyalty;
+/// Memo lifecycle commands (create/publish/list/acknowledge).
+pub mod memo;
 /// Offline-mode commands.
 pub mod offline;
+/// Accounts Payable (Hutang) commands — desktop-only authoring.
+pub mod payables;
 /// Pre-session picker-ticket signing / verification.
 pub mod picker_ticket;
 /// Plugin management commands.
@@ -77,8 +89,14 @@ pub mod products_images;
 pub mod promotions;
 /// Purchasing / purchase-order commands.
 pub mod purchasing;
+/// QRIS Auto dynamic charge & settlement-poll IPC (cloud Midtrans).
+pub mod qris_auto;
+/// Receipt format commands (receipt-format axis).
+pub mod receipt_format;
 /// Refund commands.
 pub mod refunds;
+/// Regional-configuration read commands (settings:read).
+pub mod regional;
 /// Reporting commands.
 pub mod reports;
 /// Weight-scale commands.
@@ -95,8 +113,10 @@ pub mod shifts;
 pub mod staff;
 /// Stock-transfer commands.
 pub mod stock_transfers;
-/// Store-profile commands.
-pub mod store_profiles;
+
+#[cfg(test)]
+#[path = "registration_gate_tests.rs"]
+mod registration_gate_tests;
 /// Subscription capability commands (C2.2 tier gates).
 pub mod subscription;
 /// Sync commands.

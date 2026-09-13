@@ -170,8 +170,14 @@ export function useProducts(sessionToken?: string): UseProductsResult {
     return () => {
       cancelled = true;
     };
-   
-  }, [reloadKey]);
+    // sessionToken is read at :132 and :133 to choose the scoped list calls. This is an effect,
+    // not a callback, so the consequence differs from the stale-closure cases: the closure is
+    // fresh whenever the effect RUNS, but nothing here re-runs it when the token changes. After
+    // a store switch the catalogue kept showing the previous store's products until someone
+    // called reload() explicitly -- and six production screens consume this hook
+    // (ProductLookupScreen, ProductManagementScreen, RestaurantMenu, WarehouseConsole,
+    // WarehouseCountFlow, and api/products.ts).
+  }, [reloadKey, sessionToken]);
 
   // Derive categories from products (memoized).
   const categories = useMemo(() => {

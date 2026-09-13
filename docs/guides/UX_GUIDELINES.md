@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · guideline doc; ZoomContext.tsx with useAppZoom verified present (scales root font-size by window.innerWidth, line 31/96) matching the fluid-scaling mechanism; UI/UX guidance (rem units, 14-28px clamp, box-shadow:inset focus ring, var(--color-accent)) is convention, not a code-claim to judge ACCURATE/STALE · dated 2026-07-11 · re-audited 2026-08-08 by docs-auditor: clamp corrected to 14-16px (code never scales above the 16px base), manual override levels now include 200% -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (0 findings, re-verified) · Replaces the 2026-07-22 Hermes-Agent stamp, whose scope note still holds: this is a guideline document, not a description of code, so it is judged on whether the rules it states match what the implementation actually does. Every falsifiable claim was checked today against ui/src/contexts/ZoomContext.tsx and the per-component CSS, and all of them hold: base resolution 1920px = root font 16px (line 35), scale DOWN below 1920 and never up (line 36, with the Tauri/WebView2 reason in the code comment too), clamp Math.max(14, Math.min(16, 16 * scale)) (line 41), the 14px floor justified exactly as the guide justifies it — readable at 1366x768 (line 40), useAppZoom exported at line 104 and consumed by ui/src/features/settings/AppearanceSettings.tsx, and --color-accent in real use (FastPINOverlay.css, PermissionDenied.css, the canvas chart components). · One thing worth saying about the design-token claim: there is no central ui/src/styles/*.css. The tokens live in per-component stylesheets, so grepping one file for a variable name returns nothing and looks like a dead reference. That is a trap for anyone auditing this page from a shell. · Not everything that is stamped is stale and not everything old is wrong: this page was audited 2026-07-22, is the second-oldest stamp in docs/guides/, and needed no change. The footer already read 09-08-26 from a lighter pass; the stamp now agrees with it. -->
 
 # UX Guidelines: Adaptive Rendering & Fluid Scaling
 
@@ -61,7 +61,7 @@ This draws the focus ring **inside** the element, sitting on top of the border. 
 
 Always pair with `outline: none` to suppress the native focus ring.
 
-> last audited 09-08-26 by buffy
+> last audited 08-09-26 by docs-auditor
 > audit: Phase 1 Core Architecture & API Docs Audit
 
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid

@@ -192,6 +192,110 @@ pub fn run() {
                     });
                 }
 
+                // ── Memo expiry sweep daemon ───────────────────────────────
+                // Mirrors the desktop sweep: every 5 minutes, transition
+                // published Memos past their `expires_at` to `expired` on the
+                // global identity DB, then run the two retention stages
+                // (ended → `archived` with `archived_at` stamped; deletion of
+                // archives past the fixed 30-day window — ruled 2026-09-07).
+                // Needed here too so a tablet-only deployment still keeps the
+                // Memo status column truthful and honors the retention window.
+                {
+                    let sweep_handle = app_handle.clone();
+                    platform_startup::spawn_daemon("tablet memo expiry sweep", async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(300));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let Some(state) = sweep_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+                            let now = chrono::Utc::now()
+                                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                            let conn = state.db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            match store.sweep_all_expired(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("tablet memo sweep: expired {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(error = %e, "tablet memo sweep failed"),
+                            }
+                            match store.sweep_ended_to_archived(&now) {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!("tablet memo sweep: archived {n} memo(s)")
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "tablet memo retention failed")
+                                }
+                            }
+                            match store.sweep_expired_archives(
+                                &now,
+                                oz_core::memo::RETENTION_WINDOW_DAYS,
+                            ) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "tablet memo sweep: deleted {n} archived memo(s)"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "tablet memo retention delete failed")
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // ── Audit retention sweep daemon (todo-global-saas-2.md P1) ─
+                // Mirrors the desktop sweep: every 15 minutes, resolve the tier
+                // from the global DB and enforce the adopted schedule (Free
+                // purge-all, Plus 90d, Pro 180d, Premium 1y, Enterprise 3y) on
+                // it. The tablet shares ONE database (AppState.db) — there is
+                // no per-store split here. A missing/tampered subscription row
+                // SKIPS the tick: the fail-closed projection is Free and a
+                // purge triggered by corrupted data would be irreversible.
+                {
+                    let sweep_handle = app_handle.clone();
+                    platform_startup::spawn_daemon("tablet audit retention sweep", async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(900));
+                        interval.tick().await;
+                        loop {
+                            interval.tick().await;
+                            let Some(state) = sweep_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+                            let now = chrono::Utc::now()
+                                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                            let conn = state.db.lock().await;
+                            let store = oz_core::db::Store::new(&conn);
+                            let ent = oz_core::entitlements::build_entitlements(
+                                &store,
+                                oz_core::availability::UsageCounts::default(),
+                                false,
+                            );
+                            if !ent.loaded {
+                                tracing::warn!(
+                                    "tablet audit sweep: no valid subscription row — skipping tick"
+                                );
+                                continue;
+                            }
+                            match store.sweep_audit_retention(&ent.tier, &now) {
+                                Ok(n) if n > 0 => tracing::info!(
+                                    "tablet audit sweep: deleted {n} expired audit row(s) (tier: {})",
+                                    ent.tier.name()
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "tablet audit retention sweep failed"
+                                ),
+                            }
+                        }
+                    });
+                }
+
                 // ── Background sync daemon ────────────────────────────────
                 // Uses the same 3-phase split as the Tauri commands:
                 // read DB → async HTTP → write DB, so the DB lock is never
@@ -343,11 +447,23 @@ pub fn run() {
                 commands::audit::get_audit_review_status_scoped,
                 commands::audit::mark_audit_reviewed_scoped,
                 commands::audit::export_audit_log_scoped,
+                // Security-event CSV export (owner ruling D61-7): AUD-09
+                // narrowed to SECURITY_ACTIONS, reading the SAME global
+                // identity DB as the trail read below.
+                commands::audit::export_security_events_scoped,
+                // Organization-level security trail from the global identity
+                // DB (todo-global-saas-2.md P1). Reads a DIFFERENT file than
+                // the store-scoped audit list above — see the command doc.
+                commands::audit::list_security_events_scoped,
                 commands::auth::staff_login,
                 commands::auth::staff_check_username,
                 commands::auth::create_session,
                 commands::auth::destroy_session,
                 commands::auth::session_keepalive,
+                commands::auth::impersonate_user_scoped,
+                // SaaS-3 L194: multi-organization user switching.
+                commands::auth::list_organizations,
+                commands::auth::switch_organization,
                 commands::branding::get_brand_settings,
                 commands::branding::set_brand_primary_colour,
                 commands::branding::set_brand_logo_path,
@@ -367,13 +483,23 @@ pub fn run() {
                 commands::loyalty::update_loyalty_tier_scoped,
                 commands::loyalty::get_points_value_scoped,
                 commands::loyalty::get_or_create_loyalty_account_scoped,
+                commands::memo::list_active_memos_scoped,
+                commands::memo::acknowledge_memo_scoped,
                 commands::staff::list_staff_scoped,
                 commands::staff::list_roles_scoped,
+                commands::staff::list_permission_keys_scoped,
+                commands::staff::create_role_scoped,
+                commands::staff::update_role_scoped,
+                commands::staff::delete_role_scoped,
+                commands::staff::list_role_holders_scoped,
                 commands::staff::create_staff_scoped,
                 commands::staff::update_staff_scoped,
                 commands::staff::get_staff_profile_scoped,
                 commands::staff::bootstrap_owner,
                 commands::subscription::get_subscription_capabilities,
+                commands::subscription::explain_feature_availability_scoped,
+                commands::subscription::get_over_quota_report,
+                commands::subscription::get_over_quota_report_scoped,
                 commands::categories::list_categories,
                 commands::categories::create_category_scoped,
                 commands::categories::update_category_scoped,
@@ -393,6 +519,7 @@ pub fn run() {
                 commands::exchange_rates::delete_exchange_rate_scoped,
                 commands::exchange_rates::get_latest_exchange_rate_scoped,
                 commands::features::list_all_features,
+                commands::features::list_all_features_scoped,
                 commands::features::set_features_bulk,
                 commands::features::set_feature,
                 commands::inventory_counts::create_stock_count_scoped,
@@ -419,6 +546,7 @@ pub fn run() {
                 commands::pos::override_line_price_scoped,
                 commands::pos::override_cart_deduction_location_scoped,
                 commands::pos::get_cart_deduction_location,
+                commands::pos::get_cart_deduction_location_scoped,
                 commands::pos::list_active_carts_scoped,
                 commands::pos::get_active_cart_scoped,
                 commands::pos::hold_cart_scoped,
@@ -457,6 +585,7 @@ pub fn run() {
                 commands::settings::set_user_preferences_scoped,
                 commands::settings::get_setting,
             commands::settings::gateway_status,
+                commands::settings::get_deployment_info,
                 commands::settings::set_setting,
                 commands::setup::get_enabled_features,
                 commands::setup::complete_setup,
@@ -464,6 +593,7 @@ pub fn run() {
                 commands::browser::open_product_images,
                 commands::setup::get_setup_status,
                 commands::tax::list_tax_rates_scoped,
+                commands::tax::list_tax_rate_rounding_modes_scoped,
                 commands::tax::create_tax_rate_scoped,
                 commands::tax::update_tax_rate_scoped,
                 commands::tax::delete_tax_rate_scoped,
@@ -546,6 +676,21 @@ pub fn run() {
                 commands::kds::get_kds_queue_scoped,
                 commands::kds::list_kds_orders_scoped,
                 commands::kds::update_kds_status_scoped,
+                commands::legal_entities::list_legal_entities_scoped,
+                commands::legal_entities::get_legal_entity_scoped,
+                commands::legal_entities::create_legal_entity_scoped,
+                commands::legal_entities::update_legal_entity_scoped,
+                // Regional configuration read model (slice 2, saas-2 design).
+                commands::regional::get_regional_config_scoped,
+                // Regional configuration write path (slice 3, saas-2 design).
+                commands::regional::set_regional_config_scoped,
+                // Local payment methods (slice 6, saas-2 design).
+                commands::local_payment::get_local_payment_methods_scoped,
+                commands::local_payment::set_local_payment_methods_scoped,
+                // Receipt format (receipt-format axis, saas-2 design).
+                commands::receipt_format::get_receipt_format_scoped,
+                commands::receipt_format::set_receipt_layout_scoped,
+                commands::receipt_format::set_receipt_content_scoped,
                 commands::offline::delete_offline_item_scoped,
                 commands::offline::enqueue_offline_scoped,
                 commands::offline::list_all_offline_scoped,
@@ -591,6 +736,11 @@ pub fn run() {
                 commands::scale::read_scale_weight_scoped,
                 commands::settings::get_credit_settings_scoped,
                 commands::settings::get_hardware_settings_scoped,
+                commands::fiscal::get_document_number_sequence_scoped,
+                commands::fiscal::upsert_document_number_sequence_scoped,
+                commands::fiscal::list_document_number_sequences_scoped,
+                commands::fiscal::list_document_number_sequences_for_entity_scoped,
+                commands::fiscal::list_fiscal_schemes_scoped,
                 commands::settings::get_receipt_settings_scoped,
                 commands::settings::get_setting_scoped,
                 commands::settings::get_store_settings_scoped,
@@ -603,12 +753,16 @@ pub fn run() {
                 commands::settings::settle_credit_scoped,
                 commands::sync::get_sync_plan_scoped,
                 commands::sync::get_sync_settings_scoped,
+                commands::sync::list_sync_conflicts_scoped,
                 commands::sync::pending_sync_count_scoped,
                 commands::sync::request_sync_token_scoped,
+                commands::sync::resolve_sync_conflict_scoped,
                 commands::sync::sync_pull_scoped,
                 commands::sync::sync_run_scoped,
                 commands::sync::test_sync_connection_scoped,
                 commands::sync::update_sync_settings_scoped,
+                commands::qris_auto::qris_auto_charge_scoped,
+                commands::qris_auto::qris_auto_status_scoped,
                 commands::tables::assign_table_order_scoped,
                 commands::tables::create_table_scoped,
                 commands::tables::delete_table_scoped,

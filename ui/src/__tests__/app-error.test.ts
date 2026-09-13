@@ -84,6 +84,25 @@ describe('classifyRetry', () => {
     expect(classifyRetry(new Error('Network request failed (etimedout)'))).toBe('retryable');
     expect(classifyRetry(new Error('boom'))).toBe('non-retryable');
   });
+
+  it('untyped fallback carries the checkout vocabulary, terminal wins over transport (R3)', () => {
+    // Patterns migrated from PaymentModal's deleted private scanner:
+    expect(classifyRetry('Payment service unavailable')).toBe('retryable');
+    expect(classifyRetry(new Error('gateway offline'))).toBe('retryable');
+    expect(classifyRetry(new Error('enotfound redis.internal'))).toBe('retryable');
+    expect(classifyRetry(new Error('upstream 500 server error'))).toBe('retryable');
+    // The precedence the private scanner had and the shared one lacked:
+    // transport words do NOT invite a re-submit once the message names
+    // a terminal condition.
+    expect(classifyRetry('connection closed: charge already captured')).toBe('non-retryable');
+    expect(classifyRetry('card declined after a network timeout')).toBe('non-retryable');
+    // 'try again' is deliberately NOT a retry signal — this module's own
+    // non-retryable copy ends with it, so scanning for it once made the
+    // checkout offer Retry on the strength of its own fallback text.
+    expect(
+      classifyRetry('This record was changed by someone else. Refresh and try again.'),
+    ).toBe('non-retryable');
+  });
 });
 
 describe('userErrorKey / userErrorMessage', () => {

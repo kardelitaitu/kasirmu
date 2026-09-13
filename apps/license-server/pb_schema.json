@@ -740,6 +740,17 @@
         "type": "json"
       },
       {
+        "help": "Per-feature boolean grants authored by an admin via POST /api/v1/admin/subscriptions/{id}/feature-grants (Phase D2). Only the five supports_* AvailabilityFeature names; quota-named features excluded.",
+        "hidden": false,
+        "id": "json2718281830",
+        "maxSize": 0,
+        "name": "feature_grants",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
         "hidden": false,
         "id": "autodate7853078470",
         "name": "created",

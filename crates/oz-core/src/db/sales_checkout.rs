@@ -152,6 +152,39 @@ impl Store<'_> {
         _terminal_id: Option<&str>,
         checkout_applications: &[crate::PromotionApplication],
     ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
+        self.complete_sale_deduction_with_locations_and_estimate(
+            sale,
+            workspace_instance_id,
+            stock_locations,
+            payment_splits,
+            _staff_user_id,
+            _terminal_id,
+            checkout_applications,
+            false,
+        )
+    }
+
+    /// F2-5: checkout with the client's tax-estimate CLAIM. The claim is a
+    /// boolean only — the note's content is authored by core: at insert, in
+    /// the same transaction as the sale, the stamp records
+    /// `{"estimated":true,"computed_tax":<i64>}` where `computed_tax` is the
+    /// tax core itself computed for the cart (the caller computed it via
+    /// `compute_sale_tax_for_location` before this door; nothing client-side
+    /// ever writes the number). D61 ruling 4: never silent-zero — the sale
+    /// is flagged so history can flag it for recompute. `false` (or the
+    /// legacy wrapper) stamps nothing: NULL = unstamped = no claim.
+    #[allow(clippy::too_many_arguments)]
+    pub fn complete_sale_deduction_with_locations_and_estimate(
+        &self,
+        sale: &Sale,
+        workspace_instance_id: Option<&str>,
+        stock_locations: &[crate::inventory::LocationId],
+        payment_splits: &[crate::PaymentSplitArg],
+        _staff_user_id: &str,
+        _terminal_id: Option<&str>,
+        checkout_applications: &[crate::PromotionApplication],
+        tax_estimated: bool,
+    ) -> Result<crate::sale_deduction::CompleteSaleResult, CoreError> {
         use crate::inventory_transaction::InventoryTransactionId;
         use crate::sale_deduction::{Shortfall, StockDeduction};
 
@@ -167,6 +200,10 @@ impl Store<'_> {
                 });
             }
         }
+
+        // Enforce subscription offline grace period / read-only lock.
+        // Once the grace period expires, the register cannot process sales.
+        self.enforce_pos_writable()?;
 
         // ADR-19 §5.2: single transaction prevents two concurrent sales from
         // racing on the same inventory row. Same pattern as create_sale().
@@ -204,7 +241,15 @@ impl Store<'_> {
                 });
                 continue;
             };
-            let ptype = crate::product::ProductType::parse_str(ptype_str).unwrap_or_default();
+            // The parsed type drives `tracks_inventory` below, which decides
+            // whether this line is stock-checked at all — so an unmapped string
+            // is not a cosmetic miss: Retail would shortfalled a Service product
+            // on stock it does not keep. The fallback stays, the helper warns.
+            let ptype = crate::product::ProductType::parse_stored_or_default(
+                Some(ptype_str.as_str()),
+                line.sku.as_str(),
+                "Store::complete_sale_deduction_with_locations_and_estimate:sale_line",
+            );
             let tracks_inventory = ptype.tracks_inventory();
             let recipe = self.get_recipe_ingredients(pid)?;
             let has_recipe = !recipe.is_empty();
@@ -276,8 +321,14 @@ impl Store<'_> {
                     };
 
                     if let Some((ing_sku, ing_name, ing_ptype_str)) = ing_info {
-                        let ing_ptype = crate::product::ProductType::parse_str(&ing_ptype_str)
-                            .unwrap_or_default();
+                        // Same contract as the sale-line parse above: an
+                        // unmapped ingredient type deducts stock a Service
+                        // ingredient does not keep.
+                        let ing_ptype = crate::product::ProductType::parse_stored_or_default(
+                            Some(ing_ptype_str.as_str()),
+                            &ing_sku,
+                            "Store::complete_sale_deduction_with_locations_and_estimate:recipe_ingredient",
+                        );
                         if ing_ptype.tracks_inventory() {
                             // MONEY-03: line.qty arrives from untrusted IPC input
                             // and must use checked arithmetic like `compute_line_tax`
@@ -424,6 +475,21 @@ impl Store<'_> {
             message: format!("invalid UTF-8 in currency bytes: {e}"),
         })?;
 
+        // F2-5: the estimate note is composed HERE, at insert, inside the
+        // checkout transaction — the computed tax is core's own number, the
+        // client only supplied the boolean claim.
+        let tax_estimate_note: Option<String> = if tax_estimated {
+            Some(
+                serde_json::json!({
+                    "estimated": true,
+                    "computed_tax": sale.tax_total.minor_units,
+                })
+                .to_string(),
+            )
+        } else {
+            None
+        };
+
         // ADR-20 §6: pending_expires_at = NOW + 30 min for stale-reaper.
         let pending_expires_at = chrono::Utc::now()
             .checked_add_signed(chrono::Duration::minutes(30))
@@ -437,9 +503,9 @@ impl Store<'_> {
                                  customer_id, deduction_locations, version,
                                  pending_expires_at, tenant_id,
                                  base_currency, base_total_minor, tender_rate_millionths,
-                                 tip_minor, service_charge_minor)
+                                 tip_minor, service_charge_minor, tax_estimate_note)
              VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 1, ?16, 'default',
-                     ?17, ?18, ?19, ?20, ?21)",
+                     ?17, ?18, ?19, ?20, ?21, ?22)",
             rusqlite::params![
                 sale.id, sale.total.minor_units, cur_str, sale.line_count,
                 sale.payment_method, sale.tendered_minor,
@@ -448,13 +514,70 @@ impl Store<'_> {
                 sale.subtotal.minor_units, sale.tax_total.minor_units,
                 sale.customer_id, deduction_json, pending_expires_at,
                 sale.base_currency, sale.base_total_minor, sale.tender_rate_millionths,
-                sale.tip_minor, sale.service_charge_minor,
+                sale.tip_minor, sale.service_charge_minor, tax_estimate_note,
             ],
         )?;
 
         for line in &sale.lines {
             insert_sale_line(&tx, line)?;
         }
+
+        // ── TRANSACTIONAL OUTBOX (main checkout path) ───────────────────
+        // The sync row for this sale is written HERE, inside the settlement
+        // transaction, not by an event handler afterwards. Sync for sales is
+        // outbox-only and there is no reconciliation sweep in the tree, so the
+        // old commit-then-publish order lost the row permanently on a crash or
+        // a handler error in that window - silently, because the bus swallows
+        // handler Err and panics (event_bus.rs:259-281), and invisibly to the
+        // operator, because a sale that was never enqueued shows up as none of
+        // pending / synced / failed / oldest-pending.
+        //
+        // SaleSyncEnqueuer still runs on the event and now skips the insert
+        // when a pending row for this sale id already exists, so this lane
+        // produces exactly one row. The legacy complete_sale door (lane one,
+        // sales_crud.rs create_sale + two update_sale_status calls) has no
+        // transaction spanning completion and is NOT wired - it keeps relying
+        // on the handler. See the note there.
+        Store::enqueue_sale_outbox_in_tx(&tx, sale, cur_str)?;
+
+        // ── AUDIT LOG IN-TX (PCI 10.2.1) ──────────────────────────────
+        // The audit row for this sale is written HERE, inside the
+        // settlement transaction, at the same seat as the outbox row: after
+        // the sale rows, before the payment inserts, so a later UNIQUE
+        // collision on payments.idempotency_key takes the audit row down
+        // with the sale exactly as it takes the queue row down. The audit
+        // lane's analogue of SaleSyncEnqueuer's outbox guard is
+        // AuditLogHandler, which probes has_audit_row_for and skips when
+        // this row already exists, so this lane produces exactly one row.
+        // The legacy complete_sale door (lane one, sales_crud.rs create_sale
+        // + two update_sale_status calls) has no transaction spanning
+        // completion and is NOT wired - it keeps relying on the handler.
+        //
+        // ACTOR DIVERGENCE (deliberate, documented on both ends): the wired
+        // doors stamp the real actor from the sale (sale.user_id - PCI
+        // 10.2.1 requires the user ID), while the legacy lane keeps the
+        // empty-string actor the handler has always written, because
+        // SaleCompleted carries no actor field. The same action therefore
+        // has two actor shapes in audit_log depending on which door settled
+        // the sale; do not "fix" one end without the other.
+        let audit_actor = sale.user_id.clone().unwrap_or_default();
+        let audit_entry = crate::AuditEntry::new(
+            audit_actor,
+            "sale.completed",
+            Some("sale"),
+            Some(sale.id.clone()),
+            Some(
+                serde_json::json!({
+                    "sale_id": sale.id.clone(),
+                    "total_minor": sale.total.minor_units,
+                    "currency": cur_str,
+                    "line_count": sale.lines.len(),
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Store::log_audit_in_tx(&tx, &audit_entry)?;
 
         // Create payment records.
         if !payment_splits.is_empty() {
@@ -487,6 +610,20 @@ impl Store<'_> {
         // with the sale (guards documented on the helper).
         crate::db::promotions::persist_checkout_applications(&tx, &sale.id, checkout_applications)?;
 
+        // ── Statutory numbering (regional slice 5) ────────────────
+        // The claim runs INSIDE this transaction (constraint: statutory
+        // sequence writes must be atomic with the sale — a rolled-back
+        // sale must not consume a number). Unconfigured entities stamp
+        // nothing and keep today's behavior. The `now` timestamp drives
+        // the period bucket, matching the sale's own business moment.
+        let statutory_number = self.claim_statutory_number_for_sale(
+            &tx,
+            &sale.id,
+            primary_location.as_str(),
+            "receipt",
+            &now,
+        )?;
+
         tx.commit()?;
 
         Ok(crate::sale_deduction::CompleteSaleResult {
@@ -494,6 +631,11 @@ impl Store<'_> {
             status: SaleStatus::Pending,
             receipt_number: sale.id.clone(),
             deduct_tx_id,
+            statutory_number,
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sales_checkout_tests.rs"]
+mod tests;

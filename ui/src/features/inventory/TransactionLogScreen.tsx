@@ -203,8 +203,10 @@ export default function TransactionLogScreen() {
         </div>
       </div>
 
+      {/* LOAD-05: status semantics for AT; text stays <Localized> because
+          the string is interpolated through the Fluent overlay. */}
       {loading ? (
-        <div className="transit-empty">
+        <div className="transit-empty" role="status" aria-live="polite" aria-busy={loading}>
           <Localized id="inv-loading">
             <span>Loading...</span>
           </Localized>

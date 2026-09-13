@@ -9,6 +9,7 @@ import { getPage, isPageAccessible } from '@/platform/ui/page-registry';
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
+import MemoBanner from '@/features/memo/MemoBanner';
 import type { WizardState } from '@/features/setup/SetupWizard';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
@@ -144,6 +145,7 @@ export default function TabletAppShell() {
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
+        <MemoBanner />
         <LazyBoundary>
           <WorkspaceHome />
         </LazyBoundary>
@@ -155,6 +157,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'restaurant-pos') {
     return (
       <div className="workspace-fullscreen">
+        <MemoBanner />
         <LazyBoundary>
           <PosScreen onNavigate={handleNavigate} />
         </LazyBoundary>
@@ -165,6 +168,7 @@ export default function TabletAppShell() {
   if (activeWorkspace === 'store-pos') {
     return (
       <div className="workspace-fullscreen">
+        <MemoBanner />
         <LazyBoundary>
           <RetailPosScreen onNavigate={handleNavigate} />
         </LazyBoundary>
@@ -174,11 +178,14 @@ export default function TabletAppShell() {
 
   if (activeWorkspace === 'kds') {
     return (
-      <div className="workspace-fullscreen">
-        <LazyBoundary>
-          <KdsScreen />
-        </LazyBoundary>
-      </div>
+      <>
+        <MemoBanner kds />
+        <div className="workspace-fullscreen">
+          <LazyBoundary>
+            <KdsScreen />
+          </LazyBoundary>
+        </div>
+      </>
     );
   }
 

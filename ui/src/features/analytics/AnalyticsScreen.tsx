@@ -6,234 +6,60 @@
 //! Main:   smart card grid — cards adapt to retail vs restaurant
 
 import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { getPrimaryStoreScoped } from '@/api/stores';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 import { useInvalidSession } from '@/hooks/useInvalidSession';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
 import TierLockedFeature from '@/components/TierLockedFeature';
 import { minorUnitExponent } from '@/types/domain';
-import { downloadCsv } from '@/utils/export-csv';
 import { AnalyticsCardContent, ExportCsvButton } from './AnalyticsCardContent';
-import { analyticsDataCache, clearAnalyticsCache, cardQueryKey } from './analytics-cache';
+import { clearAnalyticsCache, cardQueryKey } from './analytics-cache';
 import { useToastManager } from './useToastManager';
 import { useCardLayout } from './useCardLayout';
 import { useCommandPalette } from './useCommandPalette';
+import { useAnalyticsFilters } from './hooks/useAnalyticsFilters';
 import { AnalyticsHeatmap } from './AnalyticsHeatmap';
 import {
   CARD_PAYLOAD_VALIDATORS,
-  DAY_LABEL_KEYS,
   buildHeatmapCells,
   heatPeak,
   heatmapGranularityForRange,
-  isoDaysAgo,
-  isoToday,
   loadHeatmapRows,
-  rangeForGranularity,
   yearlyHeatmapColumns,
-  type DailyRevenueRow,
   type HeatCell,
-  type HourlyHeatmapRow,
-  type WeeklyRevenueRow,
 } from './analytics-data';
 import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
+import { exportHeatmapCsv } from './utils/analyticsExport';
+import { CacheMetricsPanel } from './components/CacheMetricsPanel';
+import { AnalyticsCardFrame } from './components/AnalyticsCardFrame';
+import { AnalyticsToolbar } from './components/AnalyticsToolbar';
+import { CommandPalette } from './components/CommandPalette';
+import { NoWorkspacePrompt } from './components/NoWorkspacePrompt';
+import { SessionRecoveryBanner } from './components/SessionRecoveryBanner';
+import { ZoomControls } from './components/ZoomControls';
+import {
+  GRANULARITIES,
+  cardGranularity,
+  cardRange,
+  nextExpandedKey,
+  smartScale,
+  type Granularity,
+  type WorkspaceView,
+} from './utils/dateRangePresets';
 import './AnalyticsScreen.css';
-
-export type WorkspaceView = 'retail' | 'restaurant';
-export type Granularity = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
 
 // Re-export the calendar helper so the analytics test suite can import it
 // from the screen module (the heatmap card owns its own copy of the helper
 // via analytics-data; this keeps the existing test import working).
 export { monthCalendarGrid } from './analytics-data';
 
-// `daily` was removed from the selector: every card mapped it to `weekly`,
-// so the two buttons rendered identical data. A short custom range still
-// auto-buckets as daily (see bucketGranularity), but the selector no longer
-// offers daily as a global view.
-/**
- * The granularities the selector actually renders — the domain for the
- * `analytics-granularity-${g}` template-built message ids.
- *
- * Exported so `dynamicFluentFamilies.test.ts` can assert every one resolves
- * in BOTH bundles. Note this is deliberately narrower than the `Granularity`
- * union, which also admits `'daily'`: that value reaches
- * `rangeForGranularity()` and the query cache but no selector button, so
- * `analytics-granularity-daily` does not exist. Adding `'daily'` to this
- * array without adding the key would render a blank button label — a
- * template-built id is invisible to scripts/verify-bundle-parity.py, so this
- * array plus that test is the only guard.
- */
-export const GRANULARITIES: Granularity[] = ['weekly', 'monthly', 'yearly', 'custom'];
-
-const ZOOM_MIN = 0.6;
-const ZOOM_MAX = 1.6;
-const ZOOM_STEP = 0.2;
-
-/** localStorage key for the last-chosen workspace view (retail/restaurant). */
-const WORKSPACE_VIEW_STORAGE_KEY = 'oz-analytics-workspace-view';
-
-/** Keyboard shortcut metadata — drives both the handler and the help popover. */
-const SHORTCUTS: { keys: string; labelKey: string }[] = [
-  { keys: '1–4',    labelKey: 'analytics-shortcuts-granularity' },
-  { keys: 'R',      labelKey: 'analytics-shortcuts-refresh' },
-  { keys: '+ / −',  labelKey: 'analytics-shortcuts-zoom' },
-  { keys: '0',      labelKey: 'analytics-shortcuts-zoom-reset' },
-  { keys: 'C',      labelKey: 'analytics-shortcuts-collapse' },
-  { keys: 'Esc',    labelKey: 'analytics-shortcuts-close' },
-];
-
-/**
- * Only one card may be expanded at a time.
- * - clicking the expanded card restores it (`current` → `null`)
- * - expanding when nothing is open sets the new card (`null` → `cid`)
- * - expanding another card while one is open is ignored
- */
-export const nextExpandedKey = (current: string | null, cid: string): string | null => {
-  if (current === cid) return null;
-  if (current === null) return cid;
-  return current;
-}
-
-/**
- * Scale factor that enlarges `content` to fill `available` without
- * overflowing either axis, capped at `max`. Returns 1 when the sizes
- * are unknown (e.g. layout not yet measured).
- */
-export const smartScale = (
-  available: { w: number; h: number },
-  content: { w: number; h: number },
-  max = 4,
-): number => {
-  if (available.w <= 0 || available.h <= 0 || content.w <= 0 || content.h <= 0) return 1;
-  return Math.max(1, Math.min(max, Math.min(available.w / content.w, available.h / content.h)));
-}
-
-/**
- * Effective granularity for a card after applying its per-card remap.
- * Cards default to respecting the global selector; a card with a
- * `granularityMap` entry for the current granularity overrides it (e.g.
- * mapping `daily` to `weekly` when a card has no daily layout).
- */
-export const cardGranularity = (
-  card: { granularityMap?: Partial<Record<Granularity, Granularity>> },
-  g: Granularity,
-): Granularity => {
-  return card.granularityMap?.[g] ?? g;
-}
-
-/**
- * Date range for a card, derived from its *effective* granularity (after
- * the per-card remap) so a card that remaps e.g. weekly → monthly also
- * gets the matching window instead of the global selector's window.
- */
-export const cardRange = (
-  card: { granularityMap?: Partial<Record<Granularity, Granularity>> },
-  g: Granularity,
-  customFrom: string,
-  customTo: string,
-  storeTz?: string | null,
-): { from: string; to: string } => {
-  // A custom range is user-selected — never let a granularity remap
-  // replace it with a derived window (a card that derives its grid from the
-  // custom span still queries the chosen dates).
-  if (g === 'custom') return { from: customFrom, to: customTo };
-  return rangeForGranularity(cardGranularity(card, g), customFrom, customTo, storeTz);
-}
-
-/** Number of days in the current month (28–31). */
-export const daysInCurrentMonth = (): number => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-}
-
-/**
- * Download the heatmap's underlying revenue rows as CSV, shaped by the
- * card's effective granularity: the 7×24 hourly grid for weekly, one row
- * per calendar day for monthly, and one row per Monday-week for yearly.
- */
-function exportHeatmapCsv(
-  g: Granularity,
-  data: { daily: DailyRevenueRow[]; hourly: HourlyHeatmapRow[]; weekly: WeeklyRevenueRow[] },
-  from: string,
-  to: string,
-  fmt: (minor: number) => string,
-  getString: (id: string) => string,
-) {
-  const dayLabels = DAY_LABEL_KEYS.map((k) => getString(k));
-  const filename = `heatmap-${from}-to-${to}.csv`;
-  // The backend emits one daily/weekly revenue row per currency — sum per
-  // bucket so a multi-currency day/week exports as one combined row, the
-  // same normalization the intensity builders already apply.
-  if (g === 'monthly') {
-    const byDate = new Map<string, { minor: number; orders: number }>();
-    for (const r of data.daily) {
-      const e = byDate.get(r.date) ?? { minor: 0, orders: 0 };
-      e.minor += r.total_minor;
-      e.orders += r.sale_count;
-      byDate.set(r.date, e);
-    }
-    downloadCsv(
-      filename,
-      [
-        { key: 'date', label: getString('analytics-export-col-date') },
-        { key: 'sales', label: getString('analytics-export-col-sales') },
-        { key: 'orders', label: getString('analytics-export-col-orders') },
-      ],
-      [...byDate.entries()].map(([date, e]) => ({ date, sales: fmt(e.minor), orders: String(e.orders) })),
-    );
-    return;
-  }
-  if (g === 'yearly') {
-    const byWeek = new Map<string, { minor: number; orders: number }>();
-    for (const r of data.weekly) {
-      const e = byWeek.get(r.week_start) ?? { minor: 0, orders: 0 };
-      e.minor += r.total_minor;
-      e.orders += r.sale_count;
-      byWeek.set(r.week_start, e);
-    }
-    downloadCsv(
-      filename,
-      [
-        { key: 'week', label: getString('analytics-export-col-week') },
-        { key: 'sales', label: getString('analytics-export-col-sales') },
-        { key: 'orders', label: getString('analytics-export-col-orders') },
-      ],
-      [...byWeek.entries()].map(([week, e]) => ({ week, sales: fmt(e.minor), orders: String(e.orders) })),
-    );
-    return;
-  }
-  // weekly (and daily/custom, which remap to weekly): the 7×24 hourly grid.
-  downloadCsv(
-    filename,
-    [
-      { key: 'day', label: getString('analytics-export-col-day') },
-      { key: 'hour', label: getString('analytics-export-col-hour') },
-      { key: 'sales', label: getString('analytics-export-col-sales') },
-      { key: 'orders', label: getString('analytics-export-col-orders') },
-    ],
-    data.hourly.map((r) => ({
-      day: dayLabels[(r.day_of_week + 6) % 7] ?? String(r.day_of_week),
-      hour: String(r.hour).padStart(2, '0'),
-      sales: fmt(r.total_minor),
-      orders: String(r.sale_count),
-    })),
-  );
-}
-
-/**
- * Short, stable label for a cache key in the debug readout:
- * `card:revenue:retail:daily:...` → `revenue`, `query:retail:daily:...` → `query`.
- */
-function shortCacheLabel(key: string): string {
-  const parts = key.split(':');
-  if (parts[0] === 'card' && parts[1]) return parts[1]!;
-  return parts[0] ?? key;
-}
+// The keyboard-shortcut help list moved to components/ZoomControls with
+// its only renderer; the keydown handler below mirrors those keys in its
+// own branches.
 
 // ── Card definitions ─────────────────────────────────────────────────
 
@@ -287,8 +113,11 @@ export default function AnalyticsScreen() {
   const { l10n } = useLocalization();
   const { currency } = useCurrency();
   // C2.2: Analytics is a Pro+ feature — caps arrive from the subscription
-  // context and gate the screen below.
-  const { caps } = useSubscription();
+  // context and gate the screen below. §B: Analytics is also an
+  // ADMINISTRATIVE SaaS feature, so it locks the moment the subscription
+  // leaves `active` (at expiresAt / canceled / paused / unavailable) even
+  // though the tier entitlements themselves survive the grace window.
+  const { caps, state: subscriptionState } = useSubscription();
   const exp = minorUnitExponent(currency);
   // Number formatting follows the active Fluent locale, matching the other
   // analytics cards' money formatter (never a hardcoded English locale).
@@ -314,19 +143,28 @@ export default function AnalyticsScreen() {
     runItemRef,
   } = useCommandPalette<PaletteItem>();
 
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(() => {
-    // Reopen on the last-chosen view across sessions; fall back to the
-    // workspace type the user was last in, then retail.
-    const saved = localStorage.getItem(WORKSPACE_VIEW_STORAGE_KEY);
-    if (saved === 'retail' || saved === 'restaurant') return saved;
-    return activeInstance?.type_key === 'restaurant-pos' ? 'restaurant' : 'retail';
-  });
-
-  // Keep the stored preference in sync — covers the selector, the command
-  // palette, and any future path that changes the view.
-  useEffect(() => {
-    localStorage.setItem(WORKSPACE_VIEW_STORAGE_KEY, workspaceView);
-  }, [workspaceView]);
+  // R37 analytics-query: the view/granularity/range/zoom selections moved to
+  // `hooks/useAnalyticsFilters.ts`, which also owns the two localStorage keys
+  // they persist to. `workspaceLabel` below stays here — it needs
+  // `availableWorkspaces` and `l10n`, which the hook has no business knowing.
+  const {
+    workspaceView,
+    setWorkspaceView,
+    granularity,
+    setGranularity,
+    customFrom,
+    setCustomFrom,
+    customTo,
+    setCustomTo,
+    customTouched,
+    storeTz,
+    zoomLevel,
+    setZoomLevel,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    applyRangePreset,
+  } = useAnalyticsFilters({ sessionToken, activeInstance });
 
   // Label the selector with the real workspace names ("Store POS" /
   // "Restaurant POS") from the workspace registry; fall back to the
@@ -340,41 +178,6 @@ export default function AnalyticsScreen() {
       view === 'retail' ? 'analytics-workspace-retail' : 'analytics-workspace-restaurant',
     );
   };
-  const [granularity, setGranularity] = useState<Granularity>('weekly');
-  const [customFrom, setCustomFrom] = useState(isoToday());
-  const [customTo, setCustomTo] = useState(isoToday());
-  // REP-03: derived windows anchor to the PRIMARY STORE's calendar day,
-  // not the device's — a laptop in another region must still see "today"
-  // as the store sees it. Until the profile loads (or if the fetch fails)
-  // the anchor is FALLBACK_STORE_TZ in analytics-data (UTC, the schema's own
-  // column default), never the host zone — see the comment there.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
-  const customTouched = useRef(false);
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryStoreScoped(sessionToken)
-      .then((p) => {
-        if (alive) setStoreTz(p?.timezone ?? null);
-      })
-      .catch(() => {
-        /* storeTz stays null, so isoToday/isoDaysAgo use FALLBACK_STORE_TZ */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionToken]);
-  useEffect(() => {
-    // Re-seed the untouched custom defaults once the store day is known.
-    if (!storeTz || customTouched.current) return;
-    const t = isoToday(storeTz);
-    setCustomFrom(t);
-    setCustomTo(t);
-  }, [storeTz]);
-  const [zoomLevel, setZoomLevel] = useState<number>(() => {
-    const saved = Number(localStorage.getItem('oz-analytics-zoom'));
-    return saved >= ZOOM_MIN && saved <= ZOOM_MAX ? saved : 1;
-  });
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [expandScale, setExpandScale] = useState(1);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -439,12 +242,12 @@ export default function AnalyticsScreen() {
     startRecalculating.current?.();
   }, [workspaceView, granularity, customFrom, customTo]);
 
-  const zoomIn = useCallback(() => setZoomLevel((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2))), []);
-  const zoomOut = useCallback(() => setZoomLevel((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2))), []);
+  // The hook owns the zoom state and the persisted level; the reset toast
+  // stays here, where `l10n` and `showToast` live.
   const zoomReset = useCallback(() => {
-    setZoomLevel(1);
+    resetZoom();
     showToast(l10n.getString('analytics-toast-zoom-reset'));
-  }, [showToast, l10n]);
+  }, [resetZoom, showToast, l10n]);
 
   // Live refresh of the debug cache-metrics readout while it is open.
   useEffect(() => {
@@ -452,15 +255,6 @@ export default function AnalyticsScreen() {
     const id = setInterval(() => setMetricsTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [showCacheMetrics]);
-
-  // Persist zoom across sessions
-  useEffect(() => {
-    try {
-      localStorage.setItem('oz-analytics-zoom', String(zoomLevel));
-    } catch {
-      /* storage unavailable */
-    }
-  }, [zoomLevel]);
 
   // Keyboard shortcuts (ignored while typing in form fields)
   useEffect(() => {
@@ -491,7 +285,7 @@ export default function AnalyticsScreen() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoomIn, zoomOut, zoomReset, paletteOpen]);
+  }, [zoomIn, zoomOut, zoomReset, paletteOpen, setGranularity]);
 
   // Smart scaling: when a card is expanded, scale its content to fill the
   // available body area (works for any card — heatmap, table, or chart).
@@ -676,13 +470,6 @@ export default function AnalyticsScreen() {
   filteredItemsRef.current = filteredItems;
   runItemRef.current = runPaletteItem;
 
-  const applyRangePreset = (days: number) => {
-    customTouched.current = true;
-    // REP-03: presets end on the store's today, not the device's.
-    setCustomTo(isoDaysAgo(0, storeTz));
-    setCustomFrom(isoDaysAgo(days - 1, storeTz));
-  };
-
   // When a card is expanded, only it is shown; otherwise all visible cards
   const displayedCards = expandedKey && visibleCards.some((c) => cardId(c) === expandedKey)
     ? visibleCards.filter((c) => cardId(c) === expandedKey)
@@ -729,6 +516,16 @@ export default function AnalyticsScreen() {
         : heatmapData.hourly.length === 0
     : false;
 
+
+  // §B administrative lock first — it outranks the tier gate: an expired
+  // Premium subscription gets the admin lock, not the upgrade prompt.
+  if (subscriptionState !== 'active') {
+    return (
+      <div className="analytics">
+        <AdminLockedFeature />
+      </div>
+    );
+  }
 
   // C2.2: Analytics tab lock (Plus→Pro trigger) — render a locked screen
   // with a blurred sample chart + upgrade CTA instead of the live cards.
@@ -791,266 +588,59 @@ export default function AnalyticsScreen() {
           AREA 2 — Menu: workspace selector + granularity buttons
           ══════════════════════════════════════════════════════════ */}
       <nav className="analytics-menu">
-        {/* Row 1 — workspace selector */}
-        <div className="analytics-menu-row">
-          <select
-            className="analytics-workspace-select-input"
-            value={workspaceView}
-            onChange={(e) => {
-              setWorkspaceView(e.target.value as WorkspaceView);
-              setGranularity('weekly');
-              setExpandedKey(null);
-            }}
-            aria-label={l10n.getString('analytics-workspace-select-aria')}
-          >
-            <option value="retail">{workspaceLabel('retail')}</option>
-            <option value="restaurant">{workspaceLabel('restaurant')}</option>
-          </select>
-        </div>
-
-        {/* Row 2 — granularity pill buttons + custom date range inline */}
-        <div className="analytics-menu-row">
-          <div
-            className="analytics-granularity"
-            role="radiogroup"
-            aria-label={l10n.getString('analytics-granularity-aria')}
-          >
-            {GRANULARITIES.map((g) => (
-              <button
-                key={g}
-                type="button"
-                className={`analytics-granularity-btn${granularity === g ? ' analytics-granularity-btn--active' : ''}`}
-                onClick={() => setGranularity(g)}
-                role="radio"
-                aria-checked={granularity === g}
-                title={`${l10n.getString(`analytics-granularity-${g}`)} (${GRANULARITIES.indexOf(g) + 1})`}
-              >
-                <Localized id={`analytics-granularity-${g}`}>
-                  <span>{g}</span>
-                </Localized>
-              </button>
-            ))}
-          </div>
-
-          {granularity === 'custom' && (
-            <>
-              <div className="analytics-custom-range">
-                <label className="analytics-custom-field">
-                  <Localized id="analytics-custom-from">
-                    <span className="analytics-custom-label">From</span>
-                  </Localized>
-                  <input
-                    type="date"
-                    className="analytics-custom-input"
-                    value={customFrom}
-                    max={customTo}
-                    onChange={(e) => {
-                  customTouched.current = true;
-                  setCustomFrom(e.target.value);
-                }}
-                    aria-label={l10n.getString('analytics-custom-from')}
-                  />
-                </label>
-                <span className="analytics-custom-sep">—</span>
-                <label className="analytics-custom-field">
-                  <Localized id="analytics-custom-to">
-                    <span className="analytics-custom-label">To</span>
-                  </Localized>
-                  <input
-                    type="date"
-                    className="analytics-custom-input"
-                    value={customTo}
-                    min={customFrom}
-                    onChange={(e) => {
-                      customTouched.current = true;
-                      setCustomTo(e.target.value);
-                    }}
-                    aria-label={l10n.getString('analytics-custom-to')}
-                  />
-                </label>
-              </div>
-              <div className="analytics-custom-presets" role="group" aria-label={l10n.getString('analytics-range-presets-aria')}>
-                {[7, 30, 90, 365].map((days) => (
-                  <button
-                    key={days}
-                    type="button"
-                    className="analytics-preset-chip"
-                    onClick={() => applyRangePreset(days)}
-                    aria-label={l10n.getString(`analytics-range-preset-${days}d`)}
-                  >
-                    {l10n.getString(`analytics-range-preset-${days}d`)}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Action buttons — collapse, refresh, zoom out, zoom in */}
-          <div className="analytics-actions">
-            <button
-              type="button"
-              className={`analytics-action-btn${compare ? ' analytics-action-btn--active' : ''}`}
-              onClick={() => {
-                const next = !compare;
-                setCompare(next);
-                showToast(l10n.getString(next ? 'analytics-toast-compare-on' : 'analytics-toast-compare-off'));
-              }}
-              aria-pressed={compare}
-              aria-label={l10n.getString(compare ? 'analytics-compare-off-aria' : 'analytics-compare-on-aria')}
-              title={l10n.getString(compare ? 'analytics-compare-off-aria' : 'analytics-compare-on-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <path d="M3 7h13" />
-                <path d="M3 12h9" />
-                <path d="M3 17h5" />
-                <polyline points="18 4 22 8 18 12" />
-                <polyline points="14 12 18 16 14 20" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={`analytics-action-btn${allCollapsed ? ' analytics-action-btn--active' : ''}`}
-              onClick={() => {
-                const next = !allCollapsed;
-                setAllCollapsed(next);
-                showToast(l10n.getString(next ? 'analytics-toast-collapsed' : 'analytics-toast-expanded'));
-                // Collapsing all while a card is expanded would otherwise
-                // leave the grid showing only that card — restore the grid
-                // so the toggle visibly does what its label promises.
-                if (next) setExpandedKey(null);
-              }}
-              aria-label={l10n.getString(allCollapsed ? 'analytics-action-expand-all-aria' : 'analytics-action-collapse-all-aria')}
-              title={l10n.getString(allCollapsed ? 'analytics-action-expand-all-aria' : 'analytics-action-collapse-all-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                {allCollapsed ? (
-                  <>
-                    <path d="M4 14h16" />
-                    <path d="M4 18h16" />
-                    <path d="M4 6l4 4 4-4" />
-                  </>
-                ) : (
-                  <>
-                    <path d="M4 6h16" />
-                    <path d="M4 10h16" />
-                    <path d="M4 14l4 4 4-4" />
-                  </>
-                )}
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="analytics-action-btn"
-              onClick={() => {
-                startRecalculating.current?.(true);
-                showToast(l10n.getString('analytics-toast-refreshing'));
-              }}
-              aria-label={l10n.getString('analytics-action-refresh-aria')}
-              title={l10n.getString('analytics-action-refresh-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <polyline points="23 4 23 10 17 10" />
-                <polyline points="1 20 1 14 7 14" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="analytics-action-btn"
-              onClick={zoomOut}
-              disabled={zoomLevel <= ZOOM_MIN}
-              aria-label={l10n.getString('analytics-action-zoom-out-aria')}
-              title={l10n.getString('analytics-action-zoom-out-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                <line x1="8" y1="11" x2="14" y2="11" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              ref={zoomBadgeRef}
-              className="analytics-zoom-badge"
-              onClick={() => setZoomPopover((o) => !o)}
-              aria-label={l10n.getString('analytics-zoom-slider-aria')}
-              title={l10n.getString('analytics-zoom-slider-aria')}
-            >
-              {Math.round(zoomLevel * 100)}%
-            </button>
-            {zoomPopover && (
-              <div ref={zoomPopoverRef} className="analytics-zoom-popover" role="dialog" aria-label={l10n.getString('analytics-zoom-slider-aria')}>
-                <input
-                  type="range"
-                  className="analytics-zoom-slider"
-                  min={ZOOM_MIN * 100}
-                  max={ZOOM_MAX * 100}
-                  step={ZOOM_STEP * 100}
-                  value={Math.round(zoomLevel * 100)}
-                  onChange={(e) => setZoomLevel(Number(e.target.value) / 100)}
-                  aria-label={l10n.getString('analytics-zoom-slider-aria')}
-                />
-                <span className="analytics-zoom-popover-value">{Math.round(zoomLevel * 100)}%</span>
-                <button
-                  type="button"
-                  className="analytics-zoom-reset-btn"
-                  onClick={zoomReset}
-                >
-                  {l10n.getString('analytics-action-zoom-reset-aria')}
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              className="analytics-action-btn"
-              onClick={zoomIn}
-              disabled={zoomLevel >= ZOOM_MAX}
-              aria-label={l10n.getString('analytics-action-zoom-in-aria')}
-              title={l10n.getString('analytics-action-zoom-in-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                <line x1="11" y1="8" x2="11" y2="14" />
-                <line x1="8" y1="11" x2="14" y2="11" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              ref={shortcutsButtonRef}
-              className="analytics-action-btn"
-              onClick={() => setShowShortcuts((s) => !s)}
-              aria-label={l10n.getString('analytics-shortcuts-aria')}
-              title={l10n.getString('analytics-shortcuts-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </button>
-
-            {showShortcuts && (
-              <div ref={shortcutsPopoverRef} className="analytics-shortcuts-popover" role="dialog" aria-label={l10n.getString('analytics-shortcuts-title')}>
-                <h3 className="analytics-shortcuts-title">{l10n.getString('analytics-shortcuts-title')}</h3>
-                <ul className="analytics-shortcuts-list">
-                  {SHORTCUTS.map((s) => (
-                    <li key={s.labelKey} className="analytics-shortcuts-item">
-                      <kbd className="analytics-shortcuts-keys">{s.keys}</kbd>
-                      <span>{l10n.getString(s.labelKey)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
+        <AnalyticsToolbar
+          workspaceView={workspaceView}
+          workspaceLabel={workspaceLabel}
+          onSelectWorkspace={(view) => {
+            setWorkspaceView(view);
+            setGranularity('weekly');
+            setExpandedKey(null);
+          }}
+          granularity={granularity}
+          onSelectGranularity={setGranularity}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustomFrom={(v) => { customTouched.current = true; setCustomFrom(v); }}
+          onCustomTo={(v) => { customTouched.current = true; setCustomTo(v); }}
+          onApplyPreset={applyRangePreset}
+          compare={compare}
+          onToggleCompare={() => {
+            const next = !compare;
+            setCompare(next);
+            showToast(l10n.getString(next ? 'analytics-toast-compare-on' : 'analytics-toast-compare-off'));
+          }}
+          allCollapsed={allCollapsed}
+          onToggleAllCollapsed={() => {
+            const next = !allCollapsed;
+            setAllCollapsed(next);
+            showToast(l10n.getString(next ? 'analytics-toast-collapsed' : 'analytics-toast-expanded'));
+            // Collapsing all while a card is expanded would otherwise
+            // leave the grid showing only that card — restore the grid
+            // so the toggle visibly does what its label promises.
+            if (next) setExpandedKey(null);
+          }}
+          onRefresh={() => {
+            startRecalculating.current?.(true);
+            showToast(l10n.getString('analytics-toast-refreshing'));
+          }}
+          zoomSlot={
+            <ZoomControls
+              zoomLevel={zoomLevel}
+              onZoomOut={zoomOut}
+              onZoomIn={zoomIn}
+              onZoomReset={zoomReset}
+              onZoomLevelChange={setZoomLevel}
+              zoomPopoverOpen={zoomPopover}
+              onToggleZoomPopover={() => setZoomPopover((o) => !o)}
+              shortcutsOpen={showShortcuts}
+              onToggleShortcuts={() => setShowShortcuts((s) => !s)}
+              zoomBadgeRef={zoomBadgeRef}
+              zoomPopoverRef={zoomPopoverRef}
+              shortcutsButtonRef={shortcutsButtonRef}
+              shortcutsPopoverRef={shortcutsPopoverRef}
+            />
+          }
+        />
       </nav>
 
       {/* Scroll progress — flush against the menu's bottom edge, tracks
@@ -1060,44 +650,7 @@ export default function AnalyticsScreen() {
       {/* Session-expired recovery banner — replaces the wall of per-card
           "session has expired" errors with one actionable notice. */}
       {showSessionBanner && (
-        <div
-          className="analytics-session-banner"
-          role="alert"
-          data-testid="analytics-session-banner"
-        >
-          <svg
-            className="analytics-session-banner-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <div className="analytics-session-banner-body">
-            <div className="analytics-session-banner-title">
-              <Localized id="analytics-session-expired-title"><span>Session expired</span></Localized>
-            </div>
-            <div className="analytics-session-banner-message">
-              <Localized id="analytics-session-expired-message"><span>Your session has expired. Sign in again.</span></Localized>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="analytics-session-banner-action"
-            onClick={goToWorkspacePicker}
-            aria-label={l10n.getString('analytics-sign-in-again')}
-          >
-            <Localized id="analytics-sign-in-again"><span>Sign in again</span></Localized>
-          </button>
-        </div>
+        <SessionRecoveryBanner onSignInAgain={goToWorkspacePicker} />
       )}
 
       {/* ══════════════════════════════════════════════════════════
@@ -1110,36 +663,7 @@ export default function AnalyticsScreen() {
       >
         {/* No workspace selected — show actionable prompt */}
         {!sessionToken && (
-          <div className="analytics-no-workspace" role="status">
-            <svg
-              className="analytics-no-workspace-icon"
-              width="48"
-              height="48"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-            <h2 className="analytics-no-workspace-title">
-              <Localized id="analytics-no-workspace-title"><span>No workspace selected</span></Localized>
-            </h2>
-            <p className="analytics-no-workspace-message">
-              <Localized id="analytics-no-workspace-message"><span>Select a workspace to view analytics</span></Localized>
-            </p>
-            <button
-              type="button"
-              className="analytics-no-workspace-action"
-              onClick={goToWorkspacePicker}
-            >
-              <Localized id="analytics-select-workspace"><span>Select workspace</span></Localized>
-            </button>
-          </div>
+          <NoWorkspacePrompt onSelectWorkspace={goToWorkspacePicker} />
         )}
 
         {/* View status — card count + workspace + time view */}
@@ -1176,108 +700,17 @@ export default function AnalyticsScreen() {
           )}
 
           {/* Debug: TTL cache hit/miss/expiry readout per query key */}
-          <div className="analytics-cache-metrics">
-            <button
-              type="button"
-              ref={cacheChipRef}
-              className={`analytics-cache-chip${showCacheMetrics ? ' analytics-cache-chip--open' : ''}`}
-              onClick={() => setShowCacheMetrics((o) => !o)}
-              aria-expanded={showCacheMetrics}
-              aria-label={l10n.getString('analytics-cache-metrics-aria')}
-              title={l10n.getString('analytics-cache-metrics-aria')}
-            >
-              <span className="analytics-cache-chip-dot" aria-hidden="true" />
-              <Localized id="analytics-cache-chip"><span>cache</span></Localized>
-              <span className="analytics-cache-chip-rate">
-                {(() => {
-                  const { totals } = analyticsDataCache.metrics();
-                  return totals.hitRate === null ? '–' : `${Math.round(totals.hitRate * 100)}%`;
-                })()}
-              </span>
-            </button>
-            {showCacheMetrics && (
-              <div ref={cachePopoverRef} className="analytics-cache-popover" role="dialog" aria-label={l10n.getString('analytics-cache-metrics-aria')}>
-                <div className="analytics-cache-popover-head">
-                  <div className="analytics-cache-popover-meta">
-                    <h3 className="analytics-cache-popover-title">
-                      <Localized id="analytics-cache-popover-title"><span>Cache metrics</span></Localized>
-                    </h3>
-                    {(() => {
-                      const { totals } = analyticsDataCache.metrics();
-                      const rate = totals.hitRate === null ? '–' : `${Math.round(totals.hitRate * 100)}%`;
-                      return (
-                        <span className="analytics-cache-popover-summary">
-                          <Localized
-                            id="analytics-cache-summary"
-                            vars={{
-                              rate,
-                              hits: String(totals.hits),
-                              misses: String(totals.misses),
-                              expiries: String(totals.expiries),
-                            }}
-                          >
-                            <span>{rate} · {totals.hits} hits · {totals.misses} misses · {totals.expiries} expired</span>
-                          </Localized>
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <button
-                    type="button"
-                    className="analytics-cache-clear-btn"
-                    onClick={() => {
-                      clearAnalyticsCache();
-                      setMetricsTick((t) => t + 1);
-                      showToast(l10n.getString('analytics-toast-cache-cleared'));
-                    }}
-                    aria-label={l10n.getString('analytics-cache-clear-aria')}
-                    title={l10n.getString('analytics-cache-clear-aria')}
-                  >
-                    <Localized id="analytics-cache-clear"><span>Clear cache</span></Localized>
-                  </button>
-                </div>
-                <table className="analytics-cache-table">
-                  <thead>
-                    <tr>
-                      <th><Localized id="analytics-cache-col-key"><span>key</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-hits"><span>hits</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-misses"><span>misses</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-expiries"><span>expired</span></Localized></th>
-                      <th><Localized id="analytics-cache-col-evictions"><span>evicted</span></Localized></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const { perKey } = analyticsDataCache.metrics();
-                      const rows = [...perKey.entries()].sort((a, b) => {
-                        const readsB = b[1].hits + b[1].misses + b[1].expiries;
-                        const readsA = a[1].hits + a[1].misses + a[1].expiries;
-                        return readsB - readsA;
-                      });
-                      if (rows.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={5} className="analytics-cache-empty">
-                              <Localized id="analytics-cache-empty"><span>No queries yet</span></Localized>
-                            </td>
-                          </tr>
-                        );
-                      }
-                      return rows.map(([key, m]) => (
-                        <tr key={key} title={key}>
-                          <td className="analytics-cache-key">{shortCacheLabel(key)}</td>
-                          <td>{m.hits}</td>
-                          <td>{m.misses}</td>
-                          <td>{m.expiries}</td>
-                          <td>{m.evictions}</td>
-                        </tr>
-                      ));
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <CacheMetricsPanel
+            open={showCacheMetrics}
+            onToggle={() => setShowCacheMetrics((o) => !o)}
+            onClear={() => {
+              clearAnalyticsCache();
+              setMetricsTick((t) => t + 1);
+              showToast(l10n.getString('analytics-toast-cache-cleared'));
+            }}
+            chipRef={cacheChipRef}
+            popoverRef={cachePopoverRef}
+          />
         </div>
         )}
 
@@ -1295,194 +728,57 @@ export default function AnalyticsScreen() {
             const isFirst = idx === 0;
             const isLast = idx === cardOrder.length - 1;
             return (
-            <div
+            <AnalyticsCardFrame
               key={cid}
-              role="group"
-              draggable={!isExpanded}
-              aria-labelledby={`analytics-card-title-${cid}`}
-              onDragStart={(e) => {
-                setDragId(cid);
-                if (e.dataTransfer) {
-                  e.dataTransfer.effectAllowed = 'move';
-                  // Firefox refuses to begin a drag without setData.
-                  e.dataTransfer.setData('text/plain', cid);
-                }
-              }}
-              onDragOver={(e) => { e.preventDefault(); if (overId !== cid) setOverId(cid); }}
-              onDragLeave={() => setOverId((o) => (o === cid ? null : o))}
-              onDrop={(e) => { e.preventDefault(); reorderCard(dragId ?? '', cid); setDragId(null); setOverId(null); }}
+              cid={cid}
+              size={card.size}
+              titleKey={card.titleKey}
+              title={card.title}
+              descKey={card.descKey}
+              expanded={isExpanded}
+              collapsed={isCollapsed}
+              dragging={isDragging}
+              dropTarget={isDropTarget}
+              menuOpen={menuOpen}
+              first={isFirst}
+              last={isLast}
+              menuAnchor={menuAnchor}
+              menuRef={cardMenuRef}
+              expandScale={expandScale}
+              expandedBodyRef={expandedBodyRef}
+              onDragStart={() => setDragId(cid)}
               onDragEnd={() => { setDragId(null); setOverId(null); }}
-              className={`analytics-card${card.size ? ` analytics-card--${card.size}` : ''}${isExpanded ? ' analytics-card--expanded' : ''}${isCollapsed ? ' analytics-card--collapsed' : ''}${isDragging ? ' analytics-card--dragging' : ''}${isDropTarget ? ' analytics-card--drop-target' : ''}`}
+              onDragLeave={() => setOverId((o) => (o === cid ? null : o))}
+              onDragOver={() => { if (overId !== cid) setOverId(cid); }}
+              onDrop={() => { reorderCard(dragId ?? '', cid); setDragId(null); setOverId(null); }}
+              onOpenMenu={(el) => {
+                // Anchor the (portaled) menu to the trigger so it escapes
+                // the card's overflow clipping, and remember the trigger
+                // so closeCardMenu can restore focus.
+                const rect = el.getBoundingClientRect();
+                menuTriggerRef.current = el;
+                setMenuAnchor({ bottom: rect.bottom, right: window.innerWidth - rect.right });
+                setMenuCardId(cid);
+              }}
+              onCloseMenu={closeCardMenu}
+              onToggleExpand={() => setExpandedKey((current) => {
+                const next = nextExpandedKey(current, cid);
+                // Expanding a card while in compact mode shows the card
+                // in full; collapse-all and expand are mutually exclusive.
+                if (next) setAllCollapsed(false);
+                return next;
+              })}
+              onMenuToggleExpand={() => setExpandedKey((current) => nextExpandedKey(current, cid))}
+              onMenuMove={(dir) => { moveCard(cid, dir); closeCardMenu(); }}
+              onMenuCollapse={() => { toggleCardCollapsed(cid); closeCardMenu(); }}
+              exportSlot={card.key === 'heatmap' && heatmapData ? (
+                <ExportCsvButton
+                  ariaLabel={l10n.getString('analytics-export-heatmap-aria')}
+                  onClick={() => exportHeatmapCsv(heatmapGranularity, heatmapData, heatmapRange.from, heatmapRange.to, fmt, (id) => l10n.getString(id))}
+                />
+              ) : undefined}
             >
-              <div className="analytics-card-header">
-                <span className="analytics-card-grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
-                    <circle cx="9" cy="5" r="1.4" /><circle cx="15" cy="5" r="1.4" />
-                    <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
-                    <circle cx="9" cy="19" r="1.4" /><circle cx="15" cy="19" r="1.4" />
-                  </svg>
-                </span>
-                <Localized id={card.titleKey}>
-                  <h2 className="analytics-card-title" id={`analytics-card-title-${cid}`}>{card.title}</h2>
-                </Localized>
-                <div className="analytics-card-actions">
-                  {card.key === 'heatmap' && heatmapData && (
-                    <ExportCsvButton
-                      ariaLabel={l10n.getString('analytics-export-heatmap-aria')}
-                      onClick={() => exportHeatmapCsv(heatmapGranularity, heatmapData, heatmapRange.from, heatmapRange.to, fmt, (id) => l10n.getString(id))}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="analytics-card-action analytics-card-info"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={l10n.getString(card.descKey)}
-                    title={l10n.getString(card.descKey)}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                      strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="16" x2="12" y2="12" />
-                      <line x1="12" y1="8" x2="12.01" y2="8" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="analytics-card-action"
-                    onClick={() => setExpandedKey((current) => {
-                      const next = nextExpandedKey(current, cid);
-                      // Expanding a card while in compact mode shows the card
-                      // in full; collapse-all and expand are mutually exclusive.
-                      if (next) setAllCollapsed(false);
-                      return next;
-                    })}
-                    aria-label={l10n.getString(isExpanded ? 'analytics-card-restore-aria' : 'analytics-card-expand-aria')}
-                    title={l10n.getString(isExpanded ? 'analytics-card-restore-aria' : 'analytics-card-expand-aria')}
-                  >
-                    {isExpanded ? (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                        strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                        <polyline points="4 14 10 14 10 20" />
-                        <polyline points="20 10 14 10 14 4" />
-                        <line x1="14" y1="10" x2="21" y2="3" />
-                        <line x1="3" y1="21" x2="10" y2="14" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                        strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                        <polyline points="15 3 21 3 21 9" />
-                        <polyline points="9 21 3 21 3 15" />
-                        <line x1="21" y1="3" x2="14" y2="10" />
-                        <line x1="3" y1="21" x2="10" y2="14" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={`analytics-card-action${menuOpen ? ' analytics-card-action--active' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (menuOpen) {
-                        closeCardMenu();
-                      } else {
-                        // Anchor the (portaled) menu to the trigger so it
-                        // escapes the card's overflow clipping, and remember
-                        // the trigger so focus can be restored on close.
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        menuTriggerRef.current = e.currentTarget;
-                        setMenuAnchor({ bottom: rect.bottom, right: window.innerWidth - rect.right });
-                        setMenuCardId(cid);
-                      }
-                    }}
-                    aria-label={l10n.getString('analytics-card-menu-aria')}
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    title={l10n.getString('analytics-card-menu-aria')}
-                  >
-                    <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true">
-                      <circle cx="5" cy="12" r="1.6" />
-                      <circle cx="12" cy="12" r="1.6" />
-                      <circle cx="19" cy="12" r="1.6" />
-                    </svg>
-                  </button>
-                  {menuOpen && createPortal(
-                    <div
-                      ref={cardMenuRef}
-                      className="analytics-card-menu"
-                      role="menu"
-                      tabIndex={-1}
-                      aria-label={l10n.getString('analytics-card-menu-aria')}
-                      style={{
-                        position: 'fixed',
-                        top: (menuAnchor?.bottom ?? 0) + 4,
-                        right: menuAnchor?.right ?? 0,
-                      }}
-                      onKeyDown={(e) => {
-                        const items = Array.from(
-                          e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])'),
-                        );
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          closeCardMenu();
-                          return;
-                        }
-                        if (items.length === 0) return;
-                        const idx = items.indexOf(document.activeElement as HTMLButtonElement);
-                        if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          items[(idx + 1) % items.length]?.focus();
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          items[(idx - 1 + items.length) % items.length]?.focus();
-                        } else if (e.key === 'Home') {
-                          e.preventDefault();
-                          items[0]?.focus();
-                        } else if (e.key === 'End') {
-                          e.preventDefault();
-                          items[items.length - 1]?.focus();
-                        }
-                      }}
-                    >
-                      <button type="button" role="menuitem" disabled={isFirst}
-                        onClick={() => { moveCard(cid, 'up'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-up')}
-                      </button>
-                      <button type="button" role="menuitem" disabled={isLast}
-                        onClick={() => { moveCard(cid, 'down'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-down')}
-                      </button>
-                      <button type="button" role="menuitem" disabled={isFirst}
-                        onClick={() => { moveCard(cid, 'top'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-top')}
-                      </button>
-                      <button type="button" role="menuitem" disabled={isLast}
-                        onClick={() => { moveCard(cid, 'bottom'); closeCardMenu(); }}>
-                        {l10n.getString('analytics-menu-move-bottom')}
-                      </button>
-                      <div className="analytics-card-menu-sep" role="separator" />
-                      <button type="button" role="menuitem"
-                        onClick={() => {
-                          setExpandedKey((current) => nextExpandedKey(current, cid));
-                          closeCardMenu();
-                        }}>
-                        {l10n.getString(isExpanded ? 'analytics-card-restore-aria' : 'analytics-card-expand-aria')}
-                      </button>
-                      <button type="button" role="menuitem"
-                        onClick={() => { toggleCardCollapsed(cid); closeCardMenu(); }}>
-                        {l10n.getString(isCollapsed ? 'analytics-menu-show-card' : 'analytics-menu-collapse-card')}
-                      </button>
-                    </div>,
-                    document.body,
-                  )}
-                </div>
-              </div>
-              <div className="analytics-card-body" ref={isExpanded ? expandedBodyRef : undefined}>
-                <div
-                  className="analytics-card-content"
-                  style={isExpanded ? { transform: `scale(${expandScale})` } : undefined}
-                >
-                  {card.key === 'heatmap' ? (
+              {card.key === 'heatmap' ? (
                     <AnalyticsHeatmap
                       granularity={heatmapGranularity}
                       range={heatmapRange}
@@ -1509,9 +805,7 @@ export default function AnalyticsScreen() {
                       compare={compare}
                     />
                   )}
-                </div>
-              </div>
-            </div>
+            </AnalyticsCardFrame>
             );
           })}
         </div>
@@ -1553,49 +847,17 @@ export default function AnalyticsScreen() {
       )}
 
       {/* Command palette overlay (Ctrl/Cmd+K) */}
-      {paletteOpen && (
-        <div
-          className="analytics-palette-backdrop"
-          role="presentation"
-          tabIndex={-1}
-          onClick={(e) => { if (e.target === e.currentTarget) { setPaletteOpen(false); setPaletteQuery(''); } }}
-        >
-          <div
-            className="analytics-palette"
-            role="dialog"
-            aria-label={l10n.getString('analytics-palette-aria')}
-          >
-            <input
-              ref={paletteInputRef}
-              type="text"
-              className="analytics-palette-input"
-              value={paletteQuery}
-              onChange={(e) => setPaletteQuery(e.target.value)}
-              placeholder={l10n.getString('analytics-palette-placeholder')}
-              aria-label={l10n.getString('analytics-palette-placeholder')}
-            />
-            <ul className="analytics-palette-list" role="listbox" aria-label={l10n.getString('analytics-palette-aria')}>
-              {filteredItems.length === 0 ? (
-                <li className="analytics-palette-empty">{l10n.getString('analytics-palette-empty')}</li>
-              ) : (
-                filteredItems.map((item, i) => (
-                  <li key={`${item.kind}-${item.value}`}>
-                    <button
-                      type="button"
-                      className={`analytics-palette-item${i === paletteIndex ? ' analytics-palette-item--active' : ''}`}
-                      onMouseEnter={() => setPaletteIndex(i)}
-                      onClick={() => runPaletteItem(item)}
-                    >
-                      <span>{item.label}</span>
-                      {item.hint && <kbd className="analytics-palette-hint">{item.hint}</kbd>}
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-        </div>
-      )}
+      <CommandPalette
+        open={paletteOpen}
+        query={paletteQuery}
+        activeIndex={paletteIndex}
+        filteredItems={filteredItems}
+        inputRef={paletteInputRef}
+        onQueryChange={setPaletteQuery}
+        onIndexChange={setPaletteIndex}
+        onClose={() => { setPaletteOpen(false); setPaletteQuery(''); }}
+        onRunItem={runPaletteItem}
+      />
 
     </div>
   );

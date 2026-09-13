@@ -1,0 +1,55 @@
+/*
+ * Diagnostics section (Settings → System): the feature-availability
+ * verdict readout. Read-only rows — a feature name, a status badge,
+ * and the resolver's detail line.
+ */
+
+.settings-diagnostics-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.settings-diagnostics-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+}
+
+.settings-diagnostics-feature {
+  font-weight: 600;
+  min-width: 12rem;
+}
+
+.settings-diagnostics-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem 0.75rem;
+}
+
+.settings-diagnostics-badge {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.35));
+}
+
+.settings-diagnostics-badge--ok {
+  background: var(--success-bg, rgba(34, 160, 90, 0.15));
+  border-color: transparent;
+}
+
+.settings-diagnostics-detail {
+  color: var(--text-muted, inherit);
+  font-size: var(--text-xs);
+}

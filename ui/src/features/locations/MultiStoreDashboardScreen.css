@@ -1,0 +1,246 @@
+.multi-store-dashboard {
+  padding: var(--space-6) var(--space-8);
+  overflow-x: hidden;
+}
+
+/* C2.2 Pro→Premium store-cap banner. */
+.multi-store-limit-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: var(--color-fg-primary);
+  font-size: var(--text-sm);
+}
+
+.multi-store-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+
+.multi-store-dashboard-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+  color: var(--color-fg);
+}
+
+/* ── Skeleton loading ───────────────────────────────────── */
+.multi-store-dashboard-loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.multi-store-dashboard-loading-skeleton .multi-store-stat-card {
+  border-color: var(--color-border);
+}
+
+.multi-store-dashboard-error {
+  padding: var(--space-8);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--color-fg-secondary);
+}
+
+/* ── Stat cards ──────────────────────────────────────── */
+
+.multi-store-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.multi-store-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  transition: border-color var(--duration-150) var(--ease-out), box-shadow var(--duration-150) var(--ease-out);
+}
+
+.multi-store-stat-card:hover {
+  border-color: var(--color-accent-dim);
+  box-shadow: var(--shadow-md);
+}
+
+.multi-store-stat-value {
+  font-size: var(--text-4xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.multi-store-stat-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ── Section title ────────────────────────────────────── */
+
+.multi-store-section-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--space-4);
+  color: var(--color-fg);
+}
+
+/* ── Store card grid ──────────────────────────────────── */
+
+.multi-store-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.multi-store-card {
+  transition: box-shadow var(--duration-150) var(--ease-out);
+}
+
+.multi-store-card--primary {
+  border-color: var(--color-accent);
+  border-width: var(--space-0_5); /* design exception: semantic border width, no token equivalent */
+}
+
+.multi-store-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.multi-store-card-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.multi-store-card-badge {
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-subtle-fg, var(--color-accent-active));
+  background: var(--color-accent-subtle);
+  padding: var(--space-0_5) var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.multi-store-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.multi-store-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.multi-store-card-label {
+  font-size: var(--text-sm);
+  color: var(--color-fg-tertiary);
+  font-weight: var(--font-weight-medium);
+}
+
+.multi-store-card-value {
+  font-size: var(--text-base);
+  color: var(--color-fg);
+  font-weight: var(--font-weight-medium);
+  text-align: right;
+}
+
+.multi-store-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* ── View details modal (Locations → Topology entry points) ── */
+
+.multi-store-details-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.multi-store-details-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* ── Terminal section ─────────────────────────────────── */
+
+.multi-store-terminal-section {
+  margin-top: var(--space-4);
+}
+
+/* ── Ticket-prefix editor ───────────────────────────────── */
+
+.multi-store-prefix-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+}
+
+.multi-store-prefix-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+}
+
+.multi-store-prefix-warning {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.multi-store-prefix-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+}
+
+.multi-store-prefix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.multi-store-prefix-saved {
+  font-size: var(--text-sm);
+  color: var(--color-success);
+}
+
+.multi-store-prefix-error {
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}

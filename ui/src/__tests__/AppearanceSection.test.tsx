@@ -76,6 +76,8 @@ vi.mock('@/utils/color', () => ({
     accent: '#ff0000', accentDim: '#ffcccc', accentFg: '#ffffff',
   })),
   applyAccentPalette: vi.fn(),
+  clearAccentPalette: vi.fn(),
+  applyThemeContrasts: vi.fn(),
 }));
 
 vi.mock('@/features/settings/SettingsSelect', () => ({

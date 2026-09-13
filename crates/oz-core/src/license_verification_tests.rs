@@ -133,10 +133,19 @@ fn ping_license_server_hits_api_health_path() {
         ok: true,
         status: "Connected (1ms)".into(),
         latency_ms: Some(1),
+        state: crate::service_health::HealthState::Operational,
+        cause: None,
     })
     .unwrap();
     assert_eq!(json["ok"], true);
     assert_eq!(json["latencyMs"], 1);
+    // The new fields ride the same camelCase convention, and the state
+    // serializes to the same snake_case string as_str/parse agree on.
+    assert_eq!(json["state"], "operational");
+    assert!(
+        json.get("cause").is_some(),
+        "cause is always present on the wire"
+    );
 }
 
 #[test]
@@ -158,13 +167,7 @@ fn store_subscription_inserts_row() {
         "issued_at": "2026-01-01T00:00:00Z"
     }"#;
 
-    let result = store_subscription(
-        &conn,
-        "test-tenant",
-        payload,
-        "TESTSIG",
-        "oz_test_api_key_123",
-    );
+    let result = store_subscription(&conn, "test-tenant", payload, "TESTSIG");
     assert!(result.is_ok(), "store_subscription failed: {result:?}");
 
     // Verify the row was inserted
@@ -173,11 +176,86 @@ fn store_subscription_inserts_row() {
         .expect("should exist");
     assert_eq!(stored.tenant_id, "test-tenant");
     assert_eq!(stored.tier, crate::subscription::SubscriptionTier::Pro);
-    assert_eq!(stored.max_stores, 2);
+    assert_eq!(stored.max_locations, 2);
     assert_eq!(stored.max_pos_instances, 3);
     assert_eq!(stored.signature, "TESTSIG");
     assert_eq!(stored.signed_payload, payload);
-    assert_eq!(stored.api_key, "oz_test_api_key_123");
+    assert_eq!(
+        stored.api_key, "",
+        "the cleartext copy is closed: the column holds only its empty default"
+    );
+}
+
+/// Phase C round-trip: a trial payload stored through the production path
+/// and re-loaded from the row still reports both trial fields. This is the
+/// proof that the wire change needs no migration — the fields ride inside
+/// the `signed_payload` column the table already has, so nothing new is
+/// persisted and a tampered row cannot invent a trial without breaking the
+/// signature that covers the payload.
+#[test]
+fn store_subscription_round_trips_trial_fields() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    let payload = r#"{
+        "tenant_id": "trial-tenant",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["restaurant-pos", "store-pos"],
+        "starts_at": "2026-09-08T00:00:00Z",
+        "expires_at": "2026-09-22T00:00:00Z",
+        "grace_until": "2026-10-06T00:00:00Z",
+        "issued_at": "2026-09-08T00:00:00Z",
+        "is_trial": true,
+        "trial_ends_at": "2026-09-22T00:00:00Z"
+    }"#;
+
+    store_subscription(&conn, "trial-tenant", payload, "BOOTSTRAP_FREE")
+        .expect("store_subscription should succeed");
+
+    let stored = TenantSubscription::load(&conn, "trial-tenant")
+        .expect("load")
+        .expect("row should exist");
+    assert!(stored.is_trial(), "trial flag must survive the round trip");
+    assert_eq!(
+        stored.trial_ends_at().as_deref(),
+        Some("2026-09-22T00:00:00Z"),
+        "trial end must survive the round trip"
+    );
+    // And the quota answer is untouched by any of it.
+    assert_eq!(stored.tier, crate::subscription::SubscriptionTier::Pro);
+}
+
+/// The mirror case: a pre-Phase-C payload (no trial fields at all) loads
+/// through the same path and reads as not-a-trial rather than erroring.
+#[test]
+fn store_subscription_trial_fields_absent_reads_as_paid() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    let payload = r#"{
+        "tenant_id": "paid-tenant",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["store-pos"],
+        "starts_at": "2026-09-08T00:00:00Z",
+        "expires_at": "2027-09-08T00:00:00Z",
+        "grace_until": "2027-09-22T00:00:00Z",
+        "issued_at": "2026-09-08T00:00:00Z"
+    }"#;
+
+    store_subscription(&conn, "paid-tenant", payload, "BOOTSTRAP_FREE")
+        .expect("store_subscription should succeed");
+
+    let stored = TenantSubscription::load(&conn, "paid-tenant")
+        .expect("load")
+        .expect("row should exist");
+    assert!(!stored.is_trial());
+    assert_eq!(stored.trial_ends_at(), None);
 }
 
 #[test]
@@ -213,13 +291,7 @@ fn store_subscription_handles_all_tier_keys() {
         }}"#
         );
 
-        let result = store_subscription(
-            &conn,
-            &format!("tenant-{key}"),
-            &payload,
-            "TESTSIG",
-            "api_key_test",
-        );
+        let result = store_subscription(&conn, &format!("tenant-{key}"), &payload, "TESTSIG");
         assert!(
             result.is_ok(),
             "store_subscription for {key} failed: {result:?}"
@@ -229,13 +301,77 @@ fn store_subscription_handles_all_tier_keys() {
             .unwrap()
             .unwrap();
         assert_eq!(stored.tier, expected_tier);
-        assert_eq!(stored.max_stores, stores);
+        assert_eq!(stored.max_locations, stores);
         assert_eq!(stored.max_pos_instances, pos);
     }
 }
 
 // We need to import TenantSubscription for the test above.
 use crate::subscription::TenantSubscription;
+
+#[test]
+fn store_subscription_reads_renamed_wire_field() {
+    // 1g: the license server now emits `max_locations` as the primary
+    // wire name. A payload carrying ONLY the new name must parse and
+    // land in the local max_locations column.
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+
+    let payload = r#"{
+        "tenant_id": "test-tenant",
+        "tier_key": "pro",
+        "status": "active",
+        "max_locations": 4,
+        "max_pos_instances": 3,
+        "allowed_types": ["restaurant-pos", "store-pos"],
+        "starts_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2027-01-01T00:00:00Z",
+        "grace_until": "2027-01-15T00:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z"
+    }"#;
+
+    store_subscription(&conn, "test-tenant", payload, "TESTSIG")
+        .expect("store_subscription should accept the new wire name");
+
+    let stored = TenantSubscription::load(&conn, "test-tenant")
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(stored.max_locations, 4);
+}
+
+#[test]
+fn store_subscription_dual_emitted_payload_prefers_consistent_value() {
+    // 1g dual-emit: during the client rotation window the server sends
+    // BOTH wire names with the same value. The payload must parse and
+    // the quota must come through unchanged.
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+
+    let payload = r#"{
+        "tenant_id": "test-tenant",
+        "tier_key": "plus",
+        "status": "active",
+        "max_locations": 1,
+        "max_stores": 1,
+        "max_pos_instances": 2,
+        "allowed_types": ["restaurant-pos", "store-pos"],
+        "starts_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2027-01-01T00:00:00Z",
+        "grace_until": "2027-01-15T00:00:00Z",
+        "issued_at": "2026-01-01T00:00:00Z"
+    }"#;
+
+    store_subscription(&conn, "test-tenant", payload, "TESTSIG")
+        .expect("store_subscription should accept the dual-emitted payload");
+
+    let stored = TenantSubscription::load(&conn, "test-tenant")
+        .expect("load")
+        .expect("should exist");
+    assert_eq!(stored.max_locations, 1);
+    assert_eq!(stored.signed_payload, payload);
+}
 
 // ── trial_vertical serialization (C2.1) ────────────────────────
 

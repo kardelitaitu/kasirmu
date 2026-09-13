@@ -81,6 +81,8 @@ fn test_config() -> config::CloudServerConfig {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
         api_secret: None,
         redis_url: None,
     }
@@ -101,6 +103,8 @@ fn test_app() -> Router {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let config = test_config();
     build_router(
@@ -276,6 +280,73 @@ async fn cloud_health_returns_ok_with_db_ping() {
     assert!(json["last_sync_at"].is_null());
 }
 
+/// The derivation-selection field: present, a plain bool, and equal to what
+/// the crypto crate itself says this process chose. The third assertion is
+/// what keeps the payload honest - the endpoint may not report an answer the
+/// derivation does not actually live by.
+#[tokio::test]
+async fn cloud_health_reports_the_portable_derivation_selection() {
+    let app = test_app();
+    let req = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let field = &json["portable_derivation_uses_master_key"];
+    assert!(field.is_boolean(), "must be a plain bool, got {field}");
+    assert_eq!(
+        field.as_bool().unwrap(),
+        oz_core::crypto::master_key_derivation_active(),
+        "the payload must carry the derivation own answer"
+    );
+    // Nothing key-shaped may ride along with it.
+    let obj = json.as_object().unwrap();
+    let leaking: Vec<&String> = obj
+        .keys()
+        .filter(|k| {
+            let k = k.to_lowercase();
+            k.contains("master_key_value") || k.contains("key_hash") || k.contains("key_len")
+        })
+        .collect();
+    assert!(
+        leaking.is_empty(),
+        "health payload exposed key material: {leaking:?}"
+    );
+}
+
+/// Measured, not assumed: the OpenAPI drift walk in `openapi_tests.rs`
+/// compares documented fields against the serde wire shape for
+/// `PushOutcome`/`PushResponse` ONLY - it never reaches `HealthResponse`, so
+/// a field could be live-but-undocumented (or documented-but-gone) without
+/// anything going red. This closes that gap for this one payload.
+#[tokio::test]
+async fn health_payload_matches_its_published_schema() {
+    let app = test_app();
+    let req = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let emitted: std::collections::BTreeSet<String> =
+        json.as_object().unwrap().keys().cloned().collect();
+    let spec = openapi::openapi_spec();
+    let props = spec["components"]["schemas"]["HealthResponse"]["properties"]
+        .as_object()
+        .expect("HealthResponse properties must be documented");
+    let documented: std::collections::BTreeSet<String> = props.keys().cloned().collect();
+
+    assert_eq!(
+        documented, emitted,
+        "the published HealthResponse schema and the real payload have drifted apart"
+    );
+}
+
 #[tokio::test]
 async fn cloud_health_reports_queue_depth() {
     let state = CloudServerState {
@@ -286,6 +357,8 @@ async fn cloud_health_reports_queue_depth() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = build_router(
         state.clone(),
@@ -329,6 +402,8 @@ async fn cloud_health_reports_last_sync_at() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = build_router(
         state.clone(),
@@ -418,6 +493,8 @@ async fn sync_push_and_pull_roundtrip() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -508,6 +585,8 @@ async fn multi_tenant_tenant_a_push_invisible_to_tenant_b() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -558,6 +637,8 @@ async fn multi_tenant_bidirectional_isolation() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -615,6 +696,8 @@ async fn multi_tenant_status_scoped_per_tenant() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -670,6 +753,8 @@ async fn multi_tenant_default_tenant_isolation() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -719,6 +804,8 @@ async fn lifecycle_free_tenant_upgraded_via_webhook_can_sync() {
         stripe_webhook_secret: Some(secret.to_string()),
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let mut config = test_config();
     config.enforce_plans = true;
@@ -844,6 +931,8 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = build_router(
         state,

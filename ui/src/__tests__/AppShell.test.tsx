@@ -4,7 +4,7 @@
 // (chef button), and the standalone kds workspace, plus back-button
 // navigation returning to the correct landing route.
 
-import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
@@ -44,6 +44,18 @@ vi.mock('@/features/sales/PosScreen', () => ({
       </button>
     </div>
   ),
+}));
+
+// Memo banner surface stub: the shell tests pin WHERE the banner mounts,
+// not memo content (MemoBanner.test.tsx owns that). The stub records its
+// kds prop so the doubled-cadence variant is assertable per surface.
+const memoBannerKds: boolean[] = [];
+
+vi.mock('@/features/memo/MemoBanner', () => ({
+  default: (props: { kds?: boolean }) => {
+    memoBannerKds.push(Boolean(props.kds));
+    return <div data-testid="memo-banner-mount" />;
+  },
 }));
 
 // ── Mock API modules used by AppShell ────────────────────────────
@@ -150,6 +162,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 import { getLicenseStatus } from '@/api/license';
 import { getSetupStatus } from '@/api/settings';
 import { registerPage, clearPages } from '@/platform/ui/page-registry';
+import { registerNavItem, clearNavItems } from '@/platform/ui/menu-registry';
 
 
 
@@ -679,6 +692,198 @@ describe('AppShell — KDS workspace navigation', () => {
         expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('kds-screen')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Memo banner surface (owner ruling 2026-09-08) ──────────
+  //
+  // App-wide on authenticated surfaces: every shell branch mounts it.
+  // Hidden exactly where the ruling says: the login screen (the
+  // session-scoped memo read has no session to read with), the session
+  // lock screen, and the customer-facing kiosk route (internal staff
+  // comms must not display to customers). AppLayout carries the mount
+  // for sidebar pages; these tests pin the shell-level branches.
+
+  describe('memo banner surface', () => {
+    beforeEach(() => {
+      memoBannerKds.length = 0;
+      idleCallback = null;
+      registerPage({
+        route: 'kiosk',
+        component: () => <div data-testid="kiosk-screen">Kiosk</div>,
+        label: 'Kiosk',
+        fullscreen: true,
+      });
+    });
+
+    it('mounts the banner on the workspace picker', async () => {
+      // The parent beforeEach resets auth only; the workspace mock is a
+      // shared vi.fn — set the picker state explicitly here.
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: null,
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      await renderWithProviders(<AppShell />);
+      await waitFor(() => {
+        expect(screen.getByText('No workspaces available')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('mounts the banner on the restaurant-pos workspace', async () => {
+      mockRestaurantPos();
+      await renderWithProviders(<AppShell />);
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('mounts the banner on the store-pos workspace', async () => {
+      mockStorePos();
+      await renderWithProviders(<AppShell />);
+      await waitFor(() => {
+        expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('uses the doubled-cadence kds variant on the kds workspace', async () => {
+      mockKdsWorkspace();
+      await renderWithProviders(<AppShell />);
+      await waitFor(() => {
+        expect(screen.getByTestId('kds-screen')).toBeInTheDocument();
+      });
+      expect(memoBannerKds.at(-1)).toBe(true);
+    });
+
+    it('keeps the banner off the login screen', async () => {
+      mockAuthSession.mockReturnValue({
+        session: null,
+        loading: false,
+        error: null,
+        login: vi.fn(),
+        logout: vi.fn(),
+        clearError: vi.fn(),
+        swapSession: vi.fn(),
+        pickerTicket: null,
+        isManager: false,
+        isOwner: false,
+      });
+      await renderWithProviders(<AppShell />);
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
+    });
+
+    it('keeps the banner off the session lock screen', async () => {
+      mockStorePos();
+      await renderWithProviders(<AppShell />);
+      await waitFor(() => {
+        expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
+      });
+      await act(() => {
+        idleCallback?.();
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('session-lock-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
+    });
+
+    it('keeps the banner off the customer-facing kiosk route', async () => {
+      // The kiosk route is reached from a sidebar workspace via the nav
+      // (the POS branches swallow every non-kds route), so seed the nav
+      // registry and expand its section like a real session would.
+      clearNavItems();
+      registerNavItem({ route: 'kiosk', label: 'Kiosk', section: 'tools' });
+      localStorage.setItem('app-sidebar-expanded', 'tools');
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: 'admin',
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      await renderWithProviders(<AppShell />);
+      // AppLayout renders for the sidebar workspace, banner mount included…
+      await waitFor(() => {
+        expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+      });
+      // …then the kiosk route mounts WITHOUT it: customer-facing surface.
+      await userEvent.click(screen.getByRole('button', { name: 'Kiosk' }));
+      await waitFor(() => {
+        expect(screen.getByTestId('kiosk-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
+      localStorage.removeItem('app-sidebar-expanded');
+    });
+  });
+
+  // ── Settings sub-section deep links (Locations → Topology) ──
+
+  describe('settings sub-section deep links', () => {
+    beforeEach(() => {
+      clearPages();
+      registerPage({
+        route: 'settings',
+        component: () => <div data-testid="settings-page-stub" />,
+        label: 'Settings',
+      });
+      window.location.hash = '';
+    });
+
+    afterEach(() => {
+      window.location.hash = '';
+    });
+
+    it('routes a #/settings/<section> hashchange onto the settings page on the admin workspace', async () => {
+      // The Locations dashboard's Configure topology action fires from the
+      // admin workspace while another page (locations) is mounted: no
+      // workspace switch happens, and `settings/topology` is not itself a
+      // registered page — only the settings prefix sync must carry the
+      // shell there, or the deep link silently does nothing.
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: 'admin',
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      await renderWithProviders(<AppShell />);
+      await act(async () => {});
+
+      await act(async () => {
+        window.location.hash = '#/settings/topology?branch=store-1';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-page-stub')).toBeInTheDocument();
+      });
+    });
+
+    it('strips the deep-link query before matching the registered page route', async () => {
+      // `#/settings?x=1` must match the registered `settings` page (the
+      // query belongs to the section, not the route).
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: 'admin',
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      window.location.hash = '#/settings?branch=store-1';
+      await renderWithProviders(<AppShell />);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-page-stub')).toBeInTheDocument();
+      });
     });
   });
 });

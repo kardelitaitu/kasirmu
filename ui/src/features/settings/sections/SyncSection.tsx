@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Localized } from '@fluent/react';
 import { requiredLocalized } from '@/frontend/shared';
 import type { ReactLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type {
   SyncSettingsDto,
   SyncAttemptResult,
@@ -148,6 +150,39 @@ export default function SyncSection({
   l10n,
   addToast,
 }: SyncSectionProps) {
+  // SYNC-03: a destructive pull needs explicit consent. The consent UI is the
+  // app's designed ConfirmDialog — this used to be window.confirm(), which
+  // raised an off-design, unlocalized OS dialog and blocked the event loop.
+  const [confirmPullOpen, setConfirmPullOpen] = useState(false);
+
+  const runPull = async () => {
+    setPulling(true);
+    setPullResult(null);
+    try {
+      const result = await syncPull({ confirmDestructive: true });
+      setPullResult(result);
+      if (result.error) {
+        addToast({ message: result.error, type: 'error' });
+      } else if (result.productsPulled > 0 || result.taxRatesPulled > 0 || result.usersPulled > 0) {
+        addToast({
+          message: l10n.getString('settings-sync-pull-toast-success', { products: result.productsPulled, tax_rates: result.taxRatesPulled, users: result.usersPulled }),
+          type: 'success',
+        });
+      } else {
+        addToast({
+          message: l10n.getString('settings-sync-pull-empty'),
+          type: 'info',
+        });
+      }
+    } catch {
+      const errMsg = l10n.getString('settings-sync-error');
+      setPullResult({ productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: errMsg });
+      addToast({ message: errMsg, type: 'error' });
+    } finally {
+      setPulling(false);
+    }
+  };
+
   return (
     <Card
       shadow="sm"
@@ -453,38 +488,7 @@ export default function SyncSection({
               <Button
                 variant="ghost"
                 loading={pulling}
-                onClick={async () => {
-                  // SYNC-03: destructive pull requires explicit consent — the
-                  // confirmation dialog and the IPC payload are one flow.
-                  if (!window.confirm(requiredLocalized(l10n, 'settings-sync-confirm-overwrite'))) {
-                    return;
-                  }
-                  setPulling(true);
-                  setPullResult(null);
-                  try {
-                    const result = await syncPull({ confirmDestructive: true });
-                    setPullResult(result);
-                    if (result.error) {
-                      addToast({ message: result.error, type: 'error' });
-                    } else if (result.productsPulled > 0 || result.taxRatesPulled > 0 || result.usersPulled > 0) {
-                      addToast({
-                        message: l10n.getString('settings-sync-pull-toast-success', { products: result.productsPulled, tax_rates: result.taxRatesPulled, users: result.usersPulled }),
-                        type: 'success',
-                      });
-                    } else {
-                      addToast({
-                        message: l10n.getString('settings-sync-pull-empty'),
-                        type: 'info',
-                      });
-                    }
-                  } catch {
-                    const errMsg = l10n.getString('settings-sync-error');
-                    setPullResult({ productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: errMsg });
-                    addToast({ message: errMsg, type: 'error' });
-                  } finally {
-                    setPulling(false);
-                  }
-                }}
+                onClick={() => setConfirmPullOpen(true)}
               >
                 <Localized id={pulling ? 'settings-sync-pulling' : 'settings-sync-pull'}>
                   <span>{pulling ? 'Pulling…' : 'Pull from Server'}</span>
@@ -540,6 +544,24 @@ export default function SyncSection({
           </>
         )}
       </div>
+
+      {/* SYNC-03 consent gate for the destructive pull. Replaces window.confirm():
+          themed, localized, non-blocking, and consistent with every other
+          destructive confirmation in the app. */}
+      <ConfirmDialog
+        open={confirmPullOpen}
+        onCancel={() => setConfirmPullOpen(false)}
+        onConfirm={async () => {
+          await runPull();
+          setConfirmPullOpen(false);
+        }}
+        title={requiredLocalized(l10n, 'settings-sync-confirm-pull-title')}
+        message={requiredLocalized(l10n, 'settings-sync-confirm-overwrite')}
+        variant="danger"
+        loading={pulling}
+        confirmLabel={requiredLocalized(l10n, 'settings-sync-pull')}
+        cancelLabel={requiredLocalized(l10n, 'cancel')}
+      />
     </Card>
   );
 }

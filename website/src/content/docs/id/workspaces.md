@@ -3,8 +3,10 @@ title: Ruang Kerja
 description: Pilih fungsi setiap layar — kasir ritel, layanan restoran, dapur, atau back office.
 category: guides
 order: 7
-updated: "2026-08-16"
+updated: "2026-09-08"
 ---
+
+<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIALLY REPAIRED - UNREVIEWED TRANSLATION (1 finding) · Indonesian counterpart of en/workspaces.md; first audit evidence. One navigation pointer corrected, and it is the same defect the English page had: Pengaturan -> Staf. Staff is registered in ui/src/features/staff/register.tsx with section: tools, and nothing under ui/src/features/settings/ references the staff route. The replacement uses the app's own localized labels from shared.id.ftl (nav-staff = Staf, nav-section-tools = Alat) rather than invented terms. CAVEAT: the Indonesian wording is mine, composed from this page's surrounding patterns, NOT reviewed by a native speaker or the locale owner - if the phrasing is wrong, reword it; the fact (Staff lives under Alat, not Pengaturan) is verified against the code and should survive. Found by .agents/skills/docs-auditor/scripts/check-nav-paths.py, which sweeps every bolded nav path in both locales against the nav registry. -->
 
 ## Pemilih ruang kerja
 
@@ -25,7 +27,8 @@ Anda berada:
 Setiap anggota staf hanya dapat membuka ruang kerja yang ditugaskan padanya —
 staf kasir biasanya ditugaskan ruang kerja POS, staf dapur Tampilan Dapur.
 Kartu yang tidak bisa Anda buka ditampilkan nonaktif, dan manajer ke atas
-tidak dibatasi penugasan. Penugasan diatur di **Pengaturan → Staf**. Lihat
+tidak dibatasi penugasan. Penugasan diatur di layar **Staf**, yang berada di bagian
+**Alat** (bukan di Pengaturan). Lihat
 [Peran Pengguna](../user-roles/).
 
 ## Sematkan & peluncuran cepat
@@ -61,3 +64,5 @@ diluncurkan.
 dikunci untuk layar tanpa pengawas. **Laporan** juga bukan ruang kerja:
 dasbor penjualan dan analitik berada di dalam ruang kerja Admin, pada layar
 **Laporan**.
+
+> last audited 08-09-26 by docs-auditor

@@ -1,7 +1,7 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: static data tables only (no unsafe/unwrap/expect) — B-1 CLOSED: Manager and Admin presets now grant terminals:read explicitly (view follows manage, never a family wildcard), pinned by the terminal_read_follows_terminal_manage_b1 test alongside the six ADR #35 presets (Owner=*; Manager broad; Staff checkout-only; Admin explicit, never wildcard, no staff:delete; Auditor read-only; Custom empty); ALL_ENFORCED (83 keys) still bidirectionally anchored to the registry by the 62-test inventory suite; evidence: 317 + 4 platform-core tests green
+findings: static data tables only (no unsafe/unwrap/expect) — B-1 CLOSED: Manager and Admin presets now grant terminals:read explicitly (view follows manage, never a family wildcard), pinned by the terminal_read_follows_terminal_manage_b1 test alongside the six ADR #35 presets (Owner=*; Manager broad; Staff checkout-only; Admin explicit, never wildcard, no staff:delete; Auditor read-only; Custom empty); ALL_ENFORCED (83 keys at audit; 84 since the 2026-09-07 memo:stop ruling) still bidirectionally anchored to the registry by the inventory suite; evidence: 317 + 4 platform-core tests green
 next: none — campaign closed for this file | perf: n/a — compile-time constants
 */
 //! Built-in role presets and the enforced-permission inventory for
@@ -18,6 +18,25 @@ next: none — campaign closed for this file | perf: n/a — compile-time consta
 use super::RolePreset;
 use super::builtin_roles;
 use super::permissions;
+/// Whether `id` names a preset role rather than an authored one.
+///
+/// The preset table is the authority, so this cannot disagree with what
+/// seeding writes: the [`RolePreset`] ids are exactly the rows
+/// `Store::seed_default_roles` upserts, re-syncing name, description and
+/// permissions from the preset on every run. A hand-edited grant list on
+/// one of those ids is therefore destroyed the next time seeding runs —
+/// which is reachable from the UI (`seed_default_roles_scoped`), not only
+/// from first-run bootstrap. Custom-role authoring refuses these ids so
+/// that no user-authored state can sit under a row the seeder owns.
+///
+/// Note `role-custom` is itself a preset (the empty-grant placeholder the
+/// role picker offers), so "custom" in a role's *name* does not make the
+/// row authored. Only ids outside this table are.
+#[must_use]
+pub fn is_builtin_role_id(id: &str) -> bool {
+    ROLE_PRESETS.iter().any(|preset| preset.id == id)
+}
+
 /// All built-in role presets bundled together for bulk seeding.
 pub const ROLE_PRESETS: &[RolePreset] = &[
     RolePreset {
@@ -104,6 +123,10 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::TERMINALS_READ,
             permissions::KDS_VIEW,
             permissions::KDS_UPDATE,
+            // Phase 2 Memo lifecycle: Location Memo is manager+ within the
+            // assignment scope (Organization Memo stays owner/admin, gated
+            // by the memo surface on top of this key).
+            permissions::MEMO_WRITE,
         ],
     },
     RolePreset {
@@ -216,6 +239,18 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::PLUGINS_MANAGE,
             permissions::KDS_VIEW,
             permissions::KDS_UPDATE,
+            // Phase 1 §F/§I keys: Admin authors both Memo types and mutates
+            // topology (Owner holds these via the global wildcard). The
+            // topology commands' gate switch from staff:update to this key
+            // is the §I enforcement slice; the grant lands first so the
+            // switch cannot lock Admin out.
+            permissions::MEMO_WRITE,
+            // Memo early-stop ruling (2026-09-07, option A2): stopping
+            // another author's Memo is Owner/Admin — Manager authors can
+            // stop their own via the command's author short-circuit.
+            permissions::MEMO_STOP,
+            permissions::OPERATOR_IMPERSONATE,
+            permissions::TOPOLOGY_WRITE,
         ],
     },
     RolePreset {
@@ -234,6 +269,9 @@ pub const ROLE_PRESETS: &[RolePreset] = &[
             permissions::CUSTOMERS_VIEW,
             permissions::LOYALTY_VIEW,
             permissions::KDS_VIEW,
+            // AP read-only visibility for audit (payment-methods-plan §2c:
+            // payables is Owner-only except view, which the Auditor holds).
+            permissions::PAYABLES_VIEW,
         ],
     },
     RolePreset {
@@ -337,4 +375,12 @@ pub const ALL_ENFORCED: &[&str] = &[
     permissions::REFERENCE_READ,
     permissions::PLAN_READ,
     permissions::DATA_EXPORT,
+    permissions::MEMO_WRITE,
+    permissions::MEMO_STOP,
+    permissions::TOPOLOGY_WRITE,
+    permissions::PAYABLES_VIEW,
+    permissions::PAYABLES_CREATE,
+    permissions::PAYABLES_SETTLE,
+    permissions::PAYABLES_WRITEOFF,
+    permissions::OPERATOR_IMPERSONATE,
 ];

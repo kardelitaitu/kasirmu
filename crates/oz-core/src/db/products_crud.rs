@@ -10,6 +10,8 @@
 //! Invariants: SKU uniqueness per tenant; money fields are i64 minor
 //! units; writes run inside transactions; version CAS returns Conflict.
 use super::*;
+use crate::downgrade::QuotaDimension;
+use crate::subscription::SubscriptionTier;
 
 // ── Product CRUD ─────────────────────────────────────────────────────
 
@@ -197,6 +199,23 @@ impl Store<'_> {
         }
     }
 
+    /// Enforce the subscription tier's product/menu-item limit before
+    /// creating a product (subscription-tiers.md §Numeric Limits —
+    /// Free 200 / Plus 500 / Pro 1,000 / Premium 10,000 / Enterprise
+    /// unlimited). The count runs against the products table of the
+    /// database this [`Store`] wraps (per-location catalog).
+    ///
+    /// When the tier's `max_products()` cap is reached, returns
+    /// [`QuotaError::ProductLimit`] (surfaced as
+    /// `SubscriptionLimitExceeded`, which the UI maps to an upgrade CTA).
+    /// Unlimited tiers (`None`) pass.
+    pub fn enforce_product_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_products`), same products count (`count_products`), same
+        // `ProductLimit` error.
+        self.enforce_creation_quota(QuotaDimension::Products, tier)
+    }
+
     /// Insert a new product and optionally an inventory row.
     /// `product_type` defaults to `"retail"` when `None`.
     #[allow(clippy::too_many_arguments)]
@@ -326,6 +345,31 @@ impl Store<'_> {
             Ok(_) => {}
         }
 
+        // W4-S4: authoritative in-tx quota re-check. The row above is visible
+        // to this same connection inside the transaction, so `current >
+        // limit` is exactly the legacy `pre-insert current >= limit`
+        // predicate — and the write lock is already held, which is what
+        // closes the TOCTOU the pre-tx fast-path gate cannot (under WAL a
+        // pre-insert count would read only its snapshot). The tier is the one
+        // the caller's pre-tx gate armed on this Store — a core-side
+        // re-resolution could diverge (desktop dev Free→Premium shim).
+        let tier = self.take_armed_quota(QuotaDimension::Products);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Products.limit_for(t))
+        {
+            let current: i64 = tx.query_row("SELECT COUNT(*) FROM products", [], |r| r.get(0))?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::ProductLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
+
         // Service products never get inventory rows — they have unlimited stock.
         if initial_stock > 0 && product_type != "service" {
             tx.execute(
@@ -355,7 +399,17 @@ impl Store<'_> {
             cache.invalidate_product(sku.trim());
         }
 
-        let parsed_pt = crate::ProductType::parse_str(product_type).unwrap_or_default();
+        // The string written above is the caller's verbatim, so an unmapped
+        // value can already be committed by the time we get here. The insert
+        // succeeded, so keep returning the row and let the helper warn. Note
+        // `None` from the caller became "retail" at the unwrap_or above and is
+        // deliberately passed as Some: that is the documented default, not a
+        // failed read.
+        let parsed_pt = crate::ProductType::parse_stored_or_default(
+            Some(product_type),
+            sku.trim(),
+            "Store::create_product_with_attributes",
+        );
         Ok(Product {
             id,
             sku: Sku::new(sku.trim()),
@@ -624,6 +678,7 @@ impl Store<'_> {
             cache.invalidate_product(sku);
         }
 
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

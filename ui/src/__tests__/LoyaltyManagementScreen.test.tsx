@@ -484,6 +484,7 @@ describe('C2.2 loyalty module teaser (Pro → Premium)', () => {
   afterEach(() => {
     vi.mocked(useSubscription).mockImplementation(() => ({
       caps: null,
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     }));
@@ -492,6 +493,7 @@ describe('C2.2 loyalty module teaser (Pro → Premium)', () => {
   it('locks the screen with an animated preview + upgrade CTA below Premium', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', supportsLoyalty: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -506,6 +508,7 @@ describe('C2.2 loyalty module teaser (Pro → Premium)', () => {
   it('renders the live UI when the tier supports loyalty', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'premium', supportsLoyalty: true }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

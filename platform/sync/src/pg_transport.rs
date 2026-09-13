@@ -385,12 +385,20 @@ impl PgTransport {
             })
             .collect();
 
+        // The scope and validity-window columns are selected here because a
+        // scoped rate that travels WITHOUT its scope lands as NULL at the
+        // branch, and NULL scope IS the tenant-global answer — one location's
+        // rate would then price every location. Absence is not neutral in this
+        // table.
         let tax_rates = tx
             .query(
                 "SELECT id, name, rate_bps,
                         (is_default::TEXT IN ('1', 't', 'true')) AS is_default,
                         (is_inclusive::TEXT IN ('1', 't', 'true')) AS is_inclusive,
-                        created_at::TEXT, updated_at::TEXT
+                        created_at::TEXT, updated_at::TEXT,
+                        legal_entity_id, location_id,
+                        effective_from, effective_to,
+                        rounding_mode
                  FROM tax_rates
                  WHERE tenant_id = $1
                  ORDER BY id ASC",
@@ -407,6 +415,15 @@ impl PgTransport {
                 is_inclusive: row.get("is_inclusive"),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
+                legal_entity_id: row.get("legal_entity_id"),
+                location_id: row.get("location_id"),
+                effective_from: row.get("effective_from"),
+                effective_to: row.get("effective_to"),
+                // Option-read so a NULL from any hub state lands as the ''
+                // sentinel rather than an error.
+                rounding_mode: row
+                    .get::<_, Option<String>>("rounding_mode")
+                    .unwrap_or_default(),
             })
             .collect();
 

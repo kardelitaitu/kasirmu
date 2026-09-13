@@ -123,3 +123,138 @@ fn export_dto_serialize_has_all_fields() {
     assert_eq!(json["requested_by"], "user-1");
     assert!(json["csv"].as_str().unwrap().starts_with('\u{FEFF}'));
 }
+
+// ── the Premium+ tier gate (fix: blocking_lock panicked in every command) ──
+//
+// `require_audit_tier` used `state.db.blocking_lock()` on a tokio Mutex.
+// tokio 1.49 implements it as `future::block_on(self.lock())`, which panics
+// unconditionally when the current thread is driving async tasks — so every
+// audit command was a guaranteed panic on first real use. Nothing caught it:
+// no Rust test called these commands, and the E2E dev-mock answers the invoke
+// in JavaScript without running Rust. These are those missing tests, and they
+// fail with the panic if the gate is ever reverted.
+
+use platform_core::StoreDatabaseManager;
+use tauri::Manager as _;
+
+/// Global DB with an owner (all permissions) on the given tier.
+fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
+    let conn = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
+        [tier_key],
+    )
+    .unwrap();
+    conn
+}
+
+/// An app whose `tok` session is the owner, with a real store DB behind it.
+fn app_for(tier_key: &str) -> tauri::App<tauri::test::MockRuntime> {
+    let conn = seeded_conn(tier_key);
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager =
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "tok".into(),
+        oz_core::session::SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+fn page_args() -> ListAuditLogScopedArgs {
+    ListAuditLogScopedArgs {
+        limit: 50,
+        outcome: None,
+        query: None,
+        before_created_at: None,
+        before_id: None,
+    }
+}
+
+#[tokio::test]
+async fn list_command_passes_the_tier_gate_without_panicking() {
+    let app = app_for("premium");
+    let page = list_audit_log_scoped("tok".into(), page_args(), app.state()).await;
+    assert!(page.is_ok(), "{:?}", page.err());
+    assert_eq!(page.unwrap().total, 0);
+}
+
+#[tokio::test]
+async fn review_status_command_passes_the_tier_gate_without_panicking() {
+    let app = app_for("premium");
+    let status = get_audit_review_status_scoped("tok".into(), app.state()).await;
+    assert!(status.is_ok(), "{:?}", status.err());
+}
+
+#[tokio::test]
+async fn export_command_passes_the_tier_gate_without_panicking() {
+    let app = app_for("premium");
+    let exported = export_audit_log_scoped(
+        "tok".into(),
+        ExportAuditLogArgs {
+            outcome: None,
+            query: None,
+        },
+        app.state(),
+    )
+    .await;
+    assert!(exported.is_ok(), "{:?}", exported.err());
+}
+
+#[tokio::test]
+async fn deprecated_list_command_passes_the_tier_gate_without_panicking() {
+    // The fifth call site: the non-scoped command is deprecated for the UI but
+    // still live, still gated, and was panicking exactly like the others.
+    let app = app_for("premium");
+    let entries = list_audit_log(
+        ListAuditLogArgs {
+            limit: 50,
+            offset: 0,
+        },
+        app.state(),
+    )
+    .await;
+    assert!(entries.is_ok(), "{:?}", entries.err());
+    assert!(entries.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_gate_denies_a_free_tier_session_without_panicking() {
+    // The tablet passes debug_upgrade: false to the entitlement read, so a
+    // Free row really is Free here — even in a debug build. This is the
+    // per-client divergence the desktop cannot test (its dev promotion turns
+    // Free into Premium), and it proves the gate still refuses rather than
+    // merely no longer panicking.
+    let app = app_for("free");
+    let denied = list_audit_log_scoped("tok".into(), page_args(), app.state()).await;
+    match denied {
+        Err(AppError::PermissionDenied(msg)) => assert!(
+            msg.contains("Premium"),
+            "expected the tier refusal, got: {msg}"
+        ),
+        other => panic!("expected a Premium tier refusal, got {other:?}"),
+    }
+}

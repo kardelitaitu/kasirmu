@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   topologyEditorGraphReducer,
   type TopologyEditorGraphState,
-} from '@/features/stores/nodeTopologyEditorState';
+} from '@/features/locations/nodeTopologyEditorState';
 
 type Node = { id: string };
 type Wire = { id: string };

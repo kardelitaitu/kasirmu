@@ -1,0 +1,4 @@
+{
+  "max_exhaustive_deps": 4,
+  "_note": "Ratchet cap for react-hooks/exhaustive-deps warnings. Lower it whenever a stale closure is fixed; never raise it to make the build pass -- each unit is a callback that can capture a stale sessionToken and read or write the wrong store (item 69). Set to 5 after item 70 fixed swapSessionToken's captured picker_ticket (12 -> 7 -> 5). Lowered to 4 when Tooltip.tsx's portal clamp effect gained its missing `align` dependency. The 4 that remain are individually assessed as correct-as-written or cosmetic: StaffLoginScreen.tsx:170, KdsScreen.tsx:372, NodeTopologyEditor.tsx:2220 and :3242."
+}

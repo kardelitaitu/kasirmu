@@ -7,7 +7,7 @@ import { useSyncConnection } from '@/hooks/useSyncConnection';
 import { requiredLocalized } from '@/frontend/shared';
 
 /** "dd Month hh:mm" — the prototype footer clock format. */
-function formatClock(date: Date, locale: string): string {
+export function formatClock(date: Date, locale: string): string {
   try {
     return new Intl.DateTimeFormat(locale, {
       day: '2-digit',

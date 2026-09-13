@@ -257,9 +257,9 @@
   },
   "download": {
     "title": "Unduh OZ-POS",
-    "subtitle": "Versi 0.0.36 — gratis selamanya, tanpa pendaftaran.",
+    "subtitle": "Versi 0.0.37 — gratis selamanya, tanpa pendaftaran.",
     "version": "Versi saat ini",
-    "versionValue": "0.0.36",
+    "versionValue": "0.0.37",
     "platformsTitle": "Pilih platform Anda",
     "requirementsTitle": "Persyaratan sistem",
     "requirements": [

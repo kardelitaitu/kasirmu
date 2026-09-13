@@ -58,6 +58,29 @@ impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
         })
         .to_string();
 
+        // OUTBOX GUARD: the two wired settlement doors (sales_checkout.rs
+        // :527 and sales_lifecycle.rs :470) now write this row INSIDE the
+        // sale transaction, so by the time this handler runs the row already
+        // exists and is committed, and enqueueing again would push the sale
+        // twice. The probe keys on the sale id inside the payload, not on the
+        // payload bytes: the two writers build the JSON from different sources
+        // (the Sale struct vs the event), and a shape drift must not turn
+        // "skip" into "duplicate". Lane one - the legacy complete_sale
+        // command (create_sale + two update_sale_status calls, no transaction
+        // spanning completion) - is deliberately NOT wired and has no
+        // in-transaction row, so it still lands here. This handler is that
+        // lane's only writer, not a stale second writer.
+        if store
+            .has_pending_outbox_row_for_sale("complete_sale", &event.sale_id)
+            .map_err(|e| anyhow::anyhow!("sync enqueuer: outbox probe failed: {e}"))?
+        {
+            info!(
+                sale_id = %event.sale_id,
+                "sync enqueuer: outbox row already committed with the sale; not enqueuing"
+            );
+            return Ok(());
+        }
+
         // P-2: Sale completions are Critical priority — they must
         // propagate before inventory or settings changes.
         store
@@ -200,6 +223,32 @@ impl EventHandler<SaleCompleted> for AuditLogHandler {
             .lock()
             .map_err(|e| anyhow::anyhow!("audit handler: db lock failed: {e}"))?;
         let store = Store::new(&conn);
+
+        // AUDIT GUARD: the two wired settlement doors (sales_checkout.rs,
+        // sales_lifecycle.rs - the seat right next to
+        // enqueue_sale_outbox_in_tx) now write this row INSIDE the sale
+        // transaction, so by the time this handler runs the row already
+        // exists and is committed, and writing again would double it. The
+        // probe keys on (action, target_id) regardless of outcome - the
+        // audit-lane mirror of SaleSyncEnqueuer's outbox guard above. Lane
+        // one - the legacy complete_sale command (create_sale + two
+        // update_sale_status calls, no transaction spanning completion) -
+        // is deliberately NOT wired and has no in-transaction row, so it
+        // still lands here. This handler is that lane's only writer.
+        //
+        // ACTOR DIVERGENCE (deliberate, documented on both ends - see the
+        // wired doors): rows that land here keep the empty-string user_id
+        // below, because SaleCompleted carries no actor; the wired doors
+        // stamp sale.user_id. Same action, two actor shapes in the table.
+        if Store::has_audit_row_for(&conn, "sale.completed", &event.sale_id)
+            .map_err(|e| anyhow::anyhow!("audit handler: audit probe failed: {e}"))?
+        {
+            info!(
+                sale_id = %event.sale_id,
+                "audit handler: sale.completed row already committed with the sale; not duplicating"
+            );
+            return Ok(());
+        }
 
         let details = serde_json::json!({
             "sale_id": event.sale_id,

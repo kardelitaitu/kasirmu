@@ -28,6 +28,19 @@ const SALES_DIR = path.resolve(process.cwd(), 'src', 'features', 'sales');
 const TSX_FILE = 'PosScreen.tsx';
 
 /**
+ * Additional TSX files whose class names belong to the cart surface: the
+ * presentation components extracted out of PosScreen.tsx byte-for-byte.
+ * Mirrors the `additionalTsx` precedent in screenExtraction.test.ts:680-686.
+ */
+const ADDITIONAL_TSX_FILES = [
+  'components/CartLineItem.tsx',
+  'components/CourseSelectorBar.tsx',
+  'components/CartFooterTotals.tsx',
+  'components/CartActionBar.tsx',
+  'components/CartPanel.tsx',
+];
+
+/**
  * All cart-surface CSS files that own class-selector rules.
  * `.brand.css` is excluded — it only carries `--brand-*` variable
  * declarations and a single `.pos-cart-panel` cascade, which is a
@@ -45,10 +58,15 @@ const CSS_FILES = [
 // ── Tests ─────────────────────────────────────────────────────────
 
 describe('PosScreen CSS class integrity', () => {
-  const tsxContent = fs.readFileSync(
+  let tsxContent = fs.readFileSync(
     path.join(SALES_DIR, TSX_FILE),
     'utf8',
   );
+  // Also scan additional TSX files (e.g. extracted section components)
+  for (const extraTsx of ADDITIONAL_TSX_FILES) {
+    const extraPath = path.join(SALES_DIR, extraTsx);
+    tsxContent += fs.readFileSync(extraPath, 'utf8');
+  }
   const used = extractUsedClassNames(tsxContent);
 
   // Build reverse map: className -> [file1, file2, ...]

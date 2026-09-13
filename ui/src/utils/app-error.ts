@@ -120,10 +120,25 @@ const RETRYABLE_CORE = new Set(['platform']);
 export function classifyRetry(err: AppError | unknown): RetryClass {
   const typed = parseAppError(err);
   if (!typed) {
-    // Unrecognized — look for network-ish keywords before giving up.
+    // Unrecognized — the message text is all that is left, so read it
+    // with the same precedence the checkout scanner had before R3
+    // deleted it: a message naming a terminal condition is NOT an
+    // invitation to re-submit a payment, even when it also mentions
+    // transport words ('connection closed after the charge was already
+    // captured' must never offer Retry).
     const msg = typeof err === 'string' ? err : err instanceof Error ? err.message : '';
     const lower = msg.toLowerCase();
-    return /timeout|timed out|network|econnrefused|etimedout|econnreset|connection/i.test(lower)
+    if (/declined|invalid|not found|insufficient|unauthorized|forbidden|already/i.test(lower)) {
+      return 'non-retryable';
+    }
+    // Transient transport/infrastructure vocabulary. Deliberately absent:
+    // 'try again' — this module's OWN user-safe copy ends non-retryable
+    // messages with it ("…changed by someone else. Refresh and try
+    // again."), so treating the phrase as a retry signal once made the
+    // checkout classify its own fallback text as retryable.
+    return /timeout|timed out|network|econnrefused|etimedout|econnreset|enotfound|connection|server error|unavailable|offline/i.test(
+      lower,
+    )
       ? 'retryable'
       : 'non-retryable';
   }

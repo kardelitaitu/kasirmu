@@ -4,8 +4,8 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: exemplary — 83-key registry with family/sensitivity classification per ADR #35 D2/D3 (14 sensitive keys); validate_grant fail-closed (unregistered key, sensitive-under-family-wildcard, global * reserved for the Owner seed); G-3 CLOSED: staff:delete is documented RESERVED (no enforcement consumer; deactivation rides staff:update; any future hard-delete surface must gate on this key) in both the registry entry and the rbac.rs catalog constant; the Section-D verification held — hand-edited DB rows carrying a family wildcard for a sensitive key still deny at the registry-aware gate (db/staff.rs:122-125), so the creation-time-only sensitivity invariant has an enforcement-side backstop
-next: none — campaign closed for this file | perf: linear registry scan — fine at 83 entries
+findings: exemplary — 84-key registry with family/sensitivity classification per ADR #35 D2/D3 (15 sensitive keys); validate_grant fail-closed (unregistered key, sensitive-under-family-wildcard, global * reserved for the Owner seed); G-3 CLOSED: staff:delete is documented RESERVED (no enforcement consumer; deactivation rides staff:update; any future hard-delete surface must gate on this key) in both the registry entry and the rbac.rs catalog constant; the Section-D verification held — hand-edited DB rows carrying a family wildcard for a sensitive key still deny at the registry-aware gate (db/staff.rs:122-125), so the creation-time-only sensitivity invariant has an enforcement-side backstop
+next: none — campaign closed for this file | perf: linear registry scan — fine at 84 entries
 */
 //!
 //! Growing the system means adding keys here — never editing roles. Sensitive
@@ -580,6 +580,57 @@ pub const REGISTRY: &[PermissionEntry] = &[
         family: "data",
         sensitive: true,
         description: "Create a full data backup (bulk export of all records).",
+    },
+    // ── memo (Phase 1 §F / Phase 2 Memo lifecycle) ───────────────
+    PermissionEntry {
+        key: "memo:write",
+        family: "memo",
+        sensitive: false,
+        description: "Author or publish a Memo (Organization or Location).",
+    },
+    PermissionEntry {
+        key: "memo:stop",
+        family: "memo",
+        sensitive: false,
+        description: "Early-stop a published Memo (any author's); the author can always stop their own.",
+    },
+    // ── topology (Phase 1 §I) ────────────────────────────────────
+    PermissionEntry {
+        key: "topology:write",
+        family: "topology",
+        sensitive: false,
+        description: "Mutate the topology graph (Apply, location creation, rename, templates, property edits).",
+    },
+    // ── payables (Phase 4 AP / Hutang — docs/plans/payment-methods-plan.md) ──
+    PermissionEntry {
+        key: "payables:view",
+        family: "payables",
+        sensitive: false,
+        description: "View vendor bills, due dates, and the payables aging report.",
+    },
+    PermissionEntry {
+        key: "payables:create",
+        family: "payables",
+        sensitive: false,
+        description: "Raise a payable — the 'On Account' option at purchasing stock-in.",
+    },
+    PermissionEntry {
+        key: "payables:settle",
+        family: "payables",
+        sensitive: false,
+        description: "Record a payment to the vendor against a payable (partial or full).",
+    },
+    PermissionEntry {
+        key: "payables:writeoff",
+        family: "payables",
+        sensitive: true,
+        description: "Forgive a vendor debt without payment (money destruction — audited).",
+    },
+    PermissionEntry {
+        key: "operator:impersonate",
+        family: "operator",
+        sensitive: true,
+        description: "Act as another user within the operator's authorized tenant scope for support; 'operator:' names the capability class (support impersonation), not any vendor/cloud-operator status.",
     },
 ];
 

@@ -19,9 +19,28 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+// The screen calls exactly two api functions: lookupBundleBySku (@/api/bundles:176)
+// and lookupProductBySkuScoped (@/api/products:182). This mock used to provide
+// `searchProducts` -- a name @/api/products has never exported in either form -- plus
+// `listProducts`, which the screen does not import. So it looked like product-lookup
+// coverage for the product lookup screen while answering neither of its two calls, and
+// @/api/bundles was not mocked at all.
+//
+// It passes only because an a11y test renders without triggering a lookup, so neither
+// unmocked call is ever reached and the real modules never get exercised. That is the
+// latent half of this class: the failure appears the moment anyone adds an interaction
+// test here.
+//
+// `listProducts` is kept deliberately: vi.mock replaces the whole module, so a child
+// component importing it would get undefined if I removed it on the grounds that this
+// screen does not use it.
 vi.mock('@/api/products', () => ({
-  searchProducts: vi.fn(() => Promise.resolve([])),
   listProducts: vi.fn(() => Promise.resolve([])),
+  lookupProductBySkuScoped: vi.fn(() => Promise.resolve(null)),
+}));
+
+vi.mock('@/api/bundles', () => ({
+  lookupBundleBySku: vi.fn(() => Promise.resolve(null)),
 }));
 
 vi.mock('@/api/branding', () => ({

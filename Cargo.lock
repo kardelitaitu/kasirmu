@@ -1984,7 +1984,7 @@ dependencies = [
 
 [[package]]
 name = "foundation"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "proptest",
@@ -3595,7 +3595,7 @@ dependencies = [
 
 [[package]]
 name = "modules-crm"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3612,7 +3612,7 @@ dependencies = [
 
 [[package]]
 name = "modules-currency"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "foundation",
  "oz-core",
@@ -3628,7 +3628,7 @@ dependencies = [
 
 [[package]]
 name = "modules-giftcards"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "foundation",
@@ -3641,7 +3641,7 @@ dependencies = [
 
 [[package]]
 name = "modules-inventory"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3658,7 +3658,7 @@ dependencies = [
 
 [[package]]
 name = "modules-kitchen"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "foundation",
@@ -3671,7 +3671,7 @@ dependencies = [
 
 [[package]]
 name = "modules-loyalty"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3688,7 +3688,7 @@ dependencies = [
 
 [[package]]
 name = "modules-promotions"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "foundation",
@@ -3701,7 +3701,7 @@ dependencies = [
 
 [[package]]
 name = "modules-purchasing"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "foundation",
@@ -3714,7 +3714,7 @@ dependencies = [
 
 [[package]]
 name = "modules-reporting"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "modules-sales"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3748,7 +3748,7 @@ dependencies = [
 
 [[package]]
 name = "modules-settings"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3765,7 +3765,7 @@ dependencies = [
 
 [[package]]
 name = "modules-staff"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3783,7 +3783,7 @@ dependencies = [
 
 [[package]]
 name = "modules-tax"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3800,7 +3800,7 @@ dependencies = [
 
 [[package]]
 name = "modules-terminal"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4337,7 +4337,7 @@ dependencies = [
 
 [[package]]
 name = "oz-api"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -4363,8 +4363,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "oz-bridge"
+version = "0.0.37"
+dependencies = [
+ "chrono",
+ "foundation",
+ "hex",
+ "hmac 0.12.1",
+ "image",
+ "lettre",
+ "modules-currency",
+ "oz-core",
+ "oz-hal",
+ "oz-lua",
+ "oz-plugin",
+ "oz-reporting",
+ "oz-security",
+ "platform-core",
+ "platform-kernel",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+ "webp",
+]
+
+[[package]]
 name = "oz-cli"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "argon2",
@@ -4386,7 +4417,7 @@ dependencies = [
 
 [[package]]
 name = "oz-cloud-server"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "axum 0.8.9",
  "bytes",
@@ -4394,6 +4425,7 @@ dependencies = [
  "console-subscriber",
  "deadpool-postgres",
  "embed-resource",
+ "foundation",
  "hex",
  "hmac 0.12.1",
  "http-body-util",
@@ -4401,6 +4433,7 @@ dependencies = [
  "oz-api",
  "oz-core",
  "oz-logging",
+ "oz-payment",
  "platform-sync",
  "prometheus",
  "redis",
@@ -4421,11 +4454,12 @@ dependencies = [
  "tower-http",
  "tracing",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
 name = "oz-core"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -4466,7 +4500,7 @@ dependencies = [
 
 [[package]]
 name = "oz-crypto"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -4479,7 +4513,7 @@ dependencies = [
 
 [[package]]
 name = "oz-hal"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "async-trait",
  "oz-core",
@@ -4492,8 +4526,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "oz-lan"
+version = "0.0.37"
+dependencies = [
+ "anyhow",
+ "foundation",
+ "hmac 0.12.1",
+ "oz-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "snow",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "oz-local-api"
+version = "0.0.37"
+dependencies = [
+ "axum 0.8.9",
+ "chrono",
+ "oz-api",
+ "oz-core",
+ "platform-core",
+ "rand 0.8.6",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "oz-logging"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "chrono",
  "filetime",
@@ -4508,7 +4577,7 @@ dependencies = [
 
 [[package]]
 name = "oz-lua"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "mlua",
  "serde",
@@ -4519,7 +4588,7 @@ dependencies = [
 
 [[package]]
 name = "oz-media"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "async-trait",
  "image",
@@ -4530,14 +4599,16 @@ dependencies = [
 
 [[package]]
 name = "oz-notification"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "async-trait",
  "foundation",
  "hex",
  "hmac 0.12.1",
+ "lettre",
  "oz-core",
  "reqwest 0.12.28",
+ "rusqlite",
  "serde",
  "serde_json",
  "serial_test",
@@ -4549,7 +4620,7 @@ dependencies = [
 
 [[package]]
 name = "oz-payment"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4570,7 +4641,7 @@ dependencies = [
 
 [[package]]
 name = "oz-plugin"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "chrono",
  "mlua",
@@ -4589,16 +4660,14 @@ dependencies = [
 
 [[package]]
 name = "oz-pos-app"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
- "axum 0.8.9",
  "chrono",
  "foundation",
  "hex",
  "hmac 0.12.1",
  "image",
- "lettre",
  "modules-crm",
  "modules-currency",
  "modules-inventory",
@@ -4610,10 +4679,14 @@ dependencies = [
  "modules-terminal",
  "notify",
  "oz-api",
+ "oz-bridge",
  "oz-core",
  "oz-hal",
+ "oz-lan",
+ "oz-local-api",
  "oz-logging",
  "oz-lua",
+ "oz-notification",
  "oz-plugin",
  "oz-reporting",
  "oz-security",
@@ -4627,7 +4700,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "snow",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -4645,7 +4717,7 @@ dependencies = [
 
 [[package]]
 name = "oz-pos-tablet"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4661,6 +4733,7 @@ dependencies = [
  "modules-staff",
  "modules-tax",
  "modules-terminal",
+ "oz-bridge",
  "oz-core",
  "oz-hal",
  "oz-logging",
@@ -4689,7 +4762,7 @@ dependencies = [
 
 [[package]]
 name = "oz-reporting"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "chrono",
  "oz-core",
@@ -4702,7 +4775,7 @@ dependencies = [
 
 [[package]]
 name = "oz-security"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "chrono",
  "hex",
@@ -4947,7 +5020,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "platform-core"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "argon2",
  "chrono",
@@ -4964,7 +5037,7 @@ dependencies = [
 
 [[package]]
 name = "platform-kernel"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4977,7 +5050,7 @@ dependencies = [
 
 [[package]]
 name = "platform-startup"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5015,7 +5088,7 @@ dependencies = [
 
 [[package]]
 name = "platform-sync"
-version = "0.0.36"
+version = "0.0.37"
 dependencies = [
  "axum 0.8.9",
  "chrono",

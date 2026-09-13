@@ -1,6 +1,16 @@
-// Allow `cfg(feature = "metrics")` from the transitive dependency on
-// `oz-reporting` without requiring platform-startup to declare the feature.
-#![allow(unexpected_cfgs)]
+// No crate-level lint allow lives here any more. There used to be one: an
+// allow for the undeclared-cfg lint, justified as making
+// `cfg(feature = "metrics")` legal because `oz-reporting` enabled it. That
+// premise was false — a dependency's features do not enter this crate's cfg
+// space — and the gate it excused was real but dead: `metrics` was never
+// declared in this crate's Cargo.toml, so the `pub mod server` in
+// `src/metrics.rs` compiled in no build (not even CI's `--all-features`) and
+// `start_metrics_server` had no call site anywhere. Both were retired on
+// 2026-09-12: the file is deleted, its declaration with it, and the feature was
+// not declared to make the code live. The attribute went out the same way,
+// because the one cfg this crate still uses without Cargo knowing about it —
+// the bare `tokio_unstable` that `console.rs` gates on — is now declared in
+// `build.rs` instead of being silenced wholesale.
 /*
 last audited 25-07-26 by RSA-Agent (platform-startup slice A: lib deep read)
 crate: platform-startup | status: SAFE | lint: CLEAN
@@ -34,7 +44,6 @@ pub mod console;
 pub mod event_handlers;
 /// Startup hardware registration from the saved terminal profile.
 pub mod hardware;
-pub mod metrics;
 pub mod rate_sync;
 
 use std::sync::{Arc, Mutex};

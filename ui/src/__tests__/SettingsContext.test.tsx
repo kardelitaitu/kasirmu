@@ -56,17 +56,25 @@ const identityMocks = vi.hoisted(() => ({
 // MUST be mutated in-place, never replaced with = { ... }. Use
 // Object.assign(mocks.receiptSettings, { footer: 'new' }) pattern.
 
-vi.mock('@/api/settings', () => ({
-  getReceiptSettingsScoped: vi.fn(() =>
-    mocks.failReceipt ? Promise.reject(new Error('Receipt fail')) : Promise.resolve({ ...mocks.receiptSettings }),
-  ),
-  getStoreSettingsScoped: vi.fn(() =>
-    mocks.failStore ? Promise.reject(new Error('Store fail')) : Promise.resolve({ ...mocks.storeSettings }),
-  ),
-  getUserPreferencesScoped: vi.fn(() =>
-    mocks.failPrefs ? Promise.reject(new Error('Prefs fail')) : Promise.resolve({ ...mocks.userPreferences }),
-  ),
-}));
+vi.mock('@/api/settings', async () => {
+  const { listen } = await import('@tauri-apps/api/event');
+  return {
+    getReceiptSettingsScoped: vi.fn(() =>
+      mocks.failReceipt ? Promise.reject(new Error('Receipt fail')) : Promise.resolve({ ...mocks.receiptSettings }),
+    ),
+    getStoreSettingsScoped: vi.fn(() =>
+      mocks.failStore ? Promise.reject(new Error('Store fail')) : Promise.resolve({ ...mocks.storeSettings }),
+    ),
+    getUserPreferencesScoped: vi.fn(() =>
+      mocks.failPrefs ? Promise.reject(new Error('Prefs fail')) : Promise.resolve({ ...mocks.userPreferences }),
+    ),
+    // Mirrors the real wrapper in ui/src/api/settings.ts: subscribes through
+    // the Tauri event API (mocked below) so the settings_updated handler is
+    // captured by tauriListenHandler for the event-bus integration tests.
+    onSettingsUpdated: (handler: (payload: unknown) => void) =>
+      listen('settings_updated', (event) => handler(event.payload)),
+  };
+});
 
 vi.mock('@/api/offline', () => ({
   getSyncSettingsScoped: vi.fn(() =>

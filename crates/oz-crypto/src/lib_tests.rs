@@ -216,3 +216,81 @@ fn looks_like_ciphertext_shape_gate() {
     let encrypted = encrypt_api_key("x", "machine").unwrap();
     assert!(looks_like_ciphertext(&encrypted));
 }
+// ── Derivation-selection report ──────────────────────────────────────
+
+// Truth table for the selection answer, exercised WITHOUT touching the process
+// environment: every other test in this binary calls `portable_key`, which
+// reads OZ_MASTER_KEY, so a set_var here would race them.
+fn selection_from_raw(raw: Option<String>) -> bool {
+    match raw {
+        Some(v) => hex::decode(v.trim())
+            .map(|b| b.len() == 32)
+            .unwrap_or(false),
+        None => false,
+    }
+}
+
+#[test]
+fn selection_reports_only_usable_master_values() {
+    let valid = "ab".repeat(32);
+    assert!(
+        !selection_from_raw(None),
+        "unset must report the legacy selection"
+    );
+    assert!(
+        !selection_from_raw(Some(String::new())),
+        "empty must not count as set"
+    );
+    assert!(
+        !selection_from_raw(Some("nope".into())),
+        "non-hex must not count"
+    );
+    assert!(
+        !selection_from_raw(Some(valid[..62].into())),
+        "31 bytes is not a master key"
+    );
+    assert!(
+        !selection_from_raw(Some(valid.clone() + "ab")),
+        "33 bytes is not a master key"
+    );
+    assert!(
+        selection_from_raw(Some(valid.clone())),
+        "64 hex chars is the master selection"
+    );
+    assert!(
+        selection_from_raw(Some("  ".to_string() + &valid + "  ")),
+        "whitespace is trimmed by the same reader the derivation uses"
+    );
+}
+
+/// The report and the derivation must never disagree: the accessor calls the
+/// very reader `portable_key` branches on, so drift is a test failure rather
+/// than an operator misdiagnosis.
+#[test]
+fn accessor_agrees_with_the_reader_the_derivation_uses() {
+    assert_eq!(
+        master_key_derivation_active(),
+        master_key_from_env().is_some(),
+        "the selection report must be the derivation own answer"
+    );
+    assert_eq!(
+        master_key_derivation_active(),
+        selection_from_raw(std::env::var("OZ_MASTER_KEY").ok()),
+        "the selection report must match the value it describes"
+    );
+}
+
+/// The flag tracks the key the portable families actually derive - a selection
+/// report, not a security assertion.
+#[test]
+fn selection_flag_tracks_the_derived_key() {
+    let active = master_key_derivation_active();
+    let legacy_key = portable_key(SMTP_AT_REST_DOMAIN, derive_static_key);
+    let master = master_key_from_env();
+    let selected = portable_key_with(SMTP_AT_REST_DOMAIN, &master, derive_static_key);
+    assert_eq!(
+        active,
+        selected != legacy_key,
+        "the flag must be true exactly when the derived key is not the legacy one"
+    );
+}

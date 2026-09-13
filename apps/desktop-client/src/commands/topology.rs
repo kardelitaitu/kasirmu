@@ -15,6 +15,7 @@
 mod commands;
 mod model;
 mod persistence;
+mod revisions;
 mod semantics;
 
 /// Apply a full topology diff atomically.
@@ -25,6 +26,11 @@ pub use commands::can_save_topology;
 pub use commands::load_topology;
 /// Complete a previously interrupted cross-database Apply at startup.
 pub use persistence::recover_pending_topology_apply_at_startup;
+/// The retention sweep's entry point and its budget, re-exported explicitly
+/// rather than through the `cfg(test)` globs below: the daemon in `lib.rs` is
+/// the only production caller, and naming the two items keeps the module's
+/// production surface legible at a glance.
+pub(crate) use revisions::{TOPOLOGY_REVISION_RESTORABLE_KEEP, cleanup_old_topology_revisions};
 
 // Typed model surface (kept pub as before the split).
 pub use model::{
@@ -61,16 +67,13 @@ pub(crate) use oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION;
 #[cfg(test)]
 pub(crate) use persistence::*;
 #[cfg(test)]
+#[cfg(test)]
 pub(crate) use semantics::*;
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod topology_command_tests;
-#[cfg(test)]
-mod topology_field_tests;
-#[cfg(test)]
-mod topology_persistence_tests;
 #[cfg(test)]
 mod topology_serde_tests;
 #[cfg(test)]

@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths/claims verified) · capabilities/mobile.json exists; Cargo.toml crate-type ["staticlib","cdylib","rlib"] matches; src/commands/ exists; tauri.conf.json has android/minSdkVersion 26; CI-on-main note matches root AGENTS.md policy · the hardcoded ANDROID_NDK_HOME path (27.0.12077973) is a local env hint, not a code-claim error -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths/claims verified) · capabilities/mobile.json exists; Cargo.toml crate-type ["staticlib","cdylib","rlib"] matches; src/commands/ exists; tauri.conf.json has android/minSdkVersion 26; CI-on-main note matches root AGENTS.md policy · the hardcoded ANDROID_NDK_HOME path (27.0.12077973) is a local env hint, not a code-claim error · REV 2 (09-09-26, DSH docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (1 finding) + 2 adjacent CI claims in the same file corrected; the older text above is kept verbatim, including the "CI-on-main note matches root AGENTS.md policy" clause, which the rev-2 note below now contradicts (root AGENTS.md has since been rewritten: dev-ci.yml has NO push trigger). Finding: the Signing section asserted "CI (android.yml / nightly.yml) decodes the base64 keystore secret into gen/android/ and writes this file" — both workflows were renamed to .bak by 23c963303 on 2026-09-02 and GitHub never executes a .bak file, so nothing does this; replaced with the retired file plus the line range where the logic still reads (.github/workflows/android.yml.bak:119-132) and the plain statement that release.yml is desktop-only (.github/workflows/release.yml:24). Also fixed: the CI notes section claimed a CI job "should" build the APK for PRs to main without saying no such job exists, and "The CI-only trigger on main push/pull_request ... feature-branch pushes skip CI" — wrong in both halves (pull_request to main + workflow_dispatch only; a main push runs nothing). Re-verified true: gen/android/app/build.gradle.kts exists and is tracked, capabilities/mobile.json exists, tauri.conf.json still carries android/minSdkVersion 26, crate-type is unchanged. Left alone: the keystore-properties format and the build/flag tables (Tauri CLI behaviour, not a repo claim I can measure here). -->
 
 # Android Development — OZ-POS Tablet
 
@@ -82,10 +82,20 @@ keyAlias=<alias>
 storeFile=/abs/path/to/oz-pos.keystore
 ```
 
-CI (`.github/workflows/android.yml` / `nightly.yml`) decodes the base64
-keystore secret into `gen/android/` and writes this file from
-`KEYSTORE_PASSWORD` / `KEY_ALIAS` secrets. The same two secrets plus
-`ANDROID_KEYSTORE_BASE64` are all that release signing needs.
+**Nothing does this in CI any more.** It used to be done by the `android.yml`
+and `nightly.yml` workflows, which `23c963303` renamed on 2026-09-02 to
+`.github/workflows/android.yml.bak` and `.github/workflows/nightly.yml.bak` —
+GitHub never executes a `.bak` file, so no pipeline decodes the base64 keystore
+secret or writes this file today. The decode logic is still readable in that inert
+file (`.github/workflows/android.yml.bak:119-132`: base64 -d into
+`oz-pos-release.keystore`, then `keyAlias`/`password`/`storeFile` written to
+`keystore.properties` from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` /
+`KEYSTORE_PASSWORD` secrets). The only live workflows are `dev-ci.yml` (PR to
+`main` + `workflow_dispatch`) and `release.yml` (`v*` tags), and `release.yml` is
+desktop-only by design — its own header at `.github/workflows/release.yml:24`
+lists "Mobile (`android.yml.bak` / `ios.yml.bak`). Never part of this file." So
+restoring an Android release build means writing a workflow again; until then,
+signing is local: create `gen/android/keystore.properties` yourself.
 
 ---
 
@@ -144,7 +154,11 @@ and opens the Tauri dev server for hot-reload.
 
 ## CI notes (GitHub Actions)
 
-For PRs targeting `main`, a CI job should:
+**There is no Android CI job.** No live workflow builds an APK: the job that did
+lives in the inert `.github/workflows/android.yml.bak` (retired by `23c963303`,
+2026-09-02), and `dev-ci.yml#static-gates` has no Android or NDK step. So the list
+below is the recipe for whoever restores the workflow, not a description of
+today's CI. For PRs targeting `main`, a CI job should:
 
 1. Install JDK 17, Android SDK 34, NDK 27
 2. `rustup target add aarch64-linux-android`
@@ -153,5 +167,10 @@ For PRs targeting `main`, a CI job should:
 5. `cargo tauri android build --apk --target aarch64`
 6. Upload APK as an artifact
 
-The CI-only trigger on `main` push/pull_request (per root `AGENTS.md`) applies;
-feature-branch pushes skip CI.
+Trigger note (corrected 09-09-26): `dev-ci.yml` fires on `pull_request`
+targeting `main` plus `workflow_dispatch` only — there is **no `push` trigger**, so
+pushing to `main` runs nothing either, and a feature-branch push runs nothing
+until a PR is opened. Root `AGENTS.md` says the same; when this line was written it
+did not.
+
+> last audited 09-09-26 by docs-auditor

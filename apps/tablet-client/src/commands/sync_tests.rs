@@ -114,6 +114,95 @@ fn pull_result_serialize_with_error() {
     assert_eq!(json["error"], "network unreachable");
 }
 
+// ── Sync conflict review DTOs (tablet port of 028056eaae) ─────────
+
+#[test]
+fn list_sync_conflicts_args_default_all_none() {
+    let args = ListSyncConflictsArgs::default();
+    assert!(args.status.is_none());
+    assert!(args.severity.is_none());
+}
+
+#[test]
+fn list_sync_conflicts_args_parse_filters() {
+    let args: ListSyncConflictsArgs =
+        serde_json::from_str(r#"{ "status": "open", "severity": "high" }"#).unwrap();
+    assert_eq!(args.status.as_deref(), Some("open"));
+    assert_eq!(args.severity.as_deref(), Some("high"));
+}
+
+#[test]
+fn resolve_sync_conflict_args_parse() {
+    let args: ResolveSyncConflictArgs =
+        serde_json::from_str(r#"{ "id": "c-17", "resolution": "remote" }"#).unwrap();
+    assert_eq!(args.id, "c-17");
+    assert_eq!(args.resolution, "remote");
+}
+
+#[test]
+fn resolve_sync_conflict_args_missing_resolution_rejected() {
+    let bad = serde_json::from_str::<ResolveSyncConflictArgs>(r#"{ "id": "c-17" }"#);
+    assert!(
+        bad.is_err(),
+        "resolution is required — it decides which side wins"
+    );
+}
+
+#[test]
+fn sync_conflict_dto_roundtrip_untouched_payloads() {
+    // The contract: local/remote payload and vector blobs are transported
+    // verbatim — never parsed, never reformatted client-side.
+    let raw = r#"{
+        "id": "c-42",
+        "entity_type": "stock.adjusted",
+        "entity_id": "sku-9",
+        "local_terminal_id": "tab-1",
+        "local_vector": "{\"tab-1\":3}",
+        "remote_vector": "{\"tab-2\":5}",
+        "local_payload": "{\"qty\":2}",
+        "remote_payload": "{\"qty\":3}",
+        "severity": "high",
+        "status": "open",
+        "resolution": null,
+        "resolved_by": null,
+        "resolved_at": null,
+        "created_at": "2026-09-13T06:00:00Z"
+    }"#;
+    let dto: SyncConflictDto = serde_json::from_str(raw).unwrap();
+    assert_eq!(dto.local_payload, "{\"qty\":2}");
+    assert_eq!(dto.remote_vector, "{\"tab-2\":5}");
+    assert!(dto.resolution.is_none());
+    // Round-trip: serialize back and re-parse — blobs must be byte-stable.
+    let back = serde_json::to_string(&dto).unwrap();
+    let again: SyncConflictDto = serde_json::from_str(&back).unwrap();
+    assert_eq!(again.remote_payload, "{\"qty\":3}");
+    assert_eq!(again.local_vector, dto.local_vector);
+}
+
+#[test]
+fn sync_conflict_dto_resolved_row_parses() {
+    let raw = r#"{
+        "id": "c-43",
+        "entity_type": "stock.adjusted",
+        "entity_id": "sku-10",
+        "local_terminal_id": "tab-1",
+        "local_vector": "{}",
+        "remote_vector": "{}",
+        "local_payload": "{}",
+        "remote_payload": "{}",
+        "severity": "low",
+        "status": "resolved",
+        "resolution": "local",
+        "resolved_by": "manager-a",
+        "resolved_at": "2026-09-13T07:30:00Z",
+        "created_at": "2026-09-13T06:00:00Z"
+    }"#;
+    let dto: SyncConflictDto = serde_json::from_str(raw).unwrap();
+    assert_eq!(dto.status, "resolved");
+    assert_eq!(dto.resolution.as_deref(), Some("local"));
+    assert_eq!(dto.resolved_by.as_deref(), Some("manager-a"));
+}
+
 // ── TDD Bug Hunt: non-atomic sync settings writes ────────────────
 //
 // update_sync_settings_data persists three settings (server_url,
@@ -319,4 +408,147 @@ async fn sync_run_plan_required_keeps_items_pending() {
         OfflineQueueStatus::Pending,
         "plan-gated items must stay pending so they sync after upgrade"
     );
+}
+
+// ── Scoped push marks the STORE queue, not the global one ───────
+//
+// sync_run_scoped reads pending items from the session's store database
+// (resolve_scope → store-<id>.sqlite). Phase 3 used to lock `state.db`
+// (the global connection) instead, so the outcomes were written to a
+// different file's offline_queue: the store row stayed `pending` forever
+// and untouched global rows got marked. Both assertions below pin the
+// invariant — the second one is what catches the original bug.
+
+#[tokio::test]
+async fn sync_run_scoped_marks_store_queue_and_leaves_global_untouched() {
+    use crate::state::AppState;
+    use oz_core::Store;
+    use oz_core::auth;
+    use oz_core::migrations;
+    use oz_core::offline::OfflineQueueStatus;
+    use oz_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake push server (pattern from sync_run_plan_required_...): one
+    // batch push request, one accepted outcome.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let _ = socket.read(&mut buffer).await;
+        let body = r#"{"results":[{"outcome":"accepted"}]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+
+    // Global db carries identity only; the scoped store db is a separate
+    // file the db manager creates below (seed_session pattern,
+    // settings_tests.rs:716).
+    let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "scoped-sync-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // Configure sync + enqueue the pending item through the STORE db —
+    // the queue the device actually writes to (SYNC_MANAGE gate resolves
+    // role-owner's global assignment against the global db).
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("scoped-sync-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        update_sync_settings_data(
+            &db_guard,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        Store::new(&db_guard)
+            .enqueue_offline("complete_sale", r#"{"id":"scoped-sync-mark"}"#)
+            .unwrap();
+    }
+
+    let result = sync_run_scoped("scoped-sync-token".into(), app.state())
+        .await
+        .unwrap();
+    task.await.unwrap();
+
+    assert_eq!(
+        result.synced, 1,
+        "the push must report the store item synced"
+    );
+    assert_eq!(result.failed, 0);
+    assert!(!result.plan_required);
+
+    // Assertion 1 — the STORE row the push read flips to synced.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("scoped-sync-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        let store = Store::new(&db_guard);
+        let items = store.list_all_offline().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].status,
+            OfflineQueueStatus::Synced,
+            "the store row the scoped push read must be marked synced in the store db"
+        );
+        assert_eq!(
+            store.pending_offline_count().unwrap(),
+            0,
+            "pending_sync_count_scoped must drop to zero after the push"
+        );
+    }
+
+    // Assertion 2 — the GLOBAL database queue is untouched. This is the
+    // assertion that would have caught the original bug: Phase 3 used to
+    // write its marks here instead of the store db.
+    {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().await;
+        let items = Store::new(&db).list_all_offline().unwrap();
+        assert!(
+            items.is_empty(),
+            "global offline_queue must not receive scoped marks, got {items:?}"
+        );
+    }
 }

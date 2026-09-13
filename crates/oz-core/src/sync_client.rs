@@ -1,9 +1,9 @@
 //! Cloud sync client — pushes pending offline queue items to a remote server.
 /*
-last audited 25-07-26 by RSA-Agent (oz-core slice C1: sync_client deep read)
+last audited 25-07-26 by RSA-Agent (oz-core slice C1: sync_client deep read) | 2026-09-06 DSH assist pass: stamp corrected only, no code change (COR-31 finding was stale)
 crate: oz-core | status: SAFE | lint: CLEAN
-findings: sync-auth-hardening P1-P4 exemplary — typed 401 classification (refresh-once-on-expiry vs invalid-as-config-problem), terminal PlanRequired state (no retry/quarantine), admin-key gating (P2), client-credentials path (P3); SYNC-06 credential hygiene exemplary — snapshot users upsert with SNAPSHOT_PIN_HASH_PLACEHOLDER (never a real verifier), pin_hash omitted from UPDATE, deny_unknown_fields makes a misbehaving server fail loudly; pull applies in one tx; COR-31 LOW: fetch_snapshot_from_server (1138) uses Client::new() with NO timeout — the one path downloading a large payload can hang on a stalled connection (7/8 other clients have 10/15/30s timeouts)
-next: add a 60s timeout to the snapshot fetch (COR-31) | perf: batch push per-item outcomes, no N+1
+findings: sync-auth-hardening P1-P4 exemplary — typed 401 classification (refresh-once-on-expiry vs invalid-as-config-problem), terminal PlanRequired state (no retry/quarantine), admin-key gating (P2), client-credentials path (P3); SYNC-06 credential hygiene exemplary — snapshot users upsert with SNAPSHOT_PIN_HASH_PLACEHOLDER (never a real verifier), pin_hash omitted from UPDATE, deny_unknown_fields makes a misbehaving server fail loudly; pull applies in one tx; COR-31 CLOSED 2026-09-06 (assist pass) — the clause here previously read "COR-31 LOW: fetch_snapshot_from_server (1138) uses Client::new() with NO timeout", which was wrong twice over: the line number pointed past end of file (this file is 492 lines), and the function actually lives in sync_pull.rs:165, where it has been bounded since the COR-31 sweep (10s connect / 120s total, sync_pull.rs:180-182 — that comment even notes it overrode the 60s this stamp suggested, without ever correcting this stamp). Both clients still in this file are bounded as well (382 and 438, 30s each). No unbounded request remains in either file.
+next: perf: batch push per-item outcomes, no N+1 (the former "add a 60s timeout to the snapshot fetch (COR-31)" item was already done, in another file — see findings above)
 */
 //!
 //! The sync client reads from the local offline queue, sends items as a batch
@@ -30,9 +30,11 @@ use crate::offline::OfflineQueueItem;
 
 /// Per-item outcome returned by the server's `POST /api/sync/push`.
 ///
-/// Mirrors `platform_sync::transport::PushOutcome` without depending on that
-/// crate (oz-core is a foundational crate).
-#[derive(Debug, Clone, Deserialize)]
+/// The single definition of this type: `platform_sync::transport` re-exports
+/// it (`pub use oz_core::sync_client::PushOutcome`), so both the
+/// `oz_core::sync_client::PushOutcome` and the
+/// `platform_sync::transport::PushOutcome` import paths resolve to this enum.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum PushOutcome {
     /// Item was accepted and applied by the server.
@@ -50,6 +52,27 @@ pub enum PushOutcome {
 #[derive(Debug, Clone, Deserialize)]
 struct PushResponse {
     results: Vec<PushOutcome>,
+}
+
+/// Prefix the cloud server puts on the `Rejected` reason when a pushed item's
+/// id already exists (`apps/cloud-server/src/sync_store.rs` `push_batch`,
+/// `format!("duplicate id: {}", item.id)`).
+///
+/// A duplicate id is NOT a rejection: item ids are client-generated UUIDs
+/// assigned once at enqueue, so the only way the server already holds an id is
+/// that THIS item was pushed before — the canonical case being a crash between
+/// the server insert and the local `mark_offline_synced`, then a re-push on
+/// recovery. The data is safely on the server; the correct local state is
+/// `synced`, not a terminal `failed`. The server itself agrees: it labels
+/// duplicate-id outcomes `"conflict"` (not `"rejected"`) in its push metrics
+/// (`sync_api.rs`). Both the immediate [`apply_sync_outcomes`] and the daemon's
+/// `apply_push_results` route these to synced via this predicate.
+pub const DUPLICATE_ID_REJECTION_PREFIX: &str = "duplicate id:";
+
+/// Whether a `Rejected` reason is an idempotent-replay duplicate (already on
+/// the server) rather than a genuine rejection.
+pub fn is_duplicate_id_rejection(reason: &str) -> bool {
+    reason.starts_with(DUPLICATE_ID_REJECTION_PREFIX)
 }
 
 /// Result of a single sync attempt.
@@ -284,6 +307,20 @@ pub fn apply_sync_outcomes(
                 store.mark_offline_synced(&item.id)?;
                 synced += 1;
             }
+            PushOutcome::Rejected { reason } if is_duplicate_id_rejection(reason) => {
+                // Idempotent replay: the server already holds this exact item
+                // (same client-generated id), so the mutation is safely
+                // persisted. Treat as synced rather than a terminal failure —
+                // push-side `failed` items have no requeue path, so marking a
+                // successful replay `failed` would strand it permanently and
+                // pollute `failed_count`. See DUPLICATE_ID_REJECTION_PREFIX.
+                tracing::info!(
+                    item_id = %item.id,
+                    "sync push duplicate-id replay: item already on server, marking synced"
+                );
+                store.mark_offline_synced(&item.id)?;
+                synced += 1;
+            }
             PushOutcome::Rejected { reason } => {
                 store.mark_offline_failed(&item.id, reason)?;
                 failed += 1;
@@ -485,6 +522,468 @@ pub async fn send_items_to_server(
     );
     // Pretend all items were accepted when HTTP is compiled out.
     Ok(vec![PushOutcome::Accepted; items.len()])
+}
+
+// ── Memo cloud push (2026-09-07 cloud-read ruling) ─────────────────
+
+/// One recipient row of a memo the desktop pushes to the cloud.
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoRecipientPush {
+    /// Recipient row id (desktop-minted).
+    pub id: String,
+    /// The terminal this row addresses.
+    pub terminal_id: String,
+    /// Delivery state (`pending`/`delivered`/`acknowledged`).
+    pub delivery_status: String,
+    /// Delivery instant, if delivered.
+    pub delivered_at: Option<String>,
+    /// Acknowledgement instant, if acknowledged.
+    pub acknowledged_at: Option<String>,
+    /// Who acknowledged.
+    pub acknowledged_by: Option<String>,
+}
+
+/// One memo of the tenant's complete pushed state.
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoPushRow {
+    /// Memo id (desktop-minted, the cloud's primary key).
+    pub id: String,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot at publish time.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Lifecycle status.
+    pub status: String,
+    /// Display duration.
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant, if published.
+    pub published_at: Option<String>,
+    /// Expiry instant, if published.
+    pub expires_at: Option<String>,
+    /// Early-stop instant, if stopped.
+    pub stopped_at: Option<String>,
+    /// Who stopped it.
+    pub stopped_by: Option<String>,
+    /// Archival instant — the retention-deletion clock.
+    pub archived_at: Option<String>,
+    /// Creation timestamp.
+    pub created_at: String,
+    /// Last-update timestamp.
+    pub updated_at: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    pub location_ids: Vec<String>,
+    /// The published fan-out: one recipient per target terminal.
+    pub recipients: Vec<MemoRecipientPush>,
+}
+
+/// Server acknowledgement for a memo push.
+#[derive(Debug, Deserialize)]
+pub struct MemoSyncAck {
+    /// How many memos the server upserted.
+    pub upserted: i64,
+    /// How many stale rows it deleted (reconciliation).
+    pub deleted: i64,
+}
+
+/// Server result of a terminal memo acknowledgement.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoAckCloud {
+    /// The memo that was acknowledged.
+    pub memo_id: String,
+    /// The terminal whose recipient row moved (server reads it from the
+    /// token claim).
+    pub terminal_id: String,
+    /// Always `acknowledged` after the call.
+    pub delivery_status: String,
+    /// When the acknowledgement landed.
+    pub acknowledged_at: String,
+    /// True when THIS call moved the row; false on an idempotent re-ack.
+    pub changed: bool,
+}
+
+/// Acknowledge a memo from this terminal through the cloud
+/// (`POST /api/v1/memos/{memo_id}/ack`, async). The terminal identity
+/// rides the token's `terminal_id` claim — the server rejects a token
+/// with none — so the request cannot name another terminal. `user_id`
+/// is informational (who at the terminal acknowledged).
+#[cfg(feature = "sync-http")]
+pub async fn ack_memo_on_server(
+    config: &SyncConfig,
+    memo_id: &str,
+    user_id: Option<&str>,
+) -> Result<MemoAckCloud, SyncHttpError> {
+    let url = format!(
+        "{}/api/v1/memos/{}/ack",
+        config.server_url.trim_end_matches('/'),
+        memo_id
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .post(&url)
+        .header("Content-Type", "application/json");
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .json(&serde_json::json!({ "acknowledged_by": user_id }))
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<MemoAckCloud>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub used when `sync-http` feature is disabled — always fails so the
+/// caller's local-write fallback applies (a durable ack has no honest
+/// pretend-success).
+#[cfg(not(feature = "sync-http"))]
+pub async fn ack_memo_on_server(
+    config: &SyncConfig,
+    _memo_id: &str,
+    _user_id: Option<&str>,
+) -> Result<MemoAckCloud, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
+/// Push the tenant's complete memo state to the cloud via
+/// `POST /api/v1/memos/sync` (async). The snapshot IS the truth — the
+/// server upserts and deletes by omission, so a failed push self-corrects
+/// on the next full push. Tenant scope rides the JWT, never the body.
+#[cfg(feature = "sync-http")]
+pub async fn push_memos_to_server(
+    config: &SyncConfig,
+    memos: &[MemoPushRow],
+) -> Result<MemoSyncAck, SyncHttpError> {
+    let url = format!(
+        "{}/api/v1/memos/sync",
+        config.server_url.trim_end_matches('/')
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .post(&url)
+        .header("Content-Type", "application/json");
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+    // ADR sync-auth-hardening P2: a gated deployment (OZ_ADMIN_KEY set)
+    // rejects the tenant-sync write for a non-terminal token without the
+    // admin key — mirror `request_token`'s passthrough so a desktop that
+    // provisioned via the fallback (admin-minted) path keeps pushing.
+    if let Some(key) = admin_key_from_env() {
+        request = request.header("x-admin-key", key);
+    }
+
+    let resp = request
+        .json(&serde_json::json!({ "memos": memos }))
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<MemoSyncAck>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// One active memo served by the cloud (`GET /api/v1/memos/active`).
+///
+/// Wire-mirrors `oz_api::pg::ActiveMemoPg` (snake_case field names —
+/// that struct carries no serde rename), so the tablet can map it into
+/// its display DTO without a serde rename on either side.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ActiveMemoCloud {
+    /// Memo id.
+    pub id: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    pub location_ids: Vec<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Display duration.
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant, if published.
+    pub published_at: Option<String>,
+    /// Expiry instant, if published.
+    pub expires_at: Option<String>,
+    /// Creation timestamp.
+    pub created_at: String,
+    /// This terminal's delivery state.
+    pub delivery_status: String,
+}
+
+/// Server-issued poll cadence (base + KDS interval in seconds).
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoCadenceCloud {
+    /// Base notification interval in seconds.
+    pub base_interval_secs: i64,
+    /// KDS interval in seconds (2 × base).
+    pub kds_interval_secs: i64,
+}
+
+/// Response envelope for `GET /api/v1/memos/active`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ActiveMemosCloudResponse {
+    /// The memos this terminal should display.
+    pub memos: Vec<ActiveMemoCloud>,
+    /// Server-issued poll cadence.
+    pub cadence: MemoCadenceCloud,
+}
+
+/// Fetch the memos a terminal should display from the cloud
+/// (`GET /api/v1/memos/active?terminal_id=…`, async). The bearer token
+/// scopes the read to the token's tenant; a terminal-scoped token may
+/// only read its own terminal (server-enforced).
+#[cfg(feature = "sync-http")]
+pub async fn fetch_active_memos_from_server(
+    config: &SyncConfig,
+    terminal_id: &str,
+) -> Result<ActiveMemosCloudResponse, SyncHttpError> {
+    let url = format!(
+        "{}/api/v1/memos/active",
+        config.server_url.trim_end_matches('/')
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .get(&url)
+        .query(&[("terminal_id", terminal_id)]);
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<ActiveMemosCloudResponse>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub used when `sync-http` feature is disabled — always fails so the
+/// caller's local-read fallback applies (a read has no honest success
+/// stub, unlike the push path's pretend-accepted).
+#[cfg(not(feature = "sync-http"))]
+pub async fn fetch_active_memos_from_server(
+    config: &SyncConfig,
+    _terminal_id: &str,
+) -> Result<ActiveMemosCloudResponse, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
+// ── QRIS Auto (dynamic Midtrans charge via the cloud) ───────────────
+
+/// Result of a dynamic QRIS charge (`POST /api/payment/midtrans/qris`).
+/// Mirrors the cloud's `ChargeResponse` verbatim — note `status` is
+/// `qr_issued`: the QR exists, nobody has paid yet (PAY-6 two-phase
+/// contract; the settlement signal arrives via `qris_status_from_server`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QrisChargeResult {
+    /// Midtrans order id — the cloud ledger key and the status-poll handle.
+    pub order_id: String,
+    /// The QR payload to render. Omitted (null) on channels that return a
+    /// hosted payment page URL instead of an inline string.
+    pub qr_string: Option<String>,
+    /// `qr_issued` at issuance time.
+    pub status: String,
+    /// Echo of the requested amount, minor units (IDR exponent 0).
+    pub amount_minor: i64,
+    /// Echo of the currency (`IDR`).
+    pub currency: String,
+    /// Echo of the local sale this issuance is bound to.
+    pub sale_id: String,
+    /// QR validity window in seconds — the UI countdown's single source.
+    pub expires_in_secs: u32,
+}
+
+/// Result of a settlement poll (`GET /api/payment/midtrans/{order_id}/status`).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QrisStatusResult {
+    /// Echo of the queried order id.
+    pub order_id: String,
+    /// Verbatim cloud ledger status (`issued`, `pending`, `settlement`,
+    /// `capture`, `expire`, `cancel`, `amount_mismatch`, ...).
+    pub status: String,
+    /// True iff the ledger recorded `settlement`/`capture` — the poll exit.
+    pub settled: bool,
+}
+
+/// Wire body for the charge request. Private: the caller passes the parts.
+#[cfg(feature = "sync-http")]
+#[derive(Debug, serde::Serialize)]
+struct QrisChargeBody {
+    sale_id: String,
+    amount_minor: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    idempotency_key: Option<String>,
+}
+
+/// Issue a dynamic QRIS charge through the cloud (async). The bearer token
+/// is the stored sync API key — the same credential the push and pull paths
+/// use, and the ONLY tenant authority: the cloud attributes the ledger row
+/// to the token's tenant, never to anything in the body. An idempotency key
+/// that has already been charged returns the SAME live QR (PAY-2), so a
+/// retry after a dropped response is safe.
+#[cfg(feature = "sync-http")]
+pub async fn qris_charge_on_server(
+    config: &SyncConfig,
+    sale_id: &str,
+    amount_minor: i64,
+    idempotency_key: Option<&str>,
+) -> Result<QrisChargeResult, SyncHttpError> {
+    let url = format!(
+        "{}/api/payment/midtrans/qris",
+        config.server_url.trim_end_matches('/')
+    );
+
+    let mut request = reqwest::Client::builder()
+        // The cloud waits on Midtrans inside this request; the gateway's
+        // own budget is smaller than 30 s, so this ceiling only fires on
+        // genuinely stuck connections. Same client ceiling as the memo read.
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .post(&url)
+        .json(&QrisChargeBody {
+            sale_id: sale_id.to_owned(),
+            amount_minor,
+            idempotency_key: idempotency_key.map(str::to_owned),
+        });
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<QrisChargeResult>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub when `sync-http` is off — QRIS Auto is definitionally a cloud
+/// feature, so there is no honest local success to fake.
+#[cfg(not(feature = "sync-http"))]
+pub async fn qris_charge_on_server(
+    _config: &SyncConfig,
+    _sale_id: &str,
+    _amount_minor: i64,
+    _idempotency_key: Option<&str>,
+) -> Result<QrisChargeResult, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
+/// Poll one QRIS charge's settlement status from the cloud (async). A 404
+/// surfaces as `SyncHttpError::Server { status: 404, .. }` — the cloud
+/// answers the same 404 for unknown orders and other tenants' orders
+/// (uniform miss), so callers must treat 404 as "not visible to us", never
+/// as an authorization bug to refresh around.
+#[cfg(feature = "sync-http")]
+pub async fn qris_status_from_server(
+    config: &SyncConfig,
+    order_id: &str,
+) -> Result<QrisStatusResult, SyncHttpError> {
+    let url = format!(
+        "{}/api/payment/midtrans/{}/status",
+        config.server_url.trim_end_matches('/'),
+        order_id
+    );
+
+    let mut request = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SyncHttpError::Client(e.to_string()))?
+        .get(&url);
+
+    if let Some(ref key) = config.api_key {
+        request = request.header("Authorization", &format!("Bearer {key}"));
+    }
+
+    let resp = request
+        .send()
+        .await
+        .map_err(|e| SyncHttpError::Network(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(classify_http_status(status.as_u16(), &body));
+    }
+
+    resp.json::<QrisStatusResult>()
+        .await
+        .map_err(|e| SyncHttpError::Parse(e.to_string()))
+}
+
+/// Stub used when `sync-http` feature is disabled.
+#[cfg(not(feature = "sync-http"))]
+pub async fn qris_status_from_server(
+    _config: &SyncConfig,
+    _order_id: &str,
+) -> Result<QrisStatusResult, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
 }
 
 #[cfg(test)]

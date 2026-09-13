@@ -26,7 +26,7 @@ fn sub_for_tier(tier: SubscriptionTier) -> TenantSubscription {
         tier,
         status: "active".into(),
         expires_at: None,
-        max_stores: 1,
+        max_locations: 1,
         max_pos_instances: 1,
         allowed_types_json: "[]".into(),
         signature: "BOOTSTRAP_FREE".into(),
@@ -45,7 +45,7 @@ fn plus_bundle_sub() -> TenantSubscription {
         tier: SubscriptionTier::Plus,
         status: "active".into(),
         expires_at: None,
-        max_stores: 1,
+        max_locations: 1,
         max_pos_instances: 2,
         allowed_types_json:
             r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
@@ -288,7 +288,7 @@ fn set_user_workspace_instances_empty_clears() {
 #[test]
 fn list_workspaces_owner_without_store_access_sees_all() {
     let (store, _) = fresh();
-    // role-owner with no user_store_access (Phase 1 single-store mode)
+    // role-owner with no user_location_access (Phase 1 single-store mode)
     let dto = store
         .list_workspaces("role-owner", None, "default")
         .unwrap();
@@ -468,7 +468,7 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -485,11 +485,11 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
         )
         .unwrap();
 
-    // Seed user_store_access — user-1 only has access to "default", not "store-b".
+    // Seed user_location_access — user-1 only has access to "default", not "store-b".
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES (?1, 'default', 'manager')",
             params![user_id],
         )
@@ -510,7 +510,7 @@ fn owner_with_user_store_access_filtered_by_assigned_stores() {
         .unwrap();
     assert!(
         dto_store_b.is_empty(),
-        "owner with user_store_access should not see unassigned store"
+        "owner with user_location_access should not see unassigned store"
     );
 }
 
@@ -551,14 +551,14 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
     store
         .conn
         .execute(
-            "INSERT OR IGNORE INTO store_profiles (id, name) VALUES ('quota-test', 'Quota Test')",
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('quota-test', 'Quota Test')",
             [],
         )
         .unwrap();
     store
         .conn
         .execute(
-            "INSERT INTO workspace_instances (id, type_key, store_id, name, status, created_at, updated_at)
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
              VALUES ('quota-kds', 'kds', 'quota-test', 'KDS', 'active', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
             [],
         )
@@ -572,6 +572,79 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
     assert!(
         result.is_ok(),
         "non-POS instances must not count toward the POS-instance limit, got {result:?}"
+    );
+}
+
+#[test]
+fn enforce_instance_quota_enforces_warehouse_limit() {
+    let (store, _) = fresh();
+    let free = sub_for_tier(SubscriptionTier::Free);
+    let plus = sub_for_tier(SubscriptionTier::Plus);
+    let store_id = "wh-quota-test";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('wh-quota-test', 'WH Test')",
+            [],
+        )
+        .unwrap();
+
+    // Free tier rejects warehouse type entirely
+    assert!(
+        store
+            .enforce_instance_quota(&free, "warehouse", store_id)
+            .is_err()
+    );
+
+    // Plus allows 2 warehouses: 0 existing allows creation
+    assert!(
+        store
+            .enforce_instance_quota(&plus, "warehouse", store_id)
+            .is_ok()
+    );
+
+    // Add 1st warehouse instance
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+             VALUES ('wh-1', 'warehouse', 'wh-quota-test', 'WH 1', 'active', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+    // 1 warehouse exists; Plus (limit 2) still allows creation
+    assert!(
+        store
+            .enforce_instance_quota(&plus, "warehouse", store_id)
+            .is_ok()
+    );
+
+    // Add 2nd warehouse instance
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+             VALUES ('wh-2', 'warehouse', 'wh-quota-test', 'WH 2', 'active', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+
+    // Now 2 warehouses exist; Plus (limit 2) should be blocked on count
+    let err = store
+        .enforce_instance_quota(&plus, "warehouse", store_id)
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        CoreError::SubscriptionLimitExceeded(msg) if msg.contains("warehouse")
+    ));
+
+    // Pro tier allows 3 warehouses (2 exist currently)
+    let pro = sub_for_tier(SubscriptionTier::Pro);
+    assert!(
+        store
+            .enforce_instance_quota(&pro, "warehouse", store_id)
+            .is_ok()
     );
 }
 
@@ -791,7 +864,7 @@ fn direct_insert_on_outer_tx_persists_on_commit() {
 
     tx.execute(
         "INSERT INTO workspace_instances \
-         (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+         (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
          VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'active', \
                  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         params!["direct-1", "restaurant-pos", "default", "Direct", ""],
@@ -814,7 +887,7 @@ fn direct_insert_on_outer_tx_rolls_back_on_drop() {
         let tx = conn.unchecked_transaction().unwrap();
         tx.execute(
             "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+             (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, NULL, 'active', \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             params!["rollback-1", "restaurant-pos", "default", "Roll", ""],
@@ -843,7 +916,7 @@ fn mixed_create_update_archive_on_one_tx_commits_atomically() {
     for (id, name) in [("diff-a", "A"), ("diff-b", "B")] {
         tx.execute(
             "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+             (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
              VALUES (?1, 'store-pos', 'default', ?2, '', NULL, 'active', \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
             params![id, name],
@@ -887,7 +960,7 @@ fn failed_step_rolls_back_entire_diff_tx() {
     // Create.
     tx.execute(
         "INSERT INTO workspace_instances \
-         (id, type_key, store_id, name, description, colour, status, last_accessed_at) \
+         (id, type_key, location_id, name, description, colour, status, last_accessed_at) \
          VALUES (?1, 'store-pos', 'default', 'Will Roll Back', '', NULL, 'active', \
                  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         params!["diff-rollback"],
@@ -1001,7 +1074,7 @@ fn update_cannot_move_instance_to_another_store() {
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1143,7 +1216,7 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
 fn verify_instance_access_denies_unknown_user() {
     let (store, _) = fresh();
     // A ghost user id with the owner claim previously passed the owner
-    // bypass (no `user_store_access` rows → single-store mode) and
+    // bypass (no `user_location_access` rows → single-store mode) and
     // would have minted a session for an identity that does not exist.
     let ok = store
         .verify_instance_access(
@@ -1262,7 +1335,7 @@ fn verify_instance_access_multi_store_owner_limited_to_assigned_stores() {
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1280,7 +1353,7 @@ fn verify_instance_access_multi_store_owner_limited_to_assigned_stores() {
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES ('user-owner', 'default', 'manager')",
             [],
         )
@@ -1496,7 +1569,7 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1515,7 +1588,7 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES ('user-staff', 'default', 'staff')",
             [],
         )
@@ -1533,7 +1606,7 @@ fn list_workspaces_staff_respects_user_store_access_out_of_scope_store_denied() 
         .unwrap();
     assert!(
         out_of_scope.is_empty(),
-        "staff without user_store_access on store-b must not enumerate it, got {out_of_scope:?}"
+        "staff without user_location_access on store-b must not enumerate it, got {out_of_scope:?}"
     );
 }
 
@@ -1559,7 +1632,7 @@ fn verify_instance_access_staff_respects_user_store_access_out_of_scope_denied()
     store
         .conn
         .execute(
-            "INSERT INTO store_profiles (id, name, address, currency, timezone)
+            "INSERT INTO locations (id, name, address, currency, timezone)
              VALUES ('store-b', 'Store B', '456 Elm', 'IDR', 'Asia/Jakarta')",
             [],
         )
@@ -1577,7 +1650,7 @@ fn verify_instance_access_staff_respects_user_store_access_out_of_scope_denied()
     store
         .conn
         .execute(
-            "INSERT INTO user_store_access (user_id, store_id, access_level)
+            "INSERT INTO user_location_access (user_id, location_id, access_level)
              VALUES ('user-staff', 'default', 'staff')",
             [],
         )
@@ -1632,4 +1705,217 @@ fn list_workspaces_with_entitlement_staff_filters_by_tier_after_assignment() {
         "Free tier staff must still see store-pos, got {dto:?}"
     );
     assert_eq!(dto.len(), 1, "expected only store-pos, got {dto:?}");
+}
+
+// ── KDS screen quota (subscription-tiers.md §Numeric Limits) ──────────
+
+#[test]
+fn tier_max_kds_screens_matches_published_contract() {
+    assert_eq!(SubscriptionTier::Free.max_kds_screens(), Some(0));
+    assert_eq!(SubscriptionTier::Plus.max_kds_screens(), Some(0));
+    assert_eq!(SubscriptionTier::Pro.max_kds_screens(), Some(2));
+    assert_eq!(SubscriptionTier::Premium.max_kds_screens(), None);
+    assert_eq!(SubscriptionTier::Enterprise.max_kds_screens(), None);
+}
+
+#[test]
+fn enforce_instance_quota_rejects_third_kds_on_pro() {
+    // Pro allows 2 KDS screens — a third must be rejected with the
+    // actionable KDS message, not the register or type message.
+    let (store, _) = fresh();
+    let pro = sub_for_tier(SubscriptionTier::Pro);
+    // Force the kds type through the type allowlist (Pro allows it
+    // statically, but sub_for_tier carries the bootstrap `[]` payload —
+    // the empty list falls back to tier defaults, so kds passes).
+    let store_id = "kds-quota";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-quota', 'KDS Quota')",
+            [],
+        )
+        .unwrap();
+    for i in 0..2 {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'kds', ?2, ?3, 'active', '2026-01-01', '2026-01-01')",
+                rusqlite::params![format!("kds-{i}"), store_id, format!("KDS {i}")],
+            )
+            .unwrap();
+    }
+    let result = store.enforce_instance_quota(&pro, "kds", store_id);
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("2 KDS screens"),
+        "expected KDS screen message, got: {err}"
+    );
+}
+
+#[test]
+fn enforce_instance_quota_allows_two_kds_on_pro() {
+    let (store, _) = fresh();
+    let pro = sub_for_tier(SubscriptionTier::Pro);
+    let store_id = "kds-ok";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-ok', 'KDS Ok')",
+            [],
+        )
+        .unwrap();
+    store
+        .conn
+        .execute(
+            "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+             VALUES ('kds-0', 'kds', 'kds-ok', 'KDS 0', 'active', '2026-01-01', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+    store
+        .enforce_instance_quota(&pro, "kds", store_id)
+        .expect("1 active KDS screen is under the Pro cap of 2");
+}
+
+#[test]
+fn enforce_instance_quota_kds_unlimited_on_premium() {
+    let (store, _) = fresh();
+    let premium = sub_for_tier(SubscriptionTier::Premium);
+    let store_id = "kds-premium";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-premium', 'KDS Premium')",
+            [],
+        )
+        .unwrap();
+    for i in 0..5 {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'kds', ?2, ?3, 'active', '2026-01-01', '2026-01-01')",
+                rusqlite::params![format!("kds-{i}"), store_id, format!("KDS {i}")],
+            )
+            .unwrap();
+    }
+    store
+        .enforce_instance_quota(&premium, "kds", store_id)
+        .expect("Premium has no KDS screen cap");
+}
+
+#[test]
+fn enforce_instance_quota_bundle_plus_kds_gets_two_screen_budget() {
+    // C3.2 + §Numeric Limits reconciliation: the signed bundle unlocks the
+    // kds TYPE on Plus; the screen budget becomes Pro's 2 (a static 0 would
+    // make the paid entitlement meaningless). Two screens pass, the third
+    // is rejected with the KDS message.
+    let (store, _) = fresh();
+    let sub = plus_bundle_sub();
+    let store_id = "kds-bundle";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('kds-bundle', 'KDS Bundle')",
+            [],
+        )
+        .unwrap();
+    for i in 0..1 {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'kds', ?2, ?3, 'active', '2026-01-01', '2026-01-01')",
+                rusqlite::params![format!("kds-{i}"), store_id, format!("KDS {i}")],
+            )
+            .unwrap();
+    }
+    store
+        .enforce_instance_quota(&sub, "kds", store_id)
+        .expect("bundle Plus gets a 2-screen budget; 1 active leaves room for the second");
+}
+
+// ── Topology-node marker counters (read-computed QuotaDimension::TopologyNodes) ──
+
+#[test]
+fn count_topology_nodes_excludes_archived_only() {
+    // Non-archived = active AND quota_suspended both count: suspension
+    // frees a creation slot but the node still exists in the topology.
+    // Only 'archived' removes a node. No tier cap exists for this
+    // dimension (limit_for -> None ALWAYS), so these counters are purely
+    // the read fan-out's inputs.
+    let (store, _) = fresh();
+    let store_id = "topo-count";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('topo-count', 'Topo Count')",
+            [],
+        )
+        .unwrap();
+    let seed_instance = |id: &str, status: &str| {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, 'store-pos', ?2, ?3, ?4, '2026-01-01', '2026-01-01')",
+                rusqlite::params![id, store_id, format!("Node {id}"), status],
+            )
+            .unwrap();
+    };
+    seed_instance("topo-1", "active");
+    seed_instance("topo-2", "active");
+    seed_instance("topo-3", "quota_suspended");
+    seed_instance("topo-4", "archived");
+
+    assert_eq!(store.count_topology_nodes(store_id).unwrap(), 3);
+    // The all-types active count (suspended excluded) stays the legacy
+    // creation-gate input and must not be conflated with the node count.
+    assert_eq!(store.count_active_instances(store_id).unwrap(), 2);
+    // A different store contributes nothing.
+    assert_eq!(store.count_topology_nodes("other-store").unwrap(), 0);
+}
+
+#[test]
+fn count_quota_suspended_instances_counts_only_suspended() {
+    // The suspension half of the marker verdict: exactly the rows in the
+    // 'quota_suspended' status — active rows are not suspended, and an
+    // archived former-suspension is no longer reported.
+    let (store, _) = fresh();
+    let store_id = "susp-count";
+    store
+        .conn
+        .execute(
+            "INSERT OR IGNORE INTO locations (id, name) VALUES ('susp-count', 'Susp Count')",
+            [],
+        )
+        .unwrap();
+    let seed_instance = |id: &str, type_key: &str, status: &str| {
+        store
+            .conn
+            .execute(
+                "INSERT INTO workspace_instances (id, type_key, location_id, name, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, '2026-01-01', '2026-01-01')",
+                rusqlite::params![id, type_key, store_id, format!("Node {id}"), status],
+            )
+            .unwrap();
+    };
+    seed_instance("susp-1", "store-pos", "quota_suspended");
+    seed_instance("susp-2", "kds", "quota_suspended");
+    seed_instance("susp-3", "warehouse", "active");
+    seed_instance("susp-4", "retail-pos", "archived");
+
+    assert_eq!(store.count_quota_suspended_instances(store_id).unwrap(), 2);
+    // The suspended instance is BOTH a current topology node and a
+    // suspended one — the marker verdict is "over" iff either the node
+    // total exceeds the summed caps OR at least one is suspended.
+    assert_eq!(store.count_topology_nodes(store_id).unwrap(), 3);
+    // A different store contributes nothing.
+    assert_eq!(
+        store
+            .count_quota_suspended_instances("other-store")
+            .unwrap(),
+        0
+    );
 }

@@ -23,6 +23,8 @@ fn test_state() -> CloudServerState {
         stripe_webhook_secret: None,
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     }
 }
 
@@ -35,6 +37,8 @@ fn test_state_with_stripe(secret: &str) -> CloudServerState {
         stripe_webhook_secret: Some(secret.to_owned()),
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     }
 }
 
@@ -47,6 +51,8 @@ fn test_state_with_square(secret: &str, url: &str) -> CloudServerState {
         stripe_webhook_secret: None,
         square_webhook_signature_key: Some(secret.to_owned()),
         square_webhook_url: Some(url.to_owned()),
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     }
 }
 
@@ -637,6 +643,8 @@ async fn pg_integration_webhooks_read_write_postgres() {
         stripe_webhook_secret: Some("whsec_test".into()),
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let tenant = format!("pg-webhook-{}", uuid::Uuid::now_v7());
     let sale_id = format!("sale-{}", uuid::Uuid::now_v7());
@@ -982,6 +990,8 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         stripe_webhook_secret: Some("whsec_rls_test".into()),
         square_webhook_signature_key: None,
         square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
     };
     let app = webhooks_router(state.clone());
     let secret = "whsec_rls_test";
@@ -1111,4 +1121,223 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
     // the stale-role cleanup above. Dropping it here would race concurrent
     // tests that use it; the cutover re-creates it idempotently (`IF NOT
     // EXISTS`) on the next run.
+}
+
+// ── Midtrans QRIS notifications (agents-1 Phase 1.2) ─────────────────
+
+use sha2::{Digest, Sha512};
+
+const MID_KEY: &str = "MID-server-test-key-SECRET";
+
+/// Recompute a notification signature the documented Midtrans way:
+/// SHA512 over the concatenated `order_id + status_code + gross_amount + key`.
+fn midtrans_sig(order_id: &str, code: &str, gross: &str, key: &str) -> String {
+    let mut d = Sha512::new();
+    d.update(order_id.as_bytes());
+    d.update(code.as_bytes());
+    d.update(gross.as_bytes());
+    d.update(key.as_bytes());
+    hex::encode(d.finalize())
+}
+
+fn midtrans_state() -> CloudServerState {
+    let mut s = test_state();
+    s.midtrans_server_key = Some(MID_KEY.to_string());
+    s
+}
+
+async fn issue_order(state: &CloudServerState, order_id: &str, amount_minor: i64) {
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    l.record_issue(order_id, "tenant-Q", "sale-Q", amount_minor, "IDR")
+        .await
+        .unwrap();
+}
+
+async fn notify(state: CloudServerState, body: serde_json::Value) -> axum::response::Response {
+    webhooks_router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/webhooks/midtrans")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+fn settlement_body(order_id: &str, gross: &str, sig: &str) -> serde_json::Value {
+    serde_json::json!({
+        "transaction_id": "txn-x",
+        "transaction_status": "settlement",
+        "transaction_status_code": "200",
+        "order_id": order_id,
+        "gross_amount": gross,
+        "currency": "IDR",
+        "payment_type": "qris",
+        "signature_type": "sha512",
+        "signature_key": sig,
+    })
+}
+
+async fn queue_depth(state: &CloudServerState) -> i64 {
+    let conn = state.db.lock().await;
+    conn.query_row(
+        "SELECT COUNT(*) FROM offline_queue WHERE action = 'finalize_sale'",
+        [],
+        |r| r.get::<_, i64>(0),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn midtrans_settlement_enqueues_finalize() {
+    let state = midtrans_state();
+    issue_order(&state, "QRIS-w1", 15000).await;
+    let sig = midtrans_sig("QRIS-w1", "200", "15000.00", MID_KEY);
+    let resp = notify(state.clone(), settlement_body("QRIS-w1", "15000.00", &sig)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json: serde_json::Value =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(json["status"], "finalization_queued");
+    assert_eq!(queue_depth(&state).await, 1);
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    assert_eq!(
+        l.lookup("QRIS-w1").await.unwrap().unwrap().status,
+        "settlement"
+    );
+}
+
+#[tokio::test]
+async fn midtrans_duplicate_notification_is_idempotent() {
+    let state = midtrans_state();
+    issue_order(&state, "QRIS-w2", 12000).await;
+    let sig = midtrans_sig("QRIS-w2", "200", "12000.00", MID_KEY);
+    let resp = notify(state.clone(), settlement_body("QRIS-w2", "12000.00", &sig)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp2 = notify(state.clone(), settlement_body("QRIS-w2", "12000.00", &sig)).await;
+    let json2: serde_json::Value =
+        serde_json::from_slice(&resp2.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(json2["status"], "already_processed");
+    assert_eq!(
+        queue_depth(&state).await,
+        1,
+        "duplicate must not double-enqueue"
+    );
+}
+
+#[tokio::test]
+async fn midtrans_bad_signature_is_401_and_records_nothing() {
+    let state = midtrans_state();
+    issue_order(&state, "QRIS-w3", 10000).await;
+    let resp = notify(
+        state.clone(),
+        settlement_body(
+            "QRIS-w3",
+            "10000.00",
+            &midtrans_sig("QRIS-w3", "200", "10000.00", "WRONG-KEY"),
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(queue_depth(&state).await, 0);
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    assert_eq!(l.lookup("QRIS-w3").await.unwrap().unwrap().status, "issued");
+}
+
+#[tokio::test]
+async fn midtrans_amount_mismatch_never_finalizes() {
+    // A correctly signed settlement whose amount differs from what was
+    // issued is an incident: journal it, do NOT finalize on it.
+    let state = midtrans_state();
+    issue_order(&state, "QRIS-w4", 15000).await;
+    let sig = midtrans_sig("QRIS-w4", "200", "99999.00", MID_KEY);
+    let resp = notify(state.clone(), settlement_body("QRIS-w4", "99999.00", &sig)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json: serde_json::Value =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(json["reason"], "amount_mismatch");
+    assert_eq!(queue_depth(&state).await, 0);
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    assert_eq!(
+        l.lookup("QRIS-w4").await.unwrap().unwrap().status,
+        "amount_mismatch"
+    );
+}
+
+#[tokio::test]
+async fn midtrans_unknown_order_is_ignored_with_200() {
+    let state = midtrans_state();
+    let sig = midtrans_sig("QRIS-ghost", "200", "5000.00", MID_KEY);
+    let resp = notify(
+        state.clone(),
+        settlement_body("QRIS-ghost", "5000.00", &sig),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json: serde_json::Value =
+        serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(json["status"], "ignored");
+    assert_eq!(queue_depth(&state).await, 0);
+}
+
+#[tokio::test]
+async fn midtrans_expire_records_but_never_finalizes() {
+    let state = midtrans_state();
+    issue_order(&state, "QRIS-w5", 20000).await;
+    let sig = midtrans_sig("QRIS-w5", "203", "20000.00", MID_KEY);
+    let resp = notify(
+        state.clone(),
+        serde_json::json!({
+            "order_id": "QRIS-w5",
+            "transaction_status": "expire",
+            "transaction_status_code": "203",
+            "gross_amount": "20000.00",
+            "signature_type": "sha512",
+            "signature_key": sig,
+        }),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(queue_depth(&state).await, 0);
+    let l = LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    };
+    assert_eq!(l.lookup("QRIS-w5").await.unwrap().unwrap().status, "expire");
+}
+
+#[tokio::test]
+async fn midtrans_unconfigured_key_fails_closed() {
+    // No MIDTRANS_SERVER_KEY in state: nothing is settleable, and the
+    // handler must not fall through to an unverified path.
+    let state = test_state();
+    let sig = midtrans_sig("QRIS-w6", "200", "1.00", MID_KEY);
+    let resp = notify(state.clone(), settlement_body("QRIS-w6", "1.00", &sig)).await;
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[test]
+fn midtrans_gross_parse_policy() {
+    // Signed amount strings map 1:1; fractions and garbage never silently
+    // become a number (the PAY-1 bug class).
+    assert_eq!(midtrans_gross_to_minor("15000.00"), Some(15000));
+    assert_eq!(midtrans_gross_to_minor("15000"), Some(15000));
+    assert_eq!(midtrans_gross_to_minor(" 15000.00 "), Some(15000));
+    assert_eq!(midtrans_gross_to_minor("15000.50"), None);
+    assert_eq!(midtrans_gross_to_minor("abc"), None);
+    assert_eq!(midtrans_gross_to_minor(""), None);
 }

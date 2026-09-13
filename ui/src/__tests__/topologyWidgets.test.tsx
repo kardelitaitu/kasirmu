@@ -4,12 +4,12 @@
 
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { TopologyRelationshipPicker } from '../features/stores/topologyRelationshipPicker';
-import { TopologyValidationWidget } from '../features/stores/topologyValidationWidget';
-import type { TopologyNodeData } from '../features/stores/NodeTopologyEditor';
-import type { TopologyPickerState } from '../features/stores/nodeTopologyEditorConnectionState';
-import type { WireRelationshipOption } from '../features/stores/topologyCard';
-import type { TopologyValidationError } from '../features/stores/topologyContract';
+import { TopologyRelationshipPicker } from '../features/locations/topologyRelationshipPicker';
+import { TopologyValidationWidget } from '../features/locations/topologyValidationWidget';
+import type { TopologyNodeData } from '../features/locations/NodeTopologyEditor';
+import type { TopologyPickerState } from '../features/locations/nodeTopologyEditorConnectionState';
+import type { WireRelationshipOption } from '../features/locations/topologyCard';
+import type { TopologyValidationError } from '../features/locations/topologyContract';
 
 vi.mock('@fluent/react', () => ({
   Localized: ({ children }: { id: string; children: React.ReactNode }) => <>{children}</>,

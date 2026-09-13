@@ -9,67 +9,52 @@ next: none | perf: N/A
 //! These commands are the IPC surface for `ui/src/features/auth/`. PIN
 //! hashing and verification is delegated to `oz_core::auth`.
 
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::auth::LoginSession;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::db::Store;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
+use oz_core::db::assignments::ScopeType;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
+use oz_core::db::audit_security::SecurityEvent;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
+use oz_core::permissions;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::session::SessionContext;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_core::subscription::TenantSubscription;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use oz_security::mask::mask_token;
 
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use foundation::validate_not_empty;
 
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
+use crate::commands::authz::require_permission_for_session;
+#[allow(unused_imports)] // sibling *_tests.rs depends on it
 use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Arguments for the `staff_login` command.
-#[derive(Debug, Deserialize)]
-pub struct StaffLoginArgs {
-    /// Staff username (case-sensitive).
-    pub username: String,
-    /// Plain-text PIN entered by the staff member.
-    pub pin: String,
-    /// Optional device/terminal identifier for per-device abuse controls
-    /// (STAFF-07). When absent the backend derives one from the host name
-    /// (`COMPUTERNAME`/`HOSTNAME`) so distributed brute-force from a single
-    /// terminal is still bounded.
-    #[serde(default)]
-    pub device_id: Option<String>,
-}
+pub use oz_bridge::auth::{
+    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult, HasUsersResult,
+    IMPERSONATION_SESSION_TTL_SECONDS, OrganizationSummary, RefreshPickerTicketResult,
+    SessionContextDto, SessionKeepaliveResult, StaffLoginArgs, StaffLoginResult,
+};
 
-/// Result of a successful staff login.
-#[derive(Debug, Serialize)]
-pub struct StaffLoginResult {
-    /// Session info including user id, display name, and role.
-    pub session: LoginSession,
-    /// Short-lived picker ticket (audit-open-findings residual).
-    ///
-    /// The pre-session `list_workspaces` / `list_workspace_screens`
-    /// commands verify this ticket and resolve the caller's REAL role
-    /// from the database — caller-supplied `role_id` / `user_id` are
-    /// never trusted for the workspace picker.
-    pub picker_ticket: String,
-}
-
-/// Arguments for the `staff_check_username` command.
-#[derive(Debug, Deserialize)]
-pub struct CheckUsernameArgs {
-    /// Staff username to look up.
-    pub username: String,
-}
-
-/// Result of a username existence check.
-#[derive(Debug, Serialize)]
-pub struct CheckUsernameResult {
-    /// Always `true`. The pre-check never reveals whether the account
-    /// exists or is active (STAFF-06); the real state is written to the
-    /// server log only, and the login endpoint reports a uniform failure.
-    pub proceed: bool,
-}
+// Where the desktop's security-event sink lives, kept as a plain comment.
+// The sink is `oz_bridge::auth::record_security_event` (backed by
+// `Store::record_security_event`). This module no longer re-exports it, and no
+// desktop command imports it from here. As a `///` block it attached to
+// whatever item followed, which is what clippy's
+// empty_line_after_outer_attr flagged on the blank line below.
 
 /// Check a username before the PIN step (STAFF-06).
 ///
@@ -84,39 +69,10 @@ pub async fn staff_check_username(
     args: CheckUsernameArgs,
     state: State<'_, AppState>,
 ) -> Result<CheckUsernameResult, AppError> {
-    let username = args.username.trim().to_lowercase();
-    validate_not_empty("username", &username).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    // S3: Random delay (50–200ms) to mask timing side-channels.
-    // Computed before the DB lock so the delay is not blocked by the mutex.
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    let delay_ms: u64 = 50 + (nanos % 151) as u64;
-
-    // Scope the DB lock so Store<'_> (which is not Send) is dropped
-    // before the tokio::time::sleep await point.
-    {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let user = store.get_user_by_username(&username)?;
-        match &user {
-            Some(u) => tracing::debug!(
-                username = %username,
-                is_active = u.is_active,
-                "staff_check_username: account exists (server-side detail only)"
-            ),
-            None => tracing::debug!(
-                username = %username,
-                "staff_check_username: no such account (server-side detail only)"
-            ),
-        }
-    } // db + Store dropped here — not held across the await
-
-    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-
-    Ok(CheckUsernameResult { proceed: true })
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::check_username(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Authenticate a staff member by username and PIN.
@@ -144,167 +100,10 @@ pub async fn staff_login(
     args: StaffLoginArgs,
     state: State<'_, AppState>,
 ) -> Result<StaffLoginResult, AppError> {
-    let username = args.username.trim().to_lowercase();
-    validate_not_empty("username", &username).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    // S1: Enforce minimum 4-digit PIN at the server boundary.
-    // Prevents brute-force on short PINs and keeps client/server in sync.
-    if args.pin.len() < 4 {
-        return Err(AppError::Invalid("PIN must be at least 4 digits".into()));
-    }
-
-    // STAFF-07: resolve the device id — prefer the caller's, else the host.
-    let device_id = args
-        .device_id
-        .as_deref()
-        .filter(|d| !d.is_empty())
-        .map(str::to_owned)
-        .or_else(|| std::env::var("COMPUTERNAME").ok())
-        .or_else(|| std::env::var("HOSTNAME").ok());
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    // Check rate limiter (persistent — survives app restarts).
-    // Records the attempt — on success (PIN correct) we clear the
-    // counter; on failure the attempt stays recorded.
-    if let Err(retry_after) = store.record_login_attempt_scoped(
-        &username,
-        device_id.as_deref(),
-        oz_core::db::staff::LoginLimits {
-            max_attempts: 3,         // per-account max
-            window_secs: 60,         // window secs
-            device_max_attempts: 10, // per-device max
-            global_max_attempts: 30, // global max
-            max_backoff_secs: 3600,  // max backoff secs
-        },
-    )? {
-        tracing::warn!(
-            username = %username,
-            device_id = device_id.as_deref().unwrap_or("unknown"),
-            retry_after,
-            "staff login rate limit exceeded"
-        );
-        return Err(AppError::Invalid(format!(
-            "Too many attempts. Try again in {retry_after}s."
-        )));
-    }
-
-    // Look up user by username.
-    let user = store
-        .get_user_by_username(&username)?
-        .ok_or_else(|| AppError::Invalid("invalid username or PIN".into()))?;
-
-    // Uniform failure — do not reveal that the account is deactivated.
-    if !user.is_active {
-        tracing::debug!(
-            username = %username,
-            "staff login: account inactive (uniform error returned)"
-        );
-        return Err(AppError::Invalid("invalid username or PIN".into()));
-    }
-
-    // Verify PIN against stored hash.
-    // `verify_pin` fails closed (Ok(false)) on malformed/placeholder hashes;
-    // the Err arm is retained for future argon2 library errors.
-    let valid = oz_core::auth::verify_pin(&args.pin, &user.pin_hash)
-        .map_err(|e| AppError::Internal(format!("PIN verification failed: {e}")))?;
-
-    if !valid {
-        tracing::debug!(
-            username = %username,
-            "staff login: wrong PIN (uniform error returned)"
-        );
-        return Err(AppError::Invalid("invalid username or PIN".into()));
-    }
-
-    // PIN correct — clear rate limiter for this user and device.
-    store.clear_login_attempts(&username)?;
-    if let Some(dev) = device_id.as_deref().filter(|d| !d.is_empty()) {
-        store.clear_login_attempts_by_device(dev)?;
-    }
-
-    // Look up role for the session.
-    let role = store
-        .get_role(&user.role_id)?
-        .ok_or_else(|| AppError::Internal(format!("role {} not found", user.role_id)))?;
-
-    drop(db);
-
-    // Mint the short-lived picker ticket bound to this authenticated
-    // user. It is only valid for the pre-session workspace picker;
-    // `create_session` hands out the opaque session token afterwards.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    let picker_ticket = picker_ticket::sign_picker_ticket(
-        &state.picker_ticket_secret,
-        &user.id,
-        now_ts + picker_ticket::PICKER_TICKET_TTL_SECS,
-    );
-
-    // Granted keys ride the session so UI gates mirror the backend
-    // registry (wildcards included) instead of role-name strings.
-    let permissions = role.permission_keys();
-
-    Ok(StaffLoginResult {
-        session: LoginSession {
-            user_id: user.id,
-            display_name: user.display_name,
-            role_name: role.name,
-            role_id: role.id,
-            permissions,
-        },
-        picker_ticket,
-    })
-}
-
-/// Arguments for `create_session`.
-#[derive(Debug, Deserialize)]
-pub struct CreateSessionArgs {
-    /// The authenticated user ID (must match the picker ticket).
-    pub user_id: String,
-    /// The user's active role ID.
-    pub role_id: String,
-    /// The resolved store ID.
-    pub store_id: String,
-    /// The resolved workspace instance ID.
-    pub instance_id: String,
-    /// The workspace type key (derived from the instance).
-    pub type_key: String,
-    /// The terminal/device ID.
-    pub terminal_id: String,
-    /// HMAC-signed picker ticket from `staff_login`/`bootstrap_owner`.
-    /// Used to authenticate the caller's identity before minting a session.
-    pub picker_ticket: String,
-}
-
-/// Result of `create_session` — returns the opaque session token.
-#[derive(Debug, Serialize)]
-pub struct CreateSessionResult {
-    /// Opaque session token to be passed with every subsequent command.
-    pub session_token: String,
-    /// The resolved session context (for frontend display).
-    pub context: SessionContextDto,
-}
-
-/// Lightweight session context DTO for the frontend.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionContextDto {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// ID of the associated store.
-    pub store_id: String,
-    /// ID of the associated instance.
-    pub instance_id: String,
-    /// Type Key.
-    pub type_key: String,
-    /// ID of the associated terminal.
-    pub terminal_id: String,
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::staff_login(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create a new session and return an opaque session token.
@@ -323,192 +122,90 @@ pub async fn create_session(
     args: CreateSessionArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateSessionResult, AppError> {
-    // H-3: Validate required fields BEFORE any side effects.
-    if args.store_id.is_empty() || args.instance_id.is_empty() || args.user_id.is_empty() {
-        return Err(AppError::Invalid(
-            "store_id, instance_id, and user_id must not be empty".into(),
-        ));
-    }
-
-    // H-3: Verify the picker ticket to authenticate the caller's identity.
-    // The ticket was minted by staff_login/bootstrap_owner and bound to the
-    // authenticated user. We derive user_id from the ticket instead of
-    // trusting the caller-supplied value.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    let verified_user_id = picker_ticket::verify_picker_ticket(
-        &state.picker_ticket_secret,
-        &args.picker_ticket,
-        now_ts,
-    )
-    .ok_or_else(|| {
-        tracing::warn!(
-            user_id = %args.user_id,
-            "session creation denied — invalid or expired picker ticket"
-        );
-        AppError::Invalid("Invalid or expired picker ticket".into())
-    })?;
-
-    // Ensure the caller-supplied user_id matches the ticket-bound identity.
-    if verified_user_id != args.user_id {
-        tracing::warn!(
-            user_id = %args.user_id,
-            ticket_user_id = %verified_user_id,
-            "session creation denied — user_id mismatch with picker ticket"
-        );
-        return Err(AppError::Invalid("Invalid or expired picker ticket".into()));
-    }
-
-    // Server-side authorization: verify the user has a valid role assignment
-    // for the requested workspace instance (ADR #4 / ADR #7).
-    {
-        let db = state.db.lock().await;
-        let store = oz_core::db::Store::new(&db);
-        if !store.verify_instance_access(
-            &args.role_id,
-            &args.user_id,
-            &args.instance_id,
-            &args.store_id,
-        )? {
-            tracing::warn!(
-                user_id = %args.user_id,
-                role_id = %args.role_id,
-                instance_id = %args.instance_id,
-                "authorization denied — user has no access to this instance"
-            );
-            return Err(AppError::Invalid(
-                "User does not have access to this workspace instance".into(),
-            ));
-        }
-    }
-
-    // ADR #5: the tenant subscription gates which workspace types a session
-    // may open. Role access (above) and tier entitlement are orthogonal —
-    // an owner whose subscription no longer covers the type (e.g. kds after
-    // a downgrade) must fail closed here, not after the session exists.
-    // The signature is verified before the row's tier/allowed-types are
-    // honored, matching create_staff_scoped and every other subscription-
-    // trusting command: a tampered row (forged tier, invalid RSA signature)
-    // must fail closed, not silently widen session access.
-    let sub = {
-        let db = state.db.lock().await;
-        TenantSubscription::validate_clock_rollback(&db)?;
-        let sub = TenantSubscription::load(&db, "default")?.unwrap_or_else(|| {
-            tracing::warn!("no subscription found for tenant 'default', defaulting to Free tier");
-            TenantSubscription::bootstrap_free()
-        });
-        sub.verify_signature()?;
-        sub
-    };
-    if !sub.allows_workspace_type(&args.type_key) {
-        tracing::warn!(
-            user_id = %args.user_id,
-            type_key = %args.type_key,
-            "session creation denied — workspace type not entitled by tenant subscription"
-        );
-        return Err(AppError::Invalid(format!(
-            "Workspace type '{}' is not entitled by the tenant subscription",
-            args.type_key
-        )));
-    }
-
-    let token = uuid::Uuid::now_v7().to_string();
-
-    // Compute session expiry from the cached TTL setting.
-    // 0 or negative means no expiry (development mode).
-    let expires_at = if state.session_ttl_seconds > 0 {
-        Some(now_ts + state.session_ttl_seconds)
-    } else {
-        None
-    };
-
-    {
-        let mut session_store = state
-            .session_store
-            .write()
-            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
-
-        // Lazy prune: sweep expired sessions when the store is near capacity.
-        if session_store.len() >= 200 {
-            let before = session_store.len();
-            session_store.retain(|_, ctx| !ctx.is_expired());
-            let pruned = before - session_store.len();
-            if pruned > 0 {
-                tracing::info!("lazy prune removed {pruned} expired session(s)");
-            }
-        }
-
-        // Defensive: log if a UUID collision occurs (astronomically unlikely).
-        if session_store.contains_key(&token) {
-            tracing::warn!(token = %mask_token(&token), "session token collision detected — overwriting");
-        }
-
-        // Enforce a maximum session count with deterministic LRU eviction.
-        // Iterates all entries to find the oldest by created_at timestamp.
-        // With max 256 entries, this is negligible overhead and guarantees
-        // fair eviction (unlike the previous non-deterministic keys().next()).
-        const MAX_SESSIONS: usize = 256;
-        if session_store.len() >= MAX_SESSIONS {
-            let oldest_entry = session_store
-                .iter()
-                .min_by_key(|(_, ctx)| ctx.created_at)
-                .map(|(token, _)| token.clone());
-
-            if let Some(old_token) = oldest_entry {
-                session_store.remove(&old_token);
-                tracing::warn!(
-                    old_token = %mask_token(&old_token),
-                    "session store full — evicted oldest session by created_at"
-                );
-            }
-        }
-
-        let context = SessionContext::new(
-            args.user_id.clone(),
-            args.role_id.clone(),
-            args.terminal_id.clone(),
-            args.store_id.clone(),
-            args.instance_id.clone(),
-            args.type_key.clone(),
-            expires_at,
-            now_ts,
-        );
-        session_store.insert(token.clone(), context.clone());
-    }
-
-    // Invalidate the location cache — a new session means either a fresh
-    // login or a workspace switch, so cached location bindings from the
-    // previous session should not carry over.
-    oz_core::location_resolver::invalidate_location_cache();
-
-    tracing::info!(
-        user_id = %args.user_id,
-        store_id = %args.store_id,
-        instance_id = %args.instance_id,
-        ttl_seconds = %state.session_ttl_seconds,
-        "session created"
-    );
-
-    Ok(CreateSessionResult {
-        session_token: token,
-        context: SessionContextDto {
-            user_id: args.user_id,
-            role_id: args.role_id,
-            store_id: args.store_id,
-            instance_id: args.instance_id,
-            type_key: args.type_key,
-            terminal_id: args.terminal_id,
-        },
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::create_session(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
-/// Result of the `has_users` check.
-#[derive(Debug, Serialize)]
-pub struct HasUsersResult {
-    /// Whether at least one user account exists in the database.
-    pub has_users: bool,
+/// Enumerate the Organizations (legal entities) this device knows about.
+///
+/// SaaS-3 L194 (pre-login org selector source). This is a DEVICE-LOCAL
+/// enumeration: it returns the legal_entities belonging to the device tenant
+/// (default) and nothing else. It is callable before authentication because it
+/// reveals only org ids/names (device configuration, not account secrets), and
+/// it is the enumerated allow-list that create_session and switch_organization
+/// constrain org selection to — no cross-tenant identity broker exists.
+#[tauri::command]
+pub async fn list_organizations(
+    state: State<'_, AppState>,
+) -> Result<Vec<OrganizationSummary>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::list_organizations(&ctx)
+        .await
+        .map_err(Into::into)
+}
+
+/// Switch the active Organization (legal entity) for an authenticated session.
+///
+/// SaaS-3 L194. The sequence is fail-closed and mirrors the impersonation guard,
+/// but the leak class it closes is different: it must never leave BOTH the old
+/// and new tokens live. So it INVALIDATES the current token FIRST (old token dead
+/// before any new session exists), then mints a fresh session whose scope
+/// re-derives from the user assignment alone — no credential carryover, no grant
+/// merge.
+///
+/// Steps:
+/// 1. Resolve + authenticate the current session (caller identity).
+/// 2. The chosen org must be in the device-local enumerated set.
+/// 3. The user assignment must cover the org (assignment_covers_resource with
+///    ScopeType::LegalEntity) — fail-closed, mirroring the impersonation guard.
+///    Organization-scope users cover all; LegalEntity-scope users cover only
+///    their own entity.
+/// 4. FULL re-authentication: the PIN is verified against the users stored
+///    pin_hash — no credential carryover from the old session.
+/// 5. check_tenant_integrity re-runs on the single already-open tenant DB as
+///    defense-in-depth, exactly as at startup.
+/// 6. Invalidate the old token, THEN mint the new session.
+#[tauri::command]
+pub async fn switch_organization(
+    session_token: String,
+    org_id: String,
+    pin: String,
+    state: State<'_, AppState>,
+) -> Result<CreateSessionResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::switch_organization(&ctx, &session_token, &org_id, &pin)
+        .await
+        .map_err(Into::into)
+}
+
+/// Begin an operator impersonation session for support.
+///
+/// The caller must present a valid operator session that holds the
+/// `operator:impersonate` capability (granted to the ADMIN preset; OWNER
+/// inherits it via `*`). The produced session carries ONLY the target user's
+/// scope and grants — the impersonated context reuses the operator's
+/// store/instance/type/terminal scope with the target's `user_id`/`role_id`. The
+/// operator's own grants are never merged, and `operator:impersonate` is never
+/// propagated into the produced token, so privilege amplification is
+/// structurally impossible.
+///
+/// The target must belong to the operator's authorized tenant scope (the same
+/// store/instance); otherwise the request is denied fail-closed. The session is
+/// short-lived ([`IMPERSONATION_SESSION_TTL_SECONDS`]) and an `impersonate.start`
+/// security event is recorded naming the operator (actor) and the impersonated
+/// user (subject).
+#[tauri::command]
+pub async fn impersonate_user_scoped(
+    session_token: String,
+    target_user_id: String,
+    state: State<'_, AppState>,
+) -> Result<CreateSessionResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::impersonate_user_scoped(&ctx, &session_token, &target_user_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Check whether any staff accounts exist in the database.
@@ -519,12 +216,8 @@ pub struct HasUsersResult {
 /// whether the `users` table is non-empty.
 #[tauri::command]
 pub async fn has_users(state: State<'_, AppState>) -> Result<HasUsersResult, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let users = store.list_users()?;
-    Ok(HasUsersResult {
-        has_users: !users.is_empty(),
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::has_users(&ctx).await.map_err(Into::into)
 }
 
 /// Destroy an active session, invalidating the token.
@@ -532,26 +225,20 @@ pub async fn has_users(state: State<'_, AppState>) -> Result<HasUsersResult, App
 /// ADR #4 / ADR #7: Called on logout or store switch. After this
 /// call, any commands using the old token will fail with
 /// `AppError::InvalidSession`.
+///
+/// Records a `logout` security event when the token actually resolved. A
+/// store switch destroys the old session too, and that is a genuine session
+/// end worth recording; an unknown or already-evicted token records nothing,
+/// so a replayed logout cannot manufacture phantom events.
 #[tauri::command]
 pub async fn destroy_session(
     state: State<'_, AppState>,
     session_token: String,
 ) -> Result<(), AppError> {
-    let mut store = state
-        .session_store
-        .write()
-        .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
-    store.remove(&session_token);
-    tracing::info!("session destroyed");
-    Ok(())
-}
-
-/// Result of `session_keepalive` — the refreshed expiry timestamp.
-#[derive(Debug, Serialize)]
-pub struct SessionKeepaliveResult {
-    /// Refreshed unix expiry (seconds). `None` when sessions have no
-    /// TTL (development mode) — the frontend can stop pinging then.
-    pub expires_at: Option<i64>,
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::destroy_session(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Refresh the current session's TTL so long-lived screens (analytics,
@@ -569,35 +256,8 @@ pub async fn session_keepalive(
     state: State<'_, AppState>,
     session_token: String,
 ) -> Result<SessionKeepaliveResult, AppError> {
-    let mut store = state
-        .session_store
-        .write()
-        .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
-
-    let expired = match store.get(&session_token) {
-        Some(ctx) => ctx.is_expired(),
-        None => return Err(AppError::InvalidSession),
-    };
-    if expired {
-        store.remove(&session_token);
-        return Err(AppError::InvalidSession);
-    }
-
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    let expires_at = if state.session_ttl_seconds > 0 {
-        Some(now_ts + state.session_ttl_seconds)
-    } else {
-        None
-    };
-    if let Some(entry) = store.get_mut(&session_token) {
-        entry.expires_at = expires_at;
-    }
-
-    tracing::debug!(ttl_seconds = %state.session_ttl_seconds, "session keepalive");
-    Ok(SessionKeepaliveResult { expires_at })
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::session_keepalive(&ctx, &session_token).map_err(Into::into)
 }
 
 /// Verify the current session user's PIN.
@@ -619,97 +279,22 @@ pub async fn verify_pin(
     session_token: String,
     pin: String,
 ) -> Result<bool, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    // Record the attempt up front (same flow as staff_login: the counter
-    // is cleared on success, failures stay counted).
-    if let Err(retry_after) = store.record_login_attempt_scoped(
-        &session.user_id,
-        None,
-        oz_core::db::staff::LoginLimits {
-            max_attempts: 5,         // per-account max
-            window_secs: 60,         // window secs
-            device_max_attempts: 10, // per-device max (no device dimension here)
-            global_max_attempts: 60, // global max
-            max_backoff_secs: 3600,  // max backoff secs
-        },
-    )? {
-        tracing::warn!(
-            user_id = %session.user_id,
-            retry_after,
-            "verify_pin rate limit exceeded"
-        );
-        return Err(AppError::Invalid(format!(
-            "Too many attempts. Try again in {retry_after}s."
-        )));
-    }
-
-    let user = store
-        .get_user(&session.user_id)?
-        .ok_or_else(|| AppError::Invalid("user not found".into()))?;
-    let valid = oz_core::auth::verify_pin(&pin, &user.pin_hash)
-        .map_err(|e| AppError::Internal(format!("PIN verification failed: {e}")))?;
-    if valid {
-        // PIN correct — clear the limiter for this account.
-        store.clear_login_attempts(&session.user_id)?;
-    }
-    Ok(valid)
-}
-
-/// Result of `refresh_picker_ticket` — a fresh HMAC-signed ticket.
-#[derive(Debug, Serialize)]
-pub struct RefreshPickerTicketResult {
-    /// Fresh picker ticket valid for another 5 minutes.
-    pub picker_ticket: String,
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::verify_pin(&ctx, &session_token, &pin)
+        .await
+        .map_err(Into::into)
 }
 
 /// Mint a fresh picker ticket for a caller who already holds a valid session token.
 ///
 /// Used when the UI returns to the workspace picker (e.g. Back button from KDS)
 /// and needs to re-call `create_session` without going through `staff_login`
-/// again. The picker ticket has a short TTL (5 minutes) so if the user was
-/// browsing the workspace picker for longer than that, the original ticket
-/// from login has expired.
-///
-/// Security: re-minting is safe because it requires a valid, non-expired
-/// session token — proving the caller has already authenticated. The new
-/// ticket is bound to the session's `user_id`, so identity is preserved.
+/// again. The body is the bridge's — see [`oz_bridge::auth::refresh_picker_ticket`].
 #[tauri::command]
 pub async fn refresh_picker_ticket(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<RefreshPickerTicketResult, AppError> {
-    // Verify the existing session token — this proves the caller is already
-    // authenticated (STAFF-01 / ADR #4).
-    let session = state.resolve_session(&session_token)?;
-
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-
-    let picker_ticket = picker_ticket::sign_picker_ticket(
-        &state.picker_ticket_secret,
-        &session.user_id,
-        now_ts + picker_ticket::PICKER_TICKET_TTL_SECS,
-    );
-
-    tracing::debug!(
-        user_id = %session.user_id,
-        "picker ticket refreshed via session token"
-    );
-
-    Ok(RefreshPickerTicketResult { picker_ticket })
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "auth_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "security_scoped_integration_tests.rs"]
-mod security_integration_tests;

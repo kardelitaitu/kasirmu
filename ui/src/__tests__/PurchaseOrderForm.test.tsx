@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,7 +11,7 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 // Mock the purchasing API — use vi.fn() inline to avoid hoisting issues.
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok-test', activeWorkspace: null, logout: vi.fn() }),
-  WorkspaceProvider: ({ children }: { children: import('react').ReactNode }) => <>{children}</>,
+  WorkspaceProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/api/purchasing', () => ({

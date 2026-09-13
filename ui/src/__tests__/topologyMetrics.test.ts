@@ -6,7 +6,7 @@
 // without measuring the DOM.
 
 import { describe, expect, it } from 'vitest';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
 import {
   NODE_HEADER_H,
   NODE_BODY_PAD,
@@ -24,7 +24,7 @@ import {
   nodeHeight,
   portRowCenterY,
   semanticRowIndex,
-} from '@/features/stores/topologyMetrics';
+} from '@/features/locations/topologyMetrics';
 
 function node(overrides: Partial<TopologyNodeData>): TopologyNodeData {
   return {

@@ -262,6 +262,13 @@
   padding: 0 var(--space-3);
 }
 
+/* F2-3: the live-preview PPN figure is an ESTIMATE until the charge is
+   settled — de-emphasized against the committed money rows. */
+.pos-cart-tax-estimated {
+  color: var(--color-fg-tertiary);
+  font-style: italic;
+}
+
 /* ── Tip segment chips ───────────────────────────── */
 
 .pos-cart-tip-area {

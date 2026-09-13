@@ -2,7 +2,8 @@
 # ── OZ-POS Dev Up (Linux / macOS) ───────────────────────────────────
 #
 # One-command local development startup:
-#   1. Generates JWT secret if not set
+#   1. Resolves the compose-required secrets (JWT secret + admin key):
+#      generated once into the gitignored repo .env, reused on every run
 #   2. Starts PostgreSQL, Redis, license-server, cloud-server via Docker
 #   3. Waits for all health checks to pass
 #   4. Prints service URLs + next steps
@@ -50,17 +51,127 @@ if ! command -v docker &>/dev/null; then
   exit 1
 fi
 
-# ── Generate JWT secret if not set ────────────────────────────────
-if [ -z "${OZ_API_SECRET:-}" ]; then
+# ── Generate the required secrets once, persist them, reuse on next run ──
+#
+# docker-compose.yml hard-requires OZ_API_SECRET (:55) and OZ_ADMIN_KEY (:70)
+# with the fail-closed `:?` interpolation form. That requirement IS the fix:
+# admin_key_authorised() in crates/oz-api/src/routes/tokens.rs returns TRUE
+# when no admin key is configured, so an unset OZ_ADMIN_KEY made
+# POST /api/v1/tokens an unauthenticated mint. Compose refusing to parse
+# without one must stay. What dev-up owes a developer is a value to run with,
+# and it now supplies both the same way it always supplied OZ_API_SECRET.
+#
+# Where they persist: the repo-root .env — excluded by .gitignore:66, so a
+# generated secret never lands in a tracked file. Compose reads that .env on
+# its own, and reusing the stored value is what keeps already-minted tokens
+# valid across restarts instead of rotating the signing key every run.
+ENV_FILE=".env"
+GENERATED_SECRETS=""
+
+# new_secret_hex — 32 random bytes as 64 hex chars.
+new_secret_hex() {
   if command -v openssl &>/dev/null; then
-    export OZ_API_SECRET="$(openssl rand -hex 32)"
+    openssl rand -hex 32
   else
     # Fallback without openssl: 32 bytes of /dev/urandom as hex = 64 chars.
     # (The previous uuidgen fallback produced only 32 hex chars, half the
     # intended 64-char secret strength.)
-    export OZ_API_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+    od -An -N32 -tx1 /dev/urandom | tr -d ' \n'
   fi
-  echo "🔑 Generated OZ_API_SECRET (64-char hex)"
+}
+
+# _rewrite_env_line NAME VALUE — replace the existing NAME= line in $ENV_FILE
+# in place, keeping every other line byte-for-byte. VALUE is passed through the
+# environment, never interpolated into the script, so no metacharacter in it
+# can rewrite anything but that one line.
+_rewrite_env_line() {
+  local name="$1"
+  # umask 077 around the redirect: awk writes a NEW file, and without it that
+  # temp copy of a secret file is created 0644 for the instant before mv.
+  ( umask 077
+    OZ_ENV_WRITE_VALUE="$2" awk -v key="$name" '
+      { if (!done && $0 ~ "^[[:space:]]*" key "=") { print key "=" ENVIRON["OZ_ENV_WRITE_VALUE"]; done = 1 }
+        else print }
+    ' "$ENV_FILE" > "$ENV_FILE.tmp.$$" ) && mv "$ENV_FILE.tmp.$$" "$ENV_FILE"
+}
+
+# env_value NAME — print NAME's current exported value (empty if unset).
+# Written as an explicit case instead of `${!name}` indirect expansion, which
+# macOS still ships as bash 3.2, where that form combined with a `:-` default
+# is unreliable. NAME is always one of the literal constants passed at the
+# bottom of require_secret, never user input.
+env_value() {
+  case "$1" in
+    OZ_API_SECRET)  printf '%s' "${OZ_API_SECRET:-}" ;;
+    OZ_ADMIN_KEY)   printf '%s' "${OZ_ADMIN_KEY:-}" ;;
+    *)              printf '' ;;
+  esac
+}
+
+# require_secret NAME — guarantee NAME is exported and non-empty:
+#   already exported      -> left alone (an operator or CI value wins)
+#   non-empty in .env     -> reused, stable across restarts
+#   neither               -> generated once, written to .env, then exported
+require_secret() {
+  local name="$1" value=""
+
+  if [ -n "$(env_value "$name")" ]; then
+    return 0
+  fi
+
+  if [ -f "$ENV_FILE" ]; then
+    # In a dotenv file the last assignment wins, so take the final match,
+    # then drop any wrapping quotes and stray whitespace.
+    # `|| true`: under `set -euo pipefail` a grep that matches nothing
+    # exits 1, which would abort dev-up here instead of falling through to
+    # generate-and-persist — the common fresh-machine case.
+    value=$(grep -E "^[[:space:]]*${name}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)
+    value="${value%\"}"
+    value="${value#\"}"
+    value="$(printf '%s' "$value" | tr -d '[:space:]')"
+  fi
+
+  if [ -n "$value" ]; then
+    export "$name=$value"
+    echo "🔑 $name reused from $ENV_FILE"
+    return 0
+  fi
+
+  value="$(new_secret_hex)"
+  if [ "${#value}" -lt 64 ]; then
+    echo "❌ Could not generate a 64-char hex secret for $name."
+    exit 1
+  fi
+
+  # 0600 from the moment it exists: this file is about to hold signing keys.
+  if [ ! -f "$ENV_FILE" ]; then
+    (umask 077 && : > "$ENV_FILE")
+  fi
+  # Fill in place if the key is already listed with an empty value — that is
+  # the shape a .env copied from .env.example has — instead of stacking a
+  # second assignment under it. Otherwise append once.
+  if [ -f "$ENV_FILE" ] && grep -qE "^[[:space:]]*${name}=" "$ENV_FILE"; then
+    _rewrite_env_line "$name" "$value"
+  else
+    # An append onto a file with no trailing newline would glue the new key
+    # onto the last line and corrupt both, so make sure one is there.
+    if [ -s "$ENV_FILE" ] && [ -n "$(tail -c 1 "$ENV_FILE")" ]; then
+      printf '\n' >> "$ENV_FILE"
+    fi
+    printf '%s=%s\n' "$name" "$value" >> "$ENV_FILE"
+  fi
+  chmod 600 "$ENV_FILE" 2>/dev/null || true
+  export "$name=$value"
+  # Only the NAME is recorded for the summary line — never the value, since
+  # this output is captured in CI logs.
+  GENERATED_SECRETS="$GENERATED_SECRETS $name"
+}
+
+require_secret OZ_API_SECRET
+require_secret OZ_ADMIN_KEY
+
+if [ -n "$GENERATED_SECRETS" ]; then
+  echo "🧪 LOCAL DEV ONLY — scripts/dev-up.sh generated$GENERATED_SECRETS into the gitignored $ENV_FILE. These are throwaway values for THIS MACHINE, not production credentials: replace them before deploying anywhere."
 fi
 
 # ── Check license key ─────────────────────────────────────────────

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
@@ -20,7 +22,7 @@ import {
   type MenuEngineeringResult,
   type MenuQuadrant,
 } from '@/api/reports';
-import { getPrimaryStoreScoped } from '@/api/stores';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -114,7 +116,14 @@ function ScatterDot(props: Record<string, unknown>) {
 }
 
 /** Menu engineering report — scatter chart of menu items by popularity and profitability with quadrant classification (Star, Plowhorse, Puzzle, Dog). */
+/** §B administrative gate — Reports lock while the subscription is not `active`. */
 export default function MenuEngineeringScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <MenuEngineeringScreenContent />;
+}
+
+function MenuEngineeringScreenContent() {
   const { l10n } = useLocalization();
   const { currency } = useCurrency();
   // R36-07: read the token through the useWorkspace() hook rather than the
@@ -135,7 +144,7 @@ const { sessionToken: rawToken } = useWorkspace();
   useEffect(() => {
     if (!sessionToken) return;
     let alive = true;
-    getPrimaryStoreScoped(sessionToken)
+    getPrimaryLocationScoped(sessionToken)
       .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
       .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
     return () => { alive = false; };

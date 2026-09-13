@@ -9,6 +9,7 @@
 # Compose fails closed if they are absent (DOCKER-04):
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
+#   export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 #   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
 #   docker compose up -d
 #   curl http://localhost:3099/api/v1/health
@@ -17,12 +18,15 @@
 # With PostgreSQL (enterprise — add the pg override, PG_PASSWORD required):
 #
 #   export OZ_API_SECRET=$(openssl rand -hex 32)
+#   export OZ_ADMIN_KEY=$(openssl rand -hex 32)
 #   export OZ_LICENSE_PRIVATE_KEY="$(cat crates/oz-core/oz-license-private.pem)"
 #   export PG_PASSWORD=$(openssl rand -hex 32)
 #   docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d
 #
 # Required env vars (Compose fails fast when absent):
 #   OZ_API_SECRET          — JWT signing secret (generate: openssl rand -hex 32)
+#   OZ_ADMIN_KEY           — admin key gating /api/v1/tokens + the plan
+#                            endpoint (generate: openssl rand -hex 32)
 #   OZ_LICENSE_PRIVATE_KEY — PEM-encoded license signing private key
 #                            (from `scripts/generate-license-keys.ps1/.sh`)
 #
@@ -60,9 +64,10 @@ services:
       REDIS_CACHE_TTL: "${REDIS_CACHE_TTL:-300}"
 
       # Admin key gating token minting + the plan admin endpoint (ADR
-      # sync-auth-hardening P2 / sync-plan-gating). Empty (unset) = dev
-      # mode open; set in production.
-      OZ_ADMIN_KEY: "${OZ_ADMIN_KEY:-}"
+      # sync-auth-hardening P2 / sync-plan-gating). REQUIRED — compose fails
+      # fast if unset so a stack never starts with the mint endpoint open
+      # (DOCKER-04, matching OZ_API_SECRET above).
+      OZ_ADMIN_KEY: "${OZ_ADMIN_KEY:?OZ_ADMIN_KEY is required (generate: openssl rand -hex 32)}"
       # Plan gating (ADR sync-plan-gating): "1"/"true"/"on" rejects sync
       # from free tenants with 403 plan_required. Unset = off (dev mode).
       OZ_ENFORCE_PLANS: "${OZ_ENFORCE_PLANS:-}"

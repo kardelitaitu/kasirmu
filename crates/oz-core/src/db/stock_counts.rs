@@ -495,16 +495,21 @@ impl Store<'_> {
                     other => CoreError::Db(other),
                 })?;
 
-            // Distinguish DB errors from "no inventory row yet" (0 stock).
-            // Read through the active transaction so the inventory write and
-            // the adjustment see one consistent snapshot.
-            let previous_qty = match tx.query_row(
-                "SELECT qty FROM inventory WHERE product_id = ?1",
+            // Baseline: read the same value the product-grid reader derives —
+            // SUM over the per-location stock_summary rows, falling back to the
+            // legacy single-PK inventory row when the product has none — so the
+            // count delta is computed against what the user actually sees
+            // rather than a stale aggregate. Read through the active
+            // transaction so the baseline and the writes see one snapshot.
+            let previous_qty: i64 = match tx.query_row(
+                "SELECT COALESCE((SELECT SUM(ss.qty) FROM stock_summary ss
+                                  WHERE ss.item_id = ?1),
+                                 (SELECT COALESCE(qty, 0) FROM inventory
+                                  WHERE product_id = ?1))",
                 params![product_id],
-                |row| row.get::<_, i64>(0),
+                |row| row.get(0),
             ) {
                 Ok(q) => q,
-                Err(rusqlite::Error::QueryReturnedNoRows) => 0,
                 Err(e) => return Err(CoreError::Db(e)),
             };
             validate_non_negative("previous_qty", previous_qty)?;
@@ -516,28 +521,69 @@ impl Store<'_> {
                         message: "quantity difference overflow".into(),
                     })?;
 
-            // Update inventory.
-            {
-                let new_qty =
-                    previous_qty
-                        .checked_add(delta)
-                        .ok_or_else(|| CoreError::Validation {
-                            field: "adjusted_qty",
-                            message: "inventory quantity overflow".into(),
-                        })?;
-                if new_qty < 0 {
-                    return Err(CoreError::Validation {
-                        field: "adjusted_qty",
-                        message: "adjusted quantity must be non-negative".into(),
-                    });
+            // Apply the count delta through the canonical per-location adjust
+            // fn so there is exactly one stock writer and the legacy aggregate
+            // is recomputed as the SUM over all locations. A shrink is
+            // waterfalled across the locations that hold stock (largest first,
+            // never underflowing one); a surplus credits the largest holder —
+            // or the canonical default location when the product has no
+            // per-location rows.
+            self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+            if delta != 0 {
+                let holders: Vec<(String, i64)> = {
+                    let mut stmt = tx.prepare(
+                        "SELECT location_id, qty FROM stock_summary
+                         WHERE item_id = ?1 ORDER BY qty DESC, location_id ASC",
+                    )?;
+                    stmt.query_map(params![product_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?
+                };
+                let reason = format!("stock count {}", count.count_number);
+                let mut remaining = delta;
+                for (location_id, location_qty) in &holders {
+                    if remaining == 0 {
+                        break;
+                    }
+                    let step = if remaining < 0 {
+                        // Shrink: deduct up to what this location holds.
+                        -(-remaining).min(*location_qty)
+                    } else {
+                        // Surplus: credit the largest holder once.
+                        remaining
+                    };
+                    if step == 0 {
+                        continue;
+                    }
+                    self.adjust_stock_at_location_with_reason(
+                        &tx,
+                        &line.sku,
+                        step,
+                        &crate::inventory::LocationId::from(location_id.as_str()),
+                        Some(reason.as_str()),
+                        None,
+                        None,
+                        None,
+                    )?;
+                    remaining -= step;
                 }
-
-                tx.execute(
-                    "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(product_id) DO UPDATE SET qty = excluded.qty,
-                                                             updated_at = excluded.updated_at",
-                    params![product_id, new_qty, now],
-                )?;
+                if remaining != 0 {
+                    // Surplus with no per-location holder (or a defensive
+                    // shortfall): land the remainder at the canonical default.
+                    self.adjust_stock_at_location_with_reason(
+                        &tx,
+                        &line.sku,
+                        remaining,
+                        &crate::inventory::LocationId::from(
+                            crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+                        ),
+                        Some(reason.as_str()),
+                        None,
+                        None,
+                        None,
+                    )?;
+                }
             }
 
             let adj_id = uuid::Uuid::now_v7().to_string();

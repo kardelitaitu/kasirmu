@@ -110,6 +110,29 @@ fn portable_key(domain: &[u8], legacy: impl FnOnce(&[u8]) -> [u8; 32]) -> [u8; 3
     }
 }
 
+/// Whether [`portable_key`] is currently selecting the master-key HMAC
+/// derivation, as a plain bool.
+///
+/// Returns `true` when `OZ_MASTER_KEY` is set to a usable 32-byte value -
+/// i.e. when the five portable credential families derive through [`hmac_key`]
+/// instead of their byte-identical `legacy` fallback - and `false` when they
+/// derive `legacy`. It reports **which derivation this process selected** and
+/// nothing else: not whether the setting is correct, not whether the deployment is
+/// secure, and never the key material.
+///
+/// Reads the same [`master_key_from_env`] the derivation itself reads, so the
+/// answer cannot drift from the code path it describes: a set-but-malformed value
+/// reports `false` here for exactly the reason it falls back in [`portable_key`].
+///
+/// # Why publishing presence is safe
+///
+/// The operator already controls whether the variable exists, so learning that it does
+/// discloses nothing they do not know; omitting it is what leaves them unable to explain
+/// why five credential families stopped decrypting.
+pub fn master_key_derivation_active() -> bool {
+    master_key_from_env().is_some()
+}
+
 /// [`portable_key`] with an injected master (test seam).
 #[cfg(test)]
 fn portable_key_with(

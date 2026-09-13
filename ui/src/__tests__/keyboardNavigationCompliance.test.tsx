@@ -30,7 +30,7 @@ import TabletAppLayout from '@/frontend/shell/tablet/TabletAppLayout';
 import { Modal } from '@/components/Modal';
 import StoreSwitcher from '@/components/StoreSwitcher';
 import { registerNavItem, clearNavItems } from '@/platform/ui/menu-registry';
-import type { StoreProfile } from '@/api/stores';
+import type { LocationProfile } from '@/api/locations';
 
 // ── Shell leaf stubs (each covered by its own focused suite) ──────────
 vi.mock('@/frontend/shell/StatusBar', () => ({
@@ -48,9 +48,9 @@ vi.mock('@/components/RoleBadge', () => ({ default: () => null }));
 const { mockListStores } = vi.hoisted(() => ({
   mockListStores: vi.fn(),
 }));
-vi.mock('@/api/stores', () => ({
-  listStoresScoped: () => mockListStores(),
-  setPrimaryStoreScoped: vi.fn(() => Promise.resolve({ id: 's' })),
+vi.mock('@/api/locations', () => ({
+  listLocationsScoped: () => mockListStores(),
+  setPrimaryLocationScoped: vi.fn(() => Promise.resolve({ id: 's' })),
 }));
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -70,7 +70,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 }));
 
 // ── Test store fixtures ───────────────────────────────────────────────
-function makeStore(overrides: Partial<StoreProfile> = {}): StoreProfile {
+function makeStore(overrides: Partial<LocationProfile> = {}): LocationProfile {
   return {
     id: 'store-1',
     name: 'HQ',

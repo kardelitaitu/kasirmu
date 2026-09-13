@@ -38,7 +38,11 @@ const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.retail-cart-course-dropdown', file: 'features/retail/RetailPosScreen.css' },
   { selector: '.retail-menu', file: 'features/retail/RetailPosScreen.css' },
   { selector: '.settings-shortcuts-popover', file: 'features/settings/SettingsNavTree.css' },
-  { selector: '.kds-settings-popover', file: 'features/kds/KdsSettingsPanel.css' },
+  // `.kds-settings-popover` retired with KdsSettingsPanel (renders nowhere;
+  // todo-kds-agents-6). Its companion stylesheet was deleted with the
+  // component, so the entry would throw ENOENT exactly like the
+  // layout-popover one below.
+  { selector: '.kds-enrollment-modal', file: 'features/kds/components/KdsEnrollmentModal.css' },
   // `.kds-layout-popover` was listed here until the layout switcher was
   // removed in the Phase 6 cleanup (fece7524). Its stylesheet went with it,
   // so the entry threw ENOENT and failed both compliance tests.
@@ -47,15 +51,15 @@ const POPOVER_SURFACES: ReadonlyArray<{ selector: string; file: string }> = [
   { selector: '.pos-cart-undo-bar', file: 'features/sales/CartPanel.css' },
   { selector: '.product-mgmt-alert-drawer', file: 'features/products/ProductManagementScreen.css' },
   { selector: '.kds-picker-modal', file: 'features/kds/components/KdsProductPickerModal.css' },
-  { selector: '.node-inspector-drawer', file: 'features/stores/NodeTopologyEditor.css' },
-  { selector: '.canvas-hud', file: 'features/stores/NodeTopologyEditor.css' },
-  { selector: '.canvas-zoom-controls', file: 'features/stores/NodeTopologyEditor.css' },
-  { selector: '.canvas-zoom-slider-pop', file: 'features/stores/NodeTopologyEditor.css' },
+  { selector: '.node-inspector-drawer', file: 'features/locations/NodeTopologyEditor.css' },
+  { selector: '.canvas-hud', file: 'features/locations/NodeTopologyEditor.css' },
+  { selector: '.canvas-zoom-controls', file: 'features/locations/NodeTopologyEditor.css' },
+  { selector: '.canvas-zoom-slider-pop', file: 'features/locations/NodeTopologyEditor.css' },
   // topology-shortcuts-popover removed with the shortcuts feature (agent-1 UX merge)
-  { selector: '.topology-context-menu', file: 'features/stores/NodeTopologyEditor.css' },
-  { selector: '.topology-align-toolbar', file: 'features/stores/NodeTopologyEditor.css' },
-  { selector: '.topology-minimap', file: 'features/stores/NodeTopologyEditor.css' },
-  { selector: '.topology-validation-panel', file: 'features/stores/NodeTopologyEditor.css' },
+  { selector: '.topology-context-menu', file: 'features/locations/NodeTopologyEditor.css' },
+  { selector: '.topology-align-toolbar', file: 'features/locations/NodeTopologyEditor.css' },
+  { selector: '.topology-minimap', file: 'features/locations/NodeTopologyEditor.css' },
+  { selector: '.topology-validation-panel', file: 'features/locations/NodeTopologyEditor.css' },
   { selector: '.dev-toolbar', file: 'features/design/DevToolbar.css' },
   // Sticky header over scrolling rows — rows must not bleed through (THM-08).
   { selector: '.custom-report-table th', file: 'features/reports/CustomReportScreen.css' },

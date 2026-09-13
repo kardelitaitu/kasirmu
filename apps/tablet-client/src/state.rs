@@ -273,6 +273,25 @@ impl AppState {
         removed
     }
 
+    /// Remove a single session token from the store (SaaS-3 L194 org switch).
+    ///
+    /// Returns true if the token was present and removed. switch_organization
+    /// uses this to invalidate the current token BEFORE minting the new session,
+    /// so the old token is dead before any new session exists. This is the
+    /// load-bearing half of the invalidate-then-mint ordering; it is distinct
+    /// from invalidate_user_sessions_except, which sweeps every token for a
+    /// user.
+    pub fn invalidate_session(&self, token: &str) -> bool {
+        let mut store = match self.session_store.write() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("session store lock poisoned during single invalidation: {e}");
+                return false;
+            }
+        };
+        store.remove(token).is_some()
+    }
+
     /// Remove all expired sessions from the store in a single sweep.
     /// Called periodically by the background session-cleanup daemon.
     pub fn prune_expired_sessions(&self) -> usize {

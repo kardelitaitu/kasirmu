@@ -7,7 +7,9 @@ vi.mock('@/utils/logged-invoke', () => ({
 
 import {
   createBackup,
+  createBackupScoped,
   getBackupStatus,
+  getBackupStatusScoped,
   exportData,
   importPreview,
   importData,
@@ -18,13 +20,37 @@ describe('data.ts API contract', () => {
     vi.clearAllMocks();
   });
 
-  it('getBackupStatus calls correct command (no args)', async () => {
+  // The two cases below pin the GATED names. get_backup_status_scoped and
+  // create_backup_scoped enforce permissions::DATA_EXPORT in Rust (added at
+  // 62e30fd7 for F-017, registered in apps/desktop-client/src/lib.rs:844 and :846);
+  // the unscoped commands check nothing, so a session without the data-export right
+  // can still reach them. These assertions are what keeps the gated path from being
+  // abandoned again by the next refactor.
+  it('getBackupStatusScoped calls the gated command and passes the token', async () => {
+    mockInvoke.mockResolvedValue({ lastBackup: null });
+    await getBackupStatusScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('get_backup_status_scoped', { sessionToken: 'tok' });
+  });
+
+  it('createBackupScoped calls the gated command and passes the token', async () => {
+    mockInvoke.mockResolvedValue({ path: '/backups/db.db' });
+    const result = await createBackupScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('create_backup_scoped', { sessionToken: 'tok' });
+    expect(result.path).toBe('/backups/db.db');
+  });
+
+  // And this records the hole rather than endorsing it: the unscoped wrappers are
+  // still exported and still reached from the renderer — from
+  // features/settings/DataManagementScreen.tsx whenever sessionToken is the empty
+  // string, and from frontend/shell/UpdateBanner.tsx, which has no token at all.
+  // Deleting these two cases would hide that, not fix it.
+  it('getBackupStatus still calls the UNGATED command (known bypass, see report)', async () => {
     mockInvoke.mockResolvedValue({ lastBackup: null });
     await getBackupStatus();
     expect(mockInvoke).toHaveBeenCalledWith('get_backup_status');
   });
 
-  it('createBackup calls correct command', async () => {
+  it('createBackup still calls the UNGATED command (known bypass, see report)', async () => {
     mockInvoke.mockResolvedValue({ path: '/backups/db.db' });
     const result = await createBackup();
     expect(mockInvoke).toHaveBeenCalledWith('create_backup');

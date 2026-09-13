@@ -19,6 +19,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useSubscription).mockReturnValue({
     caps: makeSubscriptionCaps({ tier: 'plus', addons: [] }),
+    state: 'active',
     loading: false,
     refresh: vi.fn(),
   });

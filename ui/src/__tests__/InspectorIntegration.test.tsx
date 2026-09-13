@@ -1,10 +1,10 @@
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
-import NodeTopologyEditor from '../features/stores/NodeTopologyEditor';
+import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { loadTopology } from '@/api/topology';
-import type * as nodeTopologyEditorState from '../features/stores/nodeTopologyEditorState';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
+import type * as nodeTopologyEditorState from '../features/locations/nodeTopologyEditorState';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 vi.mock('@/api/topology', () => ({
@@ -27,9 +27,9 @@ const RETAIL_SEED = {
   ],
 };
 
-vi.mock('../features/stores/nodeTopologyEditorState', async () => {
+vi.mock('../features/locations/nodeTopologyEditorState', async () => {
   const actual = await vi.importActual<typeof nodeTopologyEditorState>(
-    '../features/stores/nodeTopologyEditorState',
+    '../features/locations/nodeTopologyEditorState',
   );
   return {
     ...actual,

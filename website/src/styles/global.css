@@ -21,9 +21,16 @@
   --color-green: #53D769;
   --color-red: #FC3D39;
   --color-gray: #8E8E93;
-  /* Semantic — light theme (default) */
-  --color-primary: #0D5FD6;
-  --color-primary-hover: #0A4FB3;
+  /* Semantic — light theme (default).
+     --color-primary is the AA-bearing shade of the PRODUCT brand blue
+     #147EFB (design-language.html, branding.rs default): #147EFB itself is
+     3.88:1 with white text — below the 4.5:1 WCAG floor — so text-bearing
+     surfaces use #1170EC, the closest shade where white passes (4.61:1).
+     The exact #147EFB stays in --color-blue for decorative swatches. Dark
+     ink on #147EFB was tried and rejected (reads wrong on buttons). */
+  --color-primary: #1170EC;
+  --color-primary-hover: #0E63D9; /* darkens on hover: white text gains contrast */
+  --color-on-primary: #FFFFFF;
   --color-success: #53D769;
   --color-danger: #FC3D39;
   --color-warning: #FD9426;
@@ -75,15 +82,16 @@
   --tooltip-bg: #1A1D23;
   /* Tailwind utility aliases — map old names to design language tokens
      so existing bg-accent, text-muted, border-ink/* classes keep working */
-  --color-accent: #0D5FD6; /* Alias: accent tokens map to primary for backwards compat */
+  --color-accent: #1170EC; /* Alias: accent tokens map to primary for backwards compat */
   --color-link: #0D5FD6;
 }
 
 /* ── Dark theme overrides ─────────────────────────────────────── */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-primary: #0D5FD6;
-  --color-primary-hover: #2088FF;
+  --color-primary: #1170EC;
+  --color-primary-hover: #0E63D9;
+  --color-on-primary: #FFFFFF;
   --color-success: #6FE884;
   --color-danger: #FF6B68;
   --color-warning: #FFA94D;
@@ -107,7 +115,7 @@
   --callout-tip: #6FE884;
   --callout-danger: #FF6B68;
   /* Tailwind utility aliases — dark mode overrides */
-  --color-accent: #1A8FFF;
+  --color-accent: #1170EC;
   --color-link: #2088FF;
 }
 
@@ -115,9 +123,16 @@
 html,
 body {
   /* Hero-carousel slides park beyond the viewport edges between
-     transitions (translateX(±100vw)); html+body need the clip so the
-     parked windows never create a horizontal scrollbar. */
+     transitions (translateX(±100vw)); the root needs the clip so the
+     parked windows never create a horizontal scrollbar.
+     `clip` (not `hidden`) is load-bearing for scroll performance:
+     `overflow-x: hidden` on body makes it a scroll container, which
+     demotes Chrome's root-scroller fast path and makes wheel scrolling
+     janky (and degrades position: sticky). `clip` clips identically
+     without creating a scroll container. Browsers that predate clip
+     (Safari <16) fall back to the hidden line above. */
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {

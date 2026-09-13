@@ -1,24 +1,90 @@
 settings-title = Pengaturan
-settings-category-business = Bisnis
 
 # ── Sidebar navigation labels ──
+# ── Lisensi: remediasi kuota (§J) ──
+settings-license-quota-title = Status kuota
+settings-license-quota-intro = Sumber daya diukur terhadap kuota paket { $tier } — angka yang sama yang diterapkan gerbang pembuatan.
+settings-license-quota-ok = Semua masih dalam batas kuota.
+settings-license-quota-over-aria = Sumber daya melebihi kuota
+settings-license-quota-over-heading = Melebihi kuota — arsipkan atau tingkatkan paket
+settings-license-quota-over-line = { $current } dari { $limit } — { $excess } berlebih
+settings-license-quota-guidance = Arsipkan sumber daya yang tidak terpakai di layar terkait, atau tingkatkan paket untuk menaikkan batas. Tidak ada yang dihapus otomatis.
+settings-license-quota-load-failed = Tidak dapat memuat penilaian kuota.
+settings-license-quota-refresh = Segarkan
+settings-license-quota-dim-locations = Lokasi
+settings-license-quota-dim-pos-registers = Terminal POS
+settings-license-quota-dim-warehouses = Titik stok gudang
+settings-license-quota-dim-staff = Akun staf
+settings-license-quota-dim-products = Produk
+# §J B3 — cap KDS per lokasi. Tidak ada baris pemakaian tingkat tenant untuk
+# ini, jadi labelnya tetap diperlukan meski dimensinya bukan kuota tenant.
+settings-license-quota-dim-kds-screens = Layar KDS (lokasi ini)
+# Marker S4 — agregat node topologi per toko: satu baris per toko yang
+# menghitung instance non-arsip terhadap JUMLAH batas per lokasi, berlebih
+# sejak ≥1 instance harus ditangguhkan kuota. Dihitung saat dibaca, tidak
+# pernah disimpan.
+settings-license-quota-dim-topology-nodes = Node topologi (toko ini)
+# §J B3 — baris yang dibatasi per lokasi, bukan per tenant.
+settings-license-quota-loc-aria = Batas kuota per lokasi
+settings-license-quota-loc-title = Batas per lokasi
+# Baris kegagalan generik B1 diberi slot alasan, karena id toko yang ditolak dan
+# koneksi yang putus butuh jawaban berbeda. Alasannya adalah pesan hasil pemetaan
+# KIND menurut ERR-05/06, bukan kalimat backend itu sendiri — baris mana yang
+# dimaksud dibaca dari id toko yang dicetak kartu di samping baris ini.
+settings-license-quota-remedy-failed-detail = Aksi tersebut gagal: { $reason }. Angka kuota di atas tidak berubah.
+# §J B1 — dua aksi perbaikan register workspace pada kartu melebihi kuota.
+# remedy-hint menyebut nama toko karena kartu ini terbaca sebagai tingkat tenant
+# sementara kedua aksinya terikat satu toko; teksnya tidak boleh menimbulkan
+# kesan lain.
+settings-license-quota-remedy-aria = Perbaikan register workspace
+settings-license-quota-remedy-title = Register workspace
+settings-license-quota-remedy-hint = Suspensi register surplus milik { $store }, atau pulihkan yang sempat disuspensi oleh penurunan paket sebelumnya. Hanya toko ini yang terpengaruh.
+settings-license-quota-remedy-suspend = Suspensi surplus
+settings-license-quota-remedy-recover = Pulihkan yang disuspensi
+settings-license-quota-remedy-suspended = { $count } register surplus disuspensi. Dinonaktifkan, bukan dihapus.
+settings-license-quota-remedy-recovered = { $count } register yang disuspensi telah dipulihkan.
+settings-license-quota-remedy-none = Tidak ada yang berubah — tidak ada register toko ini yang melebihi batas atau sedang disuspensi.
 settings-nav-general = Umum
-settings-nav-appearance = Tampilan
-settings-nav-receipt = Nota
 settings-nav-sync = Sinkronisasi Cloud
-settings-nav-about = Tentang
 settings-nav-license = Lisensi
 settings-nav-topology = Topologi
-settings-nav-email = Laporan Email
-settings-category-operations = Operasional
-settings-category-system = Sistem
+
+# ── Kerangka layar Setelan (penataan ulang) ──
+# Satu label navigasi untuk tiap layar kosong di features/settings/screens/.
+# Scaffold General memakai settings-nav-general di atas; dua belas kunci berikut
+# berpasangan satu-lawan-satu dengan file sisanya, dalam urutan yang sama.
+settings-nav-license-subscription = Lisensi & Langganan
+settings-nav-devices-connectivity = Perangkat & Konektivitas
+settings-nav-business-defaults = Default Bisnis
+settings-nav-features-modules = Fitur & Modul
+settings-nav-security-account = Keamanan & Akun
+settings-nav-data-sync = Data & Sinkronisasi
+settings-nav-data-management = Manajemen Data
+settings-nav-sync-status = Status Sinkronisasi
+settings-nav-sync-conflicts = Konflik Sinkronisasi
+settings-nav-offline-queue = Antrean Offline
+settings-nav-tax-configuration = Konfigurasi Pajak
+settings-nav-exchange-rates = Kurs Valuta Asing
+settings-nav-system-diagnostics = Diagnostik Sistem
+settings-screen-placeholder = Halaman ini sedang dibangun ulang.
+settings-screen-migrating = Konten setelan yang ada akan dipindahkan ke sini secara selektif.
+# Gerbang lantai halaman Setelan: roleAtLeast (utils/role.ts) menampilkan teks ini
+# untuk peran di bawah lantai admin.
+# Lencana Plus di bilah sisi: dibaca oleh item navigasi datar yang halamannya
+# digerbangi paket Plus. Masuk bersama markup lencana yang mereferensikannya
+# (gerbang orphan: kunci harus direferensikan oleh commitnya sendiri).
+settings-nav-plus-badge-aria = Memerlukan paket Plus
+settings-locked-title = Setelan dibatasi
+settings-locked-desc = Setelan hanya tersedia untuk pemilik dan administrator.
 settings-sidebar-nav-aria = Navigasi pengaturan
 settings-sidebar-expand-aria = Buka bilah sisi pengaturan
 settings-sidebar-collapse-aria = Tutup bilah sisi pengaturan
 settings-back-aria = Kembali
-settings-sidebar-collapse-all-aria = Tutup semua kategori
 settings-sidebar-search-aria = Cari pengaturan
 settings-sidebar-search-clear-aria = Hapus pencarian
+# Bertahan pada IA datar: tanpa kategori, "tutup semua" melipat semua halaman
+# ke bilah ikon, artinya menutup bilah sisi.
+settings-sidebar-collapse-all-aria = Tutup semua halaman
 settings-search-placeholder = Cari
 settings-shortcut-btn-aria = Pintasan keyboard
 settings-shortcuts-title = Pintasan keyboard
@@ -28,10 +94,24 @@ settings-nav-pin-aria = Sematkan { $name }
 settings-nav-unpin-aria = Lepas sematan { $name }
 settings-nav-pin-title = Sematkan
 settings-nav-unpin-title = Lepas sematan
-settings-sidebar-count-aria = { $count } item
-settings-sidebar-count-title = { $count } item
 settings-sidebar-no-results = Tidak ada bagian yang cocok
 settings-sidebar-clear-results = Hapus pencarian
+
+# ── Live-region announcements (localized via Fluent vars, P60-4e) ──
+settings-announce-section-opened = Setelan { $section } dibuka
+settings-announce-search-none = Tidak ada pengaturan yang cocok dengan pencarian
+settings-announce-search-count =
+    { $count ->
+        [one] { $count } hasil ditemukan
+       *[other] { $count } hasil ditemukan
+    }
+settings-announce-search-cleared = Pencarian dihapus
+
+# ── Keyboard shortcut descriptions (popover) ──
+settings-shortcuts-desc-navigate = Navigasi item
+settings-shortcuts-desc-firstlast = Item pertama / terakhir
+settings-shortcuts-desc-close = Tutup bilah sisi seluler
+
 settings-theme-toggle-dark-aria = Beralih ke mode gelap
 settings-theme-toggle-light-aria = Beralih ke mode terang
 settings-store-name = Nama Toko
@@ -249,6 +329,10 @@ settings-toggle-show-currency = Tampilkan simbol mata uang
 settings-toggle-show-tax = Tampilkan baris pajak di nota
 settings-toggle-show-table-number = Tampilkan nomor meja di keranjang dan nota
 settings-btn-save = Simpan
+settings-close-unsaved-title = Keluar dengan perubahan yang belum disimpan?
+settings-close-unsaved-msg = Perubahan pengaturan Anda belum disimpan. Menutup sekarang akan membuangnya.
+settings-close-unsaved-discard = Buang & tutup
+settings-close-unsaved-keep = Lanjut mengedit
 settings-btn-revert = Kembalikan
 
 settings-btn-revert-aria =
@@ -348,6 +432,9 @@ appearance-colour-hex-aria =
 appearance-reset-colour-aria =
     .aria-label = Atur ulang warna ke default
 appearance-reset-colour = Atur ulang ke default
+appearance-follow-theme-aria = Mengikuti warna tema
+    .aria-label = Mengikuti warna tema — pilih warna untuk mengganti
+appearance-follow-theme = Mengikuti warna tema
 appearance-logo = Logo Toko
 appearance-logo-alt =
     .alt = Logo toko
@@ -569,6 +656,7 @@ settings-sync-token-hint = Disimpan dengan aman di database — tidak pernah di 
 settings-sync-last = Sinkronisasi terakhir
 settings-sync-pending = Perubahan tertunda
 settings-sync-confirm-overwrite = Timpa data lokal dengan snapshot server?
+settings-sync-confirm-pull-title = Tarik dari server?
 settings-sync-toast-success = Sinkronisasi berhasil
 settings-sync-toast-fail = Sinkronisasi gagal — periksa URL server dan token
 settings-sync-toast-test-success = Uji koneksi berhasil
@@ -662,8 +750,6 @@ settings-update-retry = Coba Lagi
 settings-field-language = Bahasa
 
 # ── Field validation ──
-settings-store-name-required = Nama toko wajib diisi
-settings-tax-id-pattern-error = Hanya huruf, angka, garis, titik, dan garis miring yang diizinkan
 settings-tax-id-pattern-hint = Hanya huruf, angka, garis, titik, dan garis miring, maks 20 karakter
 
 # ── Email Report Settings ──
@@ -784,9 +870,6 @@ workspace-store-info-tax-id = NPWP
 workspace-type-selector-label = Tipe Workspace
 
 # ── Phase 3 workspace nav items ──
-settings-nav-store-pos = POS Toko
-settings-nav-restaurant-pos = POS Restoran
-settings-nav-inventory = Inventaris
 
 # ── Workspace Settings Modal (ADR #22 Phase 4) ──
 workspace-modal-title = Pengaturan Workspace
@@ -837,7 +920,6 @@ addon-hal-name = Driver HAL Kustom
 addon-hal-desc = Muat dan gunakan driver abstraction layer hardware kustom untuk perangkat POS khusus.
 
 // ── API Lokal (Pengaturan → API Lokal) ────────────────────────────
-settings-nav-local-api = API Lokal
 settings-section-local-api = API Lokal
 settings-local-api-intro = Jalankan skrip Anda sendiri ke mesin kasir ini melalui HTTP. Server hanya mendengarkan di komputer ini (127.0.0.1) dan mati secara default.
 settings-local-api-enabled = Aktifkan API Lokal
@@ -873,3 +955,169 @@ settings-local-api-rotate-confirm = Konfirmasi penggantian
 settings-local-api-rotate-cancel = Batal
 settings-local-api-rotate-done = Rahasia penanda tangan diganti — buat token baru untuk skrip Anda.
 settings-local-api-rotate-failed = Gagal mengganti rahasia penanda tangan.
+
+# Settings section scope badges (todo-global-saas-1.md §H)
+settings-scope-organization = Organisasi
+settings-scope-legal-entity = Badan Hukum
+settings-scope-location = Lokasi
+settings-scope-workspace = Ruang Kerja
+settings-scope-terminal = Perangkat Terminal
+
+# ── Konfigurasi regional (regional slice 3, layar Business Defaults) ──
+settings-regional-title = Regional
+settings-regional-subtitle = Fakta pasar yang dijawab lokasi ini untuk nota dan laporan. Kolom kosong mewarisi dari badan hukum atau default organisasi.
+settings-regional-locale = Locale (BCP-47)
+settings-regional-locale-placeholder = mis. id-ID — kosongkan untuk mewarisi
+settings-regional-currency = Mata uang (ISO-4217)
+settings-regional-currency-placeholder = mis. IDR — kosongkan untuk mewarisi
+settings-regional-currency-inherit = Warisi (tingkat di atas)
+settings-regional-timezone = Zona waktu
+settings-regional-timezone-inherit = Warisi (tingkat di atas)
+settings-regional-timezone-utc = UTC (sentinel lama)
+settings-regional-timezone-legacy = nilai lama
+settings-regional-country = Anchor pasar (ISO-3166)
+settings-regional-country-placeholder = mis. ID — kosongkan untuk tidak mengubah entitas
+settings-regional-country-hint = Diresolusikan melalui badan hukum lokasi.
+settings-regional-save = Simpan default regional
+settings-regional-saving = Menyimpan…
+settings-regional-saved = Default regional tersimpan.
+settings-regional-error-save = Tidak dapat menyimpan default regional.
+settings-regional-error-load = Tidak dapat memuat default regional.
+settings-regional-no-location = Belum ada lokasi untuk dikonfigurasi.
+settings-regional-scope-location = Diatur di lokasi ini
+settings-regional-scope-legal-entity = Diwarisi dari badan hukum
+settings-regional-scope-organization = Default organisasi
+settings-regional-scope-built-in = Default bawaan
+
+# ── Metode pembayaran lokal (regional slice 6, layar Business Defaults) ──
+settings-localpay-title = Metode pembayaran lokal
+settings-localpay-subtitle = Jalur pembayaran yang tersedia di pasar dan lokasi ini.
+settings-localpay-code-placeholder = kode jalur, mis. qris
+settings-localpay-code-label = Kode jalur
+settings-localpay-label-placeholder = label tampilan, mis. QRIS
+settings-localpay-label-label = Label tampilan
+settings-localpay-add = Tambah jalur
+settings-localpay-save = Simpan metode pembayaran
+settings-localpay-saving = Menyimpan…
+settings-localpay-saved = Metode pembayaran tersimpan.
+settings-localpay-static-qr-label = Muatan QR statis (string EMVCo)
+settings-localpay-error-save = Tidak dapat menyimpan metode pembayaran.
+settings-localpay-error-load = Tidak dapat memuat metode pembayaran.
+settings-localpay-no-location = Belum ada lokasi untuk dikonfigurasi.
+settings-localpay-empty-list = Belum ada jalur yang dicatat — tambahkan yang ditawarkan lokasi ini.
+settings-localpay-scope-location = Diatur di lokasi ini
+settings-localpay-scope-legal-entity = Default pasar (badan hukum)
+
+
+# ── Diagnostik (hasil ketersediaan fitur) ──
+settings-diagnostics-title = Diagnostik
+settings-diagnostics-intro = Mengapa setiap fitur tersedia atau terkunci untuk Anda saat ini — gerbang yang sama yang diterapkan aplikasi, dengan alasannya disebutkan. Hanya baca, bekerja offline.
+settings-diagnostics-refresh = Segarkan
+settings-diagnostics-load-failed = Tidak dapat memuat hasil pemeriksaan. Coba lagi.
+settings-diagnostics-list-aria = Hasil pemeriksaan ketersediaan fitur
+settings-diagnostics-status-available = Tersedia
+settings-diagnostics-loading = …
+settings-diagnostics-reason-server-policy = Diblokir kebijakan server
+settings-diagnostics-reason-lifecycle = Langganan berakhir
+settings-diagnostics-reason-tier = Tidak termasuk paket ini
+settings-diagnostics-reason-quota = Kuota tercapai
+settings-diagnostics-reason-role = Peran tidak memiliki izin
+settings-diagnostics-reason-scope = Di luar cakupan lokasi
+settings-diagnostics-feature-supports-qris = Pembayaran QRIS
+settings-diagnostics-feature-supports-analytics = Analitik
+settings-diagnostics-feature-supports-loyalty = Loyalitas
+settings-diagnostics-feature-supports-daily-dashboard = Dasbor harian
+settings-diagnostics-feature-supports-cloud-sync = Sinkronisasi awan
+settings-diagnostics-feature-sales-history-days = Masa simpan riwayat penjualan
+settings-diagnostics-feature-locations = Kuota lokasi
+settings-diagnostics-feature-staff-users = Kuota akun staf
+settings-diagnostics-feature-pos-instances = Kuota terminal POS
+settings-diagnostics-feature-warehouses = Kuota titik stok gudang
+settings-diagnostics-detail-tier = Paket: { $tier }
+settings-diagnostics-detail-state = Status: { $state }
+settings-diagnostics-detail-quota = Pemakaian: { $usage } / { $limit }
+settings-diagnostics-detail-permission = Izin: { $permission }
+settings-diagnostics-detail-scope-covered = Mencakup lokasi ini
+settings-diagnostics-detail-scope-not-covered = Tidak mencakup lokasi ini
+settings-diagnostics-detail-expires = Kedaluwarsa: { $expiresAt }
+settings-diagnostics-detail-grace = Tenggang hingga: { $graceUntil }
+settings-diagnostics-deployment-version = Versi aplikasi: { $version }
+
+
+# ── Format struk (receipt-format axis, layar Business Defaults) ──
+settings-rcptfmt-title = Format struk
+settings-rcptfmt-subtitle = Bagaimana struk dicetak di lokasi ini.
+settings-rcptfmt-content-label = Konten wajib
+settings-rcptfmt-content-none = Belum ada konten pasar yang dikonfigurasi.
+settings-rcptfmt-paper-width = Lebar kertas (mm, 20–120)
+settings-rcptfmt-margin-top = Margin atas (mm)
+settings-rcptfmt-margin-bottom = Margin bawah (mm)
+settings-rcptfmt-show-table = Tampilkan nomor meja
+settings-rcptfmt-show-logo = Cetak logo toko
+settings-rcptfmt-save = Simpan format struk
+settings-rcptfmt-saving = Menyimpan…
+settings-rcptfmt-saved = Format struk tersimpan.
+settings-rcptfmt-error-save = Tidak dapat menyimpan format struk.
+settings-rcptfmt-error-load = Tidak dapat memuat format struk.
+settings-rcptfmt-no-location = Belum ada lokasi untuk dikonfigurasi.
+settings-rcptfmt-source-legal-entity = Wajib pasar (badan hukum)
+settings-rcptfmt-source-terminal = Diatur di terminal ini
+settings-rcptfmt-source-workspace = Diatur di lokasi ini
+settings-rcptfmt-source-legacy = Diwarisi dari default toko
+settings-rcptfmt-source-unset = Belum dikonfigurasi
+settings-rcptfmt-element-store_name = Nama toko
+settings-rcptfmt-element-store_address = Alamat toko
+settings-rcptfmt-element-tax_id = NPWP
+settings-rcptfmt-element-date = Tanggal
+settings-rcptfmt-element-receipt_number = Nomor struk
+settings-rcptfmt-element-items = Item
+settings-rcptfmt-element-subtotal = Subtotal
+settings-rcptfmt-element-tax = Pajak
+settings-rcptfmt-element-total = Total
+settings-rcptfmt-element-payments = Pembayaran
+# W2-C: editor konten wajib (set_receipt_content_for_entity)
+settings-rcptfmt-footer-text = Teks footer
+settings-rcptfmt-show-tax = Cetak baris pajak
+settings-rcptfmt-show-currency = Awalan simbol mata uang
+settings-rcptfmt-decimal-separator = Pemisah desimal
+settings-rcptfmt-sep-dot = Titik (1.234,56)
+settings-rcptfmt-sep-comma = Koma (1.234,56)
+settings-rcptfmt-sep-none = Tanpa
+settings-rcptfmt-required-fields = Elemen wajib pasar
+settings-rcptfmt-content-save = Simpan konten wajib
+settings-rcptfmt-content-saving = Menyimpan…
+settings-rcptfmt-content-saved = Konten wajib tersimpan.
+settings-rcptfmt-content-error-save = Tidak dapat menyimpan konten wajib.
+settings-rcptfmt-content-note = Ditulis pada lapisan wajib pasar (badan hukum) — berlaku untuk semua lokasi badan hukum ini.
+
+# ── Penomoran resmi (W2-B, sumbu penomoran regional) ──
+settings-fiscalnum-title = Penomoran resmi
+settings-fiscalnum-subtitle = Deret nomor yang dipakai tiap badan hukum menerbitkan dokumen resminya.
+settings-fiscalnum-label-entity = Badan hukum
+settings-fiscalnum-label-kind = Jenis dokumen
+settings-fiscalnum-kind-receipt = Struk
+settings-fiscalnum-kind-invoice = Faktur
+settings-fiscalnum-label-prefix = Awalan
+settings-fiscalnum-label-padding = Digit nol di depan
+settings-fiscalnum-label-period = Reset
+settings-fiscalnum-period-never = Tidak pernah
+settings-fiscalnum-period-daily = Harian
+settings-fiscalnum-period-monthly = Bulanan
+settings-fiscalnum-period-yearly = Tahunan
+settings-fiscalnum-current-value = Nomor terakhir terbit: { $value }
+settings-fiscalnum-current-value-note = Mengubah awalan, digit nol, atau periode tidak pernah mereset penghitung ini.
+settings-fiscalnum-unset = Pasangan ini belum punya deret — menyimpan akan memulainya dari nol.
+settings-fiscalnum-no-entity = Belum ada badan hukum untuk menomori dokumen.
+settings-fiscalnum-save = Simpan deret
+settings-fiscalnum-saved = Deret tersimpan
+settings-fiscalnum-error-load = Gagal membaca deret nomor.
+settings-fiscalnum-error-save = Gagal menyimpan deret nomor.
+settings-fiscalnum-overview-title = Semua deret terdaftar
+settings-fiscalnum-overview-empty = Belum ada deret terdaftar — simpan satu di atas untuk melihatnya di sini.
+settings-fiscalnum-overview-col-entity = Badan hukum
+settings-fiscalnum-overview-col-kind = Jenis dokumen
+settings-fiscalnum-overview-col-prefix = Awalan
+settings-fiscalnum-overview-col-current = Nomor terakhir
+settings-fiscalnum-overview-col-updated = Diperbarui
+
+

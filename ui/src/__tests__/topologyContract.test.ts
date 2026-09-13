@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TopologyNodeData, TopologyWireData } from '@/features/stores/NodeTopologyEditor';
+import type { TopologyNodeData, TopologyWireData } from '@/features/locations/NodeTopologyEditor';
 import {
   TOPOLOGY_SCHEMA_VERSION,
   WAREHOUSE_PRIMARY_INPUT_PORTS,
@@ -13,8 +13,10 @@ import {
   validateTopologyGraph,
   firstTopologyValidationError,
   orderTopologyValidationErrors,
+  topologyIssueKey,
+  topologyGraphIssueKey,
   type TopologyValidationError,
-} from '@/features/stores/topologyContract';
+} from '@/features/locations/topologyContract';
 
 const branch = (id = 'branch-1'): TopologyNodeData => ({
   id,
@@ -1382,7 +1384,7 @@ describe('firstTopologyValidationError', () => {
 // type is not enumerable at runtime.
 
 describe('validation error priority table', () => {
-  const source = readFileSync(join(process.cwd(), 'src/features/stores/topologyContract.ts'), 'utf8');
+  const source = readFileSync(join(process.cwd(), 'src/features/locations/topologyContract.ts'), 'utf8');
 
   const unionBlock = /export type TopologyValidationCode\s*=\s*([\s\S]*?);/.exec(source)?.[1]
     ?? /code:\s*([\s\S]*?)\n\s*\}/.exec(source)?.[1]
@@ -1422,5 +1424,17 @@ describe('validation error priority table', () => {
       return Number(re.exec(tierBlock)?.[1]);
     }))].sort((a, b) => a - b);
     expect(tiers).toEqual(tiers.map((_, i) => i + 1));
+  });
+});
+
+// ── Mark-issue-resolved key formats (ADR #34 / #45) ───────────────────────
+// Both prefixes are persisted into resolved_issue_keys, so a rename would silently
+// mis-resolve saved dismissals instead of failing; the node half is also pinned
+// incidentally by NodeTopologyEditor.test.tsx:4933's fixture, the graph half only here.
+
+describe('topology issue-key formats', () => {
+  it('pins both formats the dismissal store persists', () => {
+    expect(topologyIssueKey('n1', 'm2')).toBe('node:n1:m2');
+    expect(topologyGraphIssueKey('m2')).toBe('graph:m2');
   });
 });

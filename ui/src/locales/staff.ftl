@@ -84,6 +84,16 @@ staff-assignment-all-branches = All branches
 staff-assignment-all-workspaces = All workspaces
 staff-assignment-all-workspaces-short = All
 
+# ── Assignment Resource Scope (ADR #47 ruling 1A) ──────────────────────
+staff-assignment-resource-label = Resource scope
+staff-assignment-resource-organization = Organization-wide (all locations)
+staff-assignment-resource-legal-entity = Legal entity
+staff-assignment-resource-location = Location
+staff-assignment-resource-location-select = Choose a location
+staff-assignment-resource-entity-select = Choose a legal entity
+staff-assignment-resource-empty-hint = No matching resources available.
+staff-assignment-resource-required-hint = Choose a resource to scope this assignment.
+
 # ── Staff Login ──────────────────────────────────────────────────────────
 staff-login-step-username = Enter your username
 staff-login-progress-aria = Login progress
@@ -194,3 +204,117 @@ staff-error-dob-invalid = Use YYYY-MM-DD format.
 # C2.2: Pro→Premium approaching-limit banner (16+ staff, Pro caps at 20).
 staff-limit-approaching-premium = You are nearing the Pro plan's 20-staff limit. Upgrade to Premium for up to 50 staff.
 staff-limit-approaching-premium-cta = Upgrade to Premium
+
+# ── Role authoring (ADR #47 ruling 4) ────────────────────────────────
+# A custom role is a named permission-set row. The picker is fed by the
+# permission registry, so no key name is hardcoded in the UI.
+role-authoring-title = Roles
+role-authoring-subtitle = Built-in roles are defaults; custom roles are permission sets you author.
+role-create = New role
+role-create-aria = Create a new custom role
+role-list-aria = All roles
+role-empty-title = No roles yet
+role-badge-builtin = Built-in
+role-badge-custom = Custom
+role-grant-count = { $count ->
+    [one] 1 permission
+   *[other] { $count } permissions
+  }
+role-edit = Edit
+role-edit-aria = Edit the { $name } role
+role-delete = Delete
+role-delete-aria = Delete the { $name } role
+# Three labels for two different kinds of thing, because the number that is
+# allowed to gate Delete is not the number that counts people.
+# reference_count spans four foreign-key tables and create_user writes two of
+# them for one person, so anything worded as accounts must come from
+# holder_count — which the backend computes with the same predicate
+# authorization uses, not by arithmetic over rows. grant_count is workspace
+# configuration that blocks a delete while nobody holds anything: -grants only
+# continues an accounts sentence, and -grants-only stands in for the case
+# where there are no accounts at all to continue.
+role-in-use-accounts = { $count ->
+    [one] Used by 1 account
+   *[other] Used by { $count } accounts
+  }
+role-in-use-grants = { $count ->
+    [one] and 1 workspace grant
+   *[other] and { $count } workspace grants
+  }
+role-in-use-grants-only = { $count ->
+    [one] Carries 1 workspace grant
+   *[other] Carries { $count } workspace grants
+  }
+role-editor-create-title = New role
+role-editor-edit-title = Edit role
+role-field-name = Role name
+role-field-description = Role description
+role-field-permissions = Permissions
+role-perm-sensitive = Sensitive
+role-cancel = Cancel
+role-cancel-aria = Cancel editing this role
+role-save = Save role
+role-save-aria = Save this role
+role-saved = Saved the { $name } role.
+role-deleted = Deleted the { $name } role.
+role-delete-confirm-title = Delete this role?
+role-delete-confirm-body = Accounts holding { $name } will lose its permissions. This cannot be undone.
+
+# Who holds a role, per holder. The collapsed row already states the same
+# total via role-in-use-accounts, and both read holder_count, which core
+# computes for both from ONE shared WHERE clause — so the number on the row
+# and the list underneath it cannot disagree. That is the property the old
+# single label could not have, because its number came from summing rows.
+# reference_count still gates Delete above these, and rightly so: it counts
+# foreign-key rows, which is exactly what blocks a deletion.
+role-holders-toggle = Holders
+role-holders-aria = Show the accounts holding the { $name } role
+role-holders-list-aria = Accounts holding the { $name } role
+role-holders-count = { $count ->
+    [one] 1 account
+   *[other] { $count } accounts
+  }
+role-holders-loading = Loading holders…
+role-holders-error = Could not load holders.
+role-holders-none = No accounts hold this role.
+role-holders-more = { $count ->
+    [one] and 1 more
+   *[other] and { $count } more
+  }
+role-holders-inactive = inactive
+role-holders-scope-legacy = No assignment record
+role-holders-scope-organization = Organization-wide
+role-holders-scope-legal-entity = Legal entity { $id }
+role-holders-scope-location = Location { $id }
+role-holders-dims-all = all branches and workspaces
+role-holders-dims-branches = { $count ->
+    [one] 1 branch
+   *[other] { $count } branches
+  }
+role-holders-dims-workspaces = { $count ->
+    [one] 1 workspace
+   *[other] { $count } workspaces
+  }
+role-holders-dims-both-lists = { $branches } branches, { $workspaces } workspaces
+
+# ── Impersonation (operator:impersonate) ───────────────────────────
+staff-impersonate-action = Impersonate
+staff-impersonate-aria =
+    .aria-label = Impersonate { $name }
+staff-impersonating-banner = Impersonating { $name }
+staff-impersonating-stop = Stop
+staff-impersonating-stop-aria = Stop impersonation
+staff-impersonate-started = Now impersonating { $name }
+staff-impersonate-failed = Could not start impersonation
+
+# ── Multi-Organization switching (SaaS-3 L194) ────────────────────
+org-switcher-default = Organization
+org-switcher-trigger = Switch organization
+org-switcher-list = Choose organization
+org-switcher-pin-title = Switch organization
+org-switcher-pin = Organization PIN
+org-switcher-invalid-pin = Incorrect PIN or not assigned to this organization
+org-switcher-cancel = Cancel
+org-switcher-confirm = Switch
+org-selector-default = Default organization
+org-selector-label = Organization

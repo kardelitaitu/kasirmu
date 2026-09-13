@@ -32,6 +32,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -284,6 +285,15 @@ func handleRegister(app core.App) func(e *core.RequestEvent) error {
 		}
 		tenant, err := createTenant(app, email, hash)
 		if err != nil {
+			if errors.Is(err, errReservedAdminEmail) {
+				// Reserved admin identity: refuse with the same 409
+				// every existing address already gets (signup reveals
+				// existence by design) — nothing new leaks.
+				log.Printf("/web/register: refusing signup for reserved admin identity %q", email)
+				return e.JSON(http.StatusConflict, map[string]any{
+					"error": "an account with this email already exists",
+				})
+			}
 			log.Printf("/web/register: tenant registration failed for %q: %v", email, err)
 			return e.JSON(http.StatusInternalServerError, map[string]any{
 				"error": "could not register an account, please try again",

@@ -54,14 +54,15 @@ kds-layout-metro = Metro
 # Settings panel
 kds-settings-aria = KDS settings
 kds-settings-sound = Sound
-kds-settings-yellow = Yellow at { $min } min
+kds-settings-yellow = Yellow
 kds-settings-yellow-aria = Yellow escalation threshold in minutes
-kds-settings-red = Red at { $min } min
+kds-settings-red = Red
 kds-settings-red-aria = Red escalation threshold in minutes
-kds-settings-auto-ack = Auto-acknowledge
-kds-settings-density = Density
-kds-settings-density-comfortable = Comfortable
-kds-settings-density-compact = Compact
+kds-slider-value-min = { $min } minutes
+kds-settings-auto-ack = Auto-accept
+kds-settings-density = Column
+kds-settings-density-comfortable = 1
+kds-settings-density-compact = 2
 
 # ── 3a: Zone switching ──
 kds-zone-filter-aria = Filter by kitchen zone
@@ -283,7 +284,7 @@ kds-settings-hw-accel-caption = Blur and GPU effects
 # Recovered by the Fluent page audit. These were hardcoded English strings in
 # KdsHamburgerPanel.tsx, which the rev-1 parity gate could not see because it
 # only walked <Localized id="..."> under ui/src/features/**.
-kds-panel-section-display = Display
+kds-panel-section-settings = Settings
 kds-panel-section-behaviour = Behaviour
 kds-theme-dark-aria = Dark theme
 kds-theme-light-aria = Light theme
@@ -300,3 +301,87 @@ kds-cols-auto = Auto
 # plus this suffix. The previous code interpolated the raw key id, so a screen
 # reader announced "kds-settings-color-dinein colour picker".
 kds-color-picker-aria = { $name } colour picker
+
+# ── Expo (Expediter) screen — todo-kds-agents-3 ──
+nav-kds-expo = Expo
+kds-expo-title = Expo
+kds-expo-screen-aria = Expediter display
+kds-expo-board-aria = Tickets by station
+kds-expo-no-station = No station
+kds-expo-ready-banner =
+    { $count ->
+        [one]  1 ticket ready to serve
+       *[other] { $count } tickets ready to serve
+    }
+kds-expo-ready-ratio-aria = { $ready } of { $total } tickets up at this station
+kds-expo-recall = Recall
+kds-expo-recall-aria = Open recall history
+kds-expo-recall-count-aria = Open recall history, { $count } tickets can be recalled
+kds-expo-recall-title = Recently served
+kds-expo-recall-hint = Tickets served in the last { $minutes } minutes can be brought back to the pass.
+kds-expo-recall-empty = No tickets served recently
+kds-expo-recall-restore = Bring back
+kds-expo-recall-restore-aria = Return order { $number } to ready
+kds-expo-recall-close-aria = Close recall dialog
+kds-expo-recall-failed = Could not recall the ticket — try again
+kds-expo-load-failed = Failed to load expo orders
+
+# ── Station selector modal (Expo) — todo-kds-agents-3 ──
+kds-expo-station-all = All stations
+kds-expo-station-button-aria = Choose station
+kds-station-title = Choose station
+kds-station-aria = Station selection
+kds-station-all-label = All stations
+kds-station-all-aria = Show tickets from all stations
+kds-station-option-aria = Show only tickets from station { $zone }
+kds-station-close-aria = Close station selector
+kds-station-empty = No stations on the board yet
+
+# ── Routing rules editor — todo-kds-agents-1 UI follow-up ──
+# Section over get/save_kds_routing_rules_scoped. Save is a whole-set
+# replace with server-assigned ids, so the table shows draft rows and the
+# position column doubles as the priority rank (lower = higher). The `tag`
+# matcher stays in the picker because the backend STORES tag rules, but
+# they never match until tags are modeled in the catalog — every tag row
+# carries the hint below rather than the option being hidden.
+kds-routing-title = Routing rules
+kds-routing-caption = Send matching order lines to a station, overriding the product kitchen zone.
+kds-routing-expand = Configure rules
+kds-routing-collapse = Close rule editor
+kds-routing-expand-aria = Open the routing rules editor
+kds-routing-collapse-aria = Close the routing rules editor
+kds-routing-loading = Loading routing rules…
+kds-routing-load-failed = Could not load routing rules
+kds-routing-empty = No rules yet — every line routes by its product kitchen zone.
+kds-routing-table-caption = Rules in priority order — the lowest number wins.
+kds-routing-col-priority = #
+kds-routing-col-match = Match
+kds-routing-col-station = Station
+kds-routing-col-active = Active
+kds-routing-col-actions = Actions
+kds-routing-row-aria = Rule { $n }
+kds-routing-matcher-aria = What rule { $n } matches
+kds-routing-matcher-sku = SKU
+kds-routing-matcher-category = Category
+kds-routing-matcher-tag = Tag
+kds-routing-tag-hint = Tags are not modeled in the catalog yet — this rule is stored but never routes a line.
+kds-routing-value-aria = Match value for rule { $n }
+kds-routing-value-placeholder = value to match
+kds-routing-station-aria = Target station for rule { $n }
+kds-routing-station-placeholder = station
+kds-routing-active-aria = Rule { $n } active
+kds-routing-up-aria = Move rule { $n } up
+kds-routing-down-aria = Move rule { $n } down
+kds-routing-remove-aria = Remove rule { $n }
+kds-routing-add = Add rule
+kds-routing-clear-all = Clear all rules
+kds-routing-save = Save rules
+kds-routing-saving = Saving…
+kds-routing-saved = Routing rules saved
+kds-routing-cleared = All routing rules cleared
+kds-routing-save-failed = Could not save routing rules — nothing was changed
+kds-routing-error-incomplete = Every rule needs a match value and a target station before saving.
+kds-routing-confirm-title = Clear all routing rules?
+kds-routing-confirm-msg = This replaces the whole rule set with nothing: every line routes by its product kitchen zone again. It cannot be undone from here.
+kds-routing-confirm-ok = Clear all
+kds-routing-confirm-cancel = Keep rules

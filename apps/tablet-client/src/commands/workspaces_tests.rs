@@ -1,7 +1,7 @@
 use super::*;
 
-use oz_core::StoreProfile;
-use oz_core::db::assignments::{AssignmentSpec, ScopeMode};
+use oz_core::LocationProfile;
+use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
 use oz_core::migrations;
 use platform_core::StoreDatabaseManager;
 use tauri::Manager as _;
@@ -22,8 +22,8 @@ fn seed_global_users(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
-fn make_profile(id: &str, name: &str) -> StoreProfile {
-    StoreProfile {
+fn make_profile(id: &str, name: &str) -> LocationProfile {
+    LocationProfile {
         id: id.to_owned(),
         name: name.to_owned(),
         address: String::new(),
@@ -50,7 +50,7 @@ fn picker_state() -> (AppState, tempfile::TempDir) {
     let db = conn.lock().unwrap();
     let store = Store::new(&db);
     store
-        .create_store_profile(&make_profile("store-a", "Store A"))
+        .create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
     store
         .create_workspace_instance("ws-a-1", "store-pos", "store-a", "POS", "", None)
@@ -174,6 +174,8 @@ async fn scoped_assignment_filters_picker_workspace_list() {
                     branches: vec![],
                     workspaces_all: false,
                     workspaces: vec!["store-pos".into()],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -205,7 +207,7 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store() {
         let db = conn.lock().unwrap();
         let store = Store::new(&db);
         store
-            .create_store_profile(&make_profile("store-b", "Store B"))
+            .create_location_profile(&make_profile("store-b", "Store B"))
             .unwrap();
         store
             .create_workspace_instance("ws-b-1", "store-pos", "store-b", "POS", "", None)
@@ -225,6 +227,8 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store() {
                     branches: vec!["store-a".into()],
                     workspaces_all: true,
                     workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
                 },
             )
             .unwrap();
@@ -294,7 +298,7 @@ async fn resolve_boot_store_returns_primary_store() {
     let store = Store::new(&conn);
     let now = "2026-07-31T00:00:00.000Z";
     conn.execute(
-        "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
          VALUES ('store-main', 'Main', '', '', 'USD', 'UTC', 1, ?1, ?1)",
         [now],
     )
@@ -344,11 +348,11 @@ fn binding_state() -> (AppState, tempfile::TempDir, oz_security::InMemoryKeyring
 
     let terminal = Terminal::new("Tablet-1", "tablet-1");
     store.create_terminal(&terminal).unwrap();
-    // `bound_store_id` is FK-enforced against the global `store_profiles`,
+    // `bound_store_id` is FK-enforced against the global `locations`,
     // and `resolve_boot_store` reads the primary from the same table.
     let now = "2026-07-31T00:00:00.000Z";
     conn.execute(
-        "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
          VALUES ('store-a', 'Store A', '', '', 'USD', 'UTC', 0, ?1, ?1), ('store-main', 'Main', '', '', 'USD', 'UTC', 1, ?1, ?1)",
         [now],
     )
@@ -365,7 +369,7 @@ fn binding_state() -> (AppState, tempfile::TempDir, oz_security::InMemoryKeyring
     let db = conn.lock().unwrap();
     let store = Store::new(&db);
     store
-        .create_store_profile(&make_profile("store-a", "Store A"))
+        .create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
     store
         .create_workspace_instance("ws-a-1", "store-pos", "store-a", "POS", "", None)

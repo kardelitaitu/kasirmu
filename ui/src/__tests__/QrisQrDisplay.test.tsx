@@ -161,15 +161,21 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     vi.useRealTimers();
   });
 
-  it('renders 21×21 QR grid (441 cells)', () => {
+  it('renders the honest not-configured note — the 441-cell demo grid is retired', () => {
     const hostRef = makeHostRef();
     render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
-    const cells = document.querySelectorAll('.qris-qr-cell');
-    expect(cells.length).toBe(441);
-    // Some cells should be filled (deterministic from reference hash)
-    const filled = document.querySelectorAll('.qris-qr-cell--filled');
-    expect(filled.length).toBeGreaterThan(0);
-    expect(filled.length).toBeLessThan(441);
+    // The pre-R2 demo drew a 21×21 hash-seeded pseudo-QR that scanned
+    // to nothing. With no merchant static payload the dialog must SAY
+    // so, not pretend.
+    expect(document.querySelectorAll('.qris-qr-cell').length).toBe(0);
+    expect(document.querySelector('.qris-qr-grid')).toBeNull();
+    expect(
+      screen.getByText(/Merchant static QR not configured/i),
+    ).toBeInTheDocument();
+    // The cashier-assert path survives for the physical counter poster.
+    expect(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    ).toBeInTheDocument();
   });
 
   it('displays amount and reference correctly', () => {
@@ -195,25 +201,26 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     expect(document.querySelector('.qris-status--success')).toBeNull();
   });
 
-  it('transitions to confirmed status after polling completes', () => {
+  it('manual mode never confirms on its own — the cashier is the only oracle', () => {
     const hostRef = makeHostRef();
     render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
 
-    // Initial: waiting
+    // Initial: waiting, with the explicit assertion affordance.
     expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    ).toBeInTheDocument();
 
-    // Advance by 4 polls (4 × 2000ms = 8000ms) to trigger confirmation
+    // The retired demo auto-confirmed at 8 s (4 fake polls). No timer,
+    // however long it runs, may now mint a confirmed payment.
     act(() => {
-      vi.advanceTimersByTime(8000);
+      vi.advanceTimersByTime(60_000);
     });
-
-    // Status should transition to confirmed
-    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
-    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
-    expect(document.querySelector('.qris-spinner')).toBeNull();
+    expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeNull();
   });
 
-  it('calls onPaymentConfirmed after confirmation + delay', () => {
+  it('the cashier assert confirms, and the parent is called after the 1200ms handoff', () => {
     const onPaymentConfirmed = vi.fn();
     const hostRef = makeHostRef();
     render(
@@ -226,12 +233,13 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
       ),
     );
 
-    // Advance polls to trigger confirmation
-    act(() => {
-      vi.advanceTimersByTime(8000);
-    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    );
 
-    // After confirmation, there's a 1200ms delay before calling onPaymentConfirmed
+    // Confirmed state renders; the settle callback rides the delay.
+    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
+    expect(document.querySelector('.qris-status--success')).toBeInTheDocument();
     expect(onPaymentConfirmed).not.toHaveBeenCalled();
 
     act(() => {
@@ -245,32 +253,173 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
   });
 
-  it('resets poll state when isOpen changes', () => {
+  it('closing without the handoff resets: a re-opened dialog cannot inherit a stale confirmed state', () => {
     const hostRef = makeHostRef();
     render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
 
-    // Advance partially through polls
-    act(() => {
-      vi.advanceTimersByTime(4000);
-    });
+    // Assert, then close DURING the 1200ms handoff (parent never called).
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    );
+    expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
 
-    // Close
     act(() => { hostRef.setOpen(false); });
     act(() => { vi.advanceTimersByTime(200); }); // Exit animation clears DOM
     expect(document.querySelector('.qris-overlay')).toBeNull();
 
-    // Reopen via state setter
+    // Reopen: back to waiting with the assert available again — the
+    // stale-confirmed hazard the old reset-on-close covered is pinned
+    // here without the fake poller that used to force it.
     act(() => { hostRef.setOpen(true); });
     act(() => { vi.advanceTimersByTime(50); });
-
-    // Should be back to waiting (poll state reset on isOpen change)
     expect(screen.getByText('Waiting for payment...')).toBeInTheDocument();
-    expect(document.querySelector('.qris-spinner')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'I received the payment' }),
+    ).toBeInTheDocument();
+  });
+});
 
-    // Advance by 8000ms again to confirm
-    act(() => {
-      vi.advanceTimersByTime(8000);
+// ── QRIS Auto mode (agents-3): real QR, real poll, gateway countdown ─
+describe('QrisQrDisplay — QRIS Auto mode', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function renderAuto(
+    overrides: Partial<{
+      pollSettled: () => Promise<boolean>;
+      expiresInSeconds: number;
+      onExpired: () => void;
+      onReissue: () => void;
+      onClose: () => void;
+      onPaymentConfirmed: () => void;
+    }> = {},
+  ) {
+    // exactOptionalPropertyTypes: pass the auto props only when set —
+    // `prop: undefined` is not the same as `prop` absent here.
+    const autoProps = {
+      qrString: '000201020126604508ID.CO.QRIS.WWW',
+      ...(overrides.pollSettled !== undefined && { pollSettled: overrides.pollSettled }),
+      ...(overrides.expiresInSeconds !== undefined && { expiresInSeconds: overrides.expiresInSeconds }),
+      ...(overrides.onExpired !== undefined && { onExpired: overrides.onExpired }),
+      ...(overrides.onReissue !== undefined && { onReissue: overrides.onReissue }),
+    };
+    return render(
+      withFluent(
+        <QrisQrDisplay
+          amount={15000}
+          currency="IDR"
+          reference="ORDER-1"
+          isOpen
+          onClose={overrides.onClose ?? (() => {})}
+          onPaymentConfirmed={overrides.onPaymentConfirmed ?? (() => {})}
+          {...autoProps}
+        />,
+        salesFtl,
+      ),
+    );
+  }
+
+  it('renders a real scannable QR instead of the 441-cell placeholder', () => {
+    renderAuto({ pollSettled: async () => false, expiresInSeconds: 300 });
+    // The pseudo-grid is GONE in auto mode — a scanner cannot read it, and
+    // rendering it alongside a real code invites scanning the wrong one.
+    expect(document.querySelectorAll('.qris-qr-cell').length).toBe(0);
+    expect(document.querySelector('.qris-qr-real svg')).toBeTruthy();
+  });
+
+  it('manual mode renders no countdown row', () => {
+    const hostRef = makeHostRef();
+    render(withFluent(<HostModal hostRef={hostRef} />, salesFtl));
+    expect(document.querySelector('.qris-countdown')).toBeNull();
+  });
+
+  it('polls on the real schedule and confirms only when settled', async () => {
+    let settled = false;
+    const pollSettled = vi.fn(async () => settled);
+    const onPaymentConfirmed = vi.fn();
+    renderAuto({
+      pollSettled,
+      expiresInSeconds: 300,
+      onPaymentConfirmed,
+    });
+
+    // First probe at t=2s.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(pollSettled).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Payment confirmed!')).toBeNull();
+
+    // Payment lands; next scheduled probe (t=2+3=5s) observes it.
+    settled = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
     });
     expect(screen.getByText('Payment confirmed!')).toBeInTheDocument();
+
+    // Same 1200ms confirmation beat the manual flow has (receipt tail
+    // needs the modal focused before the parent starts finalizing).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1199);
+    });
+    expect(onPaymentConfirmed).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(onPaymentConfirmed).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts down and expires; the poll loop stops at expiry', async () => {
+    let polls = 0;
+    const pollSettled = vi.fn(async () => {
+      polls += 1;
+      return false;
+    });
+    const onExpired = vi.fn();
+    renderAuto({ pollSettled, expiresInSeconds: 5, onExpired });
+
+    expect(document.querySelector('.qris-countdown')).toBeTruthy();
+    expect(polls).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('The QR code expired')).toBeInTheDocument();
+
+    const pollsAtExpiry = polls;
+    // An expired QR never settles; polling more just hammers the endpoint.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20000);
+    });
+    expect(polls).toBe(pollsAtExpiry);
+  });
+
+  it('expired view offers re-issue and cancel', async () => {
+    const onReissue = vi.fn();
+    const onClose = vi.fn();
+    renderAuto({
+      pollSettled: async () => false,
+      expiresInSeconds: 5,
+      onReissue,
+      onClose,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    fireEvent.click(screen.getByText('Generate a new QR'));
+    expect(onReissue).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('Cancel payment'));
+    // Cancel goes through the exit animation, then the parent's onClose
+    // (which voids the pending sale) — same layered close as the × button.
+    expect(onClose).not.toHaveBeenCalled();
+    advanceFadeSync(200);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,9 +1,42 @@
 # OZ-POS Security Audit — Completion Summary
 
+<!-- Audit stamp: 2026-09-09 · DSH · status: HISTORICAL-RECORD, annotated not rewritten (1 code finding) · Dated completion summary for the 2026-07 Tauri security audit (version 0.0.31, completed 2026-08-29 by Buffy). Body preserved verbatim per this repo rule for historical docs; a CURRENCY block was added under the header instead of editing claims inside the record. · Mechanism citations still resolve: C-2 SECRET_KEY_DENY_LIST at apps/desktop-client/src/commands/settings.rs:782; H-5 at-rest encryption real for license.api_key at commands/license.rs:135; oz-crypto exposes encrypt_api_key/decrypt_api_key/encrypt_smtp_at_rest (lib.rs:158/164/204), re-exported by crates/oz-core/src/crypto.rs:14. · The two counts a reader would take as current have moved: registered commands are now 429 desktop / 301 tablet / 454 distinct (measured 08-09-26 from the generate_handler! lists), and the secret-key population is 14 desktop / 13 tablet rather than 6. · CODE FINDING recorded, NOT patched: local_api.secret, added after this audit, is the per-install signing key for the local HTTP API and is stored by plain Settings::set (local_api.rs:197/:210) with no crypto import in that file, while license.api_key in the same app is encrypt-wrapped - so a post-audit secret meets a weaker standard than the six this page certifies. The desktop/tablet difference is exactly that key and is correct, not drift, because the local API has no tablet handlers. · My own parse produced two false findings before the real one: the marker string matched a file-header comment some 600 lines from the const, and a non-greedy slice swallowed unrelated literals, so the lists first appeared as 27/23 and then 73/25 entries containing SQL fragments. Both were fixed by anchoring on the const declaration, and only then was the 14/13 asymmetry worth reporting. -->
+
 **Original audit:** 2026-07 (see `docs/archived/tauri-security-audit.md`)
 **Audit scope:** `apps/desktop-client` + `apps/tablet-client` (Tauri v2)
 **Version:** `0.0.31`
 **Completion date:** 2026-08-29
+
+> **CURRENCY (09-09-26) — this is a dated record; nothing below it is rewritten.** Read it as
+> what shipped by 2026-08-29, not as today's inventory. Two counts have moved and one is
+> security-relevant, so "6 of 6" must not be read as the current population.
+>
+> **Command counts.** Desktop/tablet are quoted as 376/363 registered. Re-measured
+> 08-09-26 from the two `generate_handler!` lists: **429 desktop, 301 tablet, 454 distinct
+> across both**. They move weekly — re-derive with
+> `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` rather than trusting a
+> number written in prose.
+>
+> **The secret-key population is larger than six.** That row names six config secrets
+> (`sync_api_key`, `sync.terminal_secret`, `pg_sync.password`, `rate_sync.api_key`, the LAN
+> PSK, and `cc506cd2`'s sweep). Today `SECRET_KEY_DENY_LIST` carries **14 entries on desktop**
+> (`apps/desktop-client/src/commands/settings.rs:782`) and **13 on tablet**; the extras are
+> `local_api.secret`, four `license.*` keys, `smtp_config`, and
+> `stripe.api_key`/`square.api_key`/`midtrans.server_key`. The one desktop-only entry is
+> `local_api.secret`, and that asymmetry is correct rather than drift: the local API has no
+> tablet handlers at all.
+>
+> ⚠️ **CODE FINDING, recorded and not patched.** Of those post-audit additions,
+> `local_api.secret` — the per-install **signing secret** for the LAN/local HTTP API — is
+> written with a plain `Settings::set` (`apps/desktop-client/src/local_api.rs:197` on create,
+> `:210` in `rotate_secret`), and that file imports no encryption helper at all. The contrast
+> is not theoretical: `apps/desktop-client/src/commands/license.rs:9` imports
+> `encrypt_api_key`/`decrypt_api_key` and wraps its stored key at `:135`. So a secret added
+> *after* this audit meets a **weaker standard than the six it certifies** — deny-listed from
+> the IPC surface (C-2) but not encrypted at rest (H-5). Whether that is acceptable is a call
+> for whoever owns the local API; the honest reading of the row is *six of the six audited*,
+> not *all secrets that now exist*.
+
 **Prepared by:** Buffy (Codebuff agent)
 
 ---
@@ -495,3 +528,5 @@ All changes verified through the project's full CI-equivalent local validation:
 | Android: allowBackup hardened | ✅ | `false` + data-extraction rules |
 | Deprecated/unused commands removed | ✅ | 192 legacy unregistered; 299 `_scoped` variants active |
 | At-rest DB encryption | ⚠️ | Plan documented (M-6); implementation pending |
+
+> last audited 09-09-26 by docs-auditor

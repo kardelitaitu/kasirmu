@@ -60,17 +60,65 @@ vi.mock('echarts/renderers', () => ({
 }));
 
 // ── Global mock: @tauri-apps/api/event ─────────────────────────
-// SettingsContext uses a dynamic import('@tauri-apps/api/event')
-// which per-file vi.mock() cannot intercept.  This global mock
-// ensures the dynamic import resolves to a stub rather than the
-// real Tauri module (which calls transformCallback, undefined in
-// jsdom, and throws "Cannot read properties of undefined").
+// ui/src/api/settings.ts (onSettingsUpdated) uses a dynamic
+// import('@tauri-apps/api/event') which per-file vi.mock() cannot
+// intercept.  This global mock ensures the dynamic import resolves
+// to a stub rather than the real Tauri module (which calls
+// transformCallback, undefined in jsdom, and throws "Cannot read
+// properties of undefined").
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
   once: vi.fn(() => Promise.resolve(() => {})),
   emit: vi.fn(() => Promise.resolve()),
   emitTo: vi.fn(() => Promise.resolve()),
 }));
+
+// ── Global mock: @tauri-apps/api/path ──────────────────────────
+// ui/src/api/cache.ts (getAppCacheDir) loads @tauri-apps/api/path via a
+// dynamic import (avoids bundling the full path module in dev-mock). A
+// per-file vi.mock() cannot intercept a dynamic import, but a GLOBAL mock
+// here does (same mechanism as the @tauri-apps/api/event mock above, which
+// intercepts settings.ts's dynamic import). These safe stubs let the
+// contract test for cache.ts assert getAppCacheDir's behaviour without
+// binding to the real Tauri path module (which throws outside a webview).
+vi.mock('@tauri-apps/api/path', () => ({
+  appCacheDir: vi.fn(() => Promise.resolve('/mock/appcache')),
+  join: vi.fn((...parts: string[]) => parts.join('/')),
+  resolve: vi.fn((...parts: string[]) => parts.join('/')),
+  sep: '/',
+  dirname: vi.fn((p: string) => p.split('/').slice(0, -1).join('/')),
+  basename: vi.fn((p: string) => p.split('/').slice(-1)[0] ?? ''),
+}));
+
+// ── Global mock: @/api/branding ────────────────────────────────
+// Every UI suite renders under <BrandProvider> (the shared
+// renderWithProviders helper in __tests__/test-utils/render.tsx mounts
+// one), which calls getBrandSettings() on mount. Without a stub, those
+// calls fall through to the dev Tauri mock and log a
+// `[TAURI MOCK] invoke: get_brand_settings` line — 928 of them across
+// the suite (docs/plans/0.0.36-backlog.md:2159). This global mock
+// returns safe brand defaults so the suite is silent by default.
+//
+// OVERRIDABLE: a per-file `vi.mock('@/api/branding', ...)` in an
+// individual test automatically takes precedence over this global one
+// (standard vitest mock resolution), so suites that exercise branding
+// behaviour keep full control.
+vi.mock('@/api/branding', () => {
+  const DEFAULT_BRAND_SETTINGS = {
+    primary_colour: '#147EFB',
+    logo_path: null,
+    store_name: '',
+  };
+  return {
+    getBrandSettings: vi.fn(() => Promise.resolve({ ...DEFAULT_BRAND_SETTINGS })),
+    getBrandSettingsScoped: vi.fn(() => Promise.resolve({ ...DEFAULT_BRAND_SETTINGS })),
+    setBrandPrimaryColour: vi.fn(() => Promise.resolve()),
+    setBrandLogoPath: vi.fn(() => Promise.resolve()),
+    setBrandStoreName: vi.fn(() => Promise.resolve()),
+    pickLogoFile: vi.fn(() => Promise.resolve(null)),
+    pickLogoFileScoped: vi.fn(() => Promise.resolve(null)),
+  };
+});
 
 // ── Global mock: @/contexts/WorkspaceContext ──────────────────────
 // Many component tests render screens that call `useWorkspace()`
@@ -135,17 +183,25 @@ vi.mock('@/contexts/WorkspaceContext', async (importOriginal) => {
   };
 });
 
-// ── Global mock: @/contexts/SubscriptionContext ─────────────────────
-// C2.2 tier gates read `useSubscription()`. The safe default is `caps:
-// null` — every gate renders open (no lock, no banner) — so existing
-// tests are unaffected. Tests exercising a gate override per-test with
-// `vi.mocked(useSubscription).mockReturnValue({ caps: {…} })`.
+// ── Global mock: @/contexts/SubscriptionContext ─────────────────
+// C2.2 tier gates read `useSubscription()`. The safe default renders
+// every gate OPEN (`caps: null` + `state: 'active'`) so existing tests
+// are unaffected — the neutral rendering default, not a policy claim;
+// the §B fail-closed policy lives in the production context and command
+// layer, and gate tests override per-test (e.g.
+// `mockReturnValue({ …makeSubscriptionCaps(), state: 'grace' })`).
 vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
   const actual = await importOriginal<typeof SubscriptionContextModule>();
-  const safeSubscriptionDefault = { caps: null, loading: false, refresh: vi.fn() };
+  const safeSubscriptionDefault = {
+    caps: null,
+    state: 'active',
+    loading: false,
+    refresh: vi.fn(),
+  };
   return {
     ...actual,
     useSubscription: vi.fn().mockImplementation(() => safeSubscriptionDefault),
+    useAdminGate: vi.fn().mockImplementation(() => ({ locked: false, state: 'active' })),
   };
 });
 

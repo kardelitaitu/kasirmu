@@ -5,11 +5,24 @@
 //! `tauri-plugin-opener` with an https-only, percent-encoded URL built
 //! server-side. Tablet variant of the desktop `open_product_images_scoped`
 //! (global-db, non-scoped — matches the tablet's other product commands).
+//!
+//! Phase 3.3 T2: the URL-building half moved to the shared
+//! `oz_bridge::browser` module (Agent 2's Wave F extraction); the helpers
+//! are re-exported so the sibling `browser_tests.rs` keeps exercising
+//! them by name. The body stays tablet-native this slice (global-db
+//! `Store` read, no BridgeCtx) because the tablet `AppState` cannot yet
+//! build one — see the T2 seam notes in `void.rs`. The desktop twin
+//! (`open_product_images_scoped`) is store-scoped through
+//! `BridgeCtx::resolve_store`; the tablet command reads the global db
+//! like every other tablet product command, so only the pure helpers
+//! are shared, not the resolution.
 
 use tauri::{State, command};
 
 use crate::error::AppError;
 use crate::state::AppState;
+
+pub use oz_bridge::browser::{build_image_query, urlencoding};
 
 /// Open a Google Images search for a product in the default browser.
 ///
@@ -33,36 +46,6 @@ pub async fn open_product_images(sku: String, state: State<'_, AppState>) -> Res
     );
 
     open_in_browser(&url).await
-}
-
-/// Build the Google Images search query: product name plus brand (when set).
-fn build_image_query(product: &oz_core::Product) -> String {
-    let mut query = product.name.trim().to_owned();
-    if let Some(brand) = product
-        .brand
-        .as_deref()
-        .map(str::trim)
-        .filter(|b| !b.is_empty())
-    {
-        query.push(' ');
-        query.push_str(brand);
-    }
-    query
-}
-
-/// Percent-encode a UTF-8 query for use in a URL query component.
-fn urlencoding(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for byte in input.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
 }
 
 /// Open a URL in the OS default browser via `tauri-plugin-opener`.

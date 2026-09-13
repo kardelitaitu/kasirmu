@@ -78,6 +78,11 @@ pub struct KdsOrder {
     pub item_count: i64,
     /// Human-readable display number (auto-increment per day).
     pub display_number: Option<i64>,
+    /// Ticket prefix frozen onto the row at insert time from the location's
+    /// config (D16) — the chit renders it as `#{prefix}{n}` when non-empty.
+    /// Empty for legacy rows (no backfill) and prefix-less locations.
+    #[serde(default)]
+    pub ticket_prefix: String,
     /// ISO-8601 timestamp of when the order was received.
     pub received_at: String,
     /// ISO-8601 timestamp of when preparation started.
@@ -303,6 +308,22 @@ pub fn resolve_kds_targets<F>(
 where
     F: Fn(&str) -> Option<String>,
 {
+    resolve_targets_by_station(line_items, devices, |item| station_for_sku(&item.sku))
+}
+
+/// Shared 3-phase core behind [`resolve_kds_targets`] and
+/// [`resolve_kds_targets_with_rules`]. Same algorithm, same order of
+/// phases; the only generalization is that the station for a line item is
+/// supplied per line item instead of derived from the SKU alone, so the
+/// rule-aware caller can let rules override the zone default first.
+fn resolve_targets_by_station<F>(
+    line_items: &[KdsLineItem],
+    devices: &[KdsDevice],
+    station_of: F,
+) -> Vec<String>
+where
+    F: Fn(&KdsLineItem) -> Option<String>,
+{
     use std::collections::HashSet;
 
     let mut targeted_devices: HashSet<String> = HashSet::new();
@@ -310,7 +331,7 @@ where
 
     // Phase 1: Station-based targeting
     for item in line_items {
-        if let Some(station) = station_for_sku(&item.sku) {
+        if let Some(station) = station_of(item) {
             let mut any_device_claimed = false;
             for device in devices {
                 if device.is_active && device.station_ids.contains(&station) {
@@ -341,6 +362,174 @@ where
     }
 
     targeted_devices.into_iter().collect()
+}
+
+/// Which product attribute a [`KdsRoutingRule`] matches a line item against.
+///
+/// `Tag` is declared for schema stability, but the catalog does not model
+/// product tags yet (no tags table exists), so a `Tag` rule NEVER matches:
+/// the line falls through to the next-ranked rule or the zone default.
+/// Wiring it later needs only a tags-by-sku fact source in the caller and
+/// one match arm here — the table CHECK already admits `'tag'`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KdsRuleMatcher {
+    /// Exact match against the line item's product SKU.
+    Sku,
+    /// Match against the product's category id (`products.category_id`).
+    Category,
+    /// Match against a product tag — NOT MODELED in the catalog; never matches.
+    Tag,
+}
+
+impl KdsRuleMatcher {
+    /// Serialize to the database string representation.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Sku => "sku",
+            Self::Category => "category",
+            Self::Tag => "tag",
+        }
+    }
+
+    /// Parse from a database string representation.
+    pub fn parse_db(s: &str) -> Option<Self> {
+        match s {
+            "sku" => Some(Self::Sku),
+            "category" => Some(Self::Category),
+            "tag" => Some(Self::Tag),
+            _ => None,
+        }
+    }
+}
+
+/// One row of `kds_routing_rules`: an explicit station assignment for the
+/// line items it matches, overriding/augmenting the product `kitchen_zone`
+/// default without touching catalog data. Rules COMPOSE with the frozen
+/// 3-phase router — they only change which station a line resolves to;
+/// device matching, broadcast fallback and catch-all stay as they are.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KdsRoutingRule {
+    /// Primary key (UUID v7).
+    pub id: String,
+    /// FK to the owning Restaurant POS terminal (rule scope).
+    pub restaurant_pos_id: String,
+    /// Rank across matching rules for one line: lower number = higher
+    /// priority (1 outranks 10). Equal priority: a `Sku` matcher outranks
+    /// `Category` (more specific), then input order (first rule wins).
+    pub priority: i64,
+    /// What the rule matches a line against.
+    pub matcher: KdsRuleMatcher,
+    /// SKU string or category id, depending on `matcher`.
+    pub matcher_value: String,
+    /// Topology station the matched line routes to.
+    pub target_station: String,
+    /// Whether the rule participates in routing.
+    pub is_active: bool,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// ISO-8601 last-update timestamp.
+    pub updated_at: String,
+}
+
+/// Client-supplied shape for one routing rule in the save IPC.
+///
+/// The server assigns `id` and both timestamps; the restaurant scope comes
+/// from the session, never from the payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KdsRoutingRuleInput {
+    /// Lower number = higher priority (1 outranks 10).
+    pub priority: i64,
+    /// What the rule matches a line against.
+    pub matcher: KdsRuleMatcher,
+    /// SKU string or category id, depending on `matcher`.
+    pub matcher_value: String,
+    /// Topology station the matched line routes to.
+    pub target_station: String,
+    /// Omitted means active — mirrors the column default (`1`).
+    #[serde(default = "kds_rule_default_active")]
+    pub is_active: bool,
+}
+
+fn kds_rule_default_active() -> bool {
+    true
+}
+
+/// Resolve which KDS devices should receive an order with dynamic routing
+/// rules composed ON TOP of the static zone routing.
+///
+/// Per line item: the highest-priority active rule that matches the line
+/// supplies its station; a line no rule matches falls back to
+/// `station_for_sku` (the `kitchen_zone` default). The resulting per-line
+/// stations then go through the exact same 3 phases as
+/// [`resolve_kds_targets`] — rules never bypass broadcast fallback or the
+/// unclaimed-station catch-all.
+///
+/// With `rules` empty the output is identical to [`resolve_kds_targets`]
+/// for the same inputs (pinned by a test).
+///
+/// `category_for_sku` supplies the category id a `Category` rule compares
+/// its `matcher_value` against; return `None` when the SKU has no category
+/// (or is unknown). Unused for other matcher kinds, so callers without a
+/// category lookup cheaply pass `|_| None` — `Tag` rules never match while
+/// tags are unmodeled, so no tag callback exists yet.
+pub fn resolve_kds_targets_with_rules<F, C>(
+    line_items: &[KdsLineItem],
+    devices: &[KdsDevice],
+    rules: &[KdsRoutingRule],
+    station_for_sku: F,
+    category_for_sku: C,
+) -> Vec<String>
+where
+    F: Fn(&str) -> Option<String>,
+    C: Fn(&str) -> Option<String>,
+{
+    resolve_targets_by_station(line_items, devices, |item| {
+        rule_station_for_line(rules, item, &category_for_sku).or_else(|| station_for_sku(&item.sku))
+    })
+}
+
+/// The station the highest-ranked active matching rule assigns to this
+/// line, if any. Ranking: `priority` ascending (lower number = higher
+/// priority), then matcher specificity (`Sku` before `Category`), then
+/// input order — fully deterministic regardless of how the rules arrived.
+fn rule_station_for_line<C>(
+    rules: &[KdsRoutingRule],
+    item: &KdsLineItem,
+    category_for_sku: &C,
+) -> Option<String>
+where
+    C: Fn(&str) -> Option<String>,
+{
+    rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| rule.is_active)
+        .filter(|(_, rule)| rule_matches(rule, item, category_for_sku))
+        .min_by_key(|(index, rule)| (rule.priority, matcher_rank(rule.matcher), *index))
+        .map(|(_, rule)| rule.target_station.clone())
+}
+
+fn rule_matches<C>(rule: &KdsRoutingRule, item: &KdsLineItem, category_for_sku: &C) -> bool
+where
+    C: Fn(&str) -> Option<String>,
+{
+    match rule.matcher {
+        KdsRuleMatcher::Sku => rule.matcher_value == item.sku,
+        KdsRuleMatcher::Category => {
+            category_for_sku(&item.sku).is_some_and(|category| category == rule.matcher_value)
+        }
+        // Tags are not modeled in the catalog yet — see KdsRuleMatcher.
+        KdsRuleMatcher::Tag => false,
+    }
+}
+
+const fn matcher_rank(matcher: KdsRuleMatcher) -> u8 {
+    match matcher {
+        KdsRuleMatcher::Sku => 0,
+        KdsRuleMatcher::Category => 1,
+        KdsRuleMatcher::Tag => 2,
+    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 // ── Settings: Store, Receipt, Setup Wizard, Feature Flags ──────────
 
 import { loggedInvoke } from '@/utils/logged-invoke';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 // ── Receipt Settings ─────────────────────────────────────────────
 
@@ -47,6 +48,18 @@ export const getStoreSettingsScoped = (sessionToken: string): Promise<StoreSetti
 /** Set store settings (scoped — ADR #7). */
 export const setStoreSettingsScoped = (sessionToken: string, args: StoreSettingsDto): Promise<void> =>
   loggedInvoke<void>('set_store_settings_scoped', { sessionToken, args });
+
+// ── Deployment / version read (operator tooling, saas-3 L162) ───────────
+
+/** Running deployment metadata (build version) for the Diagnostics "About" surface. */
+export interface DeploymentInfo {
+  /** The running build version, e.g. `0.0.37`. */
+  appVersion: string;
+}
+
+/** Read the running app version (gated on `settings:read`). */
+export const getDeploymentInfo = (sessionToken: string): Promise<DeploymentInfo> =>
+  loggedInvoke<DeploymentInfo>('get_deployment_info', { sessionToken });
 
 // ── Credit Settings ───────────────────────────────────────────
 
@@ -108,6 +121,18 @@ export interface HardwareSettingsDto {
 /** Get the hardware settings (printer, scanner, scale, localPrefs). */
 export const getHardwareSettings = (): Promise<HardwareSettingsDto> =>
   loggedInvoke<HardwareSettingsDto>('get_hardware_settings');
+
+/**
+ * Get the hardware settings resolved from a session token. ADR #7.
+ *
+ * This is the only variant that works on desktop: get_hardware_settings is not registered in
+ * apps/desktop-client/src/lib.rs (it sits in the desktop section of
+ * scripts/ipc-parity-allowlist.json as a known F-008/F-050 gap), so the unscoped call rejects there
+ * and callers fall back to defaults. get_hardware_settings_scoped is registered (lib.rs:933) on
+ * both shells and enforces permissions::SETTINGS_READ (settings.rs:1166).
+ */
+export const getHardwareSettingsScoped = (sessionToken: string): Promise<HardwareSettingsDto> =>
+  loggedInvoke<HardwareSettingsDto>('get_hardware_settings_scoped', { sessionToken });
 
 /** Update the hardware settings. */
 export const setHardwareSettings = (args: HardwareSettingsDto, userId: string): Promise<void> =>
@@ -188,9 +213,15 @@ export const getSetting = (key: string): Promise<string | null> =>
   loggedInvoke<string | null>('get_setting', { key });
 
 /**
- * Write (or overwrite) a single raw setting value. Unscoped —
- * reads/writes to the primary store database. Requires a valid
- * `userId` for the SETTINGS_EDIT permission check.
+ * Write (or overwrite) a single raw setting value. Unscoped, and unscoped
+ * here means the GLOBAL IDENTITY DATABASE, not a store database: the
+ * `set_setting` command locks the bridge's global identity connection
+ * (`ctx.db`). `setSettingScoped` is the store-scoped twin — it resolves the
+ * session and writes that store's own database.
+ *
+ * The two are NOT interchangeable for device-global keys: repointing a call
+ * changes which database is read, so what one writes the other never sees.
+ * Requires a valid `userId` for the SETTINGS_EDIT permission check.
  *
  * Prefer `setSettings` (batch) for multiple keys to reduce IPC
  * round-trips. This variant exists for single-key callers.
@@ -249,4 +280,35 @@ export const setSettingsScoped = (
     return Promise.reject(new Error('No session token'));
   }
   return loggedInvoke<void>('set_settings_scoped', { sessionToken, entries });
+};
+
+// ── Settings events ──────────────────────────────────────────────
+
+/** Payload broadcast on the `settings_updated` event when settings change. */
+export interface SettingsUpdatedPayload {
+  changed_keys: string[];
+  terminal_id: string;
+}
+
+/**
+ * Subscribe to `settings_updated` broadcasts (fired when any terminal
+ * changes settings). Returns an unsubscribe function.
+ *
+ * Golden rule 5: the event wiring lives here, not in components/contexts.
+ * `@tauri-apps/api/event` is loaded via dynamic import to preserve the
+ * browser-dev fallback exactly as the previous in-component wiring did:
+ * outside a Tauri webview the import fails and this resolves to a no-op
+ * unlisten (silent). A `listen()` rejection is returned unawaited, so it
+ * still surfaces to callers for logging.
+ */
+export const onSettingsUpdated = async (
+  handler: (payload: SettingsUpdatedPayload) => void,
+): Promise<UnlistenFn> => {
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<SettingsUpdatedPayload>('settings_updated', (event) => handler(event.payload));
+  } catch {
+    // @tauri-apps/api/event not available — running outside Tauri (e.g. browser dev).
+    return async () => {};
+  }
 };

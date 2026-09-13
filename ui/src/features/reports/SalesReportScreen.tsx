@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
@@ -36,7 +38,7 @@ import {
   type CategoryTrendPoint,
   type CategoryForecastRow,
 } from '@/api/reports';
-import { getPrimaryStoreScoped } from '@/api/stores';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -98,7 +100,14 @@ function fmtCurrency(minor: number, currency: string, locale = 'en'): string {
 // the primary store (REP-03) -- the same helpers R36-01/R36-05 converged on.
 
 /** Sales report screen — daily/weekly/monthly revenue charts, top products, hourly heatmap, and category breakdown with CSV export. */
+/** §B administrative gate — Reports lock while the subscription is not `active`. */
 export default function SalesReportScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <SalesReportScreenContent />;
+}
+
+function SalesReportScreenContent() {
   const { l10n } = useLocalization();
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en';
   // R36-07: read the token through the useWorkspace() hook rather than the
@@ -121,7 +130,7 @@ const { sessionToken: rawToken } = useWorkspace();
   useEffect(() => {
     if (!sessionToken) return;
     let alive = true;
-    getPrimaryStoreScoped(sessionToken)
+    getPrimaryLocationScoped(sessionToken)
       .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
       .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
     return () => { alive = false; };

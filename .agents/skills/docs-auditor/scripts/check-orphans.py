@@ -87,9 +87,24 @@ REF_DEF_RE = re.compile(r"^\[[^\]]+\]:\s")  # markdown reference definition
 
 
 def md_files(root, single=None):
-    """Yield *.md paths under root, honoring EXCLUDE_DIRS and --file."""
+    """Yield *.md paths under root, honoring EXCLUDE_DIRS and --file.
+
+    Prefers "git ls-files": this is a gate over OUR documentation, and the tree also
+    holds vendored, gitignored third-party markdown. Scanning that produced a real false
+    positive on 08-09-26 - an h4-under-h2 finding inside
+    references/midtrans-nodejs-client/README.md, a file with zero tracked entries that
+    .gitignore excludes outright. A docs gate that can be reddened by a directory nobody
+    committed is a gate someone will learn to ignore. Falls back to a plain walk when git
+    is unavailable, so the tool still works outside a checkout."""
     if single:
         yield single
+        return
+    tracked = _git_tracked_md(root)
+    if tracked is not None:
+        for p in tracked:
+            if any(x in EXCLUDE_DIRS for x in p.split("/")[:-1]):
+                continue
+            yield p
         return
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
@@ -97,6 +112,29 @@ def md_files(root, single=None):
             if f.endswith(".md"):
                 yield os.path.join(dirpath, f)
 
+
+def _git_tracked_md(root):
+    """Tracked *.md paths, or None if git could not be asked.
+
+    Output goes to a temp FILE rather than a pipe: capture_output uses piped stdio, which
+    some sandboxes block, and a blocked call here would read as an empty file list. On any
+    trouble this returns None and the caller walks the tree, so the failure mode is "scan
+    more", never "scan nothing".
+    """
+    import subprocess
+    import tempfile
+    try:
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as out:
+            rc = subprocess.run(["git", "ls-files", "-z", "--", "*.md"],
+                                cwd=root or ".", stdout=out,
+                                stderr=subprocess.DEVNULL, timeout=120)
+            out.seek(0)
+            body = out.read()
+        if rc.returncode != 0:
+            return None
+        return [p for p in body.split(chr(0)) if p.endswith(".md")]
+    except Exception:
+        return None
 
 def read_lines(path):
     try:

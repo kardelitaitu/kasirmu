@@ -94,6 +94,8 @@ payment-amount-tendered = Jumlah Dibayar
 payment-processing = Memproses…
 payment-qris-scan = Pindai dengan aplikasi QRIS
 payment-qris-waiting = Menunggu konfirmasi pembayaran…
+payment-qris-manual-confirm = Saya sudah menerima pembayaran
+payment-qris-not-configured = QR statis merchant belum dikonfigurasi — atur di Pengaturan › Metode pembayaran lokal.
 payment-qris-dialog-aria = Pembayaran QR QRIS
 payment-qris-close-aria = Tutup pembayaran QR
 payment-qris-qr-aria = Kode QR
@@ -250,6 +252,9 @@ sales-history-line-cost = HPP
 sales-history-line-margin = Margin
 sales-history-line-margin-pct = Margin %
 sales-history-line-tax = Pajak
+# F2-7 — lencana stempel audit: tampil pada baris pajak detail saat core
+# menandai penjualan dihitung dari estimasi pajak yang tidak segar.
+sales-history-tax-estimated-badge = Estimasi
 sales-history-status-all = Semua
 sales-history-status-completed = Selesai
 sales-history-status-pending = Tertunda
@@ -565,6 +570,24 @@ payment-change = Kembalian
 payment-insufficient = Jumlah tidak mencukupi
 payment-qris-description = Hasilkan kode QR QRIS untuk dipindai pelanggan dengan aplikasi pembayaran mereka.
 payment-qris-pay = Bayar dengan QR
+payment-qris-dynamic-pay = Bayar dengan QR dinamis
+payment-qris-countdown = Kadaluarsa dalam { $seconds } detik
+payment-qris-expired-title = Kode QR telah kadaluarsa
+payment-qris-reissue = Buat QR baru
+payment-qris-cancel = Batalkan pembayaran
+payment-qris-auto-charge-failed = Penagihan QRIS Otomatis gagal: { $reason }
+payment-qris-auto-no-payload = Gerbang pembayaran tidak mengembalikan muatan QR
+payment-qris-auto-cancelled = Pembayaran QRIS dibatalkan — penjualan tertunda dibatalkan
+
+# Aliran kartu EDC (agents-3 3.2)
+payment-edc-description = Tagih total pada terminal kartu yang terhubung — tempel, masukkan, atau gesek.
+payment-edc-pay = Bayar dengan terminal kartu
+payment-edc-preflight = Memeriksa terminal kartu…
+payment-edc-waiting = Silakan tempel, masukkan, atau gesek kartu…
+payment-edc-declined = Kartu ditolak
+payment-edc-not-ready = Terminal kartu belum siap ({ $status })
+payment-edc-failed = Pembayaran kartu gagal: { $reason }
+payment-edc-dismiss = Kembali ke pembayaran
 payment-toast-currency-failed = Gagal memuat data mata uang
 payment-toast-customers-failed = Gagal memuat pelanggan
 payment-toast-loyalty-failed = Gagal memuat akun loyalitas
@@ -789,7 +812,6 @@ retail-product-add-aria = Tambah { $name } ke keranjang
 retail-product-edit-title = Edit Produk
 retail-product-edit-aria = Edit { $name }
 retail-product-weigh-aria = Timbang { $name }
-retail-price-volatility-hint = Harga baru saja berubah
 retail-edit-modal-close-aria =
     .aria-label = Tutup
 

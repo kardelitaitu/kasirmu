@@ -1300,6 +1300,84 @@ fn complete_sale_to_kds_fanout_targets_one_order_to_multiple_instances() {
     );
 }
 
+/// PERF-KDS-02: instance filtering is pushed into SQL. The predicate must
+/// agree with the per-order Rust rule in every direction, including the
+/// historical-targeting edge: once ALL targeting rows are deleted, an
+/// order with a NULL `target_instance_id` reverts to universal visibility
+/// (same semantics as `order_visible_to_instance`).
+#[test]
+fn kds_instance_filter_sql_matches_rust_predicate() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let orders = s
+        .complete_sale_to_kds_fanout(
+            &sale.id,
+            Some("store-1"),
+            &["kds-main".to_owned(), "kds-expediter".to_owned()],
+        )
+        .unwrap();
+    assert_eq!(orders.len(), 1);
+    let order = &orders[0];
+
+    // Both targeted instances see the ticket; a third does not.
+    assert_eq!(
+        s.get_kds_queue_for_instance(None, "kds-main")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        s.get_kds_queue_for_instance(None, "kds-expediter")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        s.get_kds_queue_for_instance(None, "kds-other")
+            .unwrap()
+            .is_empty(),
+        "targeted ticket must be hidden from other instances in SQL"
+    );
+
+    // Deleting every targeting row reverts visibility to the raw
+    // `target_instance_id` column (kds-main) — matching
+    // `order_visible_to_instance`, the ticket stays hidden from others.
+    conn.execute(
+        "DELETE FROM kds_order_targets WHERE kds_order_id = ?1",
+        params![order.id],
+    )
+    .unwrap();
+    assert_eq!(
+        s.get_kds_queue_for_instance(None, "kds-main")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        s.get_kds_queue_for_instance(None, "kds-other")
+            .unwrap()
+            .is_empty(),
+        "column-targeted ticket stays hidden once targeting rows are gone"
+    );
+
+    // The SQL predicate must also respect zone filtering combined with
+    // instance scoping (binds: zone + iid together).
+    assert!(
+        s.get_kds_queue_for_instance(Some("Grill"), "kds-main")
+            .unwrap()
+            .is_empty(),
+        "zone filter must still apply on top of instance scoping"
+    );
+}
+
 #[test]
 fn scoped_kds_commands_reject_cross_instance_targeted_order() {
     let conn = fresh();
@@ -3193,4 +3271,552 @@ fn void_sale_cancels_kds_tickets_for_the_sale() {
         after.status, "cancelled",
         "voided sale's active ticket must be cancelled"
     );
+}
+
+/// S3 integration: a FULL refund must pull the sale's active kitchen
+/// tickets off the board, inside the refund's own transaction. Drives the
+/// real cart → sale → fanout → refund path end to end (the void sibling
+/// test covers `void_sale`; until now no test drove the refund branch).
+#[test]
+fn full_refund_cancels_kds_tickets_for_the_sale() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // Kitchen tickets exist and one is mid-prep when the refund lands.
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+    s.create_kds_line_items(
+        &ticket.id,
+        &[CreateKdsLineItemInput {
+            sku: "BURGER".into(),
+            display_name: "Burger".into(),
+            qty: 1,
+            course: Some("main".into()),
+            modifiers: vec![],
+        }],
+    )
+    .unwrap();
+
+    let refund = crate::Refund::new(
+        &sale.id,
+        price(500),
+        "full refund",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[0].id,
+            "BURGER",
+            1,
+            price(500),
+            price(500),
+        )],
+    );
+    s.create_refund(&refund).unwrap();
+
+    let after = s.get_kds_order(&ticket.id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "cancelled",
+        "a full refund must cancel the sale's active kitchen ticket"
+    );
+    let lines = s.get_kds_order_lines(&ticket.id).unwrap();
+    assert!(
+        lines.iter().all(|l| l.item_status == "cancelled"),
+        "the cancelled ticket's line items follow to 'cancelled'"
+    );
+}
+
+/// S3 integration: a PARTIAL refund must leave the kitchen board alone —
+/// the kitchen is still cooking the remainder of the sale.
+#[test]
+fn partial_refund_keeps_kds_tickets_active() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+
+    // Two line items: refunding one line is partial against the total.
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("FRIES"), 1, price(300)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+
+    let refund = crate::Refund::new(
+        &sale.id,
+        price(500),
+        "partial refund",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[0].id,
+            "BURGER",
+            1,
+            price(500),
+            price(500),
+        )],
+    );
+    s.create_refund(&refund).unwrap();
+
+    let after = s.get_kds_order(&ticket.id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "preparing",
+        "a partial refund must NOT cancel the kitchen ticket"
+    );
+}
+
+/// S3 boundary: the full-refund detection is CUMULATIVE — two partial
+/// refunds that together reach the sale total must cancel the kitchen
+/// tickets on the second refund, even though neither refund alone is
+/// full. Pins the `already_refunded + refund.total >= sale_total` branch
+/// with a non-zero prior balance.
+#[test]
+fn cumulative_refunds_reaching_full_total_cancel_kds_tickets() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("FRIES"), 1, price(300)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+
+    // First partial refund (500 of 800): ticket must stay.
+    let first = crate::Refund::new(
+        &sale.id,
+        price(500),
+        "partial one",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[0].id,
+            "BURGER",
+            1,
+            price(500),
+            price(500),
+        )],
+    );
+    s.create_refund(&first).unwrap();
+    assert_eq!(
+        s.get_kds_order(&ticket.id).unwrap().unwrap().status,
+        "preparing",
+        "first partial refund leaves the board alone"
+    );
+
+    // Second partial refund (300 of 800) reaches the full total:
+    // the kitchen is now returning EVERYTHING — ticket must cancel.
+    let second = crate::Refund::new(
+        &sale.id,
+        price(300),
+        "partial two completes the refund",
+        "",
+        "user-1",
+        vec![crate::RefundLine::new(
+            &sale.lines[1].id,
+            "FRIES",
+            1,
+            price(300),
+            price(300),
+        )],
+    );
+    s.create_refund(&second).unwrap();
+    assert_eq!(
+        s.get_kds_order(&ticket.id).unwrap().unwrap().status,
+        "cancelled",
+        "refunds summing to the sale total must cancel the kitchen ticket"
+    );
+}
+
+/// S3 ghost-ticket window: `void_pending_sale` must cancel any kitchen
+/// tickets created for the sale before the void ran. In production a
+/// ticket exists between the checkout command's deduction pass and the
+/// separate `create_kds_order_from_sale_scoped` call — a void arriving in
+/// that window (app crash, sync replay, cashier abort) must not leave a
+/// ghost ticket cooking on the board. Drives the real checkout path so
+/// the sale is genuinely 'pending' in the DB with deduction_locations set.
+#[test]
+fn void_pending_sale_cancels_kds_tickets_in_ghost_window() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+
+    // Real checkout: sale lands 'pending', stock deducted from the
+    // canonical default location (create_product seeded it).
+    let default_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
+    let splits = vec![crate::PaymentSplitArg {
+        method: "cash".into(),
+        amount_minor: 500,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: None,
+    }];
+    s.complete_sale_deduction_with_locations(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from(default_loc)],
+        &splits,
+        "cashier-1",
+        None,
+        &[],
+    )
+    .unwrap();
+
+    // Ghost-window ticket: created after checkout, before finalize.
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    s.update_kds_status(&ticket.id, "preparing").unwrap();
+
+    s.void_pending_sale(&sale.id).unwrap();
+
+    let after = s.get_kds_order(&ticket.id).unwrap().unwrap();
+    assert_eq!(
+        after.status, "cancelled",
+        "voiding a pending sale must cancel its ghost-window kitchen ticket"
+    );
+    let lines = s.get_kds_order_lines(&ticket.id).unwrap();
+    assert!(
+        lines.iter().all(|l| l.item_status == "cancelled"),
+        "the cancelled ghost ticket's line items follow to 'cancelled'"
+    );
+}
+
+/// TODO 1b: the fanout stamps each kitchen ticket with the dining table
+/// currently bound to the sale (`tables.active_sale_id`), so the KDS
+/// board can show "Table 4" instead of a bare ticket id. No test pinned
+/// this: a regression that drops the lookup would silently strip the
+/// table name from every zoned ticket. Pins both halves — the stamp
+/// lands when a table is assigned, and stays None when none is.
+#[test]
+fn kds_fanout_stamps_table_number_from_assigned_table() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let table = s
+        .create_table(&crate::Table {
+            id: "tbl-ghost-1".into(),
+            name: "Table 4".into(),
+            capacity: 4,
+            pos_x: 10.0,
+            pos_y: 20.0,
+            shape: "circle".into(),
+            width: 10.0,
+            height: 10.0,
+            status: "available".into(),
+            active_sale_id: None,
+            section: "Main".into(),
+            active: true,
+            sort_order: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+        })
+        .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    s.assign_table_order(&table.id, &sale.id).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        ticket.table_number.as_deref(),
+        Some("Table 4"),
+        "ticket must carry the assigned table's name"
+    );
+}
+
+/// The None half: a takeaway sale with no table assignment must produce
+/// tickets with no table_number (NOT an empty string or a stale name).
+#[test]
+fn kds_fanout_leaves_table_number_none_without_table() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let ticket = s
+        .complete_sale_to_kds_fanout(&sale.id, None, &[])
+        .unwrap()
+        .remove(0);
+    assert_eq!(
+        ticket.table_number, None,
+        "no assigned table → no table name on the ticket"
+    );
+}
+
+/// Seeds a ticket with two structured line items (burger + fries) and
+/// returns (order, lines) for line-item state-machine tests. Callers must
+/// seed the BURGER/FRIES products first.
+fn seed_ticket_with_lines(s: &Store<'_>) -> (crate::KdsOrder, Vec<crate::KdsLineItem>) {
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("BURGER"), 1, price(500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("FRIES"), 1, price(300)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let order = s
+        .create_kds_order(CreateKdsOrderInput {
+            sale_id: sale.id.clone(),
+            store_id: None,
+            items_summary: "Burger, Fries".into(),
+            item_count: 2,
+            kitchen_zone: Some("grill".into()),
+            notes: String::new(),
+            table_number: None,
+            priority: false,
+        })
+        .unwrap();
+    let lines = s
+        .create_kds_line_items(
+            &order.id,
+            &[
+                CreateKdsLineItemInput {
+                    sku: "BURGER".into(),
+                    display_name: "Burger".into(),
+                    qty: 1,
+                    course: Some("main".into()),
+                    modifiers: vec![],
+                },
+                CreateKdsLineItemInput {
+                    sku: "FRIES".into(),
+                    display_name: "Fries".into(),
+                    qty: 1,
+                    course: Some("side".into()),
+                    modifiers: vec![],
+                },
+            ],
+        )
+        .unwrap();
+    (order, lines)
+}
+
+/// RED: each line-item forward transition must stamp its workflow
+/// timestamp (preparing → started_at, ready → ready_at, served →
+/// served_at) — the KDS prep-time metrics are built on these columns.
+#[test]
+fn kds_line_item_transitions_stamp_workflow_timestamps() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+    let (order, lines) = seed_ticket_with_lines(&s);
+    let _ = order;
+
+    let burger = &lines[0];
+
+    let preparing = s
+        .update_kds_line_item_status(&burger.id, "preparing")
+        .unwrap();
+    assert_eq!(preparing.item_status, "preparing");
+    assert!(preparing.started_at.is_some(), "started_at stamped");
+
+    let ready = s.update_kds_line_item_status(&burger.id, "ready").unwrap();
+    assert_eq!(ready.item_status, "ready");
+    assert!(ready.ready_at.is_some(), "ready_at stamped");
+    assert_eq!(
+        ready.started_at, preparing.started_at,
+        "started_at must survive the ready transition"
+    );
+
+    let served = s.update_kds_line_item_status(&burger.id, "served").unwrap();
+    assert_eq!(served.item_status, "served");
+    assert!(served.served_at.is_some(), "served_at stamped");
+}
+
+/// RED: the line-item state machine is FORWARD-only, mirroring the
+/// order-level machine — a stale offline replay moving a line item back
+/// (ready → preparing) must be rejected, not silently applied.
+#[test]
+fn kds_line_item_transitions_reject_regression() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+    let (order, lines) = seed_ticket_with_lines(&s);
+    let _ = order;
+
+    let burger = &lines[0];
+    s.update_kds_line_item_status(&burger.id, "preparing")
+        .unwrap();
+    s.update_kds_line_item_status(&burger.id, "ready").unwrap();
+
+    let err = s
+        .update_kds_line_item_status(&burger.id, "preparing")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { .. }),
+        "line-item regression must be a validation error, got: {err:?}"
+    );
+    let after = s
+        .get_kds_order_lines(&order.id)
+        .unwrap()
+        .into_iter()
+        .find(|l| l.sku == "BURGER")
+        .unwrap();
+    assert_eq!(after.item_status, "ready", "status must stay ready");
+}
+
+/// RED: unknown statuses and skips are not KDS line-item states — an
+/// offline payload replaying "servedx" or "skip" must be rejected, not
+/// written.
+#[test]
+fn kds_line_item_transitions_reject_unknown_status() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "BURGER", "Burger");
+    seed_product(&conn, "FRIES", "Fries");
+    let (_order, lines) = seed_ticket_with_lines(&s);
+
+    for bad in ["skip", "servedx", ""] {
+        let err = s
+            .update_kds_line_item_status(&lines[0].id, bad)
+            .unwrap_err();
+        assert!(
+            matches!(err, CoreError::Validation { .. }),
+            "unknown status '{bad}' must be rejected, got: {err:?}"
+        );
+    }
+}
+
+// ── Frozen ticket prefix (W2-A consumer: kds_orders.ticket_prefix) ──
+//
+// The column is written at INSERT, not resolved at read: that is the whole
+// point (D16). Read with raw SQL because KdsOrder does not carry the field
+// yet - widening it breaks 8 struct literals in three other test files, so
+// the reader half is a separate, sized change.
+
+fn stamped_prefix(conn: &Connection, order_id: &str) -> String {
+    conn.query_row(
+        "SELECT ticket_prefix FROM kds_orders WHERE id = ?1",
+        rusqlite::params![order_id],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+fn ticket_for(conn: &Connection, store_id: Option<&str>) -> String {
+    conn.execute(
+        "INSERT OR IGNORE INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES ('sale-stamp', 1000, 'USD', 1, 'completed', '2026-09-27T00:00:00.000Z', '2026-09-27T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    store(conn)
+        .create_kds_order(CreateKdsOrderInput {
+            sale_id: "sale-stamp".into(),
+            store_id: store_id.map(str::to_owned),
+            items_summary: "Steak x2".into(),
+            item_count: 2,
+            kitchen_zone: None,
+            notes: String::new(),
+            table_number: None,
+            priority: false,
+        })
+        .unwrap()
+        .id
+}
+
+#[test]
+fn a_ticket_stamps_its_locations_prefix_at_creation() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.set_location_ticket_prefix("default", " sw-a ").unwrap();
+    let id = ticket_for(&conn, Some("default"));
+    assert_eq!(stamped_prefix(&conn, &id), "SW-A");
+}
+
+#[test]
+fn the_stamp_survives_renaming_the_location_afterwards() {
+    // THE reason the value is copied instead of looked up: tomorrow's config
+    // edit must not retitle a ticket the kitchen already cooked from.
+    let conn = fresh();
+    let s = store(&conn);
+    s.set_location_ticket_prefix("default", "OLD").unwrap();
+    let id = ticket_for(&conn, Some("default"));
+    s.set_location_ticket_prefix("default", "NEW").unwrap();
+    assert_eq!(
+        stamped_prefix(&conn, &id),
+        "OLD",
+        "the ticket keeps the label it was given"
+    );
+    assert_eq!(
+        s.location_ticket_prefix("default").unwrap().as_deref(),
+        Some("NEW")
+    );
+}
+
+#[test]
+fn a_ticket_with_no_prefix_configured_stamps_the_empty_sentinel() {
+    let conn = fresh();
+    let id = ticket_for(&conn, Some("default"));
+    assert_eq!(stamped_prefix(&conn, &id), "");
+}
+
+#[test]
+fn an_unknown_store_stamps_empty_rather_than_guessing_the_primary() {
+    // Falling back to the primary location would print one branch's label on
+    // another branch's ticket, which is worse than no label.
+    let conn = fresh();
+    store(&conn)
+        .set_location_ticket_prefix("default", "SW-A")
+        .unwrap();
+    let id = ticket_for(&conn, Some("no-such-store"));
+    assert_eq!(stamped_prefix(&conn, &id), "");
+}
+
+#[test]
+fn a_ticket_with_no_store_at_all_stamps_empty() {
+    let conn = fresh();
+    store(&conn)
+        .set_location_ticket_prefix("default", "SW-A")
+        .unwrap();
+    let id = ticket_for(&conn, None);
+    assert_eq!(stamped_prefix(&conn, &id), "");
 }

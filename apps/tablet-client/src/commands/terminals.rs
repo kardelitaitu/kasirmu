@@ -15,6 +15,8 @@ use foundation::validate_not_empty;
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -527,6 +529,14 @@ pub async fn register_terminal_scoped(
         terminal = terminal.with_metadata(meta);
     }
 
+    let sub = {
+        let global_db = state.db.lock().await;
+        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+    };
+    sub.verify_signature()?;
+
     let (_session, conn_arc) = state.resolve_scope(&session_token)?;
     let db_guard = conn_arc
         .lock()
@@ -534,6 +544,9 @@ pub async fn register_terminal_scoped(
     let db = &*db_guard;
     let store = Store::new(&db);
     require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_REGISTER)?;
+    store.enforce_terminal_quota(
+        &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+    )?;
     store.create_terminal(&terminal)?;
     drop(db);
 

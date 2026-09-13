@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { printSalesReceipt } from '@/api/sales';
@@ -11,7 +13,14 @@ import { Skeleton } from '@/components/Skeleton';
 import './InventoryReportScreen.css';
 
 /** Inventory report screen — view and export low-stock alerts with configurable threshold, CSV download, and print support. */
+/** §B administrative gate — Reports lock while the subscription is not `active`. */
 export default function InventoryReportScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <InventoryReportScreenContent />;
+}
+
+function InventoryReportScreenContent() {
   const { l10n } = useLocalization();
   // R36-07: read the token through the useWorkspace() hook rather than the
 // raw context object. The global test harness mocks the hook, not the

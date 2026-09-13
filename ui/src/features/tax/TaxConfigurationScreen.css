@@ -351,4 +351,12 @@
   color: var(--color-warning, var(--color-fg));
 }
 
+/* Tier-move inline warning (F1 debt) — shown while the edit dialog targets
+   a different tier than the row opened with; mirrors the delete-deps hue. */
+.tax-config-tier-warning {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-warning, var(--color-fg));
+}
+
 

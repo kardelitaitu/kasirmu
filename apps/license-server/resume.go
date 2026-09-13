@@ -107,7 +107,7 @@ func resumeSubscription(app core.App, sub *core.Record, now time.Time) (payloadS
 		}
 	}
 	newExpiresAt = oldExpiresAt.Add(extension)
-	newGraceUntil := calculateGraceUntil(newExpiresAt)
+	newGraceUntil := calculateGraceUntil(sub.GetString("tier_key"), newExpiresAt)
 
 	// Quota fields come from the paused subscription row itself so the
 	// re-signed payload matches the DB exactly.
@@ -119,7 +119,7 @@ func resumeSubscription(app core.App, sub *core.Record, now time.Time) (payloadS
 		TenantID:        sub.GetString("tenant_id"),
 		TierKey:         sub.GetString("tier_key"),
 		Status:          "active",
-		MaxStores:       sub.GetInt("max_stores"),
+		MaxLocations:    sub.GetInt("max_stores"),
 		MaxPOSInstances: sub.GetInt("max_pos_instances"),
 		AllowedTypes:    allowedTypes,
 		StartsAt:        sub.GetDateTime("starts_at").Time().Format(time.RFC3339),
@@ -127,6 +127,8 @@ func resumeSubscription(app core.App, sub *core.Record, now time.Time) (payloadS
 		GraceUntil:      newGraceUntil.Format(time.RFC3339),
 		IssuedAt:        now.Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	resumed.Features = featureGrantsForTenant(app, sub.GetString("tenant_id"))
 	payloadStr, signature, err = signSubscription(resumed)
 	if err != nil {
 		return "", "", time.Time{}, err

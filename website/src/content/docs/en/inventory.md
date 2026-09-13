@@ -3,8 +3,10 @@ title: Inventory & Warehouses
 description: Track stock across warehouses with movement history.
 category: guides
 order: 5
-updated: "2026-08-16"
+updated: "2026-09-09"
 ---
+
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · Finding: "The Inventory Transaction Log lists every movement — transfers, stock counts, and manual adjustments" — TransactionLogScreen (ui/src/features/inventory/TransactionLogScreen.tsx:119, title inv-log-title inventory.ftl:112) is registered NOWHERE: no registerPage/registerNavItem in ui/src/features/inventory/register.tsx, and a whole-repo git grep for TransactionLog (three forms, including unfiltered) finds zero references outside its own file, its test, and docs — the log is currently unreachable from the UI. Claim repaired to name the log as a ledger whose types do cover sales, voids, refunds, transfers, PO receives, stock counts, and manual adjustments (TransactionLogScreen.tsx:173-179) while recording that it cannot be opened from any screen today. · Verified true, left alone: per-product-per-location stock with register deduction location (ADR-19 deduction_location_id locked at cart start, commands/pos.rs:234-298, sales.rs:144-149), sales decrement stock automatically (complete_sale deduction test in db/sales.rs module header), location picker switches the view (LocationPicker.css/ui, features/inventory/), the seven adjustment reasons verbatim — inv-reason-restock..other inventory.ftl:40-46, ADJUSTMENT_REASONS InventoryAdjustmentScreen.tsx:20-27, custom reason text :138 — two-step pick-then-reason flow (:130-160), movement ledger entries, inventory shift for counts with e.g. Night shift count placeholder (inv-shift-notes-placeholder inventory.ftl:74-75, Start Inventory Shift :73, End Shift :77), count status filters draft/in_progress/completed/cancelled (api/inventoryCounts.ts:9), detail view with history (sc-hist-title stock-counting.ftl:42), thresholds per location with Global (All Locations) fallback and per-threshold enable/disable (ThresholdConfigScreen.tsx:152-155,203,279-280, enabled state :39-97), transit audit with source/destination/qty/sent-time and OVERDUE flag (TransitAuditScreen.tsx:68,103-112, css :45-51), transfer reversal returns stock to source (cancel_stock_transfer db/stock_transfers.rs:666-679, cancelStockTransfer api/stockTransfers.ts:132-137, StockTransfersScreen.tsx:195-204), suppliers + PO with order date and Receive landing stock automatically (register.tsx:9-27 both section: 'inventory'; purchase_orders.rs:395-470 received+damaged, good qty enters sellable stock), Inventory Report stock/threshold/unit price/unit cost/margin/stock value print+CSV (inv-report-csv-header-* inventory.ftl:57-65, InventoryReportScreen.tsx:15,45-53). · id/ counterpart repaired with the same one finding. -->
 
 ## Stock levels
 
@@ -54,5 +56,9 @@ arrives — the received quantities land in stock automatically.
 
 The **Inventory Report** shows stock, threshold, unit price and cost, margin,
 and stock value per product, and can be printed or exported as CSV. The
-**Inventory Transaction Log** lists every movement — transfers, stock counts,
-and manual adjustments — as a single ledger of where stock came from and went.
+**Inventory Transaction Log** is the ledger behind all of it, covering sales,
+voids, refunds, transfers, received purchase orders, stock counts, and manual
+adjustments — where stock came from and went. (The log screen is part of the
+app, though it is not currently reachable from any navigation menu.)
+
+> last audited 09-09-26 by docs-auditor

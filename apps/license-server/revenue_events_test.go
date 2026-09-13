@@ -5,7 +5,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -243,7 +242,7 @@ func TestPaddleRevenueCapture(t *testing.T) {
 	t.Setenv("PADDLE_WEBHOOK_SECRET", "test-webhook-secret")
 	t.Setenv("PADDLE_PRICE_TIERS", "pri_test_pro:pro:year")
 
-	body := fmt.Sprintf(`{
+	body := `{
 		"event_id": "evt-paddle-rev-001",
 		"event_type": "transaction.completed",
 		"data": {
@@ -256,7 +255,7 @@ func TestPaddleRevenueCapture(t *testing.T) {
 			"totals": {"grand_total": 999, "total": 999, "subtotal": 999, "tax": 0},
 			"created_at": "2026-08-18T10:00:00Z"
 		}
-	}`)
+		}`
 	header := signPaddle("test-webhook-secret", body, time.Now().Unix())
 	req := httptest.NewRequest(http.MethodPost, paddleWebhookPath, strings.NewReader(body))
 	req.Header.Set(paddleSignatureHeader, header)

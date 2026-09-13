@@ -1,6 +1,17 @@
 # Improvement Opportunities — July 31, 2026
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · This is a dated plan (title "July 31, 2026", items stamped "Complete (2026-08-17)"), so nothing was deleted and no ✅ was downgraded — the completion records stand, and each now says whether the thing still runs. Findings were B3 and B5 asserting e2e-pr.yml in present tense: verified against the tree, .github/workflows/e2e-pr.yml.bak is what exists (renamed by 23c963303 on 2026-09-02, git log --name-status R100) and its pull_request branches:[main] + workflow_dispatch triggers are still readable in that inert file at .github/workflows/e2e-pr.yml.bak:24-39, so the original claims were true when written and are false today · Added the Currency note under the Legend, which is where a reader learns that ✅ ≠ enforced · Verified true and untouched: scripts/run-e2e.mjs exists, the ui/package.json e2e scripts exist, and dev-ci.yml:442 documents that e2e is deliberately outside static-gates · LEFT ALONE: the rest of the plan's forward-looking items (⏳/🔷) are proposals, not CI claims. -->
 
-> **Legend:** ✅ Complete · 🔷 Phase active · ⏳ Planned
+> **Currency (2026-09-09, docs-auditor):** ✅ in this file means "the work was done", not "it still runs".
+> Every workflow this plan delivered is retired `.bak` — including
+> `.github/workflows/e2e-pr.yml`, now `e2e-pr.yml.bak`, renamed by `23c963303` on
+> 2026-09-02, and GitHub never executes a `.bak` file. The only live workflows are
+> `dev-ci.yml` (`pull_request` targeting `main` + `workflow_dispatch`) and
+> `release.yml` (`v*` tags, desktop-only). So **E2E is enforced nowhere in CI** — that
+> is deliberate and recorded in the workflow itself at
+> `.github/workflows/dev-ci.yml:442` ("e2e -- needs the Docker backend"), and the
+> runner is `cd ui && npm run e2e` (`scripts/run-e2e.mjs`) by hand. Re-measure with
+> `git grep -n playwright -- .github/workflows/dev-ci.yml` → the single hit is the
+> website job installing Chromium to render Mermaid (`dev-ci.yml:157`), not E2E.
 
 ---
 
@@ -69,7 +80,9 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 **Status:** ✅ Complete (2026-08-17)
 
 **Implementation:**
-- ✅ `.github/workflows/e2e-pr.yml` — runs on PRs targeting `main` + manual dispatch
+- ✅ `.github/workflows/e2e-pr.yml` (inert `.bak` since `23c963303`) ran on PRs
+     targeting `main` + manual dispatch; nothing runs it today, so this ✅ is history,
+     not a current guard
 - ✅ 2 project shards (desktop / tablet) for fast PR feedback
 - ✅ Uses `--changed-only` flag to skip unchanged specs
 - ✅ Fetches full git history for `git merge-base` comparison
@@ -97,7 +110,8 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 - ✅ `scripts/run-e2e.mjs` line 38: `const CHANGED_ONLY = args.includes('--changed-only')`
 - ✅ Uses `git merge-base` to detect changed spec files
 - ✅ Skips Docker startup when only UI specs changed
-- ✅ Integrated into `.github/workflows/e2e-pr.yml` (auto-enabled for PRs)
+- ✅ Integrated into `.github/workflows/e2e-pr.yml` — that workflow is inert `.bak`
+     now, so the `--changed-only` mode is reachable only by hand
 
 ---
 
@@ -126,6 +140,17 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 > This link points at the guides copy because that is where the existing
 > `docs/guides/BUSINESS_PLAN.md` reference already resolves — **that is a
 > tie-break for link purposes, not a ruling on which entitlements are correct.**
+> ⚠️ That justification was false as written, and is fixed only as of
+> 2026-09-06: neither copy resolved. The guides copy cited
+> `docs/BUSINESS_PLAN.md` and the records copy cited
+> `docs/archived/BUSINESS_PLAN.md`, and the file has lived at
+> `docs/guides/BUSINESS_PLAN.md` throughout (the guides path has been broken
+> since it was introduced in `feb25194`). Both are now corrected to the real
+> location, so the tie-break above holds for the first time — but note it was
+> never a tie-break on 2026-08-17 reasoning, only on a broken link.
+> These are inline-code paths, not Markdown links, so no link checker can
+> catch their rot; treat `docs/**` path citations as unverified unless a gate
+> resolves them.
 > See **R36-14** in [`0.0.36-backlog.md`](./0.0.36-backlog.md).
 >
 > **Legend:** `[ ]` todo · `[/]` in progress · `[x]` done
@@ -146,7 +171,7 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 match the plan (`Free, Plus, Pro, Premium, Enterprise`). `Standard` maps to the new
 `Plus`; `OneTime` is deprecated. Rename before any new quota code builds on the old names.
 
-- [x] In [`crates/oz-core/src/subscription.rs`](./crates/oz-core/src/subscription.rs):
+- [x] In [`crates/oz-core/src/subscription.rs`](../../crates/oz-core/src/subscription.rs):
   - [x] Add `Plus` variant (maps to what `Standard` did — 1 store, 2 terminals, 2 warehouses, QRIS, cloud sync)
   - [x] Update `from_db()` to accept `"plus"` and keep `"standard"` as a legacy alias → `Plus`
   - [x] Rename docstring of `Free` from "90-day Free Trial" to "Free forever — 3-month sales history"
@@ -184,10 +209,10 @@ match the plan (`Free, Plus, Pro, Premium, Enterprise`). `Standard` maps to the 
 
 #### C0.2 — License Server (Go) — Add `plus` tier to `tierQuotas()`
 
-Files: [`apps/license-server/paddle_webhook.go`](./apps/license-server/paddle_webhook.go),
-[`apps/license-server/pb_schema.json`](./apps/license-server/pb_schema.json),
-[`apps/license-server/renew.go`](./apps/license-server/renew.go),
-[`apps/license-server/expiry.go`](./apps/license-server/expiry.go)
+Files: [`apps/license-server/paddle_webhook.go`](../../apps/license-server/paddle_webhook.go),
+[`apps/license-server/pb_schema.json`](../../apps/license-server/pb_schema.json),
+[`apps/license-server/renew.go`](../../apps/license-server/renew.go),
+[`apps/license-server/expiry.go`](../../apps/license-server/expiry.go)
 
 - [x] In `paddle_webhook.go` → `tierQuotas()`: add `"plus"` case with
   `maxStores=1, maxPosInstances=2, allowedTypes=["restaurant-pos","store-pos","admin","inventory","warehouse"]` (no `kds`)
@@ -665,3 +690,5 @@ npm run e2e
 > After C0 and C1 are complete, add a Playwright E2E spec:
 > `ui/e2e/e2e-upgrade-trigger-flow.spec.ts`
 > covering: Free user hits 3-month history cap → sees blurred overlay → clicks upgrade → upgrade modal opens.
+
+> last audited 09-09-26 by docs-auditor

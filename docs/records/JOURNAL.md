@@ -1,4 +1,647 @@
 
+## 2026-09-13 — Absorb: the QRIS Auto pair lands on the desktop registration floor (desktop-client/records)
+
+**Context:**
+`fb9ef9042ad` (13:00, twelve files) registered `qris_auto::qris_auto_charge_scoped` and `qris_auto::qris_auto_status_scoped` in `apps/desktop-client/src/lib.rs` — two names, both arriving already gated, so they moved no ceiling and no debt-ledger row. The only leg in `apps/desktop-client/src/commands/registration_gate_tests.rs` that can see a command which arrives gated is `drift_pin_registration_floor_is_met`, whose second assertion is an equality against the tree, and that leg has been red on a clean checkout ever since the commit landed: `lib.rs registers 453 commands and this floor says 451`. The 451 it replaced is barely an hour old — raised at 12:22 by `a63fd08b65` for the KDS routing-rule pair, which left the header prose at :6 and the const doc at :78 still describing 449 registered names. This entry records the absorb; it does not author either registration.
+
+**Changes:**
+1. `apps/desktop-client/src/commands/registration_gate_tests.rs:82` — `REGISTERED_FLOOR` 451 → 453, the number the harness prints rather than a chosen one.
+2. Same file, `:6` and `:78` — the two prose measurements moved with the const: 449 → 453, "two more than the 451 this floor was last written against", and the causal clause now names `fb9ef9042ad` and the two `qris_auto::` commands instead of the sync-conflict pair it had been crediting since 12:22.
+3. Deliberately untouched: the ceilings, `REGISTERED_SLACK` (24) and `registration_gate_debt.generated.rs`. A gated pair adds no debt, and a pass that widened an allowance while raising a pin would be the wrong kind of green.
+
+**What it means:**
+Provenance, because the message on the commit says so too: this floor step was prepared in another lane's working tree and withdrawn from the index before it was committed; the 449 → 451 half of it landed independently at `a63fd08b65` while the absorb was being briefed, so what this pass files is the remaining 451 → 453 plus the JOURNAL line the assertion asks for. It landed here, and not there, because the file is red at HEAD, CI has no working copy to absorb a withdrawn bump from, and the lane that registered the QRIS pair had moved on. Raising the floor records what landed; it does not approve it — the two names are counted, not endorsed, and their permission is `qris_auto`'s own business.
+
+An asymmetry this entry does not fix: `apps/tablet-client/src/commands/registration_gate_tests.rs:71` certifies a surface of 322 against a floor of 318, and cannot see the difference, because its second leg compares the floor to the generated ledger's total — which is also 318, the same measurement restated — rather than to the tree, and its third leg allows 318 + 24. The desktop file had exactly that bug until it was made an equality against `registered_names(LIB_RS)`. Left open for that file's owner; not edited in a desktop-fence pass.
+
+**Verification:**
+- Before: `cargo test -p oz-pos-app registration_gate` → `11 passed; 1 failed`, the one failure `drift_pin_registration_floor_is_met` (`left: 451`, `right: 453`), exit 1.
+- After: `cargo test -p oz-pos-app registration_gate` → `12 passed; 0 failed`, exit 0.
+- `grep -i qris docs/records/JOURNAL.md` now names both commands in this entry; it named neither before.
+
+**Commit:** single pathspec commit `test(desktop-client): absorb the QRIS Auto pair into the registration floor` — never push without a direct user order.
+
+
+## 2026-09-13 — Policy: remove workspace-wide cargo fmt from pre-commit (agents)
+
+**Context:**
+The pre-commit hook's fmt step was trigger-scoped but never work-scoped: it fired when `.rs` files were staged (`git diff --cached --name-only -- '*.rs'`) but then ran `cargo fmt --all` — the *whole workspace* — re-staging only the previously-staged set. In this shared checkout with multiple concurrent agents, any Rust commit reformatted every other session's in-flight `.rs` files in the working tree; whoever committed next swept formatting they did not choose into their pathspec commit. The hazard is recorded independently in three agent journals (manager-2, coder-5, done-todo-refactor-oz-pos-app-agents-2); the `--no-verify` workarounds it forced are the recurring cost. User ordered full removal of the gate (policy/config change, not a TDD fix — no Red/Green).
+
+**Changes:**
+1. `.githooks/pre-commit`: deleted the `# ── cargo fmt ──` section (24 lines) and the now-dead `$RUSTUP` locator block (18 lines) that had no other consumer. The hook now opens with line-ending normalization and has exactly 7 sections (`grep -c '^# ──'` = 7). Header comment updated to record why fmt is absent.
+2. Root `AGENTS.md`: hooksPath comment dropped "fmt"; "eight steps" → "seven"; step-1 fmt bullet deleted; steps renumbered (bundle parity 3→2, FTL dedupe 4→3, column-type 5→4, PG drift 6→5, Go 7→6, FTL orphan 8→7); "mirror of step 3" → "step 2"; §4 "Pre-commit step 7 fails on drift" → "step 5"; CI-backstop paragraph renumbered ("Steps 5 and 6" → "4 and 5", "Step 7 (Go)" → "Step 6", "Step 8's backstop" → "Step 7's"); added the 🚫 removal blockquote naming where fmt is enforced now (pre-push `scripts/run-pre-push.py`, CI `dev-ci.yml#cargo-check`, `scripts/check.sh`, `scripts/release.sh`).
+3. `.agents/AGENTS.md` mirror: same set (its condensed step list rewritten 8→7, "none of the eight run at commit time" → "none of the seven", "Steps 5 and 6"/"Step 7 (Go)" renumbered, §4 "step 7" → "step 5", stamp "10 pre-commit gates" → "7 (count corrected 2026-09-13)") + the removal note.
+4. Skills: `tdd`/`project-scaffold` "As of 0.0.37 there are eight:" → "seven" (fmt dropped from the enumeration, orphan now step 7, removal reason appended); `onboarding-guide` "runs eight steps" → "seven steps" with the fmt clause removed and removal note appended.
+5. `scripts/setup-dev.ps1` line 8: "Enable Git hooks (pre-commit fmt + lint)" → "pre-commit content gates; fmt moved to pre-push/CI on 2026-09-13". Line 155's generic quick-reference `cargo fmt` command left untouched.
+6. `docs/guides/ARCHITECTURE.md:277`: "pre-commit quality gates (`cargo fmt + clippy + i18n lint + bundle parity`)" — a stale enumeration from before the hook was rebuilt — replaced with the live gate list and where fmt/clippy actually run.
+7. `scripts/gates.json` rust-fmt entry: verified already accurate (runners: check.sh + CI dev-ci.yml#cargo-check; no pre-commit claim) — no edit.
+8. Not edited (historical records, correct as records): `docs/plans/0.0.36-backlog.md` eight-step mentions, agent journals, `docs/archived/*`, audit-stamp history inside onboarding-guide.
+
+**What it means:**
+Formatting stays enforced — check-only, outside the commit path: `cargo fmt --all -- --check` in pre-push (`scripts/run-pre-push.py:127`), CI (`dev-ci.yml#cargo-check`), `check.sh:39`, `release.sh:59`. An unformatted commit now fails loudly at pre-push/CI instead of being silently fixed at commit time. Agents must run `cargo fmt --all` themselves before pushing. Trade-off recorded: a hook-less clone with an unformatted HEAD has no commit-time guard at all — CI remains the backstop, same as every other gate in this repo.
+
+**Verification:**
+- `python3 scripts/verify-agents-mirrors.py` — green (all mirrors + skills agree with the hook's 7 sections).
+- `bash -n .githooks/pre-commit` syntax clean; `grep -c '^# ──' .githooks/pre-commit` = 7.
+- `bash scripts/test-eol-guard.sh` green (live EOL guard extraction unaffected).
+- Hook smoke-run: `bash .githooks/pre-commit` exits 0 and no longer runs fmt even with staged `.rs` files.
+- `verify-ci-docs-drift.py` + `verify-release-workflow.py --self-test` pass (hook's workflow citations unchanged).
+
+**Commit:** single pathspec commit `chore(agents): remove workspace-wide cargo fmt gate from pre-commit` — never push without a direct user order.
+
+
+## 2026-09-13 — TDD: health-check timeout misreported the sync deadline (platform-sync)
+
+**Context & Identified Weakness:**
+`classify_transport_error` in `platform/sync/src/transport.rs` hardcoded `"request timed out after 30s"` in its timeout branch, but it is shared by two clients with different deadlines: the 30-second sync client (push/pull/snapshot) and the 5-second health-probe client built inside `health_check()`. When the server hung (as opposed to refusing), the health check reported a timeout "after 30s" that had actually fired at 5s — a 6x misreport aimed at whoever reads the log to decide which knob to tune. Found by inspection during a user-requested "repair" pass; no test pinned the health-check timeout message at all. A second, cosmetic defect: `pull_updates` carried its doc summary twice (a leftover edit).
+
+**Changes & Design:**
+1. `classify_transport_error` now takes a `timeout_secs: u64` parameter interpolated into the timeout message, so each caller reports the deadline its client was actually configured with.
+2. Call sites: push/pull/snapshot pass `30` (the sync client's configured timeout); `health_check` passes `5`. The values are kept adjacent to the client builders that own them.
+3. New regression test `health_check_timeout_reports_its_own_deadline_not_the_sync_one` in `transport_tests.rs`: an axum handler that accepts then sleeps 10s forces a genuine timeout (no connect-refused race), asserting the message contains "after 5s" and does NOT contain "30s".
+4. Deduplicated the `pull_updates` doc comment (kept the more complete variant).
+5. Deliberately NOT done: threading the actual `Duration` (instead of a `u64`) through, and extracting the two deadline constants — the message text is the observable contract here, and a larger refactor of an audited-SAFE file needs its own slice.
+
+**Verification:**
+- Verified RED phase: the new test failed with `got: transport error: request timed out after 30s to http://localhost:40035/api/health` (and the 5.03s runtime confirmed the 5s client genuinely fired).
+- Verified GREEN phase: 80 transport tests, full crate suite 386 passed / 0 failed (ignored ones need live servers/PG).
+- `cargo clippy -p platform-sync --all-targets --all-features -- -D warnings` clean (one round: `.err().expect(..)` → `expect_err(..)`).
+- `rustfmt --check` clean on both changed files. Note: workspace-wide `cargo fmt --check` reports diffs in `apps/cloud-server/src/email_pg/{analytics,popularity}.rs` — another agent's in-flight work, not touched.
+
+## 2026-09-10 — TDD: Enforce read-only subscription lock on offline queue enqueue (core/offline)
+
+**Context & Identified Weakness:**
+When an offline terminal's subscription expired past its offline grace period (`pos_read_only == true`), `enqueue_offline`, `enqueue_offline_scoped`, and `enqueue_offline_inner` in `crates/oz-core/src/db/offline.rs` allowed enqueueing new offline transactions. The POS read-only contract specifies that order changes, sales, and offline queueing are locked once the offline grace window lapses.
+
+**Changes & Design:**
+1. Added `Store::enforce_pos_writable_for_tenant(&self, tenant_id: &str) -> Result<(), CoreError>` in `crates/oz-core/src/db/quota_gate.rs` and updated `Store::enforce_pos_writable(&self)` to delegate to it with `TENANT_ID` ("default").
+2. Called `self.enforce_pos_writable_for_tenant(tenant_id)?;` at the start of `enqueue_offline_inner` in `crates/oz-core/src/db/offline.rs`.
+3. Added unit test `test_enqueue_offline_fails_when_subscription_read_only` in `crates/oz-core/src/db/offline_tests.rs`.
+4. Verified that attempts to enqueue transactions during expired grace fail closed with `CoreError::SubscriptionReadOnly` and leave the queue untouched.
+
+**Verification:**
+- Verified RED phase: `test_enqueue_offline_fails_when_subscription_read_only` failed with `called Result::unwrap_err() on an Ok value`.
+- Verified GREEN phase: test passed and all 55 offline unit tests passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
+## 2026-09-10 — TDD: Enforce read-only subscription lock on checkout deduction (core/sales)
+
+**Context & Identified Weakness:**
+When an offline terminal's subscription expired past its offline grace period (`pos_read_only == true`), `complete_sale_deduction_with_locations_and_estimate` and `complete_sale_with_resolved_shortfalls` still allowed completing sales, deducting inventory, and inserting sale records. The operational contract requires the POS to be read-only once grace expires, locking checkout and order mutations.
+
+**Changes & Design:**
+1. Added `Store::enforce_pos_writable(&self) -> Result<(), CoreError>` in `crates/oz-core/src/db/quota_gate.rs` delegating to `sub.enforce_pos_writable_for_connection(self.conn)`.
+2. Called `self.enforce_pos_writable()?;` at the start of `complete_sale_deduction_with_locations_and_estimate` in `crates/oz-core/src/db/sales_checkout.rs`.
+3. Called `self.enforce_pos_writable()?;` at the start of `complete_sale_with_resolved_shortfalls` in `crates/oz-core/src/db/sales_lifecycle.rs`.
+4. Added unit tests `test_complete_sale_deduction_fails_when_subscription_read_only` and `test_complete_sale_with_resolved_shortfalls_fails_when_subscription_read_only` in `crates/oz-core/src/db/sales_tests.rs`.
+5. Verified that no sale or stock modification occurs when read-only mode is active.
+
+**Verification:**
+- Verified RED phase: `test_complete_sale_deduction_fails_when_subscription_read_only` failed with `called Result::unwrap_err() on an Ok value`.
+- Verified GREEN phase: both tests passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
+## 2026-09-10 — TDD: Connection-aware write enforcement enforce_pos_writable_for_connection (core/subscription)
+
+**Context & Identified Weakness:**
+The operational enforcement method `enforce_pos_writable()` only consulted `self.pos_read_only()`, which relies on `chrono::Utc::now()`. An offline merchant with a rolled-back system clock could pass write enforcement and create new sales despite ledger timestamps indicating grace had lapsed.
+
+**Changes & Design:**
+1. Added `TenantSubscription::enforce_pos_writable_for_connection(&self, conn: &rusqlite::Connection) -> Result<(), CoreError>`.
+2. Checks `self.pos_read_only_for_connection(conn)`. If read-only is detected via monotonic ledger timestamps, returns `CoreError::SubscriptionReadOnly` with actionable guidance.
+3. Added unit test `test_enforce_pos_writable_for_connection` validating write allowance during grace and rejection with `SubscriptionReadOnly` when ledger timestamps advance past grace.
+
+**Verification:**
+- Verified RED phase: compiler error on missing method.
+- Verified GREEN phase: `test_enforce_pos_writable_for_connection` passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
+## 2026-09-10 — TDD: Quota gate resolve_tier_fail_closed monotonic ledger integration (core/quota_gate)
+
+**Context & Identified Weakness:**
+`Store::resolve_tier_fail_closed()` in `crates/oz-core/src/db/quota_gate.rs` previously called `sub.effective_tier()`, which evaluated solely against `chrono::Utc::now()`. A terminal offline with rolled-back local clock could bypass creation quota gates even if previous sales/audit log ledger records were far past the subscription grace window.
+
+**Changes & Design:**
+1. Updated `Store::resolve_tier_fail_closed(&self)` to delegate to `sub.effective_tier_for_connection(self.conn)`.
+2. This ensures quota evaluation queries `compute_max_ledger_timestamp(self.conn)`, detecting and resisting clock rollback.
+3. Added unit test `test_resolve_tier_fail_closed_uses_ledger_time_past_grace` verifying that insertion of a sale past grace reverts the resolved tier to `SubscriptionTier::Free`.
+
+**Verification:**
+- Verified RED phase: assertion failure (`assertion left == right failed; left: Plus, right: Free`).
+- Verified GREEN phase: test passed.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- `cargo fmt -p oz-core` clean.
+
+## 2026-09-10 — TDD: Connection-aware monotonic ledger grace and pos_read_only validation (core/subscription)
+
+**Context & Identified Weakness:**
+Callers holding an active SQLite database connection had to manually query `compute_max_ledger_timestamp(conn)`, handle its errors, and pass the string to `*_with_timestamp(...)`. A direct, ergonomic connection-aware API on `TenantSubscription` was missing for callers in the sales and transaction pipeline.
+
+**Changes & Design:**
+1. Added `TenantSubscription::is_within_grace_period_for_connection(&self, conn: &rusqlite::Connection) -> bool`.
+2. Added `TenantSubscription::effective_tier_for_connection(&self, conn: &rusqlite::Connection) -> SubscriptionTier`.
+3. Added `TenantSubscription::pos_read_only_for_connection(&self, conn: &rusqlite::Connection) -> bool`.
+4. Fails closed: if computing the ledger timestamp encounters an error, grace returns `false`, effective tier reverts to `Free`, and `pos_read_only` returns `true`.
+
+**Verification:**
+- Added comprehensive unit test `test_connection_aware_grace_and_pos_read_only` testing empty DB tables, recent expiry within grace, and simulated ledger advancement past grace window.
+- Verified RED/GREEN TDD loop.
+- `cargo clippy -p oz-core -- -D warnings` passed with 0 warnings.
+- Full subscription test suite passed (138 tests passed).
+
+## 2026-09-10 — TDD: Trial deadline enforcement in offline grace and lifecycle state (core/subscription)
+
+**Context & Identified Weakness:**
+When a subscription had `is_trial() == true` and an explicit `trial_ends_at` deadline in its signed payload, `is_within_grace_period()` and `lifecycle_state()` previously evaluated exclusively against `self.expires_at` and granted the full offline grace window of the underlying tier (e.g. 14 days for Plus, 30 days for Premium). A trial subscription with contract expiry extended beyond the trial period could continue operating in an active/grace state after the trial had expired.
+
+**Changes & Design:**
+1. Updated `TenantSubscription::is_within_grace_period_at(now)` to check if `self.is_trial()` is true with a valid `trial_ends_at`. If `now > trial_end_utc`, it immediately returns `false` (0 offline grace days post-trial).
+2. Updated `TenantSubscription::lifecycle_state_at(now)` to immediately transition to `SubscriptionLifecycleState::Expired` if a trial's `trial_ends_at` deadline has elapsed.
+3. Added unit test `test_trial_expired_deadline_terminates_grace_and_lifecycle` asserting that an expired trial deadline terminates grace and triggers `SubscriptionLifecycleState::Expired` and `pos_read_only() == true`, even when `expires_at` is far in the future.
+
+**Verification:**
+- Verified RED phase: failed on `assertion failed: !sub.is_within_grace_period()`.
+- Verified GREEN phase: `test_trial_expired_deadline_terminates_grace_and_lifecycle` passed.
+- Full subscription suite passed (137 tests passed).
+- Formatted with `cargo fmt -p oz-core`.
+
+## 2026-09-10 — TDD: Monotonic ledger timestamp evaluation for subscription grace and lifecycle (core/subscription)
+
+**Context & Identified Weakness:**
+While `TenantSubscription::validate_clock_rollback` checked if max ledger timestamps were in the future relative to wall-clock, `is_within_grace_period()`, `effective_tier()`, `lifecycle_state()`, and `pos_read_only()` evaluated purely against `chrono::Utc::now()`. A device offline with a rolled-back system clock could bypass grace expiration if the caller evaluated grace directly or failed to run `validate_clock_rollback`.
+
+**Changes & Design:**
+1. Added `is_within_grace_period_at(now: DateTime<Utc>)` and `is_within_grace_period_with_timestamp(&self, reference_timestamp: &str)`.
+2. Added `effective_tier_at(now: DateTime<Utc>)` and `effective_tier_with_timestamp(&self, reference_timestamp: &str)`.
+3. Added `lifecycle_state_at(now: DateTime<Utc>)` and `lifecycle_state_with_timestamp(&self, reference_timestamp: &str)`.
+4. Added `pos_read_only_at(now: DateTime<Utc>)` and `pos_read_only_with_timestamp(&self, reference_timestamp: &str)`.
+5. Delegated default wall-clock methods (`is_within_grace_period`, `effective_tier`, `lifecycle_state`, `pos_read_only`) to their respective `*_at(chrono::Utc::now())` implementations, maintaining 100% backwards compatibility while enabling model-layer verification against ledger timestamps.
+6. Fails closed: unparseable reference timestamps fail closed to expired (`false` for grace, `Free` for effective tier, `Expired` for lifecycle, `true` for `pos_read_only`).
+
+**Verification:**
+- Added 4 unit tests in `subscription_tests.rs`:
+  - `test_is_within_grace_period_with_ledger_evaluates_against_ledger_time`
+  - `test_lifecycle_state_with_ledger_evaluates_against_ledger_time`
+  - `test_effective_tier_with_ledger_timestamp`
+  - `test_pos_read_only_with_ledger_timestamp`
+- Verified RED/GREEN TDD transitions cleanly.
+- Full subscription test suite passed (136 tests passed).
+- Formatted with `cargo fmt -p oz-core`.
+
+## 2026-09-05 — Round AI: KDS theme-toggle click lag (ui)
+
+**User report:** kds→hamburger→theme slider feels slow/laggy; the
+click should be instant, theme change may take its time.
+
+**Root cause — the click was being swallowed, not delayed.** On every
+toggle: React commits the pill's new `left` (slide starts), then the
+same effect adds `html.is-theme-transitioning` + flips `data-theme`.
+The global fade rule (`transition-property: … !important` on `*`)
+**replaces the pill's own transition shorthand mid-flight**, so `left`
+stops being a transitioned property and the pill snaps mid-glide. The
+200ms crossfade then animates box-shadow + backdrop-filter (full
+element repaint every frame) across the whole KDS board, with two
+forced full-tree style recalcs stacked on top — the pill's motion was
+buried under all of it.
+
+**Fix (7fe7aaf8, tokens.css only — the other agent's in-flight
+KdsHamburgerPanel/KdsScreen geometry work left untouched):**
+1. Dropped `box-shadow` and `backdrop-filter` from the global fade —
+   shadows/blurs snap with the theme, colors still crossfade. This
+   removes the per-frame repaint storm on card-heavy screens.
+2. Specificity-boosted exemption for `.kds-theme-indicator`
+   ((0,2,1) beats (0,1,1)) that re-declares its own `left` slide plus
+   the color fade, so the pill always glides from frame one.
+
+**Verification:** themeRegression/ThemeProvider/ThemeToggle/
+SettingsToggleButtons/colorContrast/NodeTopologyDevMock — 103 passed.
+The reduced-motion block (`transition: none`, non-important) already
+loses to the global !important rule during the 300ms window — a
+pre-existing quirk, unchanged by this fix, worth a future round.
+
+## 2026-09-05 — Round AH: per-theme primary blue + follow-the-theme brand override (ui/platform-core)
+
+**User request:** "it was inverted — light should be #147EFB, dark
+#1155CC, overridable from settings→appearance, with a reset button."
+Two commits: 63a8d0a9 (tokens) + 13c7483e (feature).
+
+**The naive swap broke the WCAG gate — and that was the design
+lesson:** colourContrastCompliance.test.ts enforces accent-as-text on
+bg at 4.5:1 per theme. Swapping the whole accent families made dark
+#1155CC-as-text = 2.80:1 (6 failures). The correct model: **accent**
+is the contrast-managed ladder (stays per-theme as WCAG requires);
+**--color-primary** is the user-facing brand blue and gets the swap
+(light #147EFB, dark #1155CC). Two tokens, two jobs. The WCAG gate did
+exactly what it exists for: blocked a plausible-looking regression.
+
+**Follow-theme sentinel (empty string):** get_brand_primary_colour
+previously defaulted to "#147EFB" — every fresh install silently
+overrode BOTH themes, defeating per-theme primaries. Now: unset/"" =
+no override; ThemeProvider clears the inline palette so tokens.css
+shows through; AppearanceSettings holds null, shows the theme primary
+in picker/hex (getComputedStyle read), and swaps the reset button for
+a follow-theme (sun) indicator. applyAccentPalette now also drives
+--color-primary(+soft) — previously the brand picker never reached
+primary-token consumers (statusbar, analytics, loyalty, reports…).
+clearAccentPalette added; BRAND_PALETTE_PROPS single list keeps
+apply/clear in lockstep. Rust: getter returns "" default (2 new
+settings tests); reset-all + per-colour reset both persist "".
+
+**Gates that caught me (all three real):** WCAG (above); the round-169
+attribute-only getString scan (my new .aria-label-only Fluent message
+was read via getString — fixed by giving it a plain value); the
+screenExtraction CSS-integrity test (new class had no rule). Also:
+test-file color mocks needed the two new function names.
+
+**Verified:** 8626 passed / 481 files; tsc clean; eslint clean on all
+touched files; platform-core settings 121 passed. Statusbar good tone
+(--color-primary) now reads per-theme blue automatically.
+
+## 2026-09-05 — TDD round AG: kds_routing command-layer gap pins (desktop-client)
+
+**Gap-correction first:** my sweep flagged kds_device.rs /
+kds_routing.rs as "untested files" — wrong by the three-greps rule:
+ALL their commands are exercised from the sibling kds_tests.rs module
+(register/list/isolation/stale-deactivation). The REAL residue was in
+resolve_kds_targets_scoped coverage: of its behaviours only invalid
+token, broadcast-mode, and inactive-exclusion were pinned. Unpinned:
+the PRIMARY station-claim path (line items → product kitchen_zone →
+device station_ids), the terminal-id fallback for Restaurant POS
+sessions (kds_routing.rs:52-55 — a silent "fix" there kills routing
+for every legacy POS session), the phase-3 catch-all, and the
+unknown-order error.
+
+**Pins (4 tests, 1c2f985c):** station-claim routes each line to its
+zone device (BURGER→grill device, FRIES→fry device — exact 2 targets);
+unclaimed 'grill' station triggers the phase-3 catch-all broadcast;
+a session WITHOUT restaurant_pos_id falls back to terminal_id and
+both lists and routes to devices registered under the terminal
+(list + resolve both asserted); unknown order → AppError::Invalid.
+New helper seed_zoned_ticket: cart→sale, order, two structured
+create_kds_line_items — routing reads LINE SKUs via
+product_kitchen_zone_by_sku, not the order's own kitchen_zone.
+
+**Two Red-phase findings, both mine, both educational:**
+1. Missing FRIES product: the round-W core helper's doc says "seed
+   BURGER/FRIES first"; I only seeded BURGER, so FRIES had no zone →
+   no station → 1 target ≠ 2. Product must EXIST before its zone can
+   be SQL-set (create_product first, then UPDATE).
+2. Self-deadlock: the fallback test held the store-db std Mutex while
+   calling create_sale_in_store, which opens the same store and locks
+   the same non-reentrant mutex. This produced a test binary hung for
+   7 HOURS (found as a zombie oz_pos_app_lib process holding the
+   linker's output file — kill my own orphan, never the other agent's
+   dev app). Lesson: seed helpers that internally open_store must be
+   called OUTSIDE any held store guard.
+
+**Infra note:** concurrent `cargo tauri dev` (other agent) holds the
+target-dir lock and rebuilds on every file edit — my test runs queue
+behind it and 600s tool timeouts kill the wrapper, not cargo. Isolated
+single-test runs + checking process command lines (Get-CimInstance)
+before touching anything beat guessing.
+
+**Test counts:** oz-pos-app lib 1221 green (1214 + 4 new −… net +4;
+suite 114.6s); routing filter 7/7.
+
+## 2026-09-04 — TDD round AF: tablet KDS command surface pins (tablet-client)
+
+**Gap:** apps/tablet-client/src/commands/kds.rs was the ONLY command
+file of 37 without a test module — and it is the kitchen display's
+actual runtime surface: 5 session-scoped commands (list, queue,
+status update, create-from-sale, get-one) wired through resolve_scope →
+require_permission_for_session → *_for_instance visibility. Round AE's
+parity gate made tablet a first-class shell; its command layer had the
+largest hole.
+
+**Pins (6 tests, 57362ec5):** invalid token → InvalidSession; list
+returns tickets tagged with the session store; status update stamps
+started_at; create-from-sale via complete_sale_to_kds (the untargeted
+legacy route the file's own doc comment pins) tags store-a AND the new
+ticket is immediately visible on this display's queue; a ticket routed
+to another instance (create_kds_order_routed → Some("kds-other")) is
+invisible to get_kds_order_scoped — the no-existence-oracle; a
+zero-permission role gets PermissionDenied on update even though the
+ticket exists and is visible (denial must come from the gate, not data
+absence).
+
+**Harness lessons (same two as the desktop round, re-learned):**
+1. Permission checks resolve the user's role in the GLOBAL identity DB
+   (require_permission_for_session locks state.db), NOT the store DB —
+   seeding a permission-less role into the store DB silently passes the
+   gate. First failure mode; fixed by building the whole global conn
+   before AppState::for_test_with_conn.
+2. create_kds_order FKs sale_id — the denial test needs the store-A
+   sale seeded too. Extracted seed_restaurant_sale(state) from the
+   kds_state() closure so both harnesses share it (same helper shape as
+   the desktop round's kds_tests.rs).
+
+**Test counts:** oz-pos-tablet lib 495 green (489 + 6); suite time
+17.5s. No production-behaviour changes — kds.rs only grew the
+conventional #[cfg(test)] mod wiring.
+
+## 2026-09-04 — TDD round AE: invoke-token-parity gate (ci/scripts)
+
+**Problem (class-level fix for the AC/AD findings):** The round-AC bug
+(edc wrappers with no session token) was caught by hand-reading the
+Rust against the TS. Nothing would catch the NEXT wrapper that forgets
+its token — tsc can't see the wrapper→Rust boundary and vitest mocks
+accept anything. Per repo culture, a verified gap becomes a gate; and
+"adding a gate" has exactly one legal path: scripts/gates.json (which
+verify-ci-docs-drift.py enforces in 4 directions: gates.json ↔ check.sh
+labels ↔ dev-ci.yml steps ↔ docs/operations/ci-pipeline.md tables).
+
+**Solution:** `scripts/verify-invoke-parity.py` — a new static gate
+owning the SESSION-TOKEN class only (after discovering verify-ipc-
+parity.py already owns the unregistered class, with its own allowlist
+holding the same migration fossils I'd found in AD — 29 by my count vs
+their 28; kept the two scripts separate by class rather than merging,
+and did NOT add my then-obsolete baseline). Semantics: a command whose
+Rust signature declares `session_token` (parameter-order independent —
+scan the whole signature) must be invoked with a `sessionToken` in the
+payload (balanced-brace payload parse, string-aware). UNION semantics
+across desktop + tablet shells, since ui/src is shared: a token
+required in either shell must be sent by every caller. 7-case
+self-test (mutation style, synthetic two-shell fixture) drives both
+directions including the case that bit me first in AC. Real tree:
+433 invokes / 42 files / 2 shells / 0 violations.
+
+Wired 4 ways: gates.json entry `invoke-token-parity` (required,
+static-gates), check.sh step "ipc invoke token parity", dev-ci.yml
+static-gates step, ci-pipeline.md gate row + renumbered check.sh list
+(fixing a pre-existing duplicate "17." in that list while there).
+
+**Commits:** 4f46bd8b (gate + wiring).
+**Test counts:** self-test 7/7; drift checker 0 items; ipc-parity OK;
+gates.json JSON-valid. First round with zero oz-core/UI code changes —
+pure gate-infrastructure, the loop's capstone on the AC/AD class.
+
+## 2026-09-04 — TDD round AD: branding save/reset called unregistered commands — every save failed (ui)
+
+**Problem (third real bug, found by a systematic sweep):** Generalizing
+round AC's find into a full sweep — extract all 294 session-token-
+requiring Rust commands, all 398 UI `loggedInvoke` names, diff both
+against lib.rs's `generate_handler!` list (400 registered). Zero
+token-missing mismatches remained (AC was the only one), but **31 UI
+invoke names target commands absent from generate_handler!** — the
+in-progress unscoped→scoped migration left legacy client wrappers
+pointing at commands that no longer exist. Most of the 31 are either
+being migrated by the concurrent agent right now (their dirty files:
+hardware.ts, settings.ts, sales.ts, terminals.ts) or have legacy fns
+still registered; but `branding.ts` was quiet, fully migrated server-
+side, and LIVE: `AppearanceSettings.tsx` calls the three setters and
+`SettingsPage.tsx` calls two of them — every branding save/logo/reset
+failed with "command not found" while the screen's load path (still
+legacy-registered `get_brand_settings`) worked, masking the breakage.
+This is exactly the class the audit header on edc.rs warns about —
+the EDC "fake approval" precedent: a settings save that reports its
+own failure is one thing, but the pattern (client half drifting from
+server half) is the same one that let fake approvals ship.
+
+**Solution:** RED: updated AppearanceSettings.test.tsx to mock
+WorkspaceContext (the screen now reads useWorkspace like its sibling
+EmailReportSettings) and demand the token lead every setter call —
+exactly the 3 token-flow assertions failed. GREEN: rewrote the three
+wrappers in branding.ts onto the registered `_scoped` commands with
+`sessionToken` first params; AppearanceSettings now loads via
+`getBrandSettingsScoped(sessionToken)` and passes the token through
+pick-logo/save/reset; SettingsPage's two callsites pass its existing
+`sessionToken ?? ''`. Fixed my own new exhaustive-deps warning and
+updated the two other suites' mocks (api-small-modules-contract 3
+pins, SettingsPage fail-set names) to the registered names.
+
+**Commits:** 5e7ee83e (fix + test updates).
+**Test counts:** AppearanceSettings 30/30, SettingsPage 49/49,
+api-small-modules 24/24, tsc exit 0, eslint 0 problems on touched
+files. Remaining sweep findings (the other 28 legacy-name invokes)
+belong to the concurrent agent's in-flight migration — left untouched
+per the dirty-file rule; re-running the sweep script after their
+migration lands is the natural next round.
+
+## 2026-09-04 — TDD round AC: EDC card-present wrappers never sent the session token (ui)
+
+**Problem (second real bug of the loop):** Contract-coverage grep —
+every `ui/src/api/*.ts` had a `api-<domain>-contract.test.ts` except
+nine; eight are stubs or niche, but `edc.ts` is the card-present
+PAYMENT surface and had zero coverage. Reading it against its Rust
+side (apps/desktop-client/src/commands/edc.rs) exposed a latent
+contract mismatch: `edc_sale`/`edc_refund`/`edc_void` REQUIRE a
+`session_token` and enforce SALES_PROCESS / SALES_REFUND / SALES_VOID,
+but the three UI wrappers sent no token — every card tender would have
+died at Tauri arg deserialization (missing required arg), not at the
+terminal or permission layer. Latent, not live: verified zero importers
+of edcSale/edcRefund/edcVoid in ui/src (grep; the EDC audit header
+itself noted "Nothing in ui/ imports edcSale yet"). The pre-audit
+history matters: this surface once returned fake approvals from a
+mock field — fail-closed culture demands the client half match the
+server half exactly.
+
+**Solution:** RED first: `api-edc-contract.test.ts` (4 pins) — three
+failed for the real reason (no sessionToken in the invoke args), one
+taught me the mock-shape convention (a wrapper omitting `args` passes
+1 arg, not 2 — fixed the over-specified status expectation). GREEN:
+added `sessionToken` as the first parameter of edcSale/edcRefund/
+edcVoid with JSDoc naming the enforced permission per command. tsc
+clean project-wide, eslint clean on both files.
+
+**Commits:** bb1221cd (fix + contract pins).
+**Test counts:** UI contract tests +1 file / +4 pins (4 green);
+typecheck + lint clean. oz-core untouched this round.
+
+## 2026-09-04 — TDD round AB: void of imported pending sales blocked on NULL deduction_locations (oz-core)
+
+**Problem (first real Red→Green bug of the loop):** The round-X
+observation graduated to a genuine bug. `sales.deduction_locations` is
+nullable (20260813_init.sql:618) and the import/CLI door
+(`create_sale`, the MONEY-07 "deserializes a Sale straight from JSON"
+path that explicitly permits pending sales) omits the column from its
+INSERT — so an imported pending sale has NULL there.
+`void_pending_sale` read the column as a non-null `String`, so
+voiding such a sale failed with Db(InvalidColumnType(0,
+"deduction_locations", Null)) — the sale could never be voided.
+Verified reachable in production: the desktop command
+`commands::inventory::void_pending_sale` (inventory.rs:754) calls it
+directly.
+
+**Solution:** RED test first
+(`void_pending_sale_with_null_deduction_locations_succeeds_without_
+crediting`) — failed with exactly the predicted
+Db(InvalidColumnType). GREEN: read the column as `Option<String>` and
+branch:
+- `None | Some("") | Some("null")` → skip the credit loop entirely
+  and log (skip-credit, NOT refunds.rs-style default-credit: nothing
+  was deducted through the location system for an import, so crediting
+  the canonical default location would fabricate stock — the test
+  asserts zero `void_pending` movements for the sale's SKUs)
+- malformed JSON → still fail-closed Validation (the existing
+  `void_pending_sale_malformed_deduction_locations_errors` pin stays
+  green)
+
+All four existing void_pending_sale tests plus the round-X ghost-window
+test stayed green — the S3 KDS-cancel path runs identically after the
+branch.
+
+**Commits:** 0314ad64 (fix + test).
+**Test counts:** oz-core 2457→2458, all green (58s full lib run).
+
+## 2026-09-04 — TDD round AA: scoped KDS command-layer pins (desktop-client)
+
+**Problem:** Four scoped commands in apps/desktop-client/src/commands/
+kds.rs had ZERO test references — count by grep: create_kds_order_from_
+sale_scoped 0, get_kds_order_lines_scoped 0, update_kds_line_item_
+status_scoped 0, update_kds_order_items_scoped 0. These are the
+session→store→instance wiring layer (ADR #7): session resolution,
+KDS_VIEW/KDS_UPDATE permission gates, per-store DB open. A wiring
+regression (wrong permission constant, dropped scoping argument) would
+compile clean and pass oz-core tests.
+
+**Solution:** Six tests + two helpers in kds_tests.rs:
+- `scoped_line_item_status_update_and_read_end_to_end` — the full
+  command chain: fanout creation from a real one-line restaurant sale →
+  read lines → update item status, asserting store_id propagation and
+  started_at stamping
+- `scoped_update_kds_order_items_edits_ticket` — items replacement
+  through the command layer
+- Four invalid-token denial tests (one per command) mirroring the
+  existing denial-test pattern
+
+Two honest Red→adjust loops on the TESTS, not the code:
+(1) the shared `create_sale_in_store` helper seeds a ZERO-LINE sale,
+which the fanout correctly ignores — needed a one-line restaurant-sale
+helper (the fanout's empty-carts-return-empty contract, working as
+designed); (2) `update_kds_order_items_scoped` RECOMPUTES items_summary
+from the replacement items (the Phase-3 status-preserving replacement
+behavior), so a summary saying 2 items with a 1-item payload is
+rewritten to "Burger" — the test input now matches reality and also
+asserts item_count=2 and all-fresh-pending lines.
+
+**Commits:** 2bfc196a (test).
+**Test counts:** oz-pos-app 1214→1217, all green (109s full lib run);
+oz-core untouched this round.
+
+## 2026-09-04 — TDD round Z: KDS line-item state machine pins (oz-core)
+
+**Problem:** `update_kds_line_item_status` (kds_lines.rs:315) runs a
+forward-only state machine with per-transition workflow timestamps —
+the same design as the order-level machine, but its coverage was 2
+tests total: one cross-instance denial, one pending→preparing leg
+buried inside a FOH-edit test. Unpinned: the full happy path with
+timestamp stamping (started_at/ready_at/served_at are what prep-time
+metrics are built on), regression rejection (ready→preparing),
+unknown-status rejection, and the same-state replay arm.
+
+**Solution:** Three pins in kds_tests.rs with a shared
+`seed_ticket_with_lines` helper (two-item ticket, burger + fries):
+- `kds_line_item_transitions_stamp_workflow_timestamps` — happy path
+  stamps each timestamp and started_at survives the ready transition
+- `kds_line_item_transitions_reject_regression` — ready→preparing is a
+  Validation error, status stays ready
+- `kds_line_item_transitions_reject_unknown_status` — "skip",
+  "servedx", "" all rejected before any write
+
+All passed on first run — pins, not fixes.
+
+**Commits:** 423f09dd (test).
+**Test counts:** oz-core 2454→2457, all green (58s full lib run).
+
+## 2026-09-04 — TDD round Y: fanout table-number stamping (oz-core)
+
+**Problem:** `complete_sale_to_kds_fanout` stamps each kitchen ticket
+with the dining table bound to the sale (kds_lines.rs:110-120, the
+TODO-1b lookup: `SELECT name FROM tables WHERE active_sale_id = ?1`).
+Grep evidence of zero coverage: no `active_sale_id` occurrence anywhere
+in kds_tests.rs, and every `table_number` hit is a struct-literal
+`None` in `CreateKdsOrderInput` — no assertion ever pinned either half.
+A regression that broke the lookup would strip "Table 4" from every
+dine-in ticket on the kitchen board and CI would stay green.
+
+**Solution:** Two pins in kds_tests.rs, using the real binding API
+(`create_table` + `assign_table_order`, tables.rs:292 — not a raw SQL
+seeding):
+- `kds_fanout_stamps_table_number_from_assigned_table` — assigned
+  table's NAME lands on the ticket (Some("Table 4"))
+- `kds_fanout_leaves_table_number_none_without_table` — takeaway sale
+  stays None (pins the QueryReturnedNoRows branch too)
+
+Both passed on first run — pin, not fix.
+
+**Commits:** e36c41cc (test).
+**Test counts:** oz-core 2452→2454, all green (58s full lib run).
+
+## 2026-09-04 — TDD round X: void_pending_sale ghost-window ticket cancellation (oz-core)
+
+**Problem:** `void_pending_sale` (sales_lifecycle.rs:583) calls
+`cancel_kds_orders_for_sale_in_tx` behind an S3 comment describing a
+real production window — a KDS ticket can exist "between checkout
+completion and finalize" (checkout writes a pending sale; the tablet's
+`create_kds_order_from_sale_scoped` fans out tickets with no status
+gate; a void arriving before finalize must pull the ghost ticket).
+Grep for `void_pending_sale` in kds_tests.rs: zero hits. The void_sale
+sibling had its test; this path had none, so removing or breaking the
+S3 call would pass CI silently.
+
+**Solution:** One integration test driving the REAL window —
+`Sale::from_cart` (which sets Pending status, modules/sales/models.rs:
+202) → `complete_sale_deduction_with_locations` against the canonical
+default location (sale lands 'pending' with deduction_locations
+written) → `complete_sale_to_kds_fanout` (ghost ticket) →
+`void_pending_sale` → ticket + line items must be 'cancelled'. Note:
+`Sale::from_cart` status is Pending (not Active) — Active maps to the
+stored string 'active', which void_pending_sale's status='pending'
+SELECT would never match.
+
+Test passed on first run — pin, not a fix (same honest note as round
+W). Found along the way: `create_sale` (sales_crud.rs) never writes
+deduction_locations, so a from_cart sale voided via void_pending_sale
+would fail the `row.get::<String>` on the NULL column with Db
+(InvalidColumnType) — not exercised by any caller today (checkout
+always writes the JSON) and left as a documented observation, not
+changed.
+
+**Commits:** 7037d4e0 (test), this entry (docs).
+**Test counts:** oz-core 2451→2452, all green (64s full lib run).
+
+## 2026-09-04 — TDD round W: refund→KDS integration pinning (oz-core)
+
+**Problem:** Phase-3 of the KDS review wired full-refund ticket
+cancellation into `create_refund` (`refunds.rs`, S3), and the void
+sibling got its integration test (`void_sale_cancels_kds_tickets_for_
+the_sale`) — but no test drove the refund branch at all. Grep for
+"refund" in kds_tests.rs: zero hits. Three behaviors were unpinned:
+single-shot full refund cancels the active ticket, partial refund
+leaves the board alone, and the CUMULATIVE branch
+(`already_refunded + refund.total >= sale_total` with a non-zero prior
+balance) cancels on the refund that completes the total.
+
+**Solution:** Three gap-pinning tests at the end of `kds_tests.rs`,
+driving the real cart → sale → `complete_sale_to_kds_fanout` →
+`create_refund` path (not the `make_active_sale` stub, which has a
+zero total and no lines — wrong shape for refunds):
+- `full_refund_cancels_kds_tickets_for_the_sale` — also asserts the
+  ticket's line items follow to 'cancelled'
+- `partial_refund_keeps_kds_tickets_active` — two-line sale, one line
+  refunded, ticket stays 'preparing'
+- `cumulative_refunds_reaching_full_total_cancel_kds_tickets` — 500+300
+  on an 800 sale; the SECOND refund must cancel
+
+All three passed on first run — the refund branch was correct, these
+are regression pins (same honest note as WorkspaceHome round 2). No
+production change; the over-refund guard (`after > sale_total`) makes
+`>=` reachable only by equality, which is why the cumulative branch is
+exact-total and not over-refund.
+
+**Commits:** 4d9adfac (full/partial pair), then the cumulative test
+(this round's commit).
+**Test counts:** oz-core 2448→2451, all green (64s full lib run).
+**Unblock found mid-round:** `ui/node_modules` had been gutted to 29
+top-level entries by an interrupted reinstall (the running Vite dev
+server holds `rollup.win32-x64-msvc.node`, so `npm ci` EPERMs on
+unlink — the process was NOT killed, per the no-kill rule). The i18n
+pre-commit gate needs vitest, so EVERY commit was blocked. `npm
+install` (non-destructive, not `ci`) restored 493 packages around the
+locked file in 11s and the dev server kept running.
 
 ## 2026-09-03 — TDD round 1: staff store-scope leak in workspace resolution (oz-core)
 
@@ -9644,3 +10287,347 @@ Process notes:
     this one found one within its first diff, and the bug's story
     (silent hand-fix hiding a live multi-tenant defect) justified the
     whole rework.
+## 2026-09-04 — round W: a scoped command nothing called, and a shell that hangs instead of failing
+
+Problem: a 2026 security-audit row (F-017, `62e30fd7`) recorded
+`get_backup_status_scoped` + `create_backup_scoped` as DONE. They are
+registered in `lib.rs:564/:566` and documented in `api-reference.md`.
+`ui/src` referenced them zero times. Every UI path still called the
+unscoped command — and unscoped `create_backup` takes no session token at
+all, so it checks no permission whatsoever while writing a full copy of the
+database to disk. Every layer between "the command exists" and "the command
+is reached" looked green.
+
+Solution: `5f0692e1` wired both through the ADR #7 conditional. The tell
+that this was an oversight, not a decision: the same file already routes
+`exportData`, `importPreview` and `importData` through `sessionToken` and
+lists it in their dep arrays. Backup was simply the two calls nobody
+migrated.
+
+Then measured the extent rather than guessing: 318 `*_scoped` commands are
+registered, 20 have their unscoped twin called from production UI while the
+scoped one is never used, 8 of those scoped twins enforce a permission the
+unscoped path does not. After reachability: **five live gaps, one dead, one
+where unscoped is the only correct choice.** `74ed1933` closed the first —
+`pick_logo_file`, where the handler already passed `sessionToken` to
+`setBrandLogoPath` on the very next line.
+
+Process notes:
+(1) `get_key_rotation_info` was the most tempting finding in the set — the
+    Rust comment reads "key age/state is crypto-compliance data, explicit
+    permission" and requires SECURITY_MANAGE. It is unreachable: its only
+    caller chain ends at `useKeyRotationReminder()`, which nothing outside
+    its own test imports. **One hop to a caller is not reachability; the
+    caller has to be reachable too.**
+(2) `get_license_status` is NOT a gap at `AppShell:150`, which runs it in
+    the boot effect to decide whether to show the license screen — before
+    any session exists. There is no token to pass there. A permission
+    "hole" can be the only correct design at its call site.
+(3) Two measurement errors, both mine, both pointing opposite ways. I
+    counted `ui/src/dev-mock/tauri-api.ts` as UI usage — it is a mock
+    registry that lists command names by design — inflating candidates to
+    23. And my wrapper regex matched only `export const NAME = ...`, so it
+    missed five `function NAME()` declarations in `api/license.ts` and
+    reported them dead; they are live. Neither error was a bug in the code.
+(4) The backup test's first version made the scoped mock delegate to the
+    unscoped spy. That registers a call on the unscoped spy, so
+    `expect(unscoped).not.toHaveBeenCalled()` was unprovable and the test
+    passed for the wrong reason. Configuring them in parallel turned the
+    OLD assertion red, proving it had been vacuous all along.
+(5) `bash <script>` on Windows resolves to `System32\bash.exe` — WSL, not
+    Git Bash — and it does not fail, it HANGS. `echo wsl-ok` never returned
+    in 12s. Two 10-minute timeouts went into suspecting `wtree-guard.sh`
+    and `verify-scoped-coverage.sh` before suspecting the shell. Documented
+    in AGENTS.md; a hang with no output is a resolution problem first.
+(6) Red failed twice for the wrong reason before failing for the right one:
+    first a missing `HARNESS_SESSION_TOKEN` import, then the wrong constant
+    — `AppearanceSettings.test.tsx` overrides `useWorkspace` at L31 with
+    `'tok-appearance'`, which its sibling assertions already use. Matching
+    the block's own convention is what makes an assertion meaningful.
+
+---
+
+## 2026-09-05 — rounds 55-57: a block that would not clear, and three self-corrections
+
+**Problem:** every commit in the repository was blocked for six rounds. Pre-commit
+step 3 runs `lint-i18n.sh`, which calls `verify-bundle-parity.py --full-census` —
+whole-tree, unconditional, no skip path — and it reported 2 missing keys. Those keys
+belonged to a Cloud Sync card another agent had added to `WorkspaceHome.tsx` and
+never finished, so the file sat dirty and the gate stayed red for work nobody was
+doing. `OZPOS_SKIP_TYPECHECK` is the only skip variable the hook honours, so the
+alternative was `--no-verify`, which skips all nine gates.
+
+**The premise I had been acting on was five rounds old and untested.** I had
+declined to intervene because "they are mid-edit and will finish." Checked directly:
+the blocking file had been idle 168 minutes, the other dirty files were 6-22 hours
+old, and the same agent had committed eight test suites in fifteen minutes *while this
+gate was failing* — meaning they bypassed it eight times. The block was not
+self-clearing. Recording the assumption as fact for five rounds was the actual error.
+
+**Escalated rather than choosing unilaterally.** Adding another agent's missing copy
+is a product decision; touching their dirty file is worse; bypassing nine gates is
+worst. Asked, and the user chose to add the keys.
+
+**Solution:** added `workspace-home-cloud-sync-title`/`-desc` to `shared.ftl` and
+`shared.id.ftl` (`3dca96c2`). **The wording is not mine** — the app already ships
+approved copy for this exact capability in the same file: `setup-feature-cloud-sync`
+= "Cloud Sync" and its `-desc`, with Indonesian counterparts. Reusing established
+terminology for an already-named feature is plumbing; writing new copy would have
+been the product decision I was trying to avoid. Inserted positionally beside the
+other `workspace-home` tool-card pairs, not sorted, to keep the file's grouping by
+feature. Then landed the rest of the pending work as five focused commits rather than
+one, so each is reviewable and bisectable.
+
+**Built the gate the risk needed (`a410ea9f`).** The user's chosen option included
+building an orphan-key check so the residual risk stays visible. `verify-ftl-orphans.py`
+now gates the direction nothing checked, and found real debt immediately:
+`topology-shortcuts-*` (18 keys whose feature was removed, per a comment in
+`popoverSurfaceCompliance.test.tsx:54`) and ~23 `warehouse-*` keys with zero
+references anywhere. Wired as pre-commit step 10 plus `gates.json`, `check.sh`, and
+`dev-ci.yml#i18n`, and **proven to fire through the real hook** — staging a key in
+both locale files produced `i18n lint: no issues detected` then `FAIL: 1 orphan
+problem(s)` and exit 1. Running the script standalone is not evidence the wiring works.
+
+**Three times I was wrong, and what caught each:**
+
+1. **My parity gate was hollow.** Disabling the TypeScript aliasing rule left it green
+   with zero violations, because the Python re-implemented the rule instead of
+   observing it. A check that re-derives the thing it verifies agrees by construction.
+2. **A self-test that passed while the mechanism did nothing.** The prefix rescue was
+   dead — the capture class includes `-`, so `` `analytics-month-${m}` `` yielded
+   `'analytics-month-'` and `startswith(p + "-")` searched for `'analytics-month--'`.
+   The self-test asserted detection *found* a prefix, not that it *rescued* a key.
+   A looser earlier prototype had got it right by accident; tightening made it wrong.
+3. **I nearly published six fake defects.** Measuring Indonesian-only keys, I matched
+   any quoted string equal to a key name and "found" `done`, `export`, `download`,
+   `pos-cart-title` referenced from production — a live English-locale bug, since
+   Fluent has no cross-locale fallback. All six were a status prop, a CSS class, and
+   a state-machine enum. Restricting to real resolution sites returned zero. **The
+   standing lesson in `fluent-page-audit.md` describes this exactly: a tool that saw
+   too much, fixed by going and reading the source it pointed at.**
+
+4. **And then I published a real one.** The same measurement suggested a gap: 75 keys
+   exist only in Indonesian, `i18nBundle.test.tsx:450` checks only EN→ID, and
+   `--full-census` is *described* as failing on references resolving in **neither**
+   locale. So a reference resolving in Indonesian but not English must be invisible to
+   every gate — I wrote that into three docs in `98e5e1a5`. **It was false, and I only
+   found out by building the gate to close it.** Staging a `getString()` on an
+   Indonesian-only key makes `verify-bundle-parity.py` print `missing in en .ftl only`
+   and exit 1, at `getString`, `<Localized id>` and `i18nKey` sites alike. The tool
+   checks each locale separately; its summary wording is what I reasoned from instead
+   of its behaviour. Retracted in item 61, demoted the half-built check from blocker to
+   informational, and kept the wrong claim on record rather than deleting it — the
+   inference is easy to make. **The lesson is not "verify before claiming", which is
+   rule 4 already; it is that a claim about what a tool MISSES needs the same control as
+   a claim about what it catches: `totally-absent-key-zzz` had to exit 1 before an exit
+   0 on the subject would have meant anything.** Two earlier probes were invalid in the
+   opposite direction — the tool said `received 0 path(s)` and `Returning 0
+   informational` and I nearly read that as a verdict. It was reporting its own emptiness
+   honestly; the reading was the error.
+
+**Root-caused a flake that had resisted nine rounds (`db94998f`)** — and my first
+diagnosis was wrong. `KdsEnrollmentModalPure` failing in-suite but passing alone reads
+as test ordering, so I blamed the mock-leak debt. Real cause: `Date.now()` read twice
+plus `Math.floor`, so the assertion held only while both reads landed in the same
+millisecond — near-certain isolated, merely likely under load. **Item 59 was rewritten
+rather than appended to: a stale wrong root cause in the docs costs the next agent
+their whole budget confirming it.**
+
+**Deliberately did NOT:**
+- Delete the 93 orphan candidates or 75 dead Indonesian translations. Dead copy is
+  cheap, someone may revive a feature, and both are product decisions. Recorded with
+  counts and file attribution instead.
+- Build the static check I proposed for double-`Date.now()` reads. Measured first:
+  12 such blocks, 9 provably safe (`<=` monotonic, clamped, hour-scale offsets) —
+  75% false positives. Recorded as *rejected*, not deferred.
+- Extend `--full-census` to fail on Indonesian-only keys; that would conflate a
+  latent gap with 75 legitimate cleanup items and ship a red gate.
+- Amend, `--no-verify`, `git stash`, or `git push`.
+
+**Remaining risks, each a future slice:** the orphan gate's blocking form runs only in
+the hook, since CI has no index to diff; CI still never runs on this branch at all,
+because `dev-ci.yml` has no push trigger; and the ~50 keys of real orphan debt plus the
+75 dead Indonesian translations need an owner's decision. **The reverse-parity gap that
+this entry originally listed as remaining does not exist** — see correction 4 above.
+
+## 2026-09-13 — analytics trilogy close-out: adopting a dead lane's draft, and what byte-for-byte really means
+
+The three `todo-refactor-analytics-agents-{1,2,3}.md` orders were repaired against
+`ce8666604` (all 20 boxes unchecked) but half-EXECUTED by a lane that stalled at 06:42:
+agents-1 fully landed (`1cade9e55e`, `8d03585f3c`, `00a18777f9`), agents-2 landed only its
+CSV half (`a9c0fdf3b7`), and agents-3 left an orphan — `charts/chartTheme.ts` created 06:35,
+never modified, imported by nothing. The stall also left two seams visible on inspection:
+`constants.ts` held `largestRemainderPcts`' doc comment while the function itself stayed in
+the content file, and a stale "Column labels for the staff-performance CSV" comment sat above
+`DeltaChip`. Half-movements announce themselves exactly like this.
+
+Executing the rest, in the docs' own order (3.1 first — the only hard edge):
+
+- `89b739728d` — nine frozen chart modules + the theme. The orphan was **adopted as-is**
+  after byte-comparing every export against the still-inline infrastructure (it passed);
+  provenance stated in the commit message, not laundered. Purely additive per its own rule:
+  the inline builders and the modules coexist at this commit, which is what "structure, not
+  appearance" buys.
+- `8703694583` — the Phase-2.1 remainder: all shared primitives into `cards/shared/**`.
+- `90399c28cb` — the seven chart-free cards, prop exceptions verbatim; `ExportCsvButton`
+  moved to shared with its constraint-2 re-export kept (cards importing it back up from the
+  content file would have cycled through the dispatcher).
+- `d3f551ff44` — the nine shells swap onto the frozen modules; content file ends at **91
+  lines** against the ≤300 target.
+- `c05133d757` — agents-1's deferred tail: last three shim consumers repointed, the
+  self-expiring re-export block deleted per its own comment.
+
+**"Byte-for-byte apart from the prop plumbing" met reality twice.** Fluent's `getString` is
+overloaded, not `(id, args?)`-shaped, so the injected-lookup prop needed an adapter hook
+(`cards/shared/useGetString`); typing it forced `Record<string, unknown>` down to
+`Record<string, string>` (every real call site already passed strings only), and an interim
+`splitLoaded` guard-prop died on the discovery that the original guard was dead code at the
+one render site. Amendments announced in the published signature table in the agents-3 doc —
+a freeze you cannot amend while honest is a freeze that selects for quiet lies.
+
+**The honest-miss record:** agents-1's restated ≤1,200-line target measured **1,409** — a
+~200-line gap that is precisely the JSX-shell bulk the order itself declared out of scope.
+Reported in the doc rather than retargeted; the JSX-split order (`AnalyticsToolbar`/
+`AnalyticsCardGrid`/`AnalyticsPopovers`) remains genuinely open.
+
+Gates: typecheck clean beyond the devmock lane's live file; 16/16 + 106/106 analytics suites
+at every commit; whole-ui 9,568/9,597 with the 5 failures pre-existing and attributed
+(restaurant tooltip baseline ×2, kds expo selectors + storage key, devmock session-lock).
+
+## 2026-09-13 — the KDS five-agent chain: what "tested" still owed after being tested
+
+The routing/LAN/display KDS campaign shipped in five ordered slices (agents 1–5),
+each closed with gates — and the chain still produced the day's most instructive
+gap: agent-2's feature compiled, passed 62 crate tests, passed 12 registration +
+13 state pins, and the desktop wiring landed as three reviewed commits... and NO
+BODY had ever published an event over a live socket. The honest close for that
+slice was "wired, not lived" — which is why agent-4 existed at all.
+
+What the live validation found, none of it visible from any unit layer:
+
+- **Phase-0 over-read** (found `0302039258`, fixed `355d651a5f`): `handle_peer`'s
+  legacy-hello branch read through a transient `BufReader`; a tablet that wrote
+  `hello\n{"op":"discover"}` in one TCP segment had its discover line silently
+  discarded when the reader dropped. Sixty-two tests missed it because every one
+  of them paced its writes. A red-by-construction demo became the permanent
+  unpaced regression: `kds_lan_live_bugdemo_discovery_lost_when_sent_with_hello`.
+- **Ephemeral-port replay was dead code in production**: the offline buffer keyed
+  by peer ip:port, so a reconnecting tablet — which always gets a new port — never
+  found its queue. Agent-4's own replay test could only prove it by rebinding the
+  exact local port, a thing real tablets cannot do. Agent-5 (`212078e554`) keyed by
+  `device_id` (already on the wire, finally consumed), kept addr-keying as the
+  legacy path with a disjoint-namespace test, and made replay-on-reconnect true
+  for the first time.
+
+The rules lane (agent-1) landed `kds_routing_rules` through a migration window that
+went phantom → real → cleared mid-session, kept `resolve_kds_targets` byte-equivalent
+under `rules=[]` at both the pure and bridge layers, and raised the desktop
+registration floor **449 → 451** (the pin's own comment carries the naming this
+entry owes it). Two honest non-changes it stamped instead of faking: `tag` stays in
+the CHECK constraint but NEVER matches (no catalog tags model), and the UI editor +
+dev-mock handlers were deferred to live-session fences rather than raced.
+
+The compliance tail was its own lesson: agent-3's suites ran 942/942 green under
+two separate hands, and the WHOLE-ui run still found two unpinned new surfaces —
+`storageKeyPins` (unregistered `oz-kds-expo-station-`, `1ae8494160`) and
+`noiseDitherCompliance` (four shadow surfaces that needed real `::after` wiring,
+not just registration, `a34172f8e7`). Scoped filters green is not a gate; the
+ratchet files only move when the full sweep sees them. A third — nativeTooltip's
+9 new sites — was proven foreign (7 in the analytics lane's in-flight components,
+2 carried by the morning's MenuItemTile extraction) and correctly left to its owners.
+
+Also closed as campaign tail-debt: `stock_transfer_integration`'s five stale-seed
+reds (fixtures seeded the legacy global `inventory` while the canonical per-location
+reader looked at `stock_summary` — repaired through the real writer, never around
+it, `86ca2e73f6`; one of those tests had been green for the WRONG REASON, rejecting
+a phantom `have 0` instead of a real shortfall — now it proves `have 5, need 20`).
+
+
+## 2026-09-13 — payment epic closed; analytics size-miss retired the honest way
+
+`todo-payment-agents-3.md` is COMPLETE: 3.2 landed as `00f5c3fda6` (re-audit —
+the wire had moved under the plan four commits mid-session; every checklist
+premise re-measured, both deferred decisions made explicitly) + `26ffd89c1c`
+(the card flow: scoped pre-flight, deliberately uncancellable tap/insert/swipe
+overlay, capture-first ordering as the mirror of QRIS-Auto's pending-first,
+txn fields riding the payment split) + `47ade21484`. The two QRIS/EDC money
+paths now share one build/settle tail (buildGatewaySale/settleGatewaySale).
+
+Analytics agents-1's measured miss (1,409 ln vs ≤1,200) was retired NOT by
+editing the target but by opening the JSX-shell order its own stamp named:
+`411e6dccfb` moved four verbatim renderings to `components/` (1,170 ln —
+under goal, 106/106 screen tests untouched), `todo-refactor-analytics-agents-4.md`
+(`c8ee3fb3da`) records the remaining slices with their traps measured —
+command palette next, the coupled grid core last and only after a state-
+ownership decision. One fabrication caught mid-work and corrected before it
+shipped: a drafted SHORTCUTS list that did not match the file; the verbatim
+pass replaced it. The native-tooltip ratchet moved with its code (15 -> 8+4+3,
+sum pinned 82); its two remaining reds are restaurant-lane drift, named.
+
+
+### Same day, later — agents-4 finished itself: five more shells out, screen at 864
+
+`todo-refactor-analytics-agents-4.md` closed COMPLETE across the rounds after
+its opening: `d5e3aba339` (CommandPalette - the hook already owned every
+key, so the seam is pure presentation), `86e4dc5670` (AnalyticsCardFrame -
+the grid's state-ownership question decided AGAINST a context/reducer
+migration and FOR a children slot: chrome reports intent, card data renders
+through, the feared eighteen-prop drill never exists), `a070d2ab72`
+(AnalyticsToolbar - composed side effects stay screen-composed behind one
+callback each; the zoom cluster crosses as a slot). Screen: 1,409 -> 864
+ln from agents-1's closure, through six verbatim slices; the 106-test
+suite was never edited once. Three behaviour changes died in pre-commit
+verbatim audits (descKey-vs-titleKey, onDragLeave-vs-onDragEnd, the
+menu-expand compact-mode asymmetry) - and one of my own doc commits
+claimed an edit the read-policy had refused, corrected one commit late
+and disclosed in the correction's own message.
+
+Whole tree at final close: 9,577/9,604, three reds all named and all
+other lanes' (restaurant's tooltip drift x2; devmock's version test
+grepping a line its own split relocated). Nothing was pushed - standing
+rule.
+
+
+## 2026-09-14 - payment agents-5: the checkout finally reads its own config (R1+R2+R3)
+
+Five commits closed the ranked remainder of the payment epic's
+absorption inventory: `09eec83868` (manual QRIS confirms only when a
+cashier asserts it - the 8-second setTimeout that minted real sales
+behind fake confirmation is gone), `eadffb4e0c` (the 43-box master
+backlog decomposed against HEAD, R1-R6 ranked), `bffcbda97a` (R1:
+`useLocalPaymentRails` gates the QRIS tab and EDC button on the
+slice-6 rail store, fail-open by contract), `903b30a718` (R2: the
+441-cell pseudo-QR deleted, merchant static EMVCo payload lives in the
+qris rail's parameters, editable in settings, rendered by the real
+encoder; unconfigured says so plainly), `3d50b3ac5a` + `95ed37afae`
+(R3: the private substring scan replaced by delegation to the shared
+boundary classifier).
+
+Three premise corrections, each recorded where the wrong claim stands
+rather than edited away: the master doc's `payment:qris-manual/:midtrans/:edc`
+feature keys never existed in code (the rail store is the real surface);
+"online-capable" from the visibleMethods formula is unimplementable
+today because no online signal exists in the UI (measured - left open,
+named); R3's own inventory text *understated* the plumbing - both
+clients already reject typed `{kind, subKind, message}`, the tested
+shared classifier simply had zero screen consumers while the checkout
+kept a worse private answer to the same question.
+
+Two tests died on their own premises before shipping and both are worth
+remembering: the rails hook trusted IPC to return arrays (a test default
+answered `{}`, `rails.find` exploded - response validation made
+fail-open real), and a real-QR assertion was written inside the file
+that MOCKS the component (rewritten to what that harness can actually
+observe - the payload reaching props). And one deletion note: 'try again'
+was deliberately NOT migrated into the shared retry vocabulary - it
+appears in this module's own non-retryable user copy, so the old scanner
+once offered Retry on the strength of its own fallback text.
+
+Gates at close: payment battery 100/100, app-error 19/19, compliance
+quartet 202/202 (storage pins green again - the lane that broke them
+fixed them), typecheck clean beyond the devmock lane's live files,
+eslint 0, bundle parity 0 missing (2 new keys both-sided). Remaining
+ranked boxes are all blocked on external facts, not on code: R4 wants a
+second real terminal, R5 wants a design doc first, R6 wants sandbox
+credentials. Branch 0.0.37 is 15+ commits ahead of origin. Nothing was
+pushed - standing rule.

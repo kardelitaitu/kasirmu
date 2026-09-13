@@ -12,8 +12,9 @@ import { FALLBACK_STORE_TZ, isoToday } from '@/features/analytics/analytics-data
  *
  * These assertions are written against an independently computed UTC value, so
  * they hold no matter what zone the process runs in -- which is the point. The
- * companion script scripts/check-tz-invariance.sh runs this file under two
- * different TZ values and fails if the results ever diverge.
+ * companion script scripts/check-tz-invariance.py runs this file under four host
+ * zones (UTC, Asia/Jakarta, Pacific/Kiritimati, America/Los_Angeles) and fails if
+ * the results ever diverge.
  */
 
 /** Today's calendar date in UTC, computed without touching local-time getters. */

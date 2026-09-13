@@ -84,9 +84,30 @@ export const pickImportFile = async (): Promise<string | null> => {
 export const getBackupStatus = (): Promise<BackupStatus> =>
   loggedInvoke<BackupStatus>('get_backup_status');
 
+/**
+ * Session-scoped variant of [`getBackupStatus`].
+ *
+ * The Rust command `get_backup_status_scoped` was added in 62e30fd7 as an F-017 security-audit
+ * item and enforces `permissions::DATA_EXPORT` before delegating to the unscoped handler. It was
+ * registered in lib.rs:564 and documented in api-reference.md:96, but nothing in ui/src ever
+ * called it -- so the audit item was recorded complete while every UI path still used the
+ * unchecked command. Same for `createBackupScoped` below.
+ */
+export const getBackupStatusScoped = (sessionToken: string): Promise<BackupStatus> =>
+  loggedInvoke<BackupStatus>('get_backup_status_scoped', { sessionToken });
+
 /** Create a new database backup. */
 export const createBackup = (): Promise<BackupResult> =>
   loggedInvoke<BackupResult>('create_backup');
+
+/**
+ * Session-scoped variant of [`createBackup`], enforcing `permissions::DATA_EXPORT`.
+ *
+ * Without it any session -- including one with no data-export right -- can write a full copy of
+ * the database to disk, because the unscoped `create_backup` takes no session token at all.
+ */
+export const createBackupScoped = (sessionToken: string): Promise<BackupResult> =>
+  loggedInvoke<BackupResult>('create_backup_scoped', { sessionToken });
 
 /** Export store data to an encrypted .ozpkg file. */
 export const exportData = (

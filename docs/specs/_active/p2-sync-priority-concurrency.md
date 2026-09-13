@@ -80,3 +80,5 @@ Ensure critical sale records propagate before inventory syncs by introducing pri
 - `platform/startup/src/event_handlers.rs`
 - `apps/cloud-server/src/main.rs`
 - `apps/cloud-server/src/sync_api.rs`
+
+> last audited 22-07-26 by Hermes-Agent

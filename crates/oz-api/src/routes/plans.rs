@@ -19,6 +19,7 @@ use oz_core::db::Store;
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
 use crate::routes::tokens::admin_key_authorised;
+use crate::routes::validate::valid_tenant;
 
 /// Request body for setting a tenant's plan.
 #[derive(Deserialize)]
@@ -95,6 +96,14 @@ pub async fn set_tenant_plan_handler(
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "invalid_admin_key"})),
+        )
+            .into_response();
+    }
+
+    if !valid_tenant(&tenant_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "invalid_tenant", "tenant": tenant_id})),
         )
             .into_response();
     }

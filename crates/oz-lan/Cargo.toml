@@ -1,0 +1,23 @@
+[package]
+name = "oz-lan"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Headless LAN event forwarder: broadcasts domain events to KDS tablet peers over TCP (legacy-psk-v1 + noise-psk-v1)."
+
+[lints]
+workspace = true
+
+[dependencies]
+foundation = { workspace = true }
+oz-core = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hmac = { workspace = true }
+snow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

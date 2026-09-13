@@ -1,30 +1,10 @@
 #!/bin/bash
 
-# .githooks/pre-commit — auto-format Rust code before every commit.
+# .githooks/pre-commit — content gates that run before every commit.
+# (Rust formatting is NOT enforced here: it lives in pre-push/CI/check.sh.
+# A commit-time auto-fmt rewrote other agents' in-flight .rs files in the
+# shared working tree — see AGENTS.md Quick Setup for the rationale.)
 set -e
-
-# Locate rustup portably. The previous hardcoded WSL path
-# (/mnt/c/Users/.../.cargo/bin/rustup.exe) broke the hook under Git Bash
-# on Windows, where /mnt/c does not resolve. Prefer rustup on PATH, then
-# rustup.exe, then the standard Windows install location under /c/.
-RUSTUP=""
-if command -v rustup >/dev/null 2>&1; then
-    RUSTUP="rustup"
-elif command -v rustup.exe >/dev/null 2>&1; then
-    RUSTUP="rustup.exe"
-else
-    for d in /c/Users/*/.cargo/bin; do
-        if [ -x "$d/rustup.exe" ]; then
-            RUSTUP="$d/rustup.exe"
-            break
-        fi
-    done
-fi
-
-if [ -z "$RUSTUP" ]; then
-    echo "error: rustup not found — install Rust or add cargo's bin dir to PATH. Aborting commit." >&2
-    exit 1
-fi
 
 # Locate Python portably. Git Bash on Windows ships `python` (not
 # `python3`), while WSL/Linux have `python3` — hardcoding either breaks
@@ -41,38 +21,6 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
-# ── cargo fmt ──────────────────────────────────────────────────────────────
-# Run cargo fmt, capturing output if it fails
-if ! "$RUSTUP" run stable cargo fmt --all 2>/dev/null; then
-    echo "error: cargo fmt failed — aborting commit." >&2
-    exit 1
-fi
-
-# Re-stage ONLY .rs files that are part of the current commit (staged
-# before the hook ran). `git diff --name-only -- '*.rs'` lists every
-# working-tree-modified Rust file — including other agents' in-flight
-# changes — so adding that whole list swept unrelated Rust work into
-# the commit despite this comment's earlier claim. Formatting fixes to
-# .rs files outside the staged set stay in the worktree for their
-# owner's own commit; the hook is a check, not a silent re-stage.
-STAGED_RS=$(git diff --cached --name-only -- '*.rs')
-if [ -n "$STAGED_RS" ]; then
-    # Re-add only the .rs files that still exist in the worktree.
-    # cargo fmt can only modify existing files, and `git add` on a
-    # staged deletion (or any missing path) exits non-zero, which
-    # `set -e` turns into an aborted commit.
-    EXISTING_RS=""
-    for f in $STAGED_RS; do
-        if [ -f "$f" ]; then
-            EXISTING_RS="$EXISTING_RS $f"
-        fi
-    done
-    if [ -n "$EXISTING_RS" ]; then
-        echo "cargo fmt applied changes to:"
-        echo "$EXISTING_RS"
-        git add $EXISTING_RS
-    fi
-fi
 
 # ── Line-ending normalization ──────────────────────────────────────────────
 # Normalizes staged text files to LF in BOTH the index and the working tree
@@ -146,17 +94,6 @@ if [ -n "$STAGED_NORM" ]; then
     fi
 fi
 
-# ── i18n lint ──────────────────────────────────────────────────────────────
-# Runs the local i18n quality gate (mirrors `.github/workflows/ci.yml#ui
-# i18n quality gate`) on every commit so translation gaps and Fluent
-# key duplicates surface BEFORE reaching CI. ~1 second cost because
-# it targets `i18nBundle.test.tsx` only.
-if [ -f scripts/lint-i18n.sh ]; then
-    if ! bash scripts/lint-i18n.sh; then
-        echo "error: i18n lint failed — fix issues above or run 'bash scripts/check.sh' for context." >&2
-        exit 1
-    fi
-fi
 
 # ── Bundle parity: staged files only ───────────────────────────────────
 # Runs `scripts/verify-bundle-parity.py --staged-only` against
@@ -202,22 +139,18 @@ if [ -f scripts/verify-bundle-parity.py ]; then
 fi
 
 # ── FTL dedupe dry-run ────────────────────────────────────────────────────
-# Runs `scripts/dedupe-ftl.py --dry-run` so any new Fluent key
-# duplicates surface BEFORE reaching CI. ~50ms cost; runs in-process
-# without mutating any files (use `npm run dedupe:ftl` to actually
-# rewrite). Skipped silently when the script is not present.
-# Gates on the script's exit code (1 = duplicates found, 0 = clean)
-# rather than string-matching its output so the gate stays decoupled
-# from the diagnostic wording. Captures both streams so the quiet
-# path silences the "no duplicates" line entirely while the loud
-# path prints the actual file list alongside the error.
+# Runs `scripts/dedupe-ftl.py --dry-run` when .ftl files are staged.
+# ~50ms cost; runs in-process without mutating any files.
 if [ -f scripts/dedupe-ftl.py ]; then
-    if output=$("$PYTHON" scripts/dedupe-ftl.py --dry-run 2>&1); then
-        : # clean — silently discard the "no duplicates" line
-    else
-        printf '%s\n' "error: FTL duplicates detected — run 'npm run dedupe:ftl' to fix:" >&2
-        printf '%s\n' "$output" >&2
-        exit 1
+    STAGED_FTL_DEDUPE=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/locales/*.ftl' || true)
+    if [ -n "$STAGED_FTL_DEDUPE" ]; then
+        if output=$("$PYTHON" scripts/dedupe-ftl.py --dry-run 2>&1); then
+            : # clean — silently discard the "no duplicates" line
+        else
+            printf '%s\n' "error: FTL duplicates detected — run 'npm run dedupe:ftl' to fix:" >&2
+            printf '%s\n' "$output" >&2
+            exit 1
+        fi
     fi
 fi
 
@@ -228,7 +161,7 @@ fi
 # New float columns require a justified whitelist entry in the script.
 # Runs only when the commit stages files under crates/oz-core/migrations/
 # (the script re-derives the staged set itself, ~50ms). CI runs the full
-# scan in complement (.github/workflows/ci.yml # migration-column-types).
+# scan in complement (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/verify-migration-column-types.py ]; then
     STAGED_MIG=$(git diff --cached --name-only --diff-filter=ACM -- 'crates/oz-core/migrations/*.sql' || true)
     if [ -n "$STAGED_MIG" ]; then
@@ -246,7 +179,7 @@ fi
 # registry, the generator, or the PG file itself re-derives the expected
 # output (~2s: two independent renders prove determinism); drift aborts
 # the commit. CI runs the same --check unconditionally
-# (.github/workflows/ci.yml # pg-schema-drift).
+# (.github/workflows/dev-ci.yml # static-gates).
 if [ -f scripts/generate-pg-migration.py ]; then
     STAGED_PG_TRIGGER=$(git diff --cached --name-only --diff-filter=ACM -- \
         'crates/oz-core/migrations/*.sql' 'crates/oz-core/src/migrations.rs' \
@@ -260,14 +193,14 @@ if [ -f scripts/generate-pg-migration.py ]; then
 fi
 
 # ── Go gate: apps/license-server ──────────────────────────────────────
-# gofmt (auto-fix + re-stage, mirroring the cargo fmt step above) and
+# gofmt (auto-fix + re-stage) and
 # `go vet ./...` (hard fail) for the Go license server. Runs only when
 # the commit stages .go files under apps/license-server/. Line endings
 # are handled by the normalization step above (.gitattributes pins LF
 # everywhere), so gofmt -l is reliable here; auto-fixing with
 # `gofmt -w` still re-stages real formatting changes. CI runs the
 # strict `gofmt -l` check on its LF checkout
-# (`.github/workflows/ci.yml` # go job).
+# (`.github/workflows/dev-ci.yml` # static-gates).
 STAGED_GO=$(git diff --cached --name-only -- 'apps/license-server/*.go')
 if [ -n "$STAGED_GO" ]; then
     if ! command -v go >/dev/null 2>&1 || ! command -v gofmt >/dev/null 2>&1; then
@@ -298,5 +231,32 @@ if [ -n "$STAGED_GO" ]; then
     if ! (cd apps/license-server && go vet ./...); then
         echo "error: go vet failed — fix issues above or run 'cd apps/license-server && go vet ./...'." >&2
         exit 1
+    fi
+fi
+
+
+# ── FTL orphan lint ───────────────────────────────────────────────────────
+# The mirror of bundle parity. That step fails when code names a key that no bundle defines;
+# nothing checked the opposite direction, so a key left behind by a removed feature stayed
+# invisible. It has happened: topology-shortcuts-* (18 keys, the feature removed per
+# popoverSurfaceCompliance.test.tsx:54) and ~23 warehouse-* keys with zero references
+# anywhere in the repository.
+#
+# Staged-scoped on purpose. A whole-tree blocker is unusable because dynamic key
+# composition defeats static analysis -- `analytics-month-${m}` makes a whole family live
+# from one template hit -- and the honest census is 93 candidates of which an unknown
+# fraction are detection gaps rather than debt. So this holds a commit to the two things a
+# commit can actually be asked: a key you ADD must be referenced, and a reference you
+# DELETE must not strand a key. `--census` reports the whole-tree picture informationally
+# and `--self-test` proves both directions can still fail.
+#
+# Runs last and only when the commit stages a .ftl file, so nothing else pays for it.
+if [ -f scripts/verify-ftl-orphans.py ]; then
+    STAGED_FTL=$(git diff --cached --name-only --diff-filter=ACMR -- 'ui/src/locales/*.ftl' || true)
+    if [ -n "$STAGED_FTL" ]; then
+        if ! "$PYTHON" scripts/verify-ftl-orphans.py --staged-only; then
+            echo "error: FTL orphan lint failed — a key was added with no reference, or the last reference to a key was removed. See message above." >&2
+            exit 1
+        fi
     fi
 fi

@@ -33,7 +33,7 @@ next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
 //! | Primitive | Where | Why |
 //! |-----------|-------|-----|
 //! | `tokio::sync::Mutex` | Every async-accessible field (`db`, `kernel`, `plugins`, `scanner_cancel`, `terminal_id`) | `.lock().await` is required in Tauri command handlers; calling `.lock()` on `std::sync::Mutex` from async code blocks the tokio worker thread. |
-//! | `std::sync::RwLock` | `session_store` only | Accessed from both sync (`resolve_session`, `create_session`) and async (`session cleanup daemon`) code. `tokio::sync::RwLock::read()` would panic if called from sync context without a blocking wrapper. Keep `std::sync::RwLock` and wrap async access with `tokio::task::spawn_blocking` when necessary. |
+//! | `std::sync::RwLock` | `session_store`, `kds_queue_cache` (both behind `Arc`) | Accessed from both sync (`resolve_session`, `create_session`) and async (`session cleanup daemon`) code. `tokio::sync::RwLock::read()` would panic if called from sync context without a blocking wrapper. Keep `std::sync::RwLock` and wrap async access with `tokio::task::spawn_blocking` when necessary. `kds_queue_cache` is the same shape for a sharper reason: its reader is the LAN `KdsQueueProvider`, a plain `Fn()` running synchronously inside the per-peer accept task — no await is possible there. |
 //! | `std::sync::mpsc` | `inventory_pubsub_shutdown` only | Used from `Drop` which is sync-only. Tokio channels don't implement `Sync` and would require an async `Drop` bound. |
 //! | `Arc<AtomicBool>` | Plugin reload flag | Lock-free flag set by the `notify` callback (sync) and consumed by the tokio loop (async). Correct by design — no `.lock()` at all. |
 //!
@@ -125,7 +125,7 @@ pub struct AppState {
     /// Store-scoped database manager (ADR #4 Phase 2).
     ///
     /// Manages per-store SQLite files created when additional stores
-    /// are added. The global database (store_profiles, users, terminals)
+    /// are added. The global database (locations, users, terminals)
     /// is accessed via `db_manager.global()`.
     pub db_manager: StoreDatabaseManager,
 
@@ -190,6 +190,24 @@ pub struct AppState {
     /// persisted setting says off. Always acquired BEFORE `local_api`
     /// and the db lock; nothing takes it while holding either.
     pub local_api_op: Mutex<()>,
+
+    /// In-memory KDS active-queue snapshot served to reconnecting LAN KDS
+    /// peers (kds-sync).
+    ///
+    /// Refreshed by the command shims in `commands/kds.rs` after every
+    /// kitchen transition (create / status change / line-item bump), and
+    /// read **synchronously** by the [`KdsQueueProvider`] closure attached
+    /// to the LAN forwarder in `lib.rs` — that provider runs inside the
+    /// per-peer accept task and must never touch the async DB mutex, so
+    /// the queue is materialised here instead of queried on demand.
+    ///
+    /// `std::sync::RwLock` (M-1 exception, sync reader): the provider is
+    /// a plain `Fn()`; write guards are taken only for the duration of a
+    /// pointer swap, never across an await. Starts as the empty default;
+    /// first populated when this terminal executes a KDS transition.
+    ///
+    /// [`KdsQueueProvider`]: oz_lan::KdsQueueProvider
+    pub kds_queue_cache: Arc<RwLock<oz_lan::KdsQueueSnapshot>>,
 }
 
 impl AppState {
@@ -363,6 +381,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
+            kds_queue_cache: Arc::new(RwLock::new(oz_lan::KdsQueueSnapshot::default())),
         })
     }
 }
@@ -379,11 +398,11 @@ impl AppState {
 /// `get_primary_store()` (which queries `is_primary = 1`) returning `None`
 /// and breaking boot on a fresh install.
 fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM store_profiles", [], |r| r.get(0))?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
     if count == 0 {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         conn.execute(
-            "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('default', 'Main Store', '', '', 'USD', 'UTC', 1, ?1, ?1)",
             rusqlite::params![now],
         )?;
@@ -393,10 +412,10 @@ fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
         // index on is_primary = 1 allows at most one primary store, so only
         // promote when no other store is already primary (multi-store case).
         let affected = conn.execute(
-            "UPDATE store_profiles SET is_primary = 1
+            "UPDATE locations SET is_primary = 1
              WHERE id = 'default'
                AND NOT EXISTS (
-                 SELECT 1 FROM store_profiles WHERE is_primary = 1 AND id != 'default'
+                 SELECT 1 FROM locations WHERE is_primary = 1 AND id != 'default'
                )",
             [],
         )?;
@@ -513,6 +532,26 @@ impl AppState {
         removed
     }
 
+    /// Remove a single session token from the store (SaaS-3 L194 org switch).
+    ///
+    /// Returns `true` if the token was present and removed. The caller —
+    /// `switch_organization` — uses this to invalidate the *current* token
+    /// BEFORE minting the new session, so the old token is dead before any
+    /// new session exists. This is the load-bearing half of the
+    /// invalidate-then-mint ordering that prevents both tokens being live at
+    /// once; it is deliberately distinct from `invalidate_user_sessions_except`,
+    /// which sweeps every token for a user.
+    pub fn invalidate_session(&self, token: &str) -> bool {
+        let mut store = match self.session_store.write() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("session store lock poisoned during single invalidation: {e}");
+                return false;
+            }
+        };
+        store.remove(token).is_some()
+    }
+
     /// Remove all expired sessions from the store in a single sweep.
     ///
     /// Called periodically by the background session-cleanup daemon
@@ -620,7 +659,7 @@ impl AppState {
         let db = self.db.blocking_lock();
         let binding: Option<String> = db
             .query_row(
-                "SELECT bound_store_id FROM terminals WHERE id = ?1",
+                "SELECT bound_location_id FROM terminals WHERE id = ?1",
                 rusqlite::params![restaurant_pos_id],
                 |row| row.get(0),
             )
@@ -807,6 +846,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
+            kds_queue_cache: Arc::new(RwLock::new(oz_lan::KdsQueueSnapshot::default())),
         }
     }
 

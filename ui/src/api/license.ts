@@ -1,4 +1,5 @@
 import { loggedInvoke } from '@/utils/logged-invoke';
+import type { WireHealth } from '@/hooks/connectionHealth';
 
 /** Possible license verification outcomes. */
 export type LicenseVerificationStatus = 'valid' | 'expired' | 'gracePeriod' | 'invalidSignature' | 'clockTampered' | 'missing';
@@ -25,7 +26,8 @@ export interface ServerLicenseStatus {
   active: boolean;
   expiresAt: string | null;
   graceUntil: string | null;
-  maxStores: number;
+  /** Tier location quota — wire field keeps the historical `maxLocations` name (1g wire rename pending). */
+  maxLocations: number;
 }
 
 /** Get the current license activation and verification status. */
@@ -108,16 +110,51 @@ export async function pauseSubscription(pauseMonths: number): Promise<PauseResum
   return loggedInvoke('pause_subscription', { pauseMonths });
 }
 
+/**
+ * Pause a subscription resolved from a session token. ADR #7.
+ *
+ * pause_subscription_scoped (license.rs:806) enforces permissions::SETTINGS_EDIT before
+ * delegating. The unscoped command reads the stored API key and calls the billing server with no
+ * session and no permission check at all -- pausing a subscription is a billing action.
+ */
+export async function pauseSubscriptionScoped(
+  sessionToken: string,
+  pauseMonths: number,
+): Promise<PauseResumeResponse> {
+  return loggedInvoke('pause_subscription_scoped', { sessionToken, pauseMonths });
+}
+
 /** Resume a paused subscription. */
 export async function resumeSubscription(): Promise<PauseResumeResponse> {
   return loggedInvoke('resume_subscription');
 }
 
-/** Auth-server reachability probe result (mirrors PingResult). */
+/**
+ * Resume a subscription resolved from a session token. ADR #7.
+ *
+ * Same differential as pauseSubscriptionScoped: resume_subscription_scoped (license.rs:820)
+ * enforces SETTINGS_EDIT; the unscoped variant checks nothing.
+ */
+export async function resumeSubscriptionScoped(
+  sessionToken: string,
+): Promise<PauseResumeResponse> {
+  return loggedInvoke('resume_subscription_scoped', { sessionToken });
+}
+
+/**
+ * Auth-server probe result (mirrors the sync `PingResult` so both pills
+ * render from one shape). `state` and `cause` are optional because a desktop
+ * build predating them sends neither, and the hook must then fall back to the
+ * reachability answer rather than invent a health reading.
+ */
 export interface AuthPingResult {
   ok: boolean;
   status: string;
   latencyMs: number | null;
+  /** Health read from the server's own payload — see `WireHealth`. */
+  state?: WireHealth;
+  /** Named broken subsystem when `state` is `'degraded'`. */
+  cause?: string | null;
 }
 
 /**

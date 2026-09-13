@@ -1,6 +1,7 @@
 import { useRef, useId, type ReactNode } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useExitAnimation } from '@/hooks/useExitAnimation';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -56,23 +57,29 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
-  // ── Focus trap (Escape + Tab cycling + auto-focus + scroll lock) ──
-  useFocusTrap(panelRef, open, onClose);
+  // ── Exit-animation gate ──────────────────────────────────────────
+  // Releases the focus trap + scroll lock *while* the fade plays so focus
+  // returns to the trigger, then unmounts after the mirror animation.
+  const { shouldRender, exiting, requestClose } = useExitAnimation(open, onClose, 200);
 
-  if (!open) return null;
+  // ── Focus trap (Escape + Tab cycling + auto-focus + scroll lock) ──
+  // Inactive while exiting (and when closed) so focus restores to the trigger.
+  useFocusTrap(panelRef, open && !exiting, requestClose);
+
+  if (!shouldRender) return null;
 
   return (
     <div
-      className="modal-overlay"
+      className={`modal-overlay${exiting ? ' modal-overlay--exiting' : ''}`}
       role="presentation"
       onClick={(e) => {
         // Only close when the overlay itself is clicked, not the panel.
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <div
         ref={panelRef}
-        className="modal-panel"
+        className={`modal-panel${exiting ? ' modal-panel--exiting' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
@@ -89,7 +96,7 @@ export function Modal({
             <button
               type="button"
               className="modal-close-btn"
-              onClick={onClose}
+              onClick={requestClose}
                aria-label={l10n.getString('modal-close-aria')}
             >
               {/* X icon */}

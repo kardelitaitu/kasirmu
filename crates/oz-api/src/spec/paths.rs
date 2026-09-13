@@ -459,15 +459,20 @@ pub(super) fn build_base_paths() -> Value {
             "post": {
                 "tags": ["Sales"],
                 "summary": "Create a new sale",
-                "description": "Creates a sale in 'pending' status with the given line items. Each line item specifies SKU, quantity, and unit price. At least one line item is required.",
+                "description": "Creates a sale in 'pending' status with the given line items. Each line item specifies SKU, quantity, and unit price. At least one line item is required. The body is the published content contract and carries NO idempotency field: retry protection rides the optional Idempotency-Key header. That key is an opaque client-supplied string, matched by exact equality within the caller's tenant, never parsed and never minted server-side; two requests with the same (tenant, key) produce ONE sale — the first answers 201, any retry answers 200 with the original sale body. Absent, empty or whitespace-only means unguarded: a new sale and a 201 every time, so clients that never send the header are unaffected. Identical baskets under different keys are identical-but-separate sales; content is never a deduplication input.",
                 "operationId": "createSale",
                 "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string", "maxLength": 200 }, "description": "Opaque retry key, at most 200 characters of [A-Za-z0-9._:-]. Scope is (tenant, key): the same key from two tenants is two separate sales, and no tenant can resolve or block another's key. Send a fresh key per attempt you want distinguished; reuse it only to retry a request whose response you did not get. Omit it (or send blank) for an unguarded create." }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateSaleRequest" }, "example": { "lines": [{ "sku": "COFFEE-001", "qty": 2, "unit_price": { "minor_units": 350, "currency": "USD" } }, { "sku": "MUFFIN-001", "qty": 1, "unit_price": { "minor_units": 425, "currency": "USD" } }] } } }
                 },
                 "responses": {
                     "201": { "description": "Sale created (status: pending)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SaleDetail" }, "example": { "id": "sale-abc123", "status": "pending", "lines": [{ "sku": "COFFEE-001", "qty": 2, "unit_price": { "minor_units": 350, "currency": "USD" } }], "total": { "minor_units": 1125, "currency": "USD" }, "created_at": "2026-08-12T10:30:00Z" } } } },
+                    "200": { "description": "Idempotent replay: the ORIGINAL sale created by an earlier request carrying the same Idempotency-Key. Same schema and same sale id as the 201 — a receipt, not an error, and never a second sale.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SaleDetail" } } } },
+                    "400": { "description": "Idempotency-Key present but unstorable (over 200 bytes or outside the opaque-token charset); the key is rejected rather than silently ignored or replaced", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "422": { "description": "Empty lines array", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
                 }
@@ -509,6 +514,69 @@ pub(super) fn build_base_paths() -> Value {
                     "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "404": { "description": "Sale not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "422": { "description": "Invalid status transition", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+
+        // ── Memos (cloud-read serving layer, 2026-09-07 ruling) ───
+        "/api/v1/memos/sync": {
+            "post": {
+                "tags": ["Memos"],
+                "summary": "Reconcile the tenant's memo state (desktop push)",
+                "description": "The desktop pushes its DATABASE's complete non-deleted memo state (memos + memo_locations + memo_recipients) and the server reconciles cloud Postgres with it in one transaction: upsert rows ON CONFLICT (id), replace targeting and recipient rows wholesale, and delete any tenant memo absent from the snapshot (desktop-side retention deletes propagate by omission). Tenant scope rides the JWT claims — never the body; a terminal-scoped token may only sync its own registration's tenant, and an admin-minted token additionally needs the X-Admin-Key header when one is configured. Requires JWT auth.",
+                "operationId": "syncMemos",
+                "security": [{ "bearerAuth": [] }],
+                "requestBody": {
+                    "required": true,
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoSyncEnvelope" } } }
+                },
+                "responses": {
+                    "200": { "description": "Reconciled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoSyncResult" } } } },
+                    "401": { "description": "Missing/invalid JWT or admin key (`invalid_token` / `invalid_admin_key`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "Terminal-scoped token syncing another registration's tenant", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "No Postgres backend (`pg_unavailable`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/v1/memos/active": {
+            "get": {
+                "tags": ["Memos"],
+                "summary": "List the memos a terminal should currently display",
+                "description": "The terminal's active memos (status 'published', not expired, addressed to the terminal via its recipient rows), Location-stacked above Organization, newest-published first, with the server-issued poll cadence (base interval and the KDS 2× derivative from oz_core::memo — one source of truth). Tenant comes from the JWT claims; when the token is terminal-scoped the query's terminal_id must equal the claim (403 terminal_mismatch otherwise). The wire is snake_case, mirroring the desktop IPC DTO's fields. Requires JWT auth.",
+                "operationId": "listActiveMemos",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "terminal_id", "in": "query", "required": true, "schema": { "type": "string" }, "description": "The asking terminal; must match a terminal-scoped token's claim" }
+                ],
+                "responses": {
+                    "200": { "description": "Active memos + cadence", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoDisplayEnvelope" } } } },
+                    "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "terminal_mismatch — the query names another terminal than the token's claim", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "No Postgres backend (`pg_unavailable`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+
+        "/api/v1/memos/{memo_id}/ack": {
+            "post": {
+                "tags": ["Memos"],
+                "summary": "Acknowledge a memo (terminal)",
+                "description": "The upstream half of the cloud-read path: a terminal acknowledges a memo it received, moving its own recipient row (keyed by the token's terminal_id claim — the caller cannot name another terminal) to `acknowledged` directly in cloud Postgres. An ack proves receipt, so `delivered_at` is backfilled when the row was still `pending`; a second ack is a no-op success (`changed: false`); an unknown recipient is 404. The desktop's next push merges delivery state monotonically (pending < delivered < acknowledged), so the ack survives stale pushes. Terminal-scoped tokens only. Requires JWT auth.",
+                "operationId": "ackMemo",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "memo_id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Memo id (desktop-minted UUID v7)" }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoAckRequest" } } }
+                },
+                "responses": {
+                    "200": { "description": "Acknowledged (or already acknowledged)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemoAckResult" } } } },
+                    "401": { "description": "Missing or invalid JWT", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "403": { "description": "`not_terminal_token` — the token carries no terminal identity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "404": { "description": "`recipient_not_found` — no recipient row for this memo + terminal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "503": { "description": "No Postgres backend (`pg_unavailable`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
                 }
             }
         },

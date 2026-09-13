@@ -212,9 +212,29 @@ func TestCalculateExpiry_Enterprise(t *testing.T) {
 
 func TestCalculateGraceUntil(t *testing.T) {
 	expiresAt := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	grace := calculateGraceUntil(expiresAt)
-	if !grace.Equal(time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC)) {
-		t.Errorf("grace_until should be 2027-01-15, got %v", grace)
+	// The published per-tier table (§B / subscription-tiers.md / pricing row):
+	// Free 7, Plus 14, Pro 14, Premium 30, Enterprise 60. Premium and
+	// Enterprise were the tiers the old flat-14 window shortchanged.
+	cases := []struct {
+		tier string
+		want time.Time
+	}{
+		{"free", expiresAt.AddDate(0, 0, 7)},
+		{"plus", expiresAt.AddDate(0, 0, 14)},
+		{"pro", expiresAt.AddDate(0, 0, 14)},
+		{"premium", expiresAt.AddDate(0, 0, 30)},
+		{"enterprise", expiresAt.AddDate(0, 0, 60)},
+		// Unknown tier keys get the shortest paid window (fail-closed for
+		// the tenant's own good — never over-credit).
+		{"mystery", expiresAt.AddDate(0, 0, 14)},
+	}
+	for _, tc := range cases {
+		if got := calculateGraceUntil(tc.tier, expiresAt); !got.Equal(tc.want) {
+			t.Errorf("calculateGraceUntil(%q) = %v, want %v", tc.tier, got, tc.want)
+		}
+	}
+	if got := offlineGraceDays("mystery"); got != 14 {
+		t.Errorf("offlineGraceDays(unknown) = %d, want 14", got)
 	}
 }
 

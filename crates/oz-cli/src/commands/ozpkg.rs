@@ -5,6 +5,14 @@
 //! and upserts everything inside a single transaction (CLI-1: sale rows
 //! go through the tx-aware `Store::create_sale_in_tx`). `currency_to_utf8`
 //! decodes a product's currency bytes recoverably (RUST-07).
+//!
+//! Settings rows are the one data type that is NOT whole-table portable:
+//! [`is_portable_settings_key`] gates BOTH arms — the `load_all` egress in
+//! `run_export_ozpkg` and the write in `run_import_ozpkg` — through the ONE
+//! sealed [`IngestPolicy::PortablePackage`], the same policy the desktop
+//! bridge and the sync lane now ask. A `.ozpkg` is carried to another install,
+//! so per-install secrets (C-2), machine-bound identities and
+//! lifecycle-manager keys must never travel in either direction.
 
 use std::collections::HashMap;
 
@@ -13,6 +21,74 @@ use rusqlite::Connection;
 
 use oz_core::Settings;
 use oz_core::db::Store;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
+
+/// The ONE portable-package settings gate for the CLI `.ozpkg` lane.
+///
+/// Returns `true` when a settings row may travel in — or be restored from —
+/// a portable `.ozpkg`. Asks the sealed [`IngestPolicy::PortablePackage`]
+/// itself, reached through `oz_core`'s re-export: this crate owns NO key list
+/// and NO prefix rule, because a hand-copied predicate is exactly how the GUI
+/// and CLI lanes drifted apart. The policy refuses `SECRET_KEY_DENY_LIST`
+/// (credentials — `local_api.secret`, `sync_terminal_secret`, `license.api_key`,
+/// the payment-gateway keys, …), `NON_EXPORTABLE_DEVICE_KEYS` (`machine_id`,
+/// `sync_terminal_id`) AND the lifecycle-manager prefixes `local_api.*` /
+/// `lan_server.*` — that last group is what the bare predicate this lane used
+/// to call did NOT cover.
+///
+/// WHY THE POLICY AND NOT `Settings::set_with_policy`: `oz-cli` has no
+/// `platform-core` dependency edge and `oz_core::Settings` does not yet
+/// delegate `load_exportable` / `set_with_policy` / `set_batch_with_policy`,
+/// so the funnelled accessors are unreachable from this crate. This boundary
+/// is the one-line swap point: when the delegation lands, the egress arm
+/// becomes `Settings::load_exportable(conn)` and the ingress arm becomes
+/// `Settings::set_batch_with_policy(&tx, &rows, IngestPolicy::PortablePackage)`
+/// — same decision, same warn-and-continue, no restructure.
+///
+/// Deliberately NOT applied inside [`Settings::load_all`]: that accessor is
+/// also internal (`Settings::load_features` and `prune_stale_features` read
+/// through it), so filtering there would break feature pruning. The gate
+/// belongs at this lane's call site.
+fn is_portable_settings_key(key: &str) -> bool {
+    IngestPolicy::PortablePackage.admits(key)
+}
+
+/// Warn for one key the portable-package policy refused at ingress. Names the
+/// key and the policy, NEVER the value — the same shape the funnelled
+/// accessors use, so a hand-edited package cannot push a credential into the
+/// log either.
+fn warn_refused_settings_key(key: &str) {
+    tracing::warn!(
+        key = %key,
+        policy = IngestPolicy::PortablePackage.label(),
+        "settings key refused by portable-package policy (skipped, import continues)"
+    );
+}
+
+/// Egress arm: map `load_all` rows to export JSON, dropping every row the
+/// portable gate refuses.
+fn portable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::Value> {
+    rows.into_iter()
+        .filter(|(key, _)| is_portable_settings_key(key))
+        .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
+        .collect()
+}
+
+/// Ingress arm, the mirror of [`portable_settings_rows`]: the row's key and
+/// value, or `None` when the row is unreadable or must not be restored.
+///
+/// A `None` here is a REFUSAL by [`IngestPolicy::PortablePackage`], not an
+/// error: the caller warns and continues, exactly as `set_with_policy` does.
+fn importable_settings_row(row: &serde_json::Value) -> Option<(&str, &str)> {
+    let key = row.get("key").and_then(|v| v.as_str())?;
+    let value = row.get("value").and_then(|v| v.as_str())?;
+    if is_portable_settings_key(key) {
+        Some((key, value))
+    } else {
+        warn_refused_settings_key(key);
+        None
+    }
+}
 
 /// Export store data to an encrypted .ozpkg file.
 pub(crate) fn run_export_ozpkg(
@@ -98,12 +174,21 @@ pub(crate) fn run_export_ozpkg(
     };
 
     let settings = if wants("settings") {
+        // MED-2 invariant, CLI arm: the whole settings table is read, but only
+        // portable rows are kept — credentials, device-bound identities and
+        // lifecycle-manager keys are dropped by the shared policy gate.
+        // `load_all` is UNFILTERED on purpose (`load_features` /
+        // `prune_stale_features` read through it), so the filtering has to
+        // happen HERE: this is `Settings::load_exportable`'s job, and the line
+        // below is where it moves once `oz-core` delegates that accessor.
         let rows = oz_core::Settings::load_all(conn)?;
-        Some(
-            rows.into_iter()
-                .map(|(key, value)| serde_json::json!({ "key": key, "value": value }))
-                .collect(),
-        )
+        let total = rows.len();
+        let kept = portable_settings_rows(rows);
+        let dropped = total - kept.len();
+        if dropped > 0 {
+            eprintln!("  {dropped} secret/device-bound settings row(s) withheld from the package");
+        }
+        Some(kept)
     } else {
         None
     };
@@ -372,19 +457,40 @@ pub(crate) fn run_import_ozpkg(
     }
 
     // ── Settings ────────────────────────────────────────────────
+    // Symmetric with the export arm above: a package written by an OLDER
+    // build (or hand-edited, or built by an attacker who knows the shared
+    // password) still carries credentials, device ids and manager-owned keys,
+    // and restoring one must not silently swap this install's signing secret,
+    // license key or machine fingerprint. Every row is therefore admitted or
+    // refused by [`IngestPolicy::PortablePackage`] inside
+    // [`importable_settings_row`] BEFORE any write is attempted — a refused
+    // row writes NOTHING and the batch continues; only an admitted row
+    // reaches `Settings::set`. No raw `Settings::set` on this path is ever
+    // reached by a key the policy would refuse.
+    let mut settings_skipped = 0usize;
     if let Some(ref settings) = payload.settings {
         for val in settings {
-            if let Some(key) = val.get("key").and_then(|v| v.as_str())
-                && let Some(value) = val.get("value").and_then(|v| v.as_str())
-            {
-                let _ = Settings::set(&tx, key, value);
-                total += 1;
+            match importable_settings_row(val) {
+                Some((key, value)) => {
+                    let _ = Settings::set(&tx, key, value);
+                    total += 1;
+                }
+                None => settings_skipped += 1,
             }
         }
     }
 
     tx.commit().context("committing import transaction")?;
 
+    if settings_skipped > 0 {
+        eprintln!(
+            "  {settings_skipped} settings row(s) skipped: secrets, device-bound ids \n             (machine_id, sync_terminal_id, local_api.secret, license.*, \n             gateway keys) and lifecycle-manager keys (local_api.*, lan_server.*) \n             never travel in a portable package (MED-2 / ingest policy)."
+        );
+    }
     eprintln!("import complete — {total} records written.");
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "ozpkg_tests.rs"]
+mod tests;

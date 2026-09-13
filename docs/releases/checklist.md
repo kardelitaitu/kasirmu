@@ -1,6 +1,6 @@
 # Release Checklist — OZ-POS
 
-<!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.36 · supersedes the same-day STALE-BY-INFRA-CHANGE stamp, whose central claim had become false in the other direction: it asserted "the release pipeline is not currently running" and "tagging v* triggers nothing", which was true when written and is not any more -- release.yml was restored desktop-only under R36-11. Re-verified this pass against the workflows rather than against prose: dev-ci.yml has exactly the 10 jobs listed in the Pre-Release item, release.yml has exactly release-validate/release-build/release-publish, the five scripts the pipeline calls all exist (check-release-version.mjs, check-updater-compat.mjs, generate-latest-json.mjs, verify-updater-signature.mjs, verify-windows-config.py), and plugins.updater.pubkey IS present in tauri.conf.json. The two caveats in the warning block are code-falsifiable and are now guarded by scripts/verify-release-workflow.py; mobile automation is NOT, and remains stated as manual. Size targets (<100MB/<50MB/<5MB) and smoke-test steps remain operational, not code-falsifiable -->
+<!-- Audit stamp: 2026-09-04 · DSH · status: ACCURATE · version lock: 0.0.36 · supersedes the same-day STALE-BY-INFRA-CHANGE stamp, whose central claim had become false in the other direction: it asserted "the release pipeline is not currently running" and "tagging v* triggers nothing", which was true when written and is not any more -- release.yml was restored desktop-only under R36-11. Re-verified this pass against the workflows rather than against prose: dev-ci.yml has exactly the 10 jobs listed in the Pre-Release item, release.yml has exactly release-validate/release-build/release-publish, the five scripts the pipeline calls all exist (check-release-version.mjs, check-updater-compat.mjs, generate-latest-json.mjs, verify-updater-signature.mjs, verify-windows-config.py), and plugins.updater.pubkey IS present in tauri.conf.json. The two caveats in the warning block are code-falsifiable and are now guarded by scripts/verify-release-workflow.py; mobile automation is NOT, and remains stated as manual. Size targets (<100MB/<50MB/<5MB) and smoke-test steps remain operational, not code-falsifiable  RE-AUDITED 2026-09-09 by DSH (docs-auditor): the version-gate item asserted CI no longer enforces it, citing release.yml as .bak. release.yml is LIVE (470 lines) and its release-validate job runs node scripts/check-release-version.mjs on the tag ref plus --self-test; the retirement was reversed by 3b10ea3a2 on 09-04, the same date this page was last stamped ACCURATE, so the audit was true the moment it was written and false the moment the restoration landed. Corrected in place, with the manual step kept as the first instruction and the reason for reading the live file rather than trusting the .bak sibling. Swept the rest of this page's CI claims against both files at the same time; see the footer date. -->
 
 > Follow these steps in order for every release. Mark each item as completed.
 
@@ -94,8 +94,24 @@
 
 - [ ] Git tag created: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
 - [ ] Version gate verified **manually**: `node scripts/check-release-version.mjs vX.Y.Z`
-      passes locally. The `release-validate` job that used to enforce this in CI
-      lived in `release.yml`, which is `.bak` — pushing the tag does not run it.
+      passes locally. Do this anyway even though CI now enforces it: the gate is a
+      `release-validate` job in the **live** `.github/workflows/release.yml`, which runs
+      `node scripts/check-release-version.mjs "${{ github.ref_name }}"` on a tag push (and
+      its `--self-test` alongside).
+
+      > ⚠️ **This item was wrong until 09-09-26.** It claimed the job "used to" enforce the
+      > gate and that "pushing the tag does not run it," because `release.yml` had been
+      > retired to `release.yml.bak` by `23c96330`. That is no longer the state of the repo:
+      > `3b10ea3a2` restored `release.yml` on 09-04 as desktop-only (R36-11), so the
+      > automation this checklist describes **is** live again — which is also why the file
+      > carries two near-identical release workflows today (`release.yml` 470 lines,
+      > `release.yml.bak` 512 lines, and the version step appears in both). Reading the
+      > `.bak` and concluding the gate is dead, or reading the live file and concluding the
+      > mobile builds are back, are the same mistake in opposite directions; the DROPPED-vs
+      > header comment in the live file is what distinguishes them.
+
+      A stale "CI does not check this" claim is not a safe default: it teaches the releaser
+      that the version lock is unpoliced, when a mismatched tag now fails the pipeline.
 - [ ] GitHub Release created (draft → published only after asset inventory passes)
 - [ ] Docker image pushed to GHCR
 - [ ] Desktop installers built + attached (AppImage/deb, NSIS/MSI, DMG)
@@ -103,4 +119,4 @@
 - [ ] Rollback verified: previous version installer reinstalls cleanly on a test terminal (see `release-process.md`)
 - [ ] Release announced to team/channel
 
-> last audited 31-08-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor

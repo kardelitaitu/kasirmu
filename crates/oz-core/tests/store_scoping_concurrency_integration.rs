@@ -24,7 +24,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use oz_core::{Store, StoreProfile};
+use oz_core::{LocationProfile, Store};
 use rusqlite::Connection;
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -52,8 +52,8 @@ fn setup_file_db() -> (std::path::PathBuf, std::path::PathBuf) {
     (dir, db_path)
 }
 
-fn make_profile(id: &str, name: &str) -> StoreProfile {
-    StoreProfile {
+fn make_profile(id: &str, name: &str) -> LocationProfile {
+    LocationProfile {
         id: id.to_owned(),
         name: name.to_owned(),
         address: String::new(),
@@ -67,13 +67,13 @@ fn make_profile(id: &str, name: &str) -> StoreProfile {
 }
 
 /// Seed store-a / store-b profiles in the shared file DB.
-fn seed_store_profiles(db_path: &std::path::Path) {
+fn seed_locations(db_path: &std::path::Path) {
     let conn = Connection::open(db_path).unwrap();
     conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
     let s = Store::new(&conn);
-    s.create_store_profile(&make_profile("store-a", "Store A"))
+    s.create_location_profile(&make_profile("store-a", "Store A"))
         .unwrap();
-    s.create_store_profile(&make_profile("store-b", "Store B"))
+    s.create_location_profile(&make_profile("store-b", "Store B"))
         .unwrap();
 }
 
@@ -113,7 +113,7 @@ fn fk_violations(conn: &Connection) -> i64 {
 #[test]
 fn cross_store_parallel_writers_never_leak_across_scopes() {
     let (dir, db_path) = setup_file_db();
-    seed_store_profiles(&db_path);
+    seed_locations(&db_path);
 
     let pa = db_path.clone();
     let writer_a = std::thread::spawn(move || {
@@ -195,7 +195,7 @@ fn cross_store_parallel_writers_never_leak_across_scopes() {
 #[test]
 fn same_store_racing_writers_serialize_exactly_one_wins() {
     let (dir, db_path) = setup_file_db();
-    seed_store_profiles(&db_path);
+    seed_locations(&db_path);
 
     // Seed one store-a-owned product row.
     {

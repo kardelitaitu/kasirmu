@@ -23,7 +23,7 @@ status: Superseded (2026-07-10) — tier lineup & quotas superseded by `subscrip
 > The architectural
 > mechanism this ADR defines — signed `tenant_subscription`, per-store quota
 > checks, `InstanceStatus` downgrade/recovery, offline grace — remains valid
-> and unchanged. `TODO.md` Phase C0/C1 tracks the quota-value migration in
+> and unchanged. `docs/plans/todo.md` Phase C0/C1 tracks the quota-value migration in
 > `crates/oz-core/src/subscription.rs`.
 
 ---

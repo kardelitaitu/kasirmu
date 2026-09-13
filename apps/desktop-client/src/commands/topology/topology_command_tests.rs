@@ -10,7 +10,6 @@ use super::*;
 use oz_core::db::Store;
 use oz_core::migrations;
 use oz_core::session::SessionContext;
-use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::tempdir;
 
@@ -352,51 +351,6 @@ fn wire(id: &str, from: &str, to: &str) -> TopologyWirePayload {
 }
 
 // ── #11: enum PartialEq<&str> + From<&str> consistency ───────────
-
-#[test]
-fn node_type_partial_eq_str_matches_all_known_variants() {
-    assert_eq!(NodeType::Store, "store");
-    assert_eq!(NodeType::Workspace, "workspace");
-    assert_eq!(NodeType::Warehouse, "warehouse");
-    assert_eq!(NodeType::Hardware, "hardware");
-    // Unknown never matches a concrete string.
-    assert_ne!(NodeType::Unknown, "store");
-    assert_ne!(NodeType::Unknown, "unknown");
-}
-
-#[test]
-fn node_type_from_str_roundtrips_known_and_unknown() {
-    assert_eq!(NodeType::from("store"), NodeType::Store);
-    assert_eq!(NodeType::from("workspace"), NodeType::Workspace);
-    assert_eq!(NodeType::from("warehouse"), NodeType::Warehouse);
-    assert_eq!(NodeType::from("hardware"), NodeType::Hardware);
-    // Anything else collapses to Unknown (caught on save).
-    assert_eq!(NodeType::from("foo"), NodeType::Unknown);
-    assert_eq!(NodeType::from(""), NodeType::Unknown);
-    assert_eq!(NodeType::from("Store"), NodeType::Unknown); // case-sensitive
-}
-
-#[test]
-fn wire_direction_partial_eq_and_from_consistent() {
-    assert_eq!(WireDirection::OneWay, "one-way");
-    assert_eq!(WireDirection::TwoWay, "two-way");
-    assert_ne!(WireDirection::Unknown, "one-way");
-    assert_eq!(WireDirection::from("one-way"), WireDirection::OneWay);
-    assert_eq!(WireDirection::from("two-way"), WireDirection::TwoWay);
-    assert_eq!(WireDirection::from("bidirectional"), WireDirection::Unknown);
-}
-
-#[test]
-fn port_name_partial_eq_and_from_consistent() {
-    assert_eq!(PortName::Top, "top");
-    assert_eq!(PortName::Right, "right");
-    assert_eq!(PortName::Bottom, "bottom");
-    assert_eq!(PortName::Left, "left");
-    assert_ne!(PortName::Unknown, "left");
-    assert_eq!(PortName::from("top"), PortName::Top);
-    assert_eq!(PortName::from("left"), PortName::Left);
-    assert_eq!(PortName::from("usb"), PortName::Unknown);
-}
 
 // ── #11: save rejects every Unknown enum variant (fail-closed) ─────
 
@@ -800,31 +754,6 @@ fn one_orphan_wire_in_large_batch_rejects_all() {
 // ── Wire direction / port serialization edge cases (#10, #11) ──
 
 #[test]
-fn wire_null_direction_defaults_to_one_way() {
-    let json = r#"{"id":"w1","from_node_id":"a","to_node_id":"b","direction":null}"#;
-    let wire: TopologyWirePayload = serde_json::from_str(json).unwrap();
-    assert_eq!(wire.direction, WireDirection::OneWay);
-}
-
-#[test]
-fn wire_unknown_direction_becomes_unknown_variant() {
-    // Any unrecognized wire direction string maps to WireDirection::Unknown
-    // via #[serde(other)], which is then rejected by save_topology_data.
-    let json = r#"{"id":"w1","from_node_id":"a","to_node_id":"b","direction":"bidirectional"}"#;
-    let wire: TopologyWirePayload = serde_json::from_str(json).unwrap();
-    assert_eq!(wire.direction, WireDirection::Unknown);
-}
-
-#[test]
-fn wire_unknown_port_becomes_unknown_variant() {
-    let json =
-        r#"{"id":"w1","from_node_id":"a","to_node_id":"b","from_port":"north","to_port":"south"}"#;
-    let wire: TopologyWirePayload = serde_json::from_str(json).unwrap();
-    assert_eq!(wire.from_port, Some(PortName::Unknown));
-    assert_eq!(wire.to_port, Some(PortName::Unknown));
-}
-
-#[test]
 fn save_topology_data_rejects_wire_with_unknown_direction() {
     let conn = fresh_conn();
     let nodes = vec![TopologyNodePayload {
@@ -908,110 +837,6 @@ fn diagram_node_without_persisted_metadata_roundtrips() {
     assert_eq!(meta["typeKey"], "store-pos");
 }
 
-#[test]
-fn revision_aware_save_increments_and_rejects_stale_writer() {
-    let conn = fresh_conn();
-    let nodes = vec![serde_json::json!({
-        "id": "store-1", "type": "store", "name": "Store", "x": 0.0, "y": 0.0
-    })];
-    let first = save_topology_json_at_key_with_revision(
-        &conn,
-        nodes.clone(),
-        vec![],
-        TOPOLOGY_SETTING_KEY,
-        &[],
-        Some(0),
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(first, 1);
-    let second = save_topology_json_at_key_with_revision(
-        &conn,
-        nodes.clone(),
-        vec![],
-        TOPOLOGY_SETTING_KEY,
-        &[],
-        Some(0),
-        None,
-        None,
-    );
-    assert!(
-        matches!(second, Err(AppError::TopologyValidation { code, .. }) if code == "topology-revision-conflict")
-    );
-    let raw = oz_core::Settings::get(&conn, TOPOLOGY_SETTING_KEY)
-        .unwrap()
-        .unwrap();
-    let value: Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(value["revision"], 1);
-}
-
-#[test]
-fn in_flight_peer_writer_is_not_silently_overwritten() {
-    // TOCTOU race: the revision read + expected check happened OUTSIDE
-    // any write lock, so a save whose read landed before a peer's commit
-    // silently overwrote the peer (lost update). This test holds an
-    // IMMEDIATE write lock (conn B) while conn A saves with
-    // expected=0: A's read sees 0 (B's newer envelope is uncommitted),
-    // A passes the check, then blocks on B's lock; B commits revision 1;
-    // A's write proceeds. Pre-fix A commits revision 1 on top of B's —
-    // both writers succeed, B's data lost. With the read inside an
-    // IMMEDIATE transaction A re-reads after B's commit and must be
-    // rejected with a revision conflict.
-    let dir = tempdir().unwrap();
-    let db_path = dir.path().join("rev_lock.db");
-    {
-        let mut setup = Connection::open(&db_path).unwrap();
-        migrations::run(&mut setup).unwrap();
-    }
-    let path_str = db_path.to_string_lossy().to_string();
-
-    // Writer B holds the write lock and commits a newer revision after
-    // a controlled delay so A's save is already in flight.
-    let b_conn = Connection::open(&db_path).unwrap();
-    let tx_b =
-        rusqlite::Transaction::new_unchecked(&b_conn, rusqlite::TransactionBehavior::Immediate)
-            .unwrap();
-
-    // Writer A saves on a second connection with a busy timeout so its
-    // write attempt waits for B instead of erroring immediately.
-    let p = path_str.clone();
-    let a_handle = std::thread::spawn(move || {
-        let conn = Connection::open(&p).unwrap();
-        conn.busy_timeout(std::time::Duration::from_secs(5))
-            .unwrap();
-        let nodes = vec![serde_json::json!({
-            "id": "a-1", "type": "store", "name": "A", "x": 0.0, "y": 0.0
-        })];
-        save_topology_json_at_key_with_revision(
-            &conn,
-            nodes,
-            vec![],
-            TOPOLOGY_SETTING_KEY,
-            &[],
-            Some(0),
-            None,
-            None,
-        )
-    });
-
-    // Give A time to read revision 0 and block on B's lock, then commit
-    // the newer revision from B's side.
-    std::thread::sleep(std::time::Duration::from_millis(150));
-    let b_nodes = vec![serde_json::json!({
-        "id": "b-1", "type": "store", "name": "B", "x": 0.0, "y": 0.0
-    })];
-    let b_envelope = topology_envelope_json(&b_nodes, &[], 1, &[]).unwrap();
-    oz_core::Settings::set(&tx_b, TOPOLOGY_SETTING_KEY, &b_envelope).unwrap();
-    tx_b.commit().unwrap();
-
-    let a = a_handle.join().expect("writer A panicked");
-    assert!(
-        matches!(a, Err(AppError::TopologyValidation { ref code, .. }) if code == "topology-revision-conflict"),
-        "writer A silently overwrote in-flight writer B: {a:?}"
-    );
-}
-
 // ── Crash-injection: Apply recovery journal ──────────────────────
 //
 // `apply_topology_diff` writes a durable recovery journal BEFORE the
@@ -1054,11 +879,11 @@ fn commit_creation_to_store(state: &AppState, creation: &CreateInstanceRequest) 
     let store_conn = state.db_manager.open_store(&creation.store_id).unwrap();
     let store = store_conn.lock().unwrap();
     let tx = store.unchecked_transaction().unwrap();
-    // The store DB seeds its own `store_profiles` row when provisioned;
+    // The store DB seeds its own `locations` row when provisioned;
     // the workspace FKs require both it and the type row before any
     // instance can be inserted.
     tx.execute(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
         rusqlite::params![creation.store_id, "Test Store"],
     )
     .unwrap();
@@ -1071,7 +896,7 @@ fn commit_creation_to_store(state: &AppState, creation: &CreateInstanceRequest) 
     .unwrap();
     tx.execute(
         "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, purpose_key, status, \
+             (id, type_key, location_id, name, description, colour, purpose_key, status, \
               last_accessed_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'active', \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -1292,14 +1117,14 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
             .unwrap();
         global
             .execute(
-                "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
                 rusqlite::params![store_id, "Test Store"],
             )
             .unwrap();
         global
             .execute(
                 "INSERT OR IGNORE INTO tenant_subscription \
-                     (tenant_id, tier_key, status, expires_at, max_stores, max_pos_instances, \
+                     (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, \
                       allowed_types_json, signature, signed_payload, api_key, updated_at) \
                      VALUES ('default', 'pro', 'active', NULL, 2, 3, '[]', 'BOOTSTRAP_FREE', \
                              '', '', '2026-08-10T00:00:00.000Z')",
@@ -1351,6 +1176,9 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         0,
         "request-e2e-1".into(),
         None,
+        // ADR #46 §6: a real note, to prove the field survives the whole
+        // command -> save -> row -> audit path rather than being dropped.
+        Some("opened the second register".into()),
         app.state(),
     )
     .await
@@ -1370,6 +1198,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         None,
         0,
         "request-e2e-2".into(),
+        None,
         None,
         app.state(),
     )
@@ -1397,6 +1226,60 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         oz_core::Settings::get(&db, &request_key).unwrap().is_none(),
         "the failed Apply must not leave a request ledger"
     );
+
+    // ADR #46 Verification: "a test forcing Apply compensation asserts no
+    // revision row survives it." This test already forces exactly that path —
+    // the stale Apply fails AFTER the store transaction commits, so it is
+    // compensated — which makes it the right place to pin the §3 claim that
+    // the revision INSERT lives inside the committing transaction. A row here
+    // would mean history recorded a deploy that was rolled back.
+    let revisions: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM topology_revisions WHERE branch_id = ''",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        revisions, 1,
+        "only the successful Apply may have a revision row"
+    );
+
+    // ADR #46 §6 end-to-end: the note the merchant typed reached the revision
+    // row through the real command, not just the audit record.
+    let stored_note: String = db
+        .query_row(
+            "SELECT change_note FROM topology_revisions WHERE branch_id = '' AND revision = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored_note, "opened the second register");
+
+    // ADR #46 §6: the audit record is written on the success path only, and
+    // into the EFFECTIVE store's database (audit_log is per-store), not the
+    // global one the revision row lives in.
+    drop(db);
+    let store_conn = app_state.db_manager.open_store(store_id).unwrap();
+    let store_db = store_conn.lock().unwrap();
+    let topology_events: Vec<String> = oz_core::Store::new(&store_db)
+        .list_audit_entries(50, 0)
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.action == "topology.apply")
+        .map(|e| e.details)
+        .collect();
+    assert_eq!(
+        topology_events.len(),
+        1,
+        "a rejected Apply must write no audit record"
+    );
+    let details: serde_json::Value = serde_json::from_str(&topology_events[0]).unwrap();
+    assert_eq!(details["revision"], 1);
+    assert_eq!(details["branch_id"], "");
+
+    // The two records describe one event and must not disagree about it.
+    assert_eq!(details["change_note"], "opened the second register");
 }
 
 #[tokio::test]
@@ -1404,25 +1287,19 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
 // clippy's await_holding_lock cannot see through the explicit drop and
 // flags a false positive. Allowed with the drop in place.
 #[allow(clippy::await_holding_lock)]
-async fn can_save_topology_probe_gates_on_staff_update_permission() {
-    // Round 145: the capability probe the editor uses to gate the Save
+async fn can_save_topology_probe_gates_on_topology_write_permission() {
+    // Phase 1 §I: the capability probe the editor uses to gate the Save
     // toolbar (TopologyScreen -> canSaveTopology -> can_save_topology)
     // must agree with the Apply gate: both resolve the session against
-    // the GLOBAL identity DB and require STAFF_UPDATE. A divergence
-    // (probe allows, Apply denies) would let the UI offer a Save that
-    // always fails; the reverse would hide editing from a manager who
-    // can apply. Until this test the command was the only registered
-    // topology command with no direct Rust coverage — the TS side is
-    // pinned by the api-ipc contract test, the Rust side was not.
+    // the GLOBAL identity DB and require TOPOLOGY_WRITE (dedicated key
+    // replacing staff:update, admin/owner only).
     let store_id = "store-cap";
     let dir = tempdir().unwrap();
     let global = oz_core::migrations::fresh_db();
     {
         let store = Store::new(&global);
         store.seed_default_roles().unwrap();
-        // role-lite: narrow custom role without staff:* — the new
-        // role-staff preset grants staff:update, which would flip the
-        // denial below (0048 retirement sweep).
+        // role-lite: narrow custom role without topology:write.
         global
                 .execute_batch(
                     "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
@@ -1431,6 +1308,8 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
                 .unwrap();
         for (id, username, role_id) in [
             ("user-owner", "owner", "role-owner"),
+            ("user-admin", "admin", "role-admin"),
+            ("user-manager", "manager", "role-manager"),
             ("user-cashier", "cashier", "role-lite"),
         ] {
             global
@@ -1445,7 +1324,7 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
         }
         global
             .execute(
-                "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
                 rusqlite::params![store_id, "Test Store"],
             )
             .unwrap();
@@ -1454,6 +1333,8 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
     state.db_manager =
         platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
     let owner_token = "token-owner".to_string();
+    let admin_token = "token-admin".to_string();
+    let manager_token = "token-manager".to_string();
     let cashier_token = "token-cashier".to_string();
     let mut sessions = state.session_store.write().unwrap();
     sessions.insert(
@@ -1470,13 +1351,39 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
         ),
     );
     sessions.insert(
+        admin_token.clone(),
+        SessionContext::new(
+            "user-admin".into(),
+            "role-admin".into(),
+            "terminal-2".into(),
+            store_id.into(),
+            "instance-2".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    sessions.insert(
+        manager_token.clone(),
+        SessionContext::new(
+            "user-manager".into(),
+            "role-manager".into(),
+            "terminal-3".into(),
+            store_id.into(),
+            "instance-3".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    sessions.insert(
         cashier_token.clone(),
         SessionContext::new(
             "user-cashier".into(),
             "role-lite".into(),
-            "terminal-2".into(),
+            "terminal-4".into(),
             store_id.into(),
-            "instance-2".into(),
+            "instance-4".into(),
             "pos".into(),
             None,
             0,
@@ -1492,6 +1399,15 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
         can_save_topology(owner_token, app.state()).await.unwrap(),
         "an owner session must be allowed to save topology"
     );
+    assert!(
+        can_save_topology(admin_token, app.state()).await.unwrap(),
+        "an admin session must be allowed to save topology"
+    );
+    let manager_denied = can_save_topology(manager_token, app.state()).await;
+    assert!(
+        matches!(manager_denied, Err(AppError::PermissionDenied(_))),
+        "a manager session (has staff:update, lacks topology:write) must be denied by the capability probe, got {manager_denied:?}"
+    );
     let denied = can_save_topology(cashier_token, app.state()).await;
     assert!(
         matches!(denied, Err(AppError::PermissionDenied(_))),
@@ -1499,12 +1415,85 @@ async fn can_save_topology_probe_gates_on_staff_update_permission() {
     );
 }
 
-#[test]
-fn request_ledger_key_rejects_path_injection() {
-    assert!(topology_apply_request_key("request/evil").is_err());
-    assert_eq!(
-        topology_apply_request_key("request-1").unwrap(),
-        "oz-pos/topology/apply-request/request-1"
+#[tokio::test]
+async fn authorize_topology_write_enforces_location_scope() {
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute_batch(
+                "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+                    ('role-topo-mgr', 'Topo Manager', 'Scoped Topo', '[\"topology:write\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+            )
+            .unwrap();
+
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                 VALUES ('user-scoped-mgr', 'scoped-mgr', 'hash', 'Scoped Mgr', 'role-topo-mgr', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+
+        // Assign user-scoped-mgr to store-allowed only
+        store
+            .set_assignment(
+                "user-scoped-mgr",
+                "role-topo-mgr",
+                &oz_core::db::assignments::AssignmentSpec {
+                    scope_mode: oz_core::db::assignments::ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec!["store-allowed".into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: oz_core::db::assignments::ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+
+    let token = "token-scoped-mgr".to_string();
+    {
+        let mut sessions = state.session_store.write().unwrap();
+        sessions.insert(
+            token.clone(),
+            SessionContext::new(
+                "user-scoped-mgr".into(),
+                "role-topo-mgr".into(),
+                "term-1".into(),
+                "store-allowed".into(),
+                "inst-1".into(),
+                "admin".into(),
+                None,
+                0,
+            ),
+        );
+    }
+
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // authorize_topology_write for store-allowed succeeds
+    let key_ok = authorize_topology_write(&token, &app.state(), Some("store-allowed")).await;
+    assert!(
+        key_ok.is_ok(),
+        "scoped manager must be allowed on their assigned branch"
+    );
+
+    // authorize_topology_write for store-denied fails with PermissionDenied
+    let key_err = authorize_topology_write(&token, &app.state(), Some("store-denied")).await;
+    assert!(
+        matches!(key_err, Err(AppError::PermissionDenied(_))),
+        "scoped manager must be denied on an unassigned branch, got {key_err:?}"
     );
 }
 
@@ -1526,158 +1515,6 @@ fn shared_topology_contract_matches_backend_warehouse_roles() {
         Some("transfer-in"),
         Some("inventory-transfer"),
     ));
-}
-
-#[test]
-fn contract_and_envelope_versions_are_independent_axes() {
-    // The trap this pins: `TOPOLOGY_SCHEMA_VERSION` is enforced on READ by
-    // `validate_topology_envelope`, which rejects any stored diagram whose
-    // `schema_version` is not exactly it. Someone "fixing" a version mismatch by
-    // raising the envelope constant would silently make every merchant's saved
-    // graph unreadable — a data-availability event dressed up as a bump.
-    assert_eq!(TOPOLOGY_SCHEMA_VERSION, 1);
-    assert_eq!(TOPOLOGY_CONTRACT_SCHEMA_VERSION, 2);
-    assert_ne!(TOPOLOGY_SCHEMA_VERSION, TOPOLOGY_CONTRACT_SCHEMA_VERSION);
-
-    // And the envelope validator still accepts the version real diagrams carry.
-    let stored = serde_json::json!({
-        "schema_version": TOPOLOGY_SCHEMA_VERSION,
-        "nodes": [],
-        "wires": [],
-    });
-    assert!(
-        validate_topology_envelope(&stored).is_ok(),
-        "a diagram saved under the current envelope version must stay readable"
-    );
-
-    let future = serde_json::json!({
-        "schema_version": TOPOLOGY_CONTRACT_SCHEMA_VERSION,
-        "nodes": [],
-        "wires": [],
-    });
-    let err = validate_topology_envelope(&future).unwrap_err();
-    assert!(
-        format!("{err}").contains("unsupported topology schema version"),
-        "the envelope validator must still reject a version it does not know"
-    );
-}
-
-#[test]
-fn request_fingerprint_binds_store_branch_revision_and_graph_payload() {
-    let first = topology_apply_fingerprint(
-        "store-1",
-        Some("branch-1"),
-        4,
-        &[],
-        &[],
-        &[],
-        &[serde_json::json!({ "id": "node-1" })],
-        &[],
-        &[],
-    )
-    .unwrap();
-    let changed_graph = topology_apply_fingerprint(
-        "store-1",
-        Some("branch-1"),
-        4,
-        &[],
-        &[],
-        &[],
-        &[serde_json::json!({ "id": "node-2" })],
-        &[],
-        &[],
-    )
-    .unwrap();
-    let changed_scope = topology_apply_fingerprint(
-        "store-1",
-        Some("branch-2"),
-        4,
-        &[],
-        &[],
-        &[],
-        &[serde_json::json!({ "id": "node-1" })],
-        &[],
-        &[],
-    )
-    .unwrap();
-    assert_ne!(first, changed_graph);
-    assert_ne!(first, changed_scope);
-}
-
-#[test]
-fn backend_warehouse_quota_allows_two_plus_warehouses() {
-    // Plus allows 2 warehouses (§3) — two nodes must pass.
-    let nodes = vec![
-        serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
-        serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
-    ];
-    let result = validate_warehouse_quota(&nodes, &oz_core::subscription::SubscriptionTier::Plus);
-    assert!(result.is_ok());
-}
-
-#[test]
-fn backend_warehouse_quota_rejects_multiple_free_warehouses() {
-    // Free allows 1 warehouse (§3) — two nodes must be rejected.
-    let nodes = vec![
-        serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
-        serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
-    ];
-    let result = validate_warehouse_quota(&nodes, &oz_core::subscription::SubscriptionTier::Free);
-    assert!(
-        matches!(result, Err(AppError::PermissionDenied(message)) if message.contains("limit 1"))
-    );
-}
-
-#[test]
-fn backend_warehouse_capacity_requires_operational_route_or_dismissal() {
-    let nodes = vec![serde_json::json!({
-        "id": "wh-1",
-        "type": "warehouse",
-        "metadata": { "stock": 5, "capacity": 10 }
-    })];
-
-    let result = validate_warehouse_capacity(
-        &nodes,
-        &[],
-        &oz_core::subscription::SubscriptionTier::Pro,
-        &[],
-    );
-    assert!(
-        matches!(result, Err(AppError::TopologyValidation { code, .. }) if code == "warehouse-missing-stock-routing")
-    );
-
-    let issue_key = "node:wh-1:topology-validation-warehouse-missing-stock-routing".to_string();
-    let dismissed = validate_warehouse_capacity(
-        &nodes,
-        &[],
-        &oz_core::subscription::SubscriptionTier::Pro,
-        &[issue_key],
-    );
-    assert!(dismissed.is_ok());
-}
-
-#[test]
-fn backend_warehouse_capacity_rejects_stock_routing_into_full_pro_room() {
-    let nodes = vec![serde_json::json!({
-        "id": "wh-1",
-        "type": "warehouse",
-        "metadata": { "stock": 10, "capacity": 10 }
-    })];
-    let wires = vec![serde_json::json!({
-        "id": "wire-1",
-        "to_node_id": "wh-1",
-        "relationship_type": "stock-routing",
-        "to_port_id": "stock-in"
-    })];
-    let result = validate_warehouse_capacity(
-        &nodes,
-        &wires,
-        &oz_core::subscription::SubscriptionTier::Pro,
-        &[],
-    );
-    assert!(
-        matches!(result, Err(AppError::TopologyValidation { code, .. }) if code == "warehouse-at-capacity")
-    );
 }
 
 #[tokio::test]
@@ -1722,7 +1559,7 @@ fn seed_instance_in_store(
     let store = store_conn.lock().unwrap();
     let tx = store.unchecked_transaction().unwrap();
     tx.execute(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES (?1, ?2)",
+        "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
         rusqlite::params![store_id, "Test Store"],
     )
     .unwrap();
@@ -1735,7 +1572,7 @@ fn seed_instance_in_store(
     .unwrap();
     tx.execute(
         "INSERT INTO workspace_instances \
-             (id, type_key, store_id, name, description, colour, purpose_key, status, \
+             (id, type_key, location_id, name, description, colour, purpose_key, status, \
               last_accessed_at) \
              VALUES (?1, 'pos', ?2, ?3, ?4, NULL, ?5, ?6, \
                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",

@@ -19,6 +19,16 @@ export const ACTION_FLUENT_IDS: Record<string, string> = {
   'user.login': 'audit-action-login',
   'user.create': 'audit-action-user-create',
   'user.update': 'audit-action-user-update',
+  // The three actions below are emitted by the security trail
+  // (oz_core::db::audit_security: SECURITY_ACTION_LOGOUT and the two impersonate
+  // actions) and were the reason the trail had no screen: every other action in
+  // the set already had a label, so these rows would have rendered as fallback
+  // text on a screen nobody had built. They are added WITH SecurityTrailScreen,
+  // not before it — auditCatalog.test.ts asserts every value here exists in
+  // shared.ftl, so a catalog entry and its key are one atomic change.
+  'logout': 'audit-action-logout',
+  'impersonate.start': 'audit-action-impersonate-start',
+  'impersonate.stop': 'audit-action-impersonate-stop',
   'product.create': 'audit-action-product-create',
   'product.created': 'audit-action-product-create',
   'product.update': 'audit-action-product-update',

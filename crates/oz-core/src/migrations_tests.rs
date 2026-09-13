@@ -182,7 +182,7 @@ fn migrations_create_expected_tables() {
         "category_taxes",
         "payments",
         "cash_payouts",
-        "store_profiles",
+        "locations",
         "terminal_feature_overrides",
         "promotions",
         "promotion_applications",
@@ -214,7 +214,8 @@ fn migrations_create_expected_tables() {
         "user_workspace_instances",
         "role_workspace_types",
         "login_attempts",
-        "user_store_access",
+        "user_location_access",
+        "legal_entities",
         // ── ADR #18 Phase 1+2 (migrations 078-090) ──
         "inventory_locations",
         "workspace_inventory_locations",
@@ -241,6 +242,9 @@ fn migrations_create_expected_tables() {
         // ── Spec 0046b cloud sync (migration 20260901_image_refs) ──
         "image_refs",
         "image_push_queue",
+        // ── Accounts Payable / Hutang (migration 20260918_payables) ──
+        "payables",
+        "payable_payments",
     ];
 
     for table in &expected_tables {
@@ -288,10 +292,7 @@ fn seed_data_bootstraps_essential_rows() {
     // Default store profile — the FK target for store-scoped rows and the
     // canonical `workspace_instances` store.
     assert_eq!(
-        row_count(
-            &conn,
-            "SELECT COUNT(*) FROM store_profiles WHERE id = 'default'",
-        ),
+        row_count(&conn, "SELECT COUNT(*) FROM locations WHERE id = 'default'",),
         1,
         "missing default store profile"
     );
@@ -363,7 +364,7 @@ fn seed_data_bootstraps_essential_rows() {
     );
 }
 
-/// Pin the consolidated schema surface: 105 tables, 143 indexes (123 in
+/// Pin the consolidated schema surface: 106 tables, 147 indexes (123 in
 /// init plus the two per-tenant unique indexes from
 /// `20260815_tenant_unique_indexes.sql` plus 4 multi-KDS indexes from
 /// `20260820_kds_devices.sql` plus 4 media/EDC indexes from
@@ -373,7 +374,8 @@ fn seed_data_bootstraps_essential_rows() {
 /// `20260901_image_refs.sql` plus 1 gift-card redeem idempotency
 /// index from `20260901_gift_card_redeem_idempotency.sql` plus 1
 /// outbox index from `20260902_outbox.sql` plus 1 webhook-tenant index
-/// from `20260903_webhook_endpoints.sql` — the per-migration breakdown
+/// from `20260903_webhook_endpoints.sql`, plus the legal-entity table and
+/// location index from `20260908_legal_entities.sql` — the per-migration breakdown
 /// predates the fixed-point rebuild's expression indexes and no longer
 /// sums exactly; the total is the contract), 4
 /// triggers. (The generated
@@ -386,14 +388,33 @@ fn init_sql_creates_complete_schema_surface() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // All migrations applied (init + incremental) yield 105 tables,
+    // All migrations applied (init + incremental) yield 117 tables,
     // excluding the runner's `schema_migrations` bookkeeping table.
+    // (20260918_payables.sql added the 112th and 113th: payables +
+    // payable_payments; 20260922_over_quota_markers.sql added the 114th:
+    // over_quota_markers; 20260923_fiscal_numbering.sql added the 115th
+    // and 116th: fiscal_schemes + document_number_sequences;
+    // 20260924_local_payment_methods.sql added the 117th;
+    // 20260925_receipt_formats.sql added the 118th;
+    // 20261001_sale_idempotency.sql added the 119th (the Idempotency-Key
+    // receipt table for POST /api/v1/sales); 20261002_sync_conflicts.sql
+    // and 20261003_sync_entity_vectors.sql are the 120th and 121st. The
+    // sync-crdt lane shipped both tables without re-measuring this pin —
+    // nothing saw it because dev-ci runs only on pull_request while work
+    // lands directly on `0.0.37` (re-pinned by 25dfa46596). This lane's own
+    // 20261004_midtrans_transactions.sql is the 122nd, and
+    // 20261005_kds_routing_rules.sql — the multi-station KDS routing table,
+    // one per terminal, the pin the routing lane shipped without
+    // re-measuring — is the 123rd; this assert is where that omission
+    // surfaced. Count measured, not
+    // guessed: the whole
+    // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        105,
+        123,
         "table surface drifted"
     );
     assert_eq!(
@@ -401,7 +422,53 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'",
         ),
-        145,
+        // 1 terminals-tenant index from `20260912_terminals_tenant.sql` plus
+        // 2 memo-locations indexes (location + tenant) from
+        // `20260913_memo_locations.sql`, minus the dropped single-location
+        // index `idx_memos_location`, plus the partial retention-sweep index
+        // `idx_topology_revisions_unpinned` from
+        // `20260915_topology_revisions.sql`, plus the assignment-scope index
+        // `idx_assignments_scope` from `20260916_role_assignment_scopes.sql`,
+        // plus the 5 payables / payable-payments indexes from
+        // `20260918_payables.sql` (tenant+status, supplier, partial due-date,
+        // payments-by-payable, payments-by-tenant), on top of the previously
+        // pinned 155; plus the 2 partial scope indexes from
+        // `20260921_tax_rate_scoping.sql` (location, entity — both partial, so
+        // neither indexes the constant NULL that every pre-scoping row carries),
+        // plus the 3 over_quota_markers indexes (dimension, resource, tenant)
+        // from 20260922_over_quota_markers.sql, plus the fiscal-scheme lookup
+        // index `idx_fiscal_schemes_entity` from
+        // `20260923_fiscal_numbering.sql`, plus the scope lookup index
+        // `idx_local_payment_methods_scope` from
+        // `20260924_local_payment_methods.sql`, plus the scope lookup index
+        // `idx_receipt_formats_scope` from
+        // `20260925_receipt_formats.sql`, plus the 3 per-tier default indexes
+        // from `20260926_tax_rate_scoped_authoring.sql` minus the table-wide
+        // `idx_tax_rates_single_default` it drops (that one refused a second
+        // default row across EVERY tenant and tier, which stops being the rule
+        // once scope exists) — net +2. (The document_number_sequences
+        // and local_payment_methods UNIQUE constraints are NOT counted: SQLite
+        // names those indexes `sqlite_autoindex_*` and the query excludes that
+        // prefix.) Plus the tenant-keyed partial unique index
+        // `idx_locations_tenant_ticket_prefix` from
+        // `20260926_location_ticket_prefix.sql` — +1; its WHERE clause keeps
+        // the all-empty backfill out of the index entirely. Plus the 2 named
+        // indexes from `20261001_sale_idempotency.sql` —
+        // `idx_sale_idempotency_tenant_key` (the UNIQUE (tenant_id, key) slot
+        // that carries the guard, UNIQUE-in-an-index rather than a composite
+        // PRIMARY KEY so a NULL key stays storable for unguarded sales) and
+        // `idx_sale_idempotency_sale` — +2. Then the sync-crdt lane added
+        // three more without re-measuring (20261002_sync_conflicts.sql and
+        // 20261003_sync_entity_vectors.sql — red unobserved because CI runs
+        // only on PRs), and 20261004_midtrans_transactions.sql adds the
+        // tenant-lookup index `idx_midtrans_transactions_tenant`.
+        // 20261005_kds_routing_rules.sql moves this count by exactly zero,
+        // by design: the file states the rule set is O(tens) rows per
+        // terminal read only by restaurant_pos_id and ships no secondary
+        // index, and its TEXT PRIMARY KEY lands as a `sqlite_autoindex_*`
+        // this query excludes. Count
+        // measured by replaying the registry, as ever.
+        181,
         "index surface drifted"
     );
     assert_eq!(
@@ -409,7 +476,12 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger'"
         ),
-        4,
+        // 2 trigger pairs (audit + per-tenant-unique) predate the pin; the
+        // assignment scope-id pair triggers (insert + update) arrive with
+        // `20260916_role_assignment_scopes.sql`. Nothing since: the
+        // 20261002–20261005 tables (sync, midtrans, KDS routing) are plain
+        // CREATE TABLE/INDEX DDL — no trigger shipped with them.
+        6,
         "trigger surface drifted"
     );
 }
@@ -475,7 +547,7 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
 
     // User data that must survive the upgrade untouched.
     conn.execute(
-        "INSERT INTO store_profiles (id, name) VALUES ('store-x', 'Store X')",
+        "INSERT INTO locations (id, name) VALUES ('store-x', 'Store X')",
         [],
     )
     .unwrap();
@@ -526,6 +598,37 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
             "20260902_snapshot_versions.sql".to_string(),
             "20260903_webhook_endpoints.sql".to_string(),
             "20260904_kds_indexes.sql".to_string(),
+            "20260906_rename_store_to_location.sql".to_string(),
+            "20260907_add_location_tenant_id.sql".to_string(),
+            "20260908_legal_entities.sql".to_string(),
+            "20260909_memos.sql".to_string(),
+            "20260910_memo_child_tenant_id.sql".to_string(),
+            "20260911_memo_fk_restrict.sql".to_string(),
+            "20260912_terminals_tenant.sql".to_string(),
+            "20260913_memo_locations.sql".to_string(),
+            "20260914_memo_retention.sql".to_string(),
+            "20260915_topology_revisions.sql".to_string(),
+            "20260916_role_assignment_scopes.sql".to_string(),
+            "20260917_assignment_backfill_org_wide.sql".to_string(),
+            "20260918_payables.sql".to_string(),
+            "20260919_regional_configuration.sql".to_string(),
+            "20260920_audit_retention.sql".to_string(),
+            "20260921_tax_rate_scoping.sql".to_string(),
+            "20260922_over_quota_markers.sql".to_string(),
+            "20260923_fiscal_numbering.sql".to_string(),
+            "20260924_local_payment_methods.sql".to_string(),
+            "20260925_receipt_formats.sql".to_string(),
+            "20260926_location_ticket_prefix.sql".to_string(),
+            "20260926_tax_rate_scoped_authoring.sql".to_string(),
+            "20260927_kds_ticket_prefix_stamp.sql".to_string(),
+            "20260928_document_kind_check.sql".to_string(),
+            "20260929_tax_rate_rounding_mode.sql".to_string(),
+            "20260930_sales_tax_estimate_note.sql".to_string(),
+            "20261001_sale_idempotency.sql".to_string(),
+            "20261002_sync_conflicts.sql".to_string(),
+            "20261003_sync_entity_vectors.sql".to_string(),
+            "20261004_midtrans_transactions.sql".to_string(),
+            "20261005_kds_routing_rules.sql".to_string(),
         ]
     );
 
@@ -543,22 +646,362 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
 
     // User data survived.
     assert_eq!(
-        row_count(
-            &conn,
-            "SELECT COUNT(*) FROM store_profiles WHERE id = 'store-x'"
-        ),
+        row_count(&conn, "SELECT COUNT(*) FROM locations WHERE id = 'store-x'"),
         1,
         "user data must survive the upgrade"
     );
 
-    // Schema surface is unchanged after the no-op re-run.
+    // Schema surface is unchanged after the no-op re-run (123 tables: the
+    // 111 pinned before 20260918, plus payables and payable_payments from
+    // 20260918, plus over_quota_markers from 20260922, plus fiscal_schemes
+    // and document_number_sequences from 20260923, plus
+    // local_payment_methods from 20260924, plus receipt_formats from
+    // 20260925, plus sale_idempotency from
+    // 20261001, plus sync_conflicts from 20261002, plus sync_entity_vectors
+    // from 20261003, plus midtrans_transactions from 20261004, plus
+    // kds_routing_rules from 20261005 — each
+    // recorded once, idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        105,
+        123,
         "table surface must be unchanged after upgrade"
+    );
+}
+
+#[test]
+fn store_to_location_rename_preserves_rows_and_foreign_keys() {
+    let split = ALL
+        .iter()
+        .position(|migration| migration.id == "20260906_rename_store_to_location.sql")
+        .unwrap();
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    conn.execute(
+        "INSERT INTO store_profiles (id, name, is_primary) VALUES ('location-a', 'Location A', 1)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO roles (id, name) VALUES ('role-location-test', 'Location Test')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id)\n         VALUES ('user-location-test', 'location-test', 'not-used', 'Location Test', 'role-location-test')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO user_store_access (user_id, store_id, access_level)\n         VALUES ('user-location-test', 'location-a', 'operator')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'store_profiles'",
+        ),
+        0
+    );
+    assert_eq!(row_count(&conn, "SELECT COUNT(*) FROM locations"), 2);
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM user_location_access WHERE location_id = 'location-a'",
+        ),
+        1
+    );
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT max_locations FROM tenant_subscription WHERE tenant_id = 'default'",
+        ),
+        1
+    );
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM workspace_instances WHERE location_id = 'default'",
+        ),
+        5
+    );
+    assert_eq!(
+        row_count(
+            &conn,
+            "SELECT COUNT(*) FROM workspace_screens\n             WHERE workspace_key = 'admin' AND screen_key = 'locations'",
+        ),
+        1
+    );
+    assert_eq!(
+        row_count(&conn, "SELECT COUNT(*) FROM pragma_foreign_key_check"),
+        0,
+        "location rename must not leave broken foreign keys",
+    );
+}
+
+// ── Location tenant isolation (Phase 1 P0: Protect tenant isolation) ──
+//
+// The 20260907 migration adds `tenant_id` to `locations` and
+// `user_location_access` so the cloud Postgres layer can scope location data
+// per tenant under RLS. This pins the contract at the SQLite layer: both
+// tables must expose the column, the default sentinel must be 'default', and
+// an explicit tenant must be preserved.
+
+#[test]
+fn location_tables_carry_tenant_id_after_migration() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    for table in ["locations", "user_location_access"] {
+        let cols: Vec<String> = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert!(
+            cols.iter().any(|c| c == "tenant_id"),
+            "{table} must carry a tenant_id column after the location-tenant migration"
+        );
+    }
+
+    // At least one row resolves to the single-tenant 'default' sentinel.
+    let default_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM locations WHERE tenant_id = 'default'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        default_rows >= 1,
+        "at least one location must belong to the default tenant"
+    );
+
+    // An insert without an explicit tenant takes the 'default' sentinel.
+    conn.execute("INSERT INTO locations (id, name) VALUES ('loc-x', 'X')", [])
+        .unwrap();
+    let got: String = conn
+        .query_row(
+            "SELECT tenant_id FROM locations WHERE id = 'loc-x'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        got, "default",
+        "implicit tenant_id must default to 'default'"
+    );
+
+    // An explicit tenant is preserved verbatim.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-y', 'Y', 'tenant-9')",
+        [],
+    )
+    .unwrap();
+    let got2: String = conn
+        .query_row(
+            "SELECT tenant_id FROM locations WHERE id = 'loc-y'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(got2, "tenant-9", "explicit tenant_id must be preserved");
+}
+
+// ── Terminal tenant ownership (Phase 1 P0: Protect tenant isolation) ──
+//
+// The 20260912 migration adds `tenant_id` to `terminals` so "each Terminal
+// belongs to one Organization" becomes representable: bound terminals
+// backfill from their bound location's tenant, unbound terminals resolve to
+// the 'default' sentinel (the state Memo fan-out tests depend on).
+
+#[test]
+fn terminals_carry_tenant_id_after_migration() {
+    // Split at the terminal-tenant migration: seed pre-migration rows into the
+    // legacy schema (no tenant_id on terminals yet), then let the backfill run.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260912_terminals_tenant.sql")
+        .expect("terminals-tenant migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // One non-default-tenant location, one terminal bound to it, one unbound.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-t9', 'T9', 'tenant-9')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, bound_location_id)
+         VALUES ('term-bound', 'Bound', 'dev-bound', 'loc-t9')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('term-free', 'Free', 'dev-free')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    let cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(terminals)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(
+        cols.iter().any(|c| c == "tenant_id"),
+        "terminals must carry a tenant_id column after the terminal-tenant migration"
+    );
+
+    // A bound terminal inherits its bound location's tenant (the backfill).
+    let bound: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-bound'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        bound, "tenant-9",
+        "bound terminal must inherit its bound location's tenant"
+    );
+
+    // An unbound terminal resolves to the 'default' sentinel — the state the
+    // Memo Organization fan-out depends on for legacy unbound terminals.
+    let unbound: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-free'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        unbound, "default",
+        "unbound terminal must resolve to the default tenant"
+    );
+
+    // Post-migration writes: implicit inserts take the 'default' sentinel...
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('term-new', 'New', 'dev-new')",
+        [],
+    )
+    .unwrap();
+    let implicit: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-new'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        implicit, "default",
+        "implicit tenant_id must default to 'default'"
+    );
+
+    // ...and an explicit tenant is preserved verbatim.
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id, tenant_id)
+         VALUES ('term-explicit', 'Explicit', 'dev-explicit', 'tenant-3')",
+        [],
+    )
+    .unwrap();
+    let explicit: String = conn
+        .query_row(
+            "SELECT tenant_id FROM terminals WHERE id = 'term-explicit'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(explicit, "tenant-3", "explicit tenant_id must be preserved");
+}
+
+#[test]
+fn legal_entity_migration_creates_defaults_and_moves_locations() {
+    // Isolate the LE migration by id, not by "last entry" — later migrations
+    // (e.g. memos) are appended after it, so `ALL.len() - 1` would apply the
+    // wrong migration. Splitting at the LE index applies everything up to but
+    // not including LE, then LE (and anything after) in the second run.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260908_legal_entities.sql")
+        .expect("legal_entities migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('tenant-2-location', 'Tenant 2 Location', 'tenant-2')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    let entities: Vec<(String, String, String)> = conn
+        .prepare("SELECT id, tenant_id, name FROM legal_entities ORDER BY tenant_id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+
+    assert_eq!(
+        entities,
+        vec![
+            (
+                "default:default-legal-entity".to_string(),
+                "default".to_string(),
+                "Default Legal Entity".to_string(),
+            ),
+            (
+                "tenant-2:default-legal-entity".to_string(),
+                "tenant-2".to_string(),
+                "Default Legal Entity".to_string(),
+            ),
+        ]
+    );
+
+    let location_entities: Vec<(String, String)> = conn
+        .prepare(
+            "SELECT id, legal_entity_id FROM locations
+             WHERE id IN ('default', 'tenant-2-location') ORDER BY id",
+        )
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(|row| row.unwrap())
+        .collect();
+    assert_eq!(
+        location_entities,
+        vec![
+            (
+                "default".to_string(),
+                "default:default-legal-entity".to_string(),
+            ),
+            (
+                "tenant-2-location".to_string(),
+                "tenant-2:default-legal-entity".to_string(),
+            ),
+        ]
+    );
+
+    assert_eq!(
+        row_count(&conn, "SELECT COUNT(*) FROM pragma_foreign_key_check"),
+        0,
+        "legal entity migration must preserve foreign-key integrity",
     );
 }
 
@@ -607,7 +1050,7 @@ fn global_row_ids(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
 /// for the SELECT test.
 fn seed_cross_store_fixture(conn: &rusqlite::Connection) {
     conn.execute_batch(
-        "INSERT INTO store_profiles (id, name)
+        "INSERT INTO locations (id, name)
              VALUES ('store-a', 'Store A'), ('store-b', 'Store B');
          INSERT INTO products (id, sku, name, price_minor, currency, product_type, store_id)
              VALUES ('p-a', 'SKU-A', 'A', 100, 'USD', 'retail', 'store-a'),
@@ -692,7 +1135,7 @@ fn store_scoped_query_never_returns_null_or_other_store_rows() {
     }
 
     // FK ownership integrity (migration 117): a store_id with no
-    // matching store_profiles row is rejected at the database layer,
+    // matching locations row is rejected at the database layer,
     // so a scoped query can never be pointed at a phantom store.
     let ghost = conn.execute(
         "INSERT INTO products (id, sku, name, price_minor, currency, product_type, store_id)
@@ -718,7 +1161,7 @@ fn store_deletion_reverts_scoped_rows_to_null_sentinel() {
     let mut conn = fresh();
     run(&mut conn).unwrap();
     conn.execute(
-        "INSERT INTO store_profiles (id, name) VALUES ('store-a', 'Store A')",
+        "INSERT INTO locations (id, name) VALUES ('store-a', 'Store A')",
         [],
     )
     .unwrap();
@@ -731,7 +1174,7 @@ fn store_deletion_reverts_scoped_rows_to_null_sentinel() {
     )
     .unwrap();
 
-    conn.execute("DELETE FROM store_profiles WHERE id = 'store-a'", [])
+    conn.execute("DELETE FROM locations WHERE id = 'store-a'", [])
         .unwrap();
 
     // Scoped query for the deleted store returns nothing…
@@ -1470,4 +1913,385 @@ fn per_tenant_unique_rebuild_restores_documented_intent() {
         no_inline_unique, 0,
         "inline global UNIQUE constraints must be gone from the rebuilt products table"
     );
+}
+
+// The 20260913 migration replaces the single-location targeting column
+// (`memos.location_id`) with the `memo_locations` join table, so one Location
+// Memo can target several locations at once (Phase 3). Zero targeting rows is
+// the new representation of "Organization Memo".
+
+#[test]
+fn memo_location_column_becomes_a_join_table() {
+    // Split at the join-table migration: seed pre-migration memos into the
+    // legacy schema (which still has the location_id column), then verify the
+    // migration carries the targeting over and drops the column.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260913_memo_locations.sql")
+        .expect("memo-locations migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // One Location Memo (location_id set) and one Organization Memo (NULL),
+    // each with a published revision and a recipient row, so the rebuild's
+    // copy really is a full copy.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-old', 'Old', 'default')",
+        [],
+    )
+    .unwrap();
+    // The recipient FK needs its terminal to exist (terminal_id → terminals
+    // RESTRICT, per the 20260911 policy).
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('term-x', 'Term X', 'term-x-dev')",
+        [],
+    )
+    .unwrap();
+    for (id, location) in [("memo-loc", Some("loc-old")), ("memo-org", None)] {
+        conn.execute(
+            "INSERT INTO memos (id, tenant_id, location_id, author_user_id, author_role,
+                                title, body, status, duration)
+             VALUES (?1, 'default', ?2, 'user-1', 'admin', 'T', 'B', 'draft', '24h')",
+            rusqlite::params![id, location],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memo_revisions (id, memo_id, tenant_id, revision, title, body,
+                                         published_at, published_by)
+             VALUES (?1 || '-rev', ?1, 'default', 1, 'T', 'B', '2026-09-07T00:00:00.000Z', 'user-1')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO memo_recipients (id, memo_id, tenant_id, terminal_id, delivery_status)
+             VALUES (?1 || '-r', ?1, 'default', 'term-x', 'pending')",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    // The column is gone and the join table exists.
+    let memos_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(memos)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(
+        !memos_cols.iter().any(|c| c == "location_id"),
+        "memos.location_id must be replaced by the join table"
+    );
+    let tables: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memo_locations'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 1, "memo_locations must exist after the migration");
+
+    // The Location Memo carried its targeting over; the Organization memo has
+    // no targeting rows (the new representation of organization-wide).
+    let targeted: Vec<String> = conn
+        .prepare("SELECT location_id FROM memo_locations WHERE memo_id = 'memo-loc'")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(targeted, vec!["loc-old".to_string()]);
+    let org_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM memo_locations WHERE memo_id = 'memo-org'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        org_rows, 0,
+        "an Organization memo must have no targeting rows"
+    );
+
+    // The rebuild is a full copy: revision + recipient rows survived for both
+    // memos, and the carried memo fields are intact.
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memos", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(total, 2, "both memos survive the rebuild");
+    let revisions: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memo_revisions", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(revisions, 2, "revision rows survive the rebuild");
+    let recipients: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memo_recipients", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(recipients, 2, "recipient rows survive the rebuild");
+    let (status, duration): (String, String) = conn
+        .query_row(
+            "SELECT status, duration FROM memos WHERE id = 'memo-loc'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "draft");
+    assert_eq!(duration, "24h");
+}
+
+#[test]
+fn memo_location_fks_follow_the_20260911_policy() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('loc-fk', 'FK', 'default')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO memos (id, tenant_id, author_user_id, author_role, title, body, status, duration)
+         VALUES ('memo-fk', 'default', 'user-1', 'admin', 'T', 'B', 'draft', '24h')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO memo_locations (memo_id, location_id, tenant_id)
+         VALUES ('memo-fk', 'loc-fk', 'default')",
+        [],
+    )
+    .unwrap();
+
+    // RESTRICT on location_id (the 20260911 decision, inherited): a Location
+    // that a Memo still targets cannot be silently deleted.
+    let del_loc = conn.execute("DELETE FROM locations WHERE id = 'loc-fk'", []);
+    assert!(
+        del_loc.is_err(),
+        "deleting a Location that a Memo targets must be blocked (RESTRICT)"
+    );
+
+    // CASCADE on memo_id (the true-child edge): deleting the memo removes its
+    // targeting rows, exactly like memo_revisions/memo_recipients.
+    conn.execute("DELETE FROM memos WHERE id = 'memo-fk'", [])
+        .unwrap();
+    let left: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memo_locations", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(left, 0, "targeting rows go with their memo (CASCADE)");
+
+    // And the now-unreferenced Location is deletable again (no over-block).
+    conn.execute("DELETE FROM locations WHERE id = 'loc-fk'", [])
+        .expect("a location with no remaining memo targeting must be deletable");
+}
+
+#[test]
+fn ticket_prefix_column_exists_and_backfills_empty_after_upgrade() {
+    // Upgrade path (W2-A, D16): a database that predates the
+    // ticket-prefix migration must come out of `run` with the column
+    // present and every pre-existing row backfilled to the ''
+    // no-prefix sentinel -- the partial unique index's WHERE clause
+    // keeps that all-empty state index-legal, so the upgrade cannot
+    // fail on existing data.
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20260926_location_ticket_prefix.sql")
+        .expect("ticket_prefix migration present in registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // A pre-existing row, written before the column existed.
+    conn.execute(
+        "INSERT INTO locations (id, name, tenant_id) VALUES ('legacy-loc', 'Legacy', 'default')",
+        [],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, &ALL[split..]).unwrap();
+
+    let cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(locations)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert!(
+        cols.iter().any(|c| c == "ticket_prefix"),
+        "locations must carry ticket_prefix after the upgrade"
+    );
+
+    let (backfilled, existing): (String, i64) = conn
+        .query_row(
+            "SELECT ticket_prefix, COUNT(*) FROM locations WHERE id = 'legacy-loc'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(existing, 1);
+    assert_eq!(
+        backfilled, "",
+        "a pre-existing row must backfill to the '' no-prefix sentinel"
+    );
+
+    // The tenant-keyed partial unique index exists (f4a763aca lesson:
+    // never a tenant-coupling UNIQUE over the bare column).
+    let idx: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index'
+             AND name = 'idx_locations_tenant_ticket_prefix'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(idx, 1, "the tenant-keyed partial unique index must exist");
+}
+
+#[test]
+fn tax_rate_rounding_mode_column_pins_the_statutory_set() {
+    // E1-1 (owner ruling 2026-09-10): the statutory rounding directive is a
+    // per-rate column. '' = no statutory directive, so the store preference
+    // applies and existing rows are unchanged; 'half_up' / 'truncate' are
+    // modules_tax::models::RoundingMode's serde snake_case names (the enum's
+    // rename_all, mirrored by wire_name()), so a value written through core
+    // can never fail this CHECK. The schema refuses every other spelling -
+    // including the plausible-but-wrong Rust-variant casings.
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let (col_type, notnull, dflt): (String, i64, Option<String>) = conn
+        .query_row(
+            "SELECT type, \"notnull\", dflt_value FROM pragma_table_info('tax_rates')
+             WHERE name = 'rounding_mode'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("tax_rates must carry rounding_mode after the migration");
+    assert_eq!(col_type, "TEXT");
+    assert_eq!(notnull, 1, "the directive column is NOT NULL");
+    assert_eq!(
+        dflt.as_deref(),
+        Some("''"),
+        "no directive defaults to the '' sentinel, so preference applies"
+    );
+
+    // A row written without naming the column lands on the sentinel.
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps) VALUES ('r-default', 'PBN 10%', 1000)",
+        [],
+    )
+    .unwrap();
+    let mode: String = conn
+        .query_row(
+            "SELECT rounding_mode FROM tax_rates WHERE id = 'r-default'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "", "an unwritten rounding_mode must read back as ''");
+
+    // The full statutory set is accepted.
+    for (id, mode) in [("r-half-up", "half_up"), ("r-truncate", "truncate")] {
+        conn.execute(
+            &format!(
+                "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode) VALUES ('{id}', 'PBN 10%', 1000, '{mode}')"
+            ),
+            [],
+        )
+        .unwrap_or_else(|e| panic!("'{mode}' must satisfy the CHECK: {e}"));
+    }
+
+    // Anything outside the set is refused. 'round_half_up' is the shape of a
+    // plausible-but-wrong spelling (Rust-variant casing) that must never open
+    // a silent third mode - the same failure class the document_kind CHECK
+    // closes.
+    for bad in ["round_half_up", "HALF_UP", "bankers"] {
+        let attempted = conn.execute(
+            &format!(
+                "INSERT INTO tax_rates (id, name, rate_bps, rounding_mode) VALUES ('r-bad-{bad}', 'PBN 10%', 1000, '{bad}')"
+            ),
+            [],
+        );
+        assert!(attempted.is_err(), "'{bad}' must be refused by the CHECK");
+    }
+}
+
+#[test]
+fn sales_tax_estimate_note_column_pins_the_audit_stamp_shape() {
+    // F2-4 (T1 dossier D64 slice 4): the per-sale audit stamp for a tax
+    // computed against a non-fresh estimate. The column is NULLABLE by
+    // design — legacy rows are unstamped (they were computed live under the
+    // old path), and a missing stamp must never read as a claim — so there
+    // is deliberately NO default and NO backfill: the absence IS the
+    // answer. Pins mirror the rounding_mode pin's shape, minus the CHECK
+    // (a free-text stamp accepts arbitrary content; there is no closed
+    // vocabulary to enforce).
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let (col_type, notnull, dflt): (String, i64, Option<String>) = conn
+        .query_row(
+            "SELECT type, \"notnull\", dflt_value FROM pragma_table_info('sales')
+             WHERE name = 'tax_estimate_note'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .expect("sales must carry tax_estimate_note after the migration");
+    assert_eq!(col_type, "TEXT");
+    assert_eq!(notnull, 0, "the stamp must be nullable — NULL = unstamped");
+    assert!(
+        dflt.is_none(),
+        "no default: an unwritten stamp must land on NULL, not on a sentinel"
+    );
+
+    // A sale inserted WITHOUT naming the column reads back NULL — the
+    // unstamped state the legacy-path invariant requires.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count) VALUES ('s-no-stamp', 1000, 'USD', 1)",
+        [],
+    )
+    .unwrap();
+    let stamp: Option<String> = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = 's-no-stamp'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        stamp.is_none(),
+        "an unwritten tax_estimate_note must read back as NULL"
+    );
+
+    // Arbitrary text is accepted — the stamp is a free-text audit note
+    // (client claim + core-verified delta), not a constrained vocabulary.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, tax_estimate_note) VALUES
+         ('s-stamped', 1000, 'USD', 1, 'estimated 1200; verified 1180 (delta 20)')",
+        [],
+    )
+    .unwrap();
+    let stamped: String = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = 's-stamped'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stamped, "estimated 1200; verified 1180 (delta 20)");
+
+    // And the column survives an insert that omits it entirely — the shape
+    // every pre-F2-5 writer keeps using until the stamping half lands.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count) VALUES ('s-legacy-shape', 500, 'USD', 1)",
+        [],
+    )
+    .unwrap();
+    let omitted: Option<String> = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = 's-legacy-shape'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(omitted.is_none());
 }

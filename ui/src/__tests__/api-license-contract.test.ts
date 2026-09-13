@@ -35,7 +35,7 @@ describe('license.ts IPC contract', () => {
   });
 
   it('checkLicenseStatus → check_license_status (no args)', async () => {
-    mockInvoke.mockResolvedValue({ tenantId: 't1', status: 'active', tier: 'pro', active: true, expiresAt: null, graceUntil: null, maxStores: 5 });
+    mockInvoke.mockResolvedValue({ tenantId: 't1', status: 'active', tier: 'pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 });
     await checkLicenseStatus();
     expect(mockInvoke).toHaveBeenCalledWith('check_license_status', undefined);
   });

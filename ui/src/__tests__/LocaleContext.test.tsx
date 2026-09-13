@@ -92,3 +92,78 @@ describe('LocaleProvider', () => {
     expect(result.current.getLocaleLabel('id')).toBe('locale-id');
   });
 });
+
+// ── org/entity default locale (regional slice 4) ────────────────────
+
+describe('LocaleProvider org default (slice 4)', () => {
+  const originalLanguage = navigator.language;
+  const originalLanguages = navigator.languages;
+
+  beforeEach(() => {
+    localStorage.clear();
+    Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true });
+    Object.defineProperty(navigator, 'languages', { value: ['en-US'], configurable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'language', { value: originalLanguage, configurable: true });
+    Object.defineProperty(navigator, 'languages', { value: originalLanguages, configurable: true });
+  });
+
+  it('THE COLLISION PIN: a stored per-user choice beats the org default', () => {
+    // Org pushes 'id' (e.g. the chain resolved id-ID); the user's profile
+    // chose 'en' long ago. The user keeps winning — the org default is
+    // read-only influence, never an override.
+    localStorage.setItem(STORAGE_KEY, 'en');
+    const { result } = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => result.current.setOrgDefaultLocale('id-ID'));
+    expect(result.current.locale).toBe('en');
+    // And the org default never persisted over the user's choice.
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('en');
+  });
+
+  it('org default wins over the browser heuristic when no choice is stored', () => {
+    // Browser says en-US; the org default is Indonesian (id-ID). With no
+    // stored choice the org default answers.
+    const { result } = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => result.current.setOrgDefaultLocale('id-ID'));
+    expect(result.current.locale).toBe('id');
+  });
+
+  it('narrowes a BCP-47 tag to its supported primary subtag', () => {
+    const { result } = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => result.current.setOrgDefaultLocale('id-ID'));
+    expect(result.current.orgDefaultLocale).toBe('id');
+  });
+
+  it('ignores an org default for an unsupported locale', () => {
+    // ja-JP ships no bundle: the negotiation must not switch to it — the
+    // browser heuristic (en-US here) keeps answering.
+    const { result } = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => result.current.setOrgDefaultLocale('ja-JP'));
+    expect(result.current.orgDefaultLocale).toBeNull();
+    expect(result.current.locale).toBe('en');
+  });
+
+  it('clearing the org default falls back to the browser heuristic', () => {
+    const { result } = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => result.current.setOrgDefaultLocale('id-ID'));
+    expect(result.current.locale).toBe('id');
+    act(() => result.current.setOrgDefaultLocale(null));
+    expect(result.current.locale).toBe('en');
+  });
+
+  it('setLocale after an org default persists the explicit choice and wins', () => {
+    const { result } = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => result.current.setOrgDefaultLocale('id-ID'));
+    expect(result.current.locale).toBe('id');
+    act(() => result.current.setLocale('en'));
+    expect(result.current.locale).toBe('en');
+    // The explicit choice is the persisted user preference…
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('en');
+    // …and still wins on the next boot with the org default present.
+    const second = renderHook(() => useContext(LocaleContext), { wrapper });
+    act(() => second.result.current.setOrgDefaultLocale('id-ID'));
+    expect(second.result.current.locale).toBe('en');
+  });
+});

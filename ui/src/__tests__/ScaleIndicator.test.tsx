@@ -12,9 +12,18 @@ import type { WeightReading } from '@/api/hardware';
 // ── Mocks ──────────────────────────────────────────────────────────
 
 const mockReadScaleWeight = vi.fn();
+const mockReadScaleWeightScoped = vi.fn();
 
+// readScaleWeightScoped was missing here. ScaleIndicator.tsx:30 picks its API by token
+//   const readWeight = sessionToken ? () => readScaleWeightScoped(sessionToken) : readScaleWeight;
+// added by 403030ad ("migrate remaining frontend components to scoped APIs"), which did not
+// touch this file. With the mock exporting only the unscoped half, any test that passed a
+// sessionToken called undefined and threw -- so the scoped branch was unrenderable rather
+// than merely uncovered, and all ten render sites below pass no token. Third instance of
+// this after WeightScaleWidget (65971d0f) and useBarcodeScanner (0b7f9e18).
 vi.mock('@/api/hardware', () => ({
   readScaleWeight: () => mockReadScaleWeight(),
+  readScaleWeightScoped: (token: string) => mockReadScaleWeightScoped(token),
 }));
 
 vi.mock('@fluent/react', () => ({
@@ -255,5 +264,47 @@ describe('ScaleIndicator', () => {
       expect(el).toBeInTheDocument();
       expect(el?.getAttribute('aria-label')).toBe('scale-indicator-aria');
     });
+  });
+
+  // ── Scoped vs unscoped read (ScaleIndicator.tsx:30) ────────────
+  //
+  // The component polls every 2s, so both branches need the token to reach the command or
+  // the backend cannot resolve which store's scale it is reading.
+
+  it('polls through the scoped API when given a session token', async () => {
+    mockReadScaleWeightScoped.mockResolvedValue(stableReading);
+
+    render(
+      <ScaleIndicator
+        sessionToken="tok-1"
+        weighTarget={null}
+        onWeighAdd={vi.fn()}
+        onClearWeighTarget={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockReadScaleWeightScoped).toHaveBeenCalledWith('tok-1');
+    });
+    // The unscoped read uses the ambient store -- exactly what the scoped migration exists
+    // to prevent -- so "not called" is the security assertion, not tidiness.
+    expect(mockReadScaleWeight).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the unscoped read when no token is given', async () => {
+    mockReadScaleWeight.mockResolvedValue(stableReading);
+
+    render(
+      <ScaleIndicator
+        weighTarget={null}
+        onWeighAdd={vi.fn()}
+        onClearWeighTarget={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockReadScaleWeight).toHaveBeenCalled();
+    });
+    expect(mockReadScaleWeightScoped).not.toHaveBeenCalled();
   });
 });

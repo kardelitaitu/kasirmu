@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · scripts/generate-license-keys.{ps1,sh} verified; Dockerfile uses golang:1.25-alpine -> alpine:3.22 (was 3.20, bumped for Trivy EOL); health.go (GET /api/health, returns status: ok) + healthcheck.go present; pb_schema.json present; go.mod is go 1.25.0; all build/deploy/env-var claims match the Go code · RE-AUDITED 2026-08-31 by docs-auditor: go.mod still 1.25.0, /api/health present, oz-license.key.pub committed; env-var section confirmed current (Midtrans/ADR #39, PADDLE_PRICE_TIERS six sandbox prices catalogued 08-31); corrected the body's alpine 3.20 -> 3.22 -->
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings, 1 gate added) · Section 7 opens by claiming this section documents every variable in full, and on 09-09-26 that was false: five names the binary reads appeared in no document anywhere in the repo (LOGIN_LOCKOUT_MIN_GAP, LOGIN_LOCKOUT_MAX_COOLDOWN, LOGIN_LOCKOUT_DISABLED, OZ_ADMIN_EMAIL, OZ_ENTERPRISE_MRR_USD). Three are the login lockout, so the only control that slows credential stuffing had no operator-facing description at all; the fourth names a tenant the code deliberately refuses to let be renamed or deleted. Added section 7.7 with defaults, citing source lines. · TWO CODE FINDINGS RECORDED, NOT PATCHED: LOGIN_LOCKOUT_DISABLED is production-reachable and its off state is invisible in both logs and /api/health; OZ_ENTERPRISE_MRR_USD parses a USD price into a float64, against the AGENTS.md money rule. · NEW GATE .agents/skills/docs-auditor/scripts/check-env-docs.py: 27 names scanned, 0 undocumented, 9 self-test cases over synthetic strings only. · Two claims I nearly made and were wrong: four variables looked absent from the code because I scanned only apps/license-server while apps/unified/healthcheck.sh reads them; and OZ_SMTP_STARTTLS / OZ_SMTP_IMPLICIT_TLS appear once in this file precisely to tell the operator NOT to set them, so their absence from the code is the point. This skill own check-dead-refs.py is what caught me publishing a re-derive command for a script that did not exist yet. · SUPERSEDED, kept verbatim (rev 2026-07-22, re-audited 2026-08-31): 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · scripts/generate-license-keys.{ps1,sh} verified; Dockerfile uses golang:1.25-alpine -> alpine:3.22 (was 3.20, bumped for Trivy EOL); health.go (GET /api/health, returns status: ok) + healthcheck.go present; pb_schema.json present; go.mod is go 1.25.0; all build/deploy/env-var claims match the Go code · RE-AUDITED 2026-08-31 by docs-auditor: go.mod still 1.25.0, /api/health present, oz-license.key.pub committed; env-var section confirmed current (Midtrans/ADR #39, PADDLE_PRICE_TIERS six sandbox prices catalogued 08-31); corrected the body's alpine 3.20 -> 3.22 -->
 
 # OZ-POS License Server — Northflank Deployment Guide
 
@@ -310,6 +310,123 @@ In the Midtrans dashboard (**Settings → Configuration → Webhook Notification
 
 ---
 
+### 7.7 Optional tuning variables (none are required to boot)
+
+§7 opens by claiming this section documents every variable in full. Until 09-09-26 it did
+not: five names the binary reads appeared in no document in the repo — not here, not in
+`go-live-checklist.md`, not in `.env.example`. Three of them govern the login lockout, so
+the one control that slows credential stuffing had no operator-facing description at all.
+
+Read from `apps/license-server/login_lockout.go`:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LOGIN_LOCKOUT_MIN_GAP` | `5s` | Minimum gap between login attempts for one email. Go duration string; unparseable values log and fall back to the default (`:50`). |
+| `LOGIN_LOCKOUT_MAX_COOLDOWN` | `15m` | Cap on the escalating lockout (`:66`). |
+| `LOGIN_LOCKOUT_DISABLED` | unset (= limiter **on**) | Exact string `1` turns the limiter off entirely (`:151`). |
+
+> ⚠️ **`LOGIN_LOCKOUT_DISABLED` is a production-reachable kill switch.** The function comment
+> says it exists so the window-limiter tests can run in isolation and that the production
+> default is enabled — but nothing checks the build or environment: setting it to `1` in a
+> Northflank secret group disables brute-force protection on a live server, silently, and no
+> log line or `/api/health` field reports that it is off. That asymmetry (a security control
+> whose disabled state is invisible) is recorded here rather than patched, because the fix is
+> a code decision: gate it on a non-release build, or surface it in `/api/health` next to
+> `smtp`/`paddle`, which already report gate status.
+
+Read from the admin surface:
+
+- **`OZ_ADMIN_EMAIL`** — the email of the admin tenant, falling back to
+  `defaultAdminEmail` when unset. Authentication reads it in four places
+  (`addon_admin.go:278`, `admin_dashboard.go:87`, `admin_tenant_lifecycle.go`,
+  `password_rotation.go:176`) and each anchors on **one** address: the env value, else the
+  compiled default. The tenant-lifecycle guard is deliberately **wider**: `isAdminTenantRecord`
+  tests membership in `reservedAdminEmails` — env UNION compiled default — so the guard is a
+  superset of the auth anchor and is never unknown. Consequences worth knowing before you
+  touch a deployment: an unset variable does **not** disable rename or delete of ordinary
+  tenants (it did for exactly one commit, and that was an outage, not a protection — auth
+  still anchors on the default, so the identity was never unknown); what unset means is that
+  the admin identity is an address living in the binary.
+  **This is the one environment value that must never change after first boot**: the admin
+  auth mapping resolves sessions to that tenant, so changing it orphans every existing admin
+  session, and deleting the tenant locks all of them out — `isAdminTenantRecord` exists
+  precisely to refuse both. Renaming another tenant **into** a reserved address is refused
+  too (`email is reserved for the deployment admin identity`): holding that address *is*
+  holding the admin identity, and the contact-edit path is not gated by the signup
+  reservation. Nothing in the deploy flow says any of this, which is why it is here.
+
+- **`OZ_ENTERPRISE_MRR_USD`** — read once in `init()` (`admin_stats.go:702`) and, when it
+  parses and is greater than zero, replaces `TierPriceUSD["enterprise"]`, so enterprise
+  MRR thresholds can be re-priced without a rebuild.
+
+> ⚠️ **CODE FINDING, recorded not fixed**: that override parses the value into a `float64`
+> and writes it into a USD price map. AGENTS.md's currency rule is that monetary values are
+> `Money` (`i64` minor units) and never `f32`/`f64`. It is a display-side threshold in the
+> admin dashboard rather than a ledger amount, so no money is mis-added today — but the rule
+> is not scoped to ledgers, and this is the kind of float that turns into an invoice.
+
+> **Re-deriving this list** (why: an env var missing from the docs is invisible to every
+> existing gate, and the drift checker only compares docs to *gates*):
+>
+> ```bash
+> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py          # 27 names, 0 undocumented
+> python3 .agents/skills/docs-auditor/scripts/check-env-docs.py --self-test   # 9 cases, touches no files
+> ```
+>
+> It exists now. `.agents/skills/docs-auditor/scripts/check-env-docs.py` reports every
+> variable the code reads that appears in none of `DEPLOY.md`,
+> `go-live-checklist.md`, `.env.example` or `verification-*.md`, and exits 1 when it finds
+> one. Baseline 09-09-26: **27 names scanned, 0 undocumented** — which was 5 undocumented
+> before section 7.7 was written, so the count is the proof the repair landed rather than a
+> claim about it.
+>
+> Scope is **both apps on purpose**. The healthcheck variables live in `apps/unified/`, not
+> `apps/license-server/`, so scanning only the service directory reported four *false*
+> absences (`OZ_HEALTH_SMTP_MAX_FAILS`, `OZ_HEALTH_PADDLE_MAX_FAILS` and the two SMTP TLS
+> names) — and two of those four were not even env-adjacent: `OZ_SMTP_STARTTLS` and
+> `OZ_SMTP_IMPLICIT_TLS` appear once, in *this* file telling you **not** to set them.
+> Both misreads are encoded in the script: the scan covers `apps/unified/healthcheck.sh`,
+> and a line may carry `env-doc: ok: <reason>` to be exempted deliberately rather than by
+> silence.
+
+#### 7.7.1 Precondition: set `OZ_ADMIN_EMAIL` before the admin-gate repair ships
+
+Web admin identity is an email comparison on this value (`admin_dashboard.go:87-91`, duplicated at
+`addon_admin.go:278-282`, `admin_tenant_lifecycle.go`, `password_rotation.go:176`); unset, the
+target is the built-in `defaultAdminEmail` (`password_rotation.go:42`) and no compose file or workflow
+sets it. So set it — and be clear about what setting it does and does not do, because the
+guard semantics changed twice in one day:
+
+- **An unset variable does not brick the admin surface.** It used to: while the lifecycle guard
+  failed closed on an unset `OZ_ADMIN_EMAIL`, every email rename answered 400 and every offboarding
+  delete answered 403 on rows that are provably not the admin tenant, and the SPA renders a 403 as a
+  global Access denied screen. The guard now tests membership in the reserved set (env UNION compiled
+  default), so ordinary tenants stay editable and exactly one row — the reserved one — is not.
+- **What unset actually costs you is hygiene, and `/api/health` says so.** The `admin` block reports
+  `source` (`env` / `fallback`), `matching_rows` and `verified`, never the address itself.
+  `verified: true` means deploy hygiene only — you named the address and exactly one row carries it.
+  `source: "env"` with `matching_rows: 0` is the bricked shape: auth anchors on an address no row
+  holds, so there is no web admin. `source: "fallback"` means you are running on an address that
+  lives in the binary.
+- **The address is write-once in both directions.** Changing it orphans existing admin sessions;
+  renaming another tenant *into* it is refused, because holding that address is holding the identity.
+
+Steps, in order, before deploying (unchanged — this is still how you prove the deployment is healthy):
+
+```bash
+B=https://license.ozpos.my.id; E='<admin-email>'   # must equal OZ_ADMIN_EMAIL in Northflank
+# 1. the secret is set AND its email has a tenants row with status=active — admin self-signup is refused, so the row must already exist (warnAdminTenantState warns on a boot that finds none):
+sqlite3 /data/pb_data/data.db "SELECT id,email,status,email_verified FROM tenants WHERE email='$E'"
+# 2. prove the owner reads that mailbox — email_verified is false by migration default (main.go:467-484) and false for webhook-created rows (paddle_webhook.go:1188), and admin login never reads it:
+curl -s -X POST "$B/api/v1/web/request-otp" -H 'Content-Type: application/json' -d "{\"email\":\"$E\"}"
+curl -s -X POST "$B/api/v1/web/verify-otp"  -H 'Content-Type: application/json' -d "{\"email\":\"$E\",\"code\":\"<code>\"}"
+# 3. that session must be admin (200, not 401/403) — also the proof the env value matches the row.
+# 4. OZ_ADMIN_KEY must be present (with OZ_PRODUCTION=1 the fail-fast boot proves it), and OZ_ADMIN_EMAIL is write-once: it must never change after first boot.
+curl -s -o /dev/null -w '%{http_code}\n' "$B/api/v1/admin/enterprise-codes" -H "Authorization: Bearer <token>"
+```
+
+**Break-glass, and its limit.** `OZ_ADMIN_KEY` authenticates the API with no session (`admin_dashboard.go:65`, `addon_admin.go:263`) but the admin SPA cannot use it — `website/public/admin/login.js` is session-only, so key-only recovery brings back the API, not the dashboard. Sessions are in-memory (`web_otp.go:13-19`), so a restart drops them: a session-path lockout self-heals on restart, and equally a revoked admin session cannot be killed without one. A restart is not a way to remove an attacker who has the mailbox — they just request another OTP.
+
 ## 8. Import the Collections Schema
 
 PocketBase collections (`license_keys`, `tenants`, `subscriptions`, `tenant_machines`) are defined in `pb_schema.json`.
@@ -444,12 +561,18 @@ curl -X POST https://license.ozpos.my.id/api/v1/license/status \
   "tenant_id": "test-tenant-001",
   "tier_key": "pro",
   "status": "active",
+  "max_locations": 2,
   "max_stores": 2,
   "max_pos_instances": 3,
   "expires_at": "...",
   "grace_until": "..."
 }
 ```
+
+`max_locations` is the primary quota name (1g Store → Location wire
+rename). The legacy `max_stores` key rides along with the same value
+until the whole client fleet has rotated; storage (the `subscriptions`
+record) keeps the historical `max_stores` field name.
 
 ### 11.4 Test rate limiting
 
@@ -492,7 +615,7 @@ Run this in **sandbox first** (ADR #39 verification). Tick every box before cons
 4. [ ] The Snap overlay opens (QRIS / VA / e-wallet / card). Pay with the sandbox QRIS — scan the QRIS image with the Midtrans sandbox mobile app, or use the sandbox dashboard's simulate-payment flow; the transaction settles within seconds.
 5. [ ] `snap.pay`'s `onSuccess` fires; the webhook answers **200**. In the admin UI (`/_/`): a **tenant** was upserted by the checkout email, and a **license_keys** record exists with `key` = `OZ-PLUS-…`, `payment_provider=midtrans`, `midtrans_sub_id` set, and the plus quota block (max_stores=1, max_pos_instances=2, allowed_types without `kds`).
 6. [ ] The **receipt email** with the license key lands at the buyer address (requires SMTP from §7.1 step 5; failure is non-fatal and logged).
-7. [ ] **POS activation:** in the desktop app, activate with that key + email → the signed payload returns `tier_key=plus`, `max_stores=1`, `max_pos_instances=2`, and `payment_provider=midtrans` on the subscription record.
+7. [ ] **POS activation:** in the desktop app, activate with that key + email → the signed payload returns `tier_key=plus`, `max_locations=1` (legacy `max_stores` also present), `max_pos_instances=2`, and `payment_provider=midtrans` on the subscription record.
 8. [ ] **Bundle (C3.2, only if the bundle entry is in the map):** toggle Restaurant Starter on the Plus card → snap `amount` is the bundle amount and `custom_field4=restaurant_starter`; after payment the key's `allowed_types` **includes `kds`** and `bundle_id=restaurant_starter`.
 
 **Negative + lifecycle checks (curl against the webhook URL):**
@@ -683,3 +806,5 @@ Alternatively, export manually from the admin UI (`/_/` → **Settings** → **E
 | Health check failing | The Go healthcheck binary pings `/api/health` with a 5s timeout. If the server is slow to start (e.g., first boot after volume attach), the container may flap as unhealthy for ~15s until PocketBase finishes initialisation. In the **unified image**, the shell healthcheck also fails the container after `OZ_HEALTH_SMTP_MAX_FAILS` (default 3) consecutive SMTP `verified:false` probes — check `docker inspect` → `State.Health` and the healthcheck stderr for `SMTP sender identity not verified`. Run `docker inspect` to check `State.Health`. |
 
 > 💡 **Tip:** The Dockerfile healthcheck uses the standalone `/pb/healthcheck` Go binary (no curl dependency). It pings `/api/health` which returns `{"status":"ok"}` when PocketBase is healthy. The healthcheck was set up correctly in the Dockerfile.
+
+> last audited 09-09-26 by docs-auditor

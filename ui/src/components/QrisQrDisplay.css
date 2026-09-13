@@ -137,31 +137,21 @@
   }
 }
 
-.qris-qr-placeholder {
-  width: 200px;
-  height: 200px;
+/* Merchant static QR not configured (replaces the retired 21×21 demo
+   grid — 441 cells that scanned to nothing). A note, not an error: the
+   cashier-assert path below remains usable with a physical counter QR. */
+.qris-qr-not-configured {
+  width: 224px;
+  min-height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.qris-qr-grid {
-  display: grid;
-  grid-template-columns: repeat(21, 1fr);
-  grid-template-rows: repeat(21, 1fr);
-  /* 1px: QR grid gap — sub-token spacing for visual grid effect */
-  gap: 1px;
-  width: 100%;
-  height: 100%;
-}
-
-.qris-qr-cell {
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-surface, #f0f0f0);
-}
-
-.qris-qr-cell--filled {
-  background: var(--color-fg, #000);
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
 }
 
 .qris-details {
@@ -225,4 +215,83 @@
   @keyframes qris-spin {
     to { transform: rotate(360deg); }
   }
+}
+
+/* Manual-mode cashier assertion — the only way a static QR (no settlement
+   feed) reaches 'confirmed'. Full-width, prominent: it is a deliberate
+   money statement, not a dismiss. */
+.qris-manual-confirm-btn {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent-fg);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--duration-150) var(--ease-out);
+}
+
+.qris-manual-confirm-btn:hover {
+  background: var(--color-accent-hover);
+}
+
+/* ── QRIS Auto (dynamic charge) mode ─────────────────────────────── */
+
+/* The real payload renders as a scannable SVG on a theme-invariant paper
+   surface — same reasoning as the KDS enrollment QR: POS dark themes flip
+   --color-bg to near-black and scanners reject a code whose quiet zone is
+   dark. --color-paper is white in every theme, so this stays tokenized
+   (raw hex trips themeTokenCompliance, whose baseline is 0). */
+.qris-qr-real {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-paper);
+  border-radius: var(--radius-md);
+}
+
+.qris-countdown {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-secondary);
+}
+
+.qris-expired {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.qris-expired-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-danger);
+}
+
+.qris-expired-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.qris-expired-btn {
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.qris-expired-btn--cancel {
+  background: transparent;
+  color: var(--color-fg-secondary);
 }

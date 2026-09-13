@@ -13,6 +13,16 @@
 //!   length-prefixed binary frames, per-hash `stored|duplicate|rejected`.
 //! - `GET /api/v1/images:pack?hashes=...` — up to 64 files / 2 MB for cold
 //!   start (length-prefixed frames).
+//!
+//! # Auth model
+//!
+//! PUT endpoints accept any valid tenant JWT (the tablet image-push
+//! scheduler uploads with a sync/JWT token, not an admin key — so these
+//! are intentionally NOT operator/admin-gated). No per-tenant byte quota
+//! or rate limit exists: an authenticated tenant can fill the volume by
+//! repeatedly hitting the 32 KB / 512 KB caps. Accepted abuse surface for
+//! a device cohort holding valid creds; add a quota/rate limit if that
+//! changes.
 
 use axum::{
     Json,
@@ -203,19 +213,34 @@ pub async fn put_image(
     Query(query): Query<PutImageQuery>,
     body: Bytes,
 ) -> Response {
+    // Mirror `process_image`'s deterministic rejection (empty / oversize /
+    // non-WebP) so a malformed payload still gets a 400, not a 409, and so
+    // the client-hash handshake below only ever applies to a storable body.
+    if body.is_empty() || body.len() > MAX_IMAGE_BYTES || !is_webp_magic(&body) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "image rejected: must be a WebP ≤ 32 KB"})),
+        )
+            .into_response();
+    }
+    // Verify the client-computed hash (spec 0046b §3.4) BEFORE persisting
+    // anything. The store is content-addressed — sha-256 of the upload IS
+    // the identity — so the check is pure CPU and needs no IO. Doing it up
+    // front means a mismatch returns 409 with the bytes genuinely discarded
+    // (never written, never refcounted) instead of orphaning a stored file.
+    let hash16 = sha256_hex16(&body);
+    if let Some(expected) = query.hash.as_deref()
+        && (!is_valid_hash16(expected) || expected != hash16)
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "hash mismatch"})),
+        )
+            .into_response();
+    }
     let outcome = process_image(&state, &claims, &body).await;
     match outcome {
-        ImageOutcome::Stored(hash16) | ImageOutcome::Duplicate(hash16) => {
-            // Verify the client-computed hash if supplied (409 on mismatch).
-            if let Some(expected) = query.hash.as_deref()
-                && (!is_valid_hash16(expected) || expected != hash16)
-            {
-                return (
-                    StatusCode::CONFLICT,
-                    Json(serde_json::json!({"error": "hash mismatch"})),
-                )
-                    .into_response();
-            }
+        ImageOutcome::Stored(_) | ImageOutcome::Duplicate(_) => {
             (StatusCode::CREATED, Json(PutImageResponse { hash16 })).into_response()
         }
         ImageOutcome::Rejected => (
@@ -390,7 +415,24 @@ pub async fn get_image_pack(
         let referenced = {
             let db = state.db.lock().await;
             let store = Store::new(&db);
-            store.image_ref_exists(tenant_id, h).unwrap_or_default()
+            // Fail-CLOSED by decision, not by accident: this is the content-spine
+            // tenancy gate, so an error must read as "not referenced" and skip the
+            // frame — never as "referenced". Skipping is recoverable (the puller
+            // treats a missing frame as a 404 for that hash and retries), but it
+            // is otherwise silent, so name it.
+            match store.image_ref_exists(tenant_id, h) {
+                Ok(referenced) => referenced,
+                Err(e) => {
+                    tracing::warn!(
+                        tenant_id,
+                        hash = h,
+                        operation = "Store::image_ref_exists",
+                        error = %e,
+                        "images:pack spine lookup failed, treating the hash as unreferenced (fail-closed, frame skipped)"
+                    );
+                    false
+                }
+            }
         };
         if !referenced {
             continue;
@@ -456,20 +498,42 @@ pub async fn get_image_missing(
             .collect()
     };
 
+    // ADVISORY, and the fallback below is a deliberate availability choice, not
+    // an oversight: this response only REORDERS the desktop's push queue — the
+    // set it uploads comes from the local queue (platform/sync/src/image_push.rs
+    // `peek_push_batch`), never from this list — so a failed lookup must not
+    // fail the request. The cost is that an empty answer is now AMBIGUOUS: it
+    // means either "nothing is missing" or "the lookup failed", and the warning
+    // is the only way to tell them apart. Keep it loud.
     let missing = if let Some(pool) = &state.pg {
-        crate::pg::list_missing_hashes(pool, tenant_id, &candidates)
-            .await
-            .unwrap_or_default()
+        match crate::pg::list_missing_hashes(pool, tenant_id, &candidates).await {
+            Ok(missing) => missing,
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id,
+                    operation = "pg::list_missing_hashes",
+                    error = %e,
+                    "images:missing lookup failed, answering an empty set (advisory: desktop falls back to queue order)"
+                );
+                Vec::new()
+            }
+        }
     } else {
         let db = state.db.lock().await;
         let store = Store::new(&db);
         let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
-        store
-            .missing_hashes(tenant_id, &refs)
-            .unwrap_or_default()
-            .into_iter()
-            .map(str::to_owned)
-            .collect()
+        match store.missing_hashes(tenant_id, &refs) {
+            Ok(missing) => missing.into_iter().map(str::to_owned).collect(),
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id,
+                    operation = "Store::missing_hashes",
+                    error = %e,
+                    "images:missing lookup failed, answering an empty set (advisory: desktop falls back to queue order)"
+                );
+                Vec::new()
+            }
+        }
     };
 
     (

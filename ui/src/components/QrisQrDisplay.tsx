@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/frontend/shared';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
@@ -13,21 +14,37 @@ interface QrisQrDisplayProps {
   isOpen: boolean;
   onClose: () => void;
   onPaymentConfirmed: () => void;
+  // ── QRIS Auto (dynamic Midtrans charge) mode ──────────────────────
+  // Every prop below is optional; with none set the component is the
+  // historical manual demo display byte-for-byte (its characterization
+  // suite pins that). Auto mode replaces the pseudo-QR + fake-timer
+  // confirmation with the REAL payload, a REAL settlement poll, and the
+  // gateway expiry countdown.
+  /** The EMVCo QRIS payload string from the cloud charge. When present,
+   *  a real scannable QR is rendered instead of the placeholder grid. */
+  qrString?: string;
+  /** Auto mode: one settlement probe. Resolves true when the cloud ledger
+   *  shows settled. Transient rejections are swallowed (the countdown
+   *  bounds the loop) — the webhook may simply not have landed yet. */
+  pollSettled?: () => Promise<boolean>;
+  /** Auto mode: seconds from open until the gateway expires the QR
+   *  (from the charge response's `expiresInSecs` — 300, NOT 15 minutes). */
+  expiresInSeconds?: number;
+  /** Auto mode: the countdown reached zero while still unpaid. */
+  onExpired?: () => void;
+  /** Auto mode: cashier chose to mint a fresh charge for the same sale. */
+  onReissue?: () => void;
 }
 
-function simpleHash(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash) + str.charCodeAt(i);
-  }
-  return hash >>> 0;
-}
+/** Poll-backoff progression, seconds: 2, 3, 5, 8, then capped at 10. */
+const AUTO_POLL_SCHEDULE = [2, 3, 5, 8];
+const AUTO_POLL_CAP_SECS = 10;
 
 /**
  * Full-screen QRIS QR code payment modal.
- * Displays a deterministic pseudo-QR code based on the reference,
- * polls for payment confirmation, and calls `onPaymentConfirmed`
- * when the payment is detected as complete.
+ * Manual mode: deterministic pseudo-QR + demo polling, confirmed by the
+ * cashier's out-of-band check. Auto mode (props above): real QR payload,
+ * real settlement poll with backoff, and the gateway expiry countdown.
  */
 export default function QrisQrDisplay({
   amount,
@@ -36,30 +53,86 @@ export default function QrisQrDisplay({
   isOpen,
   onClose,
   onPaymentConfirmed,
+  qrString,
+  pollSettled,
+  expiresInSeconds,
+  onExpired,
+  onReissue,
 }: QrisQrDisplayProps) {
   const { l10n } = useLocalization();
-  const [pollCount, setPollCount] = useState(0);
   const [status, setStatus] = useState<'waiting' | 'confirmed' | 'expired'>('waiting');
+  const [remainingSecs, setRemainingSecs] = useState<number | null>(null);
+  const autoMode = pollSettled !== undefined;
+  // onExpired identity churns with parent renders; keep the latest in a
+  // ref so the countdown effect fires it exactly once at zero.
+  const onExpiredRef = useRef(onExpired);
+  onExpiredRef.current = onExpired;
 
+  // ── Manual mode: the cashier asserts, nothing confirms on a timer ──
+  // The pre-3.2 demo flipped this dialog to "Payment confirmed!" after
+  // 8 s of fake polling and the modal built a REAL completed sale behind
+  // it — money that never arrived. The assert is now explicit: manual
+  // QRIS has no settlement feed (that is the whole difference from Auto),
+  // so the only honest surface is the cashier saying they saw it, and
+  // `handleQrConfirmed` records that assertion under their session.
+  // Closing while open (or before asserting) resets to waiting, so a
+  // re-opened dialog can never inherit a stale confirmed state.
   useEffect(() => {
-    if (!isOpen) {
-      setPollCount(0);
-      setStatus('waiting');
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setPollCount((prev) => prev + 1);
-    }, 2000);
-
-    return () => clearInterval(interval);
+    if (!isOpen) setStatus('waiting');
   }, [isOpen]);
 
+  // ── Real settlement polling (auto mode) ──────────────────────────
+  // Changing `reference` (a re-issued order id) restarts the loop fresh.
   useEffect(() => {
-    if (pollCount >= 4 && status === 'waiting') {
-      setStatus('confirmed');
+    if (!isOpen || !autoMode || status !== 'waiting') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let stepIdx = 0;
+    const tick = async () => {
+      let settled = false;
+      try {
+        settled = await pollSettled!();
+      } catch {
+        // Transient (network, token refresh, webhook lag) — keep polling;
+        // the countdown is the honest stop condition, not error counts.
+      }
+      if (cancelled) return;
+      if (settled) {
+        setStatus('confirmed');
+        return;
+      }
+      const secs = AUTO_POLL_SCHEDULE[stepIdx] ?? AUTO_POLL_CAP_SECS;
+      stepIdx += 1;
+      timer = setTimeout(tick, secs * 1000);
+    };
+    timer = setTimeout(tick, (AUTO_POLL_SCHEDULE[0] ?? AUTO_POLL_CAP_SECS) * 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, autoMode, reference, status]);
+
+  // ── Expiry countdown (auto mode) ─────────────────────────────────
+  useEffect(() => {
+    if (!isOpen || !pollSettled || !expiresInSeconds) {
+      setRemainingSecs(null);
+      return;
     }
-  }, [pollCount, status]);
+    const deadline = Date.now() + expiresInSeconds * 1000;
+    setRemainingSecs(expiresInSeconds);
+    const interval = setInterval(() => {
+      const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      setRemainingSecs(left);
+      if (left <= 0) {
+        clearInterval(interval);
+        setStatus((s) => (s === 'waiting' ? 'expired' : s));
+        onExpiredRef.current?.();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, reference, expiresInSeconds]);
 
   useEffect(() => {
     if (status !== 'confirmed') return;
@@ -68,21 +141,6 @@ export default function QrisQrDisplay({
     }, 1200);
     return () => clearTimeout(timer);
   }, [status, onPaymentConfirmed]);
-
-  const qrCells = useMemo(() => {
-    const seed = simpleHash(reference || `${Date.now()}`);
-    const cells: boolean[][] = [];
-    let rng = seed;
-    for (let i = 0; i < 21; i++) {
-      const row: boolean[] = [];
-      for (let j = 0; j < 21; j++) {
-        rng = (rng * 1103515245 + 12345) & 0x7fffffff;
-        row.push((rng & 0x1) === 1);
-      }
-      cells.push(row);
-    }
-    return cells;
-  }, [reference]);
 
   // Layered exit to mirror the entry (added in this PR). Mirrors
   // the PosScreen cousin-modals pattern (commit 1408992): the
@@ -126,18 +184,28 @@ export default function QrisQrDisplay({
         </div>
 
         <div className={`qris-qr-wrapper ${status === 'waiting' ? 'qris-pulse' : ''}`}>
-          <div className="qris-qr-placeholder" aria-label={requiredLocalized(l10n, 'payment-qris-qr-aria')}>
-            <div className="qris-qr-grid">
-              {qrCells.map((row, i) =>
-                row.map((cell, j) => (
-                  <div
-                    key={`${i}-${j}`}
-                    className={`qris-qr-cell ${cell ? 'qris-qr-cell--filled' : ''}`}
-                  />
-                )),
-              )}
+          {qrString ? (
+            <div
+              className="qris-qr-real"
+              role="img"
+              aria-label={requiredLocalized(l10n, 'payment-qris-qr-aria')}
+            >
+              <QRCodeSVG value={qrString} size={224} level="M" marginSize={2} />
             </div>
-          </div>
+          ) : (
+            // The pre-3.2 demo drew a 21×21 hash-seeded pseudo-QR here —
+            // 441 cells of pure theater that scanned to nothing. A
+            // customer-facing money surface never gets to pretend; with
+            // no merchant static payload configured (agents-5 R2) the
+            // dialog says so and names where the fix lives. The
+            // cashier-assert path below still works for the physical
+            // counter-poster scenario.
+            <div className="qris-qr-not-configured" role="note">
+              <Localized id="payment-qris-not-configured">
+                <span>Merchant static QR not configured — set it under Settings › Local payment methods.</span>
+              </Localized>
+            </div>
+          )}
         </div>
 
         <div className="qris-details">
@@ -157,6 +225,47 @@ export default function QrisQrDisplay({
           </div>
         </div>
 
+        {remainingSecs !== null && status === 'waiting' && (
+          <p className="qris-countdown" role="timer">
+            <Localized id="payment-qris-countdown" vars={{ seconds: remainingSecs }}>
+              <span>Expires in {remainingSecs}s</span>
+            </Localized>
+          </p>
+        )}
+
+        {status === 'expired' && (
+          <div className="qris-expired" role="alert">
+            <Localized id="payment-qris-expired-title">
+              <span className="qris-expired-title">The QR code expired</span>
+            </Localized>
+            <div className="qris-expired-actions">
+              {onReissue && (
+                <button
+                  type="button"
+                  className="qris-expired-btn"
+                  onClick={onReissue}
+                  aria-label={requiredLocalized(l10n, 'payment-qris-reissue')}
+                >
+                  <Localized id="payment-qris-reissue">
+                    <span>Generate a new QR</span>
+                  </Localized>
+                </button>
+              )}
+              <button
+                type="button"
+                className="qris-expired-btn qris-expired-btn--cancel"
+                onClick={() => exit.requestClose()}
+                disabled={exit.exiting}
+                aria-label={requiredLocalized(l10n, 'payment-qris-cancel')}
+              >
+                <Localized id="payment-qris-cancel">
+                  <span>Cancel</span>
+                </Localized>
+              </button>
+            </div>
+          </div>
+        )}
+
         {status === 'waiting' && (
           <div className="qris-status" role="status" aria-label={requiredLocalized(l10n, 'payment-qris-waiting-aria')}>
             <div className="qris-spinner" aria-hidden="true" />
@@ -164,6 +273,21 @@ export default function QrisQrDisplay({
               <span>Waiting for payment...</span>
             </Localized>
           </div>
+        )}
+
+        {/* Manual mode only: with no settlement feed, the cashier is the
+            oracle. Auto mode has no button — its poll is the truth. */}
+        {status === 'waiting' && !autoMode && (
+          <button
+            type="button"
+            className="qris-manual-confirm-btn"
+            onClick={() => setStatus('confirmed')}
+            aria-label={requiredLocalized(l10n, 'payment-qris-manual-confirm')}
+          >
+            <Localized id="payment-qris-manual-confirm">
+              <span>I received the payment</span>
+            </Localized>
+          </button>
         )}
 
         {status === 'confirmed' && (

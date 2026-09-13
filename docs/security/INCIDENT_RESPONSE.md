@@ -1,6 +1,10 @@
 # OZ-POS Incident Response Plan
 
-> **Status:** Implemented · Last updated: 2026-07-20
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (3 findings) · first stamp this page ever carried, and it had none: the header read "Status: Implemented · Last updated: 2026-07-20", which is both a shadow status line (no <!-- Audit stamp --> comment, no `last audited` footer, so invisible to check-audit-stamps.py and detect.sh) and the wrong word for a runbook — you do not implement a plan. · REPAIRED: (1) §10 claimed the audit log "uses" an `incident.report` action type across five lifecycle outcomes; the string exists nowhere in the sources and the real vocabulary is five SECURITY_ACTION_*/SECURITY_REASON_* consts (login, login.failed, logout, user.create, user.update) in crates/oz-core/src/db/audit_security.rs, so §10 is now labelled a specification; (2) §4.2 step 5 sends the on-call engineer to docs/incidents/, which has never existed and is referenced by no other file; (3) the status line rewritten. · VERIFIED HONEST, not assumed: this document already flags its own gaps where the gap is a file — COMMS_TEMPLATES.md, EMERGENCY_CONTACTS.md, INCIDENT_RESPONSE_QUICKREF.md, business_continuity.md, audit_log_specifications.md, security_checklist.md all carry "⚠️ Pending" markers naming the date they were found missing. That is good practice and it is why the two repaired items are the interesting ones: both were claimed in present tense with no marker, and both are the kind of claim a reader follows during an actual incident. -->
+
+> **Status:** Documented, partially unimplemented · Last updated: 08-09-26
+> **Machine claims verified against code** — see the audit stamp below. §10 in particular
+describes an audit action that does not exist.
 > **PCI-DSS v4.0:** Requirement 12.5.1
 > **Document owner:** Security Team
 
@@ -117,7 +121,7 @@ Incidents may be detected through:
 2. **Classify** the incident using the severity matrix (§2).
 3. **Assign** an Incident Commander (IC) who creates a dedicated Slack channel `#incident-<shortname>`.
 4. **Log** the incident in the audit log with action `"incident.report"` (see §10).
-5. **Record** initial findings in a shared document (Google Doc or Markdown file in `docs/incidents/`).
+5. **Record** initial findings in a shared document (Google Doc or Markdown file in `docs/incidents/`). ⚠️ **`docs/incidents/` does not exist in the repository** (08-09-26) and is referenced by no other file — create it, or pick another location, before relying on this step.
 
 ### 4.3 Containment
 
@@ -371,7 +375,20 @@ What went well? What could be improved?
 
 ### 10.1 Incident Action Type
 
-The audit log uses the `"incident.report"` action type to record all security incidents. This follows the established `"<domain>.<action>"` naming convention (e.g., `"sale.create"`, `"user.login"`, `"incident.report"`).
+> ⚠️ **This section describes an integration that does not exist.** Verified 08-09-26:
+> `incident.report` appears **zero times** in the Rust, TypeScript and Go sources — no
+> constant, no writer, no test. The shipped audit action vocabulary is five
+> `pub const SECURITY_ACTION_*` / `SECURITY_REASON_*` entries in
+> `crates/oz-core/src/db/audit_security.rs`: `login`, `login.failed`, `logout`,
+> `user.create`, `user.update`. Everything below is a **specification**, not a
+> description, and is still worth having — but an on-call engineer who follows step 4 of
+> §4.2 ("Log the incident in the audit log with action `"incident.report"`") will find no
+> such action to log. Note the contrast with this document's own §7.3 and §12, which *do*
+> mark their missing files "⚠️ Pending": the same care was never applied to a missing
+> action type, because a file you cannot open is obvious and a string constant nobody
+> declared is silent.
+
+The audit log **should** use the `"incident.report"` action type to record all security incidents. This follows the established `"<domain>.<action>"` naming convention (e.g., `"sale.create"`, `"user.login"`, `"incident.report"`).
 
 **When to log:**
 
@@ -488,4 +505,7 @@ For on-call engineers: a one-page quick reference is maintained at `docs/securit
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+
+---
+
+> last audited 08-09-26 by docs-auditor

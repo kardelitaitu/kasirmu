@@ -304,6 +304,15 @@
 .noise-dither::after,
 /* Emergency fallback card — elevated surface (ERR-02) */
 .error-boundary__card::after,
+/* ADR #46 §2 deploy-history browser — explicit ::after path so the
+   shadow-coverage check sees it (the element also carries .noise-dither). */
+.topology-rev-browser::after,
+/* Memo chat-bubble stack + enlarged reading card — the two genuinely
+   elevated memo surfaces (shadow-xl / shadow-2xl). Their close chips are
+   exempt in noiseDitherCompliance.test.ts: small circular controls inherit
+   the dither from the dithered parent, exactly as .modal-close-btn does. */
+.memo-banner::after,
+.memo-expanded-card::after,
 /* ⚠ DEPRECATED LEGACY SELECTORS — do not add new ones here.
    Instead, add className="noise-dither" to the TSX element.
    (wire-rename-input / wire-label-pill are positioned absolute with
@@ -373,7 +382,6 @@
 .kds-ticket-rush-badge::after,
 .retail-cart-course-dropdown::after,
 .kds-ticket-urgent-badge::after,
-.kds-settings-popover::after,
 .kds-picker-modal::after,
 .kds-column::after,
 .kds-shortcut-key::after,
@@ -417,6 +425,21 @@
   .customer-mgmt-history::after,
   .panel::after,
   .warehouse-popup::after,
+  /* Org selector + org switcher dropdown/modal surfaces. Positioned absolute
+     with an explicit z-index, so the .noise-dither relative utility would
+     fight their anchoring — they use the explicit ::after path. */
+  .org-selector-list::after,
+  .org-switcher-list::after,
+  .org-switcher-modal::after,
+  /* 0.0.37 KDS wave: the Expo screen's station header, ready-slot card and
+     recall dialog (687d87bb2) + the routing-rules editor's clear-confirm
+     card (9f6fcd828). Plain panels — none is absolutely positioned — so
+     they anchor the overlay by setting position:relative in their own
+     component CSS, the .kds-picker-modal pattern. */
+  .kds-expo-station-header::after,
+  .kds-expo-ticket-slot--ready::after,
+  .kds-expo-modal::after,
+  .kds-routing-confirm::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -445,6 +468,9 @@
   .wire-label-pill::after,
   .noise-dither::after,
   .error-boundary__card::after,
+  .topology-rev-browser::after,
+  .memo-banner::after,
+  .memo-expanded-card::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -507,7 +533,6 @@
 .kds-ticket-rush-badge::after,
 .retail-cart-course-dropdown::after,
 .kds-ticket-urgent-badge::after,
-.kds-settings-popover::after,
 .kds-picker-modal::after,
 .kds-column::after,
 .kds-shortcut-key::after,
@@ -550,6 +575,13 @@
   .customer-mgmt-history::after,
   .panel::after,
   .warehouse-popup::after,
+  .org-selector-list::after,
+  .org-switcher-list::after,
+  .org-switcher-modal::after,
+  .kds-expo-station-header::after,
+  .kds-expo-ticket-slot--ready::after,
+  .kds-expo-modal::after,
+  .kds-routing-confirm::after,
   :global(.dark) .panel::after { display: none; }
 }
 
@@ -564,6 +596,9 @@
   .wire-label-pill::after,
   .noise-dither::after,
   .error-boundary__card::after,
+  .topology-rev-browser::after,
+  .memo-banner::after,
+  .memo-expanded-card::after,
   .retail-shift-modal::after,
   .retail-held-carts-modal::after,
   .retail-discount-modal::after,
@@ -626,7 +661,6 @@
 .kds-ticket-rush-badge::after,
 .retail-cart-course-dropdown::after,
 .kds-ticket-urgent-badge::after,
-.kds-settings-popover::after,
 .kds-picker-modal::after,
 .kds-column::after,
 .kds-shortcut-key::after,
@@ -670,6 +704,13 @@
 .customer-mgmt-history::after,
 .panel::after,
 .warehouse-popup::after,
+.org-selector-list::after,
+.org-switcher-list::after,
+.org-switcher-modal::after,
+.kds-expo-station-header::after,
+.kds-expo-ticket-slot--ready::after,
+.kds-expo-modal::after,
+.kds-routing-confirm::after,
 :global(.dark) .panel::after { display: none; }
 }
 
@@ -848,6 +889,38 @@
   }
   .modal-panel {
     animation: none;
+  }
+}
+
+/* Exit animation — mirror of entry keyframes (modal-fade-in / modal-slide-up).
+   Gated to no-preference so reduced-motion users get a snap-close via animDuration(0). */
+@media (prefers-reduced-motion: no-preference) {
+  .modal-overlay--exiting {
+    animation: modal-fade-out var(--duration-200) var(--ease-in);
+    animation-fill-mode: both;
+    pointer-events: none;
+  }
+
+  .modal-panel--exiting {
+    animation: modal-slide-down var(--duration-200) var(--ease-in);
+    animation-fill-mode: both;
+    pointer-events: none;
+  }
+
+  @keyframes modal-fade-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+  }
+
+  @keyframes modal-slide-down {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+    }
   }
 }
 
@@ -1349,9 +1422,9 @@
 /* ── App boot splash (React stage) ───────────────────────────────
    Two-stage loading screen: the static stage lives inline in
    index.html / index.tablet.html (visible before any JS), and this
-   React stage renders the identical visual while AppShell's boot
-   gate (license + setup restore) resolves. Keep the static copies
-   synchronized. */
+   React stage renders the same localized label layout while
+   AppShell's boot gate (license + setup restore) resolves. Keep the
+   static copies synchronized. */
 .app-splash {
   position: fixed;
   inset: 0;
@@ -1364,25 +1437,11 @@
   font-family: var(--font-sans);
   font-size: var(--text-base);
 }
-.app-splash__logo {
-  width: 72px;
-  height: 72px;
-}
-.app-splash__spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--color-primary-soft);
-  border-top-color: var(--color-primary);
-  border-radius: var(--radius-full);
-}
 .app-splash__label {
   font-size: var(--text-sm);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .app-splash__spinner {
-    animation: app-splash-spin var(--duration-600) var(--ease-linear) infinite;
-  }
-}
+/* Kept here: .lazy-boundary__spinner (below) reuses the
+   app-splash-spin keyframes. */
 @keyframes app-splash-spin {
   to { transform: rotate(360deg); }
 }

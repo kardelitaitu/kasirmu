@@ -111,3 +111,5 @@ manifest.validate()?;
 
 - `platform/kernel/src/manifest.rs` — Rust implementation
 - ADR #1: Module System Design (`docs/decisions/2026-01-15-module-system-design.md`)
+
+> last audited 29-08-26 by docs-auditor

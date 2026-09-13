@@ -172,6 +172,9 @@ impl Store<'_> {
             }
         }
 
+        // Enforce subscription offline grace period / read-only lock.
+        self.enforce_pos_writable()?;
+
         // ── BEGIN IMMEDIATE ───────────────────────────────────────
         let tx = self.conn.unchecked_transaction()?;
 
@@ -204,12 +207,19 @@ impl Store<'_> {
                 Err(e) => return Err(CoreError::Db(e)),
             };
 
+            // Same contract as the checkout path: this verdict decides whether
+            // the line is deducted at all, and the fallback (Retail) tracks
+            // inventory. The fallback stays so one bad row never fails the sale;
+            // the helper warns.
             let tracks_inventory = product_info
                 .as_ref()
                 .map(|(_, pt)| {
-                    crate::product::ProductType::parse_str(pt)
-                        .unwrap_or_default()
-                        .tracks_inventory()
+                    crate::product::ProductType::parse_stored_or_default(
+                        Some(pt.as_str()),
+                        line.sku.as_str(),
+                        "Store::complete_sale_with_resolved_shortfalls:sale_line",
+                    )
+                    .tracks_inventory()
                 })
                 .unwrap_or(false);
 
@@ -324,8 +334,14 @@ impl Store<'_> {
                         };
 
                         if let Some((ing_sku, ing_ptype_str)) = ing_info {
-                            let ing_ptype = crate::product::ProductType::parse_str(&ing_ptype_str)
-                                .unwrap_or_default();
+                            // Same contract as the sale-line parse above: an
+                            // unmapped ingredient type deducts stock a Service
+                            // ingredient does not keep.
+                            let ing_ptype = crate::product::ProductType::parse_stored_or_default(
+                                Some(ing_ptype_str.as_str()),
+                                &ing_sku,
+                                "Store::complete_sale_with_resolved_shortfalls:recipe_ingredient",
+                            );
                             if ing_ptype.tracks_inventory() {
                                 // MONEY-03: same overflow contract as the primary
                                 // deduction path — the non-resolution BOM branch
@@ -448,6 +464,56 @@ impl Store<'_> {
             insert_sale_line(&tx, line)?;
         }
 
+        // ── TRANSACTIONAL OUTBOX (ADR-19 §6b shortfall-resolved path) ───────────────────
+        // The sync row for this sale is written HERE, inside the settlement
+        // transaction, not by an event handler afterwards. Sync for sales is
+        // outbox-only and there is no reconciliation sweep in the tree, so the
+        // old commit-then-publish order lost the row permanently on a crash or
+        // a handler error in that window - silently, because the bus swallows
+        // handler Err and panics (event_bus.rs:259-281), and invisibly to the
+        // operator, because a sale that was never enqueued shows up as none of
+        // pending / synced / failed / oldest-pending.
+        //
+        // SaleSyncEnqueuer still runs on the event and now skips the insert
+        // when a pending row for this sale id already exists, so this lane
+        // produces exactly one row. The legacy complete_sale door (lane one,
+        // sales_crud.rs create_sale + two update_sale_status calls) has no
+        // transaction spanning completion and is NOT wired - it keeps relying
+        // on the handler. See the note there.
+        Store::enqueue_sale_outbox_in_tx(&tx, sale, cur_str)?;
+
+        // ── AUDIT LOG IN-TX (PCI 10.2.1) ──────────────────────────────
+        // Same seat and same contract as the main checkout door
+        // (sales_checkout.rs): the audit row enters the settlement
+        // transaction after the sale rows and before the payment inserts,
+        // so a payments.idempotency_key UNIQUE collision rolls it back with
+        // the sale, and AuditLogHandler's has_audit_row_for probe keeps the
+        // handler from doubling it after commit.
+        //
+        // ACTOR DIVERGENCE (deliberate, documented on both ends): this door
+        // stamps the real actor from the sale (sale.user_id); the legacy
+        // complete_sale lane keeps the handler's empty-string actor because
+        // SaleCompleted carries no actor field. Same action, two actor
+        // shapes in audit_log depending on the settling door.
+        let audit_actor = sale.user_id.clone().unwrap_or_default();
+        let audit_entry = crate::AuditEntry::new(
+            audit_actor,
+            "sale.completed",
+            Some("sale"),
+            Some(sale.id.clone()),
+            Some(
+                serde_json::json!({
+                    "sale_id": sale.id.clone(),
+                    "total_minor": sale.total.minor_units,
+                    "currency": cur_str,
+                    "line_count": sale.lines.len(),
+                })
+                .to_string(),
+            ),
+            "success",
+        );
+        Store::log_audit_in_tx(&tx, &audit_entry)?;
+
         if !payment_splits.is_empty() {
             for split in payment_splits {
                 let payment_id = uuid::Uuid::now_v7().to_string();
@@ -484,6 +550,19 @@ impl Store<'_> {
         // with the sale (guards documented on the helper).
         crate::db::promotions::persist_checkout_applications(&tx, &sale.id, checkout_applications)?;
 
+        // ── Statutory numbering (regional slice 5) ────────────────
+        // Same in-transaction contract as complete_sale_deduction_with_locations:
+        // this is the ADR-19 §6b sibling checkout path, and a statutory number
+        // on one path but not its sibling would be the invented-inconsistency
+        // class. Unconfigured entities stamp nothing.
+        let statutory_number = self.claim_statutory_number_for_sale(
+            &tx,
+            &sale.id,
+            primary_location.as_str(),
+            "receipt",
+            &now,
+        )?;
+
         tx.commit()?;
 
         // ADR #37 D3: recompute popularity for every sold SKU — the sale
@@ -500,14 +579,20 @@ impl Store<'_> {
             status: foundation::SaleStatus::Completed,
             receipt_number: sale.id.clone(),
             deduct_tx_id,
+            statutory_number,
         })
     }
 
-    /// Void a pending sale and restore the reserved/deducted stock back to original locations.
+    /// Void a pending sale and restore the reserved/dedicated stock back to original locations.
     pub fn void_pending_sale(&self, sale_id: &str) -> Result<(), CoreError> {
         let tx = self.conn.unchecked_transaction()?;
 
-        let deduction_locations_json: String = tx
+        // NULL deduction_locations is a legal state: the import/CLI door
+        // (create_sale, MONEY-07) never writes the column, so imported
+        // pending sales have nothing deducted through the location system.
+        // Skip-credit (do NOT default-credit: that would invent stock).
+        // Malformed JSON stays fail-closed.
+        let deduction_locations_json: Option<String> = tx
             .query_row(
                 "SELECT deduction_locations FROM sales WHERE id = ?1 AND status = 'pending'",
                 rusqlite::params![sale_id],
@@ -521,43 +606,53 @@ impl Store<'_> {
                 other => CoreError::Db(other),
             })?;
 
-        let v: serde_json::Value =
-            serde_json::from_str(&deduction_locations_json).map_err(|e| CoreError::Validation {
-                field: "deduction_locations",
-                message: e.to_string(),
-            })?;
+        match deduction_locations_json.as_deref() {
+            None | Some("") | Some("null") => {
+                tracing::info!(
+                    sale_id,
+                    "voiding pending sale without deduction_locations — no location credits to restore"
+                );
+            }
+            Some(json) => {
+                let v: serde_json::Value =
+                    serde_json::from_str(json).map_err(|e| CoreError::Validation {
+                        field: "deduction_locations",
+                        message: e.to_string(),
+                    })?;
 
-        if let Some(lines) = v["lines"].as_array() {
-            for line in lines {
-                let sku = line["sku"].as_str().ok_or_else(|| CoreError::Validation {
-                    field: "sku",
-                    message: "missing sku in deduction_locations".into(),
-                })?;
-                if let Some(deductions) = line["deductions"].as_array() {
-                    for d in deductions {
-                        let loc_id =
-                            d["location_id"]
-                                .as_str()
-                                .ok_or_else(|| CoreError::Validation {
-                                    field: "location_id",
-                                    message: "missing location_id in deductions".into(),
-                                })?;
-                        let qty = d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
-                            field: "qty",
-                            message: "missing qty in deductions".into(),
+                if let Some(lines) = v["lines"].as_array() {
+                    for line in lines {
+                        let sku = line["sku"].as_str().ok_or_else(|| CoreError::Validation {
+                            field: "sku",
+                            message: "missing sku in deduction_locations".into(),
                         })?;
+                        if let Some(deductions) = line["deductions"].as_array() {
+                            for d in deductions {
+                                let loc_id = d["location_id"].as_str().ok_or_else(|| {
+                                    CoreError::Validation {
+                                        field: "location_id",
+                                        message: "missing location_id in deductions".into(),
+                                    }
+                                })?;
+                                let qty =
+                                    d["qty"].as_i64().ok_or_else(|| CoreError::Validation {
+                                        field: "qty",
+                                        message: "missing qty in deductions".into(),
+                                    })?;
 
-                        // Credit stock back (positive delta)
-                        self.adjust_stock_at_location_with_reason(
-                            &tx,
-                            sku,
-                            qty,
-                            &crate::inventory::LocationId::from(loc_id),
-                            Some("void_pending"),
-                            None,
-                            None,
-                            None,
-                        )?;
+                                // Credit stock back (positive delta)
+                                self.adjust_stock_at_location_with_reason(
+                                    &tx,
+                                    sku,
+                                    qty,
+                                    &crate::inventory::LocationId::from(loc_id),
+                                    Some("void_pending"),
+                                    None,
+                                    None,
+                                    None,
+                                )?;
+                            }
+                        }
                     }
                 }
             }
@@ -712,3 +807,7 @@ impl Store<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sales_lifecycle_tests.rs"]
+mod tests;

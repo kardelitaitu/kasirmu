@@ -292,6 +292,253 @@ async fn null_deletes_scoped_override() {
     );
 }
 
+// ── SMTP keep-on-blank merge (the third door) ─────────────────
+//
+// spec/paths.rs:294 promises "A field that is ABSENT is left untouched".
+// That holds per TOP-LEVEL field and did NOT hold per SMTP SUB-field: the
+// handler serialized the whole SmtpConfig and wrote it through
+// Store::set_setting, and SmtpConfig has no serde defaults while
+// `password` is an Option — so a PUT that supplied host/port/from/use_tls
+// and omitted password validated clean and persisted password null,
+// destroying the secret the live report loop reads back.
+
+/// An SMTP blob carrying exactly the fields the caller supplied. `None`
+/// means the key is ABSENT from the JSON, which is what a client that never
+/// rendered the field posts — and `SmtpConfig` declares no serde defaults, so
+/// absent and `null` both deserialize to `None` on the way in.
+fn smtp_blob(host: &str, port: u16, username: Option<&str>, password: Option<&str>) -> String {
+    let mut fields = vec![
+        format!(r#""host":"{host}""#),
+        format!(r#""port":{port}"#),
+        r#""from":"r@example.com""#.to_string(),
+        r#""use_tls":true"#.to_string(),
+    ];
+    if let Some(u) = username {
+        fields.push(format!(r#""username":"{u}""#));
+    }
+    if let Some(p) = password {
+        fields.push(format!(r#""password":"{p}""#));
+    }
+    format!("{{{}}}", fields.join(","))
+}
+
+async fn put_raw(state: &AppState, body: &str) -> axum::response::Response {
+    let req: PutSettingsRequest = serde_json::from_str(body).expect("valid request JSON");
+    put_settings_handler(State(state.clone()), HeaderMap::new(), Json(req))
+        .await
+        .into_response()
+}
+
+async fn raw_smtp_row(state: &AppState, key: &str) -> Option<String> {
+    let db = state.db.lock().await;
+    db.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+        r.get::<_, String>(0)
+    })
+    .ok()
+}
+
+fn decrypted_password(raw: &str) -> Option<String> {
+    let stored: SmtpConfig = serde_json::from_str(raw).ok()?;
+    stored
+        .password
+        .as_deref()
+        .map(oz_core::crypto::decrypt_smtp_at_rest)
+        .and_then(Result::ok)
+}
+
+#[tokio::test]
+async fn put_omitting_smtp_password_preserves_the_stored_secret() {
+    let state = state_with(None);
+    // Provision a relay WITH a secret.
+    let body = format!(r#"{{"smtp_config":{}}}"#, smtp_json());
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        decrypted_password(&raw_smtp_row(&state, "smtp_config:default").await.unwrap()),
+        Some("secret".into()),
+        "the first write must store the secret"
+    );
+
+    // Now move the relay, omitting the password entirely.
+    let body = format!(
+        r#"{{"smtp_config":{},"store_name":"Renamed"}}"#,
+        smtp_blob("smtp2.example.com", 465, None, None)
+    );
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    // The fields that WERE supplied still update...
+    assert_eq!(json["smtp_config"]["host"], "smtp2.example.com");
+    assert_eq!(json["smtp_config"]["port"], 465);
+    assert_eq!(json["store_name"], "Renamed");
+    // ...and the absent sub-field survives, both in the response and in the row.
+    assert_eq!(json["smtp_config"]["password"], "secret");
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    assert_eq!(
+        decrypted_password(&raw),
+        Some("secret".into()),
+        "an absent password must not blank the stored secret; row: {raw}"
+    );
+    assert!(
+        !raw.contains("secret"),
+        "the carried-over secret stays encrypted at rest, got: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_supplying_smtp_password_still_overwrites_it() {
+    // Control: a merge that never wrote would look exactly like a merge that
+    // works. A genuinely supplied password must still replace the old one.
+    let state = state_with(None);
+    put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
+    let rotated = smtp_blob("smtp.example.com", 587, Some("u"), Some("rotated"));
+    let body = format!(r#"{{"smtp_config":{}}}"#, rotated);
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["smtp_config"]["password"], "rotated");
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    assert_eq!(
+        decrypted_password(&raw),
+        Some("rotated".into()),
+        "a supplied password must replace the stored one; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_empty_smtp_password_clears_it() {
+    // Keep-on-blank is not keep-forever: an explicit empty string is the
+    // documented "clear it", distinct from an absent field.
+    let state = state_with(None);
+    put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
+    let clearing = smtp_blob("smtp.example.com", 587, Some("u"), Some(""));
+    let resp = put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, clearing)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    assert_eq!(
+        decrypted_password(&raw),
+        None,
+        "an explicit empty password must clear the stored one; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_omitting_smtp_username_preserves_the_stored_account_and_secret() {
+    // The merge was password-only, and SmtpConfig has TWO optional fields.
+    // A relay account is not a secret, but a password with no account
+    // authenticates as nobody: the pair is one credential and the card can
+    // read neither back, because the whole key is deny-listed.
+    let state = state_with(None);
+    let provision = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob(
+            "smtp.example.com",
+            587,
+            Some("relay-account"),
+            Some("secret")
+        )
+    );
+    put_raw(&state, &provision).await;
+
+    // Move the relay, omitting BOTH optional fields.
+    let body = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob("smtp2.example.com", 465, None, None)
+    );
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    // The supplied fields still move — that is the control inside the fix.
+    assert_eq!(json["smtp_config"]["host"], "smtp2.example.com");
+    assert_eq!(json["smtp_config"]["port"], 465);
+    assert_eq!(json["smtp_config"]["use_tls"], true);
+    // And both absent fields survive, in the response...
+    assert_eq!(json["smtp_config"]["username"], "relay-account");
+    assert_eq!(json["smtp_config"]["password"], "secret");
+    // ...and in the row the sender reads.
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    let stored: SmtpConfig = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        stored.username.as_deref(),
+        Some("relay-account"),
+        "an absent username must not blank the stored account; row: {raw}"
+    );
+    assert_eq!(
+        decrypted_password(&raw),
+        Some("secret".into()),
+        "an absent password must not blank the stored secret; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_supplying_smtp_username_still_overwrites_it() {
+    // Control: a carry-over that never let a supplied value through would pass
+    // the test above. A genuinely supplied account still replaces the old one.
+    let state = state_with(None);
+    let provision = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob("smtp.example.com", 587, Some("old-account"), Some("secret"))
+    );
+    put_raw(&state, &provision).await;
+    let body = format!(
+        r#"{{"smtp_config":{}}}"#,
+        smtp_blob("smtp.example.com", 587, Some("new-account"), Some("secret"))
+    );
+    let resp = put_raw(&state, &body).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["smtp_config"]["username"], "new-account");
+    let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
+    let stored: SmtpConfig = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        stored.username.as_deref(),
+        Some("new-account"),
+        "a supplied username must replace the stored one; row: {raw}"
+    );
+}
+
+#[tokio::test]
+async fn put_rejects_smtp_config_the_cloud_sender_cannot_send() {
+    // The report loop refuses to send anything that fails SmtpConfig::validate
+    // (apps/cloud-server/src/email.rs:50), so every shape below was already
+    // unsendable the moment it was stored — the handler accepted it and left
+    // the tenant with a config that fails at send time instead of a 400 at
+    // the console.
+    for (label, blob) in [
+        (
+            "smtp_host must not be empty",
+            r#"{"host":"","port":587,"from":"r@example.com","use_tls":true}"#,
+        ),
+        (
+            "smtp_port must be between 1 and 65535",
+            r#"{"host":"smtp.example.com","port":0,"from":"r@example.com","use_tls":true}"#,
+        ),
+        (
+            "smtp_from must not be empty",
+            r#"{"host":"smtp.example.com","port":587,"from":"   ","use_tls":true}"#,
+        ),
+        (
+            "smtp_from must be a valid email",
+            r#"{"host":"smtp.example.com","port":587,"from":"not-an-email","use_tls":true}"#,
+        ),
+    ] {
+        let state = state_with(None);
+        let body = format!(r#"{{"smtp_config":{blob}}}"#);
+        let resp = put_raw(&state, &body).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "{label} must be rejected, not stored"
+        );
+        let json = body_json(resp).await;
+        assert_eq!(json["error"], "invalid_smtp_config", "{label}");
+        assert!(
+            raw_smtp_row(&state, "smtp_config:default").await.is_none(),
+            "{label} must write nothing at all"
+        );
+    }
+}
+
 // ── Validation ────────────────────────────────────────────────
 
 #[tokio::test]
@@ -475,4 +722,180 @@ async fn pg_integration_settings_provision_per_tenant() {
     let json = body_json(resp).await;
     assert_eq!(json["store_name"], "B Cloud Store");
     assert_eq!(json["smtp_config"]["host"], "smtp.example.com");
+}
+
+// ── Shape guard: the scoped key space vs the credential deny list ──────────
+//
+// This lane is NOT guarded by the credential refusal. `apply_ops_sqlite`
+// writes through `Store::set_setting` into the unguarded `Settings::set`
+// (`platform/core/src/settings/raw.rs:37`): it never asks
+// `cleartext_credential_refusal` and never asks the ingest policy, so nothing
+// on the write path consults the deny list. What keeps a credential out of it
+// is the SHAPE of the key it can construct — three fixed Rust bases joined by
+// a `:` to a tenant id that arrives from an HTTP request and is filtered by
+// `validate::valid_tenant` to `[A-Za-z0-9_-]{1,64}`. And
+// `crates/oz-local-api/src/lib.rs:319` mounts this SAME router on loopback, so
+// a renderer-adjacent surface is standing on that one regex. Widen the tenant
+// charset, or give this route a fourth field with a fourth base, and the cases
+// below are the thing that notices: a red test, not a third door that writes a
+// credential row in cleartext and stays green. They are not duplicated by the
+// deny-list tests elsewhere — that list is exact equality on a whole
+// normalised key, so it can only ever catch a key this lane is able to SPELL.
+
+use oz_core::settings::keys::{SECRET_KEY_DENY_LIST, is_secret_setting_key, normalised_candidate};
+
+/// The bases this route writes, named by the same constants the handlers use
+/// so a rename moves the case instead of rotting it.
+const SHAPE_BASES: &[&str] = &[
+    STORE_NAME_SETTINGS_KEY,
+    SMTP_CONFIG_SETTINGS_KEY,
+    REPORT_SCHEDULE_SETTINGS_KEY,
+];
+
+/// Tenant ids that all pass `valid_tenant` — including the two deny-listed
+/// spellings that the charset happens to admit as bare words, which is the
+/// point: they are harmless ONLY because a base and a `:` always sit in front
+/// of them.
+const SHAPE_TENANTS: &[&str] = &[
+    "default",
+    "tenant-a",
+    "tenant_b",
+    "T1",
+    "0",
+    "smtp_config",
+    "sync_api_key",
+    "store",
+    "name",
+    "api_key",
+    "tenant-with-a-long-but-still-legal-name-0123456789",
+];
+
+/// Sweep the whole key space this lane can build: base × legal tenant.
+#[test]
+fn scoped_setting_key_cannot_spell_a_deny_listed_credential() {
+    let mut offenders: Vec<String> = Vec::new();
+    let mut built = 0usize;
+    for tenant in SHAPE_TENANTS {
+        // A tenant carrying the namespace separator is no longer a tenant: it
+        // is half a credential key. Name the member it spells, using the ONE
+        // fold in the tree, before anything else — this is the construction the
+        // charset is there to make unbuildable.
+        if tenant.contains('.') {
+            let spelled = if is_secret_setting_key(tenant) {
+                format!(" and IS the deny-listed key {tenant}")
+            } else {
+                String::new()
+            };
+            offenders.push(format!(
+                "fixture {tenant:?} carries the `.` namespace separator{spelled}"
+            ));
+        }
+        if !valid_tenant(tenant) {
+            offenders.push(format!(
+                "fixture {tenant:?} is refused by valid_tenant, so it is not a key this lane can build"
+            ));
+        }
+        for base in SHAPE_BASES {
+            let key = scoped_key(base, tenant);
+            built += 1;
+            if SECRET_KEY_DENY_LIST.contains(&key.as_str()) {
+                offenders.push(format!("{base} + {tenant:?} -> {key} (exact member)"));
+            }
+            // Folded equality, through keys::normalised_candidate — the same
+            // fold is_secret_setting_key applies, reused rather than rewritten.
+            let folded = normalised_candidate(&key);
+            if SECRET_KEY_DENY_LIST.contains(&folded.as_str()) {
+                offenders.push(format!("{base} + {tenant:?} -> {key} folds to {folded}"));
+            }
+            if is_secret_setting_key(&key) != SECRET_KEY_DENY_LIST.contains(&folded.as_str()) {
+                offenders.push(format!("{key}: the shared predicate and the list disagree"));
+            }
+        }
+    }
+    assert_eq!(built, SHAPE_BASES.len() * SHAPE_TENANTS.len());
+    assert!(
+        offenders.is_empty(),
+        "the settings route builds keys from a fixed base plus an HTTP tenant segment; these constructions reach the credential deny list: {offenders:?}"
+    );
+}
+
+/// Every deny-listed credential except a named few is out of the tenant
+/// namespace ONLY because the charset rejects `.`.
+#[test]
+fn tenant_charset_is_what_keeps_dot_namespaced_credentials_unreachable() {
+    for member in SECRET_KEY_DENY_LIST {
+        if member.contains('.') {
+            assert!(
+                !valid_tenant(member),
+                "{member}: deny-listed credentials are dot-namespaced, and a dot in the tenant namespace is exactly the character that would let an HTTP path segment complete a credential key — this member would become writable through the settings route"
+            );
+        }
+    }
+    let mut reachable: Vec<&str> = SECRET_KEY_DENY_LIST
+        .iter()
+        .copied()
+        .filter(|m| valid_tenant(m))
+        .collect();
+    reachable.sort_unstable();
+    assert_eq!(
+        reachable,
+        vec!["smtp_config", "sync_api_key", "sync_terminal_secret"],
+        "the charset admits these deny-listed spellings as a bare tenant segment; the route is safe only because it always joins a base in front of them, so a fourth field that ever writes a tenant UNSCOPED turns one of these into a cleartext credential row. Widen [A-Za-z0-9_-] and this list grows toward the whole deny list"
+    );
+}
+
+/// The rest of the shape, refused: empty (the bare-key fallback), over the
+/// length cap, and anything carrying a separator or a control byte.
+#[test]
+fn tenant_validator_refuses_empty_overlong_separator_and_control_tenants() {
+    for tenant in ["", " ", "\t", "\n", "\u{a0}"] {
+        assert!(
+            !valid_tenant(tenant),
+            "{tenant:?}: an empty or whitespace-only tenant must not resolve to the BARE key — scoped_key_falls_back_to_bare shows readers already treat bare as this tenant's config"
+        );
+    }
+    assert!(valid_tenant(&"t".repeat(64)), "64 is the cap, not 63");
+    assert!(
+        !valid_tenant(&"t".repeat(65)),
+        "a 65-char tenant must be refused; the cap is what bounds the key space the sweep above can enumerate"
+    );
+    for tenant in [
+        "a:b",
+        "smtp_config:sync_api_key",
+        "a/b",
+        "a\\b",
+        "a?b",
+        "a#b",
+        "a%b",
+        "a:b@c",
+        "a..b",
+        "a;b",
+        "\0",
+        "\u{1}",
+    ] {
+        assert!(
+            !valid_tenant(tenant),
+            "{tenant:?}: a separator, control byte or scope colon in a tenant lets the segment carry its own key structure"
+        );
+    }
+}
+
+/// The positive control, so a validator that refused everything could not
+/// pass this file: one ordinary tenant is accepted and its keys are ordinary.
+#[test]
+fn an_ordinary_tenant_is_accepted_and_its_scoped_keys_are_not_refused() {
+    let tenant = "tenant-a";
+    assert!(valid_tenant(tenant), "the happy path must stay open");
+    assert_eq!(
+        scoped_key(SMTP_CONFIG_SETTINGS_KEY, tenant),
+        "smtp_config:tenant-a",
+        "the scope separator is `:` — if it ever becomes `.`, the dotted-tenant assertions above stop describing the only defence this lane has"
+    );
+    for base in SHAPE_BASES {
+        let key = scoped_key(base, tenant);
+        assert!(
+            !is_secret_setting_key(&key),
+            "{key}: an ordinary tenant must be able to save its settings at all"
+        );
+    }
 }

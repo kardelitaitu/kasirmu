@@ -5,7 +5,7 @@ import {
   useTopologyEditorSelection,
   initialTopologySelectionState,
   type TopologySelectionState,
-} from '@/features/stores/nodeTopologyEditorSelectionState';
+} from '@/features/locations/nodeTopologyEditorSelectionState';
 
 describe('topologySelectionReducer', () => {
   it('starts with no node or wire selection', () => {

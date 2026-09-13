@@ -2,7 +2,7 @@ import { useState, type ComponentProps } from 'react';
 import { screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
-import NodeTopologyEditor, { type WorkspaceInstanceSeed, type BranchLocationSeed } from '../features/stores/NodeTopologyEditor';
+import NodeTopologyEditor, { type WorkspaceInstanceSeed, type BranchLocationSeed } from '../features/locations/NodeTopologyEditor';
 import {
   clampNodeToViewport,
   edgeAutoPanDelta,
@@ -12,11 +12,11 @@ import {
   NODE_PORT_MARKER,
   NODE_WIDTH,
   resolveDropOverlaps,
-} from '../features/stores/nodeTopologyClamp';
+} from '../features/locations/nodeTopologyClamp';
 import { clearDevLog, getDevLog } from '@/utils/devLog';
 import { loadTopology, type TopologyData } from '@/api/topology';
-import type * as nodeTopologyEditorState from '../features/stores/nodeTopologyEditorState';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
+import type * as nodeTopologyEditorState from '../features/locations/nodeTopologyEditorState';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 vi.mock('@/api/topology', () => ({
@@ -307,9 +307,9 @@ const RETAIL_SEED = {
   ],
 };
 
-vi.mock('../features/stores/nodeTopologyEditorState', async () => {
+vi.mock('../features/locations/nodeTopologyEditorState', async () => {
   const actual = await vi.importActual<typeof nodeTopologyEditorState>(
-    '../features/stores/nodeTopologyEditorState',
+    '../features/locations/nodeTopologyEditorState',
   );
   return {
     ...actual,
@@ -333,6 +333,7 @@ const renderEditor = (props?: {
   allowLegacyApply?: boolean;
   branchId?: string;
   onDirtyChange?: (dirty: boolean) => void;
+  onLoadError?: (error: unknown) => void;
   compareOverlay?: {
     ghosts: Array<{ id: string; name: string; x: number; y: number }>;
     onlyHere: string[];
@@ -1300,18 +1301,74 @@ describe('NodeTopologyEditor Component', () => {
   // ── Connection cancellation (edge cases) ─────────────────────────
   // The direct wire-creation tests (above) verify that the stacked per-
   // semantic row model arms and completes connections correctly. These
-  // two edge cases verify that external cancellation (canvas click, re-
-  // arm from another output) also clears the in-flight state.
+  // two edge cases pin the surrounding cancellation contract: a plain
+  // canvas click does NOT cancel an armed connection (the user may be
+  // panning to a distant target — connection reducer's dismiss-picker
+  // case), Escape does, and re-arming from another output replaces the
+  // previous attempt without ever committing a wire.
 
-  // These two edge cases test connection cancellation (canvas click, re-arm
-  // from another output). They trigger a TypeError in the test environment
-  // (not in the product) after arming from a port row — likely a pre-existing
-  // mock gap in the SettingsContext/telemetry render path that only surfaces
-  // when the connection preview line tries to render. The wire-creation tests
-  // above already verify that arming and completing connections works, so
-  // these edge-case tests are skipped here.
-  it.skip('clicking the canvas cancels an in-flight connection without creating a wire', () => {});
-  it.skip('re-arming from another output cancels the previous in-flight connection', () => {});
+  it('clicking the canvas does not cancel an armed connection (Escape does)', async () => {
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [
+        { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140 },
+        { id: 'ws-a', type: 'workspace', name: 'POS A', x: 380, y: 140, metadata: { typeKey: 'store-pos' } },
+        { id: 'wh-1', type: 'warehouse', name: 'WH', x: 680, y: 140 },
+      ],
+      wires: [],
+    } as never);
+    renderEditor();
+    await waitFor(() => expect(getNodeCount()).toBe(3));
+
+    // Arm a connection from the workspace's stock-out row.
+    fireEvent.click(portRowOf(nodeAt(1), 'right', 0));
+    expect(previewLine()).not.toBeNull();
+
+    // A plain canvas click (down+up on the background, no port) must NOT
+    // cancel a plain armed connection: the user may be panning toward a
+    // distant target. The in-flight preview stays live and no wire is
+    // created. (Only Escape, a compatible drop, or dismissing an OPEN
+    // picker cancels — see the connection reducer's dismiss-picker case.)
+    // The upstroke matters: it finalizes the marquee the downstroke armed,
+    // so a later Escape reaches the connection-cancel branch instead of
+    // being swallowed by the mid-marquee guard.
+    fireEvent.mouseDown(document.querySelector('.node-canvas-container')!);
+    fireEvent.mouseUp(document.querySelector('.node-canvas-container')!);
+    await act(async () => {});
+    expect(previewLine()).not.toBeNull();
+    expect(getWireCount()).toBe(0);
+
+    // Escape is the explicit cancel gesture.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(previewLine()).toBeNull();
+    expect(getWireCount()).toBe(0);
+  });
+
+  it('clicking a second output row while armed cancels the in-flight connection with an incompatible toast', async () => {
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [
+        { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140 },
+        { id: 'ws-a', type: 'workspace', name: 'POS A', x: 380, y: 140, metadata: { typeKey: 'store-pos' } },
+        { id: 'wh-1', type: 'warehouse', name: 'WH', x: 680, y: 140 },
+      ],
+      wires: [],
+    } as never);
+    renderEditor();
+    await waitFor(() => expect(getNodeCount()).toBe(3));
+
+    // Arm from the workspace's stock-out row...
+    fireEvent.click(portRowOf(nodeAt(1), 'right', 0));
+    expect(previewLine()).not.toBeNull();
+
+    // ...then click another OUTPUT row while a connection is in flight.
+    // An output is never a legal target, so the incompatible guard fires:
+    // the in-flight attempt is canceled (no wire committed) and a toast
+    // explains why. A fresh attempt must be begun from a port on the
+    // SOURCE node (same-node clicks also cancel).
+    fireEvent.click(portRowOf(nodeAt(0), 'right', 0));
+    expect(getWireCount()).toBe(0);
+    expect(previewLine()).toBeNull();
+    expect(screen.getByText('These connectors cannot be connected.')).toBeInTheDocument();
+  });
 
 
   it('Escape cancels an in-flight connection without creating a wire', async () => {
@@ -1634,6 +1691,34 @@ describe('NodeTopologyEditor Component', () => {
     });
 
     expect(screen.getByText('Downtown Branch')).toBeInTheDocument();
+  });
+
+  it('surfaces a load failure via toast + onLoadError and keeps the preset canvas', async () => {
+    // Characterization for the load lifecycle boundary (Phase 3.1): a
+    // THROWN load error (corrupt DB, serialisation failure — distinct from
+    // the expected null result above) must (1) toast the localized
+    // load-error category with the USER-SAFE fallback copy appended (the
+    // ERR-06 policy: raw backend messages never render), (2) notify the
+    // parent with the ORIGINAL error through onLoadError (TopologyScreen
+    // drops canSave in response and logs the raw detail), and (3) leave
+    // the canvas untouched — a failed load must never wipe or half-replace
+    // the rendered graph.
+    mockLoadTopology.mockRejectedValueOnce(new Error('corrupt topology'));
+    const onLoadError = vi.fn();
+
+    renderEditor({ onLoadError });
+
+    await waitFor(() => expect(onLoadError).toHaveBeenCalledTimes(1));
+    expect(onLoadError).toHaveBeenCalledWith(expect.any(Error));
+    // The toast carries the localized category AND the user-safe fallback
+    // copy — never the raw backend message.
+    expect(await screen.findByText(/Failed to load topology/)).toBeInTheDocument();
+    expect(screen.getByText(/Something went wrong/)).toBeInTheDocument();
+    expect(screen.queryByText(/corrupt topology/)).not.toBeInTheDocument();
+    // The canvas is untouched: the seed graph is still rendered.
+    expect(screen.getByText('Downtown Branch')).toBeInTheDocument();
+    expect(screen.getByText('Retail POS #1')).toBeInTheDocument();
+    expect(screen.getByText('Main Warehouse')).toBeInTheDocument();
   });
 
   // ── Save topology ─────────────────────────────────────────────
@@ -5560,6 +5645,10 @@ describe('NodeTopologyEditor — multi-select & marquee', () => {
     // then unmounted (branch switch, screen navigation) left its document
     // mouseup listener armed. The leaked listener fired finalizeMarquee
     // against an unmounted editor on the next page-wide release.
+    // Correction: that parent unmount effect has since been retired — the
+    // pointer/touch/bend hook-tail effects own the pan/drag/touch/marquee
+    // disarm now, and the fresh-node timers live in the add-node hook. This
+    // test pins that the hook-owned disarm still leaves no leaked mouseup.
     const { unmount } = renderEditor();
     mockCanvasSize(1200, 800);
     const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
@@ -6461,7 +6550,7 @@ describe('NodeTopologyEditor — wire arrow markers', () => {
 
 // ── Wire crossing under cards ───────────────────────────────────
 
-describe.skip('NodeTopologyEditor — wire crossing under cards', () => {
+describe('NodeTopologyEditor — wire crossing under cards', () => {
   it('draws the under-card segment ON TOP so a crossing wire reads as continuous', async () => {
     // The restaurant template's store→warehouse wire passes under the
     // middle POS card; mirror that geometry: a store→warehouse wire whose
@@ -6500,7 +6589,22 @@ describe.skip('NodeTopologyEditor — wire crossing under cards', () => {
     expect(document.querySelectorAll('.node-wires-crossing path')).toHaveLength(0);
   });
 
-  it('rides the simulation pulse over the card it passes under', async () => {
+  // SKIPPED — unfixable, not flaky. This test drives a "Test Order
+  // Simulation" button that no longer exists: 4653d966 (2026-08-26, "PIN
+  // remember checkbox, presets popover, validation UX improvements") deleted
+  // the `.simulation-btn` control along with its `isSimulating` state. The
+  // `topology-sim-start` / `topology-sim-stop` Fluent keys and the
+  // `.wire-simulation-pulse` CSS rule survived that commit and are now
+  // referenced by nothing outside this file and the a11y mock dictionary, so
+  // `getByText` can never resolve. Left in place rather than deleted because
+  // the geometry it asserts is real and still supported: `polylinePoint` and
+  // `wireUnderCardSegments` (topologyWireGeometry.ts:134) exist precisely so
+  // "a simulation pulse crosses each segment at constant speed". If the
+  // control is ever restored, this test should pass unchanged — restore it
+  // then. Until then it must NOT be re-widened into a describe.skip: the
+  // other five tests in this block cover the live round-146 under-card
+  // overlay and were silently skipped alongside it for 11 days.
+  it.skip('rides the simulation pulse over the card it passes under', async () => {
     // Round 147: the wire reads continuous (round 146) but the simulation
     // pulse still travelled along the BASE path — under a card it blinked
     // out and re-emerged, breaking the continuity the overlay just fixed.
@@ -6932,7 +7036,7 @@ describe('NodeTopologyEditor — wire click keeps an in-flight connection', () =
 // ── Escape on an open dialog does not touch canvas state ────────
 
 describe('NodeTopologyEditor — dialog Escape isolation', () => {
-  it('Escape cancelling the delete dialog keeps the node selected', () => {
+  it('Escape cancelling the delete dialog keeps the node selected', async () => {
     renderEditor();
 
     // Select a wired node so the delete flow opens the confirm dialog.
@@ -6943,10 +7047,13 @@ describe('NodeTopologyEditor — dialog Escape isolation', () => {
     openRackPanel('edit'); fireEvent.click(screen.getByText('Delete Selected Element'));
     expect(screen.getByText('Delete Node')).toBeInTheDocument();
 
-    // Escape closes the dialog (the Modal's focus trap owns it)...
+    // Escape closes the dialog (the Modal's focus trap owns it). The Modal
+    // primitive plays a 200ms exit fade (a986bc275) before unmounting, so
+    // the unmount is asynchronous — await it like the shared Modal and
+    // ConfirmDialog suites do.
     const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
     fireEvent.keyDown(canvas, { key: 'Escape' });
-    expect(screen.queryByText('Delete Node')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Delete Node')).not.toBeInTheDocument());
 
     // ...without the editor's window-level handler stealing the selection
     // (the dialog must own the keyboard while it is open).
@@ -11084,5 +11191,1067 @@ describe('NodeTopologyEditor — peer group badge', () => {
 
     const pos1 = nodeBy('pos-1');
     expect(pos1.querySelector('.node-peer-group-badge')).toBeNull();
+  });
+});
+
+// ── Input-controller disarm & teardown characterization (Phase 3.4) ──
+// Characterization tests pinning the disarm/teardown behavior of the input
+// controllers (now hook modules): (1) tab-hidden disarms a held
+// Space, (2) pointercancel ends a touch node drag with the position intact,
+// (3) unmount tears down every document-level gesture listener, (4) wheel
+// zoom-to-cursor compensates the pan so the content point under the cursor
+// stays visually fixed.
+
+describe('NodeTopologyEditor — input controller disarm and teardown', () => {
+  it('document visibilitychange to hidden disarms a held Space so the next left-drag marquees', () => {
+    // Regression: Space arming had keydown/keyup writers plus a window-blur
+    // disarm, but a tab switch to another window delivers keyup to the NEW
+    // document — and neither keyup nor blur fires — so spacePanArmed stuck
+    // true across the visibilitychange. The hidden-tab disarm closes that
+    // third gap: cursor class drops and the next left-drag marquees instead
+    // of panning.
+    renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+
+    fireEvent.keyDown(window, { code: 'Space', key: ' ' });
+    expect(canvas.className).toContain('canvas-space-pan');
+
+    // Hide the tab WITHOUT any keyup or window blur.
+    const visibilityStateSpy = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    try {
+      fireEvent(document, new Event('visibilitychange'));
+    } finally {
+      visibilityStateSpy.mockRestore();
+    }
+
+    // The pan must disarm: cursor class gone, and a left-drag on empty
+    // canvas opens a marquee instead of panning the viewport.
+    expect(canvas.className).not.toContain('canvas-space-pan');
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(canvas, { clientX: 650, clientY: 420 });
+    fireEvent.mouseUp(canvas, { button: 0 });
+
+    expect(document.querySelector('.topology-marquee')).toBeNull(); // marquee is transient; released already
+    expect(document.querySelectorAll('.topology-node.node-selected')).toHaveLength(2);
+    expect(viewport.style.transform).toContain('translate(0px, 0px)');
+  });
+
+  it('pointercancel during a one-finger touch node drag ends the gesture with the node position restored', () => {
+    // A system gesture (edge-swipe, notification shade) steals the touch
+    // mid-drag: the OS dispatches pointercancel and the finger is already
+    // gone. The cancel must finish the gesture exactly like a lift — drag
+    // state cleared, no dangling listeners — and since the pointer never
+    // moved past the drag threshold, the node stays at its start position
+    // and a later pointermove for the dead pointer re-drags nothing.
+    renderEditor();
+    const firstNode = document.querySelector('.topology-node') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+    const beforeLeft = firstNode.style.left;
+
+    fireEvent.pointerDown(firstNode, { pointerId: 7, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerCancel(document, { pointerId: 7, pointerType: 'touch', clientX: 40, clientY: 20 });
+
+    // No movement crossed the threshold before the cancel → position intact.
+    expect(firstNode.style.left).toBe(beforeLeft);
+    expect(viewport.style.transform).toContain('translate(0px, 0px)');
+
+    // No dangling listeners: a move+up for the cancelled pointer re-arms
+    // nothing — the node never re-drags and the viewport never pans.
+    fireEvent.pointerMove(document, { pointerId: 7, pointerType: 'touch', clientX: 300, clientY: 300 });
+    fireEvent.pointerUp(document, { pointerId: 7, pointerType: 'touch' });
+    expect(firstNode.style.left).toBe(beforeLeft);
+    expect(viewport.style.transform).toContain('translate(0px, 0px)');
+  });
+
+  it('unmount tears down the pan, node-drag, bend-drag, and touch document listeners (no post-unmount firing)', () => {
+    // The unmount hook-tail effects (pointer/touch/bend, plus the editor's
+    // own install-and-clean effects) must disarm EVERY document-level gesture
+    // listener — no parent sweep exists anymore.
+    // The marquee mouseup teardown is pinned separately; this pins the other
+    // four controllers. After unmount, dispatching each controller's
+    // document-level events must produce no state changes or errors — the
+    // closures were removed, not merely orphaned.
+    const { unmount } = renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    // Arm pan: a middle-button drag arms document mousemove/mouseup without
+    // releasing (panCleanupRef stays armed).
+    fireEvent.mouseDown(canvas, { button: 1, clientX: 100, clientY: 100 });
+    // Arm node-drag: mousedown on a node arms the document mouseup
+    // finalizer (dragCleanupRef) with the drag still in flight.
+    fireEvent.mouseDown(document.querySelector('.topology-node')!, { button: 0, clientX: 0, clientY: 0 });
+    // Arm bend-drag: select the first wire, create a bend, grab its handle,
+    // and leave the move/up listeners armed mid-drag.
+    fireEvent.click(document.querySelector('.wire-hitbox')!);
+    const ghost = document.querySelector('.wire-bend-ghost') as Element;
+    expect(ghost).not.toBeNull();
+    fireEvent.mouseDown(ghost, { button: 0, clientX: 350, clientY: 289 });
+    // Arm touch cleanup: a single touch pointer arms the document
+    // pointermove/pointerup/pointercancel listeners.
+    fireEvent.pointerDown(canvas, { pointerId: 3, pointerType: 'touch', clientX: 200, clientY: 200 });
+
+    unmount();
+
+    // Each controller's document-level events fire on the unmounted page.
+    // None may throw or mutate anything observable: the removed closures
+    // cannot resurrect pan state (a fresh editor's viewport stays at
+    // translate(0px, 0px) — the old listeners no longer drag it).
+    expect(() => {
+      fireEvent.mouseMove(document, { clientX: 500, clientY: 400 }); // pan mousemove
+      fireEvent.mouseUp(document, { button: 1 });                    // pan mouseup
+      fireEvent.mouseMove(document, { clientX: 60, clientY: 60 });   // node-drag mousemove
+      fireEvent.mouseUp(document, { button: 0 });                    // node-drag/marquee mouseup
+      fireEvent.mouseMove(document, { clientX: 420, clientY: 300 }); // bend-drag mousemove
+      fireEvent.mouseUp(document, { button: 0 });                    // bend-drag mouseup
+      fireEvent.pointerMove(document, { pointerId: 3, pointerType: 'touch', clientX: 260, clientY: 240 });
+      fireEvent.pointerCancel(document, { pointerId: 3, pointerType: 'touch' });
+      fireEvent.pointerUp(document, { pointerId: 3, pointerType: 'touch' });
+    }).not.toThrow();
+
+    // The definitive no-op proof: mount a fresh editor — its viewport must
+    // be untouched at the identity transform. If any leaked mousemove
+    // closure survived, it would set pan and the fresh viewport would show
+    // a non-zero translate.
+    cleanup();
+    renderEditor();
+    const freshViewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+    expect(freshViewport.style.transform).toContain('translate(0px, 0px)');
+  });
+
+  it('wheel zoom-to-cursor adjusts the pan so the content point under the cursor stays visually fixed', () => {
+    // The existing wheel test pins the zoom level only; this pins the pan
+    // compensation. Content point C under the cursor (400, 300), identity
+    // view: C_screen = C·zoom + pan. After zooming k at the cursor the SAME
+    // content point must still project to (400, 300), i.e. pan' = cursor −
+    // (cursor − pan)·k.
+    renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+    // Cursor over the ws-1 card (380..620 × 80..320), NOT the viewport
+    // center — the whole point of zoom-to-cursor.
+    const CX = 400;
+    const CY = 300;
+    const contentAtCursor = (tx: string) => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale\(([-\d.]+)\)/.exec(tx);
+      if (!m) throw new Error('unparsable viewport transform: ' + tx);
+      return {
+        x: (CX - parseFloat(m[1]!)) / parseFloat(m[3]!),
+        y: (CY - parseFloat(m[2]!)) / parseFloat(m[3]!),
+      };
+    };
+
+    const before = contentAtCursor(viewport.style.transform);
+    fireEvent.wheel(canvas, { deltaY: -100, clientX: CX, clientY: CY });
+    expect(document.querySelector('.canvas-zoom-level')?.textContent).toBe('110%');
+
+    const after = contentAtCursor(viewport.style.transform);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+
+    // Explicit pan coordinates for the same event, k = 1.1 from pan 0:
+    // pan' = (400 − 400·1.1, 300 − 300·1.1) = (−40, −30).
+    expect(viewport.style.transform).toContain('scale(1.1)');
+    const tm = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale/.exec(viewport.style.transform);
+    expect(tm).not.toBeNull();
+    expect(parseFloat(tm![1]!)).toBeCloseTo(-40, 6);
+    expect(parseFloat(tm![2]!)).toBeCloseTo(-30, 6);
+  });
+});
+
+// ── Rename machinery characterization (pre-G5 extraction) ──────────
+// Pins the CURRENT behavior of the two inline rename clusters (node card +
+// wire relabel) before they move out of the editor: (a) the wire blur /
+// click-away commit path, (b) an empty relabel DELETING the label field,
+// (c) the keyboard focus-return to the wire hitbox, (d) the renameSaving
+// double-submit guard, (e) a rejected card commit keeping the draft open,
+// (f) the relabel's single undo entry.
+
+describe('NodeTopologyEditor — rename machinery characterization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  /** Open a wire's floating relabel input through its context menu (the same
+   *  entry point the shipped wire tests drive). */
+  const openWireRename = (wireId = 'w-1') => {
+    const hitbox = document.querySelector(`.wire-hitbox[data-wire-id="${wireId}"]`) as HTMLElement;
+    fireEvent.contextMenu(hitbox, { clientX: 400, clientY: 300 });
+    fireEvent.click(screen.getByText('Rename wire'));
+    return document.querySelector('.wire-rename-input') as HTMLInputElement;
+  };
+
+  const wireTitles = () =>
+    [...document.querySelectorAll('.wire-hitbox title')].map((t) => t.textContent ?? '');
+
+  const pillTexts = () =>
+    [...document.querySelectorAll('.wire-label-pill')].map((p) => p.textContent ?? '');
+
+  it('a wire relabel commits on blur and a click-away keeps the focus it took', () => {
+    // Gap (a): the onBlur commit path (the wire input's click-away) had no
+    // coverage at all — only Enter and Escape did. The blur path is also the
+    // one that must NOT return focus, so both halves are pinned together.
+    renderEditor();
+    const input = openWireRename();
+    expect(input.value).toBe('Binds Store');
+
+    fireEvent.change(input, { target: { value: 'Blur Backbone' } });
+
+    // The honest click-away: focus moves to another card, and jsdom fires the
+    // input's native blur on the way out — which is exactly React's onBlur
+    // commit path (fromKeyboard = false). act() keeps the resulting update
+    // synchronous instead of leaking a flush past this call.
+    const otherCard = document.querySelectorAll('.topology-node')[2] as HTMLElement;
+    act(() => { otherCard.focus(); });
+    if (input.isConnected) fireEvent.blur(input);
+
+    expect(wireTitles().some((t) => t.includes('Blur Backbone'))).toBe(true);
+    expect(wireTitles().some((t) => t.includes('Binds Store'))).toBe(false);
+    expect(document.querySelector('.wire-rename-input')).toBeNull();
+    // A blur commit must NOT pull focus back to the wire hitbox.
+    expect(document.activeElement).toBe(otherCard);
+    expect(document.activeElement?.getAttribute('data-wire-id')).toBeNull();
+  });
+
+  it('an empty wire relabel deletes the label field, leaving the endpoint-name display', async () => {
+    // Gap (b): commitWireRename DELETES the key (not label: ''), so the wire
+    // carries no label at all into the Apply payload. Whitespace-only input
+    // pins the trim as well.
+    localStorage.setItem('oz-topology-view-wire-labels:unassigned', '1');
+    const onSave = vi.fn();
+    renderEditor({ onSave });
+    expect(pillTexts().some((t) => t.includes('Binds Store'))).toBe(true);
+
+    const input = openWireRename();
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(document.querySelector('.wire-rename-input')).toBeNull();
+    // The pill falls back to the endpoint-name join, and the custom label is
+    // gone from every surface that reads it.
+    expect(pillTexts().some((t) => t.includes('Downtown Branch → Retail POS #1'))).toBe(true);
+    expect(pillTexts().some((t) => t.includes('Binds Store'))).toBe(false);
+
+    await applyWithPin();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    const savedWires = onSave.mock.calls[0]![1] as Array<Record<string, unknown>>;
+    const w1 = savedWires.find((w) => w['id'] === 'w-1')!;
+    const w2 = savedWires.find((w) => w['id'] === 'w-2')!;
+    expect('label' in w1).toBe(false);
+    expect(w2['label']).toBe('Operation Feed');
+  });
+
+  it('a keyboard-driven wire rename close returns focus to that wire hitbox', () => {
+    // Gap (c): the focus-return effect was never observed — Enter and Escape
+    // both close as keyboard-driven, so both must land on the wire.
+    renderEditor();
+    const hitbox = () => document.querySelector('.wire-hitbox[data-wire-id="w-1"]') as HTMLElement;
+
+    let input = openWireRename();
+    fireEvent.change(input, { target: { value: 'Keyboard Backbone' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(document.activeElement).toBe(hitbox());
+    expect(wireTitles().some((t) => t.includes('Keyboard Backbone'))).toBe(true);
+
+    input = openWireRename();
+    fireEvent.change(input, { target: { value: 'Never Applied' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).toBe(hitbox());
+    expect(wireTitles().some((t) => t.includes('Keyboard Backbone'))).toBe(true);
+    expect(wireTitles().some((t) => t.includes('Never Applied'))).toBe(false);
+  });
+
+  it('renameSaving blocks a blur that races an in-flight Enter commit', async () => {
+    // Gap (d): Enter arms renameSaving and awaits the parent; the still-open
+    // input's blur must not fire a second rename for the same draft.
+    let settle: (v: boolean) => void = () => {};
+    const onRenameBranch = vi.fn(
+      () => new Promise<boolean>((resolve) => { settle = resolve; }),
+    );
+    renderEditor({ onRenameBranch });
+
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
+    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Double Submit' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledTimes(1));
+    // Still in flight and still mounted: without the guard this blurs into a
+    // second identical rename round-trip.
+    fireEvent.blur(input);
+    expect(onRenameBranch).toHaveBeenCalledTimes(1);
+
+    settle(true);
+    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).getByText('Double Submit')).toBeTruthy());
+    expect(onRenameBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rejected card rename keeps the draft open and releases the guard for a retry', async () => {
+    // Gap (e): the card path (commitNodeRename) keeps its form open on a false
+    // return — the body-config rejection coverage does not reach it.
+    const onRenameBranch = vi.fn().mockResolvedValue(false);
+    renderEditor({ onRenameBranch });
+
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
+    const input = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Rejected HQ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Rejected HQ'));
+    const stillOpen = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    expect(stillOpen.value).toBe('Rejected HQ');
+    // Still open means still no local write: the card title element is not
+    // even rendered while the rename input owns that slot.
+    expect(storeCard.querySelector('.node-title')).toBeNull();
+
+    // The finally-released renameSaving is what makes the retry real: a second
+    // Enter must reach the parent again instead of being swallowed.
+    fireEvent.keyDown(stillOpen, { key: 'Enter' });
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledTimes(2));
+    expect(within(storeCard).getByLabelText('topology-branch-rename-placeholder')).not.toBeNull();
+
+    // Escape is the honest exit — and the canvas still holds the AUTHORITATIVE
+    // name, never the rejected one.
+    fireEvent.keyDown(stillOpen, { key: 'Escape' });
+    await waitFor(() => expect(within(storeCard).getByText('Downtown Branch')).toBeTruthy());
+  });
+
+  it('a wire relabel pushes one undo entry and marks the canvas dirty', () => {
+    // Gap (f): the relabel's dirty half was pinned; the pushHistory() half —
+    // exactly ONE entry for the whole commit — was not.
+    renderEditor();
+    const input = openWireRename();
+    fireEvent.change(input, { target: { value: 'Undoable Feed' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(document.querySelector('.topology-dirty-dot')).not.toBeNull();
+    expect(wireTitles().some((t) => t.includes('Undoable Feed'))).toBe(true);
+
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
+    expect(wireTitles().some((t) => t.includes('Undoable Feed'))).toBe(false);
+    expect(wireTitles().some((t) => t.includes('Binds Store'))).toBe(true);
+    // One entry consumed and the canvas is back on the applied snapshot.
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+  });
+
+  // ── Live-bound rename path (persistNodeRename + renameBaselineRef) ──
+  // The inspector Node Name field and the card's headless body-config input
+  // are LIVE-BOUND: the value is already edited on blur, so renameBaselineRef
+  // (the focus-time snapshot) is what separates an unedited blur from a real
+  // rename. persistNodeRename routes through the same parent callback the
+  // card form uses, reverts the live-bound name when the parent refuses, and
+  // advances the baseline at the commit boundary so a re-blur cannot
+  // double-commit. (No renameSaving guard here — that is card-form-only.)
+
+  it('an inspector rename persists through the parent and marks the canvas dirty', async () => {
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    expect(nameInput).not.toBeNull();
+    expect(nameInput.value).toBe('Downtown Branch');
+
+    // Focus snapshots the baseline, the keystroke edits the live-bound name,
+    // and the blur commits through the same parent callback the card uses.
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Inspector HQ' } });
+    fireEvent.blur(nameInput);
+
+    await waitFor(() => expect(onRenameBranch).toHaveBeenCalledWith('store-1', 'Inspector HQ'));
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    await waitFor(() => expect(within(storeCard).getByText('Inspector HQ')).toBeTruthy());
+    expect(document.querySelector('.topology-dirty-dot')).not.toBeNull();
+
+    // The baseline advanced at the commit boundary: a second blur (the input
+    // is still mounted) is a no-op, not a duplicate round-trip.
+    fireEvent.blur(nameInput);
+    expect(onRenameBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unedited inspector blur never round-trips the focus-time name', () => {
+    // The baseline (written on focus) is what tells an unedited blur from a
+    // real rename — without it, every tab-through the field would fire a
+    // redundant rename through the parent.
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    fireEvent.focus(nameInput);
+    fireEvent.blur(nameInput);
+
+    expect(onRenameBranch).not.toHaveBeenCalled();
+  });
+
+  it('a whitespace-only inspector commit is a no-op, unlike the wire relabel that deletes', () => {
+    // persistNodeRename trims and returns on empty — the node-name path has
+    // no delete semantics (that is wire-label-only behavior, pinned by the
+    // empty-relabel test above).
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: '   ' } });
+    fireEvent.blur(nameInput);
+
+    expect(onRenameBranch).not.toHaveBeenCalled();
+  });
+
+  it('a rejected inspector rename reverts the live-bound name and stays retryable', async () => {
+    // A false parent return reverts the canvas to the focus-time baseline
+    // (a blurred input has no draft to keep) — and consumes nothing, so a
+    // re-edit reaches the parent again.
+    const onRenameWorkspace = vi.fn().mockResolvedValue(false);
+    renderEditor({ onRenameWorkspace });
+
+    const wsCard = document.querySelectorAll('.topology-node')[1] as HTMLElement;
+    fireEvent.mouseDown(wsCard, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    expect(nameInput.value).toBe('Retail POS #1');
+
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Rejected POS' } });
+    fireEvent.blur(nameInput);
+
+    await waitFor(() => expect(onRenameWorkspace).toHaveBeenCalledWith('ws-1', 'Rejected POS'));
+    await waitFor(() => expect(within(wsCard).getByText('Retail POS #1')).toBeTruthy());
+    expect(nameInput.value).toBe('Retail POS #1');
+
+    // The retry is real: focus re-snapshots the baseline and the second
+    // commit reaches the parent instead of being swallowed by a one-shot guard.
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Rejected POS II' } });
+    fireEvent.blur(nameInput);
+    await waitFor(() => expect(onRenameWorkspace).toHaveBeenCalledWith('ws-1', 'Rejected POS II'));
+    expect(onRenameWorkspace).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(within(wsCard).getByText('Retail POS #1')).toBeTruthy());
+  });
+
+  it('an inspector rename followed by a card rename costs a single undo entry', async () => {
+    // The inspector's first keystroke pushes the selection session's only
+    // history entry; commitNodeRename writes without pushing — so BOTH
+    // renames undo together and the canvas lands back on the applied snapshot.
+    const onRenameBranch = vi.fn();
+    renderEditor({ onRenameBranch });
+
+    fireEvent.mouseDown(document.querySelectorAll('.topology-node')[0]!, { button: 0 });
+    const nameInput = document.querySelector('.inspector-field input[type="text"]') as HTMLInputElement;
+    fireEvent.focus(nameInput);
+    fireEvent.change(nameInput, { target: { value: 'Inspector HQ' } });
+    fireEvent.blur(nameInput);
+    const storeCard = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    await waitFor(() => expect(within(storeCard).getByText('Inspector HQ')).toBeTruthy());
+
+    // Card-level rename stacked on top of the inspector one.
+    fireEvent.click(within(storeCard).getByRole('button', { name: 'topology-branch-rename-label' }));
+    const cardInput = within(storeCard).getByLabelText('topology-branch-rename-placeholder') as HTMLInputElement;
+    fireEvent.change(cardInput, { target: { value: 'Inspector HQ II' } });
+    fireEvent.keyDown(cardInput, { key: 'Enter' });
+    await waitFor(() => expect(within(storeCard).queryByLabelText('topology-branch-rename-placeholder')).toBeNull());
+    await waitFor(() => expect(within(storeCard).getByText('Inspector HQ II')).toBeTruthy());
+
+    // One undo reverts BOTH renames: history holds a single pre-inspector
+    // snapshot, and the card commit never pushed a second entry.
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(within(storeCard).getByText('Downtown Branch')).toBeTruthy());
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+  });
+});
+
+// ── Viewport machinery characterization (pre-3.5a extraction) ────────
+// Pins the CURRENT behavior of the G2 viewport block (pan/zoom state,
+// debounced per-branch persistence, restore clamping, reset/fit anchors,
+// auto-fit suppression, zoom-picker popover ownership) before slice 3.5a
+// moves it out of the editor. Gaps closed: (b) the unmount flush inside
+// the 250ms persist window; (c) clamp-on-restore of an out-of-range saved
+// zoom; (d) resetView's Branch-Location anchor and its no-store fallback;
+// (e) the restored-view half of auto-fit suppression; (f) what the zoom
+// picker does and does not own (inside mousedown, toggle-close).
+
+describe('NodeTopologyEditor — viewport machinery characterization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.useRealTimers();
+  });
+
+  const viewKey = (branch?: string) => `oz-topology-viewport:${branch ?? 'unassigned'}`;
+  const zoomLevel = () => document.querySelector('.canvas-zoom-level')?.textContent;
+  const transform = () => (document.querySelector('.node-canvas-viewport') as HTMLElement).style.transform;
+  const canvas = () => document.querySelector('.node-canvas-container') as HTMLElement;
+  /** The live pan/zoom as rendered — the same numbers a persist must capture. */
+  const readTransform = () => {
+    const m = /translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px\s*\)\s*scale\(\s*([-\d.]+)\s*\)/.exec(transform());
+    if (!m) throw new Error(`unparsable viewport transform: ${transform()}`);
+    return { x: parseFloat(m[1]!), y: parseFloat(m[2]!), zoom: parseFloat(m[3]!) };
+  };
+  type SavedView = { zoom: number; pan: { x: number; y: number } };
+  const readSavedView = (key: string): SavedView | null => {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : (JSON.parse(raw) as SavedView);
+  };
+
+  it('defers the viewport write until the 250ms debounce has elapsed', () => {
+    // Gap (b), first half: the write is debounced, not per-change. An
+    // extraction that drops the timer (or fires it synchronously) turns
+    // every pointer-move into a localStorage write.
+    vi.useFakeTimers();
+    const key = viewKey('branch-a');
+    renderEditor({ branchId: 'branch-a' });
+    expect(localStorage.getItem(key)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+
+    act(() => { vi.advanceTimersByTime(249); });
+    expect(localStorage.getItem(key)).toBeNull();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(readSavedView(key)?.zoom).toBeCloseTo(1.25, 5);
+  });
+
+  it('flushes the pending viewport write on unmount, inside the debounce window', () => {
+    // Gap (b), the half that actually loses data: a branch switch (which
+    // remounts the editor) landing < 250ms after the last pan must not drop
+    // that pan. Two mutations after mount, so the flush has to carry the
+    // LATEST value — not the mount identity, not the intermediate 1.1.
+    vi.useFakeTimers();
+    const key = viewKey('branch-a');
+    const first = renderEditor({ branchId: 'branch-a' });
+
+    fireEvent.wheel(canvas(), { deltaY: -100, clientX: 10, clientY: 10 });
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    const live = readTransform();
+    expect(live.zoom).toBeCloseTo(1.375, 5); // 1 → 1.1 (wheel) → 1.375 (+25%)
+    expect(localStorage.getItem(key)).toBeNull(); // still inside the window
+
+    first.unmount();
+
+    const saved = readSavedView(key);
+    expect(saved).not.toBeNull();
+    expect(saved!.zoom).toBeCloseTo(live.zoom, 5);
+    expect(saved!.pan.x).toBeCloseTo(live.x, 5);
+    expect(saved!.pan.y).toBeCloseTo(live.y, 5);
+
+    // And the remount lands exactly where the user left the canvas.
+    renderEditor({ branchId: 'branch-a' });
+    expect(zoomLevel()).toBe('138%');
+  });
+
+  it('clamps an out-of-range saved zoom into the 0.4..2.0 band on restore and keeps the saved pan', () => {
+    // Gap (c): the clamp lives in the useState initializer, so a stale or
+    // hand-edited 5x / 0.05x value can never reach the transform. The pan is
+    // deliberately NOT clamped — restoring it verbatim is the contract.
+    localStorage.setItem(viewKey('branch-hi'), JSON.stringify({ zoom: 5, pan: { x: 120, y: -40 } }));
+    const hi = renderEditor({ branchId: 'branch-hi' });
+    expect(zoomLevel()).toBe('200%');
+    expect(transform()).toBe('translate(120px, -40px) scale(2)');
+    hi.unmount();
+
+    localStorage.clear();
+    localStorage.setItem(viewKey('branch-lo'), JSON.stringify({ zoom: 0.05, pan: { x: 0, y: 0 } }));
+    renderEditor({ branchId: 'branch-lo' });
+    expect(zoomLevel()).toBe('40%');
+    expect(transform()).toBe('translate(0px, 0px) scale(0.4)');
+  });
+
+  it('mounts at identity when the saved view is unparsable or only half-shaped', () => {
+    // Gap (c), the reject half: a corrupt record must not leave the canvas
+    // unusable, and a zoom with no pan is rejected as a whole — no partial
+    // restore that moves the diagram without the user asking.
+    localStorage.setItem(viewKey('bad'), '{not json');
+    const first = renderEditor({ branchId: 'bad' });
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe('translate(0px, 0px) scale(1)');
+    first.unmount();
+
+    localStorage.clear();
+    localStorage.setItem(viewKey('half'), JSON.stringify({ zoom: 1.5 }));
+    renderEditor({ branchId: 'half' });
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe('translate(0px, 0px) scale(1)');
+  });
+
+  it('Reset View anchors the Branch Location card at the fixed margin instead of the canvas origin', () => {
+    // Gap (d), the anchor half: reset is not "identity", it is
+    // margin(60) − store position. The expectation is computed from the
+    // card's own canvas coords so the pin survives preset drift.
+    renderEditor();
+    const store = document.querySelectorAll('.topology-node')[0] as HTMLElement;
+    const storeX = parseFloat(store.style.left);
+    const storeY = parseFloat(store.style.top);
+
+    fireEvent.wheel(canvas(), { deltaY: -100, clientX: 40, clientY: 40 });
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(transform()).not.toBe('translate(0px, 0px) scale(1)');
+
+    fireEvent.click(screen.getByText('Reset View'));
+
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe(`translate(${60 - storeX}px, ${60 - storeY}px) scale(1)`);
+  });
+
+  it('Reset View falls back to the identity transform when the diagram has no Branch Location', async () => {
+    // Gap (d), the fallback half: with no 'store' node the ternary must land
+    // on {0,0} — and still reset zoom to 1.
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [{ id: 'n-solo', type: 'workspace', name: 'Solo POS', x: 900, y: 700, metadata: { typeKey: 'store-pos' } }],
+      wires: [],
+    } as never);
+    renderEditor();
+    await waitFor(() => expect(getNodeCount()).toBe(1));
+
+    fireEvent.wheel(canvas(), { deltaY: -100, clientX: 10, clientY: 10 });
+    expect(transform()).not.toBe('translate(0px, 0px) scale(1)');
+
+    fireEvent.click(screen.getByText('Reset View'));
+
+    expect(zoomLevel()).toBe('100%');
+    expect(transform()).toBe('translate(0px, 0px) scale(1)');
+  });
+
+  it('does not auto-fit an overflowing diagram whose view came back from storage', async () => {
+    // Gap (e): restoredViewRef is the second suppression gate and had no
+    // coverage. The same geometry that the auto-fit suite expects to land on
+    // scale(0.4) must stay put when this branch already has a saved view.
+    localStorage.setItem(viewKey(), JSON.stringify({ zoom: 1, pan: { x: 500, y: 500 } }));
+    mockLoadTopology.mockResolvedValueOnce({
+      nodes: [
+        { id: 'a', type: 'store', name: 'A', x: 0, y: 0 },
+        { id: 'b', type: 'workspace', name: 'B', x: 2000, y: 100, metadata: { typeKey: 'store-pos' } },
+      ],
+      wires: [],
+    } as never);
+    renderEditor();
+    mockCanvasSize(800, 600);
+    await waitFor(() => expect(getNodeCount()).toBe(2));
+
+    expect(transform()).toBe('translate(500px, 500px) scale(1)');
+  });
+
+  it('keeps the zoom slider popover open through a mousedown inside the zoom controls', () => {
+    // Gap (f): the toolbar/slider stopPropagation is what makes a slider drag
+    // possible at all — the document-level close listener must not fire on it.
+    renderEditor();
+    fireEvent.click(screen.getByRole('button', { name: /zoom level/i }));
+    const slider = document.querySelector('.canvas-zoom-slider-pop input[type="range"]') as HTMLInputElement;
+    expect(slider).not.toBeNull();
+
+    fireEvent.mouseDown(document.querySelector('.canvas-zoom-controls')!);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).not.toBeNull();
+    fireEvent.mouseDown(slider);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).not.toBeNull();
+
+    // The same gesture one node away in the tree IS an outside click.
+    fireEvent.mouseDown(canvas());
+    expect(document.querySelector('.canvas-zoom-slider-pop')).toBeNull();
+  });
+
+  it('closes the zoom slider popover when the zoom level button is clicked again', () => {
+    // Gap (f), the toggle half: the button owns a `v => !v` toggle AND stops
+    // its own mousedown. Drop either half and the second click re-opens the
+    // popover (the document close fires first, then the toggle flips back on).
+    renderEditor();
+    const btn = screen.getByRole('button', { name: /zoom level/i });
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.mouseDown(btn);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).not.toBeNull();
+    fireEvent.click(btn);
+    expect(document.querySelector('.canvas-zoom-slider-pop')).toBeNull();
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('Escape closes the zoom popover and is NOT handed to the canvas Escape ladder', async () => {
+    // Gap (f), the ownership half. The popover listens on document and calls
+    // stopPropagation; the canvas ladder listens on window (bubble phase), so
+    // that stop is what keeps the keystroke exclusive — an Escape aimed at the
+    // popover must not also clear the selection underneath it. Move the
+    // popover listener to window, or drop the stopPropagation, and this reddens.
+    renderEditor();
+    mockCanvasSize(1200, 800);
+    const live = () => screen.getByTestId('topology-live-region').textContent;
+    selectFirstNode();
+    await waitFor(() => expect(live()).toBe('Downtown Branch selected'));
+    const btn = screen.getByRole('button', { name: /zoom level/i });
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(document.querySelector('.canvas-zoom-slider-pop')).toBeNull();
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    // The selection survives the keystroke: no 'Selection cleared' announce,
+    // and the card is still the inspector's subject.
+    let cleared = false;
+    try {
+      await waitFor(() => expect(live()).toBe('Selection cleared'), { timeout: 600, interval: 50 });
+      cleared = true;
+    } catch { cleared = false; }
+    expect(cleared).toBe(false);
+    expect(live()).toBe('Downtown Branch selected');
+  });
+});
+
+
+// ── Touch gesture characterization (3.4e touch hook protection) ──
+// Pins the POST-threshold semantics of the touch loop. coder-21's disarm
+// block already pinned the pre-threshold half (cancel restores, tap, pan,
+// basic zoom); this block pins what happens PAST the 8px
+// TOUCH_DRAG_THRESHOLD and the exact pinch math.
+
+describe('NodeTopologyEditor — touch gesture characterization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('a pointercancel past the drag threshold commits the node drag exactly like pointerup', () => {
+    // The touch cancel handler delegates to the up handler, so a system
+    // gesture stealing the touch MID-DRAG (finger already past 8px) must
+    // COMMIT the drag — identical end state to a normal release — not
+    // restore the pre-drag position (that is the pre-threshold half).
+    // Proven by comparing two identical gestures that differ ONLY in
+    // up-vs-cancel on their final event.
+    renderEditor();
+    const node = () => document.querySelector('.topology-node') as HTMLElement;
+    const canvas = () => document.querySelector('.node-canvas-container') as HTMLElement;
+    const before = node().style.left;
+
+    // Mount A: the pointerup reference gesture.
+    fireEvent.pointerDown(node(), { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas(), { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    fireEvent.pointerUp(canvas(), { pointerId: 1, pointerType: 'touch' });
+    const committedByUp = node().style.left;
+    expect(committedByUp).not.toBe(before);
+    cleanup();
+
+    // Mount B: the same gesture, cancelled instead of released.
+    renderEditor();
+    expect(node().style.left).toBe(before);
+    fireEvent.pointerDown(node(), { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas(), { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    fireEvent.pointerCancel(document, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    expect(node().style.left).toBe(committedByUp);
+    cleanup();
+  });
+
+  it('after a past-threshold pointercancel the disposer really ran: a fresh touch gesture re-arms', () => {
+    // endTouchGesture runs the cleanup disposer on every full release,
+    // cancel included. A partial teardown (disposer never invoked, or the
+    // listeners removed without a re-arm path) would leave the NEXT touch
+    // gesture dead — pan must still work after a cancelled node drag.
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    fireEvent.pointerCancel(document, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+
+    fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: 'touch', clientX: 150, clientY: 130 });
+    fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: 'touch' });
+    expect(viewport.style.transform).toContain('translate(50px, 30px)');
+  });
+
+  it('two-finger pinch zooms AND pans through pinchTransform about the pinch midpoint', () => {
+    // The earlier touch describe pins only "zoom happened"; this pins the
+    // exact pinchTransform output. Fingers at (0,0) + (60,80): midpoint
+    // (30,40), distance 100 (exact 3-4-5 x20). Spread to distance 150 with
+    // the midpoint dragged to (75,0): ratio 1.5 (dyadic, so no float
+    // drift), zoom 1.5 and pan = mid1 - mid0*1.5 = (75,0) - (45,60) =
+    // (30,-60).
+    renderEditor();
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+    const viewport = document.querySelector('.node-canvas-viewport') as HTMLElement;
+
+    fireEvent.pointerDown(canvas, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: 'touch', clientX: 60, clientY: 80 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: 'touch', clientX: 150, clientY: 0 });
+
+    expect(document.querySelector('.canvas-zoom-level')?.textContent).toBe('150%');
+    expect(viewport.style.transform).toContain('translate(30px, -60px)');
+    expect(viewport.style.transform).toContain('scale(1.5)');
+
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+    fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: 'touch' });
+  });
+
+  it('a pinch during an in-flight node drag commits the drag (finalize, not revert)', () => {
+    // The second-finger branch calls finalizeNodeDrag() when a node drag is
+    // in flight: the node STAYS at its dragged position (a revert would
+    // restore 80px) and the drag's already-pushed history entry survives,
+    // so one undo returns the card to its start position.
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: 'touch', clientX: 48, clientY: 48 });
+    expect(node.style.left).not.toBe('80px'); // drag in flight
+
+    fireEvent.pointerDown(canvas, { pointerId: 2, pointerType: 'touch', clientX: 200, clientY: 200 });
+    fireEvent.pointerMove(canvas, { pointerId: 2, pointerType: 'touch', clientX: 260, clientY: 200 });
+    expect(node.style.left).not.toBe('80px'); // pinch did NOT revert the drag
+    expect(document.querySelector('.canvas-zoom-level')?.textContent).not.toBe('100%');
+
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+    fireEvent.pointerUp(canvas, { pointerId: 2, pointerType: 'touch' });
+
+    fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
+    expect(node.style.left).toBe('80px');
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+  });
+
+  it('a touch drag below TOUCH_DRAG_THRESHOLD never arms a node drag', () => {
+    // hypot(5,3) is about 5.83px of travel - under the 8px threshold: the
+    // gesture must stay a tap candidate, never calling beginNodeDrag, so
+    // the node cannot move and no history entry (dirty dot) may appear.
+    // The tap selection from pointerdown is KEPT on release (node taps
+    // never route through the empty-canvas clearAll).
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, pointerType: 'touch', clientX: 5, clientY: 3 });
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+
+    expect(node.style.left).toBe('80px');
+    expect(document.querySelector('.topology-dirty-dot')).toBeNull();
+    expect(node.className).toContain('node-selected');
+  });
+
+  it('a touch tap on a node selects it', () => {
+    // Selection happens at pointerdown (an unselected node collapses the
+    // selection to itself); the release with no movement must keep it,
+    // unlike a background tap, which clears the selection.
+    renderEditor();
+    const node = document.querySelector('.topology-node') as HTMLElement;
+    const canvas = document.querySelector('.node-canvas-container') as HTMLElement;
+
+    fireEvent.pointerDown(node, { pointerId: 1, pointerType: 'touch', clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(canvas, { pointerId: 1, pointerType: 'touch' });
+
+    expect(node.className).toContain('node-selected');
+    expect(within(node).getByText('Downtown Branch')).toBeTruthy();
+    expect(document.querySelectorAll('.topology-node.node-selected')).toHaveLength(1);
+  });
+});
+
+// ── G13-prep: clipboard/selection cluster characterization ───────────
+// Pins the observable contracts of clipboardRef / pasteCascadeRef /
+// copySelection / duplicateSelection / pasteClipboard BEFORE the G13-c
+// hook extraction (doc Phase-0 rule). Read off the cluster at HEAD
+// a7b0c5051 (~1798-1907). Where the extraction brief predicted behavior
+// the code does not have it is journaled, not "fixed": there is NO
+// time-window coalescing on pasteCascadeRef — it is a monotonic
+// per-paste counter that a fresh Ctrl+C resets, and every paste mints
+// fresh crypto ids, so duplicate cascade ids are structurally impossible.
+describe('NodeTopologyEditor — clipboard cluster characterization (G13-prep)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLoadTopology.mockResolvedValue(null);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  // Preset (mockLoadTopology null) renders in array order
+  // [store-1 (80,140), ws-1, wh-1]; copies APPEND, so index 0..2 stay
+  // the originals for the whole lifetime of a test (pinned by the
+  // existing clipboard describe's assertions at the same coordinates).
+  const selectNode = (i: number) => {
+    const nodes = [...document.querySelectorAll('.topology-node')] as HTMLElement[];
+    fireEvent.mouseDown(nodes[i]!, { button: 0 });
+  };
+  const nodeCount = () => document.querySelectorAll('.topology-node').length;
+  const nodePos = () => [...document.querySelectorAll('.topology-node')]
+    .map((n) => ({
+      x: parseInt((n as HTMLElement).style.left, 10),
+      y: parseInt((n as HTMLElement).style.top, 10),
+    }));
+  const countAt = (x: number, y: number) =>
+    nodePos().filter((p) => p.x === x && p.y === y).length;
+  const typeCount = (type: 'store' | 'workspace' | 'warehouse') =>
+    document.querySelectorAll(`.topology-node.node-type-${type}`).length;
+  const WH_TOAST = 'Multiple Warehouses require a Pro Tier license.';
+
+  it('Ctrl+C snapshots the selection: a later move of the ORIGINAL never reaches the clipboard', async () => {
+    // clipboardRef stores per-node object copies taken at COPY time
+    // (nodes.filter(...).map(n => ({ ...n }))), so what lands is anchored
+    // to the copy-time position even though the live node has since moved.
+    renderEditor();
+    selectNode(1); // ws-1
+    const atCopy = nodePos()[1]!;
+
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    // Mutate the live canvas AFTER the copy: a grid nudge moves the source.
+    fireEvent.keyDown(document, { key: 'ArrowRight' });
+    await waitFor(() => expect(nodePos()[1]).not.toEqual(atCopy));
+
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    // Snapshot semantics: exactly one grid step (24) from the copy-time
+    // position — a live-reference clipboard would land one step from the
+    // POST-NUDGE position instead.
+    expect(countAt(atCopy.x + 24, atCopy.y + 24)).toBe(1);
+  });
+
+  it('Ctrl+V pastes what was COPIED, never what is selected now', async () => {
+    renderEditor();
+    selectNode(0); // the store anchor at (80,140)
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+
+    selectNode(1); // move the selection to the workspace
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    // The new card is a STORE copy (workspace count unchanged) one grid
+    // step from the store — proof the paste reads clipboardRef, not
+    // selectedNodeIds, at paste time.
+    expect(typeCount('store')).toBe(2);
+    expect(typeCount('workspace')).toBe(1);
+    expect(countAt(104, 164)).toBe(1);
+    const selected = [...document.querySelectorAll('.topology-node.node-selected')] as HTMLElement[];
+    expect(selected).toHaveLength(1);
+    expect(selected[0]!.className).toContain('node-type-store');
+  });
+
+  it('a fresh Ctrl+C resets the paste cascade to ONE grid step; every paste mints unique ids', async () => {
+    renderEditor();
+    selectNode(0);
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(5));
+    expect(countAt(104, 164)).toBe(1); // cascade step 1
+    expect(countAt(128, 188)).toBe(1); // cascade step 2
+
+    // Re-copy the ORIGINAL (copies append, so index 0 is still store-1):
+    // copySelection resets pasteCascadeRef, so the next paste is step ONE
+    // again — not step three.
+    selectNode(0);
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(6));
+    expect(countAt(104, 164)).toBe(2); // reset landed: two tenants, one cell
+    expect(countAt(152, 212)).toBe(0); // an unreset counter would land here
+
+    // Three pastes of one snapshot mint fresh crypto identities each time:
+    // the cascade counter never leaks into id generation.
+    const ids = [...document.querySelectorAll('.topology-node[data-node-id]')]
+      .map((n) => (n as HTMLElement).getAttribute('data-node-id'));
+    expect(new Set(ids).size).toBe(6);
+  });
+
+  it('Ctrl+C on an empty selection is a no-op that PRESERVES the clipboard', async () => {
+    renderEditor();
+    selectNode(1); // ws-1
+    const atCopy = nodePos()[1]!;
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+
+    fireEvent.keyDown(document, { key: 'Escape' }); // clears the selection
+    expect(nodeCount()).toBe(3);
+    // A guardless impl would overwrite the clipboard with an empty
+    // snapshot here and silently kill the next paste.
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    expect(typeCount('workspace')).toBe(2);
+    expect(countAt(atCopy.x + 24, atCopy.y + 24)).toBe(1);
+  });
+
+  it('Ctrl+V before anything was copied is a silent no-op that leaves the cluster healthy', async () => {
+    renderEditor();
+    selectNode(0);
+
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    expect(nodeCount()).toBe(3); // nothing pasted from an empty clipboard
+    expect(countAt(104, 164)).toBe(0);
+    expect(screen.queryAllByText(WH_TOAST)).toHaveLength(0); // and it stays silent
+
+    // The early return must not corrupt any state: a real copy→paste after
+    // it still lands at cascade step one.
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    expect(countAt(104, 164)).toBe(1);
+  });
+
+  it('a refused warehouse paste adds NO undo entry and NO nodes (gate runs before history)', async () => {
+    // Standard tier (renderEditor's default) caps warehouses at one.
+    renderEditor();
+    // One real, undoable edit first: duplicating a workspace is allowed.
+    selectNode(1);
+    fireEvent.keyDown(document, { key: 'd', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(4));
+
+    // Copying the warehouse is NEVER gated (copy mutates nothing) — the
+    // gate is a creation-path check shared by duplicate/paste/Alt+drag.
+    selectNode(2); // wh-1 — copies append, originals keep indices 0..2
+    fireEvent.keyDown(document, { key: 'c', ctrlKey: true });
+    expect(screen.queryAllByText(WH_TOAST)).toHaveLength(0);
+
+    // The paste is refused before any history entry or cascade offset.
+    fireEvent.keyDown(document, { key: 'v', ctrlKey: true });
+    await waitFor(() => expect(screen.queryAllByText(WH_TOAST).length).toBeGreaterThanOrEqual(1));
+    expect(nodeCount()).toBe(4);
+    expect(typeCount('warehouse')).toBe(1);
+
+    // Exactly ONE undo still reverts the duplicate: had the refused paste
+    // pushed an entry, the first Ctrl+Z would pop that ghost and leave
+    // the canvas at 4 nodes.
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(nodeCount()).toBe(3));
+  });
+
+  it('the inspector Duplicate button drives the same selection path (and hides on the store)', async () => {
+    // Same useCallback as Ctrl+D — the extraction must keep every driver
+    // (keyboard, rack item, inspector button) on ONE implementation.
+    renderEditor();
+    selectNode(0); // the store anchor never offers duplication
+    let drawer = document.querySelector('.node-inspector-drawer') as HTMLElement;
+    expect(drawer).not.toBeNull();
+    expect(within(drawer).queryByRole('button', { name: 'Duplicate' })).toBeNull();
+
+    selectNode(1); // ws-1 — the button appears
+    drawer = document.querySelector('.node-inspector-drawer') as HTMLElement;
+    const atClick = nodePos()[1]!;
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Duplicate' }));
+
+    await waitFor(() => expect(nodeCount()).toBe(4));
+    expect(countAt(atClick.x + 24, atClick.y + 24)).toBe(1);
+    // Selection moved to the copy (the cascade-Ctrl+D contract).
+    const selected = [...document.querySelectorAll('.topology-node.node-selected')] as HTMLElement[];
+    expect(selected).toHaveLength(1);
+    expect(selected[0]!.style.left).toBe(`${atClick.x + 24}px`);
   });
 });

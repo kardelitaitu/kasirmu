@@ -105,10 +105,11 @@ export const bootstrapOwner = (args: BootstrapOwnerArgs): Promise<BootstrapOwner
 // ── Staff Management ──────────────────────────────────────────────
 
 /**
- * A user's single effective assignment (ADR #35 D5 / spec 0048): scope mode
- * plus the per-dimension explicit-all flag and list. Empty lists never mean
- * "all" — the `*_all` flags are the explicit marker, so `list` with no ids
- * is a deny. Legacy users without an assignment row resolve as global all/all.
+ * A user's single effective assignment (ADR #35 D5 / spec 0048 + ADR #47):
+ * scope mode, the per-dimension explicit-all flags and lists, and the
+ * resource axis. Empty lists never mean "all" — the `*_all` flags are the
+ * explicit marker, so `list` with no ids is a deny. Legacy users without an
+ * assignment row resolve as global all/all organization.
  */
 export interface AssignmentDto {
   scope_mode: 'global' | 'scoped';
@@ -120,11 +121,16 @@ export interface AssignmentDto {
   workspaces_all: boolean;
   /** Workspace keys in scope when `workspaces_all` is false. */
   workspace_keys: string[];
+  /** ADR #47 resource axis: which resource kind the assignment covers. */
+  scope_type: 'organization' | 'legal_entity' | 'location';
+  /** The resource id when the axis is not `organization`. */
+  scope_id: string | null;
 }
 
 /**
  * The assignment scope carried by the staff create/edit IPC args (ADR #35
- * D5 / spec 0048). Mirrors `AssignmentDto`.
+ * D5 / spec 0048 + ADR #47). Mirrors `AssignmentDto`; `scope_type`/`scope_id`
+ * are optional — omitting them keeps the org-wide default.
  */
 export interface AssignmentArgs {
   scope_mode: 'global' | 'scoped';
@@ -132,6 +138,10 @@ export interface AssignmentArgs {
   branch_ids: string[];
   workspaces_all: boolean;
   workspace_keys: string[];
+  /** ADR #47 resource axis; omit (or `organization`) for org-wide. */
+  scope_type?: 'organization' | 'legal_entity' | 'location';
+  /** Required when `scope_type` is `legal_entity` or `location`. */
+  scope_id?: string;
 }
 
 /** A staff member record. */
@@ -201,6 +211,128 @@ export interface RoleDto {
    * (may include the `*` wildcard — display as-is, do not gate on it).
    */
   permissions: string[];
+  /**
+   * Whether the preset seeder owns this row. True means the authoring
+   * surface must not offer Edit or Delete: seed_default_roles upserts
+   * preset ids and overwrites their grants, and it is reachable from the UI
+   * (seedDefaultRolesScoped), so an accepted edit would be silently
+   * destroyed later. Note role-custom is itself a preset — a role *called*
+   * custom is not an authored row, so gate on this flag and never on name.
+   */
+  is_builtin: boolean;
+  /**
+   * Rows still pointing at this role (users, assignments, and the two
+   * workspace-grant tables). Non-zero means the backend refuses Delete, so
+   * disable it and say why rather than letting the click fail.
+   *
+   * FOREIGN-KEY truth and the ONLY field that may gate deletion. It is NOT a
+   * count of accounts and must never be worded as one — `holder_count` is
+   * that number, and it is not derivable from this one, because
+   * `create_user` writes two rows per person and an account can reference a
+   * role through its `users` row while resolving to a different one.
+   */
+  reference_count: number;
+  /**
+   * Accounts that resolve to this role — the only value that may read "used
+   * by N accounts". Computed server-side from the same predicate
+   * authorization uses (assignment first, `users.role_id` fallback), NOT by
+   * summing `reference_count`.
+   */
+  holder_count: number;
+  /**
+   * Workspace configuration pointing at this role (`role_workspace_types` /
+   * `role_workspaces`). Blocks a delete like a holder does, but no account
+   * holds anything through it, so it gets its own wording.
+   */
+  grant_count: number;
+}
+
+/**
+ * Arguments for creating a custom role (ADR #47 ruling 4). Carries no id:
+ * the backend generates one, because a row whose id the preset seeder owns
+ * would be silently rewritten on the next re-seed.
+ */
+export interface CreateRoleArgs {
+  name: string;
+  description?: string;
+  permissions?: string[];
+}
+
+/**
+ * Arguments for rewriting a custom role. `permissions` replaces the grant
+ * set wholesale — it is not merged with the previous one.
+ */
+export interface UpdateRoleArgs {
+  id: string;
+  name: string;
+  description?: string;
+  permissions?: string[];
+}
+
+/**
+ * One account that resolves to a role. Mirrors `RoleHolderDto` (Rust).
+ *
+ * The scope fields are null TOGETHER, when the account has no assignment row
+ * at all and resolves through its `users.role_id`. That is a different fact
+ * from "scoped to nothing" — `has_assignment` is what tells them apart, so
+ * render them apart rather than collapsing nulls into a blank cell.
+ */
+export interface RoleHolderDto {
+  user_id: string;
+  username: string;
+  display_name: string;
+  /** An inactive account still holds the role and still blocks deleting it. */
+  is_active: boolean;
+  /** False for a legacy account with no assignment row. */
+  has_assignment: boolean;
+  /** `global` | `scoped` (the branch/workspace dimension). */
+  scope_mode: string | null;
+  /** `organization` | `legal_entity` | `location` (the ADR #47 axis). */
+  scope_type: string | null;
+  /** The bound resource; null exactly when scope_type is `organization`. */
+  scope_id: string | null;
+  /**
+   * `all` | `list` — read this BEFORE `branch_count`. A scoped assignment
+   * with `all` covers every branch and so carries zero list rows: a count of
+   * 0 there means UNRESTRICTED, not nothing. Rendering the count alone would
+   * show an all-branches manager as having no branches at all.
+   */
+  branch_scope: string | null;
+  /** `all` | `list`, for `workspace_count` — same caveat. */
+  workspace_scope: string | null;
+  /** Branch ids in scope; null when there is no assignment row. */
+  branch_count: number | null;
+  /** Workspace keys in scope; null when there is no assignment row. */
+  workspace_count: number | null;
+}
+
+/**
+ * A capped page of holders plus the uncapped total.
+ *
+ * `holders` may be shorter than `total` on purpose. The difference is what
+ * the surface renders as "and N more" — never render `holders.length` as if
+ * it were the whole set, and never hardcode the ceiling: `cap` carries it.
+ */
+export interface RoleHoldersDto {
+  holders: RoleHolderDto[];
+  /** Every holder, including those past `cap`. */
+  total: number;
+  /** The ceiling the backend actually applied. */
+  cap: number;
+}
+
+/**
+ * One registered permission key — the vocabulary the role editor offers,
+ * read from the same registry enforcement consults (ADR #35). Never hardcode
+ * this list in the UI: a copy drifts from the keys the gate actually honors.
+ */
+export interface PermissionKeyDto {
+  key: string;
+  family: string;
+  /** Never grantable under a family wildcard, and blocked for an incomplete
+   *  profile (ADR #35 D3/D6). */
+  sensitive: boolean;
+  description: string;
 }
 
 // ── Session-scoped Staff Management (ADR #7 · audit-open-findings STAFF-01) ───
@@ -253,6 +385,58 @@ export const listStaffScoped = (sessionToken: string): Promise<StaffMemberDto[]>
 export const listRolesScoped = (sessionToken: string): Promise<RoleDto[]> =>
   loggedInvoke<RoleDto[]>('list_roles_scoped', { sessionToken });
 
+// ── Role authoring (ADR #47 ruling 4) ─────────────────────────────────────
+//
+// Every arg key below is the camelCase form of the Rust parameter name —
+// Tauri binds by that name and the invoke args object is an untyped
+// literal, so a wrong key fails at runtime while typecheck stays green
+// (todo-global-saas-3.md Amendment 3, defect 1).
+
+/**
+ * List the registered permission keys — the vocabulary the role editor
+ * offers. Read from the same registry enforcement consults, so the picker
+ * can never offer a key the gate would deny.
+ */
+export const listPermissionKeysScoped = (
+  sessionToken: string,
+): Promise<PermissionKeyDto[]> =>
+  loggedInvoke<PermissionKeyDto[]>('list_permission_keys_scoped', { sessionToken });
+
+/** Create a custom role. The backend generates the id. */
+export const createRoleScoped = (
+  sessionToken: string,
+  args: CreateRoleArgs,
+): Promise<RoleDto> =>
+  loggedInvoke<RoleDto>('create_role_scoped', { sessionToken, args });
+
+/** Rewrite a custom role. Refused for preset ids. */
+export const updateRoleScoped = (
+  sessionToken: string,
+  args: UpdateRoleArgs,
+): Promise<RoleDto> =>
+  loggedInvoke<RoleDto>('update_role_scoped', { sessionToken, args });
+
+/** Delete a custom role. Refused for preset ids and while referenced. */
+export const deleteRoleScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<null> => loggedInvoke<null>('delete_role_scoped', { sessionToken, id });
+
+/**
+ * The accounts that resolve to one role, org-wide, capped server-side.
+ *
+ * Not store-filtered, unlike most of this API: users, assignments and roles
+ * are tenant-global identity records (ADR #4 / #7), so a session standing in
+ * one location still sees every holder in the organization. That is the
+ * honest answer to "who holds this", and filtering it per store would
+ * under-report a role the caller is about to delete.
+ */
+export const listRoleHoldersScoped = (
+  sessionToken: string,
+  id: string,
+): Promise<RoleHoldersDto> =>
+  loggedInvoke<RoleHoldersDto>('list_role_holders_scoped', { sessionToken, id });
+
 /** Create a new staff member (caller resolved from session token). */
 export const createStaffScoped = (
   sessionToken: string,
@@ -290,6 +474,13 @@ export interface CreateSessionArgs {
   terminal_id: string;
   /** HMAC-signed picker ticket from staff_login / bootstrap_owner. */
   picker_ticket: string;
+  /**
+   * Optional Organization (legal entity) routing hint for SaaS-3 L194.
+   * Display-only: the backend fails closed by re-deriving the org from the
+   * user assignment (assignment_covers_resource) — this value is never
+   * trusted as authority. Omit for the default org.
+   */
+  org_id?: string;
 }
 
 /** Session context DTO returned alongside the opaque token. */
@@ -300,6 +491,12 @@ export interface SessionContextDto {
   instanceId: string;
   typeKey: string;
   terminalId: string;
+  /**
+   * Display-only label of the Organization (legal entity) the session is
+   * scoped to, when the user picked a non-default org at login or switched
+   * after login (SaaS-3 L194). Never used as an auth input.
+   */
+  orgLabel?: string;
 }
 
 /** Result of create_session — opaque token + resolved context. */
@@ -317,6 +514,43 @@ export interface CreateSessionResult {
  */
 export const createSession = (args: CreateSessionArgs): Promise<CreateSessionResult> =>
   loggedInvoke<CreateSessionResult>('create_session', { args });
+
+/** Summary of an Organization (legal entity) available on this device. */
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+}
+
+/**
+ * Enumerate the Organizations (legal entities) this device knows about.
+ *
+ * SaaS-3 L194 (pre-login org selector source). Device-local enumeration —
+ * returns the legal_entities for the device tenant and nothing else. Callable
+ * before authentication (reveals only org ids/names, not account secrets),
+ * and it is the enumerated allow-list that create_session and
+ * switch_organization constrain org selection to.
+ */
+export const listOrganizations = (): Promise<OrganizationSummary[]> =>
+  loggedInvoke<OrganizationSummary[]>('list_organizations', {});
+
+/**
+ * Switch the active Organization (legal entity) for an authenticated session.
+ *
+ * SaaS-3 L194. Invalidate-then-mint: the backend kills the current token
+ * before minting the new one, re-derives tenant authority from the user
+ * assignment (fail-closed), and re-runs tenant integrity on the opened DB.
+ * Requires a FULL PIN re-auth — no credential carryover.
+ */
+export const switchOrganization = ({
+  sessionToken,
+  orgId,
+  pin,
+}: {
+  sessionToken: string;
+  orgId: string;
+  pin: string;
+}): Promise<CreateSessionResult> =>
+  loggedInvoke<CreateSessionResult>('switch_organization', { sessionToken, orgId, pin });
 
 /** Result of refreshing a picker ticket. */
 export interface RefreshPickerTicketResult {
@@ -347,6 +581,18 @@ export const refreshPickerTicket = (
  */
 export const destroySession = (sessionToken: string): Promise<void> =>
   loggedInvoke<void>('destroy_session', { sessionToken });
+
+/**
+ * Act as another user within the operator's authorized scope, for support
+ * (operator:impersonate). Returns a fresh session token scoped to the target
+ * user — the operator's own grants are NOT merged (no privilege amplification);
+ * the produced token carries only the target's scope/grants.
+ */
+export const impersonateUserScoped = (
+  sessionToken: string,
+  targetUserId: string,
+): Promise<CreateSessionResult> =>
+  loggedInvoke<CreateSessionResult>('impersonate_user_scoped', { sessionToken, targetUserId });
 
 /**
  * Heartbeat the active session (F-007: previously invoked directly from

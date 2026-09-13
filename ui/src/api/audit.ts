@@ -41,6 +41,44 @@ export const listAuditLogScoped = (
 ): Promise<AuditLogPageDto> =>
   loggedInvoke<AuditLogPageDto>('list_audit_log_scoped', { sessionToken, args });
 
+// ── Organization-level security trail ─────────────────────────────
+
+/**
+ * Same page contract as the general audit query, on purpose: the backend
+ * returns `AuditLogPageDto` for both and filters/paginates identically, so a
+ * caller that already handles one handles this one too.
+ */
+export type ListSecurityEventsScopedArgs = ListAuditLogScopedArgs;
+
+/**
+ * Server-filtered, keyset-paginated SECURITY trail for the whole
+ * organization: logins, failed logins, logouts and staff account changes.
+ *
+ * Two things differ from `listAuditLogScoped`, and both change what a caller
+ * has to do:
+ *
+ * - It reads the GLOBAL identity database, not the session's store. Staff,
+ *   roles and sessions are tenant-global (ADR #4 / ADR #7), so scoping this
+ *   trail per store would silently show a subset of who authenticated into
+ *   the organization. A store-bound session still sees every store's events,
+ *   and there is deliberately no store filter to pass.
+ * - A Free-tier session is REFUSED, not shown an empty page: the backend
+ *   gates on the audit tier before `audit:view`, and the error is the signal
+ *   that the feature is unavailable. Treat an empty list as "no security
+ *   events" and nothing else — it does not mean "no access".
+ *
+ * Not every action in the trail has a display label yet: the catalog in
+ * `features/audit/auditCatalog.ts` maps what it maps, and an unmapped action
+ * renders as the fallback label rather than failing. The label lives in the
+ * shared locale family, so adding one is a shared.ftl change, not a change
+ * here.
+ */
+export const listSecurityEventsScoped = (
+  sessionToken: string,
+  args: ListSecurityEventsScopedArgs,
+): Promise<AuditLogPageDto> =>
+  loggedInvoke<AuditLogPageDto>('list_security_events_scoped', { sessionToken, args });
+
 // ── Review checkpoints (AUD-04) ───────────────────────────────────
 
 /** A persisted server-side review checkpoint (AUD-04). */
@@ -102,3 +140,25 @@ export const exportAuditLogScoped = (
   args: ExportAuditLogArgs,
 ): Promise<AuditExportDto> =>
   loggedInvoke<AuditExportDto>('export_audit_log_scoped', { sessionToken, args });
+
+/** Arguments for the security-event export (owner ruling D61-7, design D84). */
+export interface SecurityEventExportArgs {
+  /** Exact `user_id` (or `system`) to filter on; omit for all actors. */
+  actor?: string | null;
+  /** Inclusive `YYYY-MM-DD` lower bound; normalized at the IPC layer. */
+  dateFrom?: string | null;
+  /** Exclusive `YYYY-MM-DD` upper bound (+1 day at the IPC layer). */
+  dateTo?: string | null;
+}
+
+/**
+ * Export only the security-event rows (SECURITY_ACTIONS allowlist) to CSV
+ * (owner ruling D61-7, design D84). Same `AuditExportDto` artifact as the
+ * full AUD-09 export; the actor/date bounds are normalized server-side
+ * before the core filtered export runs.
+ */
+export const exportSecurityEventsScoped = (
+  sessionToken: string,
+  args: SecurityEventExportArgs,
+): Promise<AuditExportDto> =>
+  loggedInvoke<AuditExportDto>('export_security_events_scoped', { sessionToken, args });

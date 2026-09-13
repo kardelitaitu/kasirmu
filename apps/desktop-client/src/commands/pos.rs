@@ -14,820 +14,209 @@ next: none | perf: N/A
 //! Carts are persisted in the SQLite `active_carts` table so they
 //! survive application restarts.
 
-use serde::{Deserialize, Serialize};
+#[allow(unused_imports)] // sibling pos_tests.rs depends on it
 use serde_json::Value;
 use tauri::State;
 
-use foundation::Percentage;
+#[allow(unused_imports)] // sibling pos_tests.rs depends on it
 use oz_core::db::Store;
-use oz_core::events::{SaleCompleted, SaleCompletedLine};
+#[allow(unused_imports)] // sibling pos_tests.rs depends on these types
 use oz_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
 
-use crate::commands::authz::require_permission_for_session;
-use crate::commands::topology::TOPOLOGY_RUNTIME_SETTING_KEY;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Select every distinct warehouse target from validated POS stock routes.
-///
-/// Runtime-plan order is the allocation priority: the first route is the
-/// preferred warehouse, and later routes fill the remaining quantity.
-fn runtime_stock_target_instances(plan: &Value, source_instance_id: &str) -> Vec<String> {
-    let mut targets = Vec::new();
-    if let Some(routes) = plan.get("routes").and_then(Value::as_array) {
-        for route in routes {
-            let is_stock_route = route.get("source_instance_id").and_then(Value::as_str)
-                == Some(source_instance_id)
-                && route.get("from_port_id").and_then(Value::as_str) == Some("stock-out")
-                && route.get("to_port_id").and_then(Value::as_str) == Some("stock-in")
-                && route.get("relationship_type").and_then(Value::as_str) == Some("stock-routing");
-            // A Retail POS → Warehouse Operation edge is the warehouse's
-            // one primary input. The compiler annotates its target kind so
-            // it can also serve as the stock-deduction target without
-            // confusing Restaurant POS → KDS operation feeds with stock.
-            let is_retail_operation_route = route.get("source_instance_id").and_then(Value::as_str)
-                == Some(source_instance_id)
-                && route.get("from_port_id").and_then(Value::as_str) == Some("operation-out")
-                && route.get("to_port_id").and_then(Value::as_str) == Some("operation-in")
-                && route.get("relationship_type").and_then(Value::as_str) == Some("generic")
-                && route.get("target_node_kind").and_then(Value::as_str) == Some("warehouse");
-            let Some(target) = (is_stock_route || is_retail_operation_route)
-                .then(|| route.get("target_instance_id").and_then(Value::as_str))
-                .flatten()
-            else {
-                continue;
-            };
-            if !targets.iter().any(|existing| existing == target) {
-                targets.push(target.to_owned());
-            }
-        }
-    }
-    targets
-}
+// Wave D / D1a: the cart, held-bill and open-bill bodies moved to
+// oz_bridge::pos. The DTOs and the pure helpers still named here are
+// re-exported so the sibling pos_tests.rs (which opens use super::*;) and the
+// checkout bodies below keep resolving them from this module unchanged.
+pub use oz_bridge::pos::{
+    AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
+    CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
+    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs, PaymentKind,
+    PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
+    PreviewPromotedTotalResult, PreviewPromotionDiscount, SerialNumberArg, SetCartDiscountArgs,
+    SetCartDiscountScopedArgs, StartSaleArgs, StartSaleResult, default_bill_type,
+    resolve_runtime_stock_target, resolve_runtime_stock_targets, runtime_stock_target_instances,
+    shortfall_line_unit_price, stamp_attempt_split_keys, tax_scope_now,
+};
 
-fn resolve_runtime_stock_targets(
-    conn: &rusqlite::Connection,
-    store_id: &str,
-    source_instance_id: &str,
-) -> Result<Vec<String>, AppError> {
-    let key = format!("{TOPOLOGY_RUNTIME_SETTING_KEY}/{store_id}");
-    let Some(json) = oz_core::Settings::get(conn, &key)? else {
-        return Ok(Vec::new());
-    };
-    let plan: Value = serde_json::from_str(&json)
-        .map_err(|e| AppError::Internal(format!("parse topology runtime plan: {e}")))?;
-    Ok(runtime_stock_target_instances(&plan, source_instance_id))
-}
-
-fn resolve_runtime_stock_target(
-    conn: &rusqlite::Connection,
-    store_id: &str,
-    source_instance_id: &str,
-) -> Result<Option<String>, AppError> {
-    Ok(
-        resolve_runtime_stock_targets(conn, store_id, source_instance_id)?
-            .into_iter()
-            .next(),
-    )
-}
-
-/// Discriminator for [`CompleteSaleArgs`]/[`CompleteSaleScopedArgs`] payment
-/// state.
-///
-/// ADR #20 (payment-capture ordering) stores the canonical marker string
-/// [`PaymentKind::SPLIT_MARKER`] in the `sales.payment_method` column
-/// whenever the sale is settled via multiple tenders. This enum wraps the
-/// marker so the code path no longer references a bare string literal (L-1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaymentKind {
-    /// Sale settled via a single payment method (cash, card, QRIS, etc.).
-    /// The wire value is the user-supplied `payment_method` argument.
-    Single,
-    /// Sale settled via multiple payment methods (split-tender).
-    /// The wire value is the canonical marker [`PaymentKind::SPLIT_MARKER`].
-    Split,
-}
-
-impl PaymentKind {
-    /// Canonical wire-format string for split-tender sales. Persisted
-    /// in `sales.payment_method` and roundtripped through the IPC DTO.
-    pub const SPLIT_MARKER: &'static str = "split";
-
-    /// Resolve this payment kind to the wire-format string stored in
-    /// `sales.payment_method`. Both variants earn their place: `Single`
-    /// returns the user-supplied method verbatim; `Split` returns the
-    /// canonical ADR #20 marker.
-    ///
-    /// Instance method (not associated function) so the type system
-    /// forces callers to construct a `PaymentKind` value — keeps the
-    /// enum's variants from going orphan.
-    pub fn wire_method(&self, single_method: &str) -> String {
-        match self {
-            Self::Single => single_method.to_string(),
-            Self::Split => Self::SPLIT_MARKER.to_string(),
-        }
-    }
-}
-
-// ── Discount ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Setcartdiscountargs.
-pub struct SetCartDiscountArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Discount percentage (0-100). Pass 0 to clear.
-    pub percent: i64,
-    /// Optional human-readable label (e.g. "Senior 10%").
-    pub label: Option<String>,
-    /// ID of the user setting the discount (for authz).
-    pub user_id: String,
-}
-
-/// Args for `set_cart_discount_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetCartDiscountScopedArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Percent.
-    pub percent: i64,
-    /// Label.
-    pub label: Option<String>,
-}
-
-/// Set a cart discount within the store resolved from a session token.
-///
-/// ADR #7: Scoped variant of `set_cart_discount`. The `user_id` for
-/// permission checks is read from the resolved `SessionContext`.
-#[tauri::command]
-pub async fn set_cart_discount_scoped(
-    session_token: String,
-    args: SetCartDiscountScopedArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    if !(0..=100).contains(&args.percent) {
-        return Err(AppError::Invalid(format!(
-            "discount percent must be between 0 and 100, got {}",
-            args.percent
-        )));
-    }
-    // SAFETY: args.percent is validated 0..=100 above, so the unwrap is safe.
-    let percent = Percentage::new(args.percent as u8).unwrap();
-
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_DISCOUNT).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let mut cart = store
-        .load_active_cart(&args.cart_id)?
-        .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-    cart.set_discount(percent, args.label);
-    store.save_active_cart(&cart, None)?;
-    drop(db);
-    tracing::info!(cart_id = %args.cart_id, percent = %args.percent, "cart discount set (scoped)");
-    Ok(())
-}
-
-// ── Start Sale ───────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Startsaleargs.
-pub struct StartSaleArgs {
-    /// ISO-4217 currency code for the new cart.
-    #[serde(default)]
-    pub currency: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Startsaleresult.
-pub struct StartSaleResult {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// ADR-19 §5.1: the deduction location locked at cart-start time.
-    pub deduction_location_id: Option<String>,
-}
-
-/// Start a new sale in the store resolved from a session token. ADR #7.
-///
-/// ADR-19 §5.1: resolves the primary deduction location from the workspace
-/// instance and locks it on the `active_carts` row at cart-start time.
-///
-/// Requires `SALES_PROCESS` permission from the resolved session (Bug #5).
-#[tauri::command]
-pub async fn start_sale_scoped(
-    session_token: String,
-    args: StartSaleArgs,
-    state: State<'_, AppState>,
-) -> Result<StartSaleResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let stock_target_instance_id = {
-        let global_db = state.db.lock().await;
-        resolve_runtime_stock_target(&global_db, &session.store_id, &session.instance_id)?
-    };
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let currency: oz_core::Currency = if args.currency.is_empty() {
-        // M-6: lookup the store profile's default currency instead of hardcoding "USD".
-        let code =
-            oz_core::Settings::get_default_currency(&db)?.unwrap_or_else(|| "USD".to_string());
-        code.parse()
-            .map_err(|_| AppError::Invalid(format!("invalid default currency code: {code}")))?
-    } else {
-        args.currency
-            .parse()
-            .map_err(|_| AppError::Invalid(format!("invalid currency code: {}", args.currency)))?
-    };
-    let cart = Cart::new(currency);
-    let id = cart.id();
-
-    // Resolve the primary deduction location for this workspace instance.
-    let deduction_location_id = match stock_target_instance_id.as_deref() {
-        Some(target_instance_id) => {
-            oz_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?
-        }
-        None => {
-            oz_core::location_resolver::resolve_primary_location(&db, &session.instance_id, None)
-                .unwrap_or_else(|_| oz_core::location_resolver::get_default_location_id())
-        }
-    };
-
-    store.save_active_cart(&cart, Some(deduction_location_id.as_str()))?;
-    drop(db);
-
-    tracing::info!(
-        cart_id = %id,
-        deduction_location_id = %deduction_location_id,
-        "cart created with deduction location lock",
-    );
-
-    Ok(StartSaleResult {
-        cart_id: id,
-        deduction_location_id: Some(deduction_location_id.to_string()),
-    })
-}
-
-// ── Add Line ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Addlineargs.
-pub struct AddLineArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Stock-keeping unit identifier.
-    pub sku: Sku,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit Price Minor.
-    pub unit_price_minor: i64,
-    /// FRONTEND-03: ISO-4217 code of the currency the line is priced in.
-    /// When present the command builds the line in this currency and
-    /// `Cart::add_line` enforces it matches the cart's currency; when
-    /// absent (legacy callers) the cart currency is stamped as before.
-    pub unit_price_currency: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Addlineresult.
-pub struct AddLineResult {
-    /// ID of the associated line.
-    pub line_id: LineId,
-    /// Line Total.
-    pub line_total: Option<Money>,
-}
-
-/// Resolve the unit price for an `add_line` request (FRONTEND-03).
-///
-/// The line's own currency crosses the IPC boundary so a cross-currency
-/// line is rejected by `Cart::add_line` instead of being silently re-stamped
-/// to the cart's currency. `None` preserves the legacy fallback.
+/// Resolve the unit price for an add_line request (FRONTEND-03) with the
+/// shell's error type - the body lives in oz_bridge::pos::line_unit_price.
+#[allow(dead_code)] // sibling pos_tests.rs calls the shell-shaped helper
 fn line_unit_price(args: &AddLineArgs, cart_currency: Currency) -> Result<Money, AppError> {
-    let currency = match args.unit_price_currency.as_deref() {
-        Some(s) => s
-            .parse::<Currency>()
-            .map_err(|_| AppError::Invalid(format!("invalid unit price currency: {s}")))?,
-        None => cart_currency,
-    };
-    Ok(Money {
-        minor_units: args.unit_price_minor,
-        currency,
-    })
+    oz_bridge::pos::line_unit_price(args, cart_currency).map_err(Into::into)
 }
 
-/// Add a line to an active cart in the store resolved from a session token. ADR #7.
-///
-/// ADR-19 §5.1: rejects the command when the cart has no `deduction_location_id`
-/// lock (carts must be created via `start_sale_scoped` which resolves and locks
-/// the deduction location at cart-start time).
-///
-/// Requires `SALES_PROCESS` permission from the resolved session (Bug #6).
-#[tauri::command]
-pub async fn add_line_scoped(
-    session_token: String,
-    args: AddLineArgs,
-    state: State<'_, AppState>,
-) -> Result<AddLineResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    // ADR-19 §5.1: reject add_line when the cart has no deduction location lock.
-    store
-        .ensure_cart_deduction_location_lock(&args.cart_id)
-        .map_err(|_| {
-            AppError::Invalid(format!(
-                "cart {} has no deduction location lock — create via start_sale_scoped first",
-                args.cart_id
-            ))
-        })?;
-
-    let mut cart = store
-        .load_active_cart(&args.cart_id)?
-        .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-
-    let unit_price = line_unit_price(&args, cart.currency())?;
-    let line = CartLine::new(args.sku.clone(), args.qty, unit_price);
-    let line_id = line.id;
-    let line_total = line.total();
-    cart.add_line(line)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-    store.save_active_cart(&cart, None)?;
-    drop(db);
-
-    Ok(AddLineResult {
-        line_id,
-        line_total,
-    })
-}
-
-// ── Override Line Price ──────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Overridelinepriceargs.
-pub struct OverrideLinePriceArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// ID of the associated line.
-    pub line_id: LineId,
-    /// The new unit price in minor units (e.g. cents).
-    pub new_price_minor: i64,
-    /// ID of the manager authorising the override.
-    pub user_id: String,
-}
-
-/// Args for `override_line_price_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OverrideLinePriceScopedArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// ID of the associated line.
-    pub line_id: LineId,
-    /// New Price Minor.
-    pub new_price_minor: i64,
-}
-
-/// Override a line price within the store resolved from a session token.
-///
-/// ADR #7: Scoped variant of `override_line_price`. The `user_id` for
-/// permission checks is read from the resolved `SessionContext`.
-#[tauri::command]
-pub async fn override_line_price_scoped(
-    session_token: String,
-    args: OverrideLinePriceScopedArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_OVERRIDE_PRICE)
-        .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_override_line_price_unchecked(&db, &args.cart_id, &args.line_id, args.new_price_minor)
-}
-
+/// The cart/line mutation behind override_line_price_scoped, shell error type -
+/// the body lives in oz_bridge::pos::run_override_line_price_unchecked.
+#[allow(dead_code)] // kept for the shell-shaped helper contract
 fn run_override_line_price_unchecked(
     db: &rusqlite::Connection,
     cart_id: &CartId,
     line_id: &LineId,
     new_price_minor: i64,
 ) -> Result<(), AppError> {
-    let store = Store::new(db);
-    let mut cart = store
-        .load_active_cart(cart_id)?
-        .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", cart_id)))?;
-
-    let currency = cart.currency();
-    let new_price = Money {
-        minor_units: new_price_minor,
-        currency,
-    };
-
-    let line = cart
-        .lines_mut()
-        .iter_mut()
-        .find(|l| l.id == *line_id)
-        .ok_or_else(|| AppError::Invalid(format!("line not found: {}", line_id)))?;
-
-    line.set_overridden_price(new_price)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    store.save_active_cart(&cart, None)?;
-
-    tracing::info!(%cart_id, %line_id, new_price_minor, "line price overridden");
-    Ok(())
+    oz_bridge::pos::run_override_line_price_unchecked(db, cart_id, line_id, new_price_minor)
+        .map_err(Into::into)
 }
 
-// ── Get Cart Deduction Location ───────────────────────────────────────
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Info about the deduction location locked on an active cart. ADR-19 §17.
-pub struct DeductionLocationInfo {
-    /// The location UUID.
-    pub location_id: String,
-    /// Human-readable location name.
-    pub location_name: String,
-    /// ISO-8601 timestamp of the last manager override, or `None`.
-    pub overridden_at: Option<String>,
+/// Set a cart discount within the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn set_cart_discount_scoped(
+    session_token: String,
+    args: SetCartDiscountScopedArgs,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::set_cart_discount_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
-// ── Override Deduction Location ───────────────────────────────────────
+/// Start a new sale in the store resolved from a session token (ADR #7).
+/// Resolves and locks the primary deduction location on the cart at start.
+#[tauri::command]
+pub async fn start_sale_scoped(
+    session_token: String,
+    args: StartSaleArgs,
+    state: State<'_, AppState>,
+) -> Result<StartSaleResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::start_sale_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
+}
 
-/// Override the deduction location lock on an active cart.
-///
-/// Records the manager override timestamp (`location_override_at`) on the
-/// cart.  The `deduction_location_id` itself is not changed — this is an
-/// audit record that a manager authorised the current location.
-///
-/// ADR-19 §17: called after FastPINOverlay PIN verification.
+/// Add a line to an active cart in the store resolved from a session token (ADR #7).
+/// Rejects carts without a deduction-location lock (ADR-19 §5.1).
+#[tauri::command]
+pub async fn add_line_scoped(
+    session_token: String,
+    args: AddLineArgs,
+    state: State<'_, AppState>,
+) -> Result<AddLineResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::add_line_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Override a line price within the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn override_line_price_scoped(
+    session_token: String,
+    args: OverrideLinePriceScopedArgs,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::override_line_price_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
+}
+
+/// Override the deduction location lock on an active cart (ADR-19 §17).
+/// Records the manager override timestamp; the locked location itself is unchanged.
 #[tauri::command]
 pub async fn override_cart_deduction_location_scoped(
     session_token: String,
     cart_id: CartId,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_OVERRIDE_PRICE)
-        .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    // Permission check: require sales override permission.
-
-    store
-        .override_active_cart_deduction_location(&cart_id)
-        .map_err(|e| AppError::Internal(format!("failed to override deduction location: {e}")))?;
-
-    tracing::info!(
-        cart_id = %cart_id,
-        user_id = %session.user_id,
-        "deduction location override recorded",
-    );
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::override_cart_deduction_location_scoped(&ctx, &session_token, cart_id)
+        .await
+        .map_err(Into::into)
 }
 
-// ── Complete Sale ────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Serialnumberarg.
-pub struct SerialNumberArg {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Serial.
-    pub serial: String,
+/// Compute cart tax for the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn compute_cart_tax_scoped(
+    session_token: String,
+    lines: Vec<oz_core::db::CartLineTaxInput>,
+    currency: String,
+    state: State<'_, AppState>,
+) -> Result<oz_core::db::CartTaxResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::compute_cart_tax_scoped(&ctx, &session_token, lines, currency)
+        .await
+        .map_err(Into::into)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Completesaleargs.
-pub struct CompleteSaleArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Payment Method.
-    pub payment_method: String,
-    /// Tendered Minor.
-    pub tendered_minor: Option<i64>,
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Optional customer id to link this sale to a customer
-    /// for loyalty tracking and purchase history.
-    pub customer_id: Option<String>,
-    /// Optional payment splits for multi-method payments.
-    /// When provided, the `payment_method` on the sale is set to "split"
-    /// and each split is recorded in the `payments` table.
-    pub payment_splits: Option<Vec<PaymentSplitArg>>,
-    /// Optional customer name (for credit sales).
-    pub customer_name: Option<String>,
-    /// Optional serial numbers captured at checkout for track_serial products.
-    pub serial_numbers: Option<Vec<SerialNumberArg>>,
-    /// CUR-02: original sale currency when multi-currency checkout is used.
-    pub base_currency: Option<String>,
-    /// CUR-02: original sale total in `base_currency` minor units.
-    pub base_total_minor: Option<i64>,
-    /// CUR-02: fixed-point rate (millionths) `base_currency → sale currency`.
-    pub tender_rate_millionths: Option<i64>,
-    /// Tip amount in minor units collected at checkout (default 0).
-    pub tip_minor: Option<i64>,
-    /// Service-charge amount in minor units collected at checkout (default 0).
-    pub service_charge_minor: Option<i64>,
-    /// PROMO-3 checkout integration: promotions to engine-apply against
-    /// the post-tax sale. Each reduces the payable total (stacking) and
-    /// the application rows persist inside the checkout transaction;
-    /// payment splits are validated against the reduced total.
-    pub promotion_ids: Option<Vec<String>>,
+/// Hold a cart in the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn hold_cart_scoped(
+    session_token: String,
+    args: HoldCartArgs,
+    state: State<'_, AppState>,
+) -> Result<HoldCartResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::hold_cart_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Completesalescopedargs.
-pub struct CompleteSaleScopedArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Payment Method.
-    pub payment_method: String,
-    /// Tendered Minor.
-    pub tendered_minor: Option<i64>,
-    /// ID of the associated customer.
-    pub customer_id: Option<String>,
-    /// Payment Splits.
-    pub payment_splits: Option<Vec<PaymentSplitArg>>,
-    /// Customer Name.
-    pub customer_name: Option<String>,
-    /// Serial Numbers.
-    pub serial_numbers: Option<Vec<SerialNumberArg>>,
-    /// CUR-02: original sale currency when multi-currency checkout is used.
-    pub base_currency: Option<String>,
-    /// CUR-02: original sale total in `base_currency` minor units.
-    pub base_total_minor: Option<i64>,
-    /// CUR-02: fixed-point rate (millionths) `base_currency → sale currency`.
-    pub tender_rate_millionths: Option<i64>,
-    /// Tip amount in minor units collected at checkout (default 0).
-    pub tip_minor: Option<i64>,
-    /// Service-charge amount in minor units collected at checkout (default 0).
-    pub service_charge_minor: Option<i64>,
-    /// PROMO-3 checkout integration: promotions to engine-apply against
-    /// the post-tax sale (see `CompleteSaleArgs::promotion_ids`).
-    pub promotion_ids: Option<Vec<String>>,
-    /// COR-7: identifies one checkout attempt. Every submission of the same
-    /// attempt (first tap, shortfall retry, re-tap after a lost response)
-    /// carries the same value, so a replay returns the receipt that already
-    /// exists instead of ringing up a second sale. Absent means no guard.
-    pub attempt_id: Option<String>,
+/// List held carts for the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn list_held_carts_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::list_held_carts_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
-#[derive(Debug, Serialize)]
-/// Completesaleresult.
-pub struct CompleteSaleResult {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Total amount in minor currency units.
-    pub total: Option<Money>,
-    /// Line Count.
-    pub line_count: usize,
+/// List open bills for the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn list_open_bills_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::list_open_bills_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
-/// Stamp one idempotency key per split from a checkout attempt id.
-///
-/// The index is required, not cosmetic: a split tender whose rows all carried
-/// the same key would collide with itself on the second row and reject a
-/// legitimate first sale. `{attempt}:{n}` is deterministic, so replaying an
-/// attempt reproduces exactly the same set of keys and the UNIQUE index on
-/// `payments.idempotency_key` closes the race.
-///
-/// No attempt id means no guard, which keeps legacy callers and CLI imports
-/// working unchanged.
-fn stamp_attempt_split_keys(attempt_id: Option<&str>, splits: &mut [PaymentSplitArg]) {
-    if let Some(attempt) = attempt_id {
-        for (i, split) in splits.iter_mut().enumerate() {
-            split.idempotency_key = Some(format!("{attempt}:{i}"));
-        }
-    }
+/// Get a held cart from the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn get_held_cart_scoped(
+    session_token: String,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<oz_core::db::HeldCartFull>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::get_held_cart_scoped(&ctx, &session_token, id)
+        .await
+        .map_err(Into::into)
 }
 
-/// Return the receipt an already-completed attempt produced, if there is one.
-///
-/// The caller cannot supply the sale id — the response that carried it is the
-/// very thing that was lost — so the attempt key is the only handle back to the
-/// original sale. Resolving it here, before any write, is what makes a replay
-/// return a receipt instead of an error:
-///
-/// - `complete_sale_scoped` removes the cart as its first step, so a retry
-///   would otherwise fail with "cart not found" while the sale sits completed.
-/// - the shortfall command rebuilds its lines from the request body and carries
-///   a synthetic `resolved-<timestamp>` cart id, so it has no cart dependency
-///   at all and would otherwise sell the same basket a second time.
-///
-/// Only the first split's key is consulted: every key of one attempt maps to
-/// the same sale.
-fn replayed_receipt(
-    store: &Store,
-    attempt_id: Option<&str>,
-) -> Result<Option<CompleteSaleResult>, AppError> {
-    let Some(attempt) = attempt_id else {
-        return Ok(None);
-    };
-    let Some(sale_id) = store.find_sale_by_idempotency_key(&format!("{attempt}:0"))? else {
-        return Ok(None);
-    };
-    let sale = store
-        .get_sale(&sale_id)?
-        .ok_or_else(|| AppError::Internal("replayed payment points at a missing sale".into()))?;
-    Ok(Some(CompleteSaleResult {
-        sale_id: sale.id.clone(),
-        total: Some(sale.total),
-        line_count: sale.lines.len(),
-    }))
+/// Delete a held cart in the store resolved from a session token (ADR #7).
+#[tauri::command]
+pub async fn delete_held_cart_scoped(
+    session_token: String,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::delete_held_cart_scoped(&ctx, &session_token, id)
+        .await
+        .map_err(Into::into)
 }
 
-/// A single cart line reconstructed by the frontend for the second command.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CartLineData {
-    /// SKU identifier.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit price in minor units.
-    pub unit_price_minor: i64,
-    /// FRONTEND-03 follow-up: ISO-4217 code the line is priced in. When
-    /// present the reconstruction builds the line in this currency and
-    /// `Cart::add_line` enforces it matches the sale currency; absent
-    /// (legacy callers) falls back to the sale currency as before.
-    pub unit_price_currency: Option<String>,
-}
-
-/// Resolve the unit price for a reconstructed shortfall line
-/// (FRONTEND-03 follow-up). Mirrors [`line_unit_price`]: the line's own
-/// currency crosses the IPC boundary so a mismatch is rejected instead of
-/// silently re-stamped to the sale currency.
-fn shortfall_line_unit_price(
-    line_data: &CartLineData,
-    sale_currency: Currency,
-) -> Result<Money, AppError> {
-    let currency = match line_data.unit_price_currency.as_deref() {
-        Some(s) => s
-            .parse::<Currency>()
-            .map_err(|_| AppError::Invalid(format!("invalid unit price currency: {s}")))?,
-        None => sale_currency,
-    };
-    Ok(Money {
-        minor_units: line_data.unit_price_minor,
-        currency,
-    })
-}
-
-/// Arguments for completing a sale with resolved shortfalls (split fulfillment).
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CompleteSaleWithResolvedShortfallsArgs {
-    /// ID of the original cart (informational).
-    pub cart_id: CartId,
-    /// Payment method label.
-    pub payment_method: String,
-    /// Tendered amount in minor units.
-    pub tendered_minor: Option<i64>,
-    /// Optional customer id.
-    pub customer_id: Option<String>,
-    /// Optional payment splits.
-    pub payment_splits: Option<Vec<PaymentSplitArg>>,
-    /// Customer name (for credit sales).
-    pub customer_name: Option<String>,
-    /// Optional serial numbers.
-    pub serial_numbers: Option<Vec<SerialNumberArg>>,
-    /// Cart line data reconstructed by the frontend (needed because the
-    /// original cart was deleted in the first `complete_sale_scoped` call).
-    pub lines: Vec<CartLineData>,
-    /// Total sale amount in minor units.
-    pub total_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// Discount percentage (0-100).
-    pub discount_percent: i64,
-    /// Optional discount label.
-    pub discount_label: Option<String>,
-    /// Cashier-resolved shortfalls: per-SKU allocation to specific locations.
-    pub resolutions: Vec<oz_core::sale_deduction::ResolvedShortfall>,
-    /// CUR-02: original sale currency when multi-currency checkout is used.
-    pub base_currency: Option<String>,
-    /// CUR-02: original sale total in `base_currency` minor units.
-    pub base_total_minor: Option<i64>,
-    /// CUR-02: fixed-point rate (millionths) `base_currency → sale currency`.
-    pub tender_rate_millionths: Option<i64>,
-    /// Tip amount in minor units collected at checkout (default 0).
-    pub tip_minor: Option<i64>,
-    /// Service-charge amount in minor units collected at checkout (default 0).
-    pub service_charge_minor: Option<i64>,
-    /// PROMO-3 checkout integration: promotions to engine-apply against
-    /// the post-tax sale (see `CompleteSaleArgs::promotion_ids`).
-    pub promotion_ids: Option<Vec<String>>,
-    /// COR-7: identifies one checkout attempt. Every submission of the same
-    /// attempt (first tap, shortfall retry, re-tap after a lost response)
-    /// carries the same value, so a replay returns the receipt that already
-    /// exists instead of ringing up a second sale. Absent means no guard.
-    pub attempt_id: Option<String>,
-}
-
-/// Plugin `calc_line_tax` overrides for a cart — shared by the complete
-/// and preview commands so a previewed total matches the charged one.
-async fn lua_calc_line_overrides(
-    state: &State<'_, AppState>,
-    cart: &oz_core::Cart,
-) -> Result<Vec<(String, i64, bool)>, AppError> {
-    let mut overrides: Vec<(String, i64, bool)> = Vec::new();
-    let plugins = state.plugins.lock().await;
-    if let Some(ref plugins) = *plugins {
-        for cl in cart.lines() {
-            let currency_str = String::from_utf8_lossy(&cl.unit_price.currency.0).into_owned();
-            if let Some(override_) = plugins
-                .calc_line_tax(
-                    cl.sku.as_str(),
-                    cl.qty,
-                    cl.unit_price.minor_units,
-                    &currency_str,
-                )
-                .map_err(|e| AppError::Internal(e.to_string()))?
-            {
-                overrides.push((
-                    cl.sku.as_str().to_owned(),
-                    override_.rate_bps,
-                    override_.is_inclusive,
-                ));
-            }
-        }
-    }
-    Ok(overrides)
-}
-
-/// Arguments for previewing the promotion-reduced payable of a cart.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotedTotalArgs {
-    /// ID of the associated cart.
-    pub cart_id: CartId,
-    /// Promotions to preview, in application order (they stack).
-    pub promotion_ids: Vec<String>,
-}
-
-/// One promotion's discount in the preview result.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotionDiscount {
-    /// Promotion that was applied.
-    pub promotion_id: String,
-    /// Discount in minor units.
-    pub discount_minor: i64,
-    /// Human-readable description (name + amount).
-    pub description: String,
-}
-
-/// Result of previewing the promotion-reduced payable.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotedTotalResult {
-    /// Cart total after cart discount + tax, before promotions.
-    pub base_total_minor: i64,
-    /// Final payable after promotions — what payment splits must cover.
-    pub total_minor: i64,
-    /// Per-promotion discounts in application order.
-    pub discounts: Vec<PreviewPromotionDiscount>,
+/// Read the deduction-location info for a cart in the store resolved from a session token.
+#[tauri::command]
+pub async fn get_cart_deduction_location_scoped(
+    cart_id: CartId,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Option<DeductionLocationInfo>, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::get_cart_deduction_location_scoped(&ctx, cart_id, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Preview the promotion-reduced payable for a cart without mutating it.
@@ -845,122 +234,10 @@ pub async fn preview_promoted_total_scoped(
     args: PreviewPromotedTotalArgs,
     state: State<'_, AppState>,
 ) -> Result<PreviewPromotedTotalResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    // ── Lock 1: peek the cart (do NOT delete it) ──────────────────
-    let cart = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        store
-            .load_active_cart(&args.cart_id)?
-            .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?
-    };
-
-    let mut sale = oz_core::Sale::from_cart(&cart)
-        .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
-
-    // ── Plugin tax overrides (no DB lock held) ────────────────────
-    let lua_overrides = lua_calc_line_overrides(&state, &cart).await?;
-
-    // ── Lock 2: tax + engine discounts (no writes) ────────────────
-    let (base_total_minor, discounts) = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        store.compute_sale_tax(
-            &mut sale,
-            &lua_overrides,
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
-        )?;
-        let base_total_minor = sale.total.minor_units;
-        let apps = store.compute_checkout_promotions(
-            &mut sale,
-            &args.promotion_ids,
-            chrono::Utc::now(),
-        )?;
-        let discounts = apps
-            .into_iter()
-            .map(|app| PreviewPromotionDiscount {
-                promotion_id: app.promotion_id,
-                discount_minor: app.discount_minor,
-                description: app.description,
-            })
-            .collect();
-        (base_total_minor, discounts)
-    };
-
-    Ok(PreviewPromotedTotalResult {
-        base_total_minor,
-        total_minor: sale.total.minor_units,
-        discounts,
-    })
-}
-
-/// One cart line for the lines-based promotion preview.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewLineArgs {
-    /// Product SKU.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit price in minor units.
-    pub unit_price_minor: i64,
-    /// ISO-4217 code of the unit price currency.
-    pub unit_price_currency: String,
-}
-
-/// Arguments for previewing the promotion-reduced payable from raw lines.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreviewPromotedTotalFromLinesArgs {
-    /// Cart lines, in cart order (already in cart currency).
-    pub lines: Vec<PreviewLineArgs>,
-    /// Cart discount percent already applied client-side (0-100).
-    pub discount_percent: i64,
-    /// Promotions to preview, in application order (they stack).
-    pub promotion_ids: Vec<String>,
-}
-
-/// Build an in-memory cart mirroring the client's displayed cart for the
-/// lines-based promotion preview (no persistence, no cart id needed).
-fn build_preview_cart(
-    lines: &[PreviewLineArgs],
-    discount_percent: i64,
-) -> Result<oz_core::Cart, AppError> {
-    let first = lines
-        .first()
-        .ok_or_else(|| AppError::Invalid("cannot preview an empty cart".into()))?;
-    let parse_currency = |code: &str| -> Result<oz_core::Currency, AppError> {
-        code.parse()
-            .map_err(|_| AppError::Invalid(format!("invalid currency code: {code}")))
-    };
-    let mut cart = oz_core::Cart::new(parse_currency(&first.unit_price_currency)?);
-    for l in lines {
-        cart.add_line(oz_core::CartLine::new(
-            oz_core::Sku::new(l.sku.clone()),
-            l.qty,
-            oz_core::Money {
-                minor_units: l.unit_price_minor,
-                currency: parse_currency(&l.unit_price_currency)?,
-            },
-        ))
-        .map_err(|e| AppError::Invalid(format!("cart line rejected: {e}")))?;
-    }
-    if discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(discount_percent.min(100) as u8)
-    {
-        cart.set_discount(pct, None);
-    }
-    Ok(cart)
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::preview_promoted_total_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Preview the promotion-reduced payable from raw cart lines.
@@ -979,53 +256,10 @@ pub async fn preview_promoted_total_from_lines_scoped(
     args: PreviewPromotedTotalFromLinesArgs,
     state: State<'_, AppState>,
 ) -> Result<PreviewPromotedTotalResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let cart = build_preview_cart(&args.lines, args.discount_percent)?;
-    let mut sale = oz_core::Sale::from_cart(&cart)
-        .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
-
-    // ── Plugin tax overrides (no DB lock held) ────────────────────
-    let lua_overrides = lua_calc_line_overrides(&state, &cart).await?;
-
-    // ── Lock: tax + engine discounts (no writes) ──────────────────
-    let (base_total_minor, discounts) = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        store.compute_sale_tax(
-            &mut sale,
-            &lua_overrides,
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
-        )?;
-        let base_total_minor = sale.total.minor_units;
-        let apps = store.compute_checkout_promotions(
-            &mut sale,
-            &args.promotion_ids,
-            chrono::Utc::now(),
-        )?;
-        let discounts = apps
-            .into_iter()
-            .map(|app| PreviewPromotionDiscount {
-                promotion_id: app.promotion_id,
-                discount_minor: app.discount_minor,
-                description: app.description,
-            })
-            .collect();
-        (base_total_minor, discounts)
-    };
-
-    Ok(PreviewPromotedTotalResult {
-        base_total_minor,
-        total_minor: sale.total.minor_units,
-        discounts,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::preview_promoted_total_from_lines_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Complete a sale with cashier-resolved shortfalls (split fulfillment).
@@ -1043,173 +277,10 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     args: CompleteSaleWithResolvedShortfallsArgs,
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let stock_target_instance_id = {
-        let global_db = state.db.lock().await;
-        resolve_runtime_stock_target(&global_db, &session.store_id, &session.instance_id)?
-    };
-    let deduction_instance_id = stock_target_instance_id
-        .as_deref()
-        .unwrap_or(&session.instance_id);
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    // ── COR-7 replay guard ─────────────────────────────────────────
-    // This is the path the guard really matters on: the command rebuilds its
-    // cart from the request body and invents a `resolved-<timestamp>` cart id,
-    // so unlike complete_sale_scoped it has no cart to run out of and would
-    // otherwise re-sell the same basket on every retry.
-    {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        if let Some(replay) = replayed_receipt(&Store::new(&db), args.attempt_id.as_deref())? {
-            tracing::info!(
-                sale_id = %replay.sale_id,
-                "shortfall retry replayed an existing attempt — returning the original receipt"
-            );
-            return Ok(replay);
-        }
-    }
-
-    // ── Reconstruct the Cart from front-end line data ─────────────
-    let currency: oz_core::Currency = args
-        .currency
-        .parse()
-        .map_err(|_| AppError::Invalid(format!("invalid currency code: {}", args.currency)))?;
-
-    let mut cart = oz_core::Cart::new(currency);
-    for line_data in &args.lines {
-        let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let line =
-            oz_core::CartLine::new(oz_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
-        cart.add_line(line)
-            .map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-
-    // Apply discount if configured
-    if args.discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(args.discount_percent as u8)
-    {
-        cart.set_discount(pct, args.discount_label.clone());
-    }
-
-    let line_count = cart.line_count();
-
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
-        .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
-    sale.payment_method = Some(args.payment_method.clone());
-    sale.tendered_minor = args.tendered_minor;
-    sale.customer_id = args.customer_id.clone();
-    // CUR-02: record tender-currency metadata when multi-currency checkout
-    // was used. All three are None for single-currency sales.
-    sale.base_currency = args.base_currency.clone();
-    sale.base_total_minor = args.base_total_minor;
-    sale.tender_rate_millionths = args.tender_rate_millionths;
-    sale.tip_minor = args.tip_minor.unwrap_or(0);
-    sale.service_charge_minor = args.service_charge_minor.unwrap_or(0);
-
-    let sale_id = sale.id.clone();
-
-    // ── Lock: Compute tax + execute the resolved deduction ────────
-    let _result = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        if let Some(target_instance_id) = stock_target_instance_id.as_deref() {
-            oz_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
-        }
-
-        // Compute tax (same as first command)
-        store.compute_sale_tax(
-            &mut sale,
-            &[],
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
-        )?;
-
-        // PROMO-3 checkout integration: engine-apply the selected
-        // promotions against the post-tax sale; sale.total is reduced in
-        // place and the application rows persist inside the checkout tx.
-        let checkout_applications = store.compute_checkout_promotions(
-            &mut sale,
-            args.promotion_ids.as_deref().unwrap_or(&[]),
-            chrono::Utc::now(),
-        )?;
-
-        let mut splits = if let Some(ref splits) = args.payment_splits {
-            splits.clone()
-        } else {
-            vec![PaymentSplitArg {
-                method: args.payment_method.clone(),
-                amount_minor: sale.total.minor_units,
-                gateway_reference: args.customer_name.clone(),
-                gateway_status: None,
-                gateway_response: None,
-                idempotency_key: None,
-            }]
-        };
-        // COR-7: one key per split, derived from the attempt id so a replay of
-        // this attempt reproduces the same keys and the UNIQUE index rejects a
-        // second sale. The per-split index is what stops a multi-tender sale
-        // from colliding with itself on its own second row.
-        stamp_attempt_split_keys(args.attempt_id.as_deref(), &mut splits);
-
-        // Multi-terminal: terminal_id is passed to complete_sale so that
-        // the sale record tracks which terminal processed it. This enables
-        // per-terminal reporting and cash drawer isolation.
-        store.complete_sale_with_resolved_shortfalls(
-            &sale,
-            Some(deduction_instance_id),
-            &splits,
-            &session.user_id,
-            Some(&session.terminal_id),
-            &args.resolutions,
-            &checkout_applications,
-        )?
-    };
-
-    // Promotion-reduced payable (cart.total() would ignore promotions).
-    let total = Some(sale.total);
-
-    tracing::info!(%sale_id, store_id = %session.store_id, "sale completed with resolved shortfalls");
-
-    // ── Event publishing (no DB lock held) ────────────────────────
-    {
-        let kernel = state.kernel.lock().await;
-        let bus = kernel.event_bus();
-        let line_items: Vec<oz_core::events::SaleCompletedLine> = sale
-            .lines
-            .iter()
-            .map(|l| oz_core::events::SaleCompletedLine {
-                sku: l.sku.clone(),
-                qty: l.qty,
-                unit_price_minor: l.unit_price.minor_units,
-                tax_minor: l.tax_amount.minor_units,
-                tax_rate_id: l.tax_rate_id.clone(),
-            })
-            .collect();
-
-        if let Err(e) = bus.publish(&oz_core::events::SaleCompleted {
-            sale_id: sale_id.clone(),
-            store_id: Some(session.store_id.clone()),
-            line_items,
-            total_minor: sale.total.minor_units,
-            currency: String::from_utf8_lossy(&sale.currency.0).into_owned(),
-            customer_id: args.customer_id.clone(),
-        }) {
-            tracing::warn!(%sale_id, error = %e, "event bus publish failed");
-        }
-    }
-
-    Ok(CompleteSaleResult {
-        sale_id,
-        total,
-        line_count,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::complete_sale_with_resolved_shortfalls_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Complete a sale within the store resolved from a session token.
@@ -1225,517 +296,8 @@ pub async fn complete_sale_scoped(
     args: CompleteSaleScopedArgs,
     state: State<'_, AppState>,
 ) -> Result<CompleteSaleResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let stock_target_instance_ids = {
-        let global_db = state.db.lock().await;
-        resolve_runtime_stock_targets(&global_db, &session.store_id, &session.instance_id)?
-    };
-    let deduction_instance_id = stock_target_instance_ids
-        .first()
-        .map(String::as_str)
-        .unwrap_or(&session.instance_id);
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    if !stock_target_instance_ids.is_empty() {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        for target_instance_id in &stock_target_instance_ids {
-            oz_core::location_resolver::resolve_primary_location(&db, target_instance_id, None)?;
-        }
-    }
-
-    // ── COR-7 replay guard ─────────────────────────────────────────
-    // Resolved before the cart is touched: the first attempt already removed
-    // it, so a retry that fell through to Lock 1 would fail with "cart not
-    // found" on a sale that actually completed.
-    {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        if let Some(replay) = replayed_receipt(&Store::new(&db), args.attempt_id.as_deref())? {
-            tracing::info!(
-                sale_id = %replay.sale_id,
-                "checkout attempt replayed — returning the original receipt"
-            );
-            return Ok(replay);
-        }
-    }
-
-    // ── Lock 1: Load and remove the cart ──────────────────────────
-    let mut cart = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-
-        let cart = store
-            .load_active_cart(&args.cart_id)?
-            .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-        store.delete_active_cart(&args.cart_id)?;
-        cart // db lock dropped here
-    };
-
-    let line_count = cart.line_count();
-
-    // ── Plugin business-rule hooks (no DB lock held) ──────────────
-    {
-        let plugins = state.plugins.lock().await;
-        if let Some(ref plugins) = *plugins {
-            let lines: Vec<oz_lua::CartLineData> = cart
-                .lines()
-                .iter()
-                .map(|cl| oz_lua::CartLineData {
-                    sku: cl.sku.as_str().to_owned(),
-                    qty: cl.qty,
-                    unit_price_minor: cl.unit_price.minor_units,
-                    currency: String::from_utf8_lossy(&cl.unit_price.currency.0).into_owned(),
-                })
-                .collect();
-
-            let errors = plugins
-                .validate_order(
-                    &lines,
-                    cart.total().map(|m| m.minor_units).unwrap_or(0),
-                    &String::from_utf8_lossy(&cart.currency().0),
-                )
-                .map_err(|e| AppError::Internal(e.to_string()))?;
-            if !errors.is_empty() {
-                return Err(AppError::Invalid(format!(
-                    "order validation failed: {}",
-                    errors.join("; ")
-                )));
-            }
-
-            if let Some(discount) = plugins
-                .apply_discount(&lines)
-                .map_err(|e| AppError::Internal(e.to_string()))?
-            {
-                let label = discount.label.clone().unwrap_or_else(|| "Lua Rule".into());
-                if !(0..=100).contains(&discount.percent) {
-                    return Err(AppError::Invalid(format!(
-                        "Lua returned invalid discount percent: {}",
-                        discount.percent
-                    )));
-                }
-                // SAFETY: discount.percent is validated 0..=100 above.
-                let lua_pct = Percentage::new(discount.percent as u8).unwrap();
-                cart.set_discount(lua_pct, Some(label));
-            }
-
-            let currency = String::from_utf8_lossy(&cart.currency().0).into_owned();
-            let total_minor = cart.total().map(|m| m.minor_units).unwrap_or(0);
-            plugins
-                .fire_sale_before_complete(&lines, total_minor, &currency, &session.user_id)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
-
-            if let Some(pd) = plugins.drain_pending_discounts().into_iter().next() {
-                if !(0..=100).contains(&pd.percent) {
-                    return Err(AppError::Invalid(format!(
-                        "Plugin returned invalid discount percent: {}",
-                        pd.percent
-                    )));
-                }
-                // SAFETY: pd.percent is validated 0..=100 above.
-                let pct = Percentage::new(pd.percent as u8).unwrap();
-                cart.set_discount(pct, Some(pd.target));
-            }
-        }
-    }
-
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(session.user_id.clone()))
-        .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
-    let kind = if args.payment_splits.as_ref().is_some_and(|s| !s.is_empty()) {
-        PaymentKind::Split
-    } else {
-        PaymentKind::Single
-    };
-    sale.payment_method = Some(kind.wire_method(&args.payment_method));
-    sale.tendered_minor = args.tendered_minor;
-    sale.customer_id = args.customer_id.clone();
-    // CUR-02: record tender-currency metadata when multi-currency checkout
-    // was used. All three are None for single-currency sales.
-    sale.base_currency = args.base_currency.clone();
-    sale.base_total_minor = args.base_total_minor;
-    sale.tender_rate_millionths = args.tender_rate_millionths;
-    sale.tip_minor = args.tip_minor.unwrap_or(0);
-    sale.service_charge_minor = args.service_charge_minor.unwrap_or(0);
-
-    // ── Apply Lua calc_line_tax overrides (no DB lock) ────────────
-    let lua_overrides = lua_calc_line_overrides(&state, &cart).await?;
-
-    let sale_id = sale.id.clone();
-
-    // ── Lock 2: Compute tax and create sale ───────────────────────
-    let _res = {
-        let db = conn
-            .lock()
-            .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-        let store = Store::new(&db);
-        let mut stock_locations = Vec::with_capacity(stock_target_instance_ids.len());
-        for target_instance_id in &stock_target_instance_ids {
-            let location = oz_core::location_resolver::resolve_primary_location(
-                &db,
-                target_instance_id,
-                None,
-            )?;
-            if !stock_locations.contains(&location) {
-                stock_locations.push(location);
-            }
-        }
-
-        store.compute_sale_tax(
-            &mut sale,
-            &lua_overrides,
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
-        )?;
-
-        if let Some(ref serial_numbers) = args.serial_numbers {
-            for sn in serial_numbers {
-                if let Some(line) = sale.lines.iter_mut().find(|l| l.sku == sn.sku) {
-                    line.serial_number = Some(sn.serial.clone());
-                }
-            }
-        }
-
-        // PROMO-3 checkout integration: engine-apply the selected
-        // promotions against the post-tax sale; sale.total is reduced in
-        // place and the application rows persist inside the checkout tx.
-        let checkout_applications = store.compute_checkout_promotions(
-            &mut sale,
-            args.promotion_ids.as_deref().unwrap_or(&[]),
-            chrono::Utc::now(),
-        )?;
-
-        let mut splits = if let Some(ref splits) = args.payment_splits {
-            splits.clone()
-        } else {
-            vec![PaymentSplitArg {
-                method: args.payment_method.clone(),
-                amount_minor: sale.total.minor_units,
-                gateway_reference: args.customer_name.clone(),
-                gateway_status: None,
-                gateway_response: None,
-                idempotency_key: None,
-            }]
-        };
-        // COR-7: one key per split, derived from the attempt id so a replay of
-        // this attempt reproduces the same keys and the UNIQUE index rejects a
-        // second sale. The per-split index is what stops a multi-tender sale
-        // from colliding with itself on its own second row.
-        stamp_attempt_split_keys(args.attempt_id.as_deref(), &mut splits);
-
-        if stock_locations.is_empty() {
-            // Same primary-location resolution the legacy
-            // complete_sale_deduction wrapper performs internally —
-            // routed through with_locations so checkout promotions
-            // persist on this branch too.
-            let primary = oz_core::location_resolver::resolve_primary_location(
-                &db,
-                deduction_instance_id,
-                None,
-            )
-            .unwrap_or_else(|_| oz_core::location_resolver::get_default_location_id());
-            store.complete_sale_deduction_with_locations(
-                &sale,
-                Some(deduction_instance_id),
-                &[primary],
-                &splits,
-                &session.user_id,
-                Some(&session.terminal_id),
-                &checkout_applications,
-            )?
-        } else {
-            store.complete_sale_deduction_with_locations(
-                &sale,
-                Some(deduction_instance_id),
-                &stock_locations,
-                &splits,
-                &session.user_id,
-                Some(&session.terminal_id),
-                &checkout_applications,
-            )?
-        }
-    };
-
-    // Promotion-reduced payable (cart.total() would ignore promotions).
-    let total = Some(sale.total);
-    tracing::info!(%sale_id, ?total, line_count, store_id = %session.store_id, "sale completed (scoped)");
-
-    // ── Event publishing (no DB lock held) ────────────────────────
-    {
-        let line_items: Vec<SaleCompletedLine> = sale
-            .lines
-            .iter()
-            .map(|l| SaleCompletedLine {
-                sku: l.sku.clone(),
-                qty: l.qty,
-                unit_price_minor: l.unit_price.minor_units,
-                tax_minor: l.tax_amount.minor_units,
-                tax_rate_id: l.tax_rate_id.clone(),
-            })
-            .collect();
-
-        let event = SaleCompleted {
-            sale_id: sale_id.clone(),
-            store_id: Some(session.store_id.clone()),
-            line_items,
-            total_minor: total.map(|m| m.minor_units).unwrap_or(0),
-            currency: String::from_utf8_lossy(&sale.currency.0).into_owned(),
-            customer_id: args.customer_id.clone(),
-        };
-
-        let kernel = state.kernel.lock().await;
-        let bus = kernel.event_bus();
-        if let Err(e) = bus.publish(&event) {
-            tracing::warn!(%sale_id, error = %e, "event bus publish failed");
-        }
-    }
-
-    Ok(CompleteSaleResult {
-        sale_id,
-        total,
-        line_count,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::complete_sale_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
-
-// ── Compute Cart Tax ──────────────────────────────────────────────────
-
-/// Compute cart tax for the store resolved from a session token. ADR #7.
-///
-/// Requires `SALES_PROCESS` permission.
-#[tauri::command]
-pub async fn compute_cart_tax_scoped(
-    session_token: String,
-    lines: Vec<oz_core::db::CartLineTaxInput>,
-    currency: String,
-    state: State<'_, AppState>,
-) -> Result<oz_core::db::CartTaxResult, AppError> {
-    let parsed: oz_core::Currency = currency
-        .parse()
-        .map_err(|_| AppError::Invalid(format!("invalid currency code: {currency}")))?;
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let tax = store.compute_cart_tax(
-        &lines,
-        parsed,
-        oz_core::Settings::get_tax_rounding_mode(&db)?,
-    )?;
-    drop(db);
-    Ok(tax)
-}
-
-// ── Hold Orders ──────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Holdcartargs.
-pub struct HoldCartArgs {
-    /// Label.
-    pub label: String,
-    /// Cart Data.
-    pub cart_data: String,
-    /// Item Count.
-    pub item_count: i64,
-    /// Total amount in minor currency units.
-    pub total_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    #[serde(default = "default_bill_type")]
-    /// Bill Type.
-    pub bill_type: String,
-    /// Customer Name.
-    pub customer_name: Option<String>,
-    /// ADR-19 §6.3: deduction location UUID locked at cart-start time.
-    /// When restoring a held cart, the caller should pass the same
-    /// `deduction_location_id` that was stored when the cart was held.
-    pub deduction_location_id: Option<String>,
-}
-
-fn default_bill_type() -> String {
-    "hold".to_string()
-}
-
-#[derive(Debug, Serialize)]
-/// Holdcartresult.
-pub struct HoldCartResult {
-    /// Unique identifier.
-    pub id: String,
-}
-
-/// Hold a cart in the store resolved from a session token. ADR #7.
-///
-/// Requires `SALES_PROCESS` permission.
-#[tauri::command]
-pub async fn hold_cart_scoped(
-    session_token: String,
-    args: HoldCartArgs,
-    state: State<'_, AppState>,
-) -> Result<HoldCartResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let id = store.hold_cart(
-        &args.label,
-        &args.cart_data,
-        args.item_count,
-        args.total_minor,
-        &args.currency,
-        &args.bill_type,
-        args.customer_name.as_deref(),
-        args.deduction_location_id.as_deref(),
-    )?;
-    drop(db);
-    tracing::info!(held_cart_id = %id, label = %args.label, "cart held (scoped)");
-    Ok(HoldCartResult { id })
-}
-
-/// List held carts for the store resolved from a session token. ADR #7.
-///
-/// Requires `SALES_PROCESS` permission.
-#[tauri::command]
-pub async fn list_held_carts_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let carts = store.list_held_carts()?;
-    drop(db);
-    Ok(carts)
-}
-
-/// List open bills for the store resolved from a session token. ADR #7.
-///
-/// Requires `SALES_PROCESS` permission.
-#[tauri::command]
-pub async fn list_open_bills_scoped(
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let carts = store.list_open_bills()?;
-    drop(db);
-    Ok(carts)
-}
-
-/// Get a held cart from the store resolved from a session token. ADR #7.
-///
-/// Requires `SALES_PROCESS` permission.
-#[tauri::command]
-pub async fn get_held_cart_scoped(
-    session_token: String,
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<oz_core::db::HeldCartFull>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let cart = store.get_held_cart(&id)?;
-    drop(db);
-    Ok(cart)
-}
-
-/// Delete a held cart in the store resolved from a session token. ADR #7.
-///
-/// Requires `SALES_PROCESS` permission.
-#[tauri::command]
-pub async fn delete_held_cart_scoped(
-    session_token: String,
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SALES_PROCESS).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.delete_held_cart(&id)?;
-    drop(db);
-    tracing::info!(held_cart_id = %id, "held cart deleted (scoped)");
-    Ok(())
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────
-
-// ── Scoped variants (ADR #7) ────────────────────────────────────
-
-/// Scoped variant of `get_cart_deduction_location` (ADR #7).
-#[tauri::command]
-pub async fn get_cart_deduction_location_scoped(
-    cart_id: CartId,
-    session_token: String,
-    state: State<'_, AppState>,
-) -> Result<Option<DeductionLocationInfo>, AppError> {
-    let (_session, _conn) = state.resolve_scope(&session_token)?;
-    let db = _conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let result = store.get_active_cart_deduction_location_info(&cart_id)?;
-    drop(db);
-    Ok(
-        result.map(|(loc_id, loc_name, overridden_at)| DeductionLocationInfo {
-            location_id: loc_id,
-            location_name: loc_name,
-            overridden_at,
-        }),
-    )
-}
-
-#[cfg(test)]
-#[path = "pos_tests.rs"]
-mod tests;

@@ -1,7 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 
-/** Polling cadence for the Cloud Sync status panel while its section is open. */
-const SYNC_STATUS_POLL_MS = 30_000;
 import { Localized, useLocalization } from '@fluent/react';
 import {
   setReceiptSettingsScoped,
@@ -13,26 +11,13 @@ import {
 } from '@/api/settings';
 import { setDecimalSep } from '@/utils/storage';
 import { useAuth } from '@/contexts/AuthContext';
+import { roleAtLeast } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import {
-  type CurrencyDto,
-} from '@/api/currency';
-import {
   updateSyncSettingsScoped,
-  syncRunScoped,
-  syncPullScoped,
-  getOfflineQueueStatusSummaryScoped,
-  getSyncPlanScoped,
-  testSyncConnectionScoped,
-  requestSyncTokenScoped,
   type SyncSettingsDto,
-  type SyncAttemptResult,
-  type PullResult,
-  type PingResult,
-  type OfflineQueueSummaryDto,
-  type SyncPlanResult,
 } from '@/api/offline';
 
 import {
@@ -46,35 +31,50 @@ import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
+import Tooltip from '@/frontend/shell/Tooltip';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
-import { TopologyScreen } from '@/features/stores';
-import LicenseSettings from './LicenseSettings';
-import EmailReportSettings from './EmailReportSettings';
-const GeneralSection = lazy(() => import('./sections/GeneralSection'));
-const AppearanceSection = lazy(() => import('./sections/AppearanceSection'));
-const ReceiptSection = lazy(() => import('./sections/ReceiptSection'));
-const SyncSection = lazy(() => import('./sections/SyncSection'));
-const LocalApiSection = lazy(() => import('./sections/LocalApiSection'));
-const AboutSection = lazy(() => import('./sections/AboutSection'));
+// ── Lazy-loaded flat-IA screens (blank scaffolds from the screens commit;
+//    selective migration fills each one in) ──
+const GeneralScreen = lazy(() => import('./screens/GeneralScreen').then((m) => ({ default: m.GeneralScreen })));
+const LicenseSubscriptionScreen = lazy(() => import('./screens/LicenseSubscriptionScreen').then((m) => ({ default: m.LicenseSubscriptionScreen })));
+const DevicesConnectivityScreen = lazy(() => import('./screens/DevicesConnectivityScreen').then((m) => ({ default: m.DevicesConnectivityScreen })));
+const BusinessDefaultsScreen = lazy(() => import('./screens/BusinessDefaultsScreen').then((m) => ({ default: m.BusinessDefaultsScreen })));
+const FeaturesModulesScreen = lazy(() => import('./screens/FeaturesModulesScreen').then((m) => ({ default: m.FeaturesModulesScreen })));
+const SecurityAccountScreen = lazy(() => import('./screens/SecurityAccountScreen').then((m) => ({ default: m.SecurityAccountScreen })));
+const DataSyncScreen = lazy(() => import('./screens/DataSyncScreen').then((m) => ({ default: m.DataSyncScreen })));
+const DataManagementScreen = lazy(() => import('./screens/DataManagementScreen').then((m) => ({ default: m.DataManagementScreen })));
+const SyncStatusScreen = lazy(() => import('./screens/SyncStatusScreen').then((m) => ({ default: m.SyncStatusScreen })));
+const OfflineQueueScreen = lazy(() => import('./screens/OfflineQueueScreen').then((m) => ({ default: m.OfflineQueueScreen })));
+const SyncConflictReviewScreen = lazy(() => import('../sync/SyncConflictReviewScreen').then((m) => ({ default: m.SyncConflictReviewScreen })));
+const TaxConfigurationScreen = lazy(() => import('./screens/TaxConfigurationScreen').then((m) => ({ default: m.TaxConfigurationScreen })));
+const ExchangeRatesScreen = lazy(() => import('./screens/ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen })));
+const SystemDiagnosticsScreen = lazy(() => import('./screens/SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen })));
+
 import { useContextMenu, ContextMenu } from '@/frontend/shared';
+
 import SettingsNavTree, {
   NAV_ITEMS as NAV_ITEMS_REF,
   NAV_L10N_KEYS as NAV_L10N_KEYS_REF,
 } from './SettingsNavTree';
 
-// ── Lazy-loaded workspace settings cards (ADR #22 Phase 3) ──
-const WorkspaceStorePosSettings = lazy(() =>
-  import('./workspace-cards/WorkspaceStorePosSettings').then((m) => ({ default: m.WorkspaceStorePosSettings })),
-);
-const WorkspaceRestaurantPosSettings = lazy(() =>
-  import('./workspace-cards/WorkspaceRestaurantPosSettings').then((m) => ({ default: m.WorkspaceRestaurantPosSettings })),
-);
-const WorkspaceInventorySettings = lazy(() =>
-  import('./workspace-cards/WorkspaceInventorySettings').then((m) => ({ default: m.WorkspaceInventorySettings })),
-);
 import './SettingsPage.css';
 import './SettingsNavTree.css';
+
+/**
+ * Sections the settings hub actually still has. Deep-links (`#/settings/<section>`) from
+ * the workspace tool cards are matched against this, so a bookmark to a tab that was
+ * removed in the hub redesign is ignored and the page opens on its default instead of an
+ * empty body. Module scope on purpose: the hash effect in the component closes over this
+ * and must not see a new Set on every render.
+ */
+const KEPT_SECTIONS = new Set([
+  'general', 'license-subscription', 'devices-connectivity', 'business-defaults',
+  'features-modules', 'security-account', 'data-sync', 'data-management',
+  'sync-status', 'sync-conflicts', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
+]);
 
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
 interface SettingsSnapshot {
@@ -154,42 +154,6 @@ function SettingsPageContent() {
 
   const [appVersion, setAppVersion] = useState('');
 
-  // ── Updater state ─────────────────────────────────────────
-  type UpdateCheckState = 'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error';
-  const [updateState, setUpdateState] = useState<UpdateCheckState>('idle');
-  const [updateVersion, setUpdateVersion] = useState('');
-  const updateInstanceRef = useRef<{ version?: string; downloadAndInstall(): Promise<void> } | null>(null);
-
-  const handleCheckUpdates = useCallback(async () => {
-    setUpdateState('checking');
-    setUpdateVersion('');
-    updateInstanceRef.current = null;
-    try {
-      const updater = await import('@tauri-apps/plugin-updater');
-      const update = await updater.check();
-      if (update) {
-        setUpdateVersion(update.version ?? '');
-        updateInstanceRef.current = update;
-        setUpdateState('available');
-      } else {
-        setUpdateState('up-to-date');
-      }
-    } catch {
-      setUpdateState('error');
-    }
-  }, []);
-
-  const handleInstallUpdate = useCallback(async () => {
-    const instance = updateInstanceRef.current;
-    if (!instance) return;
-    setUpdateState('installing');
-    try {
-      await instance.downloadAndInstall();
-    } catch {
-      setUpdateState('available');
-    }
-  }, []);
-
   const { l10n } = useLocalization();
   const { addToast } = useToast();
 
@@ -220,7 +184,6 @@ function SettingsPageContent() {
   });
 
   const { currency: ctxCurrency, setCurrency: setCtxCurrency } = useCurrency();
-  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   const [defaultCurrency, setDefaultCurrencyState] = useState<string>(ctxCurrency);
 
   // Sync local state when context currency changes externally.
@@ -233,22 +196,19 @@ function SettingsPageContent() {
   });
   const [syncServerUrl, setSyncServerUrl] = useState('');
   const [syncApiKey, setSyncApiKey] = useState('');
-  const [syncApiKeyVisible, setSyncApiKeyVisible] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [pulling, setPulling] = useState(false);
-  const [syncResult, setSyncResult] = useState<SyncAttemptResult | null>(null);
-  const [pullResult, setPullResult] = useState<PullResult | null>(null);
-  const [queueSummary, setQueueSummary] = useState<OfflineQueueSummaryDto | null>(null);
-  const [syncPlan, setSyncPlan] = useState<SyncPlanResult | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [pingResult, setPingResult] = useState<PingResult | null>(null);
-  const [requesting, setRequesting] = useState(false);
-  const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null);
+  // The visible-flag is written by the save/revert mirror below but no longer
+  // read on this page (the legacy sync section owned the read); the mirror
+  // write stays so the saved value keeps its meaning for consumers.
+  const [, setSyncApiKeyVisible] = useState(false);
 
   const { session } = useAuth();
-  const { sessionToken, terminalId } = useWorkspace();
+  // ── Role gate: Settings is admin/owner-only ──────────────────
+  // roleAtLeast fails closed (missing/blank/retired/unknown roles never
+  // clear the floor), so managers, staff, auditors — and anyone with an
+  // unrecognized role — get the locked card instead of the shell.
+  const adminUp = roleAtLeast(session?.role_name ?? null, 'admin');
+  const { sessionToken } = useWorkspace();
   const { goToWorkspacePicker } = useWorkspaceNav();
-  const userId = session?.user_id ?? 'default';
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
   const [displayFontSize, setDisplayFontSize] = useState(0);
@@ -256,6 +216,9 @@ function SettingsPageContent() {
   const [brandColour, setBrandColour] = useState('#147EFB');
   const [brandStoreName, setBrandStoreName] = useState('');
 
+  // Right-click copy/paste on the page's remaining inputs (the custom menu
+  // replaces the natively-suppressed one; migrated screens re-wire their own
+  // fields to cmInput as they come back).
   const cm = useContextMenu();
 
   // P7-4: Keyboard avoidance — scroll inputs into view on mobile
@@ -274,81 +237,61 @@ function SettingsPageContent() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Field validation state ────────────────────────────────
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const validateField = useCallback((field: string, value: string) => {
-    setFieldErrors((prev) => {
-      const next = { ...prev };
-      if (field === 'store-name' && !value.trim()) {
-        next[field] = l10n.getString('settings-store-name-required');
-      } else if (field === 'tax-id' && value.trim() && !/^[A-Za-z0-9-./]*$/.test(value.trim())) {
-        next[field] = l10n.getString('settings-tax-id-pattern-error');
-      } else {
-        delete next[field];
-      }
-      return next;
-    });
-  }, [l10n]);
-
-  const clearFieldError = useCallback((field: string) => {
-    setFieldErrors((prev) => {
-      if (!prev[field]) return prev;
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  }, []);
-
   /** Navigate to a section. */
   const navigateToSection = useCallback((key: string) => {
     setActiveSection(key);
     setMobileSidebarOpen(false);
   }, []);
 
-  // ── Read section from URL hash on mount (e.g. #/settings/topology) ──
-  // Only sections that still exist in the kept hub are accepted; stale
-  // deep-links to removed management tabs (staff, audit, etc.) are ignored
-  // so the hub opens on its default (general) section instead of an empty
-  // body — the "old settings on <tab>" problem.
-  const KEPT_SECTIONS = new Set([
-    'general', 'appearance', 'receipt', 'sync', 'email',
-    'about', 'license', 'topology', 'store-pos', 'restaurant-pos', 'inventory',
-  ]);
+  // ── Read section from the URL hash (e.g. #/settings/general) ────────
+  // Only sections that still exist in the flat IA are accepted; stale
+  // deep-links to removed sections are ignored so the hub opens on its
+  // default (general) section instead of an empty body — the "old settings
+  // on <tab>" problem. KEPT_SECTIONS is module-scope on purpose: as a
+  // render-scoped const it would be a new Set every render, re-running the
+  // effect each time. This is deliberately NOT a mount-only effect:
+  // AppShell's own hashchange listener refuses `settings/...` (only
+  // `settings` is a registered page), so while the page is already mounted
+  // nothing else re-reads the hash — listening here closes that gap.
   useEffect(() => {
-    const hash = window.location.hash.replace(/^#\//, '');
-    if (hash.startsWith('settings/')) {
-      const section = hash.slice('settings/'.length);
+    const applyHashSection = () => {
+      const hash = window.location.hash.replace(/^#\//, '');
+      if (!hash.startsWith('settings/')) return;
+      // A deep link may append a query scoping the target section; the
+      // section name is everything before the '?'.
+      const rawSection = hash.slice('settings/'.length);
+      const queryIndex = rawSection.indexOf('?');
+      const section = queryIndex === -1 ? rawSection : rawSection.slice(0, queryIndex);
       if (section && KEPT_SECTIONS.has(section)) {
         setActiveSection(section);
-        // Clear the hash after consuming it so stale sections don't persist
-        window.history.replaceState(null, '', window.location.pathname);
+        // Clear the hash after consuming it so stale sections don't persist.
+        // A query-carrying hash is left alone (scoped deep links may return).
+        if (queryIndex === -1) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
       }
-    }
+    };
+    applyHashSection();
+    window.addEventListener('hashchange', applyHashSection);
+    return () => window.removeEventListener('hashchange', applyHashSection);
   }, []);
 
   // ── Unsaved changes tracking ────────────────────────────────
   const [isDirty, setIsDirty] = useState(false);
-  const markDirty = useCallback(() => { setIsDirty(true); }, []);
 
-  // Warn before closing the tab / window when there are unsaved changes.
-  useEffect(() => {
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      if (isDirty) {
-        e.preventDefault();
-        // WebView2 (Windows) and Chromium require returnValue to be set
-        // to a non-empty string for the beforeunload dialog to appear.
-        // e.preventDefault() alone is insufficient on WebView2.
-        // The string value is never displayed — browsers show their own
-        // generic dialog regardless of the custom string.
-        e.returnValue = 'unsaved';
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
+  // Guard the window close against unsaved work. A `beforeunload` listener on
+  // its own never surfaces its prompt in a Tauri build: the Rust event loop
+  // decides whether the window goes away and the webview's handler is not
+  // consulted, so the previous effect only protected the browser preview. The
+  // hook wires both seams and hands back a flag that drives the app's own
+  // ConfirmDialog (a native dialog would be off-design and unlocalized).
+  const {
+    promptOpen: unsavedPromptOpen,
+    onKeepEditing,
+    onDiscardAndClose,
+  } = useUnsavedChangesGuard(isDirty);
 
-  // ── Accordion state moved to SettingsNavTree.tsx ──────────────
+  // ── Sidebar nav tree lives in SettingsNavTree.tsx (flat list) ──
 
   const numLocale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
   const clock = useClock(numLocale);
@@ -376,11 +319,8 @@ function SettingsPageContent() {
     const revertedPalette = deriveAccentPalette(snap.brandColour);
     applyAccentPalette(revertedPalette);
     setIsDirty(false);
-    setFieldErrors({});
-    setSyncResult(null);
     setSyncApiKey('');
     setSyncApiKeyVisible(false);
-    setTokenExpiresAt(null);
   // All dependencies are stable (state setters + imported functions),
   // so an empty array is correct — the callback is created once.
   }, []);
@@ -401,7 +341,6 @@ function SettingsPageContent() {
       const s = settingsCtx.settings;
       setReceipt(s.receipt);
       setStore(s.store);
-      setCurrencies(s.currencies);
       setSync(s.sync);
       setSyncServerUrl(s.sync.serverUrl ?? '');
       setDisplayCardSize(s.preferences.cardSize);
@@ -474,34 +413,55 @@ function SettingsPageContent() {
     // overwrites the user's currency selection with the initial value).
     const syncedStore = { ...store, currency: defaultCurrency };
 
-    const results = await Promise.allSettled([
-      setReceiptSettingsScoped(sessionToken ?? '', receipt),
-      setStoreSettingsScoped(sessionToken ?? '', syncedStore),
-      setCtxCurrency(defaultCurrency),
+    // Every save is named, and each later decision looks its result up BY NAME.
+    //
+    // This block previously read `results[0]` through `results[6]` -- seven positional
+    // indices into the array literal. Adding a setting is the natural edit to make here,
+    // and it shifts every index after it with nothing to notice: `changedKeys` would then
+    // tell SettingsContext that the WRONG keys were updated (so other components refetch
+    // the wrong data and the real change stays stale), and the sync DTO block below would
+    // gate on an unrelated call's success. Named lookup makes an insertion harmless.
+    //
+    // Promises are created in the same order as before, so concurrency and side-effect
+    // sequencing are unchanged.
+    const saveTasks: Array<readonly [string, Promise<unknown>]> = [
+      ['receipt', setReceiptSettingsScoped(sessionToken ?? '', receipt)],
+      ['store', setStoreSettingsScoped(sessionToken ?? '', syncedStore)],
+      ['currency', setCtxCurrency(defaultCurrency)],
       // Scoped write matches the scoped read in SettingsContext: the
       // unscoped variant writes the global DB while every consumer reads
       // the store-scoped user_preferences table, so unscoped writes would
       // silently vanish on the next reload.
-      sessionToken
-        ? setUserPreferencesScoped(sessionToken, [
-            { key: 'cardsize', value: String(displayCardSize) },
-            { key: 'fontsize', value: String(displayFontSize) },
-            { key: 'font-smoothing', value: displayFontSmoothing },
-          ])
-        : Promise.resolve(),
-      updateSyncSettingsScoped(sessionToken ?? '', {
-        serverUrl: syncServerUrl || null,
-        ...(syncApiKey ? { apiKey: syncApiKey } : {}),
-        enabled: sync.enabled,
-      }),
-      setBrandPrimaryColour(brandColour),
-      setBrandStoreNameApi(brandStoreName),
-    ]);
+      [
+        'prefs',
+        sessionToken
+          ? setUserPreferencesScoped(sessionToken, [
+              { key: 'cardsize', value: String(displayCardSize) },
+              { key: 'fontsize', value: String(displayFontSize) },
+              { key: 'font-smoothing', value: displayFontSmoothing },
+            ])
+          : Promise.resolve(),
+      ],
+      [
+        'sync',
+        updateSyncSettingsScoped(sessionToken ?? '', {
+          serverUrl: syncServerUrl || null,
+          ...(syncApiKey ? { apiKey: syncApiKey } : {}),
+          enabled: sync.enabled,
+        }),
+      ],
+      ['brandColour', setBrandPrimaryColour(sessionToken ?? '', brandColour)],
+      ['brandName', setBrandStoreNameApi(sessionToken ?? '', brandStoreName)],
+    ];
 
-    const failed = results.filter((r) => r.status === 'rejected').length;
+    const settled = await Promise.allSettled(saveTasks.map(([, task]) => task));
+    const saveResult = (name: string): boolean =>
+      settled[saveTasks.findIndex(([k]) => k === name)]?.status === 'fulfilled';
+
+    const failed = settled.filter((r) => r.status === 'rejected').length;
 
     // At least one save succeeded — show confirmation and refresh.
-    if (failed < results.length) {
+    if (failed < saveTasks.length) {
       setIsDirty(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -513,7 +473,7 @@ function SettingsPageContent() {
       // until the next page reload, causing placeholder regressions
       // like "Enter API key" after saving a new key or a blank server
       // URL field after saving a URL.
-      if (results[4]?.status === 'fulfilled') {
+      if (saveResult('sync')) {
         if (syncApiKey) {
           // Mirror the token to the shared IPC channel so the
           // Retail Options screen (useCloudSync) can load it.
@@ -546,21 +506,23 @@ function SettingsPageContent() {
       };
     }
 
-    if (failed === results.length) {
+    if (failed === saveTasks.length) {
       addToast({ message: l10n.getString('settings-save-error'), type: 'error' });
     } else if (failed > 0) {
       addToast({ message: l10n.getString('settings-save-partial'), type: 'error' });
     }
 
-    // Notify SettingsContext so other components reflect the changes
+    // Notify SettingsContext so other components reflect the changes. Keyed by name for
+    // the reason given at saveTasks: a positional list here would silently attribute the
+    // wrong keys to the wrong save the moment one is inserted.
     const changedKeys: string[] = [];
-    if (results[0]?.status === 'fulfilled') changedKeys.push('receipt.footer', 'receipt.showCurrency', 'receipt.showTax', 'receipt.paperWidth', 'receipt.showTableNumber', 'receipt.decimalSeparator');
-    if (results[1]?.status === 'fulfilled') changedKeys.push('store.name', 'store.address', 'store.taxId', 'store.branch', 'store.currency');
-    if (results[2]?.status === 'fulfilled') changedKeys.push('currency.default');
-    if (results[3]?.status === 'fulfilled') changedKeys.push('prefs.cardsize', 'prefs.fontsize', 'prefs.font-smoothing');
-    if (results[4]?.status === 'fulfilled') changedKeys.push('sync.serverUrl', 'sync.apiKey', 'sync.enabled');
-    if (results[5]?.status === 'fulfilled') changedKeys.push('brand.primary_colour');
-    if (results[6]?.status === 'fulfilled') changedKeys.push('brand.store_name');
+    if (saveResult('receipt')) changedKeys.push('receipt.footer', 'receipt.showCurrency', 'receipt.showTax', 'receipt.paperWidth', 'receipt.showTableNumber', 'receipt.decimalSeparator');
+    if (saveResult('store')) changedKeys.push('store.name', 'store.address', 'store.taxId', 'store.branch', 'store.currency');
+    if (saveResult('currency')) changedKeys.push('currency.default');
+    if (saveResult('prefs')) changedKeys.push('prefs.cardsize', 'prefs.fontsize', 'prefs.font-smoothing');
+    if (saveResult('sync')) changedKeys.push('sync.serverUrl', 'sync.apiKey', 'sync.enabled');
+    if (saveResult('brandColour')) changedKeys.push('brand.primary_colour');
+    if (saveResult('brandName')) changedKeys.push('brand.store_name');
     if (changedKeys.length > 0) {
       settingsCtx.markSettingsUpdated(changedKeys);
     }
@@ -569,44 +531,8 @@ function SettingsPageContent() {
   };
 
   // ── Sidebar search filtering moved to SettingsNavTree.tsx ─────
-
-  // ── Cloud Sync diagnostics ──────────────────────────────────
-
-  // Load the full offline queue summary (pending/synced/failed/conflict
-  // counts + last-synced/oldest-pending timestamps) when the sync section
-  // is active, so the Cloud Sync panel can show detailed status.
-  const refreshQueueSummary = useCallback(async () => {
-    try {
-      const summary = await getOfflineQueueStatusSummaryScoped(sessionToken ?? '');
-      setQueueSummary(summary);
-    } catch {
-      setQueueSummary(null);
-    }
-  }, [sessionToken]);
-
-  // Poll the summary + plan while the Cloud Sync section is open so the
-  // status panel (counts + last-synced + plan) stays live without manual
-  // refreshes.
-  const refreshSyncPlan = useCallback(async () => {
-    try {
-      setSyncPlan(await getSyncPlanScoped(sessionToken ?? ''));
-    } catch {
-      setSyncPlan(null);
-    }
-  }, [sessionToken]);
-
-  useEffect(() => {
-    if (activeSection !== 'sync') {
-      return;
-    }
-    refreshQueueSummary();
-    refreshSyncPlan();
-    const id = window.setInterval(() => {
-      void refreshQueueSummary();
-      void refreshSyncPlan();
-    }, SYNC_STATUS_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [activeSection, refreshQueueSummary, refreshSyncPlan]);
+  // (The page-level Cloud Sync diagnostics poll went with the old sync
+  // section; the flat-IA screens own their own status polling.)
 
   // ── Keyboard shortcuts ────────────────────────────────────
 
@@ -628,6 +554,30 @@ function SettingsPageContent() {
     return () => document.removeEventListener('keydown', handleKeyDown);
      
   }, [saving]);
+
+  // ── Role gate render: locked card instead of the whole shell ────────
+  // Positioned AFTER every hook in this component so the locked shell and
+  // the full shell run the same hook sequence (rules of hooks). Rendered
+  // for manager/staff/auditor; admin/owner get the app.
+  if (!adminUp) {
+    return (
+      <div className="settings-page">
+        {/* role="status" (polite announcement) cannot share an element with
+            aria-disabled per jsx-a11y/role-supports-aria-props, so the card
+            keeps the disabled semantics and its immediate wrapper announces. */}
+        <div role="status">
+        <div className="settings-locked-card" aria-disabled="true" data-testid="settings-locked-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <h1><Localized id="settings-locked-title">Settings restricted</Localized></h1>
+          <p><Localized id="settings-locked-desc">Sign in with an administrator or owner account to manage settings.</Localized></p>
+        </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Loading / Error states ───────────────────────────────────
 
@@ -694,144 +644,39 @@ function SettingsPageContent() {
   function renderSection(key: string) {
     switch (key) {
       case 'general':
-        return (
-          <GeneralSection
-            store={store}
-            setStore={setStore}
-            markDirty={markDirty}
-            cmInput={cmInput}
-            fieldErrors={fieldErrors}
-            validateField={validateField}
-            clearFieldError={clearFieldError}
-            currencies={currencies}
-            defaultCurrency={defaultCurrency}
-            setDefaultCurrencyState={setDefaultCurrencyState}
-            l10n={l10n}
-          />
-        );
-
-      case 'appearance':
-        return (
-          <AppearanceSection
-            displayCardSize={displayCardSize}
-            setDisplayCardSize={setDisplayCardSize}
-            displayFontSize={displayFontSize}
-            setDisplayFontSize={setDisplayFontSize}
-            displayFontSmoothing={displayFontSmoothing}
-            setDisplayFontSmoothing={setDisplayFontSmoothing}
-            brandColour={brandColour}
-            setBrandColour={setBrandColour}
-            brandStoreName={brandStoreName}
-            setBrandStoreName={setBrandStoreName}
-            markDirty={markDirty}
-            l10n={l10n}
-          />
-        );
-
-      case 'receipt':
-        return (
-          <ReceiptSection
-            receipt={receipt}
-            setReceipt={setReceipt}
-            setDecimalSep={setDecimalSep}
-            markDirty={markDirty}
-            l10n={l10n}
-          />
-        );
-
-      case 'sync':
-        return (
-          <SyncSection
-            sync={sync}
-            setSync={setSync}
-            syncServerUrl={syncServerUrl}
-            setSyncServerUrl={setSyncServerUrl}
-            syncApiKey={syncApiKey}
-            setSyncApiKey={setSyncApiKey}
-            syncApiKeyVisible={syncApiKeyVisible}
-            setSyncApiKeyVisible={setSyncApiKeyVisible}
-            syncing={syncing}
-            setSyncing={setSyncing}
-            pulling={pulling}
-            setPulling={setPulling}
-            syncResult={syncResult}
-            setSyncResult={setSyncResult}
-            pullResult={pullResult}
-            setPullResult={setPullResult}
-            queueSummary={queueSummary}
-            syncPlan={syncPlan}
-            testing={testing}
-            setTesting={setTesting}
-            pingResult={pingResult}
-            setPingResult={setPingResult}
-            requesting={requesting}
-            setRequesting={setRequesting}
-            tokenExpiresAt={tokenExpiresAt}
-            setTokenExpiresAt={setTokenExpiresAt}
-            cmInput={cmInput}
-            markDirty={markDirty}
-            refreshQueueSummary={refreshQueueSummary}
-            testSyncConnection={() => testSyncConnectionScoped(sessionToken ?? '')}
-            syncRun={() => syncRunScoped(sessionToken ?? '')}
-            syncPull={(args: { confirmDestructive: boolean }) => syncPullScoped(sessionToken ?? '', args)}
-            requestSyncToken={() => requestSyncTokenScoped(sessionToken ?? '')}
-            l10n={l10n}
-            addToast={addToast}
-          />
-        );
-
-      case 'local-api':
-        return <LocalApiSection />;
-
-      case 'email':
-        return <EmailReportSettings />;
-
-      case 'about':
-        return (
-          <AboutSection
-            appVersion={appVersion}
-            updateState={updateState}
-            updateVersion={updateVersion}
-            handleCheckUpdates={handleCheckUpdates}
-            handleInstallUpdate={handleInstallUpdate}
-          />
-        );
-
-      case 'license':
-        return <LicenseSettings />;
-
-      case 'topology':
-        return <TopologyScreen />;
-
-      case 'store-pos':
-        return (
-          <Suspense fallback={<Skeleton variant="block" width="100%" height="12rem" />}>
-            <WorkspaceStorePosSettings variant="full-page" terminalId={terminalId} userId={userId} {...(sessionToken ? { sessionToken } : {})} />
-          </Suspense>
-        );
-
-      case 'restaurant-pos':
-        return (
-          <Suspense fallback={<Skeleton variant="block" width="100%" height="12rem" />}>
-            <WorkspaceRestaurantPosSettings variant="full-page" terminalId={terminalId} userId={userId} {...(sessionToken ? { sessionToken } : {})} />
-          </Suspense>
-        );
-
-      case 'inventory':
-        return (
-          <Suspense fallback={<Skeleton variant="block" width="100%" height="12rem" />}>
-            {/* TODO: pass locationId from workspace context when available
-                to enable the Deduction Rules card section */}
-            <WorkspaceInventorySettings variant="full-page" userId={userId} />
-          </Suspense>
-        );
-
+        return <GeneralScreen />;
+      case 'license-subscription':
+        return <LicenseSubscriptionScreen />;
+      case 'devices-connectivity':
+        return <DevicesConnectivityScreen />;
+      case 'business-defaults':
+        return <BusinessDefaultsScreen />;
+      case 'features-modules':
+        return <FeaturesModulesScreen />;
+      case 'security-account':
+        return <SecurityAccountScreen />;
+      case 'data-sync':
+        return <DataSyncScreen />;
+      case 'data-management':
+        return <DataManagementScreen />;
+      case 'sync-status':
+        return <SyncStatusScreen />;
+      case 'offline-queue':
+        return <OfflineQueueScreen />;
+      case 'sync-conflicts':
+        return <SyncConflictReviewScreen />;
+      case 'tax-configuration':
+        return <TaxConfigurationScreen />;
+      case 'exchange-rates':
+        return <ExchangeRatesScreen />;
+      case 'system-diagnostics':
+        return <SystemDiagnosticsScreen />;
       default:
         return null;
     }
   }
 
-  // ── Resolve current nav item + category for breadcrumb ─────
+  // ── Resolve current nav item for the topbar icon + title ─────
 
   const currentNavItem = NAV_ITEMS_REF.find((n) => n.key === activeSection);
 
@@ -852,17 +697,18 @@ function SettingsPageContent() {
       <header className="settings-topbar">
         {/* COL 1: back button */}
         <div className="settings-topbar__col">
-          <button
-            type="button"
-            className="settings-back-btn"
-            onClick={() => goToWorkspacePicker()}
-            aria-label={l10n.getString('settings-back-aria')}
-            title={l10n.getString('settings-back-aria')}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="16 5 8 12 16 19" />
-            </svg>
-          </button>
+          <Tooltip content={l10n.getString('settings-back-aria')} fit="inline" portal>
+            <button
+              type="button"
+              className="settings-back-btn"
+              onClick={() => goToWorkspacePicker()}
+              aria-label={l10n.getString('settings-back-aria')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="16 5 8 12 16 19" />
+              </svg>
+            </button>
+          </Tooltip>
         </div>
         {/* COL 2: branding */}
         <div className="settings-topbar__col settings-topbar__col--brand">
@@ -977,7 +823,8 @@ function SettingsPageContent() {
         {/* ── Main content ──────────────────────────────── */}
         <form id="settings-form" className="settings-content" onSubmit={(e) => { e.preventDefault(); handleSave(); }} ref={settingsKeyboardRef as unknown as React.Ref<HTMLFormElement>}>
           <button type="submit" hidden aria-hidden="true" tabIndex={-1}>Save</button>
-          <div className={`settings-section-content${activeSection === 'topology' ? ' settings-section-content--full' : ''}`} key={activeSection}><div key={activeSection}>
+          <div className="settings-section-content" key={activeSection}>
+            <div key={activeSection}>
               <Suspense fallback={<Localized id="settings-section-loading"><div className="section-loading">Loading...</div></Localized>}>
                 {renderSection(activeSection)}
               </Suspense>
@@ -1055,6 +902,20 @@ function SettingsPageContent() {
           </span>
         </span>
       </footer>
+
+      {/* Close-request prompt. useUnsavedChangesGuard intercepts the Tauri
+          window close while settings are dirty; this dialog decides whether the
+          close proceeds. Designed dialog, not a native one. */}
+      <ConfirmDialog
+        open={unsavedPromptOpen}
+        onCancel={onKeepEditing}
+        onConfirm={onDiscardAndClose}
+        title={requiredLocalized(l10n, 'settings-close-unsaved-title')}
+        message={requiredLocalized(l10n, 'settings-close-unsaved-msg')}
+        variant="danger"
+        confirmLabel={requiredLocalized(l10n, 'settings-close-unsaved-discard')}
+        cancelLabel={requiredLocalized(l10n, 'settings-close-unsaved-keep')}
+      />
     </div>
   );
 }

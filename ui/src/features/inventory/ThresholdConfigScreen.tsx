@@ -3,7 +3,7 @@ import { Button } from '@/components/Button';
 import { Localized, useLocalization } from '@fluent/react';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
+import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listProductsScoped, type ProductDto } from '@/api/products';
 import {
@@ -163,12 +163,10 @@ export default function ThresholdConfigScreen() {
         </div>
       </div>
 
+      {/* LOAD-05: accessible loading region (role=status + aria-live +
+          aria-busy) instead of a bare localized text node. */}
       {loading ? (
-        <div className="transit-empty">
-          <Localized id="inv-loading">
-            <span>Loading...</span>
-          </Localized>
-        </div>
+        <LoadingStatus className="transit-empty" label={requiredLocalized(l10n, 'inv-loading')} />
       ) : (
         <table className="threshold-table">
           <thead>

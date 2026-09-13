@@ -21,6 +21,7 @@ import inventoryFtl from './inventory.ftl?raw';
 import tablesFtl from './tables.ftl?raw';
 import terminalsFtl from './terminals.ftl?raw';
 import offlineFtl from './offline.ftl?raw';
+import syncFtl from './sync.ftl?raw';
 import bundlesFtl from './bundles.ftl?raw';
 import promotionsFtl from './promotions.ftl?raw';
 import kdsFtl from './kds.ftl?raw';
@@ -29,11 +30,12 @@ import loyaltyFtl from './loyalty.ftl?raw';
 import shiftsFtl from './shifts.ftl?raw';
 import reportsFtl from './reports.ftl?raw';
 import analyticsFtl from './analytics.ftl?raw';
-import multiStoreFtl from './multi-store.ftl?raw';
+import multiStoreFtl from './multi-location.ftl?raw';
 import stockTransfersFtl from './stock-transfers.ftl?raw';
 import stockCountingFtl from './stock-counting.ftl?raw';
 import purchasingFtl from './purchasing.ftl?raw';
 import giftCardsFtl from './gift-cards.ftl?raw';
+import subscriptionFtl from './subscription.ftl?raw';
 
 const ALL_FTL = [
   sharedFtl,
@@ -48,6 +50,7 @@ const ALL_FTL = [
   tablesFtl,
   terminalsFtl,
   offlineFtl,
+  syncFtl,
   bundlesFtl,
   promotionsFtl,
   kdsFtl,
@@ -61,6 +64,7 @@ const ALL_FTL = [
   stockCountingFtl,
   purchasingFtl,
   giftCardsFtl,
+  subscriptionFtl,
 ].join('\n');
 
 let _bundle: ReactLocalization | null = null;

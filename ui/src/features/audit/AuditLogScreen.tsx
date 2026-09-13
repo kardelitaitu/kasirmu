@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import {
@@ -6,6 +8,7 @@ import {
   getAuditReviewStatusScoped,
   markAuditReviewedScoped,
   exportAuditLogScoped,
+  exportSecurityEventsScoped,
   type AuditEntryDto,
 } from '@/api/audit';
 import { useAuth } from '@/contexts/AuthContext';
@@ -77,7 +80,18 @@ interface Cursor {
 type OutcomeFilter = 'all' | 'success' | 'failure';
 
 /** Audit log screen — view filtered action history with date range, action type, and outcome filters for compliance monitoring. */
+/**
+ * §B administrative gate (todo-global-saas-1.md): the Audit Log is an
+ * administrative SaaS feature — it locks while the subscription is not
+ * `active` while POS operational runtime continues through grace.
+ */
 export default function AuditLogScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <AuditLogScreenContent />;
+}
+
+function AuditLogScreenContent() {
   const { l10n } = useLocalization();
   const locale = activeLocale(l10n);
   const { isManager } = useAuth();
@@ -240,6 +254,47 @@ export default function AuditLogScreen() {
     }
   }, [sessionToken, exporting, outcomeFilter, searchQuery, l10n]);
 
+  // ── Security-event export (ruling D61-7 / design D84) ─────────
+  //
+  // SECURITY_ACTIONS-only CSV with an exact actor filter (user_id or
+  // "system") and inclusive-from / exclusive-to date bounds, normalized at
+  // the IPC layer. Gate reuses the same `isManager` visibility as the
+  // AUD-09 export button — the AUDIT_EXPORT permission set is identical
+  // (Owner/Manager/Admin), so no new check is invented here.
+
+  const [secExporting, setSecExporting] = useState(false);
+  const [secExportError, setSecExportError] = useState<string | null>(null);
+  const [secActor, setSecActor] = useState('');
+  const [secFrom, setSecFrom] = useState('');
+  const [secTo, setSecTo] = useState('');
+
+  const handleSecurityExport = useCallback(async () => {
+    if (!sessionToken || secExporting) return;
+    setSecExporting(true);
+    setSecExportError(null);
+    try {
+      const result = await exportSecurityEventsScoped(sessionToken, {
+        ...(secActor ? { actor: secActor } : {}),
+        ...(secFrom ? { dateFrom: secFrom } : {}),
+        ...(secTo ? { dateTo: secTo } : {}),
+      });
+      // Same Blob+anchor download plumbing as the AUD-09 export above.
+      const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `security-events-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      setSecExportError(requiredLocalized(l10n, 'audit-log-security-export-error'));
+    } finally {
+      setSecExporting(false);
+    }
+  }, [sessionToken, secExporting, secActor, secFrom, secTo, l10n]);
+
   // ── Render ────────────────────────────────────────────────────────
 
   // With server-side filtering the page only ever holds matching rows, so the
@@ -304,6 +359,56 @@ export default function AuditLogScreen() {
         <div className="audit-log-export-error" role="alert">
           <span className="audit-log-export-error-icon" aria-hidden="true">⚠</span>
           {exportError}
+        </div>
+      )}
+
+      {/* Security-event export (ruling D61-7 / D84): SECURITY_ACTIONS-only
+          CSV with exact actor + date-range bounds. Same visibility gate as
+          the AUD-09 export button above. */}
+      {isManager && (
+        <div className="audit-log-security-export">
+          <input
+            type="text"
+            className="audit-log-security-export-actor"
+            value={secActor}
+            onChange={(e) => setSecActor(e.target.value)}
+            placeholder={l10n.getString('audit-log-security-export-actor')}
+            aria-label={l10n.getString('audit-log-security-export-actor')}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-bwignore="true"
+          />
+          <input
+            type="date"
+            className="audit-log-security-export-date"
+            value={secFrom}
+            onChange={(e) => setSecFrom(e.target.value)}
+            aria-label={l10n.getString('audit-log-security-export-from')}
+          />
+          <input
+            type="date"
+            className="audit-log-security-export-date"
+            value={secTo}
+            onChange={(e) => setSecTo(e.target.value)}
+            aria-label={l10n.getString('audit-log-security-export-to')}
+          />
+          <Button variant="secondary" size="sm" onClick={() => void handleSecurityExport()} loading={secExporting}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <Localized id="audit-log-security-export"><span>Export security CSV</span></Localized>
+          </Button>
+        </div>
+      )}
+      {secExportError && (
+        <div className="audit-log-export-error" role="alert">
+          <span className="audit-log-export-error-icon" aria-hidden="true">⚠</span>
+          {secExportError}
         </div>
       )}
 

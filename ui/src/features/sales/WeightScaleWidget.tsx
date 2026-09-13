@@ -62,7 +62,10 @@ export function WeightScaleWidget({
     } finally {
       if (mountedRef.current) setWeighing(false);
     }
-  }, [onWeightObtained, addToast]);
+    // sessionToken is read at :52 to choose the scoped scale read, and arrives as a prop.
+    // Unlike the reprint and bundle-lookup cases this one does surface a toast, so the symptom
+    // after a hot-swap was a visible "Scale read failed" on working hardware.
+  }, [onWeightObtained, addToast, sessionToken]);
 
 
   if (!isEnabled(FEATURES.USB_SCALE)) return null;

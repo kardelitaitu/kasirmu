@@ -5,6 +5,8 @@
 //! top products bar → low stock alerts.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import AdminLockedFeature from '@/components/AdminLockedFeature';
+import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -30,7 +32,7 @@ import {
   type TopProductRow, type LowStockAlert, type CategoryBreakdownRow,
   type HourlyHeatmapRow,
 } from '@/api/reports';
-import { getPrimaryStoreScoped } from '@/api/stores';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import './DashboardScreen.css';
 
@@ -120,7 +122,14 @@ function fmtDelta(current: number, previous: number): string {
 
 // ── Component ───────────────────────────────────────────────────────
 
+/** §B administrative gate — the owner/admin dashboard locks while the subscription is not `active`. */
 export default function DashboardScreen() {
+  const { locked } = useAdminGate();
+  if (locked) return <AdminLockedFeature />;
+  return <DashboardScreenContent />;
+}
+
+function DashboardScreenContent() {
   const { l10n } = useLocalization();
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { sessionToken: rawToken } = useWorkspace();
@@ -144,7 +153,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!sessionToken) return;
     let alive = true;
-    getPrimaryStoreScoped(sessionToken)
+    getPrimaryLocationScoped(sessionToken)
       .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
       .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
     return () => { alive = false; };

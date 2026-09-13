@@ -44,14 +44,15 @@ kds-layout-metro = Metro
 # Settings panel
 kds-settings-aria = Pengaturan KDS
 kds-settings-sound = Suara
-kds-settings-yellow = Kuning pada { $min } mnt
+kds-settings-yellow = Kuning
 kds-settings-yellow-aria = Ambang eskalasi kuning dalam menit
-kds-settings-red = Merah pada { $min } mnt
+kds-settings-red = Merah
 kds-settings-red-aria = Ambang eskalasi merah dalam menit
+kds-slider-value-min = { $min } menit
 kds-settings-auto-ack = Konfirmasi otomatis
-kds-settings-density = Kepadatan
-kds-settings-density-comfortable = Nyaman
-kds-settings-density-compact = Padat
+kds-settings-density = Kolom
+kds-settings-density-comfortable = 1
+kds-settings-density-compact = 2
 
 # ── 3a: Zone switching ──
 kds-zone-filter-aria = Filter berdasarkan zona dapur
@@ -266,7 +267,7 @@ kds-settings-hw-accel = Akselerasi perangkat keras
 kds-settings-hw-accel-caption = Efek blur dan GPU
 
 # ── Hamburger panel (lihat kds.ftl) ──
-kds-panel-section-display = Tampilan
+kds-panel-section-settings = Pengaturan
 kds-panel-section-behaviour = Perilaku
 kds-theme-dark-aria = Tema gelap
 kds-theme-light-aria = Tema terang
@@ -282,3 +283,83 @@ kds-cols-auto = Otomatis
 kds-color-picker-aria = Pemilih warna { $name }
 
 # ── Kiosk (remaining) ──
+
+# ── Expo (Expediter) screen — todo-kds-agents-3 ──
+nav-kds-expo = Ekspo
+kds-expo-title = Ekspo
+kds-expo-screen-aria = Layanan ekspedisi
+kds-expo-board-aria = Pesanan per stasiun
+kds-expo-no-station = Tanpa stasiun
+kds-expo-ready-banner =
+    { $count ->
+        [one]  1 pesanan siap disajikan
+       *[other] { $count } pesanan siap disajikan
+    }
+kds-expo-ready-ratio-aria = { $ready } dari { $total } pesanan naik di stasiun ini
+kds-expo-recall = Tarik Ulang
+kds-expo-recall-aria = Buka riwayat penarikan
+kds-expo-recall-count-aria = Buka riwayat penarikan, { $count } pesanan dapat ditarik ulang
+kds-expo-recall-title = Baru disajikan
+kds-expo-recall-hint = Pesanan yang disajikan dalam { $minutes } menit terakhir dapat dikembalikan ke meja saji.
+kds-expo-recall-empty = Belum ada pesanan yang baru disajikan
+kds-expo-recall-restore = Kembalikan
+kds-expo-recall-restore-aria = Kembalikan pesanan { $number } ke status siap
+kds-expo-recall-close-aria = Tutup dialog penarikan
+kds-expo-recall-failed = Gagal menarik kembali pesanan — coba lagi
+kds-expo-load-failed = Gagal memuat pesanan ekspo
+
+# ── Station selector modal (Expo) — todo-kds-agents-3 ──
+kds-expo-station-all = Semua stasiun
+kds-expo-station-button-aria = Pilih stasiun
+kds-station-title = Pilih stasiun
+kds-station-aria = Pilihan stasiun
+kds-station-all-label = Semua stasiun
+kds-station-all-aria = Tampilkan pesanan dari semua stasiun
+kds-station-option-aria = Tampilkan hanya pesanan dari stasiun { $zone }
+kds-station-close-aria = Tutup pemilih stasiun
+kds-station-empty = Belum ada stasiun di papan
+
+# ── Routing rules editor — todo-kds-agents-1 UI follow-up ──
+# Symmetric with kds.ftl. The `tag` matcher is offered but flagged
+# ineffective because the backend stores tag rules that never match yet.
+kds-routing-title = Aturan routing
+kds-routing-caption = Kirim baris pesanan yang cocok ke stasiun tertentu, menggantikan zona dapur produk.
+kds-routing-expand = Atur aturan
+kds-routing-collapse = Tutup editor aturan
+kds-routing-expand-aria = Buka editor aturan routing
+kds-routing-collapse-aria = Tutup editor aturan routing
+kds-routing-loading = Memuat aturan routing…
+kds-routing-load-failed = Gagal memuat aturan routing
+kds-routing-empty = Belum ada aturan — semua baris dirutekan sesuai zona dapur produknya.
+kds-routing-table-caption = Urutan aturan prioritas — angka terendah menang.
+kds-routing-col-priority = #
+kds-routing-col-match = Cocokkan
+kds-routing-col-station = Stasiun
+kds-routing-col-active = Aktif
+kds-routing-col-actions = Aksi
+kds-routing-row-aria = Aturan { $n }
+kds-routing-matcher-aria = Pencocok aturan { $n }
+kds-routing-matcher-sku = SKU
+kds-routing-matcher-category = Kategori
+kds-routing-matcher-tag = Tag
+kds-routing-tag-hint = Tag belum dimodelkan di katalog — aturan ini tersimpan tetapi tidak pernah merutekan baris.
+kds-routing-value-aria = Nilai pencocokan untuk aturan { $n }
+kds-routing-value-placeholder = nilai yang dicocokkan
+kds-routing-station-aria = Stasiun tujuan untuk aturan { $n }
+kds-routing-station-placeholder = stasiun
+kds-routing-active-aria = Aturan { $n } aktif
+kds-routing-up-aria = Naikkan aturan { $n }
+kds-routing-down-aria = Turunkan aturan { $n }
+kds-routing-remove-aria = Hapus aturan { $n }
+kds-routing-add = Tambah aturan
+kds-routing-clear-all = Hapus semua aturan
+kds-routing-save = Simpan aturan
+kds-routing-saving = Menyimpan…
+kds-routing-saved = Aturan routing tersimpan
+kds-routing-cleared = Semua aturan routing dihapus
+kds-routing-save-failed = Gagal menyimpan aturan routing — tidak ada yang diubah
+kds-routing-error-incomplete = Setiap aturan memerlukan nilai pencocokan dan stasiun tujuan sebelum menyimpan.
+kds-routing-confirm-title = Hapus semua aturan routing?
+kds-routing-confirm-msg = Ini menggantikan seluruh kumpulan aturan dengan kosong: setiap baris kembali dirutekan sesuai zona dapur produknya. Tidak dapat dibatalkan dari sini.
+kds-routing-confirm-ok = Hapus semua
+kds-routing-confirm-cancel = Pertahankan aturan

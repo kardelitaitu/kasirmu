@@ -3,7 +3,7 @@ name: docs-auditor
 description: Documentation-code audit and sync — keep technical docs accurate, traceable, and minimal with truth-anchor cross-referencing, drift classification, and repair rules. Use when auditing a doc (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase, verifying that what a document claims still holds, or stamping a document as audited.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — the stamp's bare path for the orphan checker corrected to the skill-local script; negative references to nonexistent spec/adr locations reworded so the drift-guard path detector stops flagging them) · verified this pass: docs/specs/_active, docs/specs, docs/decisions, docs/guides/api-reference.md, CONTRIBUTING.md, AGENTS.md, scripts/check.sh, .agents/skills/skill-drift-guard/scripts/detect.sh, .agents/skills/docs-auditor/scripts/check-orphans.py, crates/oz-core/src/shift.rs, crates/oz-hal/src/drivers/mock.rs, apps/desktop-client/src/commands, ui/src/api, ui/src/locales all exist; source-of-truth layout confirmed (no _approved spec dir, no adr dir — specs live in docs/specs/ and docs/specs/_active/, decisions in docs/decisions/) · history: 2026-08-08 §4b shallow structural orphan check added (scripts self-tested, corpus clean after desktop-app-audit repairs); footer format matches skill-drift-guard Check 10 (DD-MM-YY + by-clause) -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (rev 8 · .agents/skills/docs-auditor/scripts/check-orphans.py went red on a file that is not in the repository - an h2-to-h4 heading skip inside references/midtrans-nodejs-client/README.md, zero tracked entries, gitignored, a vendored third-party README. Its scanner now prefers git ls-files and falls back to the old directory walk only when git cannot be consulted, so the degraded mode is "scan more", never "scan nothing". Scope rule and caution are written into §Check table. 328 markdown files scanned became 321. Verified the narrowing did not disable the check by aiming --file at that same doc, which still reports the skip and exits 1 - my first attempt at that proof was worthless and nearly read as a broken tool: I appended a level-4 heading to a tracked guide whose nearest lower heading already included a level 3, which is legal, so the probe could only ever have found nothing. A self-test that cannot fail is not a self-test. · rev 7 · .agents/skills/docs-auditor/scripts/check-dead-refs.py burned to a clean exit the same day it was added: 62 files on the first sweep to 0 live findings across 332 docs, using git-ignore awareness (one batched git check-ignore decides, so .gitignore is the policy source and not my extension list) plus two pragma forms. The distinction it buys is the useful one: a gitignored missing path is absent by design, a NON-ignored missing path means something was never committed - which is how the gap in the iOS guides was found rather than asserted. Five silent bugs caught by self-testing it: a literal dot inside a placeholder character class (blind to every file), str.lstrip("./") eating leading dots, double-reporting from two regexes, capture_output piped stdio blocked in this sandbox, and a TemporaryFile read without seek(0). The last four all failed by returning nothing, i.e. by looking clean. )>
 
 # Skill: docs-auditor
 
@@ -47,6 +47,61 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 - Check only **file existence**: do referenced files, modules, functions still exist?
 - Verify **headline claims**: does the doc say feature X exists? Does `cargo check` pass?
 - **Structural orphan pass** (automatic): run `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` — flags unversioned/orphan wrapper labels, `####` items without their `###` parent, and version headers stale against their own section body (§4b).
+- **IPC surface reconciliation** (when the doc under audit is
+  `docs/guides/api-reference.md`): run
+  `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py`. It parses
+  `generate_handler!` in both clients, every `#[command]` fn under `src/`, and the entry
+  lines of the page, then reports four separate drift classes — wrong availability marker,
+  listed but never registered, listed and not defined anywhere, registered but
+  undocumented. Reporting them separately is the point: a single "the numbers disagree"
+  count hides that three of the four need different fixes.
+- **Unresolved path references** (any doc): run
+  `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`. It indexes the tree
+  once (pruned) and reports path literals in markdown that resolve to nothing,
+  separating live docs from dated records, plans and active specs — which are not drift,
+  because a plan names files it intends to create. Burned down to **0 unresolved refs
+  across 332 live docs (exit 0)** the same day, from 62 files on the first ad-hoc sweep.
+  Two mechanisms did the work, and both decide from the repo's own rules rather than a
+  hardcoded list:
+  * **git-ignore awareness.** Unresolved candidates go through one batched
+    `git check-ignore`. A gitignored path is ABSENT BY DESIGN (`*.pem`, `*.keystore`,
+    Gradle build output) and is dropped; a non-ignored missing path is the real signal -
+    a doc pointing at something that should have been committed. That distinction is what
+    found the iOS gap below.
+  * **Two pragma forms.** Inline: `<!-- dead-ref: ok: reason -->` on the line or the line
+    above, for a reference that is deliberately wrong (an example commit subject, or the
+    generic placeholder script name AGENTS.md uses in its own WSL warning - which is also
+    the fourth time in this session that spelling a `scripts/`-relative example in prose
+    tripped `detect.sh`, including three times inside the text warning about it).
+    File-scoped: `<!-- dead-ref-prefix-ok: some/prefix/ -->`
+    near the top, for a page whose whole subject is generated output. Scoped to a prefix
+    so the rest of the page is still checked, and grep-able.
+  An annotation in a `>` note block within 4 lines BELOW a claim also suppresses it,
+  because that is how auditors write: the claim, then the caveat underneath.
+  `--verbose` for every hit; `--include-bare` to also test bare filenames (noisy:
+  `publish latest.json` names an artifact, not a repo path); `--include-historical` to
+  see what is skipped and why.
+  **Not wired into CI**, deliberately, though it is now green and could be: adding a
+  `static-gates` step without a `gates.json` record and a `docs/operations/ci-pipeline.md`
+  row is precisely the three-part omission this session's audit kept finding - a gate the
+  drift checker cannot see because the checker never learned it exists. Wiring it up
+  needs all three changed together, which is a CI change rather than a doc repair.
+  ⚠️ **Give it a self-test before trusting a clean run.** Building it this session, the
+  tool reported *zero* unresolved references across 333 docs while its placeholder
+  character class contained a bare `.`, so every path with an extension was being
+  skipped as a placeholder. A deliberately-broken test file caught it: two injected dead
+  paths, a glob, a placeholder, a negative-context line. If you write a checker and its
+  first result is clean, feed it something you know is broken.
+  ⚠️ **Name every script by its full path, including inside a stamp or a sentence.**
+  `detect.sh` Check 1 re-anchors a token on its `scripts/…` segment rather than using the
+  whole path it was given, so writing the short form of this skill's own scripts
+  (`check-audit-stamps.py`, `check-dead-refs.py`, `check-orphans.py`) in prose fails the
+  gate even though each file exists under `.agents/skills/docs-auditor/scripts/`. This bit
+  the author of this bullet three times in one session — the third was this very
+  sentence, which reached for the short form as its own example of the trap and tripped
+  it. That is why the names above are spelled without the prefix.
+  A `CODE FINDING` for detect.sh: it should take the longest path-looking run on the
+  line, not the last `scripts/` segment it finds.
 - Duration: ~1-2 minutes. No per-line cross-reference.
 
 ### Full Audit
@@ -66,6 +121,16 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
 | A | Wrapper labels | `## Unversioned …` / `### Orphaned …` / `… backfill blocks` section headers — content parked under an unversioned bucket | `## Unversioned backfill blocks (P80–P251…)` |
 | B | Heading orphans | `####`/`#####` items whose nearest lower heading is not their `###`/`####` parent; non-benign level skips (h2→h4, h3→h5) | `#### Re-audit instructions` directly under an `##` |
 | C | Stale version headers | `##`/`###` header whose top cited version (`0.0.X`, or a range like `0.0.22 / 0.0.23`) trails its own section body's highest `0.0.Y` | `## 7. Prioritized 0.0.5 release-blocker order` with 0.0.22/0.0.23 closures in the body |
+> **Scope: tracked files only.** The scanner asks `git ls-files` first, so vendored and
+> gitignored markdown in the working tree is not policed. On 08-09-26 it reddened on an
+> `h2 -> h4` heading skip inside `references/midtrans-nodejs-client/README.md` - a path
+> with zero tracked entries, excluded by `.gitignore`. A docs gate that a directory
+> nobody committed can fail is a gate people learn to ignore. Git unavailable, or the
+> call fails, -> plain directory walk, so the failure mode is "scan more", never
+> "scan nothing". Prove the check still fires with `--file <a doc you know is bad>`
+> rather than trusting a clean tree run - a scope change is exactly the edit that can
+> silence a gate while leaving it green.
+
 
 ### Usage
 
@@ -148,6 +213,43 @@ Before starting any verification:
 | `rg` over `ui/src/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
+| `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
+| `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
+| `python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py` | Reconcile every bolded **X → Y** nav path in `website/src/content/docs/{en,id}` against the nav registry |
+| `python3 .agents/skills/docs-auditor/scripts/check-env-docs.py` | Fail when a variable the license server reads is named in no doc — closes the gap `verify-ci-docs-drift.py` cannot see (it compares docs to gates, not to config surface) |
+| `python3 .agents/skills/docs-auditor/scripts/check-ci-claims.py` | Fail when a live doc states CI facts the workflow files contradict: cites a `.yml` that exists only as inert `.bak`, names a workflow that exists nowhere, or asserts "the `x` job" for a job no live workflow defines. Read-only-informational baseline today (informational today: introduced at 33 findings in 15 docs on 09-09-26, all triaged to 0 the same day (12 cleared by pragma on dated-record text, 20 by repairing the claim)), not wired into CI. Suppress historical prose with `<!-- ci-claim: ok: reason -->` |
+
+> **`.agents/skills/docs-auditor/scripts/check-nav-paths.py`** exists because a wrong menu
+> pointer is invisible to the other checks: every word in the path is real, and only their
+> *containment* is false. `website/src/content/docs/en/user-roles.md` said **Settings →
+> Staff**, but `ui/src/features/staff/register.tsx` registers that item with
+> `section: 'tools'`, and `ui/src/features/settings/` contains no reference to the staff
+> route at all. Two design rules came out of building it:
+> * **Widen the model before blaming the doc.** Version one flagged
+>   `**Settings → License**`, which is *correct* — License is a node at
+>   `ui/src/features/settings/SettingsNavTree.tsx:92`, not a `registerNavItem` entry — and it
+>   flagged all four Indonesian paths because it resolved labels from `shared.ftl` alone,
+>   missing per-domain bundles such as `settings.id.ftl` (`settings-nav-license = Lisensi`).
+>   Both were fixed in the checker and the docs were left alone: a nav checker that misfires
+>   on legitimate children is worse than none, because the reader learns to ignore it.
+> * **A self-test must not edit the tree.** The first `--self-test` mutated a tracked
+>   customer doc to prove it could fail, then died on a Python error (a missing `%`,
+>   reported as *`str` is not callable*) *between* that mutation and its restore — leaving a
+>   page that had just been repaired broken again on disk, caught only because `git status`
+>   was checked afterwards (`git checkout --` reverted it). `check_docs()` is now a pure
+>   function over `(name, text)` pairs and the self-test feeds synthetic strings, so it
+>   cannot damage what it polices.
+>
+> Two near-misses worth keeping, because both are the shallow-probe family this skill already
+> warns about. A sweep that tested whether each of the repo's 116 stamps ends in `-->`
+> reported five broken plus a SKILL.md tail reading `)>`; all six are healthy long
+> multi-line stamps, and reading only line 1 of a wrapped comment invents corruption. And
+> the same nesting cuts the other way: **this file's own stamp contains a literal
+> `<!-- … -->` example**, so any parser closing at the first `-->` reads a truncated stamp —
+> 6111 characters instead of the whole block. It costs nothing today only because the
+> parseable fields (`date · auditor · status`) sit in the first ~150 characters. **Rule:
+> keep machine-read fields before any literal comment example in a stamp**, since a stamp
+> that documents pragma syntax is documented *by* that syntax.
 
 Use fast local search and file reads first. Run the narrowest relevant validation step before stamping.
 
@@ -230,7 +332,25 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 - Add one audit stamp at the top of the audited document only after verification is complete and all repairs applied.
 - Format: `> last audited <DD-MM-YY> by docs-auditor` as a blockquote footer. The DD-MM-YY shape (no year prefix, `by <name>` clause) is what `skill-drift-guard` Check 10 enforces project-wide — the in-doc stamp must match `^> last audited [0-9]{2}-[0-9]{2}-[0-9]{2} by <name>$` exactly. (Note: the standalone `scripts/` folder holds no copy of the orphan checker — the script lives at `.agents/skills/docs-auditor/scripts/check-orphans.py`.)
-- Replace any existing stamp. Do not stack stamps.
+- Replace any existing stamp. **Do not stack stamps.** Measured 08-09-26 after repair:
+  **124 stamped files, 124 stamps, zero stacked** — the invariant now holds across the whole
+  repo, so treat any stack you meet as a defect to merge, not a style to continue. The
+  earlier reading was 116 of 122; the six exceptions were five §SKILL.md files under
+  `.agents/skills/··/SKILL.md that a 2026-09-03 audit had stamped as "rev 2" *beneath* the
+  2026-08-31 original, plus one in docs/releases/, and three more had been created by this
+  session pattern-matching "newest-first history" from an earlier note instead of reading
+  this line. Merging is mechanical and lossless: parse every stamp, sort by date, keep the
+  newest as the stamp, and append the superseded bodies verbatim under
+  "STAMPS MERGED INTO THIS ONE". Never delete an older audit's evidence to satisfy the
+  count — the rule asks for one place to look, not a shorter file.
+- If you re-stamp a file you already stamped earlier the same day, replace again; do not
+  append a "rev 5". `.agents/skills/docs-auditor/SKILL.md itself had accumulated four.
+- **The footer must never be older than the newest stamp.** They answer different questions
+  — the stamp is the evidence, the footer is the machine-read freshness signal that
+  `detect.sh` Check 9/10 parses — so a footer behind the stamp makes a freshly audited doc
+  look stale and gets its work discounted. `check-audit-stamps.py` below reports that class
+  as drift; a footer *ahead* of the stamp is legitimate (a re-check that changed nothing
+  needs no new evidence line) and is reported informationally only.
 - If the audit was not completed (blocked or ambiguous with no user answer), do not stamp.
 - If a stamp already exists, compute `git diff <last-date> -- <path>` and mention what changed in the report.
 
@@ -257,4 +377,4 @@ Two anchors verified, one drift found, one-line patch — that is the whole loop
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 08-09-26 by DSH

@@ -4,9 +4,10 @@
 //! quantities from the database and returns them as a JSON array.
 //! The front-end uses this to populate the product grid.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
+use oz_core::availability::UsageCounts;
+use oz_core::entitlements::Entitlements;
 use oz_core::{Money, Store};
 
 use oz_core::events::{ProductCreated, StockAdjusted};
@@ -19,18 +20,32 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// ── Adjust stock ────────────────────────────────────────────────────
+// Phase 3.3 T6: the product wire DTOs moved to the shared `oz_bridge::products`
+// module and are re-exported here, same as the desktop shell. `ProductDto`
+// arrives with the three spec-0046b image fields the fork had dropped
+// (`id`, `image_hash`, `images`) — the shared UI reads all three, and
+// without `id` its image commands had no product id to pass. Both mapper
+// sites below now populate them. Command bodies stay tablet-native.
+pub use oz_bridge::products::{
+    AdjustStockArgs, CreateProductArgs, CreateProductResult, DeleteProductArgs, MoneyDto,
+    ProductDto, SerialTrackRow, UpdateProductArgs, UpdateProductResult,
+};
 
-#[derive(Debug, Deserialize)]
-/// Adjuststockargs.
-pub struct AdjustStockArgs {
-    /// SKU of the product to adjust.
-    pub sku: String,
-    /// Quantity change (positive = restock, negative = removal).
-    pub delta: i64,
-    /// Reason for the adjustment (e.g. "stock-take", "damaged", "return").
-    pub reason: String,
+/// Project the store's image assignments into the wire DTO shape (spec 0046b).
+fn image_dtos(
+    images: &[oz_core::db::products::ProductImage],
+) -> Vec<oz_bridge::products::ProductImageDto> {
+    images
+        .iter()
+        .map(|img| oz_bridge::products::ProductImageDto {
+            slot: img.slot,
+            hash: img.hash.clone(),
+            position: img.position,
+        })
+        .collect()
 }
+
+// ── Adjust stock ────────────────────────────────────────────────────
 
 /// Adjust stock for a product identified by SKU.
 ///
@@ -81,58 +96,6 @@ pub async fn adjust_stock(
     Ok(new_qty)
 }
 
-/// A product DTO for the front-end, mapped from `ProductWithDetails`.
-#[derive(Debug, Serialize)]
-pub struct ProductDto {
-    /// Stock-keeping unit — the human-readable product code.
-    pub sku: String,
-    /// Display name shown on receipts and the POS UI.
-    pub name: String,
-    /// Category display name, if the product is linked to a category.
-    pub category: Option<String>,
-    /// Sale price with currency.
-    pub price: MoneyDto,
-    /// Machine-readable barcode (EAN-13, UPC-A, etc.) if available.
-    pub barcode: Option<String>,
-    /// Whether the product is in stock (stock_qty > 0 or null = false).
-    pub in_stock: bool,
-    /// Current stock quantity, or `null` if tracking is disabled.
-    pub stock_qty: Option<i64>,
-    /// Tax rate IDs assigned to this product.
-    pub tax_rate_ids: Vec<String>,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 timestamp of the last price change.
-    pub price_updated_at: String,
-    /// Product type: "retail", "restaurant", or "both".
-    pub product_type: String,
-    /// Cost price in minor units (local-only, ADR #36).
-    pub cost_minor: i64,
-    /// Brand (free text).
-    pub brand: Option<String>,
-    /// Rack position code.
-    pub rack_location: Option<String>,
-    /// Free-text notes.
-    pub notes: Option<String>,
-    /// Unit of measure.
-    pub unit: Option<String>,
-    /// Active/sellable status.
-    pub is_active: bool,
-    /// Default supplier FK (local-only).
-    pub default_supplier_id: Option<String>,
-    /// Materialized popularity score (ADR #37) — retail grid sort key.
-    pub popularity_score: f64,
-}
-
-/// Money DTO matching the front-end `Money` type (snake_case keys).
-#[derive(Debug, Serialize)]
-pub struct MoneyDto {
-    /// Minor Units.
-    pub minor_units: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-}
-
 /// Fetch all products from the database.
 ///
 /// Returns an array of product DTOs with category names and stock
@@ -179,6 +142,7 @@ fn map_products_to_dtos(
                 .unwrap_or("USD")
                 .to_owned();
             ProductDto {
+                id: pwd.product.id.clone(),
                 sku: pwd.product.sku.to_string(),
                 name: pwd.product.name,
                 category: pwd.category_name,
@@ -203,6 +167,8 @@ fn map_products_to_dtos(
                 is_active: pwd.product.is_active,
                 default_supplier_id: pwd.product.default_supplier_id.clone(),
                 popularity_score: pwd.popularity_score,
+                image_hash: pwd.product.image_hash.clone(),
+                images: Some(image_dtos(&pwd.images)),
             }
         })
         .collect();
@@ -280,6 +246,7 @@ fn map_pwd_to_dto(
             .unwrap_or("USD")
             .to_owned();
         ProductDto {
+            id: pwd.product.id.clone(),
             sku: pwd.product.sku.to_string(),
             name: pwd.product.name,
             category: pwd.category_name,
@@ -302,73 +269,13 @@ fn map_pwd_to_dto(
             is_active: pwd.product.is_active,
             default_supplier_id: pwd.product.default_supplier_id.clone(),
             popularity_score: pwd.popularity_score,
+            image_hash: pwd.product.image_hash.clone(),
+            images: Some(image_dtos(&pwd.images)),
         }
     }))
 }
 
 // ── Create product ──────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Createproductargs.
-pub struct CreateProductArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Display name.
-    pub name: String,
-    /// Price Minor.
-    pub price_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// ID of the associated category.
-    pub category_id: Option<String>,
-    /// Barcode string.
-    pub barcode: Option<String>,
-    /// Initial Stock.
-    pub initial_stock: i64,
-    /// Tax Rate Ids.
-    pub tax_rate_ids: Vec<String>,
-    #[serde(default = "default_product_type")]
-    /// Product Type.
-    pub product_type: String,
-    #[serde(default)]
-    /// Cost price in minor units (ADR #36, local-only).
-    pub cost_minor: i64,
-    #[serde(default)]
-    /// Brand (free text).
-    pub brand: Option<String>,
-    #[serde(default)]
-    /// Rack position code.
-    pub rack_location: Option<String>,
-    #[serde(default)]
-    /// Free-text notes.
-    pub notes: Option<String>,
-    #[serde(default)]
-    /// Unit of measure.
-    pub unit: Option<String>,
-    #[serde(default = "default_true")]
-    /// Active/sellable status.
-    pub is_active: bool,
-    #[serde(default)]
-    /// Default supplier FK (local-only).
-    pub default_supplier_id: Option<String>,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn default_product_type() -> String {
-    "retail".to_owned()
-}
-
-#[derive(Debug, Serialize)]
-/// Createproductresult.
-pub struct CreateProductResult {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-}
 
 #[command]
 /// Create product.
@@ -376,6 +283,18 @@ pub async fn create_product(
     args: CreateProductArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateProductResult, AppError> {
+    // Quota: the tier's product/menu cap (subscription-tiers.md §Numeric
+    // Limits) is enforced before creation. This legacy pre-session command
+    // runs against the global database, so both the tier and the product
+    // count come from that single connection.
+    let sub = {
+        let global_db = state.db.lock().await;
+        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
+            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
+        sub.verify_signature()?;
+        sub
+    };
     // Scope the DB borrow so Store (which is !Send) is dropped before
     // the next .await point when we lock the kernel for event publishing.
     {
@@ -389,6 +308,9 @@ pub async fn create_product(
         if args.cost_minor != 0 {
             require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_EDIT_COST)?;
         }
+        store.enforce_product_quota(
+            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+        )?;
 
         let currency: oz_core::Currency = args
             .currency
@@ -452,70 +374,21 @@ pub async fn create_product(
 
 // ── Update product ──────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-/// Updateproductargs.
-pub struct UpdateProductArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Display name.
-    pub name: String,
-    /// Price Minor.
-    pub price_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// ID of the associated category.
-    pub category_id: Option<String>,
-    /// Barcode string.
-    pub barcode: Option<String>,
-    /// Tax Rate Ids.
-    pub tax_rate_ids: Vec<String>,
-    /// Product Type.
-    pub product_type: Option<String>,
-    #[serde(default)]
-    /// Updated cost in minor units (None keeps).
-    pub cost_minor: Option<i64>,
-    #[serde(default)]
-    /// Updated brand — `null` clears, string sets, absent keeps.
-    pub brand: Option<Option<String>>,
-    #[serde(default)]
-    /// Updated rack position code — `null` clears, string sets, absent keeps.
-    pub rack_location: Option<Option<String>>,
-    #[serde(default)]
-    /// Updated notes — `null` clears, string sets, absent keeps.
-    pub notes: Option<Option<String>>,
-    #[serde(default)]
-    /// Updated unit — `null` clears, string sets, absent keeps.
-    pub unit: Option<Option<String>>,
-    #[serde(default)]
-    /// Updated active status.
-    pub is_active: Option<bool>,
-    #[serde(default)]
-    /// Updated default supplier — `null` clears, string sets, absent keeps.
-    pub default_supplier_id: Option<Option<String>>,
-}
-
-impl UpdateProductArgs {
-    /// Map the PATCH-style attribute fields onto the core update struct.
-    fn to_update_attributes(&self) -> oz_core::db::UpdateProductAttributes {
-        oz_core::db::UpdateProductAttributes {
-            cost_minor: self.cost_minor,
-            brand: self.brand.clone(),
-            rack_location: self.rack_location.clone(),
-            notes: self.notes.clone(),
-            unit: self.unit.clone(),
-            is_active: self.is_active,
-            default_supplier_id: self.default_supplier_id.clone(),
-        }
+/// Map the PATCH-style attribute fields onto the core update struct.
+///
+/// Free function rather than an inherent impl: `UpdateProductArgs` is
+/// re-exported from `oz_bridge::products` (Phase 3.3 T6), and Rust does not
+/// permit an inherent impl for a type defined in another crate.
+fn to_update_attributes(args: &UpdateProductArgs) -> oz_core::db::UpdateProductAttributes {
+    oz_core::db::UpdateProductAttributes {
+        cost_minor: args.cost_minor,
+        brand: args.brand.clone(),
+        rack_location: args.rack_location.clone(),
+        notes: args.notes.clone(),
+        unit: args.unit.clone(),
+        is_active: args.is_active,
+        default_supplier_id: args.default_supplier_id.clone(),
     }
-}
-
-#[derive(Debug, Serialize)]
-/// Updateproductresult.
-pub struct UpdateProductResult {
-    /// Stock-keeping unit identifier.
-    pub sku: String,
 }
 
 #[command]
@@ -557,7 +430,7 @@ pub async fn update_product(
 
     store.set_product_tax_rates(&args.sku, &args.tax_rate_ids)?;
 
-    store.update_product_attributes(&args.sku, &args.to_update_attributes())?;
+    store.update_product_attributes(&args.sku, &to_update_attributes(&args))?;
 
     Ok(UpdateProductResult { sku: args.sku })
 }
@@ -573,15 +446,6 @@ pub async fn get_product_track_serial(
     let product = store.get_product(&sku)?;
     drop(db);
     Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
-}
-
-/// A single serial-tracking flag keyed by SKU (batch response row).
-#[derive(Debug, Serialize)]
-pub struct SerialTrackRow {
-    /// Stock-keeping unit.
-    pub sku: String,
-    /// Whether the product is configured for serial tracking.
-    pub track_serial: bool,
 }
 
 /// Check serial-tracking flags for many SKUs in one round trip
@@ -644,15 +508,6 @@ pub async fn record_product_search(
 }
 
 // ── Delete product ──────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Deleteproductargs.
-pub struct DeleteProductArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-}
 
 #[command]
 /// Delete product.
@@ -802,6 +657,17 @@ pub async fn create_product_scoped(
     // the next .await point when we lock the kernel for event publishing.
     {
         let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        // Quota: the tier's product/menu cap (subscription-tiers.md
+        // §Numeric Limits) is enforced per-location catalog before
+        // creation. Tier from the global identity DB, count from the
+        // scoped store DB.
+        let sub = {
+            let global_db = state.db.lock().await;
+            oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
+            oz_core::TenantSubscription::load(&global_db, "default")?
+                .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?
+        };
+        sub.verify_signature()?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -815,6 +681,9 @@ pub async fn create_product_scoped(
         if args.cost_minor != 0 {
             require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
         }
+        store.enforce_product_quota(
+            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
+        )?;
 
         let currency: oz_core::Currency = args
             .currency
@@ -921,7 +790,7 @@ pub async fn update_product_scoped(
 
     store.set_product_tax_rates(&args.sku, &args.tax_rate_ids)?;
 
-    store.update_product_attributes(&args.sku, &args.to_update_attributes())?;
+    store.update_product_attributes(&args.sku, &to_update_attributes(&args))?;
 
     Ok(UpdateProductResult { sku: args.sku })
 }

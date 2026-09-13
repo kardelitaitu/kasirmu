@@ -117,6 +117,20 @@ export interface DeductionLocationInfo {
 export const getCartDeductionLocation = (cartId: string): Promise<DeductionLocationInfo | null> =>
   loggedInvoke<DeductionLocationInfo | null>('get_cart_deduction_location', { cartId });
 
+/**
+ * ADR #7: Get the deduction location info for a cart in the store resolved from a session token.
+ *
+ * Registered by BOTH shells as of this writing -- `desktop-client` has had it since the ADR #7
+ * sweep and `tablet-client` gained it alongside this wrapper. The ambient `get_cart_deduction_location`
+ * above is registered by tablet only, so calling it from the desktop shell throws "command not
+ * found"; that asymmetry is what this wrapper exists to route around.
+ */
+export const getCartDeductionLocationScoped = (
+  sessionToken: string,
+  cartId: string,
+): Promise<DeductionLocationInfo | null> =>
+  loggedInvoke<DeductionLocationInfo | null>('get_cart_deduction_location_scoped', { sessionToken, cartId });
+
 /** ADR #7: Add a line to a cart in the store resolved from a session token. */
 export const addLineScoped = (sessionToken: string, args: AddLineArgs): Promise<AddLineResult> =>
   loggedInvoke<AddLineResult>('add_line_scoped', { sessionToken, args });
@@ -161,6 +175,15 @@ export interface CompleteSaleScopedArgs {
    * post-tax sale (see `CompleteSaleArgs.promotionIds`).
    */
   promotionIds?: string[];
+  /**
+   * F2-6: the client's claim that the displayed tax was an ESTIMATE —
+   * the cart-tax cache was stale/unknown at checkout. Core verifies by
+   * computing the tax itself and stamps claim + computed tax into
+   * `sales.tax_estimate_note` (D61 ruling 4: flag for recompute, never
+   * silent). Absent/false is the zero-change default: no stamp.
+   * Mirrors `tax_estimated: Option<bool>` (commands/pos.rs, c2cc3af9e).
+   */
+  taxEstimated?: boolean;
 }
 
 export const completeSaleScoped = (sessionToken: string, args: CompleteSaleScopedArgs): Promise<CompleteSaleResult> =>
@@ -443,6 +466,12 @@ export interface SaleDetail {
   userId: string | null;
   createdAt: string;
   lines: SaleLineDto[];
+  /** F2-7 (forward-wired): the F2 audit stamp when the sale's tax was
+   *  computed against a non-fresh estimate. Optional until F2-6 threads
+   *  `Store::sale_tax_estimate_note` through the detail command — the same
+   *  optional-field rule the caps DTO used (runtime presence pinned by the
+   *  badge test, absence renders no badge). */
+  taxEstimateNote?: string | null;
   /** CUR-02: original sale currency when multi-currency checkout was used. */
   baseCurrency?: string | null;
   /** CUR-02: original sale total in baseCurrency minor units. */

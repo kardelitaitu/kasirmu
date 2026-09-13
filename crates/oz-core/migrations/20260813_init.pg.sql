@@ -190,21 +190,6 @@ CREATE TABLE IF NOT EXISTS "stock_counts" (
     completed_at TEXT,
     updated_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
 
-CREATE TABLE IF NOT EXISTS store_profiles (
-    id          TEXT PRIMARY KEY,                                   -- "default" or UUID for additional stores
-    name        TEXT NOT NULL,
-    address     TEXT DEFAULT '',
-    tax_id      TEXT DEFAULT '',
-    currency    TEXT NOT NULL DEFAULT 'USD',
-    timezone    TEXT NOT NULL DEFAULT 'UTC',
-    is_primary  BIGINT NOT NULL DEFAULT 0,                        -- exactly one store is the primary
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_store_profiles_primary
-    ON store_profiles(is_primary) WHERE is_primary = 1;
-
 CREATE TABLE IF NOT EXISTS stripe_customers (
     stripe_customer_id TEXT PRIMARY KEY,
     tenant_id          TEXT NOT NULL,
@@ -261,19 +246,6 @@ CREATE TABLE IF NOT EXISTS sync_terminals (
     created_at    TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
 
-CREATE TABLE IF NOT EXISTS tax_rates (
-    id          TEXT PRIMARY KEY,                            -- UUID v4
-    name        TEXT NOT NULL,                               -- e.g. "Sales Tax"
-    rate_bps    BIGINT NOT NULL CHECK(rate_bps >= 0),       -- basis points (e.g. 825 = 8.25%)
-    is_default  BIGINT NOT NULL DEFAULT 0,                  -- 1 if this is the default rate
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, is_inclusive BIGINT NOT NULL DEFAULT 0, tenant_id TEXT NOT NULL DEFAULT 'default', is_active BIGINT NOT NULL DEFAULT 1);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_single_default
-  ON tax_rates(is_default)
-  WHERE is_default = 1;
-
 CREATE TABLE IF NOT EXISTS tenant_plans (
     tenant_id   TEXT PRIMARY KEY,
     plan        TEXT NOT NULL DEFAULT 'free'
@@ -286,7 +258,7 @@ CREATE TABLE IF NOT EXISTS tenant_subscription (
     tier_key           TEXT NOT NULL,        -- 'free', 'pro', 'premium', 'enterprise'
     status             TEXT NOT NULL,        -- 'active', 'past_due', 'canceled'
     expires_at         TEXT NULL,            -- ISO timestamp (NULL = lifetime/free)
-    max_stores         BIGINT NOT NULL,
+    max_locations         BIGINT NOT NULL,
     max_pos_instances  BIGINT NOT NULL,     -- Per-store register limit
     allowed_types_json TEXT NOT NULL,        -- '["restaurant-pos", "store-pos", "admin"]'
     signature          TEXT NOT NULL,        -- RSA/HMAC signature from apps/cloud-server
@@ -439,6 +411,195 @@ CREATE TABLE IF NOT EXISTS webhook_endpoints (
     updated_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS legal_entities (
+    id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    legal_name          TEXT NOT NULL DEFAULT '',
+    registration_number TEXT NOT NULL DEFAULT '',
+    tax_id              TEXT NOT NULL DEFAULT '',
+    status              TEXT NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active', 'inactive')),
+    created_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), country_code TEXT NOT NULL DEFAULT '', locale TEXT NOT NULL DEFAULT '', timezone TEXT NOT NULL DEFAULT '', currency TEXT NOT NULL DEFAULT '',
+    UNIQUE (tenant_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS "memos" (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    author_user_id  TEXT NOT NULL,
+    -- Author's role snapshot at publish time, so a later role change cannot
+    -- retroactively lock the author out of stopping their own memo or grant a
+    -- demoted user authority over a memo they no longer outrank.
+    author_role     TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    body            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft','published','expired','stopped','archived')),
+    duration        TEXT NOT NULL DEFAULT '24h'
+                    CHECK (duration IN ('12h','24h','3d','7d','30d')),
+    revision        BIGINT NOT NULL DEFAULT 1,
+    published_at    TEXT,
+    expires_at      TEXT,
+    stopped_at      TEXT,
+    stopped_by      TEXT,
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, archived_at TEXT);
+
+CREATE TABLE IF NOT EXISTS topology_revisions (
+    id                      TEXT PRIMARY KEY,
+    branch_id               TEXT NOT NULL DEFAULT '',
+    revision                BIGINT NOT NULL,
+
+    -- Author-chosen "what changed and why" (ADR #46 §6). Optional at the UI,
+    -- empty by default; this column is the difference between a list of
+    -- timestamps and an actual history.
+    change_note             TEXT NOT NULL DEFAULT '',
+
+    -- The full graph envelope, byte-identical to what was written to `settings`
+    -- for this revision, so a revision is self-contained and needs no
+    -- reconstruction. NULL means DEFLATED (ADR #46 §4): the record of who, when,
+    -- and why is kept permanently, the restorable snapshot is not. Every read
+    -- path that offers a restore must check this for NULL and say
+    -- "record only — snapshot pruned" rather than offering a restore that fails.
+    diagram                 TEXT,
+
+    -- Workspace-diff COUNTS, not workspace rows (ADR #46 §2). Apply already has
+    -- these in hand at commands.rs:272-274. They let a history row explain
+    -- itself — "this Apply archived 3 workspaces" — without duplicating another
+    -- table's contents or growing without bound.
+    workspace_creations     BIGINT NOT NULL DEFAULT 0,
+    workspace_updates       BIGINT NOT NULL DEFAULT 0,
+    workspace_archives      BIGINT NOT NULL DEFAULT 0,
+    node_count              BIGINT NOT NULL DEFAULT 0,
+    wire_count              BIGINT NOT NULL DEFAULT 0,
+
+    -- Which SEMANTICS CONTRACT this revision was authored under, stamped from
+    -- `oz_core::topology::TOPOLOGY_CONTRACT_SCHEMA_VERSION` at write time.
+    --
+    -- Named for the axis it holds, deliberately. This repo maintains two
+    -- version axes that model.rs:273-285 warns "must never be conflated": the
+    -- ENVELOPE version (shape of a saved diagram, currently 1, already stored
+    -- inside `diagram` itself) and the CONTRACT version (the pairing table,
+    -- which ADR #45 moved 1 -> 2). ADR #46 §7's question — "can this revision
+    -- still be restored?" — is answered by the contract axis, so that is what
+    -- is recorded here. The envelope version would be a constant column that
+    -- duplicates a field already inside the JSON.
+    contract_schema_version BIGINT NOT NULL,
+
+    -- Pinned revisions are exempt from both pruning and deflation (ADR #46 §4).
+    -- This is what makes the table a DEPLOY history rather than a scratch pad:
+    -- a known-good graph stays restorable however busy the branch gets after it.
+    pinned                  BIGINT NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+
+    published_at            TEXT NOT NULL,
+    published_by            TEXT NOT NULL,
+    -- Stamped by the write path; NOT yet added to RLS_TABLES in
+    -- scripts/generate-pg-migration.py. That mirrors memo_revisions exactly —
+    -- enabling RLS is a policy decision the repo keeps separate from schema, and
+    -- the generator surfaces uncovered tenant_id tables as a visible comment
+    -- rather than failing (ADR #46 §9).
+    tenant_id               TEXT NOT NULL DEFAULT 'default',
+
+    UNIQUE (branch_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS over_quota_markers (
+    id            BIGINT PRIMARY KEY,
+    resource_id   TEXT    NOT NULL,
+    resource_type TEXT    NOT NULL,
+    dimension     TEXT    NOT NULL,
+    severity      TEXT    NOT NULL CHECK (severity IN ('over', 'at')),
+    "limit"       BIGINT,
+    current       BIGINT NOT NULL,
+    marked_at     TEXT    NOT NULL,
+    tenant_id     TEXT    NOT NULL DEFAULT 'default'
+);
+
+CREATE TABLE IF NOT EXISTS local_payment_methods (
+    id          TEXT PRIMARY KEY,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    scope_type  TEXT NOT NULL CHECK (scope_type IN ('legal_entity', 'location')),
+    scope_id    TEXT NOT NULL,
+    rail_code   TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    is_enabled  BIGINT NOT NULL DEFAULT 1,
+    parameters  TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (scope_type, scope_id, rail_code)
+);
+
+CREATE TABLE IF NOT EXISTS receipt_formats (
+    id             TEXT PRIMARY KEY,
+    tenant_id      TEXT NOT NULL DEFAULT 'default',
+    scope_type     TEXT NOT NULL CHECK (scope_type IN ('legal_entity', 'workspace', 'terminal')),
+    scope_id       TEXT NOT NULL,
+    config         TEXT NOT NULL DEFAULT '{}',
+    paper_width_mm BIGINT CHECK (paper_width_mm IS NULL OR (paper_width_mm BETWEEN 20 AND 120)),
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    UNIQUE (scope_type, scope_id)
+);
+
+CREATE TABLE IF NOT EXISTS sale_idempotency (
+    tenant_id  TEXT NOT NULL DEFAULT 'default',
+    key        TEXT,
+    sale_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sale_idempotency_tenant_key
+    ON sale_idempotency(tenant_id, key);
+
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id                TEXT PRIMARY KEY,
+    tenant_id         TEXT NOT NULL DEFAULT 'default',
+    entity_type       TEXT NOT NULL,
+    entity_id         TEXT NOT NULL,
+    local_terminal_id TEXT NOT NULL,
+    local_vector      TEXT NOT NULL,
+    remote_vector     TEXT NOT NULL,
+    local_payload     TEXT NOT NULL,
+    remote_payload    TEXT NOT NULL,
+    severity          TEXT NOT NULL
+                      CHECK (severity IN ('high', 'medium', 'low')),
+    status            TEXT NOT NULL DEFAULT 'open'
+                      CHECK (status IN ('open', 'resolved', 'dismissed')),
+    resolution        TEXT,
+    resolved_by       TEXT,
+    resolved_at       TEXT,
+    created_at        TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+);
+
+CREATE TABLE IF NOT EXISTS sync_entity_vectors (
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    entity_type TEXT NOT NULL,
+    entity_id   TEXT NOT NULL,
+    vector      TEXT NOT NULL,
+    -- Last body seen for this entity. Kept so the field-wise merge policy can
+    -- tell whether two concurrent customer edits touched the same fields;
+    -- without it every such comparison would have to be answered "overlap"
+    -- and every profile conflict would need a human. Not a payload store of
+    -- record: `offline_queue` remains that.
+    last_payload TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (tenant_id, entity_type, entity_id)
+);
+
+CREATE TABLE IF NOT EXISTS midtrans_transactions (
+    order_id     TEXT PRIMARY KEY,
+    tenant_id    TEXT NOT NULL,
+    sale_id      TEXT NOT NULL,
+    amount_minor BIGINT NOT NULL,
+    currency     TEXT NOT NULL DEFAULT 'IDR',
+    status       TEXT NOT NULL DEFAULT 'issued',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -540,92 +701,12 @@ CREATE TABLE IF NOT EXISTS "stock_count_lines" (
     notes        TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS "customers" (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    email           TEXT,
-    phone           TEXT,
-    loyalty_points  BIGINT NOT NULL DEFAULT 0,
-    total_spent_minor BIGINT NOT NULL DEFAULT 0,
-    currency        TEXT NOT NULL DEFAULT 'USD',
-    notes           TEXT NOT NULL DEFAULT '',
-    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    store_id        TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS terminals (
-    id              TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    device_id       TEXT NOT NULL UNIQUE,
-    terminal_secret TEXT,                   -- optional shared secret for sync auth
-    is_active       BIGINT NOT NULL DEFAULT 1,
-    last_seen_at    TEXT,
-    metadata        TEXT,                   -- JSON blob for extra info
-    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_store_id TEXT REFERENCES store_profiles(id), bound_instance_id TEXT, binding_signature TEXT);
-
-CREATE TABLE IF NOT EXISTS "products" (
-    id          TEXT PRIMARY KEY,
-    sku         TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    price_minor BIGINT NOT NULL CHECK (price_minor >= 0),
-    currency    TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    category_id TEXT REFERENCES categories(id),
-    barcode     TEXT,
-    price_updated_at TEXT DEFAULT '',
-    track_serial BIGINT NOT NULL DEFAULT 0,
-    product_type TEXT NOT NULL DEFAULT 'retail',
-    cost_minor  BIGINT NOT NULL DEFAULT 0,
-    version     BIGINT NOT NULL DEFAULT 1,
-    store_id    TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    tenant_id   TEXT NOT NULL DEFAULT 'default',
-    kitchen_zone TEXT,
-    brand TEXT,
-    rack_location TEXT,
-    notes TEXT,
-    unit TEXT,
-    is_active BIGINT NOT NULL DEFAULT 1,
-    default_supplier_id TEXT REFERENCES suppliers(id),
-    popularity_score DOUBLE PRECISION NOT NULL DEFAULT 0
-, image_hash TEXT);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id, sku);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
-
-CREATE TABLE IF NOT EXISTS category_taxes (
-    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    PRIMARY KEY (category_id, tax_rate_id)
-);
-
 CREATE TABLE IF NOT EXISTS role_workspace_types (
     id        BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     role_id   TEXT NOT NULL REFERENCES roles(id),
     type_key  TEXT NOT NULL REFERENCES workspace_types(key),
     UNIQUE(role_id, type_key)
 );
-
-CREATE TABLE IF NOT EXISTS "workspace_instances" (
-    id          TEXT PRIMARY KEY,
-    type_key    TEXT NOT NULL REFERENCES workspace_types(key),
-    store_id    TEXT NOT NULL REFERENCES store_profiles(id)
-                              ON DELETE RESTRICT
-                              ON UPDATE CASCADE,
-    name        TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    colour      TEXT,
-    status      TEXT NOT NULL DEFAULT 'active',
-    last_accessed_at TEXT,
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, bound_location_id TEXT
-    REFERENCES inventory_locations(id) ON DELETE RESTRICT, purpose_key TEXT NOT NULL DEFAULT 'general');
 
 CREATE TABLE IF NOT EXISTS workspace_type_screens (
     id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -664,6 +745,64 @@ CREATE TABLE IF NOT EXISTS media_thumbnails (
     FOREIGN KEY (asset_id) REFERENCES media_assets(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "locations" (
+    id          TEXT PRIMARY KEY,                                   -- "default" or UUID for additional stores
+    name        TEXT NOT NULL,
+    address     TEXT DEFAULT '',
+    tax_id      TEXT DEFAULT '',
+    currency    TEXT NOT NULL DEFAULT 'USD',
+    timezone    TEXT NOT NULL DEFAULT 'UTC',
+    is_primary  BIGINT NOT NULL DEFAULT 0,                        -- exactly one store is the primary
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, tenant_id TEXT NOT NULL DEFAULT 'default', legal_entity_id TEXT
+    REFERENCES legal_entities(id) ON DELETE RESTRICT, locale TEXT NOT NULL DEFAULT '', ticket_prefix TEXT NOT NULL DEFAULT '');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_primary
+    ON locations(is_primary) WHERE is_primary = 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_tenant_ticket_prefix
+    ON locations (tenant_id, ticket_prefix)
+    WHERE ticket_prefix <> '';
+
+CREATE TABLE IF NOT EXISTS fiscal_schemes (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    legal_entity_id TEXT NOT NULL REFERENCES legal_entities(id),
+    scheme_code     TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    parameters      TEXT NOT NULL DEFAULT '{}',
+    is_active       BIGINT NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "document_number_sequences" (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    legal_entity_id TEXT NOT NULL REFERENCES legal_entities(id),
+    document_kind   TEXT NOT NULL CHECK (document_kind IN ('receipt', 'invoice')),
+    prefix          TEXT NOT NULL DEFAULT '',
+    current_value   BIGINT NOT NULL DEFAULT 0,
+    reset_period    TEXT NOT NULL DEFAULT 'never',
+    period_key      TEXT NOT NULL DEFAULT '',
+    padding         BIGINT NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE (legal_entity_id, document_kind)
+);
+
+CREATE TABLE IF NOT EXISTS memo_revisions (
+    id            TEXT PRIMARY KEY,
+    memo_id       TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
+    revision      BIGINT NOT NULL,
+    title         TEXT NOT NULL,
+    body          TEXT NOT NULL,
+    published_at  TEXT NOT NULL,
+    published_by  TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default',
+    UNIQUE (memo_id, revision)
+);
+
 CREATE TABLE IF NOT EXISTS assignments (
     user_id         TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     role_id         TEXT NOT NULL REFERENCES roles(id),
@@ -673,7 +812,9 @@ CREATE TABLE IF NOT EXISTS assignments (
     expires_at      TEXT,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, scope_type TEXT
+    NOT NULL DEFAULT 'organization'
+    CHECK (scope_type IN ('organization', 'legal_entity', 'location')), scope_id TEXT);
 
 CREATE TABLE IF NOT EXISTS gift_cards (
     id                      TEXT PRIMARY KEY,
@@ -711,22 +852,190 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_orders_po_number ON purchase_orders(po_number);
 
-CREATE TABLE IF NOT EXISTS "user_store_access" (
-    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    store_id     TEXT NOT NULL REFERENCES store_profiles(id)
-                              ON DELETE RESTRICT
-                              ON UPDATE CASCADE,
-    access_level TEXT NOT NULL DEFAULT 'operator',
-    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    UNIQUE(user_id, store_id)
-);
-
 CREATE TABLE IF NOT EXISTS user_workspaces (
     id         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     ws_key     TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
     created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     UNIQUE(user_id, ws_key)
+);
+
+CREATE TABLE IF NOT EXISTS "customers" (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    email           TEXT,
+    phone           TEXT,
+    loyalty_points  BIGINT NOT NULL DEFAULT 0,
+    total_spent_minor BIGINT NOT NULL DEFAULT 0,
+    currency        TEXT NOT NULL DEFAULT 'USD',
+    notes           TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    store_id        TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS terminals (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    device_id       TEXT NOT NULL UNIQUE,
+    terminal_secret TEXT,                   -- optional shared secret for sync auth
+    is_active       BIGINT NOT NULL DEFAULT 1,
+    last_seen_at    TEXT,
+    metadata        TEXT,                   -- JSON blob for extra info
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, bound_location_id TEXT REFERENCES "locations"(id), bound_instance_id TEXT, binding_signature TEXT, tenant_id TEXT NOT NULL DEFAULT 'default');
+
+CREATE TABLE IF NOT EXISTS "user_location_access" (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    location_id     TEXT NOT NULL REFERENCES "locations"(id)
+                              ON DELETE RESTRICT
+                              ON UPDATE CASCADE,
+    access_level TEXT NOT NULL DEFAULT 'operator',
+    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), tenant_id TEXT NOT NULL DEFAULT 'default',
+    UNIQUE(user_id, location_id)
+);
+
+CREATE TABLE IF NOT EXISTS "workspace_instances" (
+    id          TEXT PRIMARY KEY,
+    type_key    TEXT NOT NULL REFERENCES workspace_types(key),
+    location_id    TEXT NOT NULL REFERENCES "locations"(id)
+                              ON DELETE RESTRICT
+                              ON UPDATE CASCADE,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    colour      TEXT,
+    status      TEXT NOT NULL DEFAULT 'active',
+    last_accessed_at TEXT,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+, bound_location_id TEXT
+    REFERENCES inventory_locations(id) ON DELETE RESTRICT, purpose_key TEXT NOT NULL DEFAULT 'general');
+
+CREATE TABLE IF NOT EXISTS "products" (
+    id          TEXT PRIMARY KEY,
+    sku         TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    price_minor BIGINT NOT NULL CHECK (price_minor >= 0),
+    currency    TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    category_id TEXT REFERENCES categories(id),
+    barcode     TEXT,
+    price_updated_at TEXT DEFAULT '',
+    track_serial BIGINT NOT NULL DEFAULT 0,
+    product_type TEXT NOT NULL DEFAULT 'retail',
+    cost_minor  BIGINT NOT NULL DEFAULT 0,
+    version     BIGINT NOT NULL DEFAULT 1,
+    store_id    TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    kitchen_zone TEXT,
+    brand TEXT,
+    rack_location TEXT,
+    notes TEXT,
+    unit TEXT,
+    is_active BIGINT NOT NULL DEFAULT 1,
+    default_supplier_id TEXT REFERENCES suppliers(id),
+    popularity_score DOUBLE PRECISION NOT NULL DEFAULT 0
+, image_hash TEXT);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_products_tenant_sku ON products(tenant_id, sku);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_products_barcode ON products(barcode);
+
+CREATE TABLE IF NOT EXISTS memo_locations (
+    memo_id      TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
+    location_id  TEXT NOT NULL REFERENCES locations(id) ON DELETE RESTRICT,
+    -- Carried from the memo (same denormalization `memo_recipients` uses) so
+    -- every targeting/delivery row can prove its tenant without a join.
+    tenant_id    TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (memo_id, location_id)
+);
+
+CREATE TABLE IF NOT EXISTS "tax_rates" (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    rate_bps        BIGINT NOT NULL CHECK (rate_bps >= 0),
+    is_default      BIGINT NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    is_inclusive    BIGINT NOT NULL DEFAULT 0,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    is_active       BIGINT NOT NULL DEFAULT 1,
+    legal_entity_id TEXT REFERENCES legal_entities(id) ON DELETE RESTRICT,
+    location_id     TEXT REFERENCES locations(id) ON DELETE RESTRICT,
+    effective_from  TEXT,
+    effective_to    TEXT, rounding_mode TEXT NOT NULL DEFAULT ''
+    CHECK (rounding_mode IN ('', 'half_up', 'truncate')),
+    -- One scope, never both: see the header. NULL means "not scoped at this
+    -- tier", so (NULL, NULL) is the tenant-global row and stays legal.
+    CHECK (legal_entity_id IS NULL OR location_id IS NULL)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_entity
+    ON tax_rates(tenant_id, legal_entity_id)
+    WHERE is_default = 1
+      AND legal_entity_id IS NOT NULL
+      AND location_id IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_location
+    ON tax_rates(tenant_id, location_id)
+    WHERE is_default = 1
+      AND location_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_tenant_global
+    ON tax_rates(tenant_id)
+    WHERE is_default = 1
+      AND legal_entity_id IS NULL
+      AND location_id IS NULL;
+
+CREATE TABLE IF NOT EXISTS assignment_branches (
+    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
+    branch_id          TEXT NOT NULL,
+    PRIMARY KEY (assignment_user_id, branch_id)
+);
+
+CREATE TABLE IF NOT EXISTS assignment_workspaces (
+    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
+    workspace_key      TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
+    PRIMARY KEY (assignment_user_id, workspace_key)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_lines (
+    id                TEXT PRIMARY KEY NOT NULL,
+    po_id             TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    sku               TEXT NOT NULL DEFAULT '',
+    product_name      TEXT NOT NULL DEFAULT '',
+    qty               BIGINT NOT NULL DEFAULT 0,
+    unit_cost_minor   BIGINT NOT NULL DEFAULT 0,
+    line_total_minor  BIGINT NOT NULL DEFAULT 0
+, received_qty BIGINT NOT NULL DEFAULT 0, damaged_qty  BIGINT NOT NULL DEFAULT 0);
+
+CREATE TABLE IF NOT EXISTS payables (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    supplier_id     TEXT NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    -- Optional link to the originating purchase order. NULL for a payable
+    -- raised outside a PO (e.g. stock added directly at the register).
+    po_id           TEXT REFERENCES purchase_orders(id) ON DELETE SET NULL,
+    -- Free-text origin tag ('po_receive', 'stock_add', 'manual', …). Not an
+    -- enum: entry points are expected to grow, and this is a display/audit
+    -- label, not a state machine.
+    source          TEXT NOT NULL DEFAULT 'manual',
+    reference       TEXT NOT NULL DEFAULT '',   -- supplier's invoice / bill no.
+    amount_minor    BIGINT NOT NULL CHECK (amount_minor >= 0),
+    paid_minor      BIGINT NOT NULL DEFAULT 0 CHECK (paid_minor >= 0),
+    currency        TEXT NOT NULL DEFAULT 'IDR',
+    due_date        TEXT,                        -- ISO date (YYYY-MM-DD); NULL = open-ended
+    status          TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open','partial','paid','written_off')),
+    note            TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    settled_at      TEXT,
+    written_off_at  TEXT,
+    -- Never pay more than owed; the store rejects over-payment before here.
+    CHECK (paid_minor <= amount_minor)
 );
 
 CREATE TABLE IF NOT EXISTS loyalty_accounts (
@@ -757,12 +1066,12 @@ CREATE TABLE IF NOT EXISTS "sales" (
     tax_total_minor     BIGINT NOT NULL DEFAULT 0,
     customer_id         TEXT REFERENCES customers(id),
     version             BIGINT NOT NULL DEFAULT 1,
-    store_id            TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    store_id            TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
     deduction_locations TEXT,
     pending_expires_at  TEXT,
     payment_reference   TEXT,
     captured_at         TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0);
+, tenant_id TEXT NOT NULL DEFAULT 'default', base_currency TEXT, base_total_minor BIGINT, tender_rate_millionths BIGINT, tip_minor BIGINT NOT NULL DEFAULT 0, service_charge_minor BIGINT NOT NULL DEFAULT 0, statutory_number TEXT, tax_estimate_note TEXT);
 
 CREATE TABLE IF NOT EXISTS inventory_shifts (
     id          TEXT PRIMARY KEY,                              -- UUID v7
@@ -865,6 +1174,57 @@ CREATE TABLE IF NOT EXISTS kds_devices (
     FOREIGN KEY (restaurant_pos_id) REFERENCES terminals(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "memo_recipients" (
+    id               TEXT PRIMARY KEY,
+    memo_id          TEXT NOT NULL REFERENCES memos(id) ON DELETE CASCADE,
+    terminal_id      TEXT NOT NULL REFERENCES terminals(id) ON DELETE RESTRICT,
+    user_id          TEXT,
+    delivery_status  TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (delivery_status IN ('pending','delivered','acknowledged')),
+    delivered_at     TEXT,
+    acknowledged_at  TEXT,
+    acknowledged_by  TEXT,
+    tenant_id        TEXT NOT NULL DEFAULT 'default',
+    UNIQUE (memo_id, terminal_id)
+);
+
+CREATE TABLE IF NOT EXISTS kds_routing_rules (
+    id                 TEXT PRIMARY KEY,          -- UUID v7
+    restaurant_pos_id  TEXT NOT NULL,             -- FK to the owning Restaurant POS terminal
+    priority           BIGINT NOT NULL,          -- lower number = higher priority; ranks rules per line
+    matcher_kind       TEXT NOT NULL
+                       CHECK (matcher_kind IN ('sku', 'category', 'tag')),
+    matcher_value      TEXT NOT NULL,             -- SKU string or category id, per matcher_kind
+    target_station     TEXT NOT NULL,             -- topology station the matched line routes to
+    is_active          BIGINT NOT NULL DEFAULT 1,
+    created_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    FOREIGN KEY (restaurant_pos_id) REFERENCES terminals(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "user_workspace_instances" (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    instance_id  TEXT NOT NULL REFERENCES "workspace_instances"(id) ON DELETE CASCADE,
+    is_default   BIGINT NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    UNIQUE(user_id, instance_id)
+);
+
+CREATE TABLE IF NOT EXISTS workspace_inventory_locations (
+    id                   TEXT PRIMARY KEY,
+    instance_id          TEXT NOT NULL REFERENCES workspace_instances(id) ON DELETE CASCADE,
+    location_id          TEXT NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT,
+    is_primary           BIGINT NOT NULL DEFAULT 0
+                         CHECK (is_primary IN (0, 1)),
+    allow_negative_stock BIGINT NOT NULL DEFAULT 0
+                         CHECK (allow_negative_stock IN (0, 1)),
+    sort_order           BIGINT NOT NULL DEFAULT 0,
+    UNIQUE(instance_id, location_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_inv_locations_one_primary_per_instance
+    ON workspace_inventory_locations(instance_id) WHERE is_primary = 1;
+
 CREATE TABLE IF NOT EXISTS inventory (
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     qty        BIGINT NOT NULL DEFAULT 0 CHECK (qty >= 0),
@@ -932,15 +1292,6 @@ CREATE TABLE IF NOT EXISTS "product_variants" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_product_variants_barcode ON product_variants(barcode);
 
-CREATE TABLE IF NOT EXISTS "product_taxes" (
-    product_sku  TEXT NOT NULL,
-    tax_rate_id  TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
-    created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    tenant_id TEXT NOT NULL DEFAULT 'default',
-    PRIMARY KEY (product_sku, tax_rate_id),
-    FOREIGN KEY (tenant_id, product_sku) REFERENCES products(tenant_id, sku) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS "product_bundles" (
     id          TEXT PRIMARY KEY,
     bundle_sku  TEXT NOT NULL UNIQUE,
@@ -964,50 +1315,33 @@ CREATE TABLE IF NOT EXISTS product_images (
     PRIMARY KEY (product_id, slot)
 );
 
-CREATE TABLE IF NOT EXISTS "user_workspace_instances" (
-    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    instance_id  TEXT NOT NULL REFERENCES "workspace_instances"(id) ON DELETE CASCADE,
-    is_default   BIGINT NOT NULL DEFAULT 0,
+CREATE TABLE IF NOT EXISTS category_taxes (
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    tax_rate_id TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    PRIMARY KEY (category_id, tax_rate_id)
+);
+
+CREATE TABLE IF NOT EXISTS "product_taxes" (
+    product_sku  TEXT NOT NULL,
+    tax_rate_id  TEXT NOT NULL REFERENCES tax_rates(id) ON DELETE CASCADE,
     created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    UNIQUE(user_id, instance_id)
+    tenant_id TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (product_sku, tax_rate_id),
+    FOREIGN KEY (tenant_id, product_sku) REFERENCES products(tenant_id, sku) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS workspace_inventory_locations (
-    id                   TEXT PRIMARY KEY,
-    instance_id          TEXT NOT NULL REFERENCES workspace_instances(id) ON DELETE CASCADE,
-    location_id          TEXT NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT,
-    is_primary           BIGINT NOT NULL DEFAULT 0
-                         CHECK (is_primary IN (0, 1)),
-    allow_negative_stock BIGINT NOT NULL DEFAULT 0
-                         CHECK (allow_negative_stock IN (0, 1)),
-    sort_order           BIGINT NOT NULL DEFAULT 0,
-    UNIQUE(instance_id, location_id)
+CREATE TABLE IF NOT EXISTS payable_payments (
+    id              TEXT PRIMARY KEY,
+    tenant_id       TEXT NOT NULL,
+    payable_id      TEXT NOT NULL REFERENCES payables(id) ON DELETE CASCADE,
+    amount_minor    BIGINT NOT NULL CHECK (amount_minor > 0),
+    currency        TEXT NOT NULL DEFAULT 'IDR',
+    method          TEXT NOT NULL DEFAULT 'cash',
+    paid_at         TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    recorded_by     TEXT,
+    note            TEXT NOT NULL DEFAULT ''
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ws_inv_locations_one_primary_per_instance
-    ON workspace_inventory_locations(instance_id) WHERE is_primary = 1;
-
-CREATE TABLE IF NOT EXISTS assignment_branches (
-    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
-    branch_id          TEXT NOT NULL,
-    PRIMARY KEY (assignment_user_id, branch_id)
-);
-
-CREATE TABLE IF NOT EXISTS assignment_workspaces (
-    assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
-    workspace_key      TEXT NOT NULL REFERENCES workspaces(key) ON DELETE CASCADE,
-    PRIMARY KEY (assignment_user_id, workspace_key)
-);
-
-CREATE TABLE IF NOT EXISTS purchase_order_lines (
-    id                TEXT PRIMARY KEY NOT NULL,
-    po_id             TEXT NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-    sku               TEXT NOT NULL DEFAULT '',
-    product_name      TEXT NOT NULL DEFAULT '',
-    qty               BIGINT NOT NULL DEFAULT 0,
-    unit_cost_minor   BIGINT NOT NULL DEFAULT 0,
-    line_total_minor  BIGINT NOT NULL DEFAULT 0
-, received_qty BIGINT NOT NULL DEFAULT 0, damaged_qty  BIGINT NOT NULL DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS gift_card_transactions (
     id                  TEXT PRIMARY KEY,
@@ -1044,7 +1378,7 @@ CREATE TABLE IF NOT EXISTS "kds_orders" (
     served_at       TEXT,
     prep_time_seconds BIGINT DEFAULT 0,
     notes           TEXT NOT NULL DEFAULT ''
-, store_id TEXT, kitchen_zone TEXT, table_number TEXT, priority BIGINT NOT NULL DEFAULT 0, target_instance_id TEXT, restaurant_pos_id TEXT, acked_by_device TEXT, acked_at TEXT,
+, store_id TEXT, kitchen_zone TEXT, table_number TEXT, priority BIGINT NOT NULL DEFAULT 0, target_instance_id TEXT, restaurant_pos_id TEXT, acked_by_device TEXT, acked_at TEXT, ticket_prefix TEXT NOT NULL DEFAULT '',
     UNIQUE (sale_id, kitchen_zone));
 
 CREATE TABLE IF NOT EXISTS loyalty_transactions (
@@ -1115,7 +1449,7 @@ CREATE TABLE IF NOT EXISTS "sale_lines" (
     tax_minor     BIGINT NOT NULL DEFAULT 0,
     tax_rate_id   TEXT REFERENCES tax_rates(id),
     serial_number TEXT,
-    store_id      TEXT REFERENCES store_profiles(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    store_id      TEXT REFERENCES "locations"(id) ON DELETE SET NULL ON UPDATE CASCADE,
     course        TEXT,
     modifiers_json TEXT,
     tax_breakdown_json TEXT, cost_minor BIGINT, tenant_id TEXT NOT NULL DEFAULT 'default', product_id TEXT, product_name TEXT, category_id TEXT,
@@ -1283,7 +1617,12 @@ CREATE TABLE IF NOT EXISTS stock_movements_archive (
 CREATE OR REPLACE FUNCTION audit_log_immutable_delete_fn() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
+    IF NOT EXISTS (
+        SELECT 1 FROM settings WHERE key = 'audit.retention_sweep_active'
+    ) THEN
+        RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
+    END IF;
+    RETURN NULL;
 END;
 $$;
 
@@ -1328,11 +1667,32 @@ CREATE OR REPLACE TRIGGER loyalty_tiers_validate_update
     ON loyalty_tiers
     FOR EACH ROW EXECUTE FUNCTION loyalty_tiers_validate_fn();
 
+CREATE OR REPLACE FUNCTION assignments_scope_id_pair_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.scope_type = 'organization') != (NEW.scope_id IS NULL) THEN
+        RAISE EXCEPTION 'assignments: scope_id must be NULL exactly when scope_type is organization';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair
+    AFTER INSERT ON assignments
+    FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();
+
+CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair_update
+    AFTER UPDATE OF scope_type, scope_id ON assignments
+    FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();
+
 CREATE INDEX IF NOT EXISTS idx_active_carts_updated_at ON active_carts(updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_assignment_branches_user ON assignment_branches(assignment_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_assignment_workspaces_user ON assignment_workspaces(assignment_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_scope
+    ON assignments (scope_type, scope_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
 
@@ -1365,6 +1725,8 @@ CREATE INDEX IF NOT EXISTS idx_edc_terminals_tenant
 CREATE INDEX IF NOT EXISTS idx_exchange_rates_from ON exchange_rates(from_currency);
 
 CREATE INDEX IF NOT EXISTS idx_exchange_rates_to   ON exchange_rates(to_currency);
+
+CREATE INDEX IF NOT EXISTS idx_fiscal_schemes_entity ON fiscal_schemes(legal_entity_id, is_active);
 
 CREATE INDEX IF NOT EXISTS idx_gift_card_transactions_gift_card_id ON gift_card_transactions(gift_card_id);
 
@@ -1445,6 +1807,15 @@ CREATE INDEX IF NOT EXISTS idx_kds_orders_status_received
 CREATE INDEX IF NOT EXISTS idx_kds_orders_target_instance
     ON kds_orders(target_instance_id);
 
+CREATE INDEX IF NOT EXISTS idx_legal_entities_tenant
+    ON legal_entities(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_local_payment_methods_scope
+    ON local_payment_methods(scope_type, scope_id, is_enabled);
+
+CREATE INDEX IF NOT EXISTS idx_locations_legal_entity
+    ON locations(legal_entity_id);
+
 CREATE INDEX IF NOT EXISTS idx_login_attempts_attempted_at ON login_attempts(attempted_at);
 
 CREATE INDEX IF NOT EXISTS idx_login_attempts_device ON login_attempts(device_id);
@@ -1460,6 +1831,29 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_owner
 CREATE INDEX IF NOT EXISTS idx_media_thumbnails_asset
     ON media_thumbnails(tenant_id, asset_id);
 
+CREATE INDEX IF NOT EXISTS idx_memo_locations_location ON memo_locations(location_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_locations_tenant ON memo_locations(tenant_id, memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_memo ON memo_recipients(memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_tenant ON memo_recipients(tenant_id, memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_recipients_terminal ON memo_recipients(terminal_id, delivery_status);
+
+CREATE INDEX IF NOT EXISTS idx_memo_revisions_memo
+    ON memo_revisions(memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memo_revisions_tenant
+    ON memo_revisions(tenant_id, memo_id);
+
+CREATE INDEX IF NOT EXISTS idx_memos_expiry ON memos(expires_at) WHERE status = 'published';
+
+CREATE INDEX IF NOT EXISTS idx_memos_tenant_status ON memos(tenant_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_midtrans_transactions_tenant
+    ON midtrans_transactions(tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_modifiers_group_id ON modifiers(group_id);
 
 CREATE INDEX IF NOT EXISTS idx_offline_queue_status ON offline_queue(status);
@@ -1473,6 +1867,30 @@ CREATE INDEX IF NOT EXISTS idx_offline_queue_tenant_status ON offline_queue(tena
 
 CREATE INDEX IF NOT EXISTS idx_outbox_due
     ON outbox(status, next_attempt_at, priority DESC);
+
+CREATE INDEX IF NOT EXISTS idx_over_quota_markers_dimension
+    ON over_quota_markers(dimension, tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_over_quota_markers_resource
+    ON over_quota_markers(resource_id, tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_over_quota_markers_tenant
+    ON over_quota_markers(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_payable_payments_payable
+    ON payable_payments(payable_id);
+
+CREATE INDEX IF NOT EXISTS idx_payable_payments_tenant
+    ON payable_payments(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_payables_due
+    ON payables(due_date) WHERE status IN ('open','partial');
+
+CREATE INDEX IF NOT EXISTS idx_payables_supplier
+    ON payables(supplier_id);
+
+CREATE INDEX IF NOT EXISTS idx_payables_tenant_status
+    ON payables(tenant_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_payment_gateways_tenant
     ON payment_gateways(tenant_id, is_active);
@@ -1513,9 +1931,15 @@ CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_barcode ON receipt_barcodes(barc
 
 CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_sale_id ON receipt_barcodes(sale_id);
 
+CREATE INDEX IF NOT EXISTS idx_receipt_formats_scope
+    ON receipt_formats(scope_type, scope_id);
+
 CREATE INDEX IF NOT EXISTS idx_refunds_sale_id ON refunds(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
+
+CREATE INDEX IF NOT EXISTS idx_sale_idempotency_sale
+    ON sale_idempotency(sale_id);
 
 CREATE INDEX IF NOT EXISTS idx_sale_lines_sale_id ON sale_lines(sale_id);
 
@@ -1595,6 +2019,15 @@ CREATE INDEX IF NOT EXISTS idx_stock_transfers_status
 CREATE INDEX IF NOT EXISTS idx_sync_applied_items_applied_at
     ON sync_applied_items(applied_at);
 
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_entity
+    ON sync_conflicts(tenant_id, entity_type, entity_id);
+
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_tenant_severity
+    ON sync_conflicts(tenant_id, severity);
+
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_tenant_status
+    ON sync_conflicts(tenant_id, status);
+
 CREATE INDEX IF NOT EXISTS idx_sync_remote_failures_dead_lettered
     ON sync_remote_failures(dead_lettered, last_failed_at);
 
@@ -1602,12 +2035,26 @@ CREATE INDEX IF NOT EXISTS idx_tax_rates_active ON tax_rates(is_active);
 
 CREATE INDEX IF NOT EXISTS idx_tax_rates_name ON tax_rates(name);
 
+CREATE INDEX IF NOT EXISTS idx_tax_rates_scope_entity
+    ON tax_rates(legal_entity_id)
+    WHERE legal_entity_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tax_rates_scope_location
+    ON tax_rates(location_id)
+    WHERE location_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_tax_rates_tenant ON tax_rates(tenant_id);
 
 CREATE INDEX IF NOT EXISTS idx_terminals_device_id ON terminals(device_id);
 
-CREATE INDEX IF NOT EXISTS idx_user_store_access_user_id
-    ON user_store_access(user_id);
+CREATE INDEX IF NOT EXISTS idx_terminals_tenant
+    ON terminals(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_topology_revisions_unpinned
+    ON topology_revisions(branch_id, revision) WHERE pinned = 0;
+
+CREATE INDEX IF NOT EXISTS idx_user_location_access_user_id
+    ON user_location_access(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_user_wsi_user_id
     ON user_workspace_instances(user_id);
@@ -1650,11 +2097,7 @@ INSERT INTO loyalty_tiers (id, name, min_points, points_per_unit, colour, sort_o
     ('tier-platinum', 'Platinum', 2000, 10, '#e5e4e2', 4, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 2000000)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-ON CONFLICT DO NOTHING;
-
-INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_stores, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
+INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
     ('default', 'free', 'active', NULL, 1, 1, '["store-pos", "restaurant-pos", "admin"]', 'BOOTSTRAP_FREE', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '')
 ON CONFLICT DO NOTHING;
 
@@ -1676,12 +2119,8 @@ INSERT INTO workspaces (id, key, name, description, icon) VALUES
     ('ws-retail-pos', 'retail-pos', 'Retail POS', 'Cashier terminal for retail checkout', 'store')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO workspace_instances (id, type_key, store_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
-    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
+INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at, country_code, locale, timezone, currency) VALUES
+    ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity', '', '', 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '', '', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_type_screens (id, type_key, screen_key, sort_order) VALUES
@@ -1751,17 +2190,41 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (25, 'admin', 'offline-queue', '', 10),
     (26, 'admin', 'shifts', '', 11),
     (27, 'admin', 'terminals', '', 12),
-    (28, 'admin', 'stores', '', 13),
+    (28, 'admin', 'locations', '', 13),
     (29, 'admin', 'exchange-rates', '', 14),
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
 
--- tenant_id tables NOT yet under RLS (write path must populate
--- tenant_id before each can be added to RLS_TABLES):
---   image_refs
---   sale_lines
---   snapshot_versions
---   webhook_endpoints
+INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale, ticket_prefix) VALUES
+    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '', '')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
+    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
+    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
+ON CONFLICT DO NOTHING;
+
+-- tenant_id tables NOT yet under RLS — documented exemptions
+-- (RLS_EXEMPT in scripts/generate-pg-migration.py; the reason
+-- travels with the entry, and an undocumented table fails the
+-- generator):
+--   document_number_sequences — regional slice 5; desktop-local write paths only (Store CRUD + the checkout claim) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision, and covering a child while the parent is uncovered would be incoherent
+--   fiscal_schemes — regional slice 5; desktop-local write paths only (Store CRUD) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
+--   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
+--   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
+--   local_payment_methods — regional slice 6; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
+--   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
+--   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
+--   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
+--   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
+--   receipt_formats — regional receipt-format axis; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
+--   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
+--   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
+--   topology_revisions — ADR #46 desktop-side table; no PG write path yet
+--   webhook_endpoints — no PG write path audited; cover when the admin surface writes it on PG
 --
 -- ── Row-Level Security: tenant isolation (PG-only) ─────────────────────
 -- Curated coverage list (RLS_TABLES in scripts/generate-pg-migration.py);
@@ -1770,10 +2233,12 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'media_assets', 'media_thumbnails', 'offline_queue', 'payment_gateways',
-                            'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants', 'products',
-                            'refunds', 'sales', 'sent_reports', 'stripe_customers', 'sync_terminals', 'tax_rates',
-                            'tenant_plans', 'tenant_subscription', 'users']
+    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'locations', 'media_assets', 'media_thumbnails', 'memo_locations',
+                            'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue', 'payment_gateways', 'payment_settlements',
+                            'product_activity', 'product_bundles', 'product_taxes', 'product_variants', 'products', 'refunds',
+                            'sale_idempotency', 'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts',
+                            'sync_entity_vectors', 'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access',
+                            'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (

@@ -138,6 +138,16 @@ staff-assignment-all-branches = Semua cabang
 staff-assignment-all-workspaces = Semua ruang kerja
 staff-assignment-all-workspaces-short = Semua
 
+# ── Assignment Resource Scope (ADR #47 ruling 1A) ──
+staff-assignment-resource-label = Cakupan sumber daya
+staff-assignment-resource-organization = Seluruh organisasi (semua lokasi)
+staff-assignment-resource-legal-entity = Badan hukum
+staff-assignment-resource-location = Lokasi
+staff-assignment-resource-location-select = Pilih lokasi
+staff-assignment-resource-entity-select = Pilih badan hukum
+staff-assignment-resource-empty-hint = Tidak ada sumber daya yang tersedia.
+staff-assignment-resource-required-hint = Pilih sumber daya untuk membatasi penugasan ini.
+
 # ── Fast User Switching (ADR #6) ──────────────────────────────────────────
 
 staff-login-close-aria = Tutup
@@ -220,3 +230,112 @@ staff-error-dob-invalid = Gunakan format YYYY-MM-DD.
 # C2.2: Pro→Premium approaching-limit banner (16+ staf, batas 20).
 staff-limit-approaching-premium = Anda hampir mencapai batas 20 staf paket Pro. Tingkatkan ke Premium untuk hingga 50 staf.
 staff-limit-approaching-premium-cta = Tingkatkan ke Premium
+
+# ── Pembuatan peran (ADR #47 putusan 4) ──────────────────────────────
+# Peran kustom adalah baris kumpulan izin bernama. Daftarnya diisi dari
+# registri izin, jadi tidak ada nama kunci yang ditulis tetap di UI.
+role-authoring-title = Peran
+role-authoring-subtitle = Peran bawaan adalah default; peran kustom adalah kumpulan izin yang Anda susun sendiri.
+role-create = Peran baru
+role-create-aria = Buat peran kustom baru
+role-list-aria = Semua peran
+role-empty-title = Belum ada peran
+role-badge-builtin = Bawaan
+role-badge-custom = Kustom
+role-grant-count = { $count ->
+    [one] 1 izin
+   *[other] { $count } izin
+  }
+role-edit = Ubah
+role-edit-aria = Ubah peran { $name }
+role-delete = Hapus
+role-delete-aria = Hapus peran { $name }
+# Tiga label untuk dua hal yang berbeda, karena angka yang boleh menghalangi
+# Penghapusan bukan angka yang menghitung orang. Penjelasan lengkap ada di
+# staff.ftl: jumlah akun harus datang dari holder_count (predikat resolusi,
+# bukan penjumlahan baris), sedangkan grant_count adalah konfigurasi workspace
+# yang menghalangi penghapusan tanpa ada akun yang memegangnya.
+role-in-use-accounts = { $count ->
+    [one] Dipakai 1 akun
+   *[other] Dipakai { $count } akun
+  }
+role-in-use-grants = { $count ->
+    [one] dan 1 grant workspace
+   *[other] dan { $count } grant workspace
+  }
+role-in-use-grants-only = { $count ->
+    [one] Memuat 1 grant workspace
+   *[other] Memuat { $count } grant workspace
+  }
+role-editor-create-title = Peran baru
+role-editor-edit-title = Ubah peran
+role-field-name = Nama peran
+role-field-description = Deskripsi peran
+role-field-permissions = Izin
+role-perm-sensitive = Sensitif
+role-cancel = Batal
+role-cancel-aria = Batalkan perubahan peran ini
+role-save = Simpan peran
+role-save-aria = Simpan peran ini
+role-saved = Peran { $name } tersimpan.
+role-deleted = Peran { $name } dihapus.
+role-delete-confirm-title = Hapus peran ini?
+role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Tindakan ini tidak bisa dibatalkan.
+
+# Pemegang peran, per akun. Baris yang tertutup sudah menyebut total yang
+# sama lewat role-in-use-accounts, dan keduanya membaca holder_count yang
+# dihitung core dari SATU klausul WHERE yang sama — jadi angka di baris dan
+# daftar di bawahnya tidak bisa berbeda. reference_count tetap menghalangi
+# Penghapusan: ia menghitung baris foreign key, dan itu memang yang
+# menghalangi penghapusan.
+role-holders-toggle = Pemegang
+role-holders-aria = Tampilkan akun yang memegang peran { $name }
+role-holders-list-aria = Akun yang memegang peran { $name }
+role-holders-count = { $count ->
+    [one] 1 akun
+   *[other] { $count } akun
+  }
+role-holders-loading = Memuat daftar pemegang…
+role-holders-error = Gagal memuat daftar pemegang.
+role-holders-none = Tidak ada akun yang memegang peran ini.
+role-holders-more = { $count ->
+    [one] dan 1 lainnya
+   *[other] dan { $count } lainnya
+  }
+role-holders-inactive = nonaktif
+role-holders-scope-legacy = Tanpa catatan penugasan
+role-holders-scope-organization = Seluruh organisasi
+role-holders-scope-legal-entity = Entitas hukum { $id }
+role-holders-scope-location = Lokasi { $id }
+role-holders-dims-all = semua cabang dan workspace
+role-holders-dims-branches = { $count ->
+    [one] 1 cabang
+   *[other] { $count } cabang
+  }
+role-holders-dims-workspaces = { $count ->
+    [one] 1 workspace
+   *[other] { $count } workspace
+  }
+role-holders-dims-both-lists = { $branches } cabang, { $workspaces } workspace
+
+# ── Impersonation (operator:impersonate) ───────────────────────────
+staff-impersonate-action = Impersonasi
+staff-impersonate-aria =
+    .aria-label = Impersonasi { $name }
+staff-impersonating-banner = Meniru { $name }
+staff-impersonating-stop = Berhenti
+staff-impersonating-stop-aria = Hentikan impersonasi
+staff-impersonate-started = Sekarang meniru { $name }
+staff-impersonate-failed = Tidak dapat memulai impersonasi
+
+# ── Multi-Organization switching (SaaS-3 L194) ────────────────────
+org-switcher-default = Organisasi
+org-switcher-trigger = Ganti organisasi
+org-switcher-list = Pilih organisasi
+org-switcher-pin-title = Ganti organisasi
+org-switcher-pin = PIN Organisasi
+org-switcher-invalid-pin = PIN salah atau tidak ditugaskan ke organisasi ini
+org-switcher-cancel = Batal
+org-switcher-confirm = Ganti
+org-selector-default = Organisasi default
+org-selector-label = Organisasi

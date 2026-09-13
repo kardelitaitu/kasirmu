@@ -61,6 +61,11 @@
   box-shadow: inset 0 0 0 0.125rem var(--color-accent);
 }
 
+/* Follow-theme indicator (sun icon shown when no brand override is set) */
+.appearance-colour-follow {
+  color: var(--color-primary);
+}
+
 /* ── Logo row ─────────────────────────────────────────── */
 .appearance-logo-row {
   display: flex;

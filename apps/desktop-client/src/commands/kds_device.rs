@@ -5,14 +5,15 @@
 //!
 //! All commands require `kds:manage` permission for writes and
 //! `kds:view` for reads.
+//!
+//! Wave D / D2b: every body lives in `oz_bridge::kds_device`; each command here
+//! is a thin adapter that resolves the bridge context and maps `BridgeError`
+//! onto `AppError` variant-for-variant.
 
 use tauri::State;
 
-use oz_core::db::Store;
 use oz_core::kds::{KdsConnectionStatus, KdsDevice, RegisterKdsDeviceInput};
-use oz_core::permissions;
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -27,18 +28,10 @@ pub async fn register_kds_device_scoped(
     input: RegisterKdsDeviceInput,
     state: State<'_, AppState>,
 ) -> Result<KdsDevice, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::KDS_UPDATE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let device = store.register_kds_device(input)?;
-    Ok(device)
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_device::register_kds_device(&ctx, &session_token, input)
+        .await
+        .map_err(Into::into)
 }
 
 /// List all KDS devices for the Restaurant POS bound to the current session.
@@ -47,24 +40,10 @@ pub async fn list_kds_devices_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsDevice>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::KDS_VIEW).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    // Use the restaurant_pos_id from the session, or fall back to terminal_id.
-    let resto_id = session
-        .restaurant_pos_id
-        .as_deref()
-        .unwrap_or(&session.terminal_id);
-    let devices = store.list_kds_devices_for_restaurant(resto_id)?;
-    Ok(devices)
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_device::list_kds_devices(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get a single KDS device by ID.
@@ -74,18 +53,10 @@ pub async fn get_kds_device_scoped(
     device_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<KdsDevice>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::KDS_VIEW).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let device = store.get_kds_device(&device_id)?;
-    Ok(device)
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_device::get_kds_device(&ctx, &session_token, &device_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update a KDS device's connection status.
@@ -99,18 +70,10 @@ pub async fn update_kds_device_status_scoped(
     status: KdsConnectionStatus,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::KDS_UPDATE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.update_kds_device_status(&device_id, status)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_device::update_kds_device_status(&ctx, &session_token, &device_id, status)
+        .await
+        .map_err(Into::into)
 }
 
 /// Deactivate a KDS device (soft-delete).
@@ -123,18 +86,10 @@ pub async fn deactivate_kds_device_scoped(
     device_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::KDS_UPDATE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.deactivate_kds_device(&device_id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_device::deactivate_kds_device(&ctx, &session_token, &device_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Acknowledge a KDS order — the device accepted the ticket and started
@@ -149,16 +104,8 @@ pub async fn ack_kds_order_scoped(
     device_id: String,
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::KDS_UPDATE).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let acked = store.ack_kds_order(&order_id, &device_id)?;
-    Ok(acked)
+    let ctx = state.bridge_ctx();
+    oz_bridge::kds_device::ack_kds_order(&ctx, &session_token, &order_id, &device_id)
+        .await
+        .map_err(Into::into)
 }

@@ -13,6 +13,7 @@ import inventoryEn from '../locales/inventory.ftl?raw';
 import tablesEn from '../locales/tables.ftl?raw';
 import terminalsEn from '../locales/terminals.ftl?raw';
 import offlineEn from '../locales/offline.ftl?raw';
+import syncEn from '../locales/sync.ftl?raw';
 import bundlesEn from '../locales/bundles.ftl?raw';
 import promotionsEn from '../locales/promotions.ftl?raw';
 import kdsEn from '../locales/kds.ftl?raw';
@@ -21,9 +22,10 @@ import loyaltyEn from '../locales/loyalty.ftl?raw';
 import shiftsEn from '../locales/shifts.ftl?raw';
 import reportsEn from '../locales/reports.ftl?raw';
 import analyticsEn from '../locales/analytics.ftl?raw';
-import multiStoreEn from '../locales/multi-store.ftl?raw';
+import multiStoreEn from '../locales/multi-location.ftl?raw';
 import stockTransfersEn from '../locales/stock-transfers.ftl?raw';
 import giftCardsEn from '../locales/gift-cards.ftl?raw';
+import subscriptionEn from '../locales/subscription.ftl?raw';
 import purchasingEn from '../locales/purchasing.ftl?raw';
 import stockCountingEn from '../locales/stock-counting.ftl?raw';
 
@@ -40,6 +42,7 @@ import inventoryId from '../locales/inventory.id.ftl?raw';
 import tablesId from '../locales/tables.id.ftl?raw';
 import terminalsId from '../locales/terminals.id.ftl?raw';
 import offlineId from '../locales/offline.id.ftl?raw';
+import syncId from '../locales/sync.id.ftl?raw';
 import bundlesId from '../locales/bundles.id.ftl?raw';
 import promotionsId from '../locales/promotions.id.ftl?raw';
 import kdsId from '../locales/kds.id.ftl?raw';
@@ -48,9 +51,10 @@ import loyaltyId from '../locales/loyalty.id.ftl?raw';
 import shiftsId from '../locales/shifts.id.ftl?raw';
 import reportsId from '../locales/reports.id.ftl?raw';
 import analyticsId from '../locales/analytics.id.ftl?raw';
-import multiStoreId from '../locales/multi-store.id.ftl?raw';
+import multiStoreId from '../locales/multi-location.id.ftl?raw';
 import stockTransfersId from '../locales/stock-transfers.id.ftl?raw';
 import giftCardsId from '../locales/gift-cards.id.ftl?raw';
+import subscriptionId from '../locales/subscription.id.ftl?raw';
 import purchasingId from '../locales/purchasing.id.ftl?raw';
 import stockCountingId from '../locales/stock-counting.id.ftl?raw';
 
@@ -63,6 +67,7 @@ const enFTL = [
   terminalsEn, offlineEn, bundlesEn, promotionsEn, kdsEn,
   kioskEn, loyaltyEn, shiftsEn, reportsEn, analyticsEn, multiStoreEn,
   stockTransfersEn, giftCardsEn, purchasingEn, stockCountingEn,
+  subscriptionEn, syncEn,
 ].join('\n');
 
 const idFTL = [
@@ -71,6 +76,7 @@ const idFTL = [
   terminalsId, offlineId, bundlesId, promotionsId, kdsId,
   kioskId, loyaltyId, shiftsId, reportsId, analyticsId, multiStoreId,
   stockTransfersId, giftCardsId, purchasingId, stockCountingId,
+  subscriptionId, syncId,
 ].join('\n');
 
 const RESOURCES: Record<LocaleCode, string> = {

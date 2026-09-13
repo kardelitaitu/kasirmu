@@ -139,6 +139,54 @@ async fn sqlite_backend_push_pull_plan_snapshot_roundtrip() {
     assert_eq!(users.len(), 0);
 }
 
+#[tokio::test]
+async fn sqlite_snapshot_carries_tax_rate_scope_and_window() {
+    // The producer half of the repair. A hub row scoped to a location must
+    // leave the snapshot WITH that scope: the branch maps a missing key to
+    // tenant-global, so an omitted column here is precisely how one location's
+    // rate ends up pricing every location.
+    let conn = fresh_db();
+    {
+        let guard = conn.lock().await;
+        guard
+            .execute(
+                "INSERT INTO legal_entities (id, tenant_id, name) \
+                 VALUES ('ent-hub', 'tenant-hub', 'Hub Entity')",
+                [],
+            )
+            .unwrap();
+        guard
+            .execute(
+                "INSERT INTO locations (id, name, tenant_id) \
+                 VALUES ('loc-hub', 'Hub Location', 'tenant-hub')",
+                [],
+            )
+            .unwrap();
+        guard
+            .execute(
+                "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, \
+                                        tenant_id, location_id, effective_from, effective_to) \
+                 VALUES ('tax-hub', 'Hub VAT', 1100, 0, 0, 'tenant-hub', 'loc-hub', \
+                         '2026-01-01', '2027-01-01')",
+                [],
+            )
+            .unwrap();
+    }
+
+    let store = SyncStore::sqlite(conn);
+    let (_, tax_rates, _) = store.snapshot_all("tenant-hub").await.unwrap();
+    assert_eq!(tax_rates.len(), 1);
+    assert_eq!(tax_rates[0]["location_id"], "loc-hub");
+    assert_eq!(tax_rates[0]["effective_from"], "2026-01-01");
+    assert_eq!(tax_rates[0]["effective_to"], "2027-01-01");
+    assert_eq!(
+        tax_rates[0]["legal_entity_id"],
+        serde_json::Value::Null,
+        "location-scoped, not entity-scoped: the other column stays null rather than \
+         being invented"
+    );
+}
+
 /// Duplicate-id detection for the Postgres path keys on SQLSTATE 23505,
 /// not on the error message (unlike SQLite's "UNIQUE" substring).
 #[tokio::test]
@@ -330,6 +378,28 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     assert_eq!(tax_rates.len(), 1);
     assert_eq!(tax_rates[0]["is_default"], false);
     assert_eq!(tax_rates[0]["is_inclusive"], false);
+
+    // The scope + window keys must be PRESENT on every snapshot row, including
+    // an unscoped one. Their absence is what let a scoped rate reach a branch
+    // reading as tenant-global; here null means "tenant-global" and the client
+    // maps it to exactly that. Asserted for both backends because both build
+    // the payload independently.
+    for key in [
+        "legal_entity_id",
+        "location_id",
+        "effective_from",
+        "effective_to",
+    ] {
+        assert!(
+            tax_rates[0].get(key).is_some(),
+            "snapshot tax rate must carry {key:?} (null is meaningful, missing is not)"
+        );
+        assert_eq!(
+            tax_rates[0][key],
+            serde_json::Value::Null,
+            "an unscoped rate emits {key:?} as null on both backends"
+        );
+    }
 
     // Users: is_active=0 → false, and pin_hash must not leak (SYNC-06).
     assert_eq!(users.len(), 1);
@@ -640,4 +710,677 @@ async fn sqlite_push_batch_commits_atomically_and_rejects_dups() {
     let mut ids: Vec<_> = pulled.iter().map(|i| i.id.as_str()).collect();
     ids.sort_unstable();
     assert_eq!(ids, vec!["cs3-a", "cs3-b", "cs3-c", "cs3-d", "cs3-e"]);
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end conflict detection (sync-conflict work order)
+//
+// `conflict_resolution_tests.rs` proves the classifier in isolation. These
+// drive the real production entry point — `push_batch` — with payloads
+// stamped by `platform_sync::crdt::stamp_payload`, so a regression that
+// leaves the classifier correct but unwired still fails here. That gap is
+// not hypothetical: `classify` existed for a pass and was never called.
+// ---------------------------------------------------------------------------
+
+/// A queue item carrying an arbitrary action and payload.
+///
+/// Only `action` and `payload` differ from [`sample_item`]; everything else
+/// is queue bookkeeping the detector never reads.
+fn detection_item(id: &str, action: &str, payload: &str) -> OfflineQueueItem {
+    OfflineQueueItem {
+        id: id.to_owned(),
+        action: action.to_owned(),
+        payload: payload.to_owned(),
+        ..sample_item(id)
+    }
+}
+
+/// A money body, in `i64` minor units — never a float.
+fn money_body(entity_id: &str, amount_minor: i64) -> String {
+    serde_json::json!({ "entity_id": entity_id, "amount_minor": amount_minor }).to_string()
+}
+
+/// Two offline terminals redeeming the same gift card must produce a review
+/// row, not a silently chosen winner.
+///
+/// Each terminal advanced only its own counter, so `{t1:1}` and `{t2:1}` are
+/// concurrent. Gift cards are [`MergePolicy::NeverAutoMerge`]: redemption is
+/// guarded by an atomic conditional UPDATE plus `uq_gift_card_redeem_sale`,
+/// and an automatic merge would defeat both.
+#[tokio::test]
+async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Stamped by the sender-side helper, so both halves of the seam are
+    // exercised: what the daemon puts on the wire is what is classified.
+    let first = platform_sync::crdt::stamp_payload(&money_body("gc-1", 5_000), "t1", 1);
+    let second = platform_sync::crdt::stamp_payload(&money_body("gc-1", 7_500), "t2", 1);
+
+    store
+        .push_batch(
+            &[detection_item("gc-a", "gift_card.redeem", &first)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("gc-b", "gift_card.redeem", &second)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    let conflicts = store.list_conflicts("tenant-a", None, None).await.unwrap();
+    assert_eq!(
+        conflicts.len(),
+        1,
+        "concurrent money writes must be flagged for review"
+    );
+
+    let row = &conflicts[0];
+    assert_eq!(row.entity_type, "gift_card.redeem");
+    assert_eq!(row.entity_id, "gc-1");
+    assert_eq!(row.severity, "high");
+    assert_eq!(row.status, "open");
+
+    // The stored side is attributed to the terminal that actually wrote it,
+    // not to the peer arriving second.
+    assert_eq!(row.local_terminal_id, "t1");
+    assert_eq!(row.local_vector, r#"{"t1":1}"#);
+    assert_eq!(row.remote_vector, r#"{"t2":1}"#);
+
+    // Both bodies are preserved verbatim. They are never summed: combining
+    // two redemptions would invent value neither write authorised.
+    assert!(row.local_payload.contains("5000"));
+    assert!(row.remote_payload.contains("7500"));
+
+    // Tenant scoping survives the whole path.
+    assert!(
+        store
+            .list_conflicts("tenant-b", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Causally ordered writes are not conflicts, however many terminals take
+/// part: each writer here has observed everything before it.
+#[tokio::test]
+async fn sqlite_causally_ordered_pushes_never_flag() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let sequence = [
+        ("o-1", serde_json::json!({ "t1": 1 })),
+        ("o-2", serde_json::json!({ "t1": 1, "t2": 1 })),
+        ("o-3", serde_json::json!({ "t1": 2, "t2": 1 })),
+        ("o-4", serde_json::json!({ "t1": 2, "t2": 3 })),
+    ];
+
+    for (id, vector) in sequence {
+        let payload = serde_json::json!({
+            "entity_id": "gc-2",
+            "amount_minor": 1_000,
+            "_terminal": "t1",
+            "_vector": vector,
+        })
+        .to_string();
+        store
+            .push_batch(
+                &[detection_item(id, "gift_card.redeem", &payload)],
+                "tenant-a",
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a dominated-by chain is ordered, not concurrent"
+    );
+}
+
+/// A push older than what is stored is dropped without a review row: it adds
+/// nothing the server did not already know.
+#[tokio::test]
+async fn sqlite_stale_push_is_dropped_without_flagging() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let newer = serde_json::json!({ "_terminal": "t1", "_vector": { "t1": 5, "t2": 3 }, "entity_id": "gc-3" }).to_string();
+    let older =
+        serde_json::json!({ "_terminal": "t1", "_vector": { "t1": 2 }, "entity_id": "gc-3" })
+            .to_string();
+
+    store
+        .push_batch(
+            &[detection_item("s-1", "gift_card.redeem", &newer)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("s-2", "gift_card.redeem", &older)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Concurrent stock movements auto-merge and need no human: quantities are
+/// additive deltas, already reconciled by `resolve_stock_crdt`.
+///
+/// This pins the policy table from the production path — without it, a
+/// classifier hard-wired to flag everything would still pass the gift-card
+/// test above.
+#[tokio::test]
+async fn sqlite_concurrent_stock_movement_auto_merges_without_review_row() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let a = platform_sync::crdt::stamp_payload(r#"{"entity_id":"sku-1","quantity":2}"#, "t1", 1);
+    let b = platform_sync::crdt::stamp_payload(r#"{"entity_id":"sku-1","quantity":3}"#, "t2", 1);
+
+    store
+        .push_batch(&[detection_item("st-a", "stock.adjusted", &a)], "tenant-a")
+        .await
+        .unwrap();
+    store
+        .push_batch(&[detection_item("st-b", "stock.adjusted", &b)], "tenant-a")
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "additive stock deltas must not page a human"
+    );
+}
+
+/// Customer profiles merge only when the two sides touched different fields.
+///
+/// The stamp fields are metadata, not chosen fields: counting them would put
+/// `_vector` and `_terminal` in every intersection and make every customer
+/// push a conflict regardless of what the writers actually edited.
+#[tokio::test]
+async fn sqlite_customer_fields_decide_merge_versus_flag() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let disjoint_a =
+        serde_json::json!({ "entity_id": "c-1", "email": "a@x.com", "_terminal": "t1", "_vector": { "t1": 1 } })
+            .to_string();
+    let disjoint_b =
+        serde_json::json!({ "entity_id": "c-1", "phone": "555", "_terminal": "t2", "_vector": { "t2": 1 } })
+            .to_string();
+    let overlap_a =
+        serde_json::json!({ "entity_id": "c-2", "email": "a@x.com", "_terminal": "t1", "_vector": { "t1": 1 } })
+            .to_string();
+    let overlap_b =
+        serde_json::json!({ "entity_id": "c-2", "email": "b@x.com", "_terminal": "t2", "_vector": { "t2": 1 } })
+            .to_string();
+
+    for (id, payload) in [
+        ("cu-1", &disjoint_a),
+        ("cu-2", &disjoint_b),
+        ("cu-3", &overlap_a),
+        ("cu-4", &overlap_b),
+    ] {
+        store
+            .push_batch(
+                &[detection_item(id, "customer.updated", payload)],
+                "tenant-a",
+            )
+            .await
+            .unwrap();
+    }
+
+    let conflicts = store.list_conflicts("tenant-a", None, None).await.unwrap();
+    assert_eq!(conflicts.len(), 1, "only the overlapping pair is ambiguous");
+    assert_eq!(conflicts[0].entity_id, "c-2");
+    assert_eq!(conflicts[0].severity, "medium");
+}
+
+/// A peer that predates vector support is skipped, not guessed at.
+#[tokio::test]
+async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let legacy = r#"{"entity_id":"gc-4","amount_minor":100}"#;
+    let legacy2 = r#"{"entity_id":"gc-4","amount_minor":900}"#;
+
+    store
+        .push_batch(
+            &[detection_item("lg-1", "gift_card.redeem", legacy)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("lg-2", "gift_card.redeem", legacy2)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Conflict detection on PostgreSQL — the production backend, and the only
+/// one where Row-Level Security applies.
+///
+/// Every path here touches a table with `tenant_isolation` enabled
+/// (`USING`/`WITH CHECK` on `current_setting('oz.tenant_id')`). A missing GUC
+/// does NOT raise: reads match nothing and the UPDATE affects zero rows, so
+/// the failure mode is a permanently clean review queue, not a 500. SQLite
+/// cannot catch any of this — it has no RLS.
+///
+/// CAVEAT: this test does NOT prove the RLS half. `throwaway_pool` connects
+/// as `postgres`, and a superuser bypasses RLS even with FORCE — setting a
+/// deliberately wrong tenant still passes here. The RLS behaviour was
+/// therefore measured directly, as a non-superuser role given DML on the two
+/// tables: with no GUC an INSERT fails with "new row violates row-level
+/// security policy" and reads return 0; with `set_config('oz.tenant_id', …,
+/// true)` inside the transaction the same INSERT succeeds and the row is
+/// visible only to its own tenant (and an UPDATE from another tenant matches
+/// 0 rows). What this test proves is that the PG arms execute at all —
+/// before it, none of the six methods had ever run against Postgres.
+#[tokio::test]
+async fn pg_integration_conflict_detection_end_to_end() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG conflict detection test skipped: cannot create throwaway DB");
+        return;
+    };
+    let tenant = format!("pg-conflict-{}", uuid::Uuid::now_v7());
+    let store = SyncStore::postgres(pool.clone());
+
+    let first = platform_sync::crdt::stamp_payload(&money_body("gc-1", 5_000), "t1", 1);
+    let second = platform_sync::crdt::stamp_payload(&money_body("gc-1", 7_500), "t2", 1);
+
+    let id_a = format!("pgc-a-{}", uuid::Uuid::now_v7());
+    let id_b = format!("pgc-b-{}", uuid::Uuid::now_v7());
+    store
+        .push_batch(
+            &[detection_item(&id_a, "gift_card.redeem", &first)],
+            &tenant,
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item(&id_b, "gift_card.redeem", &second)],
+            &tenant,
+        )
+        .await
+        .unwrap();
+
+    let conflicts = store.list_conflicts(&tenant, None, None).await.unwrap();
+    assert_eq!(
+        conflicts.len(),
+        1,
+        "concurrent money writes must be flagged on PG too"
+    );
+    let row = &conflicts[0];
+    assert_eq!(row.entity_id, "gc-1");
+    assert_eq!(row.severity, "high");
+    assert_eq!(row.status, "open");
+    // The stored side is attributed to the terminal that wrote it.
+    assert_eq!(row.local_terminal_id, "t1");
+    assert_eq!(row.local_vector, r#"{"t1":1}"#);
+    assert_eq!(row.remote_vector, r#"{"t2":1}"#);
+
+    // resolve_conflict must actually reach the row: with RLS and no GUC it
+    // updates zero rows and reports false for every id.
+    assert!(
+        store
+            .resolve_conflict(&tenant, &row.id, "keep_local", "tester")
+            .await
+            .unwrap(),
+        "resolve must reach the row under RLS"
+    );
+    assert!(
+        store
+            .list_conflicts(&tenant, Some("open"), None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .list_conflicts(&tenant, Some("resolved"), None)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Another tenant sees nothing.
+    assert!(
+        store
+            .list_conflicts("pg-other-tenant", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let admin = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = admin.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
+
+/// A causally ordered chain must NOT flag on PG either.
+///
+/// This is the counterpart that proves the stored vector is actually being
+/// persisted and read back: if `sync_entity_vectors` were unreadable under
+/// RLS, every push would look like the first and nothing would ever be
+/// concurrent — which is the same "no conflicts" result, reached wrongly.
+#[tokio::test]
+async fn pg_integration_causally_ordered_pushes_never_flag() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG ordered-push test skipped: cannot create throwaway DB");
+        return;
+    };
+    let tenant = format!("pg-ordered-{}", uuid::Uuid::now_v7());
+    let store = SyncStore::postgres(pool.clone());
+
+    let sequence = [
+        serde_json::json!({ "t1": 1 }),
+        serde_json::json!({ "t1": 1, "t2": 1 }),
+        serde_json::json!({ "t1": 2, "t2": 1 }),
+    ];
+    for vector in sequence {
+        let payload = serde_json::json!({
+            "entity_id": "gc-2",
+            "amount_minor": 1_000,
+            "_terminal": "t1",
+            "_vector": vector,
+        })
+        .to_string();
+        let id = format!("pgc-o-{}", uuid::Uuid::now_v7());
+        store
+            .push_batch(
+                &[detection_item(&id, "gift_card.redeem", &payload)],
+                &tenant,
+            )
+            .await
+            .unwrap();
+    }
+
+    assert!(
+        store
+            .list_conflicts(&tenant, None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let admin = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = admin.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
+
+/// The conflict tables must actually enforce tenant isolation under RLS.
+///
+/// The other PG tests connect as `postgres`, and a superuser bypasses RLS
+/// even with FORCE, so they are structurally unable to see this — including
+/// the end-to-end detection test above. This one deliberately drops to a
+/// NON-superuser role and measures the same three facts directly: with no
+/// `oz.tenant_id` the write is rejected, with it the row is visible only to
+/// its own tenant, and another tenant cannot read or update it.
+///
+/// That is what makes the GUC in the store's PG arms load-bearing, and this
+/// is the regression guard for the two lists that must stay in sync:
+/// `RLS_TABLES` in scripts/generate-pg-migration.py and the table lists in
+/// scripts/rls-cutover.sql. Drift in either is completely silent — the
+/// tables just stop being protected, or stop being reachable by `oz_app`,
+/// with no compile error and no failing test anywhere else.
+#[tokio::test]
+async fn pg_integration_conflict_tables_enforce_tenant_isolation() {
+    let Some((pool, db_name)) = throwaway_pool().await else {
+        eprintln!("PG tenant-isolation test skipped: cannot create throwaway DB");
+        return;
+    };
+
+    // Roles are cluster-wide, not per-database, so the name must be unique
+    // and the role must be dropped explicitly at the end.
+    let role = format!("oz_rls_conflict_{}", uuid::Uuid::now_v7().simple());
+    let client = pool.get().await.unwrap();
+    client
+        .batch_execute(&format!(
+            "CREATE ROLE {role};
+             GRANT USAGE ON SCHEMA public TO {role};
+             GRANT SELECT, INSERT, UPDATE, DELETE ON sync_entity_vectors, sync_conflicts TO {role};
+             ALTER TABLE sync_entity_vectors FORCE ROW LEVEL SECURITY;
+             ALTER TABLE sync_conflicts FORCE ROW LEVEL SECURITY;"
+        ))
+        .await
+        .unwrap();
+
+    // A non-owner role is subject to RLS without any FORCE; the FORCE above
+    // mirrors what scripts/rls-cutover.sql applies in production.
+    client
+        .batch_execute(&format!("SET ROLE {role}"))
+        .await
+        .unwrap();
+
+    // 1. No GUC — the write is rejected outright rather than silently landing.
+    client.batch_execute("BEGIN").await.unwrap();
+    let rejected = client
+        .execute(
+            "INSERT INTO sync_entity_vectors (tenant_id, entity_type, entity_id, vector, last_payload)
+             VALUES ('tenant-A','stock.adjusted','sku-1','{}','{}')",
+            &[],
+        )
+        .await;
+    assert!(
+        rejected.is_err(),
+        "a write with no tenant GUC must be rejected by RLS, got {rejected:?}"
+    );
+    client.batch_execute("ROLLBACK").await.unwrap();
+
+    // 2. GUC set inside the transaction — the write lands and is visible.
+    client.batch_execute("BEGIN").await.unwrap();
+    client
+        .execute("SELECT set_config('oz.tenant_id',$1,true)", &[&"tenant-A"])
+        .await
+        .unwrap();
+    client
+        .execute(
+            "INSERT INTO sync_entity_vectors (tenant_id, entity_type, entity_id, vector, last_payload)
+             VALUES ('tenant-A','stock.adjusted','sku-1','{}','{}')",
+            &[],
+        )
+        .await
+        .unwrap();
+    let own: i64 = client
+        .query_one("SELECT count(*) FROM sync_entity_vectors", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(own, 1, "the row must be visible to its own tenant");
+    client.batch_execute("COMMIT").await.unwrap();
+
+    // 3. Another tenant sees nothing and cannot modify it.
+    client.batch_execute("BEGIN").await.unwrap();
+    client
+        .execute("SELECT set_config('oz.tenant_id',$1,true)", &[&"tenant-B"])
+        .await
+        .unwrap();
+    let other: i64 = client
+        .query_one("SELECT count(*) FROM sync_entity_vectors", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(other, 0, "another tenant must not see the row");
+    let changed = client
+        .execute("UPDATE sync_entity_vectors SET vector = '{}'", &[])
+        .await
+        .unwrap();
+    assert_eq!(changed, 0, "another tenant must not be able to update it");
+    client.batch_execute("ROLLBACK").await.unwrap();
+
+    // Restore the login role before the connection returns to the pool,
+    // or the next borrower inherits the restricted role.
+    client.batch_execute("RESET ROLE").await.unwrap();
+    drop(client);
+
+    let admin = pool.get().await.unwrap();
+    admin
+        .batch_execute(&format!("DROP OWNED BY {role}; DROP ROLE {role};"))
+        .await
+        .unwrap();
+    drop(admin);
+
+    drop(pool);
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).unwrap();
+    let mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let cleanup = deadpool_postgres::Pool::builder(mgr)
+        .max_size(1)
+        .build()
+        .unwrap();
+    let client = cleanup.get().await.unwrap();
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
+
+/// The resolve path on SQLite: records the decision once, then refuses.
+///
+/// WO2 §2.3 requires the resolve endpoint to be covered. The PG end-to-end
+/// test exercises it under RLS, but SQLite — the backend every other store
+/// test runs on — had none: `resolve_conflict`'s SQLite arm was never
+/// called by any test, so the `AND status = 'open'` guard and the three
+/// audit columns were unexercised on it.
+#[tokio::test]
+async fn sqlite_resolve_conflict_records_the_decision_once() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let first = platform_sync::crdt::stamp_payload(&money_body("gc-9", 1_000), "t1", 1);
+    let second = platform_sync::crdt::stamp_payload(&money_body("gc-9", 2_000), "t2", 1);
+    store
+        .push_batch(
+            &[detection_item("rs-a", "gift_card.redeem", &first)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("rs-b", "gift_card.redeem", &second)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    let open = store.list_conflicts("tenant-a", None, None).await.unwrap();
+    assert_eq!(open.len(), 1);
+    let id = open[0].id.clone();
+    assert_eq!(open[0].status, "open");
+
+    assert!(
+        store
+            .resolve_conflict("tenant-a", &id, "keep_local", "alice")
+            .await
+            .unwrap()
+    );
+
+    let resolved = store
+        .list_conflicts("tenant-a", Some("resolved"), None)
+        .await
+        .unwrap();
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].status, "resolved");
+    assert_eq!(resolved[0].resolution.as_deref(), Some("keep_local"));
+    assert_eq!(resolved[0].resolved_by.as_deref(), Some("alice"));
+    assert!(
+        matches!(resolved[0].resolved_at.as_deref(), Some(t) if !t.is_empty()),
+        "resolved_at must be stamped, got {:?}",
+        resolved[0].resolved_at
+    );
+
+    // The open list is now empty…
+    assert!(
+        store
+            .list_conflicts("tenant-a", Some("open"), None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // …and a second resolve must not overwrite the first decision. The audit
+    // trail is the entire point of the row.
+    assert!(
+        !store
+            .resolve_conflict("tenant-a", &id, "keep_remote", "bob")
+            .await
+            .unwrap(),
+        "resolving twice must not silently overwrite the first decision"
+    );
+    assert_eq!(
+        store
+            .list_conflicts("tenant-a", Some("resolved"), None)
+            .await
+            .unwrap()[0]
+            .resolution
+            .as_deref(),
+        Some("keep_local")
+    );
+
+    // Another tenant cannot resolve it at all.
+    assert!(
+        !store
+            .resolve_conflict("tenant-b", &id, "keep_remote", "bob")
+            .await
+            .unwrap()
+    );
 }

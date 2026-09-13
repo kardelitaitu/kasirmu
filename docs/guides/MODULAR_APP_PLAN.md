@@ -93,7 +93,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
   - `franchise()`: `Restaurant`, `CashPayment`, `CardPayment`, `MultiCurrency`, `InventoryTracking`, `ProductVariants`, `CategoriesEnabled`, `StaffLogin`, `StaffRoles`, `ShiftManagement`, `AuditLog`, `ReceiptPrinting`, `DiscountEngine`, `TaxEngine`, `KitchenDisplay`, `TableManagement`, `CloudSync`, `MultiStore`, `MultiTerminal`, `Reporting`, `Analytics`.
 - [x] **1.1.2 [Rust Preset Unit Tests]**: Add unit tests in `crates/oz-core/src/features.rs` ensuring `FeatureRegistry::cafe()` and `FeatureRegistry::franchise()` pass dependency closure validation (`from_set` assert).
 - [x] **1.1.3 [Setup Wizard UI Types]**: In `ui/src/features/setup/SetupWizard.tsx`, expand `Preset` union type to `Preset = 'simple-retail' | 'restaurant' | 'full-store' | 'cafe' | 'franchise' | 'custom'`. Update `PRESETS` array with option objects (`emoji`, `name`, `description`). Update `PRESET_FEATURES` mapping with exact kebab-case keys.
-- [x] **1.1.4 [i18n Localization]**: Add Fluent strings (`setup-preset-cafe-name`, `setup-preset-cafe-desc`, `setup-preset-franchise-name`, `setup-preset-franchise-desc`) across `ui/src/locales/en-US/*.ftl` and corresponding translations.
+- [x] **1.1.4 [i18n Localization]**: Add Fluent strings for the store presets. **The key names and path here were wrong** — there is no ui/src/locales/en-US/ directory (bundles are flat: ui/src/locales/<domain>.ftl plus <domain>.id.ftl), and the card-label keys carry no -name suffix. What actually ships, in ui/src/locales/settings.ftl: setup-preset-cafe, setup-preset-cafe-desc, setup-preset-franchise, setup-preset-franchise-desc, plus simple-retail, restaurant, full-store, custom and their -desc siblings (30 setup-preset* keys in total). The wizard composes the label key dynamically from the preset id, so a wrong suffix fails silently instead of tripping the literal-key check.
 
 #### 1.2 Real-time Setup Preview (Live Navigation & Workspace Indicator Box)
 
@@ -114,7 +114,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 #### 2.1 Dynamic Module Lifecycle (`platform/kernel`)
 
-- [x] **2.1.1 [Kernel Module Status Tracking]**: In `platform/kernel/src/kernel.rs`, update `Kernel` struct to maintain runtime state per registered module: `ModuleStatus::Registered | Loaded | Started | Stopped`.
+- [x] **2.1.1 [Kernel Module Status Tracking]**: In `platform/kernel/src/kernel/` (a module directory, not a single `kernel.rs`), update the `Kernel` struct in `kernel/lifecycle.rs` to maintain runtime state per registered module: `ModuleStatus::Registered | Loaded | Started | Stopped`, declared in `kernel/types.rs`.
 - [x] **2.1.2 [Runtime Start/Stop Methods]**: Implement `kernel.start_module(id: &str)` and `kernel.stop_module(id: &str)`. When `stop_module` is called, invoke `module.stop()`, `module.unload()`, and update status to `Stopped`.
 - [x] **2.1.3 [Dynamic EventBus Unsubscribe]**: In `platform/kernel/src/event_bus.rs`, add subscription ownership tags (`module_id`) when handlers are registered (`bus.subscribe_for_module(module_id, topic, handler)`). Implement `bus.unsubscribe_module(module_id: &str)` to cleanly drop all handlers owned by a stopped module.
 - [x] **2.1.4 [IPC Command to Kernel Wiring]**: Connect `set_feature` in `apps/desktop-client/src/commands/features.rs` to invoke `kernel.start_module()` when a top-level module feature is enabled, and `kernel.stop_module()` when disabled, without restarting the application.
@@ -128,7 +128,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 #### 2.3 Terminal Profiles & Kiosk Lock
 
-- [x] **2.3.1 [SQLite Schema Migration]**: In `crates/oz-core/src/db/migrations/`, add migration table `terminal_profiles` (`terminal_id TEXT PRIMARY KEY, profile_type TEXT NOT NULL, locked_screen TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`). Profile types: `'counter_pos' | 'kds_kiosk' | 'customer_display' | 'unrestricted'`.
+- [x] **2.3.1 [SQLite Schema Migration]**: In `crates/oz-core/migrations/` (the SQL lives there, with the registry in `crates/oz-core/src/migrations.rs` — there is no `src/db/migrations/`), add migration table `terminal_profiles` (`terminal_id TEXT PRIMARY KEY, profile_type TEXT NOT NULL, locked_screen TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`). Profile types: `'counter_pos' | 'kds_kiosk' | 'customer_display' | 'unrestricted'`.
 - [x] **2.3.2 [Terminal Profile IPC Commands]**: Implement `get_terminal_profile(terminal_id: String) -> Result<TerminalProfileDto, AppError>` and `set_terminal_profile(terminal_id: String, profile_type: String)` in `apps/desktop-client/src/commands/terminals.rs`.
 - [x] **2.3.3 [UI Kiosk Lockdown Guard]**: In `ui/src/frontend/shell/AppShell.tsx`, load `activeTerminalProfile` via hook `useTerminalProfile()`. If `profile_type === 'kds_kiosk'`, bypass the workspace picker (`WorkspaceHome`), force `currentRoute = 'kds'`, and hide the top header and back buttons to prevent leaving KDS mode.
 
@@ -222,7 +222,7 @@ Every phase and high-level objective is broken down below into actionable, atomi
 
 Whenever we are ready to start building, we can pick any sub-item above (e.g. **1.1.1 [Rust Core Presets]**, **3.1.1 [SQLite BOM Schema]**, or **5.1.1 [Headless Server Crate Scaffolding]**), write the code and tests, verify against `cargo test` / `npm test` / `docker build`, and mark the item completed (`[x]`) while preserving 100% documentation integrity and our version lock (`0.0.4`).
 
-> last audited 09-08-26 by buffy
+> last audited 08-09-26 by buffy
 > audit: Phase 1 Core Architecture & API Docs Audit
 
 > status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid

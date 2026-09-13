@@ -331,7 +331,7 @@ impl RolePreset {
 #[path = "rbac_presets.rs"]
 mod rbac_presets;
 
-pub use rbac_presets::{ALL_ENFORCED, ROLE_PRESETS};
+pub use rbac_presets::{ALL_ENFORCED, ROLE_PRESETS, is_builtin_role_id};
 
 #[cfg(test)]
 #[path = "rbac_preset_tests.rs"]
@@ -581,4 +581,50 @@ pub mod permissions {
     // ── Data ─────────────────────────────────────────────────────
     /// Create a full data backup (bulk export of all records).
     pub const DATA_EXPORT: &str = "data:export";
+
+    // ── Memo ──────────────────────────────────────────────────────
+    /// Author or publish a Memo (Organization or Location). Phase 1 §F /
+    /// Phase 2 Memo lifecycle: Location Memo is manager+, Organization Memo
+    /// owner/admin — the role split is enforced by the memo surface itself;
+    /// this key is the write gate. Early-stop lives on [`Self::MEMO_STOP`].
+    pub const MEMO_WRITE: &str = "memo:write";
+
+    /// Early-stop (end before `expiresAt`) a published Memo — the author may
+    /// always stop their own; this key covers stopping anyone's (Owner/Admin
+    /// presets). Ruled 2026-09-07 (option A2): "higher role" is expressed as
+    /// a registry grant, not a rank map, so custom roles stay deny-by-default.
+    pub const MEMO_STOP: &str = "memo:stop";
+
+    // ── Topology ──────────────────────────────────────────────────
+    /// Mutate the topology graph (Apply, location creation, rename,
+    /// templates, property edits). Phase 1 §I: dedicated key replacing
+    /// the broader `staff:update` gate the editor currently rides;
+    /// admin/owner only (Owner holds it via the global wildcard).
+    pub const TOPOLOGY_WRITE: &str = "topology:write";
+
+    // ── Payables (Hutang / Beli Tempo — AP) ───────────────────────
+    /// View vendor bills, due dates, and the payables aging report. Phase 4
+    /// (AP) of `docs/plans/payment-methods-plan.md`. Owner holds it via the
+    /// global wildcard; the Auditor preset grants read-only visibility.
+    pub const PAYABLES_VIEW: &str = "payables:view";
+
+    /// Raise a payable — the "On Account" option at purchasing stock-in
+    /// (create a supplier debt). Owner-only, mirroring purchasing's reality.
+    pub const PAYABLES_CREATE: &str = "payables:create";
+
+    /// Record a payment to the vendor against a payable (partial or full).
+    /// Owner-only.
+    pub const PAYABLES_SETTLE: &str = "payables:settle";
+
+    /// Forgive a vendor debt without payment (money destruction — audited).
+    /// Owner-only.
+    pub const PAYABLES_WRITEOFF: &str = "payables:writeoff";
+
+    // ── operator ──
+    /// Act as another user within the operator's authorized tenant scope for
+    /// support. `operator:` names the capability class (support impersonation),
+    /// not any vendor/cloud-operator status. The impersonated session carries
+    /// only the target's grants — the operator's own grants are never merged,
+    /// and this key is never propagated into the produced token.
+    pub const OPERATOR_IMPERSONATE: &str = "operator:impersonate";
 }

@@ -1,0 +1,15 @@
+-- 20260927_kds_ticket_prefix_stamp.sql — freeze the branch's ticket prefix
+-- onto each KDS ticket (W2-A consumer, slice C3).
+--
+-- locations.ticket_prefix (20260926_location_ticket_prefix) is the CONFIG;
+-- a printed chit is a FACT. Resolving the prefix at display time would let an
+-- operator renaming a branch tomorrow retitle tickets the kitchen already
+-- cooked from yesterday, which is the reason D16 ruled the value must be
+-- stored on the ticket. Same logic as display_number: a frozen counter read,
+-- not a re-derived one.
+--
+-- A plain ADD COLUMN. No index and no backfill: this column is a label, not
+-- a key, and pre-existing tickets genuinely had no prefix — '' is the
+-- no-prefix sentinel (the same one locations uses), so historical rows stay
+-- byte-identical on paper.
+ALTER TABLE kds_orders ADD COLUMN ticket_prefix TEXT NOT NULL DEFAULT '';

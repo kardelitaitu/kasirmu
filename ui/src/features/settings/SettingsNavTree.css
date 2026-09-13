@@ -1,8 +1,8 @@
 /* ============================================================
  * Settings Sidebar NavTree — extracted component styles
  *
- * All styles for the collapsible sidebar navigation tree
- * that was extracted from SettingsPage.css.
+ * All styles for the flat sidebar navigation list
+ * (the category accordion layer was removed) extracted from SettingsPage.css.
  * ============================================================ */
 
 /* ── Sidebar ──────────────────────────────────────────────── */
@@ -22,10 +22,14 @@
   flex-shrink: 0;
 }
 
-/* Suppress tooltips in expanded sidebar (labels are visible). */
-.settings-sidebar:not(.collapsed) .tooltip-content {
-  display: none;
-}
+/* (Historical note) Expanded-sidebar tooltips used to be suppressed via
+   `.settings-sidebar:not(.collapsed) .tooltip-content { display:none }`.
+   That rule has been dead ever since the nav tooltips moved to a portal
+   (68a8af71): portal bubbles render into document.body, so a descendant
+   selector can never match them. It was removed rather than left to
+   mislead. The real "double tooltip" here was a native `title` on the
+   scope pill stacking with the React bubble — see SettingsScopeTag and
+   `__tests__/nativeTooltipCompliance.test.ts`. */
 
 .settings-sidebar.collapsed {
   width: 3.5rem;
@@ -34,14 +38,8 @@
   z-index: 1;
 }
 
-.settings-sidebar.collapsed .settings-sidebar-section-header,
-.settings-sidebar.collapsed .settings-sidebar-chevron,
 .settings-sidebar.collapsed .settings-nav-label {
   display: none;
-}
-
-.settings-sidebar.collapsed .settings-sidebar-section-items {
-  padding-left: 0;
 }
 
 .settings-sidebar.collapsed .settings-nav-item {
@@ -53,6 +51,16 @@
 
 .settings-sidebar.collapsed .settings-nav-icon {
   margin: 0;
+}
+
+/* Collapsed rail: the subpage indent + guide border make no sense on a
+   centered icon — reset both so the rail reads as one uniform column. */
+.settings-sidebar.collapsed .settings-nav-item--subpage {
+  padding-left: var(--space-1_5);
+}
+
+.settings-sidebar.collapsed .settings-nav-item--subpage::before {
+  display: none;
 }
 
 /* ── Reduced motion: disable width transition ──────────── */
@@ -113,41 +121,6 @@
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-/* ── Sidebar collapse-all ───────────────────────── */
-
-.settings-sidebar-collapse-all {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-fg-tertiary);
-  cursor: pointer;
-  margin-right: var(--space-1);
-  transition:
-    background-color var(--duration-100) var(--ease-out),
-    color var(--duration-100) var(--ease-out);
-}
-
-.settings-sidebar-collapse-all:hover {
-  background: var(--color-bg-surface);
-  color: var(--color-fg);
-}
-
-.settings-sidebar-collapse-all:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--color-accent);
-}
-
-.settings-sidebar.collapsed .settings-sidebar-collapse-all {
-  display: none;
-}
-
 /* ── Sidebar empty search state ─────────────────────────── */
 
 .settings-sidebar-empty-search {
@@ -194,145 +167,12 @@
   border-color: var(--color-accent);
 }
 
-/* ── Accordion sections ──────────────────────────────────── */
+/* ── Flat nav list (category accordion removed) ─────────── */
 
-.settings-sidebar-section {
+.settings-nav-list {
   display: flex;
   flex-direction: column;
-}
-
-.settings-sidebar-section + .settings-sidebar-section {
-  margin-top: var(--space-1);
-}
-
-.settings-sidebar-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 2.75rem;
-  padding: var(--space-2_5) var(--space-3);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  color: var(--color-fg-tertiary);
-  transition:
-    color var(--duration-150) var(--ease-out),
-    background-color var(--duration-150) var(--ease-out);
-}
-
-.settings-sidebar-section-header:hover {
-  color: var(--color-fg-secondary);
-  background: var(--color-bg-surface);
-}
-
-.settings-sidebar-section-header:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--color-accent);
-}
-
-.settings-sidebar-section-header--active {
-  color: var(--color-accent);
-}
-
-.settings-sidebar-section-label-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1_5);
-  min-width: 0;
-}
-
-.settings-sidebar-section-label {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold);
-  color: inherit;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
-}
-
-.settings-sidebar-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--space-4);
-  height: var(--space-4);
-  padding: 0 var(--space-0_5);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg-tertiary);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  line-height: 1;
-  margin-left: auto;
-  flex-shrink: 0;
-  animation: badge-pop 0.35s var(--ease-out) both;
-}
-
-@keyframes badge-pop {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  60% {
-    transform: scale(1.15);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-sidebar-count {
-    animation: none;
-  }
-}
-
-.settings-sidebar-chevron {
-  flex-shrink: 0;
-  color: var(--color-fg-tertiary);
-  transition:
-    transform var(--duration-200) var(--ease-out),
-    color var(--duration-150) var(--ease-out);
-}
-
-.settings-sidebar-chevron.collapsed {
-  transform: rotate(-90deg);
-}
-
-.settings-sidebar-section-header:hover .settings-sidebar-chevron {
-  color: var(--color-fg-secondary);
-}
-
-.settings-sidebar-section-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: var(--space-1_5) 0 0 var(--space-3);
-  overflow: hidden;
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-0.25rem);
-  transition:
-    max-height var(--duration-300) var(--ease-out),
-    opacity var(--duration-200) var(--ease-out),
-    transform var(--duration-200) var(--ease-out);
-  transform-origin: top;
-  will-change: max-height, opacity, transform;
-}
-
-.settings-sidebar-section-items--expanded {
-  max-height: 31.25rem;
-  opacity: 1;
-  transform: translateY(0);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .settings-sidebar-section-items,
-  .settings-sidebar-section-items--expanded {
-    transition: none;
-  }
+  gap: 0.125rem;
 }
 
 /* ── Pinned sections (P60-blog-1) ───────────────────────── */
@@ -406,7 +246,17 @@
   width: 100%;
 }
 
-.settings-nav-item-wrapper > button[role="treeitem"] {
+/* The nav item's <Tooltip> wrapper is now the flex item (the button moved
+   inside it), so the wrapper must absorb the free width and the button must
+   fill the wrapper. The direct-child form is kept for the search-results
+   branch, where the item button is not tooltip-wrapped. */
+.settings-nav-item-wrapper > .tooltip-wrapper {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-nav-item-wrapper > button.settings-nav-item,
+.settings-nav-item-wrapper > .tooltip-wrapper > button.settings-nav-item {
   flex: 1;
   min-width: 0;
 }
@@ -498,25 +348,43 @@
   color: var(--color-accent);
 }
 
-/* ── Collapsed sidebar overrides for accordion ─────────── */
-
-.settings-sidebar.collapsed .settings-sidebar-section-header--active {
-  color: var(--color-accent);
-}
-
-/* Category header tooltip in collapsed mode — the header button itself
-   is display: none, but the title attribute on the wrapping div provides
-   a native tooltip when hovering over the collapsed section area. */
-.settings-sidebar.collapsed .settings-sidebar-section {
+/* ── Subpage items: one indent step deeper with a subtle guide ──
+    The guide is an absolutely-positioned ::before so the border
+    never shifts layout, and it hugs the item's rounded corners. */
+.settings-nav-item--subpage {
   position: relative;
+  padding-left: calc(var(--space-3) + var(--space-4));
 }
 
-/* Ensure tooltips appear in collapsed sidebar (hidden in expanded mode
-   via .settings-sidebar:not(.collapsed) .tooltip-content).
-   Tooltips use a portal to document.body so they escape overflow clipping. */
-.settings-sidebar.collapsed .tooltip-content {
-  display: block !important;
+.settings-nav-item--subpage::before {
+  content: "";
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  pointer-events: none;
 }
+
+/* ── Plus-plan badge: tiny decorative pill after the label ── */
+.settings-nav-plus-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 var(--space-1_5);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.25rem;
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+/* (Historical note) `.settings-sidebar.collapsed .tooltip-content
+   { display:block !important }` was removed: portal bubbles live in
+   document.body, so descendant rules never reached them anyway. */
 
 .settings-nav-icon {
   width: 1.375rem;
@@ -749,8 +617,6 @@
     min-width: 17.5rem;
   }
 
-  .settings-sidebar.collapsed .settings-sidebar-section-header,
-  .settings-sidebar.collapsed .settings-sidebar-chevron,
   .settings-sidebar.collapsed .settings-nav-label {
     display: flex;
   }
@@ -760,12 +626,16 @@
     padding: var(--space-2) var(--space-3);
   }
 
-  .settings-sidebar.collapsed .settings-sidebar-section-items {
-    padding-left: var(--space-1);
-  }
-
   .settings-sidebar.collapsed .settings-nav-icon {
     margin: 0;
+  }
+
+  .settings-sidebar.collapsed .settings-nav-item--subpage {
+    padding-left: var(--space-2);
+  }
+
+  .settings-sidebar.collapsed .settings-nav-item--subpage::before {
+    display: none;
   }
 
   .settings-sidebar-backdrop {

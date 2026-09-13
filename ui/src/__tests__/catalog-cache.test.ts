@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { listProductsScoped, listCategories, type ProductDto, type CategoryDto } from '@/api/products';
+import { listProductsScoped, listCategories, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { loadCatalog, getCatalog, invalidateCatalog } from '@/utils/catalog-cache';
 
 /**
@@ -13,6 +13,10 @@ import { loadCatalog, getCatalog, invalidateCatalog } from '@/utils/catalog-cach
 vi.mock('@/api/products', () => ({
   listProductsScoped: vi.fn(),
   listCategories: vi.fn(),
+  // The cache reads products through the scoped twin and categories through the ambient one, in
+  // the same Promise.all. list_categories is registered by neither app shell's UI-facing set for
+  // desktop, so on desktop loadCatalog threw every time it was called.
+  listCategoriesScoped: vi.fn(),
 }));
 
 const mockProducts: ProductDto[] = [
@@ -27,7 +31,7 @@ describe('catalog-cache (PERF-08)', () => {
     vi.clearAllMocks();
     invalidateCatalog();
     vi.mocked(listProductsScoped).mockResolvedValue(mockProducts);
-    vi.mocked(listCategories).mockResolvedValue(mockCategories);
+    vi.mocked(listCategoriesScoped).mockResolvedValue(mockCategories);
   });
 
   it('loads and caches the catalog per session token', async () => {
@@ -40,7 +44,11 @@ describe('catalog-cache (PERF-08)', () => {
     const second = await loadCatalog('token-1');
     expect(second).toBe(first);
     expect(listProductsScoped).toHaveBeenCalledTimes(1);
-    expect(listCategories).toHaveBeenCalledTimes(1);
+    // This asserted the AMBIENT call happened once -- the test was not merely tolerating the bug,
+    // it was pinning it in place. Categories now come from the scoped twin, which is the only
+    // variant desktop-client registers for a session.
+    expect(listCategoriesScoped).toHaveBeenCalledTimes(1);
+    expect(listCategories).not.toHaveBeenCalled();
   });
 
   it('deduplicates concurrent in-flight loads (single IPC round trip)', async () => {
@@ -91,5 +99,20 @@ describe('catalog-cache (PERF-08)', () => {
     await loadCatalog('token-err');
     expect(getCatalog('token-err')).toBeDefined();
     expect(listProductsScoped).toHaveBeenCalledTimes(2);
+  });
+
+  // ADR #7: loadCatalog takes a REQUIRED token -- there is no no-token path to fall back on -- so
+  // every read it makes must be scoped. It read products through listProductsScoped(token) and
+  // categories through the ambient listCategories() in the same Promise.all, and desktop-client
+  // registers no list_categories command, so the function rejected on every desktop call.
+  it('reads categories through the scoped command, not the ambient one', async () => {
+    vi.mocked(listProductsScoped).mockResolvedValue(mockProducts);
+    vi.mocked(listCategoriesScoped).mockResolvedValue(mockCategories);
+
+    const snapshot = await loadCatalog('token-scoped-cats');
+
+    expect(listCategoriesScoped).toHaveBeenCalledWith('token-scoped-cats');
+    expect(listCategories).not.toHaveBeenCalled();
+    expect(snapshot.categories).toEqual(mockCategories);
   });
 });

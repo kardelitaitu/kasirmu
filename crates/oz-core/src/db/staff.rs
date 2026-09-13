@@ -1,15 +1,35 @@
-//! Staff management — User CRUD + Role CRUD.
+//! Staff identity — user CRUD, the login gate, and preset role seeding.
+//!
+//! Key items: [`Store::create_user`], [`Store::update_user`],
+//! [`Store::require_permission`] and its scoped siblings, and
+//! [`Store::seed_default_roles`]. [`Store::authorize_with`] is the
+//! deny-by-default resolver every gate funnels through.
+//!
+//! Role AUTHORING is not here: `create_role`, `update_role`, `delete_role` and
+//! `role_reference_counts` live in [`super::roles`] behind that module's single
+//! grant validator and preset-id guard. This module keeps the preset side only
+//! — [`Store::seed_default_roles`] upserts every `RolePreset` row and overwrites
+//! its grants, which is the very fact that guard refuses on — plus the two role
+//! reads (`list_roles`, `get_role`) that both sides share.
+//!
+//! Writes run in a `rusqlite` transaction, and a `role_id` referencing no row is
+//! refused before any write.
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
 crate: oz-core | status: SAFE | lint: CLEAN
 findings: exemplary core, F-1 and G-2 CLOSED — create_user/update_user now wrap the users + assignments writes in unchecked_transaction (established idiom) and validate role_id existence with a typed Validation error before any write (all five callers inherit: desktop/tablet staff.rs, cloud users.rs, CLI user.rs, profile helper; unseeded paths fail closed instead of stranding a zombie); parameterized SQL throughout; authorize_with is registry-aware deny-by-default and still enforces registered-grants + sensitive-keys-never-family-wildcard + Owner-only global * (db/staff.rs:122-125); STAFF-07 rate limiter intact; assignments FK CASCADE armed at migrations.rs:139; role seeding precedes user creation on interactive paths (setup.rs:102, desktop/tablet staff.rs seed call); evidence: 74 staff tests green incl. the two G-2 guards
 next: none — campaign closed for this file | perf: indexed lookups, fine
+currency 09-09-26: the counts and line pointers above are AS OF 31-08-26 and no
+longer hold — staff_tests.rs is 60 tests and roles_tests.rs 35, and role
+authoring (create_role) moved to db/roles.rs in 9c582a069. Body kept as written:
+an audit stamp records what was true when it ran, so it is annotated, not edited.
 */
 
 use rusqlite::params;
 
+use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
-use crate::subscription::{QuotaError, SubscriptionTier};
+use crate::subscription::SubscriptionTier;
 use crate::{Role, User};
 use platform_core::rbac::ROLE_PRESETS;
 
@@ -34,7 +54,7 @@ pub struct LoginLimits {
     pub max_backoff_secs: u64,
 }
 
-// ── Role CRUD ───────────────────────────────────────────────────
+// ── Preset role seeding + role reads (role AUTHORING: super::roles) ──────
 
 impl Store<'_> {
     /// Seed built-in roles from their presets.
@@ -110,61 +130,6 @@ impl Store<'_> {
             Err(e) => Err(e.into()),
         }
     }
-
-    /// Insert a new role.
-    pub fn create_role(
-        &self,
-        id: &str,
-        name: &str,
-        description: &str,
-        permissions: &str,
-    ) -> Result<Role, CoreError> {
-        // Every grant must be registered, and sensitive keys must never ride
-        // a family wildcard (ADR #35 D3 / spec 0046). The global `*` wildcard
-        // is reserved for the Owner seed, which uses a direct insert and is
-        // never validated here.
-        let grants: Vec<String> =
-            serde_json::from_str(permissions).map_err(|e| CoreError::Validation {
-                field: "permissions",
-                message: format!("permissions must be a JSON array of strings: {e}"),
-            })?;
-        platform_core::permission_registry::validate_grants(&grants, false).map_err(|errors| {
-            let message = errors
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("; ");
-            CoreError::Validation {
-                field: "permissions",
-                message,
-            }
-        })?;
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let result = self.conn.execute(
-            "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![id, name.trim(), description, permissions, now, now],
-        );
-        match result {
-            Err(rusqlite::Error::SqliteFailure(e, _))
-                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
-            {
-                return Err(CoreError::Conflict {
-                    entity: "role",
-                    field: "name",
-                });
-            }
-            Err(e) => return Err(e.into()),
-            Ok(_) => {}
-        }
-        Ok(Role {
-            id: id.to_owned(),
-            name: name.trim().to_owned(),
-            description: description.to_owned(),
-            permissions: permissions.to_owned(),
-            created_at: now.clone(),
-            updated_at: now,
-        })
-    }
 }
 
 // ── User CRUD ───────────────────────────────────────────────────
@@ -212,18 +177,10 @@ impl Store<'_> {
     /// [`QuotaError::StaffLimit`] (surfaced as `SubscriptionLimitExceeded`,
     /// which the UI maps to an upgrade CTA). Unlimited tiers (`None`) pass.
     pub fn enforce_staff_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
-        if let Some(limit) = tier.max_staff_users() {
-            let current = self.count_staff_users()?;
-            if current >= limit {
-                return Err(QuotaError::StaffLimit {
-                    tier: tier.name().into(),
-                    limit,
-                    current,
-                }
-                .into());
-            }
-        }
-        Ok(())
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_staff_users`), same is_active/owner-excluded count, same
+        // `StaffLimit` error.
+        self.enforce_creation_quota(QuotaDimension::Staff, tier)
     }
 
     /// Look up a single user by id.
@@ -287,6 +244,53 @@ impl Store<'_> {
             return Err(CoreError::PermissionDenied(format!(
                 "branch/workspace out of scope for user {user_id}"
             )));
+        }
+        self.authorize_with(user_id, required, &assignment)
+    }
+
+    /// The ADR #47 hierarchical-resource gate (ruling 2: the single scoped
+    /// choke point): same as [`Self::require_permission`], plus the caller's
+    /// assignment must COVER the named resource.
+    ///
+    /// Coverage follows ruling 3's downward-only inheritance:
+    /// - an `organization` assignment covers every resource kind;
+    /// - a `location` assignment covers only its own location id;
+    /// - a `legal_entity` assignment covers its own entity id AND any
+    ///   location belonging to it (resolved via the `locations` table's
+    ///   `legal_entity_id` — the downward walk);
+    /// - upward access (location → entity/org) and sibling access deny.
+    ///
+    /// Legacy users WITHOUT an assignment row keep spec 0048's
+    /// "not scope-restricted" semantics (ruling 5's bit-for-bit behavior
+    /// preservation): the permission itself is still enforced below, and
+    /// tightening no-row users is deliberately deferred to the
+    /// assignment-creation slice, not silently dropped.
+    ///
+    /// Must be called on the GLOBAL identity `Store` (users, roles, and
+    /// assignments live there; store DBs carry empty `users` tables by
+    /// design). The entity→location walk reads the same connection's
+    /// `locations` table — on the desktop that is the global DB's copy,
+    /// which is what boot resolution and the local API already consult.
+    pub fn require_permission_for_resource(
+        &self,
+        user_id: &str,
+        required: &str,
+        scope_type: crate::db::assignments::ScopeType,
+        scope_id: &str,
+    ) -> Result<(), CoreError> {
+        let assignment = self.assignment_for_user(user_id)?;
+        if let Some(a) = &assignment {
+            // One implementation of ruling 3's inheritance, shared with the
+            // diagnostics surface (`assignment_covers_resource`) and with the
+            // model-layer pair rule (`Assignment::covers_resource`). An
+            // unparsable scope_type row failed the load and already resolved
+            // to `None` for the whole assignment, which the pair rule reads
+            // as a deny — fail closed on every unreachable arm too.
+            if !self.resource_covered_by(a, scope_type, scope_id)? {
+                return Err(CoreError::PermissionDenied(format!(
+                    "resource {scope_id} out of scope for user {user_id}"
+                )));
+            }
         }
         self.authorize_with(user_id, required, &assignment)
     }
@@ -371,6 +375,33 @@ impl Store<'_> {
         // transactions).
         let tx = self.conn.unchecked_transaction()?;
         let user = Store::new(&tx).create_user_in_tx(username, pin_hash, display_name, role_id)?;
+        // W7-B: mirror of the locations/products veto (9264b8f67). The pre-tx
+        // enforce_staff_quota armed this tier on this Store; re-check the count
+        // AFTER the insert, inside the same transaction, so the verdict and the
+        // write commit or roll back together. Post-insert because a pre-insert
+        // count under WAL would read only its own snapshot. Same counting
+        // predicate as count_staff_users (active, owner excluded) — the veto
+        // must not disagree with the gate that armed it.
+        let tier = self.take_armed_quota(QuotaDimension::Staff);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::Staff.limit_for(t))
+        {
+            let current: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role_id != ?1",
+                params![crate::builtin_roles::OWNER],
+                |r| r.get(0),
+            )?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::StaffLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
         tx.commit()?;
         Ok(user)
     }
@@ -585,6 +616,7 @@ impl Store<'_> {
                 id: id.to_owned(),
             });
         }
+        self.persist_over_quota_markers()?;
         Ok(())
     }
 

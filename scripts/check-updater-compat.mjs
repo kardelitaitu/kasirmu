@@ -132,10 +132,18 @@ if (!noBuild) {
     process.exit(2);
   }
   console.log("Building harness (cargo build --release)...");
+  // Build environment: if sccache is not available on PATH, explicitly unset
+  // RUSTC_WRAPPER so .cargo/config.toml's `rustc-wrapper = "sccache"` doesn't fail.
+  const cargoEnv = { ...process.env };
+  const sccacheProbe = spawnSync("sccache", ["--version"], { stdio: "ignore" });
+  if (sccacheProbe.error || sccacheProbe.status !== 0) {
+    cargoEnv.RUSTC_WRAPPER = "";
+  }
   const b = spawnSync("cargo", ["build", "--release", "--manifest-path", join(HARNESS_DIR, "Cargo.toml")], {
     encoding: "utf8",
     cwd: HARNESS_DIR,
     timeout: 300_000,
+    env: cargoEnv,
   });
   if (b.status !== 0) {
     console.error(b.stderr || b.stdout);

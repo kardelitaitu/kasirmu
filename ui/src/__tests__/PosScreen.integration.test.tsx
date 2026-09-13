@@ -442,16 +442,14 @@ describe('PosScreen — Shift display', () => {
     expect(screen.getByText((content) => stripIsolates(content) === 'No active shift')).toBeInTheDocument();
   });
 
-  // Shift timer test - skipped due to FTL variable interpolation complexity
-  it.skip('shows elapsed time when shift is active', async () => {
+  it('shows elapsed time when shift is active', async () => {
     const openedAt = new Date(Date.now() - 90 * 60_000); // 1h 30m ago
     await renderPosScreenWithShift(openedAt);
 
     await screen.findByText((content) => stripIsolates(content) === '1h 30m');
   });
 
-  // Fake timer test - skipped
-  it.skip('ticks the elapsed duration up every minute while shift is open', async () => {
+  it('ticks the elapsed duration up every minute while shift is open', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const openedAt = new Date(Date.now() - 80 * 60_000);
@@ -571,7 +569,7 @@ describe('PosScreen — Sub-screens navigation', () => {
     mockedBarcode.reset();
   });
 
-  it.skip('navigates to Tables sub-screen via header button', async () => {
+  it('navigates to Tables sub-screen via header button', async () => {
     await renderPosScreenWithShift();
 
     // The Tables button uses tables-title FTL key which is "Table Management"
@@ -590,10 +588,24 @@ describe('PosScreen — Sub-screens navigation', () => {
     });
   });
 
-  it.skip('navigates to Sales History sub-screen via header button', async () => {
+  // Un-skipped. The comment here previously said the header "exposes no
+  // control resolving to that name" and that this "needs a product decision"
+  // — that was wrong, and the entry point has been in place the whole time:
+  // PosScreen.tsx:1442 `onClick={() => setShowSalesHistory(true)}` with
+  // aria-label from `retail-fn-history`, and :1255 renders
+  // <SalesHistoryScreen/> whose <h1 className="sales-history-title">
+  // Sales History</h1> is at :610. The bug was only that the button's
+  // accessible name is "History" (sales.ftl:713; "Riwayat" in
+  // sales.id.ftl:658), not "Sales History" — /sales history/i is too narrow,
+  // the mirror image of the /charge/i query being too broad further down.
+  // The heading assertion is unchanged because it was already correct.
+  it('navigates to Sales History sub-screen via header button', async () => {
     await renderPosScreenWithShift();
 
-    const historyBtn = screen.getByRole('button', { name: /sales history/i });
+    // Exact name, not a regex: getByRole throws if more than one button
+    // resolves to "History", so this cannot quietly bind to a different
+    // control the way the /charge/i query did.
+    const historyBtn = screen.getByRole('button', { name: 'History' });
     await userEvent.click(historyBtn);
 
     // Check for the Sales History screen
@@ -613,22 +625,37 @@ describe('PosScreen — Payment button (Charge)', () => {
 
     await addProductToCart();
 
-    // The button says "Charge" - find the one in the cart footer
-    const chargeButtons = screen.getAllByRole('button', { name: /charge/i });
-    expect(chargeButtons.length).toBeGreaterThan(0);
-    const chargeBtn = chargeButtons[0];
-    expect(chargeBtn).toBeInTheDocument();
+    // The Pay button's accessible name is `pos-cart-charge-aria` =
+    // "Charge the customer" (sales.ftl:616). The previous query was
+    // /charge/i across ALL buttons, which matched "Toggle service charge"
+    // first in DOM order — so this test asserted the presence of the
+    // service-charge toggle and never checked the Pay button existed.
+    // Deleting `pos-cart-pay-btn` from PosScreen.tsx left it green.
+    const payBtn = screen.getByRole('button', { name: 'Charge the customer' });
+    expect(payBtn).toBeInTheDocument();
+    expect(payBtn).toBeEnabled();
   });
 
-  it.skip('opens payment modal when Charge button clicked', async () => {
+  // Was skipped on a WRONG diagnosis, recorded here so it is not repeated:
+  // the modal was never broken and the `role="dialog"` name=/payment/i
+  // assertion is correct — PaymentModal.tsx:1157 renders
+  // role="dialog" aria-modal="true" with .aria-label = "Payment"
+  // (sales.ftl:36-37), and `if (!open && !leaving) return null` at :1150 is
+  // the only thing suppressing it. The failure was the SELECTOR:
+  // getAllByRole('button', { name: /charge/i })[0] matched
+  // "Toggle service charge" (pos-cart-service-toggle), which precedes the
+  // Pay button in DOM order, so the test clicked the service-charge toggle
+  // and correctly opened no modal. Probed 2026-09-06: the two /charge/i
+  // matches are [0] pos-cart-service-toggle and [1] pos-cart-pay-btn;
+  // clicking the latter yields dialogs=1, aria-label "Payment".
+  it('opens payment modal when Charge button clicked', async () => {
     await renderPosScreenWithShift();
 
     await addProductToCart();
 
-    const chargeButtons = screen.getAllByRole('button', { name: /charge/i });
-    expect(chargeButtons.length).toBeGreaterThan(0);
-    const chargeBtn = chargeButtons[0];
-    await userEvent.click(chargeBtn!);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Charge the customer' }),
+    );
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: /payment/i })).toBeInTheDocument();
@@ -1202,22 +1229,33 @@ describe('PosScreen — Open bills (hold/resume)', () => {
     expect(openBillsBtn).toBeInTheDocument();
   });
 
+  // Repaired 2026-09-06. This test was PASSING VACUOUSLY before: it clicked
+  // /open bills/i, which resolves to the "View open bills" badge
+  // (pos-cart-open-bills-aria) and opens the LIST modal, then asserted a
+  // dialog matching /open bill/i — an unanchored regex that also matches
+  // "Open bills list" (pos-open-bills-overlay-aria). So it proved nothing
+  // about the input modal while reporting green, and the two tests below it
+  // failed for the honest reason that the input modal had never opened.
+  // The input modal is opened by "Save as open bill"
+  // (pos-cart-open-bill-aria → setShowOpenBillInput), so that is what the
+  // test now clicks, and the dialog name is anchored to /^open bill$/ so it
+  // cannot silently match the list modal again.
   it('opens open bill input modal when hold button clicked', async () => {
     await setupCart();
 
-    const holdBtn = screen.getByRole('button', { name: /open bills/i });
+    const holdBtn = screen.getByRole('button', { name: /save as open bill/i });
     await userEvent.click(holdBtn);
 
     // Open bill input modal should appear
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /open bill/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /^open bill$/i })).toBeInTheDocument();
     });
   });
 
-  it.skip('shows open bill input form with customer name field', async () => {
+  it('shows open bill input form with customer name field', async () => {
     await setupCart();
 
-    const holdBtn = screen.getByRole('button', { name: /open bills/i });
+    const holdBtn = screen.getByRole('button', { name: /save as open bill/i });
     await userEvent.click(holdBtn);
 
     await waitFor(() => {
@@ -1232,14 +1270,14 @@ describe('PosScreen — Open bills (hold/resume)', () => {
     expect(cancelBtn).toBeInTheDocument();
   });
 
-  it.skip('closes open bill input modal when Cancel clicked', async () => {
+  it('closes open bill input modal when Cancel clicked', async () => {
     await setupCart();
 
-    const holdBtn = screen.getByRole('button', { name: /open bills/i });
+    const holdBtn = screen.getByRole('button', { name: /save as open bill/i });
     await userEvent.click(holdBtn);
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /open bill/i })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /^open bill$/i })).toBeInTheDocument();
     });
 
     const cancelBtn = screen.getByRole('button', { name: /^cancel$/i });
@@ -1391,7 +1429,7 @@ describe('PosScreen — Shift open/close flows', () => {
   });
 
   // ── Open shift modal interactions ──
-  it.skip('opens shift when confirm clicked in open shift modal', async () => {
+  it('opens shift when confirm clicked in open shift modal', async () => {
     const openShiftMock = vi.fn(() => Promise.resolve({ ...shiftFixture(), openingBalanceMinor: 100000 }));
     vi.mocked(shiftsApi.openShiftScoped).mockImplementation(openShiftMock);
 
@@ -1716,20 +1754,34 @@ describe('PosScreen — Live tax preview (computeCartTax)', () => {
     expect(screen.getByText(/ppn/i)).toBeInTheDocument();
   });
 
-  it.skip('includes tax in payment total when tax is exclusive', async () => {
+  // Un-skipped and rewritten with a real assertion. See the selector note on
+  // `opens payment modal when Charge button clicked` — the old failure was
+  // /charge/i[0] matching "Toggle service charge", not a broken modal.
+  //
+  // The previous body only did getByText(/total/i), which would pass on the
+  // cart panel's own subtotal row and proves nothing about tax, so it did not
+  // test what its name claims. The arithmetic under test is PosScreen.tsx:1974
+  // — when `cartTaxExclusive && cartTax > 0` the modal is handed
+  // `total.minor_units + cartTax`. With the file's tax mock returning
+  // { taxMinor: 1000, hasExclusive: true } and one 400-minor line, the modal
+  // must show 1400, not 400. /14[.,]00/ tolerates either decimal separator so
+  // a locale-format change does not masquerade as a regression.
+  it('includes tax in payment total when tax is exclusive', async () => {
     await setupCart();
 
-    // Click Charge to open payment modal
-    const chargeButtons = screen.getAllByRole('button', { name: /charge/i });
-    expect(chargeButtons.length).toBeGreaterThan(0);
-    await userEvent.click(chargeButtons[0]!);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Charge the customer' }),
+    );
 
-    await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: /payment/i })).toBeInTheDocument();
-    });
-
-    // Payment modal should show tax-inclusive total
-    expect(screen.getByText(/total/i)).toBeInTheDocument();
+    const dialog = await waitFor(() =>
+      screen.getByRole('dialog', { name: /payment/i }),
+    );
+    expect(dialog).toHaveTextContent(/Total Due/i);
+    expect(dialog).toHaveTextContent(/14[.,]00/);
+    // Guards against the total merely coincidentally rendering 14,00: the
+    // pre-tax cart line is 4,00, so if tax stopped being added the modal
+    // would show that instead.
+    expect(dialog).not.toHaveTextContent(/Total Due\D*4[.,]00/);
   });
 });
 

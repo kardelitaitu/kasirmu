@@ -1,6 +1,6 @@
 # Operations Runbook — OZ-POS (unified Northflank deployment)
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: apps/unified/healthcheck.sh + docs/archived/2026-08-15-unify-auth-and-sync.md exist; sync port 3099 (config.rs:61); rate limits push100/pull300/status300/snapshot50 + token 30/min/IP + license 5/IP/hr (activate.go:585) all match code; all 6 §2 metric names present in cloud-server/unified -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 findings) · SUPERSEDES the 2026-08-31 stamp, which was honest when written — "ACCURATE (0 findings)", verified against HEAD that apps/unified/healthcheck.sh and docs/archived/2026-08-15-unify-auth-and-sync.md exist and that the sync-path claims held. It was overtaken by events, and that is the finding: 23c963303 retired ten workflows to .bak on 2026-09-02, two days later, and swept none of the operational docs that named them. · REPAIRED: (1) §8.5 headline claimed "Merges to main now auto-deploy" via deploy.yml — that file is .bak, and its successor northflank-deploy sits in dev-ci.yml, whose on: block has only pull_request + workflow_dispatch, so the job's own push-branch condition is unreachable dead logic (flagged, not fixed: adding push: branches: [main] reinstates automatic production deploys, and that job omits release-readiness from its needs). Deploys are manual-only via Run workflow. (2) The §8 summary table repeated the same false trigger. (3) §8.5 recommended deploy.yml as "the preferred, auditable path" over Northflank native git triggers — the recommended path is gone, leaving the discouraged one as the only automatic option. (4) §9 claimed the website deploys via website.yml → npx wrangler deploy — zero wrangler references exist in any live workflow, and dev-ci.yml#website stops at Build; the deploy is npm run deploy from website/, by hand. · CODE FINDINGS FLAGGED, NOT PATCHED: the dead push branch above, and website/package.json:17 ("deploy": "bash ../scripts/wrangler-deploy.sh") — the only npm script in the repo invoking bare bash, which AGENTS.md records as resolving to WSL on this platform where it hangs until killed or runs Linux node against Windows-built node_modules. AGENTS.md's own env-var section recommends that command while its own Windows section says bare bash hangs: two correct documents, one contradiction, neither wrong when written. · REV 2 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (4 findings) + 3 more stale-CI instructions fixed in the same section, all of them leftovers of the same retirement. Repaired: §9.2 named the PR `check` job and the `deploy` job (both only in `website.yml.bak:71`/`:144`) and §9.5 told the reader to treat a red `deploy` job as an incident (`.github/workflows/website.yml.bak` is inert since `23c963303`, 2026-09-02) — §9.2 now states plainly that nothing deploys the website and that a rejected token no longer has any CI surface at all, and §9.5 pages on the live-site probe instead. Also dead: §9.3 probe #1 (`gh run list --workflow "Website Deploy"` lists no runs — the empty list is the missing workflow, not health), the §9.3 note claiming the fail-fast credential step runs as the deploy job's first step (`website.yml.bak:155`, retired with it), §9.4 step 4's "re-run the last failed run / push a trivial change" (no run exists, and `dev-ci.yml` has no push trigger; `dev-ci.yml:137-163` builds the site and stops), and §9.1/§9.4's "put it in the GitHub secret store" (`git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` → `website.yml.bak` only; the live consumer is `scripts/wrangler-deploy.sh:42` reading the environment). Verified from the files: live workflows are `dev-ci.yml` + `release.yml` only; `dev-ci.yml` `on:` is `pull_request: branches: [main]` + `workflow_dispatch` with no `push:` and no `schedule:`; `static-gates` has 28 named steps. Nothing weakened: every open recommendation in §9.5 stays open and is now explicitly unbuilt. · STILL TRUE, re-checked not assumed: backup-pb.sh and litestream.yml are server-side artifacts the operator creates under /opt/oz, not repo files, so their absence from the tree is correct and my sweep's flags against them are false positives. · WHY THIS SLIPPED THE NET: verify-ci-docs-drift.py polices ci-pipeline.md, releases/checklist.md and the pre-commit hook — not this runbook. A workflow retirement updates the checked page and leaves the unchecked one naming the dead file. -->
 
 One Northflank service, one Docker image. Two functions behind one caddy
 reverse proxy (single public port):
@@ -264,6 +264,11 @@ fallback, no open token mint) and implies `OZ_DB_REQUIRE_TLS=1` (startup
 fails if `DATABASE_URL` lacks `sslmode=require`). Keep all three in the
 Northflank secret store, never in the image.
 
+The `docker-compose.yml` full-stack path enforces this even earlier: both
+`OZ_API_SECRET` and `OZ_ADMIN_KEY` use the `:?` required interpolation, so
+`docker compose up` fails at parse time when either is unset — regardless of
+`OZ_PRODUCTION` (DOCKER-04). Generate both with `openssl rand -hex 32`.
+
 The license server has its own fail-fast boot gates (Paddle webhook secret + price
 tiers are unconditional; Brevo SMTP once `OZ_SMTP_HOST` is set) — the ordered,
 paste-ready checklist for taking the deployed instance from pre-gate to sandbox-live
@@ -401,7 +406,7 @@ docker volume prune
 | Dockerfile | `Dockerfile.unified` (repo root) |
 | Port | `80` (caddy; routes to :8080 PocketBase / :3099 Rust) |
 | Volume | single volume at `/data` (Northflank free tier = 1 volume) |
-| Build trigger | push to `main` — `deploy.yml` triggers the Northflank API build at the exact commit (§8.5); `workflow_dispatch` for manual redeploys |
+| Build trigger | **`workflow_dispatch` only** — Actions → Dev CI → Run workflow, which runs `northflank-deploy`. There is no push-triggered build; see §8.5 for why the `push` branch of that job's `if:` is unreachable |
 
 **Single-volume layout (DOCKER-11):**
 
@@ -421,7 +426,8 @@ longer exists — migrating that data requires a PocketBase backup → restore
 |----------|----------------|-------|
 | `OZ_LICENSE_PRIVATE_KEY` | RSA PEM | required — Go license server exits without it (`OZ_LICENSE_KEY` is the legacy alias) |
 | `OZ_API_SECRET` | `openssl rand -hex 32` | required when `OZ_PRODUCTION=1` |
-| `OZ_ADMIN_KEY` | random string | required when `OZ_PRODUCTION=1`; gates token mint |
+| `OZ_ADMIN_KEY` | `openssl rand -hex 32` | required — `docker-compose.yml` fails at parse time when unset; with `OZ_PRODUCTION=1` the server also refuses to start; gates token mint |
+| `OZ_ADMIN_EMAIL` | the admin tenant's email | web-dashboard admin identity — the gate compares this to the signed-in tenant's email, and falls back to a compiled-in inbox when unset. **Set it before the admin-identity repair ships — see directly below the table** |
 | `OZ_PRODUCTION` | `1` | fail-closed boot: refuses to start if either secret is unset; implies `OZ_DB_REQUIRE_TLS=1` |
 | `OZ_ENFORCE_PLANS` | `1` | reject free-plan sync (403 plan_required) |
 | `OZ_CORS_ORIGINS` | optional | extra origins beyond the default allowlist |
@@ -445,7 +451,20 @@ longer exists — migrating that data requires a PocketBase backup → restore
 > ⚠️ **Do not set `OZ_PRODUCTION=1` unless both `OZ_API_SECRET` and
 > `OZ_ADMIN_KEY` are set** — startup fails fast by design (no dev-secret
 > fallback, no open token mint). Without `OZ_PRODUCTION`, the service runs
-> in dev mode: `/api/v1/tokens` mints freely.
+> in dev mode: `/api/v1/tokens` mints freely. Compose deployments never reach
+> that dev mode — the compose file itself fails at parse time unless both
+> secrets are set (§6.2).
+
+### Precondition: `OZ_ADMIN_EMAIL` before the admin-identity repair ships
+
+Web admin access is an email match against this variable (`admin_dashboard.go:87-91`, same test at `addon_admin.go:278-282`, `admin_tenant_lifecycle.go:31-37`, `password_rotation.go:176`); while it is unset the match target is a compiled-in inbox (`defaultAdminEmail`, `password_rotation.go:42`). It is in no compose file and no workflow, so assume unset. The repair makes the gate **refuse to match when it is unset** — ship that code first and web admin access stops working until someone sets the variable and restarts. Operator steps, in order (exact commands: `apps/license-server/DEPLOY.md` §7.7.1):
+
+1. Northflank carries `OZ_ADMIN_EMAIL`, and that email already has a `tenants` row with `status=active` — admin self-signup is refused, so the row must have been provisioned out of band.
+2. Prove the owner reads that mailbox with one `request-otp` → `verify-otp` round trip: `email_verified` is false by migration default (`main.go:467-484`) and false for webhook-created rows (`paddle_webhook.go:1188`), and admin login never reads it, so a row is not proof of an inbox.
+3. Confirm `OZ_ADMIN_KEY` is present — it is break-glass for the **API only** (`admin_dashboard.go:65`, `addon_admin.go:263` authenticate by key), and `website/public/admin/login.js` is session-only, so key-only recovery does not restore the dashboard.
+4. Treat `OZ_ADMIN_EMAIL` as write-once: it must never change after first boot, because a mid-session env change silently re-scopes who is admin.
+
+Sessions are in-memory (`web_otp.go:13-19`), so a restart drops admin sessions: a session-path lockout self-heals on restart, and equally a revoked admin session cannot be killed without one. A restart is not a way to remove an attacker who has the mailbox — they just request another OTP.
 
 > **Scaling beyond the free tier:** the unified image defaults to SQLite
 > (sync `/data/oz-pos.db` + PocketBase `/data/pb_data/`), which is fine for
@@ -490,15 +509,39 @@ The **sync server URL** is per-install user config: Settings → Cloud Sync
 → enter `https://license.ozpos.my.id`. Unlike auth, it is
 stored in the local DB (never compiled in).
 
-### 8.5 Automated deploys (deploy.yml)
+### 8.5 Automated deploys — **not automated today**
 
-Merges to `main` now auto-deploy: `.github/workflows/deploy.yml` triggers a
-Northflank API build of the exact pushed commit (`POST
+> ⚠️ **This section claimed automation that does not happen.** Verified 08-09-26:
+> * `.github/workflows/deploy.yml` **does not exist** — `23c963303` retired it to
+>   `deploy.yml.bak` on 2026-09-02, and the file named in this heading has not run since.
+> * The deploy logic moved **into** `dev-ci.yml` as the `northflank-deploy` job, and that
+>   job's condition still reads
+>   `(github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/0.0.'))) || github.event_name == 'workflow_dispatch'`.
+>   But `dev-ci.yml`'s own `on:` block declares only `pull_request` and
+>   `workflow_dispatch` — **there is no `push` trigger** (AGENTS.md says the same). The
+>   first half of that condition can therefore never be true. It is dead logic, not a
+>   documentation problem: whoever moved the job carried the `if:` across and left the
+>   trigger behind.
+>
+> **What actually deploys:** `workflow_dispatch` only — Actions → Dev CI → Run workflow.
+> A merge to `main` triggers nothing deploy-related, and a PR run never deploys either
+> (the condition excludes `pull_request`). The consequence is the mirror image of what
+> this page promised: a stale deploy cannot hide, but neither can it happen by itself.
+>
+> **Code-level finding, flagged not fixed.** Adding `push: branches: [main]` to
+> `dev-ci.yml` would make the old claim true again. That reinstates automatic production
+> deploys gated only by the seven jobs `northflank-deploy` `needs`, so it is a decision
+> for whoever owns the deploy. It is also entangled with the gap AGENTS.md records: that
+> job omits `release-readiness` from its `needs`, so a re-armed push path would
+> auto-deploy without the updater-signing check having passed.
+
+The mechanism below is real and is what `northflank-deploy` does when it runs: it
+triggers a Northflank API build of the exact commit (`POST
 /v1/projects/{projectId}/services/{serviceId}/build` with `{"sha": ...}`),
 polls until the build concludes (a combined service auto-deploys after a
 successful build), then smoke-tests `$NORTHFLANK_SERVICE_URL/health` and
-`/api/health`. The whole lifecycle is one auditable check on the merge
-commit — no dashboard clicks, and a stale deploy can no longer hide.
+`/api/health`. The whole lifecycle is one auditable check on the commit — no
+dashboard clicks.
 
 **One-time setup:**
 
@@ -547,14 +590,37 @@ curl -sS -X POST "https://api.northflank.com/v1/projects/$PROJECT/services/$SERV
 
 **Alternative (zero repo code):** enable native git triggers on the service
 — Build configuration → branch restrictions → `main` — Northflank then
-auto-builds + auto-deploys on every push itself. Same outcome, but
-invisible in GitHub Actions; `deploy.yml` is the preferred, auditable path.
+auto-builds + auto-deploys on every push itself. Same outcome, but invisible in
+GitHub Actions. Until 2026-09-02 this sentence recommended `deploy.yml` as "the
+preferred, auditable path"; that workflow is retired (`deploy.yml.bak`, `23c963303`)
+and its `northflank-deploy` successor in `dev-ci.yml` cannot fire on push — see §8.5.
+So today the native git trigger is the **only** automatic option — which is the
+outcome this paragraph used to call the less auditable one.
 
 ### 8.6 Logging & Debugging
 
 The unified image runs three processes under supervisord (caddy, license,
 sync); all write to the container's stdout/stderr, which Northflank
 captures and surfaces in **Dashboard → service → Logs**.
+
+**Everything below is a hosted-service diagnostic, and that is a limitation of
+the clients, not of this page.** No shipped binary writes a persistent local
+log: both Tauri apps initialise logging with `oz_logging::try_init()`
+(`apps/desktop-client/src/lib.rs:99`, `apps/tablet-client/src/lib.rs:69`),
+which installs an `EnvFilter` + `fmt` subscriber and **no writer**
+(`crates/oz-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
+— which for a double-clicked desktop build is nowhere. The two entry points
+that would have created a file, `init_with_file` and `init_json_with_file`
+(`crates/oz-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
+own tests**; `log_dir` / `LogRoot` / `app_log` / `path_resolver` return **0
+matches across `apps/`**, and the EventLog backend is never wired by any
+binary either. So there is no on-device log file to open, and nothing in this
+section can be run on a till or a tablet.
+
+The tablet is worse than unlogged: it is **unobservable by construction**.
+Android does not persist its logcat, no log-pull ships, and the device never
+reaches the container's stdout — so a field issue on a tablet cannot be
+diagnosed from logs at all, only from the SQL below and from reproducing it.
 
 **Recommended log format:** set `OZ_LOG_FORMAT=json` in the service env
 (§8 table) so the Rust cloud-server emits structured, queryable log lines
@@ -575,18 +641,375 @@ filter box can match `"level":"error"` or `"component":"sync"` — far easier
 than scanning plain-text lines. When diagnosing a specific endpoint, add
 the request path to the filter (e.g. `/api/v1/tokens`).
 
+**Unmapped `product_type` — from one log line to the affected rows:**
+filter the Logs viewer for the prefix `unmapped product_type`, not for a
+whole message, because **two** different warnings carry that prefix —
+`unmapped product_type; falling back to default (retail)`
+(`modules/inventory/src/models.rs`, the `ProductType::parse_stored_or_default`
+helper, whose doc comment in that file is the only place this fallback is
+specified) and `unmapped product_type on sale line; stock was deducted
+anyway because the type could not be mapped`
+(`modules/inventory/src/handlers.rs`, `operation` =
+`InventoryStockHandler::handle_line`). Search the prefix, so that finding
+nothing for one never reads as health for the other — and know which half the
+lane you are reading can even produce: `oz-cloud-server` links `oz-api` and
+`oz-core` only (`apps/cloud-server/Cargo.toml:19-20`), so container logs can
+carry the fallback line (its `operation` there is
+`pg_row_to_product_with_details`, `crates/oz-api/src/pg.rs:1064`) but **never**
+the sale-line one, which lives in `modules/inventory` — its absence from a
+hosted log is architecture, not health. On a device both can fire and neither
+is recorded anywhere (see the scope note above). Each line carries
+`sku`, `stored` in `Debug` form — so a NULL (`None`), an empty string
+(`Some("")`) and an uppercase miss (`Some("RETAIL")`) stay three
+distinguishable causes — and `operation`, which names the reader that hit
+it. A non-empty result below means every row it returns is being served to
+the listing, to stock deduction and to reports as `retail`, which is
+exactly the ambiguity the warning exists to break. The statement is safe to
+run read-only against a live merchant database while terminals are serving
+customers: it is a `SELECT`, so it touches no write path, and the write
+path stays deliberately unvalidated because a `CHECK` constraint or a
+reject-on-read would break CSV import, `.ozpkg` restore and sync ingest —
+this diagnostic is the shipped half. Keep the `IS NULL` clause even though
+it looks redundant: `NOT IN` is three-valued, so a NULL matches nothing and
+drops out of the result silently instead of being reported, and although
+the column is `TEXT NOT NULL DEFAULT 'retail'` in both engines
+(`20260813_init.sql:451`, `20260813_init.pg.sql:881`), `None` is the shape a
+missing or unwritten value takes on the read path, which is what the
+operator is actually asking about. If the column is absent entirely the
+statement errors — its own answer, and a better one than a clean count.
+
+```sql
+SELECT id, sku, name, product_type
+  FROM products
+ WHERE product_type IS NULL
+    OR product_type NOT IN ('retail','restaurant','both','service');
+```
+
+**Runnable on a device — the same census without a log.** Because no client
+persists a log, the on-device question is never "which rows warned" but "which
+rows *could* have": group the stored values by their form.
+
+```sql
+-- Device form: sqlite3 /data/oz-pos.db  (per-install desktop/tablet DB)
+-- The identical statement runs on PostgreSQL unchanged; add `tenant_id` to the
+-- SELECT and GROUP BY when you run it hosted, and the forms group per tenant.
+SELECT CASE
+         WHEN product_type IS NULL         THEN 'NULL'
+         WHEN trim(product_type) = ''      THEN 'EMPTY'
+         ELSE product_type
+       END AS stored_form,
+       COUNT(*) AS rows
+  FROM products
+ GROUP BY 1
+ ORDER BY 2 DESC;
+```
+
+It is the **stored form** that picks the repair, not the count:
+
+- `EMPTY` → the **importer** wrote an empty string (CSV column blank, or a
+  header that matched nothing), so the fix is at the import boundary.
+- `NULL` → the **ingest mapping** never populated the column — a sync or
+  `.ozpkg` restore lane, not the importer.
+- a **case or padding variant** (`RETAIL`, `retail `) → the **accepted set** is
+  the problem: the parser is case-sensitive, so the value is legal to an
+  operator and unmapped to the code.
+
+Only `retail`, `restaurant`, `both` and `service` are clean; anything else in
+that first column is a row that reads as `retail` at runtime.
+
+> ⚠️ **Log volume is not a proxy for row count.** The parse runs per row on a
+> *read* path, so one bad hosted row logs once per listed row per query — a
+> single unmapped row behind a busy listing can out-log a table full of them.
+> Never size the problem by counting warning lines; count rows with the
+> statement above.
+
 > ⚠️ Crash logs are retained only as long as Northflank's log retention
 > policy — for long-term diagnostics export the log stream before a
 > container is replaced.
 
+### 8.7 Converted-tender currency census (hosted data only)
+
+`migration 20260821_tender_currency.sql` added three nullable columns to the
+sale header — `base_currency`, `base_total_minor`, `tender_rate_millionths` —
+and its own comment records that **all three are NULL for single-currency
+sales, the common case**. The question this census answers is whether any
+hosted tenant has ever completed a currency conversion: a sale whose tender
+`currency` differs from its recorded `base_currency`.
+
+> 🛑 **Run this against hosted data. Every local store is empty.** Measured
+> 2026-09-12 on the dev machine: the six local databases hold **zero sales
+> rows**, so the question is undecidable on a workstation and any number read
+> from a local run is an artifact of an empty table. Re-measure that emptiness
+> rather than trusting this sentence — `SELECT COUNT(*) FROM sales;` is the
+> first statement in both blocks below for exactly that reason.
+
+**The three numbers are not equally bad news.** `base_currency_null_or_empty`
+is not a defect count: it is expected to be most of the table, because a
+single-currency sale legitimately stores no base currency. It is the
+denominator that makes the other two readable. Only `mismatch_all_time` and
+`mismatch_last_90d` count rows where both columns are present, non-empty, and
+differ.
+
+- **Non-zero mismatch** → those receipts cannot substantiate a completed
+  currency conversion, and there is paper in the world that cannot be
+  reconciled: the conversion happened, was printed, and the record does not
+  support it. Live exposure, escalate to the currency owner.
+- **Zero mismatch with a non-zero `sales_rows`** → the defect is **latent**.
+  The columns and the code path exist and nothing has exercised them; the work
+  is documentation plus a dormant code path, not remediation.
+- **`sales_rows = 0`** → the census means **nothing at all**. That is not a
+  zero-mismatch result, it is an absent measurement — the state of every
+  database on this machine tonight, and also the state an RLS-scoped
+  connection returns for a tenant that does have rows (§3.9, §6.3).
+
+SQLite form (per-install `.db`, the desktop/tablet lane):
+
+```sql
+SELECT COUNT(*) AS sales_rows FROM sales;  -- 0 ⇒ everything below is an absent measurement
+
+SELECT tenant_id,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                THEN 1 ELSE 0 END) AS mismatch_all_time,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                 AND created_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-90 day')
+                THEN 1 ELSE 0 END) AS mismatch_last_90d,
+       SUM(CASE WHEN base_currency IS NULL OR base_currency = ''
+                THEN 1 ELSE 0 END) AS base_currency_null_or_empty,
+       COUNT(*)                    AS rows_for_tenant
+  FROM sales
+ GROUP BY tenant_id
+ ORDER BY mismatch_all_time DESC, tenant_id;
+```
+
+PostgreSQL form (the hosted `sales` table):
+
+```sql
+SELECT COUNT(*) AS sales_rows FROM sales;  -- 0 ⇒ check the RLS scope before believing it
+
+SELECT tenant_id,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                THEN 1 ELSE 0 END) AS mismatch_all_time,
+       SUM(CASE WHEN currency      IS NOT NULL AND currency      <> ''
+                 AND base_currency IS NOT NULL AND base_currency <> ''
+                 AND created_at::timestamptz >= now() - interval '90 days'
+                THEN 1 ELSE 0 END) AS mismatch_last_90d,
+       SUM(CASE WHEN base_currency IS NULL OR base_currency = ''
+                THEN 1 ELSE 0 END) AS base_currency_null_or_empty,
+       COUNT(*)                    AS rows_for_tenant
+  FROM sales
+ GROUP BY tenant_id
+ ORDER BY mismatch_all_time DESC, tenant_id;
+```
+
+**What actually differs between the two engines.** Both declare
+`sales.currency TEXT NOT NULL`, both carry the three CUR-02 columns as nullable
+(`TEXT`/`BIGINT` in PG at `20260813_init.pg.sql:1028`, `TEXT`/`INTEGER` in
+SQLite), and both reach `tenant_id` — SQLite through
+`20260814_sales_tenant.sql`, PG from the init schema. `created_at` is `TEXT` in
+**both**, and in PG it is a `to_char(now() AT TIME ZONE 'UTC', …)` string, not a
+native timestamp (`20260813_init.pg.sql:1012`). So the only real divergence is
+the 90-day boundary: SQLite compares against a `strftime` text boundary, PG
+must cast `created_at::timestamptz` — or, if any malformed row makes that cast
+abort the scan, compare text against a `to_char`-formatted boundary instead.
+`SUM(CASE …)` is used rather than `COUNT(*) FILTER (WHERE …)` so one shape runs
+on both engines and the SQLite copy needs no ≥ 3.30 FILTER support.
+
+On a hosted read, run it as the schema owner or per tenant inside a
+transaction that opens with `SET LOCAL oz.tenant_id = '<tenant>'` (§6.3).
+
+### 8.8 Legacy cleartext credential rows — how to look, and the one-machine fix
+
+This is a **dev-machine and locally-built-binary note, not an incident
+procedure.** Transparent encryption at rest for the sync / PG / rate-sync
+credentials arrived at `e105109f6` (2026-08-29), and it deliberately passes a
+legacy plaintext value through instead of failing, so an install already holding
+one keeps working. The key it now encrypts, `sync_api_key`, had been written raw
+since it first existed at `2ea09a595` (2026-06-29) — a **61-day primary window**.
+A row written in that window and never re-saved is still stored in the clear
+today, and nothing converts it by itself. The published-release version of the
+question does not arise: `v0.0.5` is the only tag in the repository, it predates
+the window's close, nothing was ever published against it, and zero releases
+exist. So the population is a workstation, or a binary you built, and the fix
+below is for one machine at a time.
+
+The grep that produced the zero — re-run it rather than trusting this sentence:
+`git grep -lE "encrypt|decrypt|cipher" tags/v0.0.5 -- platform/core/src/settings`
+→ **0 files**. Tree-wide at that same tag the identical pattern hits 6 files and
+none of them is the settings lane, so the zero is about these accessors, not about
+the repository having no crypto vocabulary at all.
+
+**1. Look — read-only, and it prints keys and forms, never values.**
+
+```sql
+-- Device form: sqlite3 <the per-install .db the app already uses>
+SELECT key,
+       length(value) AS chars,
+       CASE
+         WHEN trim(value) = ''                       THEN 'EMPTY — never written, nothing to convert'
+         WHEN length(value) >= 38
+              AND value NOT GLOB '*[^A-Za-z0-9_-]*' THEN 'BASE64-SHAPED — read step 2'
+         ELSE 'NOT-SHAPED — cleartext, re-save it'
+       END AS form
+  FROM settings
+ WHERE key IN ('sync_api_key','sync.auth_token','sync_terminal_secret',
+               'pg_sync.password','redis.url','rate_sync.api_key','lan_server.psk',
+               'local_api.secret','smtp_config','license.api_key','license.payload',
+               'license.signature','license.tenant_id','license.phone',
+               'stripe.api_key','square.api_key','midtrans.server_key')
+ ORDER BY form DESC, key;
+```
+
+That key list is `SECRET_KEY_DENY_LIST` in `platform/core/src/settings/keys.rs` —
+copy it from there if it has moved since this section was written, and note that
+the comparison in `is_non_exportable_setting_key` is trim-then-ASCII-case-fold,
+so an oddly spelled row is judged on its folded form. The 38-character floor comes
+from `looks_like_ciphertext` in `crates/oz-crypto/src/lib.rs`: a 12-byte nonce and
+a 16-byte GCM tag minimum, base64url without padding. On PostgreSQL the same
+thinking applies but `GLOB` does not exist — use `value !~ '^[A-Za-z0-9_-]+$'` for
+the inverted class.
+
+**2. Read the rung, not the column.** Three rungs, and the middle one is weaker
+than it sounds:
+
+- **`NOT-SHAPED`** → cleartext. Certain.
+- **`BASE64-SHAPED`** → either a genuine ciphertext or a plaintext that happens to
+  look like one. The stored bytes cannot tell you which, and the envelope carries no
+  prefix, no version byte and no marker to check: a hand-authored value in that
+  character class is indistinguishable by inspection.
+- **`BASE64-SHAPED` and it authenticates** → encrypted against someone who does not
+  have the source. That is the whole of it; see the block below.
+
+> ⚠️ **The portable family keys are obfuscation, not confidentiality — and one rung
+> is out of reach from the row alone.** For these credentials
+> `encrypt_sync_api_key` and its siblings derive through `portable_key`, whose
+> fallback is `derive_key` over SHA-256 of the domain prefix concatenated with the
+> literal `"static"` — not machine-bound. The crate says so about itself, plainly,
+> in the threat-model note on `derive_static_key` in `crates/oz-crypto/src/lib.rs`:
+> that key is a public constant, anyone with the repository can derive it and
+> decrypt every portable at-rest value in any deployment's database, and what the
+> encoding buys is protection against opportunistic inspection of the file, not
+> confidentiality. Read the ladder that way: a `NOT-SHAPED` row is cleartext to
+> anyone who can open it, and a `BASE64-SHAPED` row is cleartext to anyone holding
+> both the file and the source.
+>
+> And the branch no query can see. If `OZ_MASTER_KEY` (64 hex chars) was set in the
+> environment that wrote the row, the value went through the HMAC derivation
+> instead, so it will NOT authenticate under the portable key on a machine where
+> that variable is absent — a shaped row that fails to decrypt is therefore not
+> evidence of tampering and not evidence of cleartext either; it may simply be a
+> different derivation. For the process in front of you, ask the code rather than
+> guessing: `oz_crypto::master_key_derivation_active()` reports which derivation
+> this process selected, and nothing else — a historical install may have had the
+> variable set and be long gone. Whether these families should move to
+> machine-bound derivation is a rewrap decision, and it is deliberately not taken
+> here: it changes what every existing install can read back.
+
+**3. Fix one machine — re-save the credential, do not edit the row.** Open
+Settings, on the surface that owns the field (Cloud sync, PostgreSQL sync, exchange
+rate sync, LAN server), type the credential in again and save. The save goes
+through the typed setter, which encrypts on the way in, so this is a single-key
+targeted conversion with no migration, no batch mutation and no downtime. The five
+setters that do it are `set_sync_api_key`
+(`platform/core/src/settings/typed.rs:338`, encrypting at `:339`),
+`set_sync_terminal_secret` (`:366`, `:367`), `set_pg_sync_password` (`:441`, `:442`),
+`set_rate_sync_api_key` (`:557`, `:558`) and `set_lan_server_psk` (`:643`, `:645`) —
+and they are the only production call sites of their `encrypt_*` functions, which is
+why following the save is the conversion and no other route is. Re-run
+step 1 afterwards: it is read-only and idempotent, and it is the only evidence that
+the row actually moved. Two limits worth saying plainly. Re-saving converts only a
+key you still know — if you no longer know it, rotate it at the provider and enter
+the replacement, which was the better hygiene outcome before you needed to. And
+where a form preserves the stored secret instead of rewriting it, saving its other
+field converts nothing; step 1 shows you exactly that, so read it after every fix,
+not before.
+
+**Which of those saves is wired today, measured at HEAD, because three are and two
+are not.** `set_sync_api_key` is called from command lanes both shells reach
+(`crates/oz-bridge/src/sync.rs:76`, `apps/tablet-client/src/commands/sync.rs:92`), from
+the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
+(`crates/oz-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
+(`apps/desktop-client/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
+pairing path at `apps/desktop-client/src/sync_bootstrap.rs:248`; `set_pg_sync_password` from
+`crates/oz-bridge/src/sync.rs:161`. Those three keys have a walkable ladder.
+`set_rate_sync_api_key` (`platform/core/src/settings/typed.rs:557`) and
+`set_lan_server_psk` (`platform/core/src/settings/typed.rs:643`) have **no production
+caller at all** — the only hits are their own definitions, the never-invoked
+`crates/oz-core/src/settings.rs:570` facade wrapper, tests and comments, and
+`crates/oz-core/tests/credential_storage_form.rs:258` already records one of them in
+those terms. So the only production write of `rate_sync.api_key` and `lan_server.psk`
+is `platform/core/src/settings/typed.rs:560` and
+`platform/core/src/settings/typed.rs:646`, inside setters nobody invokes, while both
+keys are refused by the generic funnel as manager-owned. For those two rows this step
+is a shape to copy, not a lane to walk: there is no in-app re-save to perform, so
+rotate at whoever holds the value and let the lane that owns it write it. Re-run step 1
+after anything in this section — it is the only evidence either way.
+
+`smtp_config` is in step 1's list and is **not** written by any of those setters, so
+here is the chain instead of a sentence of prose to trust:
+`ui/src/features/settings/EmailReportSettings.tsx:163` (`setSettingScoped`) →
+`run_set_setting` in `crates/oz-bridge/src/settings.rs:500` (batch door `:593`; tablet
+`apps/tablet-client/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
+(`crates/oz-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
+at `:207` of that file. Note what that chain does and does not seal: it replaces the
+`password` **field of a JSON blob**, and only when a password was supplied
+(`:204-206`) — a value the keep-on-blank merge merely carried over is never
+re-encrypted (`:202`), which is the second limit above stated exactly. And name the
+shape honestly, because the family names invite the wrong reading: the
+credential-sealed-inside-its-own-settings-value pattern this section recommends is
+live through the **portable** family (`encrypt_smtp_at_rest`,
+`crates/oz-crypto/src/lib.rs:227`), while the machine-bound sibling it resembles,
+`encrypt_smtp_password` (`crates/oz-crypto/src/lib.rs:193`), has no caller left in the
+tree at all. A reader who looks for that function as the exemplar lane will not find
+one; what they can follow is the seam above, and that seam is a recommendation about
+an envelope shape, not a conversion any of the four surfaces above performs.
+
+**4. What not to do.**
+
+- **Do not hand-edit `settings.value`.** The encrypted form cannot be written by
+  hand: it is produced by the setter, and a value you wrap yourself fails to
+  authenticate on read — and the read path tolerates that failure by handing the
+  malformed string back to the caller as though it were the secret. That behaviour
+  is pinned as a *known hazard*, not as a contract, by the `known_hazard_*` tests in
+  `platform/core/src/settings/tests.rs`; turning it into an error is that crate's
+  own recorded next step and a runbook cannot shortcut it.
+- **Do not aim `oz credential-deltas purge` at the settings table.** That lane
+  walks the `setting_updated` delta ledger and its delete path belongs there; the
+  live settings row is untouched by it on purpose, which is the property that makes
+  the purge safe to run at all.
+- **Do not bulk-rewrite values in SQL** for tidiness. Step 3 is one credential at a
+  time precisely so that a mistaken save costs one credential.
+
+
 ---
+
 ---
 
 ## 9. Website Deploy Token (Cloudflare) — lifecycle & rotation
 
 The marketing site (Astro, `website/`) deploys to Cloudflare Workers static assets
-(`oz-pos` worker → `https://ozpos.my.id`) via
-`.github/workflows/website.yml` → `npx wrangler deploy`. The deploy authenticates
+(`oz-pos` worker → `https://ozpos.my.id`) via **`npm run deploy` from `website/`,
+run by hand** — `website/package.json:17` shells out to `scripts/wrangler-deploy.sh`.
+
+> ⚠️ **No workflow deploys the website.** This section named
+> `.github/workflows/website.yml` until 08-09-26; that file is retired
+> (`website.yml.bak`), and `grep -rn wrangler .github/workflows/*.yml` returns
+> **zero** hits across the live workflows. The live `dev-ci.yml#website` job does
+> asset hygiene, install, typecheck, lint, unit tests and **build** — it stops short
+> of deploying. Everything below about the token still holds; what changed is that
+> the token is consumed by a person, not a pipeline.
+>
+> ⚠️ **On Windows the documented command can hang.** `scripts/wrangler-deploy.sh` is
+> invoked as `bash ../scripts/wrangler-deploy.sh` — the only npm script in the repo
+> that calls bare `bash`. AGENTS.md's "Running CLI Tools on Windows" section records
+> that bare `bash` resolves to `C:\Windows\System32\bash.exe` (WSL), which here either
+> **hangs until killed** or runs the Linux node against the Windows-built
+> `website/node_modules`. The script's own usage header shows the same form. Until it
+> is changed, call it through Git's bash explicitly:
+> `& 'C:\Program Files\Git\bin\bash.exe' scripts/wrangler-deploy.sh`. Editing the npm
+> script is a code change and is deliberately not made here. The deploy authenticates
 with the **`CLOUDFLARE_API_TOKEN`** GitHub Actions repo secret; `CLOUDFLARE_ACCOUNT_ID`
 (the sibling secret) is not a credential — it is the account id shown in the Cloudflare
 dashboard and simply names which account the token acts on.
@@ -598,7 +1021,13 @@ dashboard and simply names which account the token acts on.
   Zone/DNS/Pages/KV permissions required.
 - Create it at **My Profile → API Tokens → Create Token** (a user token; an Account
   token under Manage Account → API Tokens also works). The secret is **shown only
-  once** — copy it straight into the GitHub secret store.
+  once** — copy it straight into wherever the deploy reads it from, which today is
+  the environment, not GitHub: `scripts/wrangler-deploy.sh:42` fails when
+  `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are unset, and AGENTS.md feeds those
+  from `.env` / the `OZPOS_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
+  same name is harmless to keep (it is what the retired website pipeline expected) but
+  `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` matches only `website.yml.bak`
+  and `scripts/wrangler-deploy.sh`, so no live workflow reads it.
 - Optional hardening: restrict to the single account; skip Client IP filtering unless
   you accept the tradeoff — GitHub-hosted runner egress IPs change, so IP filters are
   a frequent false-failure source.
@@ -609,12 +1038,22 @@ dashboard and simply names which account the token acts on.
   it stays valid until revoked, its scopes change, or the account relationship changes.
   That is exactly how this bit us (2026-08-17): no TTL, no calendar event, and nothing
   alerted when the token stopped working.
-- **Observed failure mode:** the deploy job errors with `Authentication error [code:
+- **Observed failure mode (as it presented on 2026-08-17, when a workflow still
+  deployed the site — the two job names below are retired `.bak` content, see the
+  bullet after this one):** the deploy job errors with `Authentication error [code:
   10000]` / `Invalid access token [code: 9109]` on `/accounts/<id>/workers/services/oz-pos`.
-  The job "fails loudly" in its own log, but **nobody is paged**: the PR `check` job
-  stays green (it does not deploy), so the Actions list looks healthy until you open
-  the `deploy` job. The live site keeps serving the last good build — here, the
-  pre-portal 1-card docs hub — for ~20 failed runs before the outage was noticed.
+  The job "fails loudly" in its own log, but **nobody is paged**: the PR-side `check`
+  job (retired `website.yml`, still readable at `website.yml.bak:71`) stays green
+  because it does not deploy, so the Actions list looks healthy until you open the
+  `deploy` job (`website.yml.bak:144`). The live site keeps serving the last good
+  build — here, the pre-portal 1-card docs hub — for ~20 failed runs before the
+  outage was noticed.
+- **What replaced that failure mode: nothing.** No live workflow deploys the website,
+  so there is no run that can go red and no Actions list to look healthy or otherwise.
+  A rejected token now surfaces only as an error in the terminal of whoever typed
+  `npm run deploy`, and a forgotten deploy is invisible from GitHub altogether. That
+  is strictly less detection than 2026-08-17 had, and it is why probe #3 below is the
+  only real signal.
 - **Policy:** give every token a **TTL ≤ 1 year** (Cloudflare's maximum is 10 years)
   and put the expiry date in the ops calendar. A TTL forces a deliberate review cadence
   instead of silent rot.
@@ -622,8 +1061,11 @@ dashboard and simply names which account the token acts on.
 ### 9.3 Detection (run these on any deploy suspicion)
 
 ```bash
-# 1. Are recent deploys actually succeeding? All-failed = credential problem, not code.
-gh run list --workflow "Website Deploy" --branch main --limit 5
+# 1. There is no deploy run to list. Probe #1 was `gh run list --workflow "Website
+#    Deploy"`; that workflow went inert when 23c963303 renamed it to .bak on
+#    2026-09-02, so the command now returns an empty list. An empty list is the
+#    missing workflow, NOT evidence that deploys are healthy — the health evidence
+#    is probe #3 (the live site) and the wrangler output of the human who deployed.
 
 # 2. Is the token itself valid? (authoritative — Cloudflare's verify endpoint)
 curl "https://api.cloudflare.com/client/v4/user/tokens/verify" \
@@ -644,10 +1086,11 @@ curl -sf -o /dev/null -w '%{http_code}\n' \
 ```
 
 GitHub's secret store exposes no expiry/rotation metadata, so rely on these three
-probes (fold probe #3 into the §5 poller or an uptime monitor). The deploy job
-itself now runs probe #2 as its first step (`website.yml` → "Validate Cloudflare
-deploy credentials (fail-fast)"), so a rejected token fails the deploy in ~1s before
-the ~5 min portal build — probe #3 stays the ground truth for what actually shipped.
+probes (fold probe #3 into the §5 poller or an uptime monitor). The fail-fast step
+this section used to describe — "Validate Cloudflare deploy credentials
+(fail-fast)", `website.yml.bak:155` — died with the retired workflow. Nothing
+validates the token before a deploy any more: probe #2 is now a step YOU run by
+hand, and probe #3 is the only ground truth for what actually shipped.
 
 ### 9.4 Rotation (zero-downtime, ~5 min)
 
@@ -656,11 +1099,16 @@ the ~5 min portal build — probe #3 stays the ground truth for what actually sh
    immediately — shown only once.
 2. **Verify before touching GitHub:** run the §9.3 probe #2 with the new token →
    `"status": "active"`.
-3. **Update the GitHub secret:** Settings → Secrets and variables → Actions →
-   `CLOUDFLARE_API_TOKEN` → paste → save. (`CLOUDFLARE_ACCOUNT_ID` stays the same.)
-4. **Confirm with a real deploy:** re-run the last failed Website Deploy run
-   (`gh run rerun <id>`) or push a trivial `website/**` change; confirm the `deploy`
-   job succeeds and probe #3 returns 200.
+3. **Update wherever the deploy actually reads the token:** the `.env` entry and the
+   `OZPOS_CLOUDFLARE_API_TOKEN` user variable that feed `scripts/wrangler-deploy.sh`.
+   Updating only the GitHub secret (Settings → Secrets and variables → Actions →
+   `CLOUDFLARE_API_TOKEN`) rotates a credential nothing live consumes, and the manual
+   deploy would keep using the revoked token.
+4. **Confirm with a real deploy:** run `npm run deploy` from `website/` (the manual
+   route named at the top of §9) and confirm probe #3 returns 200. The two old routes
+   are gone: there is no Website Deploy run left to rerun, and pushing a `website/**`
+   change deploys nothing — the only live website job is `dev-ci.yml#website`, which
+   stops at Build, and `dev-ci.yml` has no push trigger at all.
 5. **Revoke the old token** (API Tokens → Roll / Delete). Two overlapping tokens
    during rotation is fine — the old one must die only after the new one is proven.
 
@@ -668,15 +1116,22 @@ the ~5 min portal build — probe #3 stays the ground truth for what actually sh
 
 - **TTL policy from §9.2:** every token gets a TTL ≤ 1 year + a calendar entry. A token
   with no TTL is a standing silent-rot risk — treat it as an incident to fix.
-- **Automated token-verify smoke:** the deploy job now runs probe #2 pre-build (see
-  §9.3), so an invalid token fails fast at deploy time — but that only alerts when a
-  deploy actually happens. Wire probe #2 into a scheduled workflow (or the §5 poller)
-  so an invalid token alerts *before* the next deploy, instead of after 20 red runs.
+- **Automated token-verify smoke — still not built, and now the only would-be
+  detector is gone.** This bullet used to say the deploy job runs probe #2 pre-build
+  (see §9.3); that step retired with `website.yml` on 2026-09-02, so nothing checks
+  the token at deploy time or any other time. The recommendation stands unchanged:
+  wire probe #2 into a scheduled workflow (or the §5 poller) so an invalid token
+  alerts *before* someone tries to deploy. Note that neither live workflow declares
+  a schedule trigger today, so this means writing one, not editing an existing run.
   The token is a repo secret; the verify endpoint needs no other permission.
 - **Live-portal poller:** probe #3 is the ground truth for "did the deploy actually
   land" — a 404 on `/docs-portal/intro.html` means stale assets regardless of what CI
   says. Add it to the §5 alert rules as a page-level check.
-- **Treat a red `deploy` job as an incident:** add "Website Deploy `deploy` job failed"
-  to §3 — the check job being green is not a signal that anything shipped.
+- **Treat a stale site as an incident:** the retired Website Deploy workflow is what
+  used to be able to go red here, so "deploy job failed" is no longer an alert any
+  system can raise. Add the equivalent for probe #3 to §3 instead — a 404 on
+  `https://ozpos.my.id/docs-portal/intro.html` is now the ONLY signal that a deploy
+  did not land, because no live workflow deploys the site and a green PR tells you
+  nothing about what shipped.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor

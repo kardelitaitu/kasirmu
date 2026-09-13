@@ -11,63 +11,70 @@ next: none | perf: N/A
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::auth::LoginSession;
 use oz_core::db::Store;
+use oz_core::db::assignments::ScopeType;
+use oz_core::db::audit_security::{
+    SECURITY_REASON_BAD_PIN, SECURITY_REASON_INACTIVE, SECURITY_REASON_RATE_LIMITED,
+    SECURITY_REASON_UNKNOWN_USER, SecurityEvent,
+};
+use oz_core::permissions;
 use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
 use oz_security::mask::mask_token;
 
+use crate::commands::authz::require_permission_for_session;
 use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Arguments for the `staff_login` command.
-#[derive(Debug, Deserialize)]
-pub struct StaffLoginArgs {
-    /// Staff username (case-sensitive).
-    pub username: String,
-    /// Plain-text PIN entered by the staff member.
-    pub pin: String,
-    /// Optional device/terminal identifier for per-device abuse controls
-    /// (STAFF-07). When absent the backend derives one from the host name
-    /// (`COMPUTERNAME`/`HOSTNAME`) so distributed brute-force from a single
-    /// terminal is still bounded.
-    #[serde(default)]
-    pub device_id: Option<String>,
-}
+// Phase 3.3 T5: the auth wire DTOs moved to the shared `oz_bridge::auth`
+// module and are re-exported here, same as the desktop shell. The wire
+// contract is one definition across shells — including `CreateSessionArgs`,
+// whose `picker_ticket` the tablet copy had silently dropped (UI always sent
+// it; the H-3 gate now runs here, restored field-for-field from the bridge).
+// Command bodies stay tablet-native.
+pub use oz_bridge::auth::{
+    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult,
+    OrganizationSummary, SessionContextDto, SessionKeepaliveResult, StaffLoginArgs,
+    StaffLoginResult,
+};
 
-/// Result of a successful staff login.
-#[derive(Debug, Serialize)]
-pub struct StaffLoginResult {
-    /// Session info including user id, display name, and role.
-    pub session: LoginSession,
-    /// Short-lived picker ticket (audit-open-findings residual).
-    ///
-    /// Parity with the desktop client: the pre-session
-    /// `list_workspaces` / `list_workspace_screens` commands verify
-    /// this ticket and resolve the caller's REAL role from the
-    /// database — caller-supplied `role_id` / `user_id` are never
-    /// trusted for the workspace picker.
-    pub picker_ticket: String,
-}
-
-/// Arguments for the `staff_check_username` command.
-#[derive(Debug, Deserialize)]
-pub struct CheckUsernameArgs {
-    /// Staff username to look up.
-    pub username: String,
-}
-
-/// Result of a username existence check.
-#[derive(Debug, Serialize)]
-pub struct CheckUsernameResult {
-    /// Always `true`. The pre-check never reveals whether the account
-    /// exists or is active (STAFF-06); the real state is written to the
-    /// server log only, and the login endpoint reports a uniform failure.
-    pub proceed: bool,
+/// The tablet's single security-event sink — the auth paths and the
+/// staff-management paths both route here (todo-global-saas-2.md P1
+/// "audit baseline").
+///
+/// Deliberately infallible from the caller's point of view: a failed audit
+/// write is not a reason to refuse a correct PIN or destroy a session, so the
+/// `Err` arm logs and drops. `Ok(false)` is the Free-tier gate — that tenant
+/// keeps no tenant-facing audit records — and is silent by design.
+///
+/// Takes a borrowed [`Store`] rather than [`AppState`] because every login
+/// site already holds the global DB lock; re-entering it would deadlock the
+/// tokio mutex.
+///
+/// `debug_upgrade: false` — the tablet never mirrors the desktop's dev
+/// Free→Premium promotion (the per-client invariant from dfbc41b2), so a dev
+/// tablet on a Free row records nothing, exactly like a production one.
+///
+/// `pub(crate)` so the staff commands share this one definition: the
+/// per-client tier-promotion policy is then stated exactly once and cannot
+/// drift between the auth and staff-management paths.
+pub(crate) fn record_security_event(store: &Store, event: &SecurityEvent) {
+    match store.record_security_event(event, false) {
+        Ok(true) => {}
+        Ok(false) => tracing::debug!(
+            action = event.action,
+            "security event skipped: tier carries no audit retention entitlement"
+        ),
+        Err(e) => tracing::warn!(
+            error = %e,
+            action = event.action,
+            "security event write failed — authentication continues"
+        ),
+    }
 }
 
 /// Check a username before the PIN step (STAFF-06).
@@ -185,21 +192,58 @@ pub async fn staff_login(
             retry_after,
             "staff login rate limit exceeded"
         );
+        // A lockout is the strongest brute-force signal the limiter emits, so
+        // it is recorded even though no credential was ever compared. No
+        // account resolved at this point, hence the None user id.
+        record_security_event(
+            &store,
+            &SecurityEvent::login_failed(
+                &username,
+                SECURITY_REASON_RATE_LIMITED,
+                None,
+                device_id.as_deref(),
+            ),
+        );
         return Err(AppError::Invalid(format!(
             "Too many attempts. Try again in {retry_after}s."
         )));
     }
 
     // Look up user by username.
-    let user = store
-        .get_user_by_username(&username)?
-        .ok_or_else(|| AppError::Invalid("invalid username or PIN".into()))?;
+    let user = match store.get_user_by_username(&username)? {
+        Some(u) => u,
+        None => {
+            // Recorded against the attempted name: an unknown-account probe
+            // is reconnaissance and the only identity here is the username.
+            record_security_event(
+                &store,
+                &SecurityEvent::login_failed(
+                    &username,
+                    SECURITY_REASON_UNKNOWN_USER,
+                    None,
+                    device_id.as_deref(),
+                ),
+            );
+            return Err(AppError::Invalid("invalid username or PIN".into()));
+        }
+    };
 
     // Uniform failure — do not reveal that the account is deactivated.
     if !user.is_active {
         tracing::debug!(
             username = %username,
             "staff login: account inactive (uniform error returned)"
+        );
+        // The client still hears the uniform message; the distinction lives
+        // only in the audit row, which is where it belongs.
+        record_security_event(
+            &store,
+            &SecurityEvent::login_failed(
+                &username,
+                SECURITY_REASON_INACTIVE,
+                Some(&user.id),
+                device_id.as_deref(),
+            ),
         );
         return Err(AppError::Invalid("invalid username or PIN".into()));
     }
@@ -215,6 +259,15 @@ pub async fn staff_login(
             username = %username,
             "staff login: wrong PIN (uniform error returned)"
         );
+        record_security_event(
+            &store,
+            &SecurityEvent::login_failed(
+                &username,
+                SECURITY_REASON_BAD_PIN,
+                Some(&user.id),
+                device_id.as_deref(),
+            ),
+        );
         return Err(AppError::Invalid("invalid username or PIN".into()));
     }
 
@@ -228,6 +281,14 @@ pub async fn staff_login(
     let role = store
         .get_role(&user.role_id)?
         .ok_or_else(|| AppError::Internal(format!("role {} not found", user.role_id)))?;
+
+    // Recorded only once the login is genuinely going to succeed: the role
+    // above is the last thing that can fail it. Still inside the DB lock, so
+    // the write shares the store the attempt was authenticated against.
+    record_security_event(
+        &store,
+        &SecurityEvent::login_success(&user.id, &user.username, device_id.as_deref()),
+    );
 
     drop(db);
 
@@ -261,50 +322,6 @@ pub async fn staff_login(
     })
 }
 
-/// Arguments for `create_session`.
-#[derive(Debug, Deserialize)]
-pub struct CreateSessionArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// ID of the associated store.
-    pub store_id: String,
-    /// ID of the associated instance.
-    pub instance_id: String,
-    /// Type Key.
-    pub type_key: String,
-    /// ID of the associated terminal.
-    pub terminal_id: String,
-}
-
-/// Result of `create_session` — returns the opaque session token.
-#[derive(Debug, Serialize)]
-pub struct CreateSessionResult {
-    /// Session Token.
-    pub session_token: String,
-    /// Context.
-    pub context: SessionContextDto,
-}
-
-/// Lightweight session context DTO for the frontend.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionContextDto {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// ID of the associated store.
-    pub store_id: String,
-    /// ID of the associated instance.
-    pub instance_id: String,
-    /// Type Key.
-    pub type_key: String,
-    /// ID of the associated terminal.
-    pub terminal_id: String,
-}
-
 /// Create a new session and return an opaque session token.
 ///
 /// ADR #4 / ADR #7: Called after login + workspace selection.
@@ -320,6 +337,68 @@ pub async fn create_session(
             "store_id, instance_id, and user_id must not be empty".into(),
         ));
     }
+
+    // H-3: Verify the picker ticket to authenticate the caller's identity —
+    // the same gate the desktop/bridge twin has always run. The ticket was
+    // minted by staff_login/bootstrap_owner and bound to the authenticated
+    // user; we derive user_id from the ticket instead of trusting the
+    // caller-supplied value. The tablet DTO silently dropped this field
+    // until Phase 3.3 T5, so this shell minted sessions with no ticket
+    // verification — restored field-for-field against the bridge gate.
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let verified_user_id = picker_ticket::verify_picker_ticket(
+        &state.picker_ticket_secret,
+        &args.picker_ticket,
+        now_ts,
+    )
+    .ok_or_else(|| {
+        tracing::warn!(
+            user_id = %args.user_id,
+            "session creation denied — invalid or expired picker ticket"
+        );
+        AppError::Invalid("Invalid or expired picker ticket".into())
+    })?;
+
+    // Ensure the caller-supplied user_id matches the ticket-bound identity.
+    if verified_user_id != args.user_id {
+        tracing::warn!(
+            user_id = %args.user_id,
+            ticket_user_id = %verified_user_id,
+            "session creation denied — user_id mismatch with picker ticket"
+        );
+        return Err(AppError::Invalid("Invalid or expired picker ticket".into()));
+    }
+
+    // SaaS-3 L194: optional Organization (legal entity) scoping.
+    // org_id is a routing hint only — fail-closed validation derives the
+    // session real authority from the user assignment. The org must be in the
+    // device-local enumerated set and the user assignment must cover it.
+    let org_label: Option<String> = match args.org_id.as_ref().filter(|o| !o.is_empty()) {
+        Some(org_id) => {
+            let db = state.db.lock().await;
+            let store = oz_core::db::Store::new(&db);
+            let entity = store
+                .get_legal_entity("default", org_id)?
+                .ok_or_else(|| AppError::Invalid("Unknown organization".into()))?;
+            let covered =
+                store.assignment_covers_resource(&args.user_id, ScopeType::LegalEntity, org_id)?;
+            if !covered.unwrap_or(false) {
+                tracing::warn!(
+                    user_id = %args.user_id,
+                    org_id = %org_id,
+                    "session creation denied — assignment does not cover organization"
+                );
+                return Err(AppError::Invalid(
+                    "User does not have access to this organization".into(),
+                ));
+            }
+            Some(entity.name)
+        }
+        None => None,
+    };
 
     // Server-side authorization: verify the user has a valid role assignment
     // for the requested workspace instance (ADR #4 / ADR #7).
@@ -460,31 +539,442 @@ pub async fn create_session(
             instance_id: args.instance_id,
             type_key: args.type_key,
             terminal_id: args.terminal_id,
+            org_label,
+        },
+    })
+}
+
+/// Enumerate the Organizations (legal entities) this device knows about.
+///
+/// SaaS-3 L194 (pre-login org selector source). Device-local enumeration:
+/// returns the legal_entities belonging to the device tenant (default) and
+/// nothing else. Callable before authentication because it reveals only org
+/// ids/names (device configuration, not account secrets); it is the enumerated
+/// allow-list that create_session and switch_organization constrain org
+/// selection to — no cross-tenant identity broker exists.
+#[command]
+pub async fn list_organizations(
+    state: State<'_, AppState>,
+) -> Result<Vec<OrganizationSummary>, AppError> {
+    let db = state.db.lock().await;
+    let store = oz_core::db::Store::new(&db);
+    let orgs = store
+        .list_legal_entities("default")?
+        .into_iter()
+        .map(|le| OrganizationSummary {
+            id: le.id,
+            name: le.name,
+        })
+        .collect();
+    Ok(orgs)
+}
+
+/// Switch the active Organization (legal entity) for an authenticated session.
+///
+/// SaaS-3 L194. Fail-closed, mirrors the impersonation guard, but the leak class
+/// it closes is different: it must never leave BOTH the old and new tokens live.
+/// So it INVALIDATES the current token FIRST (old token dead before any new
+/// session exists), then mints a fresh session whose scope re-derives from the
+/// user assignment alone — no credential carryover, no grant merge.
+///
+/// Steps:
+/// 1. Resolve + authenticate the current session (caller identity).
+/// 2. The chosen org must be in the device-local enumerated set.
+/// 3. The user assignment must cover the org (assignment_covers_resource with
+///    ScopeType::LegalEntity) — fail-closed, mirroring the impersonation guard.
+/// 4. FULL re-authentication: the PIN is verified against the users stored
+///    pin_hash — no credential carryover from the old session.
+/// 5. check_tenant_integrity re-runs on the single already-open tenant DB as
+///    defense-in-depth, exactly as at startup.
+/// 6. Invalidate the old token, THEN mint the new session.
+#[command]
+pub async fn switch_organization(
+    session_token: String,
+    org_id: String,
+    pin: String,
+    state: State<'_, AppState>,
+) -> Result<CreateSessionResult, AppError> {
+    // 1. Resolve + authenticate the current session.
+    let current = state.resolve_session(&session_token)?;
+    let user_id = current.user_id.clone();
+
+    // 2. Enumerated-list-only: the org must be one this device knows.
+    let org_name = {
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        store
+            .get_legal_entity("default", &org_id)?
+            .map(|le| le.name)
+            .ok_or_else(|| {
+                tracing::warn!(
+                    user_id = %user_id,
+                    org_id = %org_id,
+                    "organization switch denied — org not in device-local enumerated set"
+                );
+                AppError::Invalid("Unknown organization".into())
+            })?
+    };
+
+    // 3. Assignment gate (fail-closed — mirrors the impersonation guard).
+    {
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        let covered =
+            store.assignment_covers_resource(&user_id, ScopeType::LegalEntity, &org_id)?;
+        if !covered.unwrap_or(false) {
+            tracing::warn!(
+                user_id = %user_id,
+                org_id = %org_id,
+                "organization switch denied — assignment does not cover org"
+            );
+            return Err(AppError::Invalid(
+                "User does not have access to this organization".into(),
+            ));
+        }
+    }
+
+    // 4. FULL re-authentication — no credential carryover.
+    let role_id = {
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        let user = store
+            .get_user(&user_id)?
+            .ok_or_else(|| AppError::Invalid("user not found".into()))?;
+        let valid = oz_core::auth::verify_pin(&pin, &user.pin_hash)
+            .map_err(|e| AppError::Internal(format!("PIN verification failed: {e}")))?;
+        if !valid {
+            tracing::warn!(
+                user_id = %user_id,
+                org_id = %org_id,
+                "organization switch denied — PIN re-authentication failed"
+            );
+            return Err(AppError::Invalid("invalid PIN".into()));
+        }
+        user.role_id.clone()
+    };
+
+    // 5. Defense-in-depth: re-run tenant integrity on the active DB.
+    {
+        let db = state.db.lock().await;
+        oz_core::db::Store::new(&db)
+            .check_tenant_integrity()
+            .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
+    }
+
+    // 6. INVALIDATE the old token FIRST, then mint the new session.
+    state.invalidate_session(&session_token);
+
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let token = uuid::Uuid::now_v7().to_string();
+    let expires_at = if state.session_ttl_seconds > 0 {
+        Some(now_ts + state.session_ttl_seconds)
+    } else {
+        None
+    };
+
+    let context = SessionContext::new(
+        user_id.clone(),
+        role_id,
+        current.terminal_id.clone(),
+        current.store_id.clone(),
+        current.instance_id.clone(),
+        current.type_key.clone(),
+        expires_at,
+        now_ts,
+    );
+
+    {
+        let mut session_store = state
+            .session_store
+            .write()
+            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
+        if session_store.len() >= 256 {
+            let oldest = session_store
+                .iter()
+                .min_by_key(|(_, c)| c.created_at)
+                .map(|(t, _)| t.clone());
+            if let Some(old) = oldest {
+                session_store.remove(&old);
+            }
+        }
+        session_store.insert(token.clone(), context.clone());
+    }
+
+    // Security audit (todo-global-saas-3.md L227 multi-org follow-up): a
+    // successful switch is a full re-authentication that re-scopes the
+    // operator's data authority, so it is recorded like the other session
+    // lifecycle events. Emitted only on the success path — the deny paths
+    // above already log and leave no re-scoped session behind. A write
+    // failure or tier skip never fails the switch itself (the
+    // `record_security_event` helper logs and continues).
+    {
+        // Everything the audit write needs — the DB guard, the Store
+        // borrow over it, the username lookup and the write itself —
+        // lives and dies inside this scope. Nothing borrows the guard
+        // across an await or outlives it, so the async future stays
+        // Send (the same shape destroy_session uses for its logout
+        // event).
+        let db = state.db.lock().await;
+        let store = oz_core::db::Store::new(&db);
+        let username = store
+            .get_user(&user_id)
+            .ok()
+            .flatten()
+            .map(|u| u.username)
+            .unwrap_or_default();
+        record_security_event(
+            &store,
+            &SecurityEvent::org_switch(
+                user_id.clone(),
+                username,
+                Some(current.terminal_id.clone()),
+                org_id.clone(),
+            ),
+        );
+    }
+
+    tracing::info!(user_id = %user_id, org_id = %org_id, "organization switched");
+
+    Ok(CreateSessionResult {
+        session_token: token,
+        context: SessionContextDto {
+            user_id,
+            role_id: context.role_id.clone(),
+            store_id: context.store_id.clone(),
+            instance_id: context.instance_id.clone(),
+            type_key: context.type_key.clone(),
+            terminal_id: context.terminal_id.clone(),
+            org_label: Some(org_name),
+        },
+    })
+}
+
+/// Bounded lifetime of an impersonation session, in seconds.
+///
+/// Impersonation sessions are deliberately short-lived and never inherit the
+/// operator's `session.ttl_seconds`: a support session must expire on its own
+/// rather than ride a 24h operator login. The integration suite asserts that the
+/// emitted `expires_at` always reflects this constant.
+pub(crate) const IMPERSONATION_SESSION_TTL_SECONDS: i64 = 1800;
+
+/// Begin an operator impersonation session for support.
+///
+/// The caller must present a valid operator session that holds the
+/// `operator:impersonate` capability (granted to the ADMIN preset; OWNER
+/// inherits it via `*`). The produced session carries ONLY the target user's
+/// scope and grants — the impersonated context reuses the operator's
+/// store/instance/type/terminal scope with the target's `user_id`/`role_id`. The
+/// operator's own grants are never merged, and `operator:impersonate` is never
+/// propagated into the produced token, so privilege amplification is
+/// structurally impossible.
+///
+/// The target must belong to the operator's authorized tenant scope (the same
+/// store/instance); otherwise the request is denied fail-closed. The session is
+/// short-lived ([`IMPERSONATION_SESSION_TTL_SECONDS`]) and an `impersonate.start`
+/// security event is recorded naming the operator (actor) and the impersonated
+/// user (subject).
+#[command]
+pub async fn impersonate_user_scoped(
+    session_token: String,
+    target_user_id: String,
+    state: State<'_, AppState>,
+) -> Result<CreateSessionResult, AppError> {
+    // 1. Resolve and authenticate the operator's own session.
+    let operator = state.resolve_session(&session_token)?;
+
+    // 2. Capability gate: the operator must hold operator:impersonate. This locks
+    //    the DB internally and releases before returning, so the later locks
+    //    below cannot deadlock.
+    require_permission_for_session(&state, &operator, permissions::OPERATOR_IMPERSONATE).await?;
+
+    // 3. Validate the target identifier (H-3: no empty input).
+    if target_user_id.trim().is_empty() {
+        return Err(AppError::Invalid("target_user_id must not be empty".into()));
+    }
+
+    // 4. Resolve the target user and enforce tenant isolation within a single DB
+    //    lock.
+    let target = {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+
+        let target = store
+            .get_user(&target_user_id)?
+            .ok_or_else(|| AppError::Invalid(format!("no such user: {target_user_id}")))?;
+
+        // Tenant-isolation guard: the target must be reachable from the operator's
+        // authorized store/instance. Impersonation never crosses a tenant
+        // boundary.
+        if !store.verify_instance_access(
+            &target.role_id,
+            &target.id,
+            &operator.instance_id,
+            &operator.store_id,
+        )? {
+            tracing::warn!(
+                operator = %operator.user_id,
+                target = %target.id,
+                operator_instance = %operator.instance_id,
+                operator_store = %operator.store_id,
+                "impersonation denied — target outside operator tenant scope"
+            );
+            return Err(AppError::PermissionDenied(
+                "Target user is outside the operator's authorized tenant scope".into(),
+            ));
+        }
+
+        target
+    };
+
+    // Snapshot time once for both the expiry and the creation timestamp.
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let token = uuid::Uuid::now_v7().to_string();
+    let expires_at = Some(now_ts + IMPERSONATION_SESSION_TTL_SECONDS);
+
+    // 5. Record the start event (actor = operator, subject = target). The
+    //    produced session reuses the operator's scope with the target's identity,
+    //    so the audit must name BOTH the operator (actor) and the impersonated
+    //    user (subject) explicitly.
+    {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        // Resolve the operator's username for the audit actor field; fall back to
+        // the id (e.g. when the operator row is unavailable) rather than failing
+        // the whole impersonation over an audit detail.
+        let operator_username = store
+            .get_user(&operator.user_id)?
+            .map(|u| u.username)
+            .unwrap_or_else(|| operator.user_id.clone());
+        let event = SecurityEvent::impersonate_start(
+            operator.user_id.clone(),
+            operator_username,
+            target.id.clone(),
+            target.username.clone(),
+            Some(operator.terminal_id.clone()),
+        );
+        record_security_event(&store, &event);
+    }
+
+    // 6. Insert the target-scoped session, mirroring create_session's
+    //    prune-at-200 / LRU-at-256 eviction so the impersonation store cannot
+    //    grow unbounded.
+    {
+        let mut session_store = state
+            .session_store
+            .write()
+            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
+
+        // Lazy prune: sweep expired sessions when the store is near capacity.
+        if session_store.len() >= 200 {
+            let before = session_store.len();
+            session_store.retain(|_, ctx| !ctx.is_expired());
+            let pruned = before - session_store.len();
+            if pruned > 0 {
+                tracing::info!("lazy prune removed {pruned} expired session(s)");
+            }
+        }
+
+        // Defensive: log if a UUID collision occurs (astronomically unlikely).
+        if session_store.contains_key(&token) {
+            tracing::warn!(token = %mask_token(&token), "session token collision detected — overwriting");
+        }
+
+        // Enforce a maximum session count with deterministic LRU eviction.
+        const MAX_SESSIONS: usize = 256;
+        if session_store.len() >= MAX_SESSIONS {
+            let oldest_entry = session_store
+                .iter()
+                .min_by_key(|(_, ctx)| ctx.created_at)
+                .map(|(t, _)| t.clone());
+            if let Some(old_token) = oldest_entry {
+                session_store.remove(&old_token);
+                tracing::warn!(
+                    old_token = %mask_token(&old_token),
+                    "session store full — evicted oldest session by created_at"
+                );
+            }
+        }
+
+        let context = SessionContext::new(
+            target.id.clone(),
+            target.role_id.clone(),
+            operator.terminal_id.clone(),
+            operator.store_id.clone(),
+            operator.instance_id.clone(),
+            operator.type_key.clone(),
+            expires_at,
+            now_ts,
+        );
+        session_store.insert(token.clone(), context.clone());
+    }
+
+    tracing::info!(
+        operator = %operator.user_id,
+        target = %target.id,
+        ttl_seconds = %IMPERSONATION_SESSION_TTL_SECONDS,
+        "impersonation session started"
+    );
+
+    Ok(CreateSessionResult {
+        session_token: token,
+        context: SessionContextDto {
+            user_id: target.id,
+            role_id: target.role_id,
+            store_id: operator.store_id,
+            instance_id: operator.instance_id,
+            type_key: operator.type_key,
+            terminal_id: operator.terminal_id,
+            org_label: None,
         },
     })
 }
 
 /// Destroy an active session, invalidating the token.
+///
+/// Records a `logout` security event when the token actually resolved — a
+/// store switch destroys the old session too, and that is a genuine session
+/// end worth recording. An unknown or already-evicted token records nothing,
+/// so a replayed logout cannot manufacture phantom events.
 #[command]
 pub async fn destroy_session(
     state: State<'_, AppState>,
     session_token: String,
 ) -> Result<(), AppError> {
-    let mut store = state
-        .session_store
-        .write()
-        .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
-    store.remove(&session_token);
+    // Take the context out with the token so the logout event can name who
+    // left. The std RwLock guard is scoped and dropped before the DB await —
+    // it is not Send and must never be held across it.
+    let ctx = {
+        let mut sessions = state
+            .session_store
+            .write()
+            .map_err(|e| AppError::Internal(format!("session store lock poisoned: {e}")))?;
+        sessions.remove(&session_token)
+    };
+
+    if let Some(ctx) = ctx {
+        let db = state.db.lock().await;
+        let store = Store::new(&db);
+        let username = store
+            .get_user(&ctx.user_id)
+            .ok()
+            .flatten()
+            .map(|u| u.username)
+            .unwrap_or_default();
+        record_security_event(
+            &store,
+            &SecurityEvent::logout(&ctx.user_id, username, Some(&ctx.terminal_id)),
+        );
+    }
+
     tracing::info!("session destroyed");
     Ok(())
-}
-
-/// Result of `session_keepalive` — the refreshed expiry timestamp.
-#[derive(Debug, Serialize)]
-pub struct SessionKeepaliveResult {
-    /// Refreshed unix expiry (seconds). `None` when sessions have no
-    /// TTL (development mode) — the frontend can stop pinging then.
-    pub expires_at: Option<i64>,
 }
 
 /// Refresh the current session's TTL so long-lived screens (analytics,

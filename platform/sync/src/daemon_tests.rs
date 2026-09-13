@@ -63,10 +63,9 @@ async fn daemon_starts_stopped() {
 async fn daemon_start_and_stop() {
     let db = setup_db();
     let daemon = SyncDaemon::new();
-    daemon.start(db).await;
+    assert!(daemon.start(db).await);
     assert!(daemon.is_running().await);
-    daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(daemon.stop().await, "stop must confirm the run loop exited");
     assert!(!daemon.is_running().await);
 }
 
@@ -84,21 +83,74 @@ async fn daemon_status_defaults() {
 #[tokio::test]
 async fn daemon_stop_when_not_running_is_noop() {
     let daemon = SyncDaemon::new();
-    daemon.stop().await;
+    assert!(
+        daemon.stop().await,
+        "stop with nothing running reports stopped"
+    );
     assert!(!daemon.is_running().await);
 }
 
+/// Regression (silent-success start): a start on a live daemon used to log
+/// a warning and return `()`, which the IPC command surfaced as `Ok(())` —
+/// the caller could not tell that no new daemon was spawned. The second
+/// start now reports `false` explicitly.
 #[tokio::test]
-async fn daemon_double_start_is_noop() {
+async fn daemon_double_start_reports_already_running() {
     let db = setup_db();
     let daemon = SyncDaemon::new();
-    daemon.start(db.clone()).await;
+    assert!(daemon.start(db.clone()).await);
     assert!(daemon.is_running().await);
-    daemon.start(db).await;
+    assert!(
+        !daemon.start(db).await,
+        "a start on a live daemon must report that it did NOT spawn"
+    );
     assert!(daemon.is_running().await);
-    daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(daemon.stop().await);
     assert!(!daemon.is_running().await);
+}
+
+/// Regression (stop/start race): `stop()` used to sleep a fixed 100ms and
+/// return while the run loop could still be mid-cycle — the `running` flag
+/// survived, the next `start()` was silently swallowed by the
+/// already-running guard, and the daemon stayed dead until app restart.
+/// Hold the DB lock to pin a tick mid-flight (the same window a slow
+/// remote round trip produces), prove `stop()` waits for the loop to
+/// exit, and prove an immediate `start()` brings the daemon back up.
+#[tokio::test]
+async fn daemon_stop_then_immediate_start_yields_running_daemon() {
+    let db = setup_db();
+    let daemon = SyncDaemon::with_interval(Duration::from_millis(10));
+    assert!(daemon.start(db.clone()).await);
+    assert!(daemon.is_running().await);
+
+    // Hold the DB lock so a tick's spawn_blocking phase blocks
+    // mid-cycle; released ~300ms in so the tick can finish after
+    // stop() has committed to waiting for it.
+    let blocker_db = db.clone();
+    let blocker = tokio::spawn(async move {
+        let _guard = blocker_db.lock().await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert!(
+        daemon.stop().await,
+        "stop must wait for the in-flight cycle and confirm the loop exited"
+    );
+    assert!(
+        !daemon.is_running().await,
+        "running must be cleared by the time stop() returns"
+    );
+
+    // The race this pins: start immediately after stop.
+    assert!(
+        daemon.start(db).await,
+        "start immediately after stop must spawn a new daemon"
+    );
+    assert!(daemon.is_running().await);
+    assert!(daemon.stop().await);
+
+    blocker.await.unwrap();
 }
 
 #[tokio::test]
@@ -1064,6 +1116,96 @@ async fn daemon_resolves_push_conflict_via_shared_service() {
     );
 }
 
+/// Mock sync server whose push endpoint ALWAYS returns a `duplicate id:`
+/// Rejected — the shape the real server produces when an item id already
+/// exists (`sync_store.rs` `push_batch`). This is the crash-then-repush
+/// recovery signal, not a genuine rejection.
+async fn spawn_duplicate_id_mock_sync_server() -> String {
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    async fn handle_push(Json(items): Json<Vec<serde_json::Value>>) -> Json<PushResponse> {
+        let results = items
+            .iter()
+            .map(|it| PushOutcome::Rejected {
+                reason: format!(
+                    "duplicate id: {}",
+                    it.get("id").and_then(|v| v.as_str()).unwrap_or("")
+                ),
+            })
+            .collect();
+        Json(PushResponse { results })
+    }
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    format!("http://localhost:{port}")
+}
+
+/// Crash-recovery regression: when the server reports a pushed item as a
+/// `duplicate id:` Rejected (it already holds the item), the daemon must mark
+/// it SYNCED, not terminal-failed. Push-side failed items have no requeue
+/// path, so a mislabeled replay would strand a successfully-synced item
+/// forever and pollute `failed_count`.
+#[tokio::test]
+async fn daemon_marks_duplicate_id_replay_synced_not_failed() {
+    let server_url = spawn_duplicate_id_mock_sync_server().await;
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        store
+            .enqueue_offline("complete_sale", r#"{"id":1}"#)
+            .unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let db_check = db.clone();
+    let (all, pending, summary) = tokio::task::spawn_blocking(move || {
+        let conn = db_check.blocking_lock();
+        let store = Store::new(&conn);
+        (
+            store.list_all_offline().unwrap(),
+            store.list_pending_offline().unwrap(),
+            store.offline_queue_status_summary().unwrap(),
+        )
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(all.len(), 1);
+    assert!(pending.is_empty(), "duplicate-id replay must leave pending");
+    assert_eq!(
+        all[0].status,
+        oz_core::offline::OfflineQueueStatus::Synced,
+        "a duplicate-id replay is an idempotent success, not a failure"
+    );
+    assert_eq!(summary.failed_count, 0, "failed_count must not be polluted");
+    assert_eq!(summary.synced_count, 1);
+}
+
 /// SYNC-05 daemon end-to-end: a stock conflict must be resolved via the
 /// shared ADR #21 service into a CRDT merge, the merged winner must be
 /// re-enqueued, AND a later pull of that same merged item must be
@@ -1295,4 +1437,201 @@ async fn daemon_publishes_settings_updated_for_remote_settings_change() {
         Some("Remote Acme"),
         "the settings row must be applied from the pull"
     );
+}
+
+// ── ADR #11 redirect: status-blindness and unvalidated new_url — KNOWN HAZARD PINS ──
+//
+// THESE THREE TESTS PIN AUTO-UPDATE BEHAVIOUR, NOT A DESIGN GUARANTEE. A green run
+// below is evidence of what the daemon DOES, not of what it was meant to do: nothing
+// in transport.rs or daemon_tick.rs says "redirect on any non-2xx" or "accept any
+// string as a host". Both are consequences of an ABSENT check, and an absent check is
+// not a contract. Each test is written to go RED when the guard lands, and that red is
+// the deliverable.
+//
+// The emitter side is narrow, which is what makes the fix cheap:
+// redirect_middleware (apps/cloud-server/src/redirect.rs) answers a migration with
+// StatusCode::MISDIRECTED_REQUEST (421) and nothing else, so a client-side 421 gate
+// costs a real deployment nothing. And 421 appears nowhere in this crate — measured at
+// HEAD: grep -c '421' platform/sync/src/transport.rs -> 1, and that single hit is the
+// "ISO-4217 currency code." doc comment at :86.
+
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
+///
+/// The three migration arms — push (transport.rs:355), pull (:428) and snapshot
+/// (:512) — sit inside `if !resp.status().is_success()`. That is the whole finding: ANY
+/// non-2xx whose body parses as {"error":"server_migrated","new_url":...} redirects, so
+/// a 500 from a crashing proxy, a 502 from an intermediary or a 503 maintenance page all
+/// repoint the sync target of a running install. `parse_server_migrated` (:563-:570)
+/// reads exactly two JSON fields and never looks at the status. The 421 test above
+/// (`daemon_auto_updates_url_on_server_migration`) is this test's positive control — it
+/// varies nothing but the status code.
+///
+/// Two properties this CANNOT pin, named so nobody reads the set as complete:
+///
+/// * The write is UNTRACKED. `persist_migration_url` (daemon_tick.rs:77-:87) calls
+///   `Settings::set_sync_server_url`, which is the bare `Self::set`
+///   (platform/core/src/settings/typed.rs:327 -> raw.rs:37), NOT `set_with_policy`
+///   (raw.rs:98). The row therefore changes with no delta-ledger entry and no audit
+///   row — and no assertion can read a missing record, which is why this is a
+///   comment and not a fourth test.
+/// * The escalation is worse than the write. The next tick rebuilds the transport with
+///   `Authorization: Bearer <api key>` installed as a DEFAULT header
+///   (transport.rs:299-:305); if that new host answers 401,
+///   `push_retry_after_auth_refresh` (daemon_tick.rs:30) calls
+///   `refresh_persisted_api_key(db, &cfg.server_url)`, which POSTS
+///   `request_token_client_credentials(server_url, terminal_id, terminal_secret)`
+///   (daemon.rs:149) — the device identity plus the whole pending batch, to the host
+///   the response named. Not pinned: that needs a listener answering 421 once and
+///   401 after, which is a fixture, not a test.
+#[tokio::test]
+async fn daemon_migration_redirect_is_obeyed_on_server_error_pin() {
+    use crate::test_helpers::spawn_status_migration_server;
+
+    let new_url = "https://status-blind.example.com";
+    let old_url = spawn_status_migration_server(new_url, 500).await;
+    let db = setup_db();
+
+    let db_clone = db.clone();
+    let old = old_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &old).unwrap();
+        store.enqueue_offline("test", r#"{}"#).unwrap();
+    })
+    .await
+    .unwrap();
+
+    let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
+    daemon.start(db.clone()).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let updated_url = tokio::task::spawn_blocking(move || {
+        let conn = db.blocking_lock();
+        Settings::get_sync_server_url(&conn).unwrap()
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        updated_url.as_deref(),
+        Some(new_url),
+        "GREEN TODAY AND THAT IS THE FINDING: a plain 500 rewrote the sync target. Flip the expected value to Some(old_url) when the 421 gate lands; do not delete this test."
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+}
+
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
+///
+/// No TLS floor. A 421 naming an `http://` host is obeyed exactly like one naming an
+/// `https://` host, so after one cycle the api key and every queued item go in
+/// cleartext to whatever answers that port. Nothing between `parse_server_migrated`
+/// (transport.rs:563-:570) and `persist_migration_url` (daemon_tick.rs:77-:87) inspects
+/// the scheme, and the setter is the bare `Self::set`, so no policy door sees it either.
+///
+/// Status is deliberately left at the real 421 here, using the existing
+/// `spawn_redirect_server`: the server in this test is telling the truth about the
+/// migration, and the client is STILL downgraded. That separates this finding from the
+/// status-blindness one above — a 421 gate alone would not close it.
+#[tokio::test]
+async fn daemon_migration_redirect_accepts_plain_http_target_pin() {
+    let new_url = "http://downgraded.example.com:8080";
+    let old_url = spawn_redirect_server(new_url).await;
+    let db = setup_db();
+
+    let db_clone = db.clone();
+    let old = old_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &old).unwrap();
+        store.enqueue_offline("test", r#"{}"#).unwrap();
+    })
+    .await
+    .unwrap();
+
+    let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
+    daemon.start(db.clone()).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let updated_url = tokio::task::spawn_blocking(move || {
+        let conn = db.blocking_lock();
+        Settings::get_sync_server_url(&conn).unwrap()
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        updated_url.as_deref(),
+        Some(new_url),
+        "GREEN TODAY AND THAT IS THE FINDING: a correct 421 still moved this install onto plain http. Flip to Some(old_url) when new_url is required to be https; do not delete this test."
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+}
+
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
+///
+/// No shape check at all. `new_url` is stored verbatim whatever it is — here a relative
+/// path, which is not a server address in any reading, and which is persisted because
+/// `parse_server_migrated` returns `Some(String::from)` for any JSON string under the
+/// `new_url` key with no validation of scheme, host, or length.
+///
+/// The persistence happens BEFORE anything tries to use the value, so the visible damage
+/// is not a failed request: the sync target now holds a string no config screen could
+/// have produced, with no delta row and no audit row (pin one, second bullet). The
+/// control below proves the row was reachable and the daemon was running, so the change
+/// cannot be explained by an unrelated setup failure.
+#[tokio::test]
+async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
+    let new_url = "/not-a-server";
+    let old_url = spawn_redirect_server(new_url).await;
+    let db = setup_db();
+
+    let db_clone = db.clone();
+    let old = old_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &old).unwrap();
+        store.enqueue_offline("test", r#"{}"#).unwrap();
+    })
+    .await
+    .unwrap();
+
+    let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
+    daemon.start(db.clone()).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let (updated_url, still_enabled) = tokio::task::spawn_blocking(move || {
+        let conn = db.blocking_lock();
+        (
+            Settings::get_sync_server_url(&conn).unwrap(),
+            Settings::get(&conn, "sync_enabled")
+                .unwrap()
+                .map(|v| v != "false")
+                .unwrap_or(false),
+        )
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        updated_url.as_deref(),
+        Some(new_url),
+        "GREEN TODAY AND THAT IS THE FINDING: the literal string /not-a-server is now this install's sync server. Flip to Some(old_url) when new_url is validated; do not delete this test."
+    );
+    assert!(
+        still_enabled,
+        "control: sync must still be enabled for this row to prove the redirect wrote it"
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
 }

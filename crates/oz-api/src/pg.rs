@@ -34,6 +34,7 @@ use axum::{
 use deadpool_postgres::Pool;
 use tokio_postgres::error::SqlState;
 
+use oz_core::db::tax::{TaxRateScope, TaxRateWindow};
 use oz_core::tax_rate::TaxRate;
 use oz_core::{
     Category, Currency, Money, Product, ProductWithDetails, Sale, SaleLine, SaleStatus, Sku,
@@ -44,6 +45,64 @@ use crate::routes::terminals::RegisteredTerminal;
 
 /// Default inventory location UUID (must match the port schema's default).
 const CANONICAL_DEFAULT_LOCATION_UUID: &str = "01926b3a-0000-7000-8000-000000000001";
+
+/// The PostgreSQL ceiling on parameters per statement: **65 535**.
+///
+/// Where it comes from: the extended query protocol carries the parameter count of
+/// both the `Parse` and the `Bind` message as an `Int16`, and the server rejects
+/// anything above `INT16_MAX` with `too many parameters specified in bind
+/// message`. It is a wire-format limit, NOT a GUC — no server setting raises it,
+/// so unlike SQLite's `SQLITE_MAX_VARIABLE_NUMBER` (32 766 on the bundled 3.4x,
+/// 999 on pre-3.32 builds) the ceiling is identical on every supported server.
+const PG_MAX_PARAMS: usize = 65_535;
+
+/// Parameters a chunked `IN` statement binds BESIDES the chunk itself — the
+/// leading `$1` tenant id in [`list_missing_hashes`]. Placeholder numbering
+/// starts at `1 + PG_LEAD_PARAMS`, so the ceiling check has to count them too.
+const PG_LEAD_PARAMS: usize = 1;
+
+/// How many values one data-driven `IN (…)` list in this module may bind at a
+/// time.
+///
+/// Both data-driven lists here — [`attach_product_images`]'s product ids and
+/// [`list_missing_hashes`]'s candidate hashes — bind ONE PARAMETER PER VALUE, and
+/// their length comes from DATA (a tenant's whole catalog on
+/// `GET /api/v1/products`, a caller-supplied `?hashes=a,b,c` on
+/// `GET /api/v1/images:missing`), not from a fixed schema. Above [`PG_MAX_PARAMS`]
+/// the statement stops executing: the handler answers 500, or — where the caller
+/// keeps an empty-set fallback (`unwrap_or_default()`) — answers the empty set
+/// after a `tracing::warn` naming the failed operation and the error. No caller
+/// here swallows the failure silently any more: an empty answer is ambiguous
+/// between "genuinely empty" and "lookup failed", and the warning is how the two
+/// are told apart (see the `list_missing_hashes` callers in routes/images.rs and
+/// routes/products.rs).
+/// 10 000 keeps a 6.5x margin under the ceiling and stays small enough that one
+/// chunk is a single round trip.
+///
+/// This is a CHUNK SIZE, never a threshold that switches the filter off: a long
+/// list is read in MORE chunks, not in an unscoped sweep that would return rows
+/// outside the tenant or the whole table.
+const PG_IN_CHUNK: usize = 10_000;
+
+/// Pin the invariant at COMPILE time: a chunk plus the leading parameters it also
+/// binds must stay under the wire ceiling, or the chunking is itself the bug. A
+/// `const` assert fails every build, not only a test run someone remembers.
+const _: () = assert!(
+    PG_IN_CHUNK + PG_LEAD_PARAMS < PG_MAX_PARAMS,
+    "PG_IN_CHUNK must stay below PostgreSQL's 65535-parameters-per-statement ceiling"
+);
+
+/// Build the `$start .. $start+len-1` placeholder list for one `IN (…)` chunk.
+///
+/// Pure, so the chunk arithmetic — numbering, contiguity, no overlap between
+/// chunks — is testable without a live Postgres. See
+/// `pg_in_chunking_survives_a_list_longer_than_the_chunk`.
+fn pg_placeholders(start: usize, len: usize) -> String {
+    (start..start + len)
+        .map(|i| format!("${i}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 // ── Settings ────────────────────────────────────────────────────────────
 
@@ -75,8 +134,32 @@ pub async fn set_setting_pg(pool: &Pool, key: &str, value: &str) -> Result<(), S
 }
 
 /// Scoped settings key — suffix form (`{base}:{tenant}`), matching
-/// `email_pg`'s per-tenant keys so the admin endpoint provisions exactly
-/// what the report loop reads.
+/// `email_pg`'s per-tenant keys.
+///
+/// "The admin endpoint provisions exactly what the report loop reads" holds on
+/// cloud-server and is FALSE on the desktop loopback. Do not rely on it as a
+/// property of this function; it is a property of the deployment.
+///
+/// * Cloud — holds. `apps/cloud-server/src/main.rs:351` starts
+///   `email_pg::start_report_sender_loop_pg`, whose read is
+///   `get_smtp_config_pg` (`apps/cloud-server/src/email_pg.rs:207`, defined at
+///   `:467-468`): scoped key first, bare fallback. This is the same scoped key
+///   `PUT /api/v1/settings` writes, so the two agree.
+/// * Desktop loopback — does not hold. The same handler reaches
+///   `apply_ops_sqlite`, which writes this scoped key unconditionally, so a
+///   write with the default tenant lands on `smtp_config:default`. The
+///   desktop's own report loop never looks there: it reads only the bare
+///   `smtp_config` (`crates/oz-bridge/src/email.rs:35-43` →
+///   `Store::get_smtp_config`, likewise the scheduler loop in
+///   `crates/oz-notification/src/email_scheduler.rs:44-45`).
+///
+/// The consequence on desktop is a fork, not a miss. `stored_smtp_raw` reads
+/// scoped-then-bare and the keep-on-blank merge carries whatever it finds into
+/// the value being written, so after ONE loopback write the bare secret is
+/// copied into a scoped row — and the two secret-bearing rows then drift
+/// independently: the settings page saves to bare, the API writes
+/// scoped-first, and each keeps reading its own half. Closing the split is a
+/// design decision taken elsewhere, not a bug to fix in this doc.
 pub fn scoped_setting_key(base: &str, tenant: &str) -> String {
     format!("{base}:{tenant}")
 }
@@ -285,16 +368,217 @@ pub async fn list_categories(pool: &Pool) -> Result<Vec<Category>, PgError> {
 
 // ── Tax rates ─────────────────────────────────────────────────────────
 
-/// Create a tax rate, scoped to `tenant_id`, mirroring `Store::create_tax_rate`
-/// including the TAX-02 default-flag swap inside one transaction.
-pub async fn create_tax_rate(
-    pool: &Pool,
+/// The tier and window a tax-rate write is authored into, as the resolver
+/// reads them: the tenant-global tier when neither scope column names a row,
+/// an unbounded window when neither date is set.
+///
+/// [TaxRateScope] cannot name a row scoped to BOTH columns, so an ambiguous
+/// rate is unrepresentable at this boundary as well as unwritable at the
+/// schema CHECK that migration 20260926 rebuilt the table with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxRateWrite {
+    /// Which tier the row prices.
+    pub scope: TaxRateScope,
+    /// Its validity window: effective_from inclusive, effective_to EXCLUSIVE.
+    pub window: TaxRateWindow,
+    /// E1-9: the statutory rounding mode the row prices with — '' (store
+    /// preference), 'half_up' or 'truncate' (the column core's migration
+    /// 20260929 landed). Validated to exactly those three values at the
+    /// boundary, mirroring the table CHECK, so a hub-authored mode can
+    /// never carry a spelling the branch CHECK would refuse.
+    pub rounding_mode: String,
+}
+
+impl TaxRateWrite {
+    /// The tenant-global, never-expiring write: what a body with no scope and
+    /// no window fields means, and what every pre-scoping rate row is.
+    #[must_use]
+    pub fn tenant_global() -> Self {
+        Self {
+            scope: TaxRateScope::Global,
+            window: TaxRateWindow::default(),
+            rounding_mode: String::new(),
+        }
+    }
+}
+
+/// The error naming a scope target this tenant may not write.
+///
+/// One text for no such row and for a row of another tenant, and a 400 rather
+/// than a 404: the missing row is the TARGET, not the resource the request
+/// addressed.
+fn unknown_scope_target(scope: &TaxRateScope) -> PgError {
+    let (table, column, target) = match scope {
+        TaxRateScope::Global => {
+            return PgError::Validation("the tenant-global tier has no scope target".into());
+        }
+        TaxRateScope::LegalEntity(id) => ("legal_entities", "legal_entity_id", id.as_str()),
+        TaxRateScope::Location(id) => ("locations", "location_id", id.as_str()),
+    };
+    let msg = format!("{column} {target:?} does not reference an existing {table} of this tenant");
+    PgError::Validation(msg)
+}
+
+/// Whether the scope names a row that exists AND belongs to tenant_id.
+///
+/// Two facts, one read, because the foreign key alone gives only the first:
+/// legal_entities is on the RLS-exempt list, so a tenant-blind check would let
+/// one tenant scope a rate onto another tenant entity, and the branch that pulls
+/// the snapshot would then price itself under the wrong rule. Table and column
+/// come from the match arms, never from the request body; only the two ids are
+/// parameters. The tenant-global tier has no target to check.
+async fn scope_target_exists(
+    tx: &tokio_postgres::Transaction<'_>,
     tenant_id: &str,
-    name: &str,
-    rate_bps: i64,
-    is_default: bool,
-    is_inclusive: bool,
-) -> Result<TaxRate, PgError> {
+    scope: &TaxRateScope,
+) -> Result<bool, PgError> {
+    let (table, column, target) = match scope {
+        TaxRateScope::Global => return Ok(true),
+        TaxRateScope::LegalEntity(id) => ("legal_entities", "legal_entity_id", id.as_str()),
+        TaxRateScope::Location(id) => ("locations", "location_id", id.as_str()),
+    };
+    // Table and column come from the match arms, never from the request.
+    let sql =
+        format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE {column} = $1 AND tenant_id = $2)");
+    let exists: bool = tx
+        .query_one(&sql, &[&target, &tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?
+        .get(0);
+    Ok(exists)
+}
+
+/// Clear is_default inside ONE tier only: the Postgres twin of the tier-scoped
+/// clear core does in db/tax.rs.
+///
+/// The statement this replaces cleared is_default across the whole tenant, and
+/// that stopped being harmless the moment defaults became per-tier: it silently
+/// un-defaulted every OTHER tier, so authoring one entity-level default could
+/// strip the tenant-global rate every location with no rate of its own was
+/// pricing on. Each arm below is that tier partial-unique-index predicate plus
+/// the tenant key.
+async fn clear_tier_default(
+    tx: &tokio_postgres::Transaction<'_>,
+    tenant_id: &str,
+    scope: &TaxRateScope,
+) -> Result<(), PgError> {
+    let global_sql = "UPDATE tax_rates SET is_default = 0 WHERE tenant_id = $1 AND is_default = 1 AND legal_entity_id IS NULL AND location_id IS NULL";
+    let entity_sql = "UPDATE tax_rates SET is_default = 0 WHERE tenant_id = $1 AND is_default = 1 AND legal_entity_id = $2 AND location_id IS NULL";
+    let location_sql = "UPDATE tax_rates SET is_default = 0 WHERE tenant_id = $1 AND is_default = 1 AND location_id = $2";
+    match scope {
+        TaxRateScope::Global => tx.execute(global_sql, &[&tenant_id]).await,
+        TaxRateScope::LegalEntity(entity) => {
+            tx.execute(entity_sql, &[&tenant_id, &entity.as_str()])
+                .await
+        }
+        TaxRateScope::Location(location) => {
+            tx.execute(location_sql, &[&tenant_id, &location.as_str()])
+                .await
+        }
+    }
+    .map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(())
+}
+
+/// Log which per-tier default index a write tripped, then report the 409.
+///
+/// Both writers clear the tier own default first inside the same transaction,
+/// so a hit on one of the three default indexes means a CONCURRENT author
+/// claimed the same tier in between: retryable, and a 409 the client can act
+/// on, never the 500 an unmapped Db(_) would return.
+fn tax_rate_unique_error(e: &tokio_postgres::Error) -> PgError {
+    let constraint = e.as_db_error().and_then(|d| d.constraint()).unwrap_or("");
+    if constraint.starts_with("idx_tax_rates_default_") {
+        tracing::warn!(
+            constraint,
+            "tax rate tier default claimed by a concurrent author"
+        );
+    }
+    PgError::Conflict
+}
+
+/// Validate one request's scope + window into the write both data layers take.
+///
+/// The boundary half of the scoped-authoring contract: a body may not name BOTH
+/// scope arms (the schema CHECK would refuse the row, but the error must say
+/// which request field was wrong), a scope id must be non-empty, and the window
+/// must be strict `YYYY-MM-DD` with a non-empty period — mirroring the exact
+/// rules core's own writers enforce, so a hub-authored row and a device-authored
+/// row cannot disagree on shape.
+pub fn validate_tax_rate_write(
+    legal_entity_id: Option<&str>,
+    location_id: Option<&str>,
+    effective_from: Option<&str>,
+    effective_to: Option<&str>,
+    rounding_mode: Option<&str>,
+) -> Result<TaxRateWrite, PgError> {
+    // E1-9: same three-value set as the tax_rates.rounding_mode CHECK
+    // (migration 20260929). '' and None both mean "store preference
+    // applies"; anything else is a clean 400, never a silent ''.
+    let rounding = match rounding_mode {
+        None | Some("") => String::new(),
+        Some(m @ ("half_up" | "truncate")) => m.to_owned(),
+        Some(other) => {
+            return Err(PgError::Validation(format!(
+                "rounding_mode: expected '' (store preference), 'half_up' or 'truncate', got {other:?}"
+            )));
+        }
+    };
+    let scope = TaxRateScope::classify(legal_entity_id, location_id).ok_or_else(|| {
+        PgError::Validation(
+            "legal_entity_id and location_id are mutually exclusive: a rate is scoped to a \
+             legal entity or to a location, not both"
+                .into(),
+        )
+    })?;
+    if let TaxRateScope::LegalEntity(id) | TaxRateScope::Location(id) = &scope
+        && id.trim().is_empty()
+    {
+        return Err(PgError::Validation(
+            "scope id must not be empty: omit the field for the tenant-global tier".into(),
+        ));
+    }
+    let window = TaxRateWindow {
+        effective_from: effective_from.map(str::to_owned),
+        effective_to: effective_to.map(str::to_owned),
+    };
+    // Window rules mirror core's TaxRateWindow::validate (private — the
+    // boundary repeats them rather than widening core for one caller).
+    for (field, value) in [
+        ("effective_from", &window.effective_from),
+        ("effective_to", &window.effective_to),
+    ] {
+        if let Some(v) = value
+            && chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d").is_err()
+        {
+            return Err(PgError::Validation(format!(
+                "{field}: expected a business date 'YYYY-MM-DD', got {v:?}"
+            )));
+        }
+    }
+    if let (Some(from), Some(to)) = (&window.effective_from, &window.effective_to) {
+        // Both arms parsed above, so these defaults are unreachable.
+        let from =
+            chrono::NaiveDate::parse_from_str(from, "%Y-%m-%d").unwrap_or(chrono::NaiveDate::MIN);
+        let to =
+            chrono::NaiveDate::parse_from_str(to, "%Y-%m-%d").unwrap_or(chrono::NaiveDate::MAX);
+        if from >= to {
+            return Err(PgError::Validation(format!(
+                "effective_to: {to} must fall after effective_from {from}; the end date is \
+                 exclusive, so equal dates cover no period at all"
+            )));
+        }
+    }
+    Ok(TaxRateWrite {
+        scope,
+        window,
+        rounding_mode: rounding,
+    })
+}
+
+/// Bounds every tax-rate write shares, so the global and scoped entry points
+/// cannot drift apart.
+fn validate_tax_rate_identity(name: &str, rate_bps: i64) -> Result<(), PgError> {
     if name.trim().is_empty() {
         return Err(PgError::Validation(
             "tax rate name must not be empty".into(),
@@ -303,6 +587,55 @@ pub async fn create_tax_rate(
     if rate_bps < 0 {
         return Err(PgError::Validation("rate_bps must be non-negative".into()));
     }
+    Ok(())
+}
+/// Create a tenant-global tax rate, scoped to tenant_id.
+///
+/// Thin delegation to [create_tax_rate_scoped] with the global write, so the
+/// pre-scoping entry point (still what a body without scope fields means, and
+/// still what this module PG tests call) cannot drift from the scoped one on
+/// validation, the tenant GUC, the default swap or the snapshot bump.
+pub async fn create_tax_rate(
+    pool: &Pool,
+    tenant_id: &str,
+    name: &str,
+    rate_bps: i64,
+    is_default: bool,
+    is_inclusive: bool,
+) -> Result<TaxRate, PgError> {
+    create_tax_rate_scoped(
+        pool,
+        tenant_id,
+        name,
+        rate_bps,
+        is_default,
+        is_inclusive,
+        &TaxRateWrite::tenant_global(),
+    )
+    .await
+}
+
+/// Insert a tax rate at an explicit tier and window, scoped to tenant_id.
+///
+/// The hub scoped-rate authoring door. Order is load-bearing: the scope target
+/// is resolved BEFORE the INSERT (a typed 400 naming the column, not a bare FK
+/// violation), the tier own default is cleared BEFORE the INSERT (that tier
+/// unique index is immediate, so claiming the flag while a peer of the same
+/// tier still holds it fails), and both happen inside ONE transaction that has
+/// already set the RLS tenant GUC LOCAL. legal_entity_id, location_id,
+/// effective_from and effective_to are parameters 9 to 12; a None binds SQL
+/// NULL, which IS the answer tenant-global tier or unbounded window to the
+/// resolver.
+pub async fn create_tax_rate_scoped(
+    pool: &Pool,
+    tenant_id: &str,
+    name: &str,
+    rate_bps: i64,
+    is_default: bool,
+    is_inclusive: bool,
+    write: &TaxRateWrite,
+) -> Result<TaxRate, PgError> {
+    validate_tax_rate_identity(name, rate_bps)?;
 
     let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
     let tx = client
@@ -310,37 +643,52 @@ pub async fn create_tax_rate(
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
     // RLS: scope this transaction to the tenant (LOCAL, auto-resets on commit).
-    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+    let guc_sql = "SELECT set_config($1, $2, true)";
+    tx.execute(guc_sql, &[&"oz.tenant_id", &tenant_id])
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
 
+    if !scope_target_exists(&tx, tenant_id, &write.scope).await? {
+        return Err(unknown_scope_target(&write.scope));
+    }
+
     if is_default {
-        tx.execute(
-            "UPDATE tax_rates SET is_default = 0 WHERE is_default = 1",
-            &[],
-        )
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
+        clear_tier_default(&tx, tenant_id, &write.scope).await?;
     }
 
     let id = uuid::Uuid::now_v7().to_string();
     let now = now_rfc3339();
-    tx.execute(
-        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at, tenant_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        &[
-            &id,
-            &name.trim(),
-            &rate_bps,
-            &(is_default as i64),
-            &(is_inclusive as i64),
-            &now,
-            &now,
-            &tenant_id,
-        ],
-    )
-    .await
-    .map_err(|e| PgError::Db(e.to_string()))?;
+    let (entity, location) = write.scope.scope_columns();
+    let insert_sql = "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, created_at, updated_at, tenant_id, legal_entity_id, location_id, effective_from, effective_to, rounding_mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)";
+    if let Err(e) = tx
+        .execute(
+            insert_sql,
+            &[
+                &id,
+                &name.trim(),
+                &rate_bps,
+                &(is_default as i64),
+                &(is_inclusive as i64),
+                &now,
+                &now,
+                &tenant_id,
+                &entity,
+                &location,
+                &write.window.effective_from,
+                &write.window.effective_to,
+                &write.rounding_mode,
+            ],
+        )
+        .await
+    {
+        if is_unique_violation(&e) {
+            return Err(tax_rate_unique_error(&e));
+        }
+        if is_fk_violation(&e) {
+            return Err(unknown_scope_target(&write.scope));
+        }
+        return Err(PgError::Db(e.to_string()));
+    }
 
     bump_snapshot_version(&tx, tenant_id).await?;
 
@@ -353,6 +701,105 @@ pub async fn create_tax_rate(
         is_default,
         is_inclusive,
         created_at: now.clone(),
+        updated_at: now,
+    })
+}
+
+/// Rewrite an existing tax rate in place: its fields, tier and window together.
+///
+/// The cloud twin of core Store::update_tax_rate_scoped. The row is read inside
+/// the transaction so created_at survives unchanged (a rewrite is not a
+/// re-creation), and the tenant filter sits in the SAME predicate as the TAX-03
+/// is_active guard: another tenant row, an archived row and a missing row all
+/// answer 404, because confirming that a row belongs to somebody else is not
+/// this endpoint to say. Moving a row between tiers is allowed; the tier it
+/// leaves then has no default, which is why the flag is only ever claimed inside
+/// the tier being written.
+#[allow(clippy::too_many_arguments)]
+pub async fn update_tax_rate_scoped(
+    pool: &Pool,
+    tenant_id: &str,
+    id: &str,
+    name: &str,
+    rate_bps: i64,
+    is_default: bool,
+    is_inclusive: bool,
+    write: &TaxRateWrite,
+) -> Result<TaxRate, PgError> {
+    validate_tax_rate_identity(name, rate_bps)?;
+
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    let guc_sql = "SELECT set_config($1, $2, true)";
+    tx.execute(guc_sql, &[&"oz.tenant_id", &tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let find_sql =
+        "SELECT created_at FROM tax_rates WHERE id = $1 AND tenant_id = $2 AND is_active = 1";
+    let created_at: Option<String> = tx
+        .query_opt(find_sql, &[&id, &tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?
+        .map(|row| row.get("created_at"));
+    let Some(created_at) = created_at else {
+        return Err(PgError::NotFound);
+    };
+
+    if !scope_target_exists(&tx, tenant_id, &write.scope).await? {
+        return Err(unknown_scope_target(&write.scope));
+    }
+
+    if is_default {
+        clear_tier_default(&tx, tenant_id, &write.scope).await?;
+    }
+
+    let now = now_rfc3339();
+    let (entity, location) = write.scope.scope_columns();
+    let update_sql = "UPDATE tax_rates SET name = $1, rate_bps = $2, is_default = $3, is_inclusive = $4, legal_entity_id = $5, location_id = $6, effective_from = $7, effective_to = $8, updated_at = $9, rounding_mode = $10 WHERE id = $11 AND tenant_id = $12 AND is_active = 1";
+    if let Err(e) = tx
+        .execute(
+            update_sql,
+            &[
+                &name.trim(),
+                &rate_bps,
+                &(is_default as i64),
+                &(is_inclusive as i64),
+                &entity,
+                &location,
+                &write.window.effective_from,
+                &write.window.effective_to,
+                &now,
+                &write.rounding_mode,
+                &id,
+                &tenant_id,
+            ],
+        )
+        .await
+    {
+        if is_unique_violation(&e) {
+            return Err(tax_rate_unique_error(&e));
+        }
+        if is_fk_violation(&e) {
+            return Err(unknown_scope_target(&write.scope));
+        }
+        return Err(PgError::Db(e.to_string()));
+    }
+
+    bump_snapshot_version(&tx, tenant_id).await?;
+
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+
+    Ok(TaxRate {
+        id: id.to_owned(),
+        name: name.trim().to_owned(),
+        rate_bps,
+        is_default,
+        is_inclusive,
+        created_at,
         updated_at: now,
     })
 }
@@ -609,6 +1056,16 @@ fn pg_row_to_product_with_details(
     let product_type_str: String = row
         .try_get("product_type")
         .map_err(|e| PgError::Db(e.to_string()))?;
+    // Keep serving the row on a failed parse and let the helper warn (its docs
+    // carry why the Retail fallback is ambiguous; the column has no CHECK
+    // constraint in either engine). Parsed here rather than in the literal below
+    // so the warning names `sku_str` before it moves into `Sku::new`, instead of
+    // re-reading the column.
+    let product_type = oz_core::ProductType::parse_stored_or_default(
+        Some(product_type_str.as_str()),
+        &sku_str,
+        "pg_row_to_product_with_details",
+    );
 
     let product = Product {
         id: row.try_get("id").map_err(|e| PgError::Db(e.to_string()))?,
@@ -627,7 +1084,25 @@ fn pg_row_to_product_with_details(
         category_id: row
             .try_get("category_id")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        barcode: barcode_raw.and_then(|s| foundation::Barcode::new(&s).ok()),
+        // products.barcode is free text in both stores — a legacy or hand-edited
+        // row can hold a value Barcode::new rejects. Degrading to None costs a
+        // scan target, not a wrong fact, so the fallback stays — but None is
+        // ambiguous between "no barcode" and "unreadable barcode", and the
+        // warning is how you tell them apart.
+        barcode: barcode_raw.and_then(|s| match foundation::Barcode::new(&s) {
+            Ok(b) => Some(b),
+            Err(_) => {
+                // sku_str was moved into Sku::new above; re-read the row
+                // identifier for the log line (NOT NULL column, cannot fail).
+                let row_sku: String = row.try_get("sku").unwrap_or_default();
+                tracing::warn!(
+                    sku = %row_sku,
+                    raw = %s,
+                    "unparseable barcode on products row; serving the row without it"
+                );
+                None
+            }
+        }),
         created_at: row
             .try_get("created_at")
             .map_err(|e| PgError::Db(e.to_string()))?,
@@ -638,7 +1113,7 @@ fn pg_row_to_product_with_details(
             .try_get("price_updated_at")
             .map_err(|e| PgError::Db(e.to_string()))?,
         track_serial: pg_bool(row, "track_serial")?,
-        product_type: oz_core::ProductType::parse_str(&product_type_str).unwrap_or_default(),
+        product_type,
         version: row
             .try_get("version")
             .map_err(|e| PgError::Db(e.to_string()))?,
@@ -661,7 +1136,25 @@ fn pg_row_to_product_with_details(
         default_supplier_id: row
             .try_get("default_supplier_id")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        image_hash: row.try_get("image_hash").ok(),
+        // products.image_hash is nullable by design (a product may have no
+        // image), so Ok(None) is a legitimate answer; only a type drift errors.
+        // Keep the None fallback — a missing thumbnail link is a degraded
+        // feature, not a wrong fact — but None is ambiguous between "no image"
+        // and "unreadable column", and the warning is how you tell them apart.
+        image_hash: match row.try_get::<_, Option<String>>("image_hash") {
+            Ok(h) => h,
+            Err(e) => {
+                // sku_str was moved into Sku::new above; re-read the row
+                // identifier for the log line (NOT NULL column, cannot fail).
+                let row_sku: String = row.try_get("sku").unwrap_or_default();
+                tracing::warn!(
+                    sku = %row_sku,
+                    error = %e,
+                    "image_hash column unreadable on products row; serving the row without the image link"
+                );
+                None
+            }
+        },
     };
 
     Ok(ProductWithDetails {
@@ -690,25 +1183,37 @@ async fn attach_product_images(
         return Ok(());
     }
     let ids: Vec<&str> = products.iter().map(|p| p.product.id.as_str()).collect();
-    // Build a parameterised query with placeholders
-    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${i}")).collect();
-    let sql = format!(
-        "SELECT product_id, slot, hash, position FROM product_images \
-         WHERE product_id IN ({}) ORDER BY slot ASC",
-        placeholders.join(", ")
-    );
-    let stmt = tx
-        .prepare(&sql)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = ids
-        .iter()
-        .map(|s| s as &(dyn tokio_postgres::types::ToSql + Sync))
-        .collect();
-    let rows = tx
-        .query(&stmt, &params)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
+    // THE CHUNK LOOP. `ids` carries one entry per product being listed, so its
+    // length is a tenant's catalog size and not a fixed schema width —
+    // `list_products` has no LIMIT. Chunks are DISJOINT by product_id and every
+    // product lands in exactly one chunk, so one query per chunk computes the same
+    // map as one query over the whole list (`ORDER BY slot` orders within a
+    // product, so chunking cannot reorder it either). The loop runs inside the
+    // CALLER's transaction — both `list_products` and `get_product` commit after
+    // this returns — so splitting the read across statements changes no atomicity.
+    // Nothing here falls back to an unscoped sweep when the list is long; that is
+    // the hole PG_IN_CHUNK exists to close.
+    let mut rows: Vec<tokio_postgres::Row> = Vec::new();
+    for chunk in ids.chunks(PG_IN_CHUNK) {
+        let sql = format!(
+            "SELECT product_id, slot, hash, position FROM product_images \
+             WHERE product_id IN ({}) ORDER BY slot ASC",
+            pg_placeholders(1, chunk.len())
+        );
+        let stmt = tx
+            .prepare(&sql)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        let params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = chunk
+            .iter()
+            .map(|s| s as &(dyn tokio_postgres::types::ToSql + Sync))
+            .collect();
+        let chunk_rows = tx
+            .query(&stmt, &params)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        rows.extend(chunk_rows);
+    }
     let mut by_product: std::collections::HashMap<
         String,
         Vec<oz_core::db::products::ProductImage>,
@@ -765,26 +1270,43 @@ pub async fn list_missing_hashes(
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
 
-    let placeholders: Vec<String> = (1..=candidates.len()).map(|i| format!("${i}")).collect();
-    let sql = format!(
-        "SELECT hash FROM image_refs WHERE tenant_id = $1 AND hash IN ({}) AND refcount > 0",
-        placeholders.join(", ")
-    );
-    let stmt = tx
-        .prepare(&sql)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
-        vec![&tenant_id as &(dyn tokio_postgres::types::ToSql + Sync)];
-    for c in candidates {
-        params.push(c);
+    // THE CHUNK LOOP, and the ACCUMULATOR the chunks feed. `candidates` is a
+    // caller-supplied list — `?hashes=a,b,c` on GET /api/v1/images:missing, or
+    // every distinct image hash in a tenant's catalog from `list_products` — so
+    // its length is unbounded and each value costs one parameter. Chunks are
+    // DISJOINT by hash and this query is a pure filter, so the union of the
+    // per-chunk hits is exactly the set one query over the whole list returns.
+    // The loop sits inside the transaction this function already opens and commits
+    // below, so splitting the read across statements changes no atomicity.
+    //
+    // The hash list starts at $2, NOT $1: $1 is the tenant id, which `params`
+    // binds first. Numbering it from $1 both collided with the tenant value and
+    // left one MORE parameter than the statement declared, which PostgreSQL
+    // rejects at Bind time ("bind message supplies N+1 parameters, but prepared
+    // statement requires N") — so every non-empty call here failed, and both
+    // callers swallow the error into an empty `missing_hashes`.
+    let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for chunk in candidates.chunks(PG_IN_CHUNK) {
+        let sql = format!(
+            "SELECT hash FROM image_refs WHERE tenant_id = $1 AND hash IN ({}) AND refcount > 0",
+            pg_placeholders(1 + PG_LEAD_PARAMS, chunk.len())
+        );
+        let stmt = tx
+            .prepare(&sql)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            Vec::with_capacity(chunk.len() + PG_LEAD_PARAMS);
+        params.push(&tenant_id as &(dyn tokio_postgres::types::ToSql + Sync));
+        for c in chunk {
+            params.push(c);
+        }
+        let rows = tx
+            .query(&stmt, &params)
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        present.extend(rows.iter().map(|r| r.get::<_, String>("hash")));
     }
-    let rows = tx
-        .query(&stmt, &params)
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let present: std::collections::HashSet<String> =
-        rows.iter().map(|r| r.get::<_, String>("hash")).collect();
     tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
     Ok(candidates
         .iter()
@@ -1204,14 +1726,19 @@ pub async fn create_sale(pool: &Pool, tenant_id: &str, sale: &Sale) -> Result<()
             })
             .unwrap_or_default();
         tx.execute(
-            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position,
+            // tenant_id is written explicitly (not via column default) so
+            // every line row lands in the caller's tenant — the header's
+            // set_config scopes RLS, but the column default would still
+            // stamp 'default' into the row itself.
+            "INSERT INTO sale_lines (id, sale_id, tenant_id, sku, qty, unit_minor, line_minor, currency, line_position,
                                      tax_minor, tax_rate_id, tax_breakdown_json,
                                      serial_number, course, modifiers_json, cost_minor,
                                      product_id, product_name, category_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)",
             &[
                 &line.id,
                 &line.sale_id,
+                &tenant_id,
                 &line.sku,
                 &line.qty,
                 &line.unit_price.minor_units,
@@ -1292,6 +1819,141 @@ fn pg_row_to_sale_line(row: &tokio_postgres::Row) -> Result<SaleLine, PgError> {
     })
 }
 
+// ────────────────────── Sale idempotency guard ───────────────────
+
+/// Verdict of a claim attempt on one (tenant_id, key) slot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaleClaim {
+    /// This request holds the slot for the sale id it supplied, so it must go
+    /// on and write that sale.
+    Held,
+    /// An earlier request already holds the slot. The payload is the ORIGINAL
+    /// sale id, which the caller reads back and returns as the receipt.
+    Replay(String),
+}
+
+/// Claim (tenant_id, key) on behalf of sale_id, BEFORE any ledger write.
+///
+/// Insert-first, then read the row back: a concurrent loser's
+/// ON CONFLICT (tenant_id, key) DO NOTHING waits on the winner's unique-index
+/// entry, affects zero rows, and then SELECTs the WINNER's sale id. That is why
+/// 23505 (unique_violation) never reaches PgError::Db here, and why exactly one
+/// of two racing submits answers 201 while the other answers 200 with the same
+/// sale body. The key is the client's opaque string, matched by exact equality
+/// only; nothing here parses it, and a request with no usable key never calls
+/// this function at all.
+///
+/// RLS: sale_idempotency is a covered table, so the pair runs inside one
+/// transaction with set_config('oz.tenant_id', …, true) exactly like every
+/// other tenant-scoped helper in this module — one tenant can neither resolve
+/// nor block another tenant's slot.
+pub async fn claim_sale_idempotency(
+    pool: &Pool,
+    tenant_id: &str,
+    key: &str,
+    sale_id: &str,
+) -> Result<SaleClaim, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let claimed = tx
+        .execute(
+            "INSERT INTO sale_idempotency (tenant_id, key, sale_id)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (tenant_id, key) DO NOTHING",
+            &[&tenant_id, &key, &sale_id],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let verdict = if claimed == 1 {
+        SaleClaim::Held
+    } else {
+        match tx
+            .query_opt(
+                "SELECT sale_id FROM sale_idempotency WHERE tenant_id = $1 AND key = $2",
+                &[&tenant_id, &key],
+            )
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?
+        {
+            Some(row) => SaleClaim::Replay(row.get::<_, String>(0)),
+            // A conflicting slot rolled back between the two statements leaves
+            // nothing to replay; inventing a sale is not this function's call.
+            None => return Err(PgError::Db("idempotency slot vanished mid-race".into())),
+        }
+    };
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(verdict)
+}
+
+/// Drop a slot this request held but could not turn into a sale.
+///
+/// Called when the create behind a Held claim failed: leaving the slot bound to
+/// a sale id that was never written would make every later retry resolve to a
+/// receipt with no sale behind it. The delete is narrowed to our own sale_id,
+/// so a concurrent winner's slot is never touched.
+pub async fn release_sale_idempotency(
+    pool: &Pool,
+    tenant_id: &str,
+    key: &str,
+    sale_id: &str,
+) -> Result<(), PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute(
+        "DELETE FROM sale_idempotency WHERE tenant_id = $1 AND key = $2 AND sale_id = $3",
+        &[&tenant_id, &key, &sale_id],
+    )
+    .await
+    .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(())
+}
+
+/// Record an UNGUARDED sale — one whose request carried no usable key — as a
+/// row with a NULL key.
+///
+/// NULL is distinct in a SQL unique index in both engines, so these rows can
+/// never resolve or block a later request: an unbounded number of unguarded
+/// sales per tenant stays legal, which is the whole point of the nullable
+/// column. This is bookkeeping, never a guard, and its failure must not turn an
+/// already-written sale into an error response.
+pub async fn record_unguarded_sale(
+    pool: &Pool,
+    tenant_id: &str,
+    sale_id: &str,
+) -> Result<(), PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.execute(
+        "INSERT INTO sale_idempotency (tenant_id, key, sale_id) VALUES ($1, NULL, $2)",
+        &[&tenant_id, &sale_id],
+    )
+    .await
+    .map_err(|e| PgError::Db(e.to_string()))?;
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(())
+}
+
 /// Get a single sale by id, including line items.
 pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<Sale>, PgError> {
     let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
@@ -1333,7 +1995,26 @@ pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<S
         id: sale_row
             .try_get("id")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        status: SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending),
+        // sales.status has no CHECK constraint: a writer from a newer build can
+        // store a value from_stored_str does not know. Keep serving the row —
+        // failing the whole read over a label costs the sale — but Pending is
+        // itself a legitimate stored value, so the fallback is ambiguous between
+        // "genuinely pending" and "unmapped status", and the warning is how you
+        // tell them apart.
+        status: match SaleStatus::from_stored_str(&status_str) {
+            Some(s) => s,
+            None => {
+                // id is TEXT PRIMARY KEY (20260813_init.pg.sql:1006), so this
+                // re-read cannot fail.
+                let row_id: String = sale_row.try_get("id").unwrap_or_default();
+                tracing::warn!(
+                    sale_id = %row_id,
+                    raw = %status_str,
+                    "unmapped sale status on sales row; falling back to Pending"
+                );
+                SaleStatus::Pending
+            }
+        },
         total: Money {
             minor_units: sale_row
                 .try_get("total_minor")
@@ -1395,16 +2076,27 @@ pub async fn get_sale(pool: &Pool, tenant_id: &str, id: &str) -> Result<Option<S
         tender_rate_millionths: sale_row
             .try_get("tender_rate_millionths")
             .map_err(|e| PgError::Db(e.to_string()))?,
-        tip_minor: sale_row.try_get("tip_minor").unwrap_or(0),
-        service_charge_minor: sale_row.try_get("service_charge_minor").unwrap_or(0),
+        // CUR-02 charge fields: BIGINT NOT NULL DEFAULT 0 in PG
+        // (20260813_init.pg.sql:1028) and INTEGER NOT NULL DEFAULT 0 in SQLite
+        // (20260822_sale_charges.sql:5-6), so a failed read here is a type
+        // drift, never a legitimate empty tip. Unlike the fallbacks above, 0 is
+        // a real answer on a receipt that nothing downstream can tell apart
+        // from a drifted read — the one swallow in this set that must fail the
+        // read instead of serving a wrong number.
+        tip_minor: sale_row
+            .try_get("tip_minor")
+            .map_err(|e| PgError::Db(e.to_string()))?,
+        service_charge_minor: sale_row
+            .try_get("service_charge_minor")
+            .map_err(|e| PgError::Db(e.to_string()))?,
     };
 
     let line_rows = tx
         .query(
             "SELECT id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position,
                     tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json
-             FROM sale_lines WHERE sale_id = $1 ORDER BY line_position",
-            &[&id],
+             FROM sale_lines WHERE sale_id = $1 AND tenant_id = $2 ORDER BY line_position",
+            &[&id, &tenant_id],
         )
         .await
         .map_err(|e| PgError::Db(e.to_string()))?;
@@ -1668,8 +2360,8 @@ pub async fn create_exchange_rate_pg(
         source.trim()
     }
     .to_string();
-    let from = from_currency.trim().to_string();
-    let to = to_currency.trim().to_string();
+    let from = from_currency.trim().to_uppercase();
+    let to = to_currency.trim().to_uppercase();
     let date = effective_date.to_string();
     if let Err(e) = client
         .execute(
@@ -1716,6 +2408,495 @@ pub async fn delete_exchange_rate_pg(pool: &Pool, id: &str) -> Result<(), PgErro
         return Err(PgError::NotFound);
     }
     Ok(())
+}
+
+// ── Memo cloud-read serving layer (2026-09-07 cloud-read ruling) ─────────
+//
+// Memos are authored on the desktop (local SQLite, the global identity DB)
+// and must display on KDS/tablet terminals whose local `memos` table is
+// structurally empty. The ruled design makes cloud Postgres the serving
+// layer: the desktop pushes the tenant's COMPLETE memo state (reconciling
+// upsert — self-healing, no tombstones), and terminals read their active
+// memos from here. All statements run under RLS (`oz.tenant_id`) like the
+// rest of this module.
+
+/// One memo + its derived audience, as the desktop pushes it.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemoSyncRow {
+    /// Memo id (UUID v7, desktop-minted).
+    pub id: String,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot at publish time.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Lifecycle status (`draft`/`published`/`expired`/`stopped`/`archived`).
+    pub status: String,
+    /// Display duration (`12h`/`24h`/`3d`/`7d`/`30d`).
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant (ISO-8601), if published.
+    #[serde(default)]
+    pub published_at: Option<String>,
+    /// Expiry instant (ISO-8601), if published.
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    /// Early-stop instant, if stopped.
+    #[serde(default)]
+    pub stopped_at: Option<String>,
+    /// Who stopped it.
+    #[serde(default)]
+    pub stopped_by: Option<String>,
+    /// Archival instant — the retention-deletion clock.
+    #[serde(default)]
+    pub archived_at: Option<String>,
+    /// Creation timestamp.
+    pub created_at: String,
+    /// Last-update timestamp.
+    pub updated_at: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    #[serde(default)]
+    pub location_ids: Vec<String>,
+    /// The published fan-out: one recipient per target terminal.
+    #[serde(default)]
+    pub recipients: Vec<MemoRecipientSyncRow>,
+}
+
+/// One recipient row of a pushed memo.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MemoRecipientSyncRow {
+    /// Recipient row id (desktop-minted).
+    pub id: String,
+    /// The terminal this row addresses.
+    pub terminal_id: String,
+    /// Delivery state (`pending`/`delivered`/`acknowledged`).
+    pub delivery_status: String,
+    /// Delivery instant, if delivered.
+    #[serde(default)]
+    pub delivered_at: Option<String>,
+    /// Acknowledgement instant, if acknowledged.
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    /// Who acknowledged.
+    #[serde(default)]
+    pub acknowledged_by: Option<String>,
+}
+
+/// Result of the reconciling memo push.
+#[derive(Debug, serde::Serialize)]
+pub struct MemoSyncResult {
+    /// Memos upserted (the snapshot size).
+    pub upserted: i64,
+    /// Memo rows deleted because the desktop no longer has them.
+    pub deleted: i64,
+}
+
+/// Reconcile the tenant's memo state in PG with the desktop's snapshot.
+///
+/// The snapshot IS the truth for memo CONTENT and row EXISTENCE: every memo
+/// in it is upserted (`ON CONFLICT (id)`), its targeting rows replaced, and
+/// any PG memo of this tenant NOT present in the snapshot is deleted (its
+/// children cascade) — the desktop-side retention delete propagates by
+/// omission. Recipient rows reconcile by EXISTENCE but their DELIVERY STATE
+/// merges monotonically (pending < delivered < acknowledged): memos reach
+/// terminals through the cloud, so acks land here (`ack_memo`) while the
+/// desktop still holds older state, and a wholesale replace would downgrade
+/// them on every push.
+/// Idempotent: pushing the same state twice is a no-op the second time.
+/// The memo's CHECK constraints on status/duration reject garbage payloads.
+pub async fn sync_memos(
+    pool: &Pool,
+    tenant_id: &str,
+    memos: &[MemoSyncRow],
+) -> Result<MemoSyncResult, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    for m in memos {
+        tx.execute(
+            "INSERT INTO memos (id, tenant_id, author_user_id, author_role, title, body,
+                                status, duration, revision, published_at, expires_at,
+                                stopped_at, stopped_by, archived_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             ON CONFLICT (id) DO UPDATE SET
+                author_user_id = EXCLUDED.author_user_id,
+                author_role = EXCLUDED.author_role,
+                title = EXCLUDED.title,
+                body = EXCLUDED.body,
+                status = EXCLUDED.status,
+                duration = EXCLUDED.duration,
+                revision = EXCLUDED.revision,
+                published_at = EXCLUDED.published_at,
+                expires_at = EXCLUDED.expires_at,
+                stopped_at = EXCLUDED.stopped_at,
+                stopped_by = EXCLUDED.stopped_by,
+                archived_at = EXCLUDED.archived_at,
+                updated_at = EXCLUDED.updated_at",
+            &[
+                &m.id,
+                &tenant_id,
+                &m.author_user_id,
+                &m.author_role,
+                &m.title,
+                &m.body,
+                &m.status,
+                &m.duration,
+                &m.revision,
+                &m.published_at,
+                &m.expires_at,
+                &m.stopped_at,
+                &m.stopped_by,
+                &m.archived_at,
+                &m.created_at,
+                &m.updated_at,
+            ],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+        // Targeting is small and derived: replace the set wholesale so a
+        // desktop-side change can never leave a stale row behind.
+        tx.execute("DELETE FROM memo_locations WHERE memo_id = $1", &[&m.id])
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        for location_id in &m.location_ids {
+            tx.execute(
+                "INSERT INTO memo_locations (memo_id, location_id, tenant_id) VALUES ($1, $2, $3)",
+                &[&m.id, location_id, &tenant_id.to_string()],
+            )
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        }
+
+        // Recipients are MERGED, not replaced: memos now reach terminals
+        // through the cloud (2026-09-07 cloud-read ruling), so a recipient
+        // row's delivery state can advance here (terminal acks land via
+        // `ack_memo`) while the desktop still holds the older state. A
+        // wholesale replace would downgrade cloud-side acks on every push;
+        // instead the higher-ranked state wins (pending < delivered <
+        // acknowledged), with the desktop winning ties (it is the
+        // authoring authority and equal ranks cannot regress). Existence
+        // still reconciles by omission below — a recipient the desktop no
+        // longer has is gone for good.
+        let existing: std::collections::HashMap<String, i32> = {
+            let rows = tx
+                .query(
+                    "SELECT terminal_id, CASE delivery_status
+                                        WHEN 'pending' THEN 0
+                                        WHEN 'delivered' THEN 1
+                                        ELSE 2 END AS rank
+                     FROM memo_recipients WHERE memo_id = $1",
+                    &[&m.id],
+                )
+                .await
+                .map_err(|e| PgError::Db(e.to_string()))?;
+            rows.iter()
+                .map(|r| (r.get::<_, String>(0), r.get::<_, i32>(1)))
+                .collect()
+        };
+        for r in &m.recipients {
+            let incoming_rank = match r.delivery_status.as_str() {
+                "pending" => 0,
+                "delivered" => 1,
+                _ => 2,
+            };
+            let keep_existing = existing
+                .get(&r.terminal_id)
+                .is_some_and(|existing_rank| *existing_rank > incoming_rank);
+            if keep_existing {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO memo_recipients (id, memo_id, terminal_id, delivery_status,
+                                             delivered_at, acknowledged_at, acknowledged_by, tenant_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT (memo_id, terminal_id) DO UPDATE SET
+                    delivery_status = EXCLUDED.delivery_status,
+                    delivered_at = EXCLUDED.delivered_at,
+                    acknowledged_at = EXCLUDED.acknowledged_at,
+                    acknowledged_by = EXCLUDED.acknowledged_by,
+                    id = EXCLUDED.id",
+                &[
+                    &r.id,
+                    &m.id,
+                    &r.terminal_id,
+                    &r.delivery_status,
+                    &r.delivered_at,
+                    &r.acknowledged_at,
+                    &r.acknowledged_by,
+                    &tenant_id.to_string(),
+                ],
+            )
+            .await
+            .map_err(|e| PgError::Db(e.to_string()))?;
+        }
+        // Existence reconcile: drop recipients the snapshot no longer
+        // carries (only possible when the memo itself is leaving, whose
+        // rows cascade, or a backup restore rewound the desktop).
+        let terminals: Vec<String> = m.recipients.iter().map(|r| r.terminal_id.clone()).collect();
+        tx.execute(
+            "DELETE FROM memo_recipients WHERE memo_id = $1 AND NOT (terminal_id = ANY($2))",
+            &[&m.id, &terminals],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    }
+
+    // Reconciliation: drop every tenant memo the desktop did not push. The
+    // snapshot is the complete non-deleted set, so absence IS the deletion
+    // signal (the retention sweep's deletes propagate here naturally).
+    let ids: Vec<String> = memos.iter().map(|m| m.id.clone()).collect();
+    let deleted = tx
+        .execute(
+            "DELETE FROM memos WHERE tenant_id = $1 AND NOT (id = ANY($2))",
+            &[&tenant_id.to_string(), &ids],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(MemoSyncResult {
+        upserted: memos.len() as i64,
+        deleted: deleted as i64,
+    })
+}
+
+/// Outcome of a terminal acknowledgement call.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MemoAckResult {
+    /// The memo that was acknowledged.
+    pub memo_id: String,
+    /// The terminal whose recipient row moved.
+    pub terminal_id: String,
+    /// The recipient's delivery state after the call (always
+    /// `acknowledged` — the call is a no-op if it already was).
+    pub delivery_status: String,
+    /// When the acknowledgement landed.
+    pub acknowledged_at: String,
+    /// True when THIS call moved the row (`pending`/`delivered` →
+    /// `acknowledged`); false when it was already acknowledged.
+    pub changed: bool,
+}
+
+/// Record a terminal's acknowledgement of a memo directly in PG.
+///
+/// This is the upstream half of the cloud-read path: memos reach a
+/// terminal through the cloud, so the ack must flow back through the
+/// cloud too — the tablet's local `memo_recipients` table is
+/// structurally empty and the desktop only learns ack state through the
+/// next push's monotonic merge (see `sync_memos`).
+///
+/// Semantics mirror `Store::acknowledge_memo`: an ack proves receipt, so
+/// `delivered_at` is backfilled when the row is still `pending`; a
+/// second ack is a no-op success (`changed: false`); an unknown
+/// recipient is `NotFound`. The terminal comes from the authenticated
+/// claims — the caller cannot name another terminal — and the row's
+/// tenant was stamped at push time from the same claim source.
+pub async fn ack_memo(
+    pool: &Pool,
+    tenant_id: &str,
+    memo_id: &str,
+    terminal_id: &str,
+    acknowledged_by: Option<&str>,
+) -> Result<MemoAckResult, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let changed = tx
+        .execute(
+            "UPDATE memo_recipients
+             SET delivery_status = 'acknowledged',
+                 delivered_at = COALESCE(delivered_at, $3),
+                 acknowledged_at = $3,
+                 acknowledged_by = COALESCE($4, acknowledged_by)
+             WHERE memo_id = $1 AND terminal_id = $2
+               AND delivery_status IN ('pending', 'delivered')",
+            &[&memo_id, &terminal_id, &now, &acknowledged_by],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    if changed == 0 {
+        // Either the recipient does not exist or it is already
+        // acknowledged — distinguish so an already-acked memo stays a
+        // no-op success (the UI's re-ack must not 404).
+        // A `None` below is AMBIGUOUS: the recipient row may be genuinely
+        // absent (NotFound is then correct) or the SELECT may have failed on a
+        // row that exists — e.g. an already-acknowledged one, which should have
+        // returned the no-op success above and now reads as a 404. The
+        // fall-through is deliberate: the UPDATE's `changed == 0` is the
+        // authoritative write-side backstop (nothing was written either way),
+        // and the warning is how you tell the two None cases apart.
+        let existing: Option<String> = match tx
+            .query_one(
+                "SELECT delivery_status FROM memo_recipients
+                 WHERE memo_id = $1 AND terminal_id = $2",
+                &[&memo_id, &terminal_id],
+            )
+            .await
+        {
+            Ok(row) => Some(row.get(0)),
+            Err(e) => {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    memo_id = %memo_id,
+                    terminal_id = %terminal_id,
+                    operation = "ack_memo delivery_status read",
+                    error = %e,
+                    "memo recipient lookup failed after a no-op ack; answering NotFound"
+                );
+                None
+            }
+        };
+        match existing.as_deref() {
+            Some("acknowledged") => {
+                let acknowledged_at: String = tx
+                    .query_one(
+                        "SELECT COALESCE(acknowledged_at, $3) FROM memo_recipients
+                         WHERE memo_id = $1 AND terminal_id = $2",
+                        &[&memo_id, &terminal_id, &now],
+                    )
+                    .await
+                    .map_err(|e| PgError::Db(e.to_string()))?
+                    .get(0);
+                tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+                return Ok(MemoAckResult {
+                    memo_id: memo_id.to_string(),
+                    terminal_id: terminal_id.to_string(),
+                    delivery_status: "acknowledged".to_string(),
+                    acknowledged_at,
+                    changed: false,
+                });
+            }
+            _ => return Err(PgError::NotFound),
+        }
+    }
+
+    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
+    Ok(MemoAckResult {
+        memo_id: memo_id.to_string(),
+        terminal_id: terminal_id.to_string(),
+        delivery_status: "acknowledged".to_string(),
+        acknowledged_at: now,
+        changed: true,
+    })
+}
+
+/// One active memo served to a terminal, mirroring the banner's read shape.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ActiveMemoPg {
+    /// Memo id.
+    pub id: String,
+    /// Targeted location ids; empty ⇒ Organization Memo.
+    pub location_ids: Vec<String>,
+    /// Author's user id.
+    pub author_user_id: String,
+    /// Author's role snapshot.
+    pub author_role: String,
+    /// Title.
+    pub title: String,
+    /// Body.
+    pub body: String,
+    /// Display duration.
+    pub duration: String,
+    /// Current revision.
+    pub revision: i64,
+    /// Publish instant.
+    pub published_at: Option<String>,
+    /// Expiry instant.
+    pub expires_at: Option<String>,
+    /// Creation timestamp (the tablet's display DTO requires it).
+    pub created_at: String,
+    /// This terminal's delivery state.
+    pub delivery_status: String,
+}
+
+/// Read the memos a terminal should currently display, tenant-scoped by RLS
+/// and audience-scoped by the recipient join — the PG twin of
+/// `Store::list_active_for_terminal` (Location stacked above Organization,
+/// newest-published first, expiry checked in the WHERE so an un-swept row
+/// cannot display past its deadline).
+pub async fn list_active_memos_for_terminal(
+    pool: &Pool,
+    tenant_id: &str,
+    terminal_id: &str,
+    now: &str,
+) -> Result<Vec<ActiveMemoPg>, PgError> {
+    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
+    let tx = client
+        .transaction()
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
+    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    let rows = tx
+        .query(
+            "SELECT m.id, m.author_user_id, m.author_role, m.title, m.body,
+                    m.duration, m.revision, m.published_at, m.expires_at,
+                    m.created_at, r.delivery_status,
+                    (SELECT string_agg(ml.location_id, ',')
+                     FROM memo_locations ml WHERE ml.memo_id = m.id) AS location_ids_csv
+             FROM memos m
+             JOIN memo_recipients r ON r.memo_id = m.id
+             WHERE m.tenant_id = $1 AND r.terminal_id = $2
+               AND m.status = 'published'
+               AND (m.expires_at IS NULL OR m.expires_at > $3)
+             ORDER BY (EXISTS (SELECT 1 FROM memo_locations ml WHERE ml.memo_id = m.id)) DESC,
+                      m.published_at DESC",
+            &[
+                &tenant_id.to_string(),
+                &terminal_id.to_string(),
+                &now.to_string(),
+            ],
+        )
+        .await
+        .map_err(|e| PgError::Db(e.to_string()))?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let location_ids_csv: Option<String> = row.get("location_ids_csv");
+        out.push(ActiveMemoPg {
+            id: row.get("id"),
+            location_ids: location_ids_csv
+                .map(|csv| {
+                    csv.split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            author_user_id: row.get("author_user_id"),
+            author_role: row.get("author_role"),
+            title: row.get("title"),
+            body: row.get("body"),
+            duration: row.get("duration"),
+            revision: row.get("revision"),
+            published_at: row.get("published_at"),
+            expires_at: row.get("expires_at"),
+            created_at: row.get("created_at"),
+            delivery_status: row.get("delivery_status"),
+        });
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

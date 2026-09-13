@@ -46,6 +46,18 @@ vi.mock('@/features/kds/KdsScreen', () => ({
   default: () => <div data-testid="kds-screen">KDS</div>,
 }));
 
+// Memo banner surface stub: pins WHERE the banner mounts (the shell's job),
+// not memo content — MemoBanner.test.tsx owns that. Records the kds prop so
+// the doubled-cadence variant is assertable per surface.
+const memoBannerKds: boolean[] = [];
+
+vi.mock('@/features/memo/MemoBanner', () => ({
+  default: (props: { kds?: boolean }) => {
+    memoBannerKds.push(Boolean(props.kds));
+    return <div data-testid="memo-banner-mount" />;
+  },
+}));
+
 // ── Mock orientation lock (side effect only, no UI impact) ───────
 
 vi.mock('@/hooks/useOrientation', () => ({
@@ -344,6 +356,72 @@ describe('TabletAppShell — routing', () => {
       // PermissionDenied falls back to its hardcoded English copy when the
       // FTL keys are absent (shared.ftl only in this test).
       expect(screen.getByText('Access Denied')).toBeInTheDocument();
+    });
+  });
+
+  // ── Memo banner surface (owner ruling 2026-09-08) ──────────
+  //
+  // Same ruling as the desktop shell: app-wide on authenticated
+  // surfaces, hidden on the login screen. The tablet has no session
+  // lock screen and no customer-facing kiosk route; the sidebar
+  // branch's mount lives in TabletAppLayout and is pinned here too.
+
+  describe('memo banner surface', () => {
+    beforeEach(() => {
+      memoBannerKds.length = 0;
+    });
+
+    it('mounts the banner on the workspace picker', async () => {
+      // beforeEach leaves activeWorkspace null with an owner session.
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('mounts the banner on the restaurant-pos workspace', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'restaurant-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('mounts the banner on the store-pos workspace', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'store-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+    });
+
+    it('uses the doubled-cadence kds variant on the kds workspace', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'kds' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('kds-screen')).toBeInTheDocument();
+      });
+      expect(memoBannerKds.at(-1)).toBe(true);
+    });
+
+    it('mounts the banner inside the sidebar layout branch', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'admin', workspaceScreens: ['pos'] });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+      });
+    });
+
+    it('keeps the banner off the login screen', async () => {
+      mockNoSession();
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
     });
   });
 });

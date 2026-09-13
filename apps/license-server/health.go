@@ -45,19 +45,104 @@ func handleHealth(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		return e.JSON(status, map[string]any{
-			"status":       statusText,
-			"db_connected": dbConnected,
-			"db_error":     dbErr,
-			"smtp":         smtpHealthSnapshot(),
-			"paddle":       paddleHealthStatus(),
-			"midtrans":     midtransHealthStatus(),
-			"rsa":          rsaHealthStatus(),
-			"discord":      discordHealthStatus(),
-			"uptime_secs":  int(uptime),
-			"go_version":   runtime.Version(),
-			"go_os":        runtime.GOOS,
-			"go_arch":      runtime.GOARCH,
+			"status":        statusText,
+			"db_connected":  dbConnected,
+			"db_error":      dbErr,
+			"smtp":          smtpHealthSnapshot(),
+			"admin":         adminEmailHealthSnapshot(app),
+			"paddle":        paddleHealthStatus(),
+			"midtrans":      midtransHealthStatus(),
+			"market_prices": marketPriceHealthStatus(),
+			"rsa":           rsaHealthStatus(),
+			"discord":       discordHealthStatus(),
+			"uptime_secs":   int(uptime),
+			"go_version":    runtime.Version(),
+			"go_os":         runtime.GOOS,
+			"go_arch":       runtime.GOARCH,
 		})
+	}
+}
+
+// ── Admin-identity health status ──────────────────────────────────────
+
+// adminEmailHealthSnapshot reports the OZ_ADMIN_EMAIL configuration state
+// so a misconfigured deployment is diagnosable from /api/health instead of
+// arriving as a validation-shaped error.
+//
+// WHY THIS EXISTS: the admin identity is an email comparison on
+// OZ_ADMIN_EMAIL, and the address itself is deliberately visible nowhere an
+// operator can read it, so /api/health is the only place the SHAPE of that
+// configuration is diagnosable. Two states matter and both are reported
+// here: an env value that names NO tenants row (source "env" with
+// matching_rows 0 — authentication anchors on an address nothing maps, so
+// there is no web admin), and an unset env, where authentication anchors on
+// the compiled defaultAdminEmail and the deployment is running on an address
+// that lives in the binary (source "fallback").
+//
+// THE TWO READINGS ARE STILL DIFFERENT THINGS, and that is the point of
+// splitting them rather than emitting one configured flag:
+//
+//	source        — what AUTHENTICATION would anchor on: the trimmed
+//	                OZ_ADMIN_EMAIL ("env"), else the compiled
+//	                defaultAdminEmail ("fallback").
+//	matching_rows — how many tenants rows carry THAT address. The guard is
+//	                wider than the anchor by design: it tests membership in
+//	                the reserved set (env UNION compiled default), so a row
+//	                at the compiled default is protected even when source is
+//	                "env". matching_rows is therefore the auth view, NOT a
+//	                count of protected rows — do not read it as one.
+//	verified      — DEPLOY HYGIENE, not behaviour. True only when the
+//	                operator NAMED the address (source "env") and exactly
+//	                one row carries it. It does not claim an admin can log
+//	                in: that also needs a verified mailbox, a credential and
+//	                a session, none of which this reads. Saying "hygiene"
+//	                out loud matters because the other reading is the one a
+//	                reader will otherwise assume.
+//
+// health.go reads defaultAdminEmail DIRECTLY rather than calling
+// adminEmailTarget / adminEmailTargetWithDefault. Legal because it is the
+// same package, deliberate because if the resolver ever drops the fallback
+// then source="fallback" would become unreachable through it — and that is
+// exactly the state worth reporting.
+//
+// NO ADDRESS IS EVER ECHOED: not the env value, not the compiled default,
+// not a masked, hashed or truncated form of either. /api/health is public
+// (no auth — see handleHealth) and the admin identity is the one account an
+// attacker needs to be able to name. Only the shape is reported.
+//
+// Read per request, no cache: unlike the SMTP probe this costs one pass
+// over the tenants table, not a network round trip to a relay.
+func adminEmailHealthSnapshot(app core.App) map[string]any {
+	source := "fallback"
+	address := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
+	if address == "" {
+		address = defaultAdminEmail
+	} else {
+		source = "env"
+	}
+
+	// -1 means "could not count" — an unreadable tenants collection must
+	// never be reported as the 0 that means "configured, but no such row".
+	matching := -1
+	if rows, err := app.FindAllRecords("tenants"); err != nil {
+		log.Printf("/health: admin email snapshot could not read tenants: %v", err)
+	} else {
+		matching = 0
+		for _, r := range rows {
+			// EqualFold on the ANCHOR address — what authentication maps a
+			// session to. The guard is a set membership test
+			// (reservedAdminEmails, normalized lowercase), so it can protect
+			// rows this count does not include.
+			if strings.EqualFold(r.GetString("email"), address) {
+				matching++
+			}
+		}
+	}
+
+	return map[string]any{
+		"source":        source,
+		"matching_rows": matching,
+		"verified":      source == "env" && matching == 1,
 	}
 }
 
@@ -111,6 +196,36 @@ func midtransHealthStatus() map[string]any {
 		status["price_tiers_configured"] = true
 		status["price_tiers_mappings"] = len(m)
 	}
+	return status
+}
+
+// marketPriceHealthStatus reports the OPTIONAL per-market price maps
+// (PRICE_TIERS_<CURRENCY>, saas-3 D95) alongside the per-provider
+// price_tiers_* reports. Unlike those boot gates these maps never fail
+// the server: absent = {configured:false} (the USD+FX fallback covers
+// everything), configured = market → mapping count, malformed = the
+// parse error under that market so the operator can fix the var
+// without a deploy and without an outage.
+func marketPriceHealthStatus() map[string]any {
+	status := map[string]any{
+		"configured": false,
+		"markets":    map[string]any{},
+		"errors":     map[string]string{},
+	}
+	maps, errs := marketPriceTiers()
+	markets := map[string]any{}
+	for cur, m := range maps {
+		markets[cur] = map[string]any{"mappings": len(m)}
+	}
+	errors := map[string]string{}
+	for cur, err := range errs {
+		errors[cur] = err.Error()
+	}
+	if len(markets) > 0 {
+		status["configured"] = true
+	}
+	status["markets"] = markets
+	status["errors"] = errors
 	return status
 }
 

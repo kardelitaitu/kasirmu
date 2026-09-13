@@ -1,0 +1,119 @@
+.org-switcher {
+  position: relative;
+  display: inline-block;
+}
+
+.org-switcher-trigger {
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+  color: inherit;
+  border-radius: 8px;
+  padding: var(--space-1_5) var(--space-3);
+  cursor: pointer;
+  font: inherit;
+}
+
+.org-switcher-current {
+  font-weight: 600;
+}
+
+.org-switcher-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 180px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface, #1f2430);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+}
+
+.org-switcher-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.org-switcher-option:hover,
+.org-switcher-option[aria-selected='true'] {
+  background: var(--accent-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.org-switcher-modal {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 240px;
+  padding: var(--space-3_5);
+  background: var(--surface, #1f2430);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  z-index: 60;
+}
+
+.org-switcher-modal-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.org-switcher-modal-sub {
+  margin: 0 0 10px;
+  opacity: 0.75;
+}
+
+.org-switcher-pin {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+  background: var(--surface-input, #11141c);
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0.3em;
+}
+
+.org-switcher-error {
+  margin: 8px 0 0;
+  color: var(--danger, #ff6b6b);
+  font-size: var(--text-sm);
+}
+
+.org-switcher-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: var(--space-3);
+}
+
+.org-switcher-cancel,
+.org-switcher-confirm {
+  border-radius: 8px;
+  padding: var(--space-1_5) var(--space-3);
+  cursor: pointer;
+  font: inherit;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+}
+
+.org-switcher-confirm {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+  color: var(--accent-contrast, #fff);
+}
+
+.org-switcher-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

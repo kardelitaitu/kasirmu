@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (tablet-client UI-1 investigation + fix)
 crate: tablet-client | status: SAFE | lint: CLEAN
-findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); new gateway_status command computes configured/online booleans server-side; deny-list test extended with the three keys. Verified during UI-1: deny-list check on run_get_setting, sync.auth_token cross-screen readability test retained
+findings: UI-1 FIXED 25-07-26 — SECRET_KEY_DENY_LIST extended with stripe.api_key, square.api_key, midtrans.server_key (payment credentials never reach the renderer); new gateway_status command computes configured/online booleans server-side; deny-list test extended with the three keys. Verified during UI-1: deny-list check on run_get_setting. sync.auth_token: the cross-screen readability tests were inverted by b2196d701 — they now assert the read is refused while the written row persists, and that both untrusted ingest policies (RemoteSync, PortablePackage) refuse to carry it; no readability test is retained
 next: none | perf: N/A
 */
 //!
@@ -16,10 +16,12 @@ use tauri::command;
 
 use std::collections::HashMap;
 
+use oz_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
 use oz_core::permissions;
+use oz_core::settings::{IngestPolicy, IngestPolicyKind};
 use oz_core::{Settings, Store, UserPreferences};
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -474,24 +476,14 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
     Ok(Settings::get(conn, key)?)
 }
 
-/// Keys that must never be returned via the raw `get_setting` IPC.
-/// C-2: CWE-200 information disclosure prevention.
-const SECRET_KEY_DENY_LIST: &[&str] = &[
-    "sync_api_key",
-    "sync.terminal_secret",
-    "pg_sync.password",
-    "rate_sync.api_key",
-    "lan_server.psk",
-    "smtp_config",
-    "license.api_key",
-    "license.payload",
-    "license.signature",
-    "license.tenant_id",
-    // UI-1: payment gateway credentials must never reach the renderer.
-    "stripe.api_key",
-    "square.api_key",
-    "midtrans.server_key",
-];
+// The hand copy of SECRET_KEY_DENY_LIST that used to sit here is deleted. The
+// tablet and the desktop lane now answer from the SAME list, owned by
+// platform_core::settings::keys and built there from the key constants.
+// The private copy had drifted exactly the way an unenforced duplicate
+// drifts: it spelled the terminal secret "sync.terminal_secret" while the
+// stored key is "sync_terminal_secret", and it omitted "local_api.secret"
+// entirely - so both credentials were readable through this shell's
+// get_setting while the tests that named them stayed green.
 
 /// Status entry for one payment gateway.
 #[derive(Debug, Serialize)]
@@ -509,8 +501,9 @@ pub struct GatewayStatusEntry {
 /// Report which payment gateways have credentials configured.
 ///
 /// UI-1: computes the configured/online booleans server-side so the raw
-/// credential values never leave the backend — the gateway keys are on
-/// the `SECRET_KEY_DENY_LIST`, and the renderer only ever sees booleans.
+/// credential values never leave the backend — the gateway keys are on the
+/// shared `SECRET_KEY_DENY_LIST` (platform_core::settings::keys), and the
+/// renderer only ever sees booleans.
 #[tauri::command]
 pub async fn gateway_status(
     state: State<'_, AppState>,
@@ -543,8 +536,10 @@ pub async fn gateway_status(
 
 /// Returns `true` if the given settings key should be blocked from
 /// the raw `get_setting` IPC surface.
+///
+/// Thin delegation to the shared predicate: one list, one match, both shells.
 fn is_secret_key(key: &str) -> bool {
-    SECRET_KEY_DENY_LIST.contains(&key)
+    platform_core::settings::keys::is_secret_setting_key(key)
 }
 
 /// Write (or overwrite) a single setting value.
@@ -581,12 +576,60 @@ pub async fn set_setting(
 /// Business logic for `set_setting` (extracted for testing).
 /// Uses `set_tracked` so every settings change writes a delta record
 /// (ADR #22) — the basis for version-LWW when the change syncs.
+///
+/// Twin of `oz_bridge::settings::run_set_setting`: this shell has its own
+/// write funnel, not the bridge's, so the `smtp_config` exception has to be
+/// made here too or the same save destroys the stored password on tablet.
+/// `smtp_config` is deny-listed against [`run_get_setting`], so the
+/// email-report card cannot read the stored password back and posts a blob
+/// whose `password` is null; the key's owner answers what should land and
+/// the write still goes through the tracked path so the delta is recorded.
+///
+/// The credential pre-flight has to be made here for the same twin reason.
+/// Without it the write is STILL refused — `Settings::set_tracked` asks the
+/// rule itself before it opens its transaction (`refuse_cleartext_credential`
+/// at the head of `set_tracked` in `platform/core/src/settings/raw.rs`, and
+/// again per row in `set_tracked_in_tx`) — but it refuses with
+/// `PlatformError::Internal`, which crosses this shell as
+/// `AppError::Core { sub_kind: Platform }`: the operator is told the shell
+/// broke, while the desktop, which pre-flights, says "invalid request". This
+/// door now raises `AppError::Invalid` carrying platform-core's own sentence,
+/// so one key and one refusal produce one error class on both shells. The
+/// per-row refusal stays as the floor under this ask, not its substitute.
 fn run_set_setting(
     conn: &rusqlite::Connection,
     key: &str,
     value: &str,
     terminal_id: &str,
 ) -> Result<(), AppError> {
+    // The rule AND the wording belong to the producer in platform-core, exactly
+    // like the credential door under it: `manager_owned_key_refusal` answers
+    // `None` for a key nobody owns and the refusal for one somebody does. No
+    // tablet-side prefix list, so the shells cannot drift on what the prefixes
+    // mean; and no tablet-side sentence, so they cannot drift on the refusal
+    // either. This lane has no manager-name lookup (no manager surface on the
+    // tablet), so it passes `None` and takes the generic label. Both lanes
+    // calling one producer is what the parity sweep under this function holds
+    // the lanes to: restating the sentence in this file is the failure IT
+    // reports, and the failure it cannot see — a word leaving the producer — is
+    // what `tablet_manager_refusal_sentence_drift_pin` exists to report.
+    if let Some(refusal) = platform_core::settings::Settings::manager_owned_key_refusal(key, None) {
+        return Err(AppError::Invalid(refusal));
+    }
+    // The credential door under it works the same way: the producer answers with
+    // the rule and this lane only chooses the variant. The message names the key
+    // and never the value — a value in an error string is a leak through the log
+    // lane.
+    if let Some(refusal) = platform_core::settings::Settings::cleartext_credential_refusal(key) {
+        return Err(AppError::Invalid(refusal));
+    }
+    let merged;
+    let value = if key == SMTP_CONFIG_SETTINGS_KEY {
+        merged = Store::new(conn).merged_smtp_password_json(value)?;
+        &merged
+    } else {
+        value
+    };
     Ok(Settings::set_tracked(conn, key, value, terminal_id)?)
 }
 
@@ -600,11 +643,24 @@ fn enqueue_settings_update(
     value: &str,
     terminal_id: &str,
 ) -> Result<(), AppError> {
+    // Egress gate — symmetric with the bridge funnel (`oz_bridge::settings`):
+    // a key the ingest side would refuse must not be OFFERED to the network
+    // either. Both tablet call sites (global and scoped set_setting) funnel
+    // through THIS function, so this is the one boundary to keep in sync.
+    // Warn-and-skip, never an error: the local write already committed, and
+    // the warn names the key and the policy, never the value.
+    if !IngestPolicy::RemoteSync.admits(key) {
+        tracing::warn!(
+            key = %key,
+            policy = IngestPolicy::RemoteSync.label(),
+            "settings key refused by sync egress policy (not enqueued)"
+        );
+        return Ok(());
+    }
     Ok(store.enqueue_settings_update_superseding(key, value, terminal_id, "default")?)
 }
 
 /// Session-scoped variant of `get_receipt_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_receipt_settings_scoped(
     session_token: String,
@@ -614,12 +670,10 @@ pub async fn get_receipt_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    run_get_receipt_settings(&conn)
+    run_get_receipt_settings(&db_guard)
 }
 
 /// Session-scoped variant of `set_receipt_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_receipt_settings_scoped(
     session_token: String,
@@ -631,14 +685,12 @@ pub async fn set_receipt_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_receipt_settings(&conn, &args)
+    run_set_receipt_settings(&db_guard, &args)
 }
 
 /// Session-scoped variant of `get_store_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_store_settings_scoped(
     session_token: String,
@@ -648,12 +700,10 @@ pub async fn get_store_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    run_get_store_settings(&conn)
+    run_get_store_settings(&db_guard)
 }
 
 /// Session-scoped variant of `set_store_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_store_settings_scoped(
     session_token: String,
@@ -665,14 +715,12 @@ pub async fn set_store_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_store_settings(&conn, &args)
+    run_set_store_settings(&db_guard, &args)
 }
 
 /// Session-scoped variant of `get_credit_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_credit_settings_scoped(
     session_token: String,
@@ -682,16 +730,14 @@ pub async fn get_credit_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
     Ok(CreditSettingsDto {
-        enabled: Settings::is_credit_enabled(&conn)?,
-        reminder_interval_hours: Settings::get_credit_reminder_interval(&conn)?,
-        max_limit_minor: Settings::get_credit_max_limit(&conn)?,
+        enabled: Settings::is_credit_enabled(&db_guard)?,
+        reminder_interval_hours: Settings::get_credit_reminder_interval(&db_guard)?,
+        max_limit_minor: Settings::get_credit_max_limit(&db_guard)?,
     })
 }
 
 /// Session-scoped variant of `set_credit_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_credit_settings_scoped(
     session_token: String,
@@ -703,10 +749,9 @@ pub async fn set_credit_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = db_guard.unchecked_transaction()?;
     Settings::set_credit_enabled(&tx, args.enabled)?;
     Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
     Settings::set_credit_max_limit(&tx, args.max_limit_minor)?;
@@ -715,7 +760,6 @@ pub async fn set_credit_settings_scoped(
 }
 
 /// Session-scoped variant of `list_credit_sales`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_credit_sales_scoped(
     session_token: String,
@@ -725,8 +769,7 @@ pub async fn list_credit_sales_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let mut stmt = conn.prepare(
+    let mut stmt = db_guard.prepare(
         "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
                 p.settled_at, COALESCE(u.display_name, '')
          FROM sales s
@@ -751,7 +794,6 @@ pub async fn list_credit_sales_scoped(
 }
 
 /// Session-scoped variant of `settle_credit`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn settle_credit_scoped(
     session_token: String,
@@ -763,10 +805,9 @@ pub async fn settle_credit_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = db_guard.unchecked_transaction()?;
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute(
         "UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'",
@@ -777,7 +818,6 @@ pub async fn settle_credit_scoped(
 }
 
 /// Session-scoped variant of `get_hardware_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_hardware_settings_scoped(
     session_token: String,
@@ -787,18 +827,16 @@ pub async fn get_hardware_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
     Ok(HardwareSettingsDto {
-        printer_connection: Settings::get_printer_connection(&conn)?,
-        printer_device_path: Settings::get_printer_device_path(&conn)?,
-        printer_paper_size: Settings::get_printer_paper_size(&conn)?,
-        scanner_device_id: Settings::get_scanner_device_id(&conn)?,
-        scanner_input_mode: Settings::get_scanner_input_mode(&conn)?,
+        printer_connection: Settings::get_printer_connection(&db_guard)?,
+        printer_device_path: Settings::get_printer_device_path(&db_guard)?,
+        printer_paper_size: Settings::get_printer_paper_size(&db_guard)?,
+        scanner_device_id: Settings::get_scanner_device_id(&db_guard)?,
+        scanner_input_mode: Settings::get_scanner_input_mode(&db_guard)?,
     })
 }
 
 /// Session-scoped variant of `set_hardware_settings`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_hardware_settings_scoped(
     session_token: String,
@@ -810,10 +848,9 @@ pub async fn set_hardware_settings_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
+    let tx = db_guard.unchecked_transaction()?;
     Settings::set_printer_connection(&tx, &args.printer_connection)?;
     Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
     Settings::set_printer_paper_size(&tx, &args.printer_paper_size)?;
@@ -824,7 +861,6 @@ pub async fn set_hardware_settings_scoped(
 }
 
 /// Session-scoped variant of `get_setting`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_setting_scoped(
     session_token: String,
@@ -835,12 +871,10 @@ pub async fn get_setting_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    run_get_setting(&conn, &key)
+    run_get_setting(&db_guard, &key)
 }
 
 /// Session-scoped variant of `set_setting`.
-#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn set_setting_scoped(
     session_token: String,
@@ -861,10 +895,9 @@ pub async fn set_setting_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let conn = &*db_guard;
-    let store = oz_core::db::Store::new(&conn);
+    let store = oz_core::db::Store::new(&db_guard);
     require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_setting(&conn, &key, &value, &terminal_id)?;
+    run_set_setting(&db_guard, &key, &value, &terminal_id)?;
     // SYNC-10 parity: enqueue the change so the tablet's sync daemon
     // pushes it to the cloud (and the desktop's pull re-applies it).
     // Warn-and-continue — the local write already committed.
@@ -872,6 +905,43 @@ pub async fn set_setting_scoped(
         tracing::warn!(key = %key, error = %e, "failed to enqueue settings.update sync item");
     }
     Ok(())
+}
+
+// ── Deployment / version read (operator tooling, saas-3 L162) ─────
+
+/// Running deployment metadata for the operator/support "About" surface in
+/// Diagnostics (todo-global-saas-3.md, L162 operator tooling). The version is
+/// organization-global — the build version is identical across every store — so
+/// there is no store to resolve; a `_scoped` variant would be an empty ceremony
+/// (category 2, per `scripts/verify-scoped-coverage.sh`, alongside
+/// `get_over_quota_report`). It is still gated on `settings:read` inline so only
+/// roles that can already read store/system settings see it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeploymentInfo {
+    /// The running build version (`CARGO_PKG_VERSION`, locked to the release
+    /// line — 0.0.37 at this writing).
+    pub app_version: String,
+}
+
+/// Read-only deployment metadata for the signed-in operator. Authenticates the
+/// session and checks `settings:read` inline (category 2 unscoped command).
+#[command]
+pub async fn get_deployment_info(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<DeploymentInfo, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    Ok(build_deployment_info())
+}
+
+/// Build the deployment-info payload. Split out so tests exercise the exact
+/// production path without standing up a session.
+fn build_deployment_info() -> DeploymentInfo {
+    DeploymentInfo {
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
 }
 
 #[cfg(test)]

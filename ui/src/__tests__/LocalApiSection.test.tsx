@@ -25,9 +25,9 @@ const api = vi.hoisted(() => ({
 vi.mock('@/api/localApi', () => api);
 
 const storesApi = vi.hoisted(() => ({
-  listStoresScoped: vi.fn(),
+  listLocationsScoped: vi.fn(),
 }));
-vi.mock('@/api/stores', () => storesApi);
+vi.mock('@/api/locations', () => storesApi);
 
 const addToast = vi.hoisted(() => vi.fn());
 vi.mock('@/frontend/shared/Toast', () => ({ useToast: () => ({ addToast }) }));
@@ -162,7 +162,7 @@ beforeEach(() => {
     expires_at: '2026-10-01T00:00:00Z',
     token_id: 'tid-1',
   });
-  storesApi.listStoresScoped.mockResolvedValue([STORE_DEFAULT]);
+  storesApi.listLocationsScoped.mockResolvedValue([STORE_DEFAULT]);
 });
 
 afterEach(() => {
@@ -325,13 +325,13 @@ describe('LocalApiSection', () => {
     api.getLocalApiStatusScoped.mockResolvedValue(RUNNING);
     render(<Wrapper><LocalApiSection /></Wrapper>);
     await waitFor(() => expect(screen.getByTestId('local-api-status-row')).toBeInTheDocument());
-    await waitFor(() => expect(storesApi.listStoresScoped).toHaveBeenCalledWith('test-token'));
+    await waitFor(() => expect(storesApi.listLocationsScoped).toHaveBeenCalledWith('test-token'));
     expect(screen.queryByTestId('local-api-store-row')).not.toBeInTheDocument();
   });
 
   it('store selector appears with multiple stores and switches', async () => {
     api.getLocalApiStatusScoped.mockResolvedValue(RUNNING);
-    storesApi.listStoresScoped.mockResolvedValue([STORE_DEFAULT, STORE_B]);
+    storesApi.listLocationsScoped.mockResolvedValue([STORE_DEFAULT, STORE_B]);
     render(<Wrapper><LocalApiSection /></Wrapper>);
     await waitFor(() => expect(screen.getByTestId('local-api-store-row')).toBeInTheDocument());
     const select = screen.getByLabelText('Served store') as HTMLSelectElement;
@@ -347,7 +347,7 @@ describe('LocalApiSection', () => {
 
   it('store switch failure surfaces an error toast and refetches', async () => {
     api.getLocalApiStatusScoped.mockResolvedValue(RUNNING);
-    storesApi.listStoresScoped.mockResolvedValue([STORE_DEFAULT, STORE_B]);
+    storesApi.listLocationsScoped.mockResolvedValue([STORE_DEFAULT, STORE_B]);
     api.setLocalApiStoreScoped.mockRejectedValueOnce(new Error('boom'));
     render(<Wrapper><LocalApiSection /></Wrapper>);
     await waitFor(() => expect(screen.getByTestId('local-api-store-row')).toBeInTheDocument());

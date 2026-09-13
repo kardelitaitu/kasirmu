@@ -59,6 +59,15 @@ describe('sales.ts API contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('complete_sale_scoped', { sessionToken: 'tok', args: { cartId: 'c1', paymentMethod: 'cash', tenderedMinor: 5000, promotionIds: ['promo-2'] } });
   });
 
+  // F2-6: the estimate claim crosses the IPC boundary — the caller flags
+  // a checkout whose displayed tax was not freshly computed; absent is
+  // the no-stamp default and is covered by PaymentModalSaleFlow.
+  it('completeSaleScoped passes taxEstimated through to the backend', async () => {
+    mockInvoke.mockResolvedValue({ saleId: 's1' });
+    await completeSaleScoped('tok', { cartId: 'c1' as CartId, paymentMethod: 'cash', tenderedMinor: 5000, taxEstimated: true });
+    expect(mockInvoke).toHaveBeenCalledWith('complete_sale_scoped', { sessionToken: 'tok', args: { cartId: 'c1', paymentMethod: 'cash', tenderedMinor: 5000, taxEstimated: true } });
+  });
+
   // PROMO-3: the preview command drives split construction before checkout
   it('previewPromotedTotalScoped calls correct command', async () => {
     mockInvoke.mockResolvedValue({ baseTotalMinor: 50000, totalMinor: 42500, discounts: [{ promotionId: 'promo-2', discountMinor: 7500, description: 'Happy Hour 15%: 7500 off' }] });

@@ -2,6 +2,48 @@
 
 # Setup Wizard
 setup-logo = OZ-POS
+# ── License: over-quota remediation (§J) ──
+settings-license-quota-title = Quota status
+settings-license-quota-intro = Resources measured against the { $tier } tier quotas — the same numbers the creation gates enforce.
+settings-license-quota-ok = Everything is within quota.
+settings-license-quota-over-aria = Over-quota resources
+settings-license-quota-over-heading = Over quota — archive or upgrade
+settings-license-quota-over-line = { $current } of { $limit } — { $excess } over
+settings-license-quota-guidance = Archive unused resources in the relevant screen, or upgrade the tier to raise the limits. Nothing was deleted automatically.
+settings-license-quota-load-failed = Could not load the quota assessment.
+settings-license-quota-refresh = Refresh
+settings-license-quota-dim-locations = Locations
+settings-license-quota-dim-pos-registers = POS terminals
+settings-license-quota-dim-warehouses = Warehouse stock points
+settings-license-quota-dim-staff = Staff accounts
+settings-license-quota-dim-products = Products
+# §J B3 — the per-location KDS cap. It has no tenant-global usage row, so it
+# needs a label of its own even though it is not a QuotaDimension in the
+# tenant-global sense.
+settings-license-quota-dim-kds-screens = KDS screens (this location)
+# Marker S4 — the per-store topology-node aggregate: one row per store counting
+# its non-archived instances against the SUM of the per-location caps, over the
+# moment ≥1 instance had to be quota-suspended. Read-computed, never persisted.
+settings-license-quota-dim-topology-nodes = Topology nodes (this store)
+# §J B3 — rows capped per location rather than per tenant.
+settings-license-quota-loc-aria = Per-location quota limits
+settings-license-quota-loc-title = Per-location limits
+# B1's generic failure line gained a reason slot, because a refused store id
+# and a dropped connection need different answers from the owner. The reason is
+# the ERR-05/06 KIND-MAPPED message, never the backend's own sentence — which
+# row it refers to is carried by the store id the card prints beside this line.
+settings-license-quota-remedy-failed-detail = That action failed: { $reason }. The quota numbers above are unchanged.
+# §J B1 — the two workspace-register remediation actions on the over-quota
+# card. remedy-hint names the store because the card reads as tenant-wide while
+# both actions are bound to one store; the copy must not imply otherwise.
+settings-license-quota-remedy-aria = Workspace register remediation
+settings-license-quota-remedy-title = Workspace registers
+settings-license-quota-remedy-hint = Suspend the surplus registers of { $store }, or restore the ones an earlier downgrade suspended. Only this store is affected.
+settings-license-quota-remedy-suspend = Suspend surplus
+settings-license-quota-remedy-recover = Restore suspended
+settings-license-quota-remedy-suspended = { $count } surplus register(s) suspended. They are disabled, not deleted.
+settings-license-quota-remedy-recovered = { $count } suspended register(s) restored.
+settings-license-quota-remedy-none = Nothing to change — no register of this store is over the limit or suspended.
 setup-tagline = Point of Sale — Simplified
 setup-step-store-type = Store Type
 setup-step-payments = Payments
@@ -191,26 +233,49 @@ ws-preview-name-admin = Admin
 # Settings Page
 settings-title = Settings
 settings-page-title = Settings
-settings-category-business = Business
 
 # ── Sidebar navigation labels ──
 settings-nav-general = General
-settings-nav-appearance = Appearance
-settings-nav-receipt = Receipt
 settings-nav-sync = Cloud Sync
-settings-nav-about = About
 settings-nav-license = License
 settings-nav-topology = Topology
-settings-nav-email = Email Reports
-settings-category-operations = Operations
-settings-category-system = System
+
+# ── Settings screens scaffold (rebuild) ──
+# One nav label per blank screen under features/settings/screens/. The General
+# scaffold reuses settings-nav-general above; the twelve below pair one-to-one
+# with the remaining files, in their own order.
+settings-nav-license-subscription = License & Subscription
+settings-nav-devices-connectivity = Devices & Connectivity
+settings-nav-business-defaults = Business Defaults
+settings-nav-features-modules = Features & Modules
+settings-nav-security-account = Security & Account
+settings-nav-data-sync = Data & Sync
+settings-nav-data-management = Data Management
+settings-nav-sync-status = Sync Status
+settings-nav-sync-conflicts = Sync Conflicts
+settings-nav-offline-queue = Offline Queue
+settings-nav-tax-configuration = Tax Configuration
+settings-nav-exchange-rates = Exchange Rates
+settings-nav-system-diagnostics = System Diagnostics
+settings-screen-placeholder = This page is being rebuilt.
+settings-screen-migrating = Existing settings content will move here selectively.
+# The settings page floor gate: roleAtLeast (utils/role.ts) shows this copy to any
+# role below the admin floor.
+# Sidebar Plus badge: read by the flat nav items whose page is gated behind
+# the Plus plan. Lands together with the badge markup that references it
+# (orphan gate: a key must be referenced by its own commit).
+settings-nav-plus-badge-aria = Requires Plus plan
+settings-locked-title = Settings restricted
+settings-locked-desc = Settings are available to owners and administrators only.
 settings-sidebar-nav-aria = Settings navigation
 settings-sidebar-expand-aria = Expand settings sidebar
 settings-sidebar-collapse-aria = Collapse settings sidebar
 settings-back-aria = Go back
-settings-sidebar-collapse-all-aria = Collapse all categories
 settings-sidebar-search-aria = Search settings
 settings-sidebar-search-clear-aria = Clear search
+# Survives the flat IA: with no categories left, "collapse all" folds every
+# page into the icon rail, i.e. collapses the sidebar.
+settings-sidebar-collapse-all-aria = Collapse all pages
 settings-search-placeholder = Search
 settings-shortcut-btn-aria = Keyboard shortcuts
 settings-shortcuts-title = Keyboard shortcuts
@@ -220,10 +285,24 @@ settings-nav-pin-aria = Pin { $name }
 settings-nav-unpin-aria = Unpin { $name }
 settings-nav-pin-title = Pin
 settings-nav-unpin-title = Unpin
-settings-sidebar-count-aria = { $count } items
-settings-sidebar-count-title = { $count } items
 settings-sidebar-no-results = No matching sections
 settings-sidebar-clear-results = Clear search
+
+# ── Live-region announcements (localized via Fluent vars, P60-4e) ──
+settings-announce-section-opened = { $section } settings opened
+settings-announce-search-none = No settings match your search
+settings-announce-search-count =
+    { $count ->
+        [one] { $count } result found
+       *[other] { $count } results found
+    }
+settings-announce-search-cleared = Search cleared
+
+# ── Keyboard shortcut descriptions (popover) ──
+settings-shortcuts-desc-navigate = Navigate items
+settings-shortcuts-desc-firstlast = First / last item
+settings-shortcuts-desc-close = Close mobile sidebar
+
 settings-theme-toggle-dark-aria = Switch to dark mode
 settings-theme-toggle-light-aria = Switch to light mode
 settings-loading = Loading settings…
@@ -259,6 +338,10 @@ settings-toggle-show-currency = Show currency symbol on amounts
 settings-toggle-show-tax = Show tax line on receipts
 settings-toggle-show-table-number = Show table number on cart and receipts
 settings-btn-save = Save
+settings-close-unsaved-title = Leave with unsaved changes?
+settings-close-unsaved-msg = Your settings changes have not been saved. Closing now discards them.
+settings-close-unsaved-discard = Discard & close
+settings-close-unsaved-keep = Keep editing
 settings-btn-revert = Revert
 
 settings-btn-revert-aria =
@@ -429,6 +512,9 @@ appearance-colour-hex-aria =
 appearance-reset-colour-aria =
     .aria-label = Reset colour to default
 appearance-reset-colour = Reset to default
+appearance-follow-theme-aria = Following theme colour
+    .aria-label = Following theme colour — pick a colour to override
+appearance-follow-theme = Following theme colour
 appearance-logo = Store Logo
 appearance-logo-alt =
     .alt = Store logo
@@ -659,14 +745,13 @@ settings-sync-toast-fail = Sync failed — check server URL and token
 settings-sync-toast-test-success = Connection test passed
 settings-sync-toast-test-fail = Could not reach server
 settings-sync-confirm-overwrite = Overwrite local data with the server snapshot?
+settings-sync-confirm-pull-title = Pull from server?
 settings-sync-pull-toast-success = Pulled { $products } products, { $tax_rates } tax rates, { $users } users from server
 settings-sync-pull-toast-empty = Server snapshot was empty — nothing to pull
 settings-sync-pull-toast-fail = Pull failed — check server URL and token
 settings-field-language = Language
 
 # ── Field validation ──
-settings-store-name-required = Store name is required
-settings-tax-id-pattern-error = Only letters, numbers, dashes, dots, and slashes allowed
 settings-tax-id-pattern-hint = Letters, numbers, dashes, dots, and slashes only, max 20 characters
 
 # ── Updates ──
@@ -801,9 +886,6 @@ workspace-store-info-tax-id = Tax ID
 workspace-type-selector-label = Workspace Type
 
 # ── Phase 3 workspace nav items ──
-settings-nav-store-pos = Store POS
-settings-nav-restaurant-pos = Restaurant POS
-settings-nav-inventory = Inventory
 
 # ── Workspace Settings Modal (ADR #22 Phase 4) ──
 workspace-modal-title = Workspace Settings
@@ -855,7 +937,6 @@ addon-hal-name = Custom HAL Drivers
 addon-hal-desc = Load and use custom hardware abstraction layer drivers for specialized POS peripherals.
 
 // ── Local API (Settings → Local API) ──────────────────────────────
-settings-nav-local-api = Local API
 settings-section-local-api = Local API
 settings-local-api-intro = Run your own scripts against this register over HTTP. The server listens only on this machine (127.0.0.1) and is off by default.
 settings-local-api-enabled = Enable Local API
@@ -891,3 +972,169 @@ settings-local-api-rotate-confirm = Confirm rotate
 settings-local-api-rotate-cancel = Cancel
 settings-local-api-rotate-done = Signing secret rotated — mint a new token for your scripts.
 settings-local-api-rotate-failed = Could not rotate the signing secret.
+
+# Settings section scope badges (todo-global-saas-1.md §H)
+settings-scope-organization = Organization
+settings-scope-legal-entity = Legal Entity
+settings-scope-location = Location
+settings-scope-workspace = Workspace
+settings-scope-terminal = Terminal
+
+# ── Regional configuration (regional slice 3, Business Defaults screen) ──
+settings-regional-title = Regional
+settings-regional-subtitle = Market facts this location answers for receipts and reports. Blank fields inherit from the legal entity or the organization defaults.
+settings-regional-locale = Locale (BCP-47)
+settings-regional-locale-placeholder = e.g. id-ID — blank inherits
+settings-regional-currency = Currency (ISO-4217)
+settings-regional-currency-placeholder = e.g. IDR — blank inherits
+settings-regional-currency-inherit = Inherit (scope above)
+settings-regional-timezone = Timezone
+settings-regional-timezone-inherit = Inherit (scope above)
+settings-regional-timezone-utc = UTC (legacy sentinel)
+settings-regional-timezone-legacy = legacy value
+settings-regional-country = Market anchor (ISO-3166)
+settings-regional-country-placeholder = e.g. ID — blank leaves the entity unchanged
+settings-regional-country-hint = Resolved through the location's legal entity.
+settings-regional-save = Save regional defaults
+settings-regional-saving = Saving…
+settings-regional-saved = Regional defaults saved.
+settings-regional-error-save = Could not save the regional defaults.
+settings-regional-error-load = Could not load the regional defaults.
+settings-regional-no-location = No location to configure yet.
+settings-regional-scope-location = Set at this location
+settings-regional-scope-legal-entity = Inherited from the legal entity
+settings-regional-scope-organization = Organization default
+settings-regional-scope-built-in = Built-in default
+
+# ── Local payment methods (regional slice 6, Business Defaults screen) ──
+settings-localpay-title = Local payment methods
+settings-localpay-subtitle = Which payment rails this market and site offer.
+settings-localpay-code-placeholder = rail code, e.g. qris
+settings-localpay-code-label = Rail code
+settings-localpay-label-placeholder = display label, e.g. QRIS
+settings-localpay-label-label = Display label
+settings-localpay-add = Add rail
+settings-localpay-save = Save payment methods
+settings-localpay-saving = Saving…
+settings-localpay-saved = Payment methods saved.
+settings-localpay-static-qr-label = Static QR payload (EMVCo string)
+settings-localpay-error-save = Could not save the payment methods.
+settings-localpay-error-load = Could not load the payment methods.
+settings-localpay-no-location = No location to configure yet.
+settings-localpay-empty-list = No rails recorded yet — add the ones this site offers.
+settings-localpay-scope-location = Set at this site
+settings-localpay-scope-legal-entity = Market default (legal entity)
+
+
+# ── Diagnostics (feature-availability verdicts) ──
+settings-diagnostics-title = Diagnostics
+settings-diagnostics-intro = Why each feature is available or locked for you right now — the same gates the app enforces, with the reason named. Read-only, works offline.
+settings-diagnostics-refresh = Refresh
+settings-diagnostics-load-failed = Could not load the verdicts. Try again.
+settings-diagnostics-list-aria = Feature availability verdicts
+settings-diagnostics-status-available = Available
+settings-diagnostics-loading = …
+settings-diagnostics-reason-server-policy = Blocked by server policy
+settings-diagnostics-reason-lifecycle = Subscription ended
+settings-diagnostics-reason-tier = Not in this tier
+settings-diagnostics-reason-quota = Quota reached
+settings-diagnostics-reason-role = Role lacks permission
+settings-diagnostics-reason-scope = Out of location scope
+settings-diagnostics-feature-supports-qris = QRIS payments
+settings-diagnostics-feature-supports-analytics = Analytics
+settings-diagnostics-feature-supports-loyalty = Loyalty
+settings-diagnostics-feature-supports-daily-dashboard = Daily dashboard
+settings-diagnostics-feature-supports-cloud-sync = Cloud sync
+settings-diagnostics-feature-sales-history-days = Sales history retention
+settings-diagnostics-feature-locations = Location quota
+settings-diagnostics-feature-staff-users = Staff accounts quota
+settings-diagnostics-feature-pos-instances = POS terminals quota
+settings-diagnostics-feature-warehouses = Warehouse stock points quota
+settings-diagnostics-detail-tier = Tier: { $tier }
+settings-diagnostics-detail-state = State: { $state }
+settings-diagnostics-detail-quota = Usage: { $usage } / { $limit }
+settings-diagnostics-detail-permission = Permission: { $permission }
+settings-diagnostics-detail-scope-covered = Covers this location
+settings-diagnostics-detail-scope-not-covered = Does not cover this location
+settings-diagnostics-detail-expires = Expires: { $expiresAt }
+settings-diagnostics-detail-grace = Grace until: { $graceUntil }
+settings-diagnostics-deployment-version = App version: { $version }
+
+
+# ── Receipt format (receipt-format axis, Business Defaults screen) ──
+settings-rcptfmt-title = Receipt format
+settings-rcptfmt-subtitle = How receipts print at this location.
+settings-rcptfmt-content-label = Statutory content
+settings-rcptfmt-content-none = No market content configured.
+settings-rcptfmt-paper-width = Paper width (mm, 20–120)
+settings-rcptfmt-margin-top = Top margin (mm)
+settings-rcptfmt-margin-bottom = Bottom margin (mm)
+settings-rcptfmt-show-table = Show table number
+settings-rcptfmt-show-logo = Print store logo
+settings-rcptfmt-save = Save receipt format
+settings-rcptfmt-saving = Saving…
+settings-rcptfmt-saved = Receipt format saved.
+settings-rcptfmt-error-save = Could not save the receipt format.
+settings-rcptfmt-error-load = Could not load the receipt format.
+settings-rcptfmt-no-location = No location to configure yet.
+settings-rcptfmt-source-legal-entity = Market-mandated (legal entity)
+settings-rcptfmt-source-terminal = Set at this terminal
+settings-rcptfmt-source-workspace = Set at this location
+settings-rcptfmt-source-legacy = Inherited from store defaults
+settings-rcptfmt-source-unset = Not configured
+settings-rcptfmt-element-store_name = Store name
+settings-rcptfmt-element-store_address = Store address
+settings-rcptfmt-element-tax_id = Tax registration
+settings-rcptfmt-element-date = Date
+settings-rcptfmt-element-receipt_number = Receipt number
+settings-rcptfmt-element-items = Items
+settings-rcptfmt-element-subtotal = Subtotal
+settings-rcptfmt-element-tax = Tax
+settings-rcptfmt-element-total = Total
+settings-rcptfmt-element-payments = Payments
+# W2-C: statutory-content editor (set_receipt_content_for_entity)
+settings-rcptfmt-footer-text = Footer text
+settings-rcptfmt-show-tax = Print tax line
+settings-rcptfmt-show-currency = Currency symbol prefix
+settings-rcptfmt-decimal-separator = Decimal separator
+settings-rcptfmt-sep-dot = Dot (1,234.56)
+settings-rcptfmt-sep-comma = Comma (1.234,56)
+settings-rcptfmt-sep-none = None
+settings-rcptfmt-required-fields = Market-mandated elements
+settings-rcptfmt-content-save = Save statutory content
+settings-rcptfmt-content-saving = Saving…
+settings-rcptfmt-content-saved = Statutory content saved.
+settings-rcptfmt-content-error-save = Could not save the statutory content.
+settings-rcptfmt-content-note = Written at the market-mandated (legal entity) layer — applies to every location of this entity.
+
+# ── Statutory numbering (W2-B, regional numbering axis) ──
+settings-fiscalnum-title = Statutory numbering
+settings-fiscalnum-subtitle = The number series each legal entity issues its statutory documents from.
+settings-fiscalnum-label-entity = Legal entity
+settings-fiscalnum-label-kind = Document kind
+settings-fiscalnum-kind-receipt = Receipt
+settings-fiscalnum-kind-invoice = Invoice
+settings-fiscalnum-label-prefix = Prefix
+settings-fiscalnum-label-padding = Zero padding
+settings-fiscalnum-label-period = Resets
+settings-fiscalnum-period-never = Never
+settings-fiscalnum-period-daily = Daily
+settings-fiscalnum-period-monthly = Monthly
+settings-fiscalnum-period-yearly = Yearly
+settings-fiscalnum-current-value = Last number issued: { $value }
+settings-fiscalnum-current-value-note = Changing prefix, padding or period never resets this counter.
+settings-fiscalnum-unset = This pair has no series yet — saving creates one from zero.
+settings-fiscalnum-no-entity = No legal entity to number documents for yet.
+settings-fiscalnum-save = Save series
+settings-fiscalnum-saved = Series saved
+settings-fiscalnum-error-load = Could not read the number series.
+settings-fiscalnum-error-save = Could not save the number series.
+settings-fiscalnum-overview-title = All configured series
+settings-fiscalnum-overview-empty = No series configured yet — save one above to see it here.
+settings-fiscalnum-overview-col-entity = Legal entity
+settings-fiscalnum-overview-col-kind = Document kind
+settings-fiscalnum-overview-col-prefix = Prefix
+settings-fiscalnum-overview-col-current = Last number
+settings-fiscalnum-overview-col-updated = Updated
+
+

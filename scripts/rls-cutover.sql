@@ -53,7 +53,7 @@
 --
 -- Or reverse a committed cutover with:
 --
---     ALTER TABLE ... NO FORCE ROW LEVEL SECURITY  (all 15 tables)
+--     ALTER TABLE ... NO FORCE ROW LEVEL SECURITY  (all 19 tables)
 --     DROP ROLE oz_app;
 --     DROP ROLE oz_webhook_resolver;
 
@@ -73,9 +73,11 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items','offline_queue','product_activity',
+    FOREACH t IN ARRAY ARRAY['bundle_items','memo_locations','memo_recipients',
+                            'memos','midtrans_transactions','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
+                            'sync_conflicts','sync_entity_vectors',
                             'sync_terminals','tax_rates','tenant_plans',
                             'tenant_subscription','users']
     LOOP
@@ -86,14 +88,17 @@ BEGIN
     EXECUTE 'GRANT USAGE ON SCHEMA public TO oz_app';
 END $$;
 
--- 2b. DML on the auxiliary (non-RLS) tables the REST layer also touches.
---     These tables have NO tenant_id column — they are children of
---     tenant-scoped parents (sale_lines→sales, inventory / stock_movements /
---     stock_summary→products) or shared catalogs (categories, roles) — so
---     they are not RLS-enforced, but oz_app still needs full DML to serve
---     create_sale / create_product / create_user / list_products. Without
---     these grants the REST surface fails with permission denied the moment
---     FORCE RLS is switched on.
+-- 2b. DML on the tables the REST layer touches that the main list above
+--     does not yet FORCE. Two buckets: (a) tables with NO tenant_id column
+--     at all — children of tenant-scoped parents (inventory /
+--     stock_movements / stock_summary→products) or shared catalogs
+--     (categories, roles); (b) `sale_lines`, which DOES carry tenant_id and
+--     is RLS-ENABLEd in init, but whose FORCE (and main-list grant move) is
+--     deferred until live-PG verification proves every REST path touching
+--     it sets the GUC first — same deferral bucket as locations /
+--     media_assets / user_location_access. Without these grants the REST
+--     surface fails with permission denied the moment FORCE RLS is
+--     switched on for the main list.
 DO $$
 DECLARE
     t text;
@@ -125,7 +130,7 @@ BEGIN
     END IF;
 END $$;
 GRANT USAGE ON SCHEMA public TO oz_webhook_resolver;
-GRANT SELECT ON stripe_customers, sales, payments TO oz_webhook_resolver;
+GRANT SELECT ON stripe_customers, sales, payments, midtrans_transactions TO oz_webhook_resolver;
 GRANT oz_webhook_resolver TO oz_app;
 
 -- 2d. Cross-tenant discovery role. Three pre-tenant consumers share it:
@@ -175,9 +180,11 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items','offline_queue','product_activity',
+    FOREACH t IN ARRAY ARRAY['bundle_items','memo_locations','memo_recipients',
+                            'memos','midtrans_transactions','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
+                            'sync_conflicts','sync_entity_vectors',
                             'sync_terminals','tax_rates','tenant_plans',
                             'tenant_subscription','users']
     LOOP
@@ -185,13 +192,15 @@ BEGIN
     END LOOP;
 END $$;
 
--- 4. Verification (informational — expect 15 rows, all `t`/`t`):
+-- 4. Verification (informational — expect 21 rows, all `t`/`t`):
 --    SELECT tablename, rowsecurity, forcerowsecurity
 --      FROM pg_tables
 --     WHERE schemaname = 'public'
---       AND tablename IN ('bundle_items','offline_queue','product_activity',
+--       AND tablename IN ('bundle_items','memo_locations','memo_recipients',
+--                         'memos','offline_queue','product_activity',
 --                         'product_bundles','product_taxes','product_variants',
---                         'products','sales','sent_reports','stripe_customers',
+--                         'products','refunds','sales','sent_reports','stripe_customers',
+--                         'sync_conflicts','sync_entity_vectors',
 --                         'sync_terminals','tax_rates','tenant_plans',
 --                         'tenant_subscription','users')
 --     ORDER BY tablename;

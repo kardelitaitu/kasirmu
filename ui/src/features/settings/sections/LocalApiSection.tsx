@@ -15,7 +15,7 @@ import {
   type LocalApiStatusDto,
   type LocalApiTokenDto,
 } from '@/api/localApi';
-import { listStoresScoped, type StoreProfile } from '@/api/stores';
+import { listLocationsScoped, type LocationProfile } from '@/api/locations';
 
 /** Copy text to the clipboard, reporting success for the toast. */
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -48,7 +48,7 @@ export default function LocalApiSection() {
   const [rotating, setRotating] = useState(false);
   // Store selector: only meaningful on multi-store installs, so the
   // list is fetched lazily and the row renders when >1 store exists.
-  const [stores, setStores] = useState<StoreProfile[]>([]);
+  const [stores, setStores] = useState<LocationProfile[]>([]);
 
   const refresh = useCallback(async () => {
     if (!sessionToken) return;
@@ -70,7 +70,7 @@ export default function LocalApiSection() {
   useEffect(() => {
     if (!sessionToken || !status?.enabled) return;
     let cancelled = false;
-    listStoresScoped(sessionToken)
+    listLocationsScoped(sessionToken)
       .then((s) => {
         if (!cancelled) setStores(s);
       })

@@ -36,11 +36,13 @@ const ALLOWED_EXT = ['.ts', '.tsx'];
 // exactly that: 150→183, 992→1055 with the reviewed sites unchanged).
 const WHITELISTED_RAW_PARSE: Array<{ file: string; anchor: RegExp; context: RegExp }> = [
   {
-    // classifyError: reads err.message for retryable/terminal classification;
+    // classifyError: captures err.message ONLY to hand it to the mappers on
+    // the following lines — the retry decision delegated to classifyRetry()
+    // (the old errMsg.toLowerCase() keyword sniff died in that refactor) and
     // the surfaced text goes through plainErrorMessage (ERR-05).
     file: path.join(SRC, 'features/sales/PaymentModal.tsx'),
     anchor: /err instanceof Error \? err\.message : String\(err\)/,
-    context: /errMsg\.toLowerCase\(\)/,
+    context: /plainErrorMessage\(err, errMsg\)/,
   },
   {
     // complete() catch: reads err.message to JSON-detect PartialStockResult;

@@ -215,11 +215,27 @@ pub async fn create_rate(
     // unique-violation mapping. The repository surfaces the constraint
     // as a raw Db error; the check runs under the same store lock as
     // the INSERT, so it is race-free here.
-    if repo
-        .list_exchange_rates_for_pair(&body.from_currency, &body.to_currency)
-        .map(|rows| rows.iter().any(|r| r.effective_date == effective))
-        .unwrap_or(false)
+    //
+    // A `false` below is AMBIGUOUS: it means either genuinely no
+    // duplicate or a failed lookup. The fall-through is deliberate —
+    // the INSERT's unique constraint is the write-side backstop, so a
+    // failed lookup cannot double-insert; it only costs the client a
+    // 500 (raw Db error) where it would have gotten a 409. The warning
+    // is how you tell the two cases apart; keep it loud.
+    let duplicate = match repo.list_exchange_rates_for_pair(&body.from_currency, &body.to_currency)
     {
+        Ok(rows) => rows.iter().any(|r| r.effective_date == effective),
+        Err(e) => {
+            tracing::warn!(
+                tenant_id = claims.tenant_id.as_deref().unwrap_or("default"),
+                operation = "CurrencyRepository::list_exchange_rates_for_pair",
+                error = %e,
+                "exchange-rates create: duplicate lookup failed, falling through to the INSERT (unique constraint is the backstop)"
+            );
+            false
+        }
+    };
+    if duplicate {
         return (
             StatusCode::CONFLICT,
             Json(serde_json::json!({"error": "resource already exists"})),

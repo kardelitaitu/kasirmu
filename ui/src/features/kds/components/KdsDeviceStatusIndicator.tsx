@@ -25,6 +25,20 @@ export interface KdsDeviceStatusIndicatorProps {
   onEnrollDevice?: () => void;
 }
 
+/**
+ * Determine overall device status from connected/total counts.
+ * All connected → 'connected', some → 'stale', none → 'disconnected'.
+ * Exported for testing.
+ */
+export function overallDeviceStatus(
+  connectedCount: number,
+  totalCount: number,
+): KdsConnectionStatus {
+  if (connectedCount === totalCount) return 'connected';
+  if (connectedCount > 0) return 'stale';
+  return 'disconnected';
+}
+
 /** Map connection status to a display label and CSS modifier. */
 const STATUS_DISPLAY: Record<
   KdsConnectionStatus,
@@ -87,16 +101,15 @@ export const KdsDeviceStatusIndicator = memo(
     // zero-device branch below renders the enroll button alone.
     if ((!devices || devices.length === 0) && !loading) {
       return onEnrollDevice ? (
-        <div className="kds-device-status-container">
-          <button
-            type="button"
-            className="kds-device-enroll-btn"
-            onClick={onEnrollDevice}
-            aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
-          >
-            <Localized id="kds-device-enroll">Enroll device</Localized>
-          </button>
-        </div>
+        <button
+          type="button"
+          className="kds-device-enroll-btn"
+          onClick={onEnrollDevice}
+          aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
+          data-testid="kds-device-status-enroll"
+        >
+          <Localized id="kds-device-enroll">Enroll device</Localized>
+        </button>
       ) : null;
     }
 
@@ -105,13 +118,7 @@ export const KdsDeviceStatusIndicator = memo(
     ).length;
     const totalCount = devices.length;
 
-    // Determine overall status: all connected > some connected > none.
-    const overallStatus: KdsConnectionStatus =
-      connectedCount === totalCount
-        ? 'connected'
-        : connectedCount > 0
-          ? 'stale'
-          : 'disconnected';
+    const overallStatus = overallDeviceStatus(connectedCount, totalCount);
 
     const statusDisplay = STATUS_DISPLAY[overallStatus];
 
@@ -124,13 +131,14 @@ export const KdsDeviceStatusIndicator = memo(
           onEnrollDevice();
         }}
         aria-label={requiredLocalized(l10n, 'kds-device-enroll-aria')}
+        data-testid="kds-device-status-enroll"
       >
         <Localized id="kds-device-enroll">Enroll device</Localized>
       </button>
     ) : null;
 
     return (
-      <div className="kds-device-status-container">
+      <>
         <button
           className={`kds-device-status ${statusDisplay.className}`}
           onClick={() => setExpanded((p) => !p)}
@@ -139,6 +147,7 @@ export const KdsDeviceStatusIndicator = memo(
             connected: String(connectedCount),
             total: String(totalCount),
           })}
+          data-testid="kds-device-status-toggle"
         >
           <span className="kds-device-status-dot" aria-hidden="true" />
           <span className="kds-device-status-count">
@@ -177,7 +186,7 @@ export const KdsDeviceStatusIndicator = memo(
             {enrollButton}
           </div>
         )}
-      </div>
+      </>
     );
   },
 );

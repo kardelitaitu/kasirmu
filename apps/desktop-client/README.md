@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (3 findings repaired) · F1: "156 commands" -> 354 in generate_handler! (lib.rs:350) · F2: "42 files" -> 52 production modules / 102 .rs files (commands/) · F3: layout list updated (removed deleted sales.rs, added analytics/browser/edc/email/inventory/kds_device/kds_routing/license/picker_ticket/security/subscription/topology) · verified accurate: AppState fields (db, registry, app, scanner_cancel — state.rs:69-87), barcode:scanned via app.emit() (hardware.rs:415), app is Option<AppHandle>, add-command steps match tauri-ipc/SKILL.md · 31-08: command count 354 -> 385 (generate_handler! grew since 29-08; now points to api-reference.md as authoritative); documented startup hardware registration (register_hardware -> apply_config, dc07f32a/bb7ce92d/a8350a66) -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (8 findings) · SUPERSEDES the 2026-08-29 stamp, whose repairs are carried forward: it fixed 156->354 commands and 42 files->52 modules, both of which were true on 29-08 and both of which are wrong today. That is the finding worth keeping: the command count on this page has been re-audited three times in ten days (156 -> 354 -> 385 -> 426) and has been stale every time it was written down, because the number tracks every commit that touches lib.rs. It is now stated as a dated measurement with the command to re-derive it, not as a fact. · RECONCILED the commands/ tree against the directory: 63 entries, 0 dead. Removed store_profiles.rs (the store→location rename made it locations.rs, and the entry also sat in the wrong alphabetical block); added legal_entities.rs, local_api.rs, locations.rs, memo.rs, payables.rs, products_images.rs — six command modules that exist in src/commands/ and appeared in no listing, including local_api.rs, which is the whole desktop extension surface that docs/guides/EXTENDING.md §2 documents. Counts now 58 production modules / 114 .rs files, 426 registered commands. · verified accurate: build.rs, main.rs, lib.rs, error.rs, state.rs at src/ level; the tree's remaining 57 command entries all resolve. -->
 
 # `apps/desktop-client/` — OZ-POS desktop shell
 
@@ -16,10 +16,10 @@ apps/desktop-client/
 ├── icons/                  # Full platform icon set (generated via cargo tauri icon)
 └── src/
     ├── main.rs             # Binary entry; calls lib::run()
-    ├── lib.rs              # Builder, invoke_handler!, run() — 385 commands registered (see docs/guides/api-reference.md for the authoritative list)
+    ├── lib.rs              # Builder, invoke_handler!, run() — 426 commands registered as measured 08-09-26 (see docs/guides/api-reference.md for the authoritative list)
     ├── error.rs            # AppError (typed, non_exhaustive)
     ├── state.rs            # AppState (DB, driver registry, scanner cancel channel)
-    └── commands/           # 52 production modules (102 .rs files incl. tests), grouped by domain
+    └── commands/           # 58 production modules (114 .rs files incl. tests), grouped by domain
         ├── analytics.rs    # analytics queries
         ├── audit.rs        # list_audit_log
         ├── auth.rs         # staff_login
@@ -44,15 +44,21 @@ apps/desktop-client/
         ├── kds.rs          # Kitchen Display System
         ├── kds_device.rs   # KDS device management
         ├── kds_routing.rs  # KDS routing
+        ├── legal_entities.rs # Organization/Tenant legal-entity management
         ├── license.rs      # license status/activation
+        ├── local_api.rs      # loopback local API server: enable, status, token mint
+        ├── locations.rs        # location-profile CRUD (what store_profiles.rs became)
         ├── loyalty.rs      # loyalty program
+        ├── memo.rs           # memo lifecycle (author, ack, active-for-terminal)
         ├── mod.rs          # module re-exports
         ├── offline.rs      # offline mode commands
+        ├── payables.rs       # accounts payable (hutang / beli)
         ├── picker_ticket.rs # picker ticket
         ├── plugins.rs      # plugin management
         ├── pos.rs          # core POS pipeline
         ├── product_variants.rs # variant CRUD
         ├── products.rs     # CRUD, barcode lookup, stock adjustment
+        ├── products_images.rs # product/menu image ingest (spec 0046b)
         ├── promotions.rs   # promotion management
         ├── purchasing.rs   # purchase orders
         ├── refunds.rs      # refund/void processing
@@ -64,7 +70,6 @@ apps/desktop-client/
         ├── shifts.rs       # staff shift management
         ├── staff.rs        # CRUD for staff, list_roles
         ├── stock_transfers.rs # transfer stock between locations
-        ├── store_profiles.rs # multi-store profiles
         ├── subscription.rs # subscription status
         ├── sync.rs         # sync commands
         ├── tables.rs       # restaurant table management
@@ -107,4 +112,4 @@ cargo tauri dev               # Terminal 2: Tauri dev shell
 - Scanner background tasks emit `barcode:scanned` events via `app.emit()`.
 - The `app` handle is `Option<AppHandle>` — always unwrap via `if let Some(ref app)`.
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor

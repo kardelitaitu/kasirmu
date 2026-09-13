@@ -38,6 +38,11 @@ fn body() -> CreateTaxRateRequest {
         rate_bps: 1000,
         is_default: true,
         is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
+        rounding_mode: None,
     }
 }
 
@@ -134,6 +139,11 @@ async fn create_tax_rate_returns_400_on_validation_error() {
         rate_bps: 1000,
         is_default: false,
         is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
+        rounding_mode: None,
     };
     let response = create_tax_rate(
         State(state()),
@@ -196,4 +206,258 @@ fn create_tax_rate_request_inclusive() {
     assert_eq!(req.rate_bps, 500);
     assert!(!req.is_default);
     assert!(req.is_inclusive);
+}
+
+// ── scoped-authoring boundary (D8: the hub is the authoring door) ──
+
+#[tokio::test]
+async fn create_tax_rate_accepts_scope_and_window_fields() {
+    let mut scoped = body();
+    scoped.location_id = Some("default".into());
+    scoped.effective_from = Some("2026-10-01".into());
+    scoped.effective_to = Some("2027-10-01".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(scoped),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_both_scope_arms_with_400() {
+    let mut ambiguous = body();
+    ambiguous.legal_entity_id = Some("whatever".into());
+    ambiguous.location_id = Some("default".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(ambiguous),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_empty_period_with_400() {
+    // effective_to == effective_from covers no day at all (exclusive end),
+    // which core's writers refuse and the hub boundary must refuse too.
+    let mut empty = body();
+    empty.location_id = Some("default".into());
+    empty.effective_from = Some("2026-10-01".into());
+    empty.effective_to = Some("2026-10-01".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(empty),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_malformed_window_date_with_400() {
+    let mut malformed = body();
+    malformed.effective_from = Some("01-10-2026".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(malformed),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_unknown_location_scope_with_400() {
+    // The target row does not exist in the hub's shared database — the
+    // boundary check (not the FK) must produce the typed 400.
+    let mut unknown = body();
+    unknown.location_id = Some("no-such-location".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(unknown),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ── E1-9: rounding_mode on the authoring door ───────────────────
+//
+// The hub carries the statutory rounding mode (D8 hub-only authoring):
+// accept the three CHECK values, refuse anything else with a clean 400,
+// and read the stored value back through the SQLite arm mirror stamp.
+
+#[tokio::test]
+async fn create_tax_rate_accepts_half_up_and_stores_it() {
+    let app_state = state();
+    let mut req = body();
+    req.rounding_mode = Some("half_up".into());
+    let response = create_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(req),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let db = app_state.db.lock().await;
+    let mode: String = db
+        .query_row(
+            "SELECT rounding_mode FROM tax_rates WHERE name = 'VAT 10%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "half_up", "hub-authored mode must be stored as TEXT");
+}
+
+#[tokio::test]
+async fn create_tax_rate_accepts_truncate_and_stores_it() {
+    let app_state = state();
+    let mut req = body();
+    req.rounding_mode = Some("truncate".into());
+    let response = create_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(req),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let db = app_state.db.lock().await;
+    let mode: String = db
+        .query_row(
+            "SELECT rounding_mode FROM tax_rates WHERE name = 'VAT 10%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "truncate");
+}
+
+#[tokio::test]
+async fn create_tax_rate_omitted_mode_stays_store_preference() {
+    // Omitted / '' = store preference: the column keeps its '' default and
+    // the mirror stamp never fires.
+    let app_state = state();
+    let response = create_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(body()),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let db = app_state.db.lock().await;
+    let mode: String = db
+        .query_row(
+            "SELECT rounding_mode FROM tax_rates WHERE name = 'VAT 10%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "");
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_unknown_mode_with_400() {
+    // 'bankers' is not one of the three CHECK values — a hub-authored mode
+    // the branch CHECK would refuse must die at the boundary, clean 400.
+    let mut bad = body();
+    bad.rounding_mode = Some("bankers".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(bad),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_tax_rate_refuses_wrong_case_mode_with_400() {
+    // Exactly 'half_up' — the CHECK is byte-exact, so 'HALF_UP' is a
+    // second spelling the boundary must refuse, not normalize.
+    let mut bad = body();
+    bad.rounding_mode = Some("HALF_UP".into());
+    let response = create_tax_rate(
+        State(state()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(bad),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn update_tax_rate_carries_rounding_mode() {
+    let app_state = state();
+    let created = create_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(body()),
+    )
+    .await
+    .into_response();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let bytes = to_bytes(created.into_body(), 4096).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let id = json["id"].as_str().expect("created id").to_owned();
+
+    let update = UpdateTaxRateRequest {
+        name: "VAT 10%".into(),
+        rate_bps: 1100,
+        is_default: true,
+        is_inclusive: false,
+        legal_entity_id: None,
+        location_id: None,
+        effective_from: None,
+        effective_to: None,
+        rounding_mode: Some("truncate".into()),
+    };
+    let response = update_tax_rate(
+        State(app_state.clone()),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        axum::extract::Path(id),
+        Json(update),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let db = app_state.db.lock().await;
+    let (mode, rate_bps): (String, i64) = db
+        .query_row(
+            "SELECT rounding_mode, rate_bps FROM tax_rates WHERE name = 'VAT 10%' AND is_active = 1",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+        )
+        .unwrap();
+    assert_eq!(mode, "truncate");
+    assert_eq!(rate_bps, 1100, "update rewrote the row in place");
 }

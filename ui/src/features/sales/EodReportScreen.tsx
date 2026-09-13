@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   exportEodReport,
+  exportEodReportScoped,
   type EodReport,
 } from '@/api/sales';
 import { listShiftsScoped, type ShiftDto } from '@/api/shifts';
@@ -14,6 +15,33 @@ import { useLocalization } from '@fluent/react';
 import { printReceiptScoped } from '@/api/hardware';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './EodReportScreen.css';
+
+/**
+ * The two Fluent keys that label a non-zero cash difference, ONE definition
+ * each. They were spelled inline at both render sites below (was :154 and :187
+ * at tip b2247947e) — 2 keys x 2 sites = 4 copies, while each key is declared
+ * once per bundle (locales/sales.ftl:479, sales.id.ftl:464). A rename that
+ * landed on three of four copies would render a raw id, and Fluent's getString
+ * returns null on a miss, which React renders as NOTHING: the tag would simply
+ * vanish from a cash-reconciliation figure.
+ *
+ * Kept as plain string literals, deliberately NOT built from a template: the
+ * pre-commit Fluent gates pattern-match on source text —
+ * scripts/verify-bundle-parity.py --include-getstring (code -> bundle) and
+ * scripts/verify-ftl-orphans.py (bundle -> code, "a reference you delete must
+ * not strand a key"). Composing these names at runtime would make
+ * eod-tag-over / eod-tag-short orphans on paper and invite a real key deletion.
+ * Pinned by __tests__/salesLiteralSingleSource.test.ts.
+ *
+ * INVERT, DO NOT DELETE: if a third site ever needs one of these tags, point it
+ * at this object. If a key genuinely must be spelled twice, say WHY here and
+ * turn that test into a known_hazard_ pin recording the duplication as
+ * accepted; deleting the red case hides the duplication that caused it.
+ */
+export const EOD_TAG_KEYS = {
+  over: 'eod-tag-over',
+  short: 'eod-tag-short',
+} as const;
 
 // ── Shift Summary Sub-component ──────────────────────────────────
 
@@ -150,7 +178,7 @@ function ShiftSummarySection({ shifts, currency }: ShiftSummaryProps) {
                     {diff !== null ? fmt(diff) : '—'}
                     {diff !== null && diff !== 0 && (
                       <span className="eod-report-shift-tag">
-                        {diff > 0 ? l10n.getString('eod-tag-over') : l10n.getString('eod-tag-short')}
+                        {diff > 0 ? l10n.getString(EOD_TAG_KEYS.over) : l10n.getString(EOD_TAG_KEYS.short)}
                       </span>
                     )}
                   </span>
@@ -183,7 +211,9 @@ function ShiftSummarySection({ shifts, currency }: ShiftSummaryProps) {
                 {fmt(totalCashDiff)}
                 {totalCashDiff !== 0 && (
                   <span className="eod-report-shift-tag">
-                    {totalCashDiff > 0 ? l10n.getString('eod-tag-over') : l10n.getString('eod-tag-short')}
+                    {totalCashDiff > 0
+                      ? l10n.getString(EOD_TAG_KEYS.over)
+                      : l10n.getString(EOD_TAG_KEYS.short)}
                   </span>
                 )}
               </span>
@@ -346,7 +376,12 @@ export default function EodReportScreen() {
     } finally {
       setPrinting(false);
     }
-  }, [lastRefresh]);
+    // sessionToken is read at :343 and derived from useWorkspace() at :247. Because the catch
+    // above deliberately swallows everything, this is another silent failure: after a hot-swap
+    // the end-of-day report print presents a destroyed session, rejects, and the button simply
+    // does nothing -- on the one screen an operator expects to produce a signed record. deps
+    // listed only lastRefresh, which the refresh button changes and a session switch does not.
+  }, [lastRefresh, sessionToken]);
 
   const exportCsv = useCallback(() => {
     const r = reportRef.current;
@@ -390,7 +425,10 @@ export default function EodReportScreen() {
     setError(null);
     try {
       const [data, shiftData] = await Promise.all([
-        exportEodReport(),
+        // ADR #7, matching the listShiftsScoped call beside it. desktop-client registers no
+        // export_eod_report command, so the ambient call rejected and the screen fell into its
+        // error state on every desktop visit.
+        sessionToken ? exportEodReportScoped(sessionToken) : exportEodReport(),
         listShiftsScoped(sessionToken),
       ]);
       setReport(data);

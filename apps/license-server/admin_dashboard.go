@@ -37,7 +37,7 @@ import (
 // workspace Cargo.toml rather than against a copy of itself, so a bump that
 // misses this file goes red instead of silently misreporting.
 // scripts/bump-version.ps1 updates this line as part of a bump.
-const adminDashboardVersion = "0.0.36"
+const adminDashboardVersion = "0.0.37"
 
 // adminKeyOK validates the Authorization: Bearer <admin_key> header.
 // Reads the key from OZ_ADMIN_KEY env; a missing env or wrong key is 401.
@@ -151,6 +151,7 @@ func handleAdminListTenants(app core.App) func(e *core.RequestEvent) error {
 				"emailVerified": rec.GetBool("email_verified"),
 				"license":       licenseSummary(app, rec.Id),
 				"subscription":  subscriptionSummary(app, rec.Id),
+				"health":        tenantHealth(app, rec),
 				"created":       rec.GetDateTime("created").Time().Format(time.RFC3339),
 			})
 		}
@@ -205,6 +206,7 @@ func handleAdminGetTenant(app core.App) func(e *core.RequestEvent) error {
 			},
 			"license":      licenseSummary(app, tenant.Id),
 			"subscription": subscriptionSummary(app, tenant.Id),
+			"health":       tenantHealth(app, tenant),
 			"devices":      devices,
 		})
 	}
@@ -303,14 +305,14 @@ func handleAdminRenew(app core.App) func(e *core.RequestEvent) error {
 		sub.Set("expires_at", newExpiryStr)
 		sub.Set("status", "active")
 		// Grace must move with the expiry so row and payload agree.
-		grace := calculateGraceUntil(newExpiry).Format(time.RFC3339)
+		grace := calculateGraceUntil(sub.GetString("tier_key"), newExpiry).Format(time.RFC3339)
 		sub.Set("grace_until", grace)
 		// Re-sign with the current tier/quotas and the new expiry.
 		payload := SubscriptionPayload{
 			TenantID:        tenant.Id,
 			TierKey:         sub.GetString("tier_key"),
 			Status:          "active",
-			MaxStores:       sub.GetInt("max_stores"),
+			MaxLocations:    sub.GetInt("max_stores"),
 			MaxPOSInstances: sub.GetInt("max_pos_instances"),
 			AllowedTypes:    parseAllowedTypesJSON(sub.GetString("allowed_types")),
 			StartsAt:        formatDateField(sub, "starts_at"),
@@ -318,6 +320,8 @@ func handleAdminRenew(app core.App) func(e *core.RequestEvent) error {
 			GraceUntil:      grace,
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		payload.Features = featureGrantsForTenant(app, tenant.Id)
 		payloadStr, signature, signErr := signSubscription(payload)
 		if signErr != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{"error": "renew failed"})

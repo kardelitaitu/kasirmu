@@ -27,7 +27,33 @@ UI = ROOT / "ui" / "src"
 # Output defaults to the OS temp dir, NOT the working tree: an earlier
 # version defaulted to cwd and silently dropped fluent_scan.json and
 # hardcoded_hits.tsv into the repo root. Pass a directory to override.
-OUT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(tempfile.gettempdir()) / "fluent-scan"
+#
+# "Pass a directory" was itself a trap, though: sys.argv[1] became the output
+# path with no validation, and OUT.mkdir(parents=True) never objects to a name
+# that starts with a dash. So any unknown flag silently became a directory in
+# the working tree. `scan-fluent-hardcoded.py --help` -- which this script does
+# not implement -- created ./--help/ and wrote both outputs into it, and so did
+# `--json`. Both landed as untracked entries in a repo where several agents
+# commit concurrently, which is exactly how the cwd default got committed once
+# already. Reject flag-shaped arguments rather than honouring them.
+_args = sys.argv[1:]
+_flags = [a for a in _args if a.startswith("-")]
+if _flags:
+    print(
+        f"scan-fluent-hardcoded: unknown argument(s): {', '.join(_flags)}\n"
+        "  this script takes at most one argument: an output DIRECTORY.\n"
+        "  there is no --help and no --json. It always writes fluent_scan.json and\n"
+        "  hardcoded_hits.tsv into the output dir and prints a summary to stdout.",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+if len(_args) > 1:
+    print(
+        f"scan-fluent-hardcoded: expected at most one output directory, got: {_args}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+OUT = Path(_args[0]).resolve() if _args else Path(tempfile.gettempdir()) / "fluent-scan"
 OUT.mkdir(parents=True, exist_ok=True)
 
 KEY_LINE = re.compile(r"^([-a-zA-Z][a-zA-Z0-9_-]*)\s*=")
@@ -61,7 +87,34 @@ RE_JSX_TEXT = re.compile(r">\s*([A-Za-z][^<>{}\n]{0,90}?)\s*<")
 USER_ATTRS = "aria-label|aria-labelledby|aria-description|placeholder|title|alt|label|tooltip|summary|caption"
 RE_ATTR_LITERAL = re.compile(rf"\b({USER_ATTRS})\s*=\s*\"([^\"]+)\"")
 RE_ATTR_EXPR_STR = re.compile(rf"\b({USER_ATTRS})\s*=\s*\{{\s*\"([^\"]+)\"\s*\}}")
-RE_OR_FALLBACK = re.compile(r"\.getString\([^)]*\)\s*(?:\|\||\?\?)")
+def find_getstring_fallbacks(src):
+    """Yield (start, snippet) for each `.getString(...)` followed by a `||` / `??` fallback.
+
+    Replaces RE_OR_FALLBACK's `\\.getString\\([^)]*\\)`, whose `[^)]*` stops at the FIRST
+    ')' even when that paren belongs to a nested call. The capture then ends early, `\\)`
+    matches an inner paren, and the text after it is not `||` -- so the site is invisible.
+    That was not hypothetical: MenuEngineeringScreen.tsx:298,
+
+        return l10n.getString(recKey(q)) || QUADRANT_META[q].label;
+
+    is a real hardcoded-fallback violation the gate never reported, and 74 of the 1549
+    `.getString(` calls in this repo contain a nested paren, so the blind spot was wide.
+    Counting parens fixes it at any depth.
+    """
+    for m in re.finditer(r"\.getString\s*\(", src):
+        depth, j = 1, m.end()
+        while j < len(src) and depth:
+            c = src[j]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            j += 1
+        if depth:  # unbalanced; not our problem
+            continue
+        tail = re.match(r"\s*(?:\|\||\?\?)", src[j:])
+        if tail:
+            yield m.start(), src[m.start():j + tail.end()].strip()
 RE_INVOKE = re.compile(r"(?<![\w.])invoke\s*(?:<[^<>]*>)?\s*\(")
 # Imperative user-facing surfaces: toasts / alerts / direct error state.
 RE_TOAST = re.compile(
@@ -229,8 +282,8 @@ for path, rel in iter_source_files():
             val = " ".join(m.group("v").split())
             if looks_like_copy(val):
                 hits.append({"kind": kind, "line": line_of(scan_src, m.start()), "value": val})
-    for m in RE_OR_FALLBACK.finditer(src):
-        hits.append({"kind": "english-fallback", "line": line_of(src, m.start()), "value": m.group(0)[:60]})
+    for start, snippet in find_getstring_fallbacks(src):
+        hits.append({"kind": "english-fallback", "line": line_of(src, start), "value": snippet[:60]})
     if not rel.startswith(("api/", "utils/")):
         for m in RE_INVOKE.finditer(src):
             hits.append({"kind": "bare-invoke", "line": line_of(src, m.start()), "value": "invoke()"})

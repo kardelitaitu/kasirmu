@@ -1,21 +1,26 @@
-// ── Dev-mock store-profile + topology round-trips ────────────────
+// ── Dev-mock location-profile + topology round-trips ─────────────
 //
 // The plain-browser dev preview (and E2E) runs on the dev-mock's
-// in-memory store list and topology diagram instead of the real DB.
+// in-memory location list and topology diagram instead of the real DB.
 // A branch rename must round-trip exactly like the backend:
-//   - update_store_profile mutates the list that list_store_profiles
-//     later serves, so a reload keeps the new name;
+//   - update_location_profile_scoped mutates the list that
+//     list_locations_scoped later serves, so a reload keeps the new name;
 //   - the rename must NEVER disturb the persisted topology diagram —
 //     node positions survive a reload, because the diagram is only
 //     rewritten by Apply (apply_topology_diff), never
-//     by a store-profile rename. The editor light-merges the new name
-//     onto the card from the live store list instead.
+//     by a location rename. The editor light-merges the new name
+//     onto the card from the live location list instead.
 // These pin the persistence contract without needing a live app.
+//
+// History: the pre-migration file drove the legacy store-profile command
+// names (unscoped + the ADR #7 _scoped aliases). Both families retired with
+// the Store → Location caller migration (todo-global-saas-1.md slice 1c/1d),
+// so every round-trip now goes through the canonical commands.
 
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { invoke } from '@/dev-mock/tauri-api';
 
-interface MockStoreRow {
+interface MockLocationRow {
   id: string;
   name: string;
   address: string;
@@ -47,14 +52,16 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
-describe('dev-mock store + topology round-trip', () => {
+describe('dev-mock location + topology round-trip', () => {
   it('persists a renamed branch across list calls like the real DB', async () => {
-    const created = await invoke('create_store_profile', {
-      args: { id: 'store-rt-1', name: 'RT Branch' },
-    }) as MockStoreRow;
+    const created = await invoke('create_location_profile_scoped', {
+      sessionToken: 'test-session-token',
+      args: { id: 'location-rt-1', name: 'RT Branch' },
+    }) as MockLocationRow;
     expect(created.name).toBe('RT Branch');
 
-    const renamed = await invoke('update_store_profile', {
+    const renamed = await invoke('update_location_profile_scoped', {
+      sessionToken: 'test-session-token',
       args: {
         id: created.id,
         name: 'RT Renamed',
@@ -63,11 +70,13 @@ describe('dev-mock store + topology round-trip', () => {
         currency: created.currency,
         timezone: created.timezone,
       },
-    }) as MockStoreRow;
+    }) as MockLocationRow;
     expect(renamed.name).toBe('RT Renamed');
 
     // A fresh list call (what a reload would show) serves the renamed row.
-    const list = await invoke('list_store_profiles') as MockStoreRow[];
+    const list = await invoke('list_locations_scoped', {
+      sessionToken: 'test-session-token',
+    }) as MockLocationRow[];
     const row = list.find((s) => s.id === created.id);
     expect(row).toBeDefined();
     expect(row?.name).toBe('RT Renamed');
@@ -82,9 +91,10 @@ describe('dev-mock store + topology round-trip', () => {
     expect(initialWs).toBeDefined();
 
     // 1. Create a new branch — the editor would seed a store node for it.
-    const created = await invoke('create_store_profile', {
-      args: { id: 'store-rt-2', name: 'RT Diagram Branch' },
-    }) as MockStoreRow;
+    const created = await invoke('create_location_profile_scoped', {
+      sessionToken: 'test-session-token',
+      args: { id: 'location-rt-2', name: 'RT Diagram Branch' },
+    }) as MockLocationRow;
     expect(created.name).toBe('RT Diagram Branch');
 
     // 2. Persist a diagram that includes the new branch node at a
@@ -92,7 +102,7 @@ describe('dev-mock store + topology round-trip', () => {
     //    the editor uses, and it writes the diagram unconditionally.
     const diagramNodes: MockTopologyNodeRow[] = [
       ...initial.nodes,
-      { id: 'store-rt-2', type: 'store', name: 'RT Diagram Branch', x: 380, y: 500 },
+      { id: 'location-rt-2', type: 'store', name: 'RT Diagram Branch', x: 380, y: 500 },
     ];
     await invoke('apply_topology_diff', {
       args: {
@@ -106,7 +116,8 @@ describe('dev-mock store + topology round-trip', () => {
     });
 
     // 3. Rename the branch (the card-rename path).
-    const renamed = await invoke('update_store_profile', {
+    const renamed = await invoke('update_location_profile_scoped', {
+      sessionToken: 'test-session-token',
       args: {
         id: created.id,
         name: 'RT Diagram Renamed',
@@ -115,17 +126,19 @@ describe('dev-mock store + topology round-trip', () => {
         currency: created.currency,
         timezone: created.timezone,
       },
-    }) as MockStoreRow;
+    }) as MockLocationRow;
     expect(renamed.name).toBe('RT Diagram Renamed');
 
-    // 4. Reload-simulating list: the store list serves the renamed row.
-    const list = await invoke('list_store_profiles') as MockStoreRow[];
+    // 4. Reload-simulating list: the location list serves the renamed row.
+    const list = await invoke('list_locations_scoped', {
+      sessionToken: 'test-session-token',
+    }) as MockLocationRow[];
     expect(list.find((s) => s.id === created.id)?.name).toBe('RT Diagram Renamed');
 
     // 5. …and the topology diagram keeps the node with its position
     //    intact — the rename must not disturb the persisted layout.
     const reloaded = await invoke<{ nodes: MockTopologyNodeRow[]; wires: MockTopologyWireRow[] }>('load_topology');
-    const node = reloaded.nodes.find((n) => n.id === 'store-rt-2');
+    const node = reloaded.nodes.find((n) => n.id === 'location-rt-2');
     expect(node).toBeDefined();
     expect(node?.x).toBe(380);
     expect(node?.y).toBe(500);
@@ -136,7 +149,7 @@ describe('dev-mock store + topology round-trip', () => {
     // Wires survive the round-trip too (the diff path persists them).
     expect(reloaded.wires).toHaveLength(initial.wires.length);
     // The diagram persists the name that was applied; the live rename is
-    // served by the store list and light-merged onto the card by the editor.
+    // served by the location list and light-merged onto the card by the editor.
     expect(node?.name).toBe('RT Diagram Branch');
 
     // 6. Self-heal: restore the seed diagram for watch-mode re-runs.
@@ -153,77 +166,75 @@ describe('dev-mock store + topology round-trip', () => {
     });
   });
 
-  it('delete_store_profile removes the branch from subsequent list calls', async () => {
-    const created = await invoke('create_store_profile', {
-      args: { id: 'store-rt-3', name: 'RT Delete Me' },
-    }) as MockStoreRow;
+  it('delete_location_profile_scoped removes the branch from subsequent list calls', async () => {
+    const created = await invoke('create_location_profile_scoped', {
+      sessionToken: 'test-session-token',
+      args: { id: 'location-rt-3', name: 'RT Delete Me' },
+    }) as MockLocationRow;
 
-    await invoke('delete_store_profile', { args: { id: created.id } });
+    await invoke('delete_location_profile_scoped', {
+      sessionToken: 'test-session-token',
+      id: created.id,
+    });
 
     // A fresh list call (what a reload would show) no longer serves the row.
-    const list = await invoke('list_store_profiles') as MockStoreRow[];
+    const list = await invoke('list_locations_scoped', {
+      sessionToken: 'test-session-token',
+    }) as MockLocationRow[];
     expect(list.find((s) => s.id === created.id)).toBeUndefined();
     // Deletion is targeted — the seed branch survives.
     expect(list.some((s) => s.id === 'store-1')).toBe(true);
   });
 
-  it('answers the scoped store commands the API layer now invokes (ADR #7 aliases)', async () => {
-    // The TS API migrated to *_scoped (listStoresScoped etc. → the
-    // list_store_profiles_scoped family). The dev-mock must serve those
-    // names so the browser preview does not see `null` stores — which would
-    // gate the topology editor's Apply off and empty StoreSwitcher. Call
-    // shapes mirror the real wrappers in @/api/stores (sessionToken for
-    // read/write-by-id, sessionToken + nested args for create/update).
-    const list = await invoke('list_store_profiles_scoped', {
-      sessionToken: 'test-session-token',
-    }) as MockStoreRow[];
-    expect(Array.isArray(list)).toBe(true);
-    expect(list.some((s) => s.id === 'store-1')).toBe(true);
+  it('answers the full canonical location command family with one stateful contract', async () => {
+    const sessionToken = 'test-location-session';
+    const list = await invoke('list_locations_scoped', { sessionToken }) as MockLocationRow[];
+    expect(list.some((location) => location.id === 'store-1')).toBe(true);
 
-    const one = await invoke('get_store_profile_scoped', {
-      sessionToken: 'test-session-token',
+    const one = await invoke('get_location_profile_scoped', {
+      sessionToken,
       id: 'store-1',
-    }) as MockStoreRow | null;
+    }) as MockLocationRow | null;
     expect(one?.id).toBe('store-1');
 
-    const primary = await invoke('get_primary_store_scoped', {
-      sessionToken: 'test-session-token',
-    }) as MockStoreRow | null;
+    const primary = await invoke('get_primary_location_scoped', {
+      sessionToken,
+    }) as MockLocationRow | null;
     expect(primary).toBeDefined();
 
-    // Mutations resolve through the same alias and persist to the list.
-    const created = await invoke('create_store_profile_scoped', {
-      sessionToken: 'test-session-token',
-      args: { id: 'store-sc-1', name: 'Scoped Branch' },
-    }) as MockStoreRow;
-    expect(created.name).toBe('Scoped Branch');
+    const created = await invoke('create_location_profile_scoped', {
+      sessionToken,
+      args: { id: 'location-sc-1', name: 'Canonical Location' },
+    }) as MockLocationRow;
+    expect(created.name).toBe('Canonical Location');
 
-    const renamed = await invoke('update_store_profile_scoped', {
-      sessionToken: 'test-session-token',
+    const renamed = await invoke('update_location_profile_scoped', {
+      sessionToken,
       args: {
-        id: 'store-sc-1',
-        name: 'Scoped Renamed',
+        id: 'location-sc-1',
+        name: 'Canonical Renamed',
         address: '',
         tax_id: '',
         currency: 'USD',
         timezone: 'UTC',
       },
-    }) as MockStoreRow;
-    expect(renamed.name).toBe('Scoped Renamed');
+    }) as MockLocationRow;
+    expect(renamed.name).toBe('Canonical Renamed');
 
-    await invoke('set_primary_store_scoped', {
-      sessionToken: 'test-session-token',
-      id: 'store-sc-1',
-    });
-    const afterSet = await invoke('list_store_profiles') as MockStoreRow[];
-    expect(afterSet.find((s) => s.id === 'store-sc-1')?.is_primary).toBe(true);
+    const setPrimary = await invoke('set_primary_location_scoped', {
+      sessionToken,
+      id: 'location-sc-1',
+    }) as MockLocationRow;
+    expect(setPrimary.id).toBe('location-sc-1');
+    expect((await invoke('get_primary_location_scoped', { sessionToken }) as MockLocationRow).id)
+      .toBe('location-sc-1');
 
-    await invoke('delete_store_profile_scoped', {
-      sessionToken: 'test-session-token',
-      id: 'store-sc-1',
+    await invoke('delete_location_profile_scoped', {
+      sessionToken,
+      id: 'location-sc-1',
     });
-    const afterDelete = await invoke('list_store_profiles') as MockStoreRow[];
-    expect(afterDelete.find((s) => s.id === 'store-sc-1')).toBeUndefined();
+    const afterDelete = await invoke('list_locations_scoped', { sessionToken }) as MockLocationRow[];
+    expect(afterDelete.find((location) => location.id === 'location-sc-1')).toBeUndefined();
   });
 });
 

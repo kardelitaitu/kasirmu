@@ -24,6 +24,7 @@ next: none | perf: N/A
 //! assert_eq!(mock.sent_count(), 1);
 //! ```
 
+pub mod email_scheduler;
 pub mod handlers;
 pub mod mock;
 pub mod whatsapp;

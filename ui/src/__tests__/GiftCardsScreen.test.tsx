@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
@@ -15,7 +16,7 @@ vi.mock('@/api/giftCards', () => ({
 // Mock WorkspaceContext so GiftCardsScreen can use useWorkspace.
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({ sessionToken: 'tok-test', activeWorkspace: null, logout: vi.fn() }),
-  WorkspaceProvider: ({ children }: { children: import('react').ReactNode }) => <>{children}</>,
+  WorkspaceProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 // Mock the IssueGiftCardModal child component.

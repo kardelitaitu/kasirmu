@@ -10,7 +10,7 @@ import {
   loadTemplate,
   listTemplates,
   deleteTemplate,
-} from '../features/stores/topologyExport';
+} from '../features/locations/topologyExport';
 
 const nodes = [
   { id: 'store-1', type: 'store' as const, name: 'Downtown', x: 80, y: 140, subtitle: 'Branch' },
@@ -238,7 +238,7 @@ describe('migrateLocalTemplates', () => {
   beforeEach(() => localStorage.clear());
 
   const imported = async () =>
-    (await import('@/features/stores/topologyExport')).migrateLocalTemplates;
+    (await import('@/features/locations/topologyExport')).migrateLocalTemplates;
 
   it('moves each template to the backend and clears it locally', async () => {
     saveTemplate('Main Floor', nodes, wires);
@@ -337,7 +337,7 @@ describe('migrateLocalTemplates', () => {
 
 describe('template migration wiring (canary)', () => {
   const editorSource = readFileSync(
-    join(process.cwd(), 'src/features/stores/NodeTopologyEditor.tsx'),
+    join(process.cwd(), 'src/features/locations/NodeTopologyEditor.tsx'),
     'utf8',
   );
   const usesBackendTemplates = /\b(?:save|load|list|delete)TopologyTemplates?\s*\(/.test(editorSource);

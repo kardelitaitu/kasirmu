@@ -1,9 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { getSubscriptionCapabilities, type SubscriptionCapabilities } from '@/api/subscription';
+import {
+  getSubscriptionCapabilities,
+  type SubscriptionCapabilities,
+  type SubscriptionLifecycleState,
+} from '@/api/subscription';
+
+/**
+ * The lifecycle state visible to the UI: the backend's normalized state
+ * once the read settles, `loading` while the first fetch is in flight.
+ * (`loading` never comes from the backend — it is this provider's fetch
+ * phase only.)
+ */
+export type SubscriptionUiState = SubscriptionLifecycleState | 'loading';
 
 interface SubscriptionContextValue {
-  /** The tenant's tier capabilities, or `null` while loading / on failure. */
+  /** The tenant's tier capabilities, or `null` while loading / on transport failure. */
   caps: SubscriptionCapabilities | null;
+  /**
+   * Lifecycle state (todo-global-saas-1.md §B). Fail-closed: a transport
+   * failure reports `unavailable` — the backend itself already downgrades
+   * missing/tampered subscription data to Free entitlements + `unavailable`,
+   * so a missing response can never silently grant tier-gated access.
+   */
+  state?: SubscriptionUiState;
   /** True until the first capabilities read settles. */
   loading: boolean;
   /** Re-fetch capabilities (e.g. after license activation/renewal). */
@@ -12,6 +31,7 @@ interface SubscriptionContextValue {
 
 const SubscriptionContext = createContext<SubscriptionContextValue>({
   caps: null,
+  state: 'loading',
   loading: true,
   refresh: () => {},
 });
@@ -19,19 +39,31 @@ const SubscriptionContext = createContext<SubscriptionContextValue>({
 /**
  * C2.2: fetches the tenant's subscription capabilities once at app start and
  * shares them with every tier-gated screen (analytics/loyalty locks, QRIS
- * gate, store/terminal/staff limits). The read is local (no network), and a
- * failure degrades to `caps: null` — gates then render open rather than
- * blocking the app.
+ * gate, location/terminal/staff limits). The read is local (no network).
+ *
+ * §B fail-closed contract: the command layer never errors for missing or
+ * tampered subscription data — it returns Free entitlements with
+ * `state: 'unavailable'`, so gates lock. Only a transport-level failure
+ * lands in the catch path, which also reports `unavailable`.
  */
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [caps, setCaps] = useState<SubscriptionCapabilities | null>(null);
+  const [state, setState] = useState<SubscriptionUiState>('loading');
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
     setLoading(true);
+    setState('loading');
     getSubscriptionCapabilities()
-      .then(setCaps)
-      .catch(() => setCaps(null))
+      .then((next) => {
+        setCaps(next);
+        setState(next.state);
+      })
+      .catch(() => {
+        // Transport failure (command missing, IPC broken) — fail closed.
+        setCaps(null);
+        setState('unavailable');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -40,13 +72,34 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <SubscriptionContext.Provider value={{ caps, loading, refresh }}>
+    <SubscriptionContext.Provider value={{ caps, state, loading, refresh }}>
       {children}
     </SubscriptionContext.Provider>
   );
 }
 
-/** Access the tenant's subscription capabilities (C2.2). */
+/** Access the tenant's subscription capabilities + lifecycle state (C2.2). */
 export function useSubscription(): SubscriptionContextValue {
   return useContext(SubscriptionContext);
+}
+
+/**
+ * §B administrative entitlement gate (todo-global-saas-1.md):
+ * administrative SaaS features — Analytics, Reports, Audit Log, Memo,
+ * Promotions, Data Management, Topology editing, premium Settings — lock
+ * the moment the subscription leaves `active` (i.e. at `expiresAt`, and
+ * for canceled/paused/unavailable data too), while POS operational runtime
+ * continues through the tier's signed offline grace window. Grace never
+ * re-opens administrative features, and a missing/invalid subscription
+ * fails closed here exactly as it does in the capabilities command.
+ *
+ * Operational tier gates (QRIS, loyalty earning, quotas) keep reading
+ * `caps` — the backend already downgrades their entitlements via
+ * `effective_tier()` when grace lapses.
+ */
+export function useAdminGate(): { locked: boolean; state: SubscriptionUiState } {
+  const { state } = useSubscription();
+  // Absent state (legacy mock, unexpected payload) fails closed.
+  const resolved = state ?? 'unavailable';
+  return { locked: resolved !== 'active', state: resolved };
 }

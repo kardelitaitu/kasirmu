@@ -1,0 +1,44 @@
+.settings-scope-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-full, 9999px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+
+.settings-scope-tag--organization {
+  background: var(--color-scope-organization-bg);
+  color: var(--color-scope-organization);
+  border-color: var(--color-scope-organization-border);
+}
+
+.settings-scope-tag--legal-entity {
+  background: var(--color-scope-legal-entity-bg);
+  color: var(--color-scope-legal-entity);
+  border-color: var(--color-scope-legal-entity-border);
+}
+
+.settings-scope-tag--location {
+  background: var(--color-scope-location-bg);
+  color: var(--color-scope-location);
+  border-color: var(--color-scope-location-border);
+}
+
+.settings-scope-tag--workspace {
+  background: var(--color-scope-workspace-bg);
+  color: var(--color-scope-workspace);
+  border-color: var(--color-scope-workspace-border);
+}
+
+.settings-scope-tag--terminal {
+  background: var(--color-scope-terminal-bg);
+  color: var(--color-scope-terminal);
+  border-color: var(--color-scope-terminal-border);
+}

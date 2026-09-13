@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { useCartTax } from '@/hooks/useCartTax';
+import { invalidateCartTaxCache } from '@/hooks/useCartTax';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import {
@@ -12,8 +14,8 @@ import taxFtl from '@/locales/tax.ftl?raw';
 import TaxConfigurationScreen from '@/features/tax/TaxConfigurationScreen';
 
 const SAMPLE_TAX_RATES = [
-  { id: 'tax-1', name: 'Sales Tax', rate_bps: 825, is_default: true, display_rate: '8.25%', is_inclusive: false, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
-  { id: 'tax-2', name: 'VAT', rate_bps: 2000, is_default: false, display_rate: '20%', is_inclusive: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+  { id: 'tax-1', name: 'Sales Tax', rate_bps: 825, is_default: true, display_rate: '8.25%', is_inclusive: false, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', scope: { scope: 'location', legalEntityId: null, locationId: 'loc-1' }, window: { effectiveFrom: '2026-01-01', effectiveTo: null } },
+  { id: 'tax-2', name: 'VAT', rate_bps: 2000, is_default: false, display_rate: '20%', is_inclusive: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', scope: null, window: null },
 ];
 
 const SAMPLE_CATEGORIES = [
@@ -25,10 +27,20 @@ const SAMPLE_CAT_TAX_RATES = [
   { category_id: 'cat-1', tax_rate_ids: ['tax-1'] },
 ];
 
-const { invokeMock } = vi.hoisted(() => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  invokeMock: vi.fn() as any,
-}));
+const { invokeMock, setRoundingModesMock, getRoundingModesMock } = vi.hoisted(() => {
+  // Hoisted closure state: the invokeMock implementation (defined in
+  // beforeEach, after this runs) must read what tests stage, so the
+  // variable lives HERE and both directions go through accessors.
+  let roundingModesMock: Record<string, string | null> = {};
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invokeMock: vi.fn() as any,
+    setRoundingModesMock: (v: Record<string, string | null>) => {
+      roundingModesMock = v;
+    },
+    getRoundingModesMock: () => roundingModesMock,
+  };
+});
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
@@ -37,6 +49,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 beforeEach(() => {
   invokeMock.mockClear();
   resetUnmatchedInvokes();
+  setRoundingModesMock({});
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
     if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
@@ -46,6 +59,9 @@ beforeEach(() => {
     if (cmd === 'delete_tax_rate_scoped') return Promise.resolve(undefined);
     if (cmd === 'get_tax_rate_dependency_counts_scoped') return Promise.resolve({ products: 0, categories: 0, sale_lines: 0 });
     if (cmd === 'set_category_tax_rates_scoped') return Promise.resolve(undefined);
+    if (cmd === 'list_tax_rate_rounding_modes_scoped') {
+      return Promise.resolve(getRoundingModesMock());
+    }
     recordUnmatchedInvoke(cmd);
     return Promise.reject(new Error(`Unknown command: ${cmd}`));
   });
@@ -89,6 +105,21 @@ describe('TaxConfigurationScreen', () => {
     // Sales Tax is default, VAT is not
     const defaultBadges = screen.getAllByText('Default');
     expect(defaultBadges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows the scope provenance badge for a location-scoped rate', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    // Sales Tax carries scope { location, loc-1 } from the side-channel join.
+    expect(screen.getByText('Location · loc-1')).toBeInTheDocument();
+  });
+
+  it('shows the Global badge when the scope entry is absent', async () => {
+    // A null scope entry is the tenant-global tier — the resolver walk ends
+    // there, so the badge must say Global, not hide the row's provenance.
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    expect(screen.getByText('Global')).toBeInTheDocument();
   });
 
   it('shows empty state when no tax rates exist', async () => {
@@ -136,6 +167,74 @@ describe('TaxConfigurationScreen', () => {
     // Modal should have the tax name input pre-filled
     const nameInput = within(dialog).getByDisplayValue('Sales Tax');
     expect(nameInput).toBeInTheDocument();
+    // F1: window + scope fields seeded from the joined DTO
+    expect(within(dialog).getByLabelText('Effective from')).toHaveValue('2026-01-01');
+    expect(within(dialog).getByLabelText('Legal entity id')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Location id')).toHaveValue('loc-1');
+  });
+
+  it('sends scope and window args through the scoped create command', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+
+    await userEvent.type(screen.getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(screen.getByLabelText('Rate (%)'), '500');
+    await userEvent.type(screen.getByLabelText('Location id'), 'loc-1');
+    await userEvent.type(screen.getByLabelText('Effective from'), '2026-10-01');
+    await userEvent.type(screen.getByLabelText('Effective to (exclusive)'), '2027-10-01');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_tax_rate_scoped', expect.objectContaining({
+        args: expect.objectContaining({
+          name: 'Room Tax',
+          rateBps: 500,
+          locationId: 'loc-1',
+          effectiveFrom: '2026-10-01',
+          effectiveTo: '2027-10-01',
+        }),
+      }));
+    });
+  });
+
+  it('warns when editing changes the rate tier', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    const salesTaxRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(salesTaxRow).getByRole('button', { name: /edit/i }));
+
+    const dialog = screen.getByRole('dialog');
+    // F1 debt: tier move silently empties the vacated tier — warn on change.
+    expect(within(dialog).queryByText(/leaves the vacated tier/i)).toBeNull();
+
+    await userEvent.type(within(dialog).getByLabelText('Location id'), '-2');
+    expect(within(dialog).getByText(/leaves the vacated tier/i)).toBeInTheDocument();
+  });
+
+  it('offers the replacement path when the delete guard refuses', async () => {
+    // A3 guard: delete_tax_rate refuses with Validation when the rate is the
+    // last row covering a live tier; the refusal dialog offers the remedy.
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    const salesTaxRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(salesTaxRow).getByRole('button', { name: /delete/i }));
+    const confirm = await screen.findByRole('dialog', { name: /delete sales tax/i });
+    // Queue the rejection only for the delete call — the initial list/counts
+    // calls must still resolve for the screen to render.
+    invokeMock.mockRejectedValueOnce({
+      kind: 'invalid',
+      message: 'location loc-1 needs a replacement rate first',
+    });
+    await userEvent.click(within(confirm).getByRole('button', { name: /delete/i }));
+
+    // The refusal dialog names the rate and offers the remedy path.
+    const refusal = await screen.findByRole('dialog', { name: /cannot delete sales tax/i });
+    expect(within(refusal).getByText(/last rate covering its tier/i)).toBeInTheDocument();
+    await userEvent.click(within(refusal).getByRole('button', { name: /create replacement/i }));
+
+    // Remedy: the create modal opens for the replacement authoring.
+    expect(await screen.findByText(/tax name/i)).toBeInTheDocument();
   });
 
   it('deletes a tax rate after confirming the destructive dialog', async () => {
@@ -429,5 +528,228 @@ describe('TaxConfigurationScreen', () => {
       expect(invokeMock).not.toHaveBeenCalledWith('create_tax_rate_scoped', expect.anything());
     });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+// ── E1-8: rounding provenance badge (over the E1-5 batch read) ──
+
+describe('TaxConfigurationScreen rounding provenance (E1-8)', () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+    resetUnmatchedInvokes();
+    setRoundingModesMock({});
+  });
+
+  it('badge falls back to the store preference when the directive is null', async () => {
+    setRoundingModesMock({ 'tax-1': null, 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await screen.findAllByText(/store preference/i);
+    // The preference value is surfaced, not just a generic label.
+    expect(screen.getAllByText(/Rounding: half_up \(store preference\)/).length).toBe(2);
+  });
+
+  it('badge shows the statutory directive when one is stored', async () => {
+    setRoundingModesMock({ 'tax-1': 'truncate', 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await screen.findAllByText(/statutory/i);
+    expect(screen.getByText('Rounding: truncate (statutory)')).toBeInTheDocument();
+    expect(screen.getAllByText(/store preference/i).length).toBe(1);
+  });
+
+  it('a failed batch read degrades to the preference label, never a fabricated directive', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_tax_rate_rounding_modes_scoped') return Promise.reject(new Error('down'));
+      if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
+      if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
+      if (cmd === 'list_category_tax_rates_scoped') return Promise.resolve(SAMPLE_CAT_TAX_RATES);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await screen.findAllByText(/store preference/i);
+    expect(screen.queryByText(/statutory/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('TaxConfigurationScreen rounding select (E1-6)', () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+    resetUnmatchedInvokes();
+    setRoundingModesMock({});
+  });
+
+  it("select defaults to '' and the payload omits roundingMode on the preference arm", async () => {
+    setRoundingModesMock({ 'tax-1': null, 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+    const dialog = screen.getByRole('dialog');
+    // The '' option states WHICH preference applies — no bare 'default'.
+    expect(within(dialog).getByLabelText(/rounding mode/i)).toHaveValue('');
+    expect(within(dialog).getByText(/store preference/i)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(within(dialog).getByLabelText('Rate (%)'), '500');
+    await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_tax_rate_scoped', expect.objectContaining({
+        args: expect.not.objectContaining({ roundingMode: expect.anything() }),
+      }));
+    });
+  });
+
+  it('sends the chosen statutory mode through the create payload', async () => {
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Tax Name'), 'Room Tax');
+    await userEvent.type(within(dialog).getByLabelText('Rate (%)'), '500');
+    await userEvent.selectOptions(within(dialog).getByLabelText(/rounding mode/i), 'half_up');
+    await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('create_tax_rate_scoped', expect.objectContaining({
+        args: expect.objectContaining({ roundingMode: 'half_up' }),
+      }));
+    });
+  });
+
+  it('scoped rows render the select READ-ONLY (D8 hub-only authoring)', async () => {
+    setRoundingModesMock({ 'tax-1': 'truncate', 'tax-2': null });
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    // The editor seeds its select from the batch map — wait until the
+    // E1-8 badge fetch has actually resolved and rendered.
+    await screen.findByText(/Rounding: truncate \(statutory\)/i);
+    // tax-1 is location-scoped — its directive comes from the hub and
+    // the device arm must not be able to edit it.
+    const scopedRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(scopedRow).getByRole('button', { name: /edit/i }));
+    let dialog = screen.getByRole('dialog');
+    const scopedSelect = within(dialog).getByLabelText(/rounding mode/i) as HTMLSelectElement;
+    expect(scopedSelect).toBeDisabled();
+    expect(scopedSelect).toHaveValue('truncate');
+    expect(within(dialog).getByText(/authored at the hub/i)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: /cancel/i }));
+    // tax-2 is tenant-global: the device authoring arm, seeded with its
+    // stored directive (none → the preference arm).
+    const globalRow = screen.getAllByText('VAT')[0]!.closest('tr')!;
+    await userEvent.click(within(globalRow).getByRole('button', { name: /edit/i }));
+    dialog = screen.getByRole('dialog');
+    const globalSelect = within(dialog).getByLabelText(/rounding mode/i) as HTMLSelectElement;
+    expect(globalSelect).toBeEnabled();
+    expect(globalSelect).toHaveValue('');
+    expect(within(dialog).queryByText(/authored at the hub/i)).toBeNull();
+  });
+});
+
+
+// ── F2-8: tax-config writes invalidate the cart-tax cache ──
+
+describe('TaxConfigurationScreen cart-tax cache invalidation (F2-8)', () => {
+  const CART_TOKEN = 'tok_f28';
+  const CART_LINES = [{ sku: 'SKU-1', qty: 2, unit_price_minor: 1000 }];
+  let computeDown: boolean;
+  // Set per-test: the backend's last-covering-row guard refuses the
+    // delete (a Validation rejection routed by command, not a
+    // once-queued rejection that would hit the next load call).
+  let deleteRefused: boolean;
+
+  beforeEach(() => {
+    invokeMock.mockClear();
+    resetUnmatchedInvokes();
+    computeDown = false;
+    deleteRefused = false;
+    // The hook consults the SAME module map the screen writes invalidate.
+    invalidateCartTaxCache();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'compute_cart_tax_scoped') {
+        return computeDown
+          ? Promise.reject(new Error('ipc down'))
+          : Promise.resolve({ taxMinor: 1700, hasExclusive: false });
+      }
+      if (cmd === 'list_tax_rates_scoped') return Promise.resolve(SAMPLE_TAX_RATES);
+      if (cmd === 'list_categories' || cmd === 'list_categories_scoped') return Promise.resolve(SAMPLE_CATEGORIES);
+      if (cmd === 'list_category_tax_rates_scoped') return Promise.resolve(SAMPLE_CAT_TAX_RATES);
+      if (cmd === 'list_tax_rate_rounding_modes_scoped') return Promise.resolve({});
+      if (cmd === 'create_tax_rate_scoped') return Promise.resolve({ ...SAMPLE_TAX_RATES[0], name: 'New Tax' });
+      if (cmd === 'update_tax_rate_scoped') return Promise.resolve(SAMPLE_TAX_RATES[0]);
+      if (cmd === 'delete_tax_rate_scoped') {
+        return deleteRefused
+          ? Promise.reject({ kind: 'invalid', message: 'needs replacement' })
+          : Promise.resolve(undefined);
+      }
+      if (cmd === 'get_tax_rate_dependency_counts_scoped') return Promise.resolve({ products: 0, categories: 0, sale_lines: 0 });
+      recordUnmatchedInvoke(cmd);
+      return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    });
+  });
+
+  /** Prime the cache, run the screen write, then force a failing
+   *  recompute: without the invalidation the matching signature would
+   *  classify the stale answer as fresh (`caution`); with it the same
+   *  recompute must be `unknown` — and the fresh IPC call is visible.
+   */
+  async function pinFreshRecomputeAfterWrite(write: () => Promise<void>) {
+    const first = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(first.result.current.severity).toBe('ok'));
+    first.unmount();
+    const callsAfterPrime = invokeMock.mock.calls.filter((c: string[]) => c[0] === 'compute_cart_tax_scoped').length;
+
+    await write();
+
+    computeDown = true;
+    const second = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(second.result.current.severity).toBe('unknown'));
+    // The recompute ISSUED its own IPC — nothing was served from cache.
+    const callsAfter = invokeMock.mock.calls.filter((c: string[]) => c[0] === 'compute_cart_tax_scoped').length;
+    expect(callsAfter).toBe(callsAfterPrime + 1);
+    second.unmount();
+  }
+
+  it('a successful rate create drops the cached signature (fresh recompute, never caution)', async () => {
+    await pinFreshRecomputeAfterWrite(async () => {
+      renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+      await waitForTable();
+      await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+      const dialog = screen.getByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText('Tax Name'), 'Cache Bust');
+      await userEvent.type(within(dialog).getByLabelText('Rate (%)'), '500');
+      await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+  });
+
+  it('a successful rate delete drops the cached signature too', async () => {
+    await pinFreshRecomputeAfterWrite(async () => {
+      renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+      await waitForTable();
+      const row = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+      await userEvent.click(within(row).getByRole('button', { name: /delete/i }));
+      const confirm = await screen.findByRole('dialog', { name: /delete sales tax/i });
+      await userEvent.click(within(confirm).getByRole('button', { name: /delete/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /delete sales tax/i })).toBeNull());
+    });
+  });
+
+  it('a REFUSED delete (backend guard) leaves the cache intact', async () => {
+    const first = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(first.result.current.severity).toBe('ok'));
+    first.unmount();
+    deleteRefused = true;
+    renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+    await waitForTable();
+    const row = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+    await userEvent.click(within(row).getByRole('button', { name: /delete/i }));
+    const confirm = await screen.findByRole('dialog', { name: /delete sales tax/i });
+    await userEvent.click(within(confirm).getByRole('button', { name: /delete/i }));
+    // Refusal dialog means the write never happened.
+    await screen.findByText(/last rate covering its tier/i);
+    computeDown = true;
+    const second = renderHook(() => useCartTax(CART_TOKEN, CART_LINES, 'IDR'));
+    await waitFor(() => expect(second.result.current.severity).toBe('caution'));
+    // Cache SURVIVED the refusal — the old answer is still accurate.
+    second.unmount();
   });
 });

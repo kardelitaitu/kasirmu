@@ -139,6 +139,183 @@ pub const ALL: &[Migration] = &[
         id: "20260904_kds_indexes.sql",
         sql: include_str!("../migrations/20260904_kds_indexes.sql"),
     },
+    Migration {
+        id: "20260906_rename_store_to_location.sql",
+        sql: include_str!("../migrations/20260906_rename_store_to_location.sql"),
+    },
+    Migration {
+        id: "20260907_add_location_tenant_id.sql",
+        sql: include_str!("../migrations/20260907_add_location_tenant_id.sql"),
+    },
+    Migration {
+        id: "20260908_legal_entities.sql",
+        sql: include_str!("../migrations/20260908_legal_entities.sql"),
+    },
+    Migration {
+        id: "20260909_memos.sql",
+        sql: include_str!("../migrations/20260909_memos.sql"),
+    },
+    Migration {
+        id: "20260910_memo_child_tenant_id.sql",
+        sql: include_str!("../migrations/20260910_memo_child_tenant_id.sql"),
+    },
+    Migration {
+        id: "20260911_memo_fk_restrict.sql",
+        sql: include_str!("../migrations/20260911_memo_fk_restrict.sql"),
+    },
+    Migration {
+        id: "20260912_terminals_tenant.sql",
+        sql: include_str!("../migrations/20260912_terminals_tenant.sql"),
+    },
+    Migration {
+        id: "20260913_memo_locations.sql",
+        sql: include_str!("../migrations/20260913_memo_locations.sql"),
+    },
+    Migration {
+        id: "20260914_memo_retention.sql",
+        sql: include_str!("../migrations/20260914_memo_retention.sql"),
+    },
+    Migration {
+        id: "20260915_topology_revisions.sql",
+        sql: include_str!("../migrations/20260915_topology_revisions.sql"),
+    },
+    Migration {
+        id: "20260916_role_assignment_scopes.sql",
+        sql: include_str!("../migrations/20260916_role_assignment_scopes.sql"),
+    },
+    Migration {
+        id: "20260917_assignment_backfill_org_wide.sql",
+        sql: include_str!("../migrations/20260917_assignment_backfill_org_wide.sql"),
+    },
+    Migration {
+        id: "20260918_payables.sql",
+        sql: include_str!("../migrations/20260918_payables.sql"),
+    },
+    Migration {
+        id: "20260919_regional_configuration.sql",
+        sql: include_str!("../migrations/20260919_regional_configuration.sql"),
+    },
+    Migration {
+        id: "20260920_audit_retention.sql",
+        sql: include_str!("../migrations/20260920_audit_retention.sql"),
+    },
+    Migration {
+        id: "20260921_tax_rate_scoping.sql",
+        sql: include_str!("../migrations/20260921_tax_rate_scoping.sql"),
+    },
+    Migration {
+        id: "20260922_over_quota_markers.sql",
+        sql: include_str!("../migrations/20260922_over_quota_markers.sql"),
+    },
+    Migration {
+        id: "20260923_fiscal_numbering.sql",
+        sql: include_str!("../migrations/20260923_fiscal_numbering.sql"),
+    },
+    Migration {
+        id: "20260924_local_payment_methods.sql",
+        sql: include_str!("../migrations/20260924_local_payment_methods.sql"),
+    },
+    Migration {
+        id: "20260925_receipt_formats.sql",
+        sql: include_str!("../migrations/20260925_receipt_formats.sql"),
+    },
+    Migration {
+        id: "20260926_tax_rate_scoped_authoring.sql",
+        sql: include_str!("../migrations/20260926_tax_rate_scoped_authoring.sql"),
+    },
+    Migration {
+        id: "20260926_location_ticket_prefix.sql",
+        sql: include_str!("../migrations/20260926_location_ticket_prefix.sql"),
+    },
+    // W2-A consumer: freeze the branch ticket prefix on each KDS ticket at
+    // creation, so renaming a location cannot retitle chits already printed.
+    Migration {
+        id: "20260927_kds_ticket_prefix_stamp.sql",
+        sql: include_str!("../migrations/20260927_kds_ticket_prefix_stamp.sql"),
+    },
+    // W5-B: a statutory series is identified by (entity, kind); the kind was
+    // free TEXT, so a typo opened a parallel series at zero instead of failing.
+    // Core now parses DocumentKind and this closes the same set in the schema.
+    Migration {
+        id: "20260928_document_kind_check.sql",
+        sql: include_str!("../migrations/20260928_document_kind_check.sql"),
+    },
+    // E1-1 (owner ruling 2026-09-10): the statutory rounding directive rides
+    // the rate row. '' = no statutory directive (the preference applies); the
+    // two non-empty values are RoundingMode's serde snake_case names, so
+    // storage and wire share one spelling. Registry-chronological date
+    // (c3f5920cf precedent): the work is 09-10, but 20260926 REBUILDS
+    // tax_rates and its INSERT..SELECT copies an enumerated column list,
+    // so anything applied before it would be silently dropped — the file
+    // must sort AFTER the last tax_rates DDL writer. A future rebuild of
+    // this table must carry rounding_mode through both its column lists;
+    // the migrations_tests pin enforces exactly that.
+    Migration {
+        id: "20260929_tax_rate_rounding_mode.sql",
+        sql: include_str!("../migrations/20260929_tax_rate_rounding_mode.sql"),
+    },
+    // F2-4 (T1 dossier D64 slice 4): the per-sale audit stamp for a tax
+    // computed against a non-fresh estimate. NULL = unstamped — legacy rows
+    // were computed live and a missing stamp must never read as a claim, so
+    // there is deliberately no backfill and no default. Date 20260930 sorts
+    // after the last sales DDL writer (20260923_fiscal_numbering, which is
+    // an ADD COLUMN, not a rebuild — no sales rebuild exists in the
+    // registry); the same never-date-before-the-last-DDL-writer rule E1-1
+    // recorded applies, and a future sales rebuild must carry
+    // tax_estimate_note through both its column lists (the migrations_tests
+    // pin enforces exactly that).
+    Migration {
+        id: "20260930_sales_tax_estimate_note.sql",
+        sql: include_str!("../migrations/20260930_sales_tax_estimate_note.sql"),
+    },
+    // Tenant-scoped idempotency guard for POST /api/v1/sales: an opaque
+    // client-supplied Idempotency-Key header bound to the sale it created,
+    // keyed on (tenant_id, key) so one tenant can never resolve or block
+    // another tenant's key. Absent or blank keys store NULL and therefore
+    // never match, so the unguarded path stays byte-for-byte the current
+    // behaviour (new sale, 201). Uniqueness lives in an explicit UNIQUE index
+    // rather than a composite PRIMARY KEY so the NULL-key rows stay
+    // insertable, and there is no FK on sale_id because the claim row is
+    // written before the sale it guards. Date 20261001 sorts after the last
+    // sales DDL writer and touches no sales column.
+    Migration {
+        id: "20261001_sale_idempotency.sql",
+        sql: include_str!("../migrations/20261001_sale_idempotency.sql"),
+    },
+    // Durable record of concurrently diverged sync mutations. Stores the full
+    // version vectors rather than a scalar clock, because "concurrent" is
+    // exactly what a scalar cannot express. Date 20261002 sorts last and only
+    // creates a new table, so it is order-independent.
+    Migration {
+        id: "20261002_sync_conflicts.sql",
+        sql: include_str!("../migrations/20261002_sync_conflicts.sql"),
+    },
+    // Server-side version vector per entity: the "what have we already seen"
+    // half of a concurrency comparison. Concurrency is a property of a pair of
+    // mutations, so it cannot be decided from the pushed item alone. Date
+    // 20261003 sorts last and only creates a new table.
+    Migration {
+        id: "20261003_sync_entity_vectors.sql",
+        sql: include_str!("../migrations/20261003_sync_entity_vectors.sql"),
+    },
+    // Cloud-side Midtrans QRIS issue ledger: resolves order_id ->
+    // (tenant, sale) at webhook time WITHOUT depending on the device having
+    // synced its sale — the race the existing gateway_reference JOIN-based
+    // resolver cannot cross. No FK on sale_id for the same claim-before-sale
+    // reason 20261001_sale_idempotency records. Date 20261004 sorts last and
+    // only creates a new table.
+    Migration {
+        id: "20261004_midtrans_transactions.sql",
+        sql: include_str!("../migrations/20261004_midtrans_transactions.sql"),
+    },
+    // Dynamic KDS routing rules (todo-kds-agents-1.md backend slice): an
+    // explicit per-line station assignment composed on top of the frozen
+    // zone router — burger→Kitchen / cocktail→Bar splits without touching
+    // catalog data. Date 20261005 sorts last and only creates a new table.
+    Migration {
+        id: "20261005_kds_routing_rules.sql",
+        sql: include_str!("../migrations/20261005_kds_routing_rules.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

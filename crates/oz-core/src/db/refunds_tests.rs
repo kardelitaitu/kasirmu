@@ -612,6 +612,17 @@ fn total_refunded_for_sale_accumulates() {
 fn refund_line_not_in_deductions_fails() {
     let conn = fresh();
     seed_completed_sale(&conn);
+    // A real sale_lines row that this sale's deduction_locations JSON does NOT
+    // list. The guard needs that row to exist: a refund line naming no line of
+    // the sale at all is refused earlier, for there being no sold quantity to
+    // bound it (see create_refund_rejects_unknown_sale_line_id_on_a_legacy_sale),
+    // and the JSON lookup below would never run.
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('non-existent-sl', 'ref-sale-1', 'COFFEE', 1, 350, 350, 'USD', 9)",
+        [],
+    )
+    .unwrap();
     let s = store(&conn);
 
     // Refund line references a sale_line_id that doesn't exist in deduction_locations JSON.
@@ -905,4 +916,991 @@ fn create_refund_spend_reversal_floors_at_zero() {
         )
         .unwrap();
     assert_eq!(spent, 0, "spend floors at zero, never negative");
+}
+
+// ── Cumulative QUANTITY bound ──────────────────────────────────
+//
+// The sale total bounds VALUE; nothing bounded UNITS per sale line, so one
+// line could be refunded again and again — each refund restoring stock — as
+// long as each refund stayed inside the money bound. These tests pin the
+// quantity bound. The seeded sale also carries a second line, so a rejection
+// can be attributed to the quantity guard rather than to the money guard.
+
+/// The canonical default location, seeded by migration 078.
+const DEFAULT_LOC: &str = "01926b3a-0000-7000-8000-000000000001";
+
+/// Seed a completed sale whose first line sold 10 units of TEA at 100 (1000)
+/// plus a second line of 1 unit of JAM at 500, for a sale total of 1500, with
+/// both lines deducted from the default location.
+///
+/// The 500 of non-TEA value matters: it lets a repeated refund stay inside the
+/// cumulative MONEY bound while exceeding the TEA line's sold quantity —
+/// exactly the hole the cumulative QUANTITY bound closes.
+fn seed_quantity_sale(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('qty-p1', 'TEA', 'Tea', 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z'),
+            ('qty-p2', 'JAM', 'Jam', 500, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('qty-sale-1', 1500, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"qty-sl-1\",\"sku\":\"TEA\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":10}]},{\"sale_line_id\":\"qty-sl-2\",\"sku\":\"JAM\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":1}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('qty-sl-1', 'qty-sale-1', 'TEA', 10, 100, 1000, 'USD', 1),
+            ('qty-sl-2', 'qty-sale-1', 'JAM', 1, 500, 500, 'USD', 2);"
+    ).unwrap();
+}
+
+/// A refund of [qty] units of the 10-unit TEA line, charged at [minor] minor
+/// units in the sale's currency.
+fn tea_refund(qty: i64, minor: i64) -> Refund {
+    let line = RefundLine::new("qty-sl-1", "TEA", qty, price(100), price(minor));
+    Refund::new(
+        "qty-sale-1",
+        price(minor),
+        "quantity bound",
+        "",
+        "user-1",
+        vec![line],
+    )
+}
+
+/// Repeated 60%-of-sold refunds of one line: the FIRST is legitimate, the
+/// SECOND already returns 12 of the 10 units sold and must be rejected (and
+/// not by the money bound — 600 + 600 is 1200 of a 1500 sale), and nothing
+/// after it is accepted for that line.
+#[test]
+fn create_refund_rejects_repeated_60_percent_quantity_refunds() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    // 60% of the 10 units sold = 6 units.
+    s.create_refund(&tea_refund(6, 600)).unwrap();
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        6,
+        "the first 60% refund credits its own units"
+    );
+
+    let err = s.create_refund(&tea_refund(6, 600)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "12 cumulative units of a 10-unit line must be rejected by the \
+         QUANTITY bound (the money bound cannot fire: 1200 of 1500), got: {err:?}"
+    );
+
+    // A third refund of the same line — priced so low that only a quantity
+    // guard can object — is still rejected.
+    let third = s.create_refund(&tea_refund(6, 100)).unwrap_err();
+    assert!(
+        matches!(third, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "a third refund of an exhausted line must be rejected, got: {third:?}"
+    );
+
+    let refund_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM refunds WHERE sale_id = 'qty-sale-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let line_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(refund_rows, 1, "a rejected refund persists no header row");
+    assert_eq!(line_rows, 1, "a rejected refund persists no line row");
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        6,
+        "rejected refunds must not restore a single unit"
+    );
+}
+
+/// Two legitimate partial refunds that together reach the sold quantity, then a
+/// third unit that overshoots: 6 + 4 = 10 accepted, +1 rejected. This is the
+/// shape the missing bound allowed — one line refunded several times — stopped
+/// exactly at the sold quantity.
+#[test]
+fn create_refund_accepts_partials_to_full_qty_and_rejects_the_third() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&tea_refund(6, 600)).unwrap(); // 60% of sold
+    s.create_refund(&tea_refund(4, 400)).unwrap(); // remaining 40%
+
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        10,
+        "two partial refunds summing to the sold quantity credit all 10 units"
+    );
+
+    let err = s.create_refund(&tea_refund(1, 100)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "one unit past the sold quantity must be rejected, got: {err:?}"
+    );
+    assert_eq!(get_stock_at(&conn, "TEA", DEFAULT_LOC), 10);
+    assert_eq!(s.list_refunds_for_sale("qty-sale-1").unwrap().len(), 2);
+}
+
+/// A legitimate full-quantity refund — the whole line at full value — must
+/// still succeed and must restore the entire quantity. Guards against a bound
+/// that rejects the boundary case it exists to allow (prior + requested ==
+/// sold).
+#[test]
+fn create_refund_full_quantity_refund_still_succeeds() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&tea_refund(10, 1000)).unwrap();
+
+    let refunds = s.list_refunds_for_sale("qty-sale-1").unwrap();
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(refunds[0].lines[0].qty, 10);
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        10,
+        "a full-quantity refund credits the whole line back"
+    );
+    assert_eq!(
+        s.total_refunded_for_sale("qty-sale-1").unwrap().minor_units,
+        1000
+    );
+}
+
+/// The bound is per sale line, not per sale: exhausting the TEA line must not
+/// block a refund of the JAM line on the same sale.
+#[test]
+fn create_refund_quantity_bound_is_per_line_not_per_sale() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&tea_refund(10, 1000)).unwrap();
+
+    let jam = RefundLine::new("qty-sl-2", "JAM", 1, price(500), price(500));
+    let refund = Refund::new(
+        "qty-sale-1",
+        price(500),
+        "other line",
+        "",
+        "user-1",
+        vec![jam],
+    );
+    s.create_refund(&refund)
+        .unwrap_or_else(|e| panic!("a distinct sale line must stay refundable, got: {e:?}"));
+
+    assert_eq!(
+        get_stock_at(&conn, "TEA", DEFAULT_LOC),
+        10,
+        "the exhausted TEA line is credited once, not twice"
+    );
+    assert_eq!(
+        get_stock_at(&conn, "JAM", DEFAULT_LOC),
+        1,
+        "the second line's refund credits its own unit"
+    );
+}
+
+// ── The credit path that has no deduction_locations ────────────
+//
+// Both cumulative bounds are only meaningful if the line they bound against
+// exists. refund_lines.sale_line_id carries NO foreign key
+// (migrations/20260813_init.sql:537-539), so a bogus id inserts cleanly, and a
+// legacy or imported sale — create_sale never writes deduction_locations
+// (sales_lifecycle.rs:527-531) — routes restoration to
+// credit_refund_to_default_location, which credited refund_line.qty with
+// neither a per-line nor a cumulative bound. The money cap cannot see it
+// either: it folds the CALLER-SUPPLIED line total, so a refund priced at zero
+// passes it with room to spare.
+
+/// Seed a legacy sale: deduction_locations explicitly NULL (the import/CLI
+/// shape), one 10-unit line of TEA2 at 100 (1000) inside a 1500 sale, so the
+/// money bound keeps a wide margin and only a quantity bound can object.
+fn seed_legacy_quantity_sale(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('legx-p1', 'TEA2', 'Tea2', 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('legx-sale-1', 1500, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', NULL);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('legx-sl-1', 'legx-sale-1', 'TEA2', 10, 100, 1000, 'USD', 1);"
+    ).unwrap();
+}
+
+/// A refund of [qty] units of the legacy 10-unit line at [minor] of value.
+fn legacy_refund(qty: i64, minor: i64) -> Refund {
+    let line = RefundLine::new("legx-sl-1", "TEA2", qty, price(100), price(minor));
+    Refund::new(
+        "legx-sale-1",
+        price(minor),
+        "legacy qty",
+        "",
+        "user-1",
+        vec![line],
+    )
+}
+
+/// THE REPRODUCE, and it FAILS AGAINST HEAD: a legacy (deduction_locations
+/// NULL) completed sale, one refund line whose sale_line_id exists in no
+/// sale_lines row, qty 10^9, priced at zero so the money cap never engages.
+/// HEAD's 0b guard CONTINUED past the missing row and the default-location
+/// credit path had no bound at all, so this returned Ok and put a billion
+/// phantom units on the shelf. Absence of a row is not a licence to mint
+/// stock: it must be rejected, persist nothing, and credit nothing.
+#[test]
+fn create_refund_rejects_unknown_sale_line_id_on_a_legacy_sale() {
+    let conn = fresh();
+    seed_legacy_quantity_sale(&conn);
+    let s = store(&conn);
+
+    let ghost = RefundLine::new("legx-sl-GHOST", "TEA2", 1_000_000_000, price(0), price(0));
+    let refund = Refund::new(
+        "legx-sale-1",
+        price(0),
+        "phantom stock",
+        "",
+        "user-1",
+        vec![ghost],
+    );
+
+    let err = s
+        .create_refund(&refund)
+        .expect_err("a refund line naming no line of this sale must be rejected");
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. }
+            if *field == "refund_line.sale_line_id"),
+        "the unknown sale_line_id must be refused by the quantity guard, got: {err:?}"
+    );
+
+    let credited: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(delta), 0) FROM stock_movements WHERE reason = 'refund'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        credited, 0,
+        "not one unit may reach the shelf for a bogus line"
+    );
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "the rejected refund persists nothing");
+}
+
+/// The cumulative case on the path with no deduction_locations: three partial
+/// refunds of a legacy 10-unit line, each individually plausible and each
+/// priced so the money cap waves it through. 4 + 4 land, the third 4 is
+/// rejected at 12 of 10, and the last 2 units still fit — the bound stops at
+/// sold, not before it.
+#[test]
+fn create_refund_bounds_cumulative_quantity_on_a_legacy_sale_line() {
+    let conn = fresh();
+    seed_legacy_quantity_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&legacy_refund(4, 300)).unwrap();
+    s.create_refund(&legacy_refund(4, 300)).unwrap();
+    assert_eq!(
+        get_stock_at(&conn, "TEA2", DEFAULT_LOC),
+        8,
+        "two refunds of 4 units credit 8"
+    );
+
+    let err = s.create_refund(&legacy_refund(4, 300)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "the third refund takes the line past its 10 sold units, got: {err:?}"
+    );
+    assert_eq!(
+        get_stock_at(&conn, "TEA2", DEFAULT_LOC),
+        8,
+        "the rejected third refund credits nothing"
+    );
+
+    s.create_refund(&legacy_refund(2, 100))
+        .unwrap_or_else(|e| panic!("the last 2 units of a 10-unit line must refund, got: {e:?}"));
+    assert_eq!(
+        get_stock_at(&conn, "TEA2", DEFAULT_LOC),
+        10,
+        "exactly the sold quantity can come back, no more"
+    );
+}
+
+/// The credit site's own arithmetic must not wrap. Seed a prior refund that
+/// already booked i64::MAX - 1 units against the real line (a corrupt import
+/// or a sync replay can), then drive credit_refund_to_default_location
+/// DIRECTLY — bypassing create_refund — so this pins the add at the credit
+/// site rather than the guard above it. already_credited + refund_line.qty
+/// overflows i64 there; it must surface as a rejection, never as a negative
+/// sum that slips the comparison and credits stock.
+#[test]
+fn default_location_credit_rejects_instead_of_wrapping_near_i64_max() {
+    let conn = fresh();
+    seed_legacy_quantity_sale(&conn);
+    conn.execute(
+        "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
+         VALUES ('legx-r-prior', 'legx-sale-1', 0, 'USD', 'prior', '', 'user-1',
+                 '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency, created_at)
+         VALUES ('legx-rl-prior', 'legx-r-prior', 'legx-sl-1', 'TEA2', ?1, 0, 0, 'USD',
+                 '2025-01-01T00:00:00.000Z')",
+        params![i64::MAX - 1],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "legx-sale-1",
+        price(0),
+        "wrap attempt",
+        "",
+        "user-1",
+        vec![RefundLine::new("legx-sl-1", "TEA2", 10, price(0), price(0))],
+    );
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let outcome = s.credit_refund_to_default_location(&tx, &refund);
+    match outcome {
+        Err(CoreError::Validation { field, message }) => {
+            assert_eq!(field, "refund_line.qty", "wrong field: {field}");
+            assert!(
+                message.contains("overflow") || message.contains("exceeds"),
+                "expected an overflow/bound rejection, got: {message}"
+            );
+        }
+        Ok(()) => panic!("a wrapping quantity bound must never credit stock"),
+        other => panic!("expected a Validation rejection, got: {other:?}"),
+    }
+    drop(tx);
+
+    let credited: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(delta), 0) FROM stock_movements WHERE reason = 'refund'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(credited, 0, "no stock is credited when the bound overflows");
+}
+
+/// The deduction_locations path gets the same refusal: a line id absent from
+/// sale_lines is rejected before that JSON is consulted (a sale whose JSON
+/// lists an id the ledger never sold is exactly as unbounded as the legacy
+/// path), and its cumulative bound keeps rejecting the third partial refund.
+#[test]
+fn deduction_path_rejects_unknown_line_and_still_bounds_cumulative_qty() {
+    let conn = fresh();
+    seed_quantity_sale(&conn);
+    let s = store(&conn);
+
+    let ghost = RefundLine::new("ghost-not-a-line", "TEA", 3, price(100), price(300));
+    let refund = Refund::new(
+        "qty-sale-1",
+        price(300),
+        "ghost line",
+        "",
+        "user-1",
+        vec![ghost],
+    );
+    let err = s.create_refund(&refund).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. }
+            if field == "refund_line.sale_line_id"),
+        "an unknown sale line must be refused on the deduction path too, got: {err:?}"
+    );
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "a refused line persists nothing");
+
+    s.create_refund(&tea_refund(6, 600)).unwrap();
+    s.create_refund(&tea_refund(4, 400)).unwrap();
+    let err = s.create_refund(&tea_refund(6, 300)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "12 cumulative units of a 10-unit line must be rejected, got: {err:?}"
+    );
+    assert_eq!(get_stock_at(&conn, "TEA", DEFAULT_LOC), 10);
+}
+
+/// The shape the shifts drawer test needs: a LEGACY sale (deduction_locations
+/// NULL) with exactly one 1-unit line, refunded in full — the money bound at
+/// its equality boundary (1000 of 1000) and the quantity bound at its equality
+/// boundary (1 of 1 sold). Both must accept it and the unit must come back to
+/// the default location. This is the proof that a fixture which names the line
+/// it refunds is not blocked by either bound.
+#[test]
+fn legacy_sale_full_value_single_unit_refund_is_accepted() {
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at, product_type)
+         VALUES ('p-sku', 'SKU', 'Sku', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'retail');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            created_at, updated_at, user_id, version, deduction_locations)
+         VALUES ('refund-sale-1', 1000, 'USD', 1, 'completed', 'cash',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1, NULL);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('sl-1', 'refund-sale-1', 'SKU', 1, 1000, 1000, 'USD', 1);"
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("sl-1", "SKU", 1, price(1000), price(1000));
+    let refund = Refund::new(
+        "refund-sale-1",
+        price(1000),
+        "cash refund",
+        "",
+        "user-1",
+        vec![line],
+    );
+    s.create_refund(&refund).unwrap_or_else(|e| {
+        panic!("a 1-unit line refunded 1 unit at full value must pass both bounds, got: {e:?}")
+    });
+
+    assert_eq!(
+        get_stock_at(&conn, "SKU", DEFAULT_LOC),
+        1,
+        "the unit comes back to the default location"
+    );
+    assert_eq!(
+        s.total_refunded_for_sale("refund-sale-1")
+            .unwrap()
+            .minor_units,
+        1000
+    );
+}
+
+// ── Per-line MONEY ceiling (line_total_minor is a claim, not a fact) ──
+//
+// refund_lines.line_minor used to be written exactly as the caller sent it.
+// The quantity guard now guarantees the named sale line exists, so the booked
+// value of that line is always available and the claim can be bounded by it.
+
+/// Seed a sale whose ONE line was sold at an OVERRIDDEN price: 3 units of
+/// SYRUP with unit_minor 1000 but line_minor 2400 (3 x 1000 = 3000 != 2400).
+/// That mismatch is legitimate - it is what a cashier price override stores -
+/// and it is why the ceiling is a pro-rated range and not an equality against
+/// unit_minor * qty. deduction_locations is NULL so the legacy credit path is
+/// the one under test.
+fn seed_overridden_price_sale(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('ovr-p1', 'SYRUP', 'Syrup', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z'),
+            ('ovr-p2', 'BUTTER', 'Butter', 600, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('ovr-sale-1', 3000, 'USD', 2, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', NULL);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('ovr-sl-1', 'ovr-sale-1', 'SYRUP', 3, 1000, 2400, 'USD', 1),
+            ('ovr-sl-2', 'ovr-sale-1', 'BUTTER', 1, 600, 600, 'USD', 2);"
+    ).unwrap();
+}
+
+/// A refund of [qty] units of the overridden line, CLAIMING [claimed] minor
+/// units of value for it. The header total is set to the same figure, and the
+/// sale carries 600 of unrelated BUTTER value, so the SALE-level money ceiling
+/// (3000) stays out of the way across all three attempts and every rejection
+/// below can only have come from the per-line ceiling.
+fn syrup_refund(qty: i64, claimed: i64) -> Refund {
+    let line = RefundLine::new("ovr-sl-1", "SYRUP", qty, price(1000), price(claimed));
+    Refund::new(
+        "ovr-sale-1",
+        price(claimed),
+        "value claim",
+        "",
+        "user-1",
+        vec![line],
+    )
+}
+
+/// THE REPRODUCE, and it FAILS AGAINST HEAD: one unit of a 3-unit line booked
+/// at 2400 may carry at most 801 minor units of refund (2400 / 3 = 800, plus
+/// the one-unit tolerance). A caller claiming 900 for that single unit is
+/// refunding value the line never held, and HEAD wrote it verbatim and
+/// returned Ok. Nothing may be persisted and no unit may move.
+#[test]
+fn refund_line_total_above_the_derived_ceiling_is_refused() {
+    let conn = fresh();
+    seed_overridden_price_sale(&conn);
+    let s = store(&conn);
+
+    let err = s.create_refund(&syrup_refund(1, 900)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.line_total"),
+        "a claim above the line's pro-rated ceiling must be refused, got: {err:?}"
+    );
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    let line_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        (rows, line_rows),
+        (0, 0),
+        "a refused refund persists nothing"
+    );
+    let credited: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(delta), 0) FROM stock_movements WHERE reason = 'refund'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(credited, 0, "a refused refund restores no stock");
+}
+
+/// The tolerance is the point of the exercise: 800 is the exact ratio and 801
+/// is one minor unit above it, and BOTH are legitimate - the UI rounds
+/// unitPriceMinor and multiplies back, so it can land either side. 802 is two
+/// above and is refused. An equality check would have rejected 801 and broken
+/// real refunds; this pins that it does not.
+#[test]
+fn refund_line_total_within_one_minor_unit_of_the_ratio_is_accepted() {
+    let conn = fresh();
+    seed_overridden_price_sale(&conn);
+    let s = store(&conn);
+
+    // Exact ratio: 2400 * 1 / 3 = 800.
+    s.create_refund(&syrup_refund(1, 800)).unwrap();
+    // One minor unit above the ratio: still accepted.
+    s.create_refund(&syrup_refund(1, 801)).unwrap();
+    assert_eq!(
+        get_stock_at(&conn, "SYRUP", DEFAULT_LOC),
+        2,
+        "both accepted refunds restored their unit"
+    );
+
+    // Two above the ratio for the remaining unit: refused.
+    let err = s.create_refund(&syrup_refund(1, 802)).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.line_total"),
+        "one minor unit is the tolerance, not two, got: {err:?}"
+    );
+    assert_eq!(get_stock_at(&conn, "SYRUP", DEFAULT_LOC), 2);
+    assert_eq!(s.list_refunds_for_sale("ovr-sale-1").unwrap().len(), 2);
+}
+
+/// A line the SERVER itself sold at a changed price must still refund
+/// normally: the whole 3-unit line at its booked 2400 (unit_minor * qty would
+/// have said 3000) is accepted, credited, and booked UNCHANGED - the ceiling
+/// refuses an over-claim, it never rewrites a receipt.
+#[test]
+fn overridden_price_line_refunds_at_its_booked_value() {
+    let conn = fresh();
+    seed_overridden_price_sale(&conn);
+    let s = store(&conn);
+
+    s.create_refund(&syrup_refund(3, 2400))
+        .unwrap_or_else(|e| panic!("a full refund at the booked line value must pass, got: {e:?}"));
+
+    let refunds = s.list_refunds_for_sale("ovr-sale-1").unwrap();
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(
+        refunds[0].lines[0].line_total.minor_units, 2400,
+        "the accepted figure is stored as supplied, not clamped"
+    );
+    assert_eq!(get_stock_at(&conn, "SYRUP", DEFAULT_LOC), 3);
+    assert_eq!(
+        s.total_refunded_for_sale("ovr-sale-1").unwrap().minor_units,
+        2400
+    );
+}
+
+// ── Line identity: the claimed sku must be the sku that line sold ──
+//
+// Both cumulative bounds are measured against the sale line a refund names.
+// If the sku on the refund line is free text, the bounds measure one product
+// while the credit moves another: the default-location arm credits
+// refund_line.sku, so naming TEA's line as GOLD passes quantity 1-of-1 and
+// money 0-of-ceiling and mints a unit of GOLD. The deduction arm cannot be
+// spoofed this way - it takes the sku from the recorded JSON
+// (dl_line["sku"], falling back to the caller only when the JSON omits it) -
+// which is exactly why the mint lives on the legacy/imported path.
+
+/// Seed a legacy sale (deduction_locations NULL) with one line of [sku] at
+/// [qty] units, priced so the money ceiling is never the binding constraint.
+fn seed_identity_sale(conn: &Connection, sale_id: &str, line_id: &str, sku: &str, qty: i64) {
+    let pid = format!("{sale_id}-p");
+    let unit = 1000;
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+         VALUES (?1, ?2, ?2, 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        params![pid, sku],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations)
+         VALUES (?1, ?2, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z', NULL)",
+        params![sale_id, unit * qty],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'USD', 1)",
+        params![line_id, sale_id, sku, qty, unit, unit * qty],
+    )
+    .unwrap();
+}
+
+/// THE MINT REPRODUCE, and it FAILS AGAINST HEAD: a legacy sale with one line
+/// of TEA, qty 1, refunded through that line id but claiming sku GOLD, with
+/// line and header value 0. HEAD's quantity bound saw 1 of 1 and its money
+/// ceiling saw 0 of 1001, both passed, and the default-location arm credited a
+/// unit of a product that was never sold. Must be refused, persisting nothing
+/// and moving no stock for either sku.
+#[test]
+fn create_refund_rejects_wrong_sku_on_a_legacy_sale_line() {
+    let conn = fresh();
+    seed_identity_sale(&conn, "idn-sale-1", "idn-sl-1", "TEA", 1);
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+         VALUES ('idn-gold', 'GOLD', 'Gold bar', 999000, 'USD', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("idn-sl-1", "GOLD", 1, price(0), price(0));
+    let refund = Refund::new("idn-sale-1", price(0), "sku swap", "", "user-1", vec![line]);
+    let err = s.create_refund(&refund).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "a refund line whose sku is not the line's sku must be refused, got: {err:?}",
+    );
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    let line_rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refund_lines", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        (rows, line_rows),
+        (0, 0),
+        "a refused refund persists nothing"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "no stock moves for a misidentified line");
+    assert_eq!(
+        get_stock_at(&conn, "GOLD", DEFAULT_LOC),
+        0,
+        "GOLD is not minted"
+    );
+    assert_eq!(get_stock_at(&conn, "TEA", DEFAULT_LOC), 0);
+
+    // Two lines naming the SAME sale line with different skus cannot let one
+    // satisfy the identity check while the other is credited.
+    let pair = vec![
+        RefundLine::new("idn-sl-1", "TEA", 1, price(0), price(0)),
+        RefundLine::new("idn-sl-1", "GOLD", 1, price(0), price(0)),
+    ];
+    let err = s
+        .create_refund(&Refund::new(
+            "idn-sale-1",
+            price(0),
+            "split claim",
+            "",
+            "user-1",
+            pair,
+        ))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "disagreeing skus on one sale line must be refused, got: {err:?}",
+    );
+}
+
+/// The happy path, and the rule's edges: naming the recorded sku refunds
+/// normally, a padded sku still matches (the domain type trims), and a
+/// differently-cased sku does NOT (the domain type does not case-fold). A
+/// guard like this breaks real refunds on a case or space difference, so both
+/// halves are pinned here.
+#[test]
+fn create_refund_matches_the_recorded_sku_exactly_after_trimming() {
+    let conn = fresh();
+    seed_identity_sale(&conn, "idn-sale-2", "idn-sl-2", "TEA3", 3);
+    let s = store(&conn);
+
+    let claim = |sku: &str| -> Refund {
+        let line = RefundLine::new("idn-sl-2", sku, 1, price(1000), price(1000));
+        Refund::new(
+            "idn-sale-2",
+            price(1000),
+            "identity",
+            "",
+            "user-1",
+            vec![line],
+        )
+    };
+
+    s.create_refund(&claim("TEA3"))
+        .unwrap_or_else(|e| panic!("the recorded sku must refund normally, got: {e:?}"));
+    s.create_refund(&claim("  TEA3  "))
+        .unwrap_or_else(|e| panic!("a padded sku is the same sku after trimming, got: {e:?}"));
+    let err = s.create_refund(&claim("tea3")).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "case is part of the identity - the domain type does not fold it, got: {err:?}",
+    );
+
+    assert_eq!(
+        get_stock_at(&conn, "TEA3", DEFAULT_LOC),
+        2,
+        "only the two accepted refunds credited stock"
+    );
+}
+
+/// The empty-sku rule, chosen and justified: a sale line that records no sku
+/// cannot have any refund line identified against it, so the refund is
+/// REFUSED rather than falling back to the caller's sku - the fallback is the
+/// mint. sale_lines.sku is NOT NULL, so this covers the empty and
+/// whitespace-only shapes a legacy or imported row can hold.
+#[test]
+fn create_refund_refuses_a_line_that_records_no_sku() {
+    let conn = fresh();
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations)
+         VALUES ('idn-sale-3', 1000, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z', NULL)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('idn-sl-3', 'idn-sale-3', '', 1, 1000, 1000, 'USD', 1)",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("idn-sl-3", "ANYTHING", 1, price(1000), price(1000));
+    let err = s
+        .create_refund(&Refund::new(
+            "idn-sale-3",
+            price(1000),
+            "no sku",
+            "",
+            "user-1",
+            vec![line],
+        ))
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.sku"),
+        "a line recording no sku must be refused, not trusted, got: {err:?}",
+    );
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM refunds", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "the refused refund persists nothing");
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        movements, 0,
+        "and mints no stock for an unverifiable identity"
+    );
+}
+
+// ── the FIFO credit arm must not fall back to the caller's sku ──────
+
+/// Same shape as `seed_completed_sale`, but the `deduction_locations` line
+/// carries NO `sku` key — what a partially-written or hand-edited row looks
+/// like. `sale_lines` still records the real sku, so the identity guard passes
+/// and the refund reaches the credit arm: that is exactly where the old
+/// `unwrap_or(&refund_line.sku)` took over.
+fn seed_sale_with_sku_less_deduction_locations(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('noslur-p1', 'TEA', 'Tea', 400, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('noslur-sale-1', 800, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"noslur-sl-1\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":2}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('noslur-sl-1', 'noslur-sale-1', 'TEA', 2, 400, 800, 'USD', 1);"
+    ).unwrap();
+}
+
+/// A deduction_locations entry that names no product cannot have a unit of ANY
+/// product returned against it. HEAD fell back to the caller's sku here; the
+/// rule now matches the void path over the same json
+/// (sales_lifecycle.rs:556-564) and the empty-recorded-sku identity rule.
+#[test]
+fn refund_is_refused_when_deduction_locations_names_no_sku() {
+    let conn = fresh();
+    seed_sale_with_sku_less_deduction_locations(&conn);
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "noslur-sale-1",
+        price(800),
+        "returned",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "noslur-sl-1",
+            "TEA",
+            2,
+            price(400),
+            price(800),
+        )],
+    );
+    let err = s.create_refund(&refund).unwrap_err();
+    let shown = format!("{err:?}");
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations.sku"),
+        "expected a deduction_locations.sku rejection, got {shown}"
+    );
+
+    assert_eq!(
+        s.list_refunds_for_sale("noslur-sale-1").unwrap().len(),
+        0,
+        "a rejected refund must persist nothing"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "and it must move no stock");
+}
+
+/// CONTROL: the refusal is about the missing identity, not about the FIFO arm
+/// being broken. When the json DOES name the sku, the refund still succeeds and
+/// still credits the RECORDED location.
+#[test]
+fn refund_still_credits_the_recorded_location_when_the_sku_is_named() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "returned",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "ref-sl-1",
+            "COFFEE",
+            2,
+            price(350),
+            price(700),
+        )],
+    );
+    s.create_refund(&refund).unwrap();
+
+    assert_eq!(s.list_refunds_for_sale("ref-sale-1").unwrap().len(), 1);
+    let (delta, loc): (i64, String) = conn
+        .query_row(
+            "SELECT delta, location_id FROM stock_movements WHERE reason = 'refund'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(delta, 2, "the recorded deduction must be credited back");
+    assert_eq!(
+        loc, "01926b3a-0000-7000-8000-000000000001",
+        "and at the location the json recorded, not a default"
+    );
+}
+
+// ── the fail-open money read, and the direction of the :589 bound ──────
+
+/// A database error must read as an error, not as "nothing refunded yet".
+/// HEAD swallowed the failed SUM with `.unwrap_or(0)`, so a locked row or a
+/// disk fault was indistinguishable from an un-refunded sale — the exact shape
+/// the in-tx over-refund guard was converted away from. Fails against HEAD.
+#[test]
+fn total_refunded_for_sale_reports_an_error_instead_of_a_bogus_zero() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    let s = store(&conn);
+
+    // The honest zero: the sale exists, no refunds exist, so 0 is the truth.
+    assert_eq!(
+        s.total_refunded_for_sale("ref-sale-1").unwrap().minor_units,
+        0,
+        "a genuinely un-refunded sale must still read zero, not error"
+    );
+
+    // Now make the read itself fail. The SUM query cannot run.
+    conn.execute_batch("DROP TABLE refunds").unwrap();
+    let shown = format!("{:?}", s.total_refunded_for_sale("ref-sale-1"));
+    assert!(
+        s.total_refunded_for_sale("ref-sale-1").is_err(),
+        "a broken read must not report 0 refunded, got {shown}"
+    );
+}
+
+/// Seed like `seed_completed_sale` but with a deduction entry that carries NO
+/// `qty` key, and a sale line that sold MORE than the counted deductions sum:
+/// sold 5, deductions contribute 2. Probes the DIRECTION of the `filter_map`
+/// at refunds.rs:589 — whether dropping a qty-less entry understates the bound
+/// (refuses more, fail CLOSED) or overstates what may be credited (fail open).
+fn seed_sale_with_a_qty_less_deduction(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
+            ('noqty-p1', 'MILK', 'Milk', 400, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at,
+                            deduction_locations) VALUES
+            ('noqty-sale-1', 2000, 'USD', 1, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z',
+             '{\"version\":1,\"lines\":[{\"sale_line_id\":\"noqty-sl-1\",\"sku\":\"MILK\",\"deductions\":[{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\",\"qty\":2},{\"location_id\":\"01926b3a-0000-7000-8000-000000000001\"}]}]}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+            ('noqty-sl-1', 'noqty-sale-1', 'MILK', 5, 400, 2000, 'USD', 1);"
+    ).unwrap();
+}
+
+/// The bound is understated, so the refund is REFUSED: dropping the qty-less
+/// entry makes the check fire sooner, never later. A refund of 3 units against a
+/// counted deduction total of 2 is rejected even though the sale line sold 5 —
+/// if the sign were the other way this assert would be an `is_ok()`.
+#[test]
+fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() {
+    let conn = fresh();
+    seed_sale_with_a_qty_less_deduction(&conn);
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "noqty-sale-1",
+        price(1200),
+        "returned",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "noqty-sl-1",
+            "MILK",
+            3,
+            price(400),
+            price(1200),
+        )],
+    );
+    let err = s.create_refund(&refund).unwrap_err();
+    let shown = format!("{err:?}");
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "refund_line.qty"),
+        "expected the cumulative-qty bound to refuse, got {shown}"
+    );
+    let movements: i64 = conn
+        .query_row("SELECT COUNT(*) FROM stock_movements", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(movements, 0, "and a refusal moves no stock");
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -161,6 +163,37 @@ describe('SessionLockScreen rendering', () => {
     );
     expect(versionEl?.textContent).not.toContain('0.0.34');
   });
+
+  // The login screen's footer is a version + copyright pair
+  // (.staff-login-footer-version / .staff-login-footer-copyright). The lock
+  // screen had only the version line, so the two screens looked different.
+  it('pairs the version line with a copyright line, like the login footer', async () => {
+    renderScreen();
+    await waitFor(() => {
+      expect(document.querySelector('.session-lock-footer-version')).toBeTruthy();
+    }, { timeout: 2000 });
+
+    const copyright = document.querySelector('.session-lock-footer-copyright');
+    expect(copyright).toBeTruthy();
+    expect(copyright?.textContent).toContain(String(new Date().getFullYear()));
+    // Both lines live in the same footer column, so they stack like the login's.
+    expect(copyright?.parentElement)
+      .toBe(document.querySelector('.session-lock-footer-version')?.parentElement);
+  });
+
+  // Regression guard for the reported bug: the browser dev-mock answered the
+  // `version` command with a literal that drifted from the app (it said 0.0.9
+  // while the app shipped 0.0.37), so the lock screen showed a stale version
+  // in dev. It must derive from package.json, which bump-version.ps1 updates.
+  // The handler moved from tauri-api.ts into handlers/system.ts with the
+  // dev-mock extraction (T6); the guard follows its subject, not its history.
+  it('dev-mock derives its version from package.json rather than a literal', () => {
+    const mockSrc = readFileSync(resolve(__dirname, '../dev-mock/handlers/system.ts'), 'utf8');
+    expect(mockSrc).toMatch(/version:\s*pkg\.version/);
+    expect(mockSrc).toMatch(/import pkg from '\.\.\/\.\.\/\.\.\/package\.json'/);
+    expect(mockSrc).not.toMatch(/version:\s*'\d+\.\d+\.\d+'/);
+  });
+
 
   it('renders 4 PIN dots (all unfilled)', () => {
     renderScreen();

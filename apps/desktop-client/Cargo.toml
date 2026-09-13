@@ -32,12 +32,13 @@ tempfile = { workspace = true }
 
 [dependencies]
 foundation = { workspace = true }
-lettre = { workspace = true }
-axum = { workspace = true }
 oz-api = { workspace = true }
 oz-core = { workspace = true }
+oz-bridge = { workspace = true }
 reqwest = { workspace = true }
 oz-hal = { workspace = true }
+oz-lan = { workspace = true }
+oz-local-api = { workspace = true }
 oz-logging = { workspace = true }
 oz-lua = { workspace = true }
 oz-plugin = { workspace = true }
@@ -56,6 +57,7 @@ platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
 platform-sync = { workspace = true }
+oz-notification = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
@@ -74,7 +76,6 @@ notify = { workspace = true }
 uuid = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
-snow = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 image = { workspace = true }

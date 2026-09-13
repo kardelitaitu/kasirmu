@@ -24,9 +24,30 @@ func calculateExpiry(tier string) time.Time {
 	}
 }
 
-// calculateGraceUntil returns expires_at + 14 days (per ADR #5 offline grace).
-func calculateGraceUntil(expiresAt time.Time) time.Time {
-	return expiresAt.AddDate(0, 0, 14)
+// offlineGraceDays returns the per-tier offline grace window in days
+// (todo-global-saas-1.md §B, subscription-tiers.md §Numeric Limits, and
+// the pricing page's "Offline grace period" row — the same table the
+// Rust client's SubscriptionTier::offline_grace_days() enforces).
+// This replaces the flat 14-day window inherited from ADR #5, which
+// shortchanged Premium (30 promised) and Enterprise (60 promised) and
+// over-credited Free (7 published).
+func offlineGraceDays(tier string) int {
+	switch tier {
+	case "premium":
+		return 30
+	case "enterprise":
+		return 60
+	case "free":
+		return 7
+	default: // plus, pro — and unknown keys get the shortest window
+		return 14
+	}
+}
+
+// calculateGraceUntil returns the subscription's grace deadline:
+// expires_at + the tier's published offline grace window.
+func calculateGraceUntil(tier string, expiresAt time.Time) time.Time {
+	return expiresAt.AddDate(0, 0, offlineGraceDays(tier))
 }
 
 // maxMachinesForTier returns the maximum number of machines allowed for

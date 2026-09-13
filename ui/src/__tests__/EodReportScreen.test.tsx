@@ -10,11 +10,16 @@ import EodReportScreen from '@/features/sales/EodReportScreen';
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockEodReport = vi.fn();
+const mockEodReportScoped = vi.fn();
 const mockListShifts = vi.fn();
 const mockPrintReceipt = vi.fn();
 
 vi.mock('@/api/sales', () => ({
   exportEodReport: (...args: unknown[]) => mockEodReport(...args),
+  // Separate fn, not the shared-target trick used for listShifts/listShiftsScoped two lines
+  // below: the point of the ADR #7 case is to tell the two apart, and aliasing them makes the
+  // assertion unfalsifiable.
+  exportEodReportScoped: (...args: unknown[]) => mockEodReportScoped(...args),
 }));
 
 vi.mock('@/api/shifts', () => ({
@@ -84,12 +89,16 @@ function renderScreen() {
 describe('EodReportScreen', () => {
   beforeEach(() => {
     mockEodReport.mockReset();
+    // Reset alongside its ambient twin: the ADR #7 case asserts the ambient one is NOT called, and
+    // a scoped call count leaking from an earlier test would not break that assertion -- it would
+    // just make the scoped side untrustworthy.
+    mockEodReportScoped.mockReset();
     mockListShifts.mockReset();
     mockPrintReceipt.mockReset();
   });
 
   it('renders the title', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -99,7 +108,7 @@ describe('EodReportScreen', () => {
   });
 
   it('shows loading skeleton initially', () => {
-    mockEodReport.mockImplementation(() => new Promise(() => {}));
+    mockEodReportScoped.mockImplementation(() => new Promise(() => {}));
     mockListShifts.mockImplementation(() => new Promise(() => {}));
     const { container } = renderScreen();
 
@@ -109,7 +118,7 @@ describe('EodReportScreen', () => {
   });
 
   it('shows error state with retry button', async () => {
-    mockEodReport.mockRejectedValue(new Error('Network error'));
+    mockEodReportScoped.mockRejectedValue(new Error('Network error'));
     mockListShifts.mockRejectedValue(new Error('Network error'));
     renderScreen();
 
@@ -119,7 +128,7 @@ describe('EodReportScreen', () => {
   });
 
   it('shows empty state when no report data', async () => {
-    mockEodReport.mockResolvedValue(null);
+    mockEodReportScoped.mockResolvedValue(null);
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -129,7 +138,7 @@ describe('EodReportScreen', () => {
   });
 
   it('shows KPI cards when report loads', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -144,7 +153,7 @@ describe('EodReportScreen', () => {
   });
 
   it('shows payment breakdown with progress bars', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -159,7 +168,7 @@ describe('EodReportScreen', () => {
   });
 
   it('shows hourly sales chart', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -172,7 +181,7 @@ describe('EodReportScreen', () => {
   });
 
   it('has a Refresh button', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -182,7 +191,7 @@ describe('EodReportScreen', () => {
   });
 
   it('has a Print button', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -192,7 +201,7 @@ describe('EodReportScreen', () => {
   });
 
   it('clicks Refresh re-fetches data', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -203,13 +212,13 @@ describe('EodReportScreen', () => {
     const user = userEvent.setup();
     await user.click(screen.getByText('Refresh'));
 
-    expect(mockEodReport).toHaveBeenCalledTimes(2);
+    expect(mockEodReportScoped).toHaveBeenCalledTimes(2);
     expect(mockListShifts).toHaveBeenCalledTimes(2);
   });
 
   it('shows shift summary when closed shifts exist for today', async () => {
     const today = new Date().toISOString().slice(0, 10);
-    mockEodReport.mockResolvedValue(makeEodReport({ total_sales: 5 }));
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ total_sales: 5 }));
     mockListShifts.mockResolvedValue([
       makeShift({
         openedAt: `${today}T08:00:00.000Z`,
@@ -226,7 +235,7 @@ describe('EodReportScreen', () => {
 
   it('shows active shift banner when a shift is open', async () => {
     const today = new Date().toISOString().slice(0, 10);
-    mockEodReport.mockResolvedValue(makeEodReport({ total_sales: 0 }));
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ total_sales: 0 }));
     mockListShifts.mockResolvedValue([
       makeShift({
         status: 'open',
@@ -244,7 +253,7 @@ describe('EodReportScreen', () => {
 
   // ── Print functionality with shifts ──
   it('calls printReceipt with shift data when shifts provided', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     const today = new Date().toISOString().slice(0, 10);
     mockListShifts.mockResolvedValue([
       makeShift({
@@ -276,7 +285,7 @@ describe('EodReportScreen', () => {
 
   // ── CSV Export functionality ──
   it('calls downloadCsv when Export CSV button clicked', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -297,7 +306,7 @@ describe('EodReportScreen', () => {
   // ── Shift summary with diff tags ──
   it('shows over/short tags for shift cash differences', async () => {
     const today = new Date().toISOString().slice(0, 10);
-    mockEodReport.mockResolvedValue(makeEodReport({ total_sales: 5 }));
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ total_sales: 5 }));
     mockListShifts.mockResolvedValue([
       makeShift({
         openedAt: `${today}T08:00:00.000Z`,
@@ -328,7 +337,7 @@ describe('EodReportScreen', () => {
 
   // ── Hourly breakdown chart ──
   it('renders all 24 hours in hourly breakdown', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport());
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -342,7 +351,7 @@ describe('EodReportScreen', () => {
 
   // ── CSV Export with no report data ──
   it('shows empty state when no report data', async () => {
-    mockEodReport.mockResolvedValue(null);
+    mockEodReportScoped.mockResolvedValue(null);
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -357,7 +366,7 @@ describe('EodReportScreen', () => {
 
   // ── CSV Export guard ──
   it('does nothing when clicking Export CSV with no report data', async () => {
-    mockEodReport.mockResolvedValue(null);
+    mockEodReportScoped.mockResolvedValue(null);
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -376,7 +385,7 @@ describe('EodReportScreen', () => {
 
   // ── Discount count = 0 branch ──
   it('shows "No discounts applied" when discount_count is 0', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport({ discount_count: 0, discount_total: 0 }));
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ discount_count: 0, discount_total: 0 }));
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -387,7 +396,7 @@ describe('EodReportScreen', () => {
 
   // ── Empty payment breakdown ──
   it('shows "No payment data" when payment_breakdown is empty', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport({ payment_breakdown: [] }));
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ payment_breakdown: [] }));
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -398,7 +407,7 @@ describe('EodReportScreen', () => {
 
   // ── Empty hourly breakdown ──
   it('shows "No hourly data" when hourly_breakdown is empty', async () => {
-    mockEodReport.mockResolvedValue(makeEodReport({ hourly_breakdown: [] }));
+    mockEodReportScoped.mockResolvedValue(makeEodReport({ hourly_breakdown: [] }));
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -409,7 +418,7 @@ describe('EodReportScreen', () => {
 
   // ── Error handling during load ──
   it('shows error when exportEodReport fails', async () => {
-    mockEodReport.mockRejectedValue(new Error('Database error'));
+    mockEodReportScoped.mockRejectedValue(new Error('Database error'));
     mockListShifts.mockResolvedValue([]);
     renderScreen();
 
@@ -422,7 +431,7 @@ describe('EodReportScreen', () => {
   it('shows loading skeleton while fetching data', async () => {
     let resolveReport: (value: unknown) => void;
     const reportPromise = new Promise((resolve) => { resolveReport = resolve; });
-    mockEodReport.mockReturnValue(reportPromise);
+    mockEodReportScoped.mockReturnValue(reportPromise);
     mockListShifts.mockReturnValue(new Promise(() => {}));
     renderScreen();
 
@@ -433,5 +442,20 @@ describe('EodReportScreen', () => {
     await waitFor(() => {
       expect(screen.queryByText('End-of-Day Report')).toBeTruthy();
     });
+  });
+
+  // ADR #7: load() reads the report and the shifts in one Promise.all -- exportEodReport() ambient
+  // beside listShiftsScoped(sessionToken). The shifts call was scoped and the report call beside it
+  // was not, and desktop-client registers no export_eod_report command, so the screen's load threw
+  // on every desktop visit and rendered its error state.
+  it('loads the report through the scoped command when a session token exists', async () => {
+    mockEodReportScoped.mockResolvedValue(makeEodReport());
+    mockListShifts.mockResolvedValue([]);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(mockEodReportScoped).toHaveBeenCalled();
+    });
+    expect(mockEodReport).not.toHaveBeenCalled();
   });
 });

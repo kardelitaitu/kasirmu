@@ -3,29 +3,25 @@ import { requiredLocalized } from '@/frontend/shared';
 import { useToast } from '@/frontend/shared/Toast';
 import Tooltip from '@/frontend/shell/Tooltip';
 import { useAuthConnection } from '@/hooks/useAuthConnection';
+import { toneForBinaryHealth, toneForHealth, type ConnectionHealth, type StatusTone } from '@/hooks/connectionHealth';
 import { useSyncConnection } from '@/hooks/useSyncConnection';
+import { usePaymentConnection } from '@/hooks/usePaymentConnection';
+import { useDevicesConnection } from '@/hooks/useDevicesConnection';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import type { VersionStatusInfo } from '@/hooks/useVersionStatus';
 import './StatusBar.css';
 
-// ── Latency color thresholds (ms) ─────────────────────────────────
-const LATENCY_GOOD_MAX = 999; // green
-const LATENCY_WARN_MAX = 2999; // yellow
-// >= 3000 or unreachable → red
-
-type DotTone = 'good' | 'warn' | 'bad' | 'checking';
-
-/** Health-check state enum (checking / online / offline). */
-type HealthState = 'checking' | 'online' | 'offline';
-
-/** Map a health latency result to a color tone. */
-function latencyTone(latencyMs: number | null, state: HealthState): DotTone {
-  if (state === 'checking') return 'checking';
-  if (state === 'offline' || latencyMs === null) return 'bad';
-  if (latencyMs <= LATENCY_GOOD_MAX) return 'good';
-  if (latencyMs <= LATENCY_WARN_MAX) return 'warn';
-  return 'bad';
-}
+// The tone vocabulary and the latency thresholds live in
+// @/hooks/connectionHealth with the state union, so an indicator cannot
+// disagree with the hook feeding it. This file used to keep its own
+// `HealthState` ('checking' | 'online' | 'offline') alongside the two hooks'
+// structurally identical `*ConnectionState` unions — three names for one
+// concept, and `degraded` was in none of them.
+//
+// The four service pills below are the UI half of the service-health
+// contracts (todo-global-saas-3.md): license server (auth), sync, payment,
+// device connectivity. The version pill is not one of the four named
+// services — it stays as the fifth, right-aligned icon.
 
 /** Icon glyphs (Lucide-style, 24x24 stroke icons, uniform style). */
 function KeyIcon() {
@@ -56,26 +52,61 @@ function DownloadIcon() {
   );
 }
 
+function CardIcon() {
+  return (
+    <svg className="statusbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+      <line x1="1" y1="10" x2="23" y2="10" />
+    </svg>
+  );
+}
+
+function UsbIcon() {
+  return (
+    <svg className="statusbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10" cy="7" r="1" />
+      <circle cx="4" cy="20" r="1" />
+      <path d="M4.7 19.3 19 5" />
+      <path d="m21 3-3 1 2 2 1-3Z" />
+      <path d="M9.26 7.68 5 12l2 5" />
+      <path d="m10 14 5 2 3.5-3.5" />
+      <path d="m18 12 1-1 1 1-1 1-1-1Z" />
+    </svg>
+  );
+}
+
 const ICONS = {
   key: KeyIcon,
   sync: SyncIcon,
   download: DownloadIcon,
+  card: CardIcon,
+  usb: UsbIcon,
 } as const;
 
 interface StatusItemProps {
   kind: keyof typeof ICONS;
-  tone: DotTone;
+  tone: StatusTone;
   label: string;
   tooltip: string;
+  /** Second tooltip line: what clicking this pill will do. */
+  hint?: string | undefined;
   onClick?: () => void;
   align?: 'center' | 'left' | 'right';
 }
 
 /** One colored icon button with a hover tooltip + click toast. */
-function StatusItem({ kind, tone, label, tooltip, onClick, align = 'center' }: StatusItemProps) {
+function StatusItem({ kind, tone, label, tooltip, hint, onClick, align = 'center' }: StatusItemProps) {
   const Icon = ICONS[kind];
+  const content = (
+    <>
+      {tooltip}
+      {hint && (
+        <span className="tooltip-hint">{hint}</span>
+      )}
+    </>
+  );
   return (
-    <Tooltip content={tooltip} position="top" showDelay={300} portal nowrap align={align}>
+    <Tooltip content={content} position="top" showDelay={300} portal nowrap align={align}>
       <button
         type="button"
         className={`statusbar-item statusbar-tone--${tone}`}
@@ -90,11 +121,13 @@ function StatusItem({ kind, tone, label, tooltip, onClick, align = 'center' }: S
 }
 
 /**
- * Single status area with three colored SVG icons — auth, sync, version.
- *
- * Colors follow latency thresholds: green < 1 s, yellow 1–3 s, red >= 3 s
- * (or unreachable). While checking, the icon slowly blinks grey. Hovering
- * shows a native tooltip; clicking raises a toast with the same detail.
+ * Unified status area: four service pills (auth, sync, payment, devices)
+ * plus the version icon. Colors follow latency thresholds: green < 1 s,
+ * yellow 1–3 s, red >= 3 s (or unreachable). While checking, the icon
+ * slowly blinks grey. Hovering shows a native tooltip; clicking a service
+ * pill re-probes it now instead of waiting for the next scheduled poll —
+ * the user-triggered retry the service-health contracts ask for. Only the
+ * version icon keeps the informational toast (there is nothing to retry).
  *
  * When `bare` is set the surrounding pill/box chrome is omitted so the icon
  * row can sit inline inside a larger container (e.g. the shell StatusBar).
@@ -105,35 +138,82 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
 
   const auth = useAuthConnection();
   const sync = useSyncConnection();
+  const payment = usePaymentConnection();
+  const devices = useDevicesConnection();
   const version = useVersionStatus();
 
   // ── Labels (localized) ─────────────────────────────────────────
   const authLabel = requiredLocalized(l10n, 'staff-login-connection-auth');
   const syncLabel = requiredLocalized(l10n, 'staff-login-connection-sync');
+  const paymentLabel = requiredLocalized(l10n, 'statusbar-payment-label');
+  const devicesLabel = requiredLocalized(l10n, 'statusbar-devices-label');
   const versionLabel = requiredLocalized(l10n, 'statusbar-version-label');
+  const retryHint = requiredLocalized(l10n, 'statusbar-retry-hint');
 
-  // ── Auth + Sync items ──────────────────────────────────────────
-  // Both hooks return { state: checking/connected/disconnected, latencyMs }.
-  const connectionTone = (s: { state: 'checking' | 'connected' | 'disconnected'; latencyMs: number | null }): DotTone =>
-    s.state === 'checking' ? 'checking' : s.state === 'connected' ? latencyTone(s.latencyMs, 'online') : 'bad';
+  // ── Manual retry (the box's user-triggered action) ─────────────
+  // Re-probe now and say so. While a probe is already running there is
+  // nothing to trigger — say that instead of queueing a duplicate.
+  const handleRetry = (name: string, state: ConnectionHealth, tooltip: string, retry: () => void) => {
+    if (state === 'checking') {
+      addToast({ type: 'info', message: tooltip });
+      return;
+    }
+    retry();
+    addToast({ type: 'info', message: requiredLocalized(l10n, 'statusbar-retry-queued', { name }) });
+  };
+
+  // ── Service items ──────────────────────────────────────────────
+  // Auth + Sync hooks return { state, latencyMs, cause }; the payment and
+  // device hooks fold their probe into the same ConnectionHealth union.
+  const connectionTone = (s: { state: ConnectionHealth; latencyMs: number | null }): StatusTone =>
+    toneForHealth(s.state, s.latencyMs);
   const connectionTooltip = (
-    l10n: ReturnType<typeof useLocalization>['l10n'],
-    s: { state: 'checking' | 'connected' | 'disconnected'; latencyMs: number | null },
+    s: { state: ConnectionHealth; latencyMs: number | null; cause: string | null },
     name: string,
-  ) =>
-    s.state === 'checking'
-      ? requiredLocalized(l10n, 'statusbar-checking-msg', { name })
-      : s.state === 'disconnected'
-        ? requiredLocalized(l10n, 'statusbar-offline-msg', { name })
-        : requiredLocalized(l10n, 'statusbar-latency-msg', { name, ms: String(s.latencyMs ?? 0) });
+  ) => {
+    if (s.state === 'checking') {
+      return requiredLocalized(l10n, 'statusbar-checking-msg', { name });
+    }
+    if (s.state === 'disconnected') {
+      return requiredLocalized(l10n, 'statusbar-offline-msg', { name });
+    }
+    // Degraded names the subsystem the server itself reported. Translating it
+    // into "something is wrong" would throw away the only actionable half of
+    // the message, so it is interpolated as-is — it is a service label like
+    // "database", not prose.
+    if (s.state === 'degraded') {
+      return requiredLocalized(l10n, 'statusbar-degraded-msg', { name, cause: s.cause ?? '' });
+    }
+    return requiredLocalized(l10n, 'statusbar-latency-msg', { name, ms: String(s.latencyMs ?? 0) });
+  };
 
   const authTone = connectionTone(auth);
-  const authTooltip = connectionTooltip(l10n, auth, authLabel);
+  const authTooltip = connectionTooltip(auth, authLabel);
   const syncTone = connectionTone(sync);
-  const syncTooltip = connectionTooltip(l10n, sync, syncLabel);
+  const syncTooltip = connectionTooltip(sync, syncLabel);
+
+  // ── Payment pill (ServiceKind::Payment) ────────────────────────
+  // A configuration probe measures no latency, so the count of active
+  // gateways is the reading — not a synthetic "0ms".
+  const paymentTone = toneForBinaryHealth(payment.state);
+  const paymentTooltip =
+    payment.state === 'connected'
+      ? requiredLocalized(l10n, 'statusbar-payment-gateway-msg', { name: paymentLabel, count: String(payment.gateways) })
+      : payment.state === 'disconnected'
+        ? requiredLocalized(l10n, 'statusbar-payment-unconfigured-msg', { name: paymentLabel })
+        : connectionTooltip(payment, paymentLabel);
+
+  // ── Devices pill (ServiceKind::DeviceConnectivity) ─────────────
+  // Enumeration is binary, so the device count is the reading for every
+  // state after the first probe — including 0 when the bus is empty.
+  const devicesTone = toneForBinaryHealth(devices.state);
+  const devicesTooltip =
+    devices.state === 'checking'
+      ? connectionTooltip(devices, devicesLabel)
+      : requiredLocalized(l10n, 'statusbar-devices-count-msg', { name: devicesLabel, count: String(devices.devices) });
 
   // ── Version item (2 states: latest / update) ───────────────────
-  const versionTone: DotTone =
+  const versionTone: StatusTone =
     version.state === 'checking' ? 'checking' : version.state === 'update' ? 'warn' : 'good';
   const versionTooltip =
     version.state === 'checking'
@@ -146,8 +226,38 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
 
   return (
     <div className={`statusbar${bare ? ' statusbar--bare' : ''}`} role="group" aria-label={requiredLocalized(l10n, 'statusbar-group-aria')}>
-      <StatusItem kind="key" tone={authTone} label={authLabel} tooltip={authTooltip} onClick={() => notify(authTooltip)} />
-      <StatusItem kind="sync" tone={syncTone} label={syncLabel} tooltip={syncTooltip} onClick={() => notify(syncTooltip)} />
+      <StatusItem
+        kind="key"
+        tone={authTone}
+        label={authLabel}
+        tooltip={authTooltip}
+        hint={auth.state === 'checking' ? undefined : retryHint}
+        onClick={() => handleRetry(authLabel, auth.state, authTooltip, auth.retryNow)}
+      />
+      <StatusItem
+        kind="sync"
+        tone={syncTone}
+        label={syncLabel}
+        tooltip={syncTooltip}
+        hint={sync.state === 'checking' ? undefined : retryHint}
+        onClick={() => handleRetry(syncLabel, sync.state, syncTooltip, sync.retryNow)}
+      />
+      <StatusItem
+        kind="card"
+        tone={paymentTone}
+        label={paymentLabel}
+        tooltip={paymentTooltip}
+        hint={payment.state === 'checking' ? undefined : retryHint}
+        onClick={() => handleRetry(paymentLabel, payment.state, paymentTooltip, payment.retryNow)}
+      />
+      <StatusItem
+        kind="usb"
+        tone={devicesTone}
+        label={devicesLabel}
+        tooltip={devicesTooltip}
+        hint={devices.state === 'checking' ? undefined : retryHint}
+        onClick={() => handleRetry(devicesLabel, devices.state, devicesTooltip, devices.retryNow)}
+      />
       <StatusItem kind="download" tone={versionTone} label={versionLabel} tooltip={versionTooltip} onClick={() => notify(versionTooltip)} align="right" />
     </div>
   );

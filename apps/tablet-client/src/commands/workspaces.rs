@@ -79,7 +79,7 @@ pub async fn list_workspaces(
     };
 
     // 3. List instances in the requested store using the REAL role + user.
-    //    `list_workspaces` applies the owner bypass, `user_store_access`
+    //    `list_workspaces` applies the owner bypass, `user_location_access`
     //    (multi-store), explicit instance assignment, and role workspace types.
     let conn = state
         .db_manager
@@ -253,7 +253,7 @@ fn resolve_boot_store_core(
     let primary_store = |conn: &rusqlite::Connection| -> Result<BootResolution, AppError> {
         let store = Store::new(conn);
         let primary = store
-            .get_primary_store()?
+            .get_primary_location()?
             .ok_or_else(|| AppError::Internal("no primary store found".into()))?;
         tracing::info!(
             store_id = %primary.id,

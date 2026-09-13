@@ -98,7 +98,7 @@ jobs:
 
 const DOCS = `# CI Pipeline
 
-## Job Matrix (ci.yml)
+## Job Matrix
 
 | Job | What it does | Blocks |
 | --- | --- | --- |
@@ -121,21 +121,41 @@ const DOCS = `# CI Pipeline
 | \`ci.yml\` | Merge validation |
 `;
 
-/* ── Fixture harness ──────────────────────────────────────────────── */
+// The verifier requires docs/releases/checklist.md and reports "release checklist not
+// found" when it is absent (verify-ci-docs-drift.py:1121). The `if is_file()` guard at
+// L1080 has an else that appends a problem, so absence is NOT tolerated -- reading only
+// the `if` line and concluding otherwise was my error here, caught by the test.
+// The bullet names the fixture's own jobs: live_jobs comes from dev-ci.yml, which this
+// fixture does not have, so it is empty and every name resolves against all_jobs.
+const CHECKLIST_MD = `# Release Checklist
 
+- [ ] All CI jobs pass: \`ui-lint\`, \`rust-fmt\`, \`ci-docs-drift\`.
+- [ ] Version bumped.
+`;
+
+/* ── Fixture harness ──────────────────────────────────────────────── */
 const fixtureDirs = [];
 
 function buildFixture({ docs = DOCS } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'oz-ci-drift-'));
   fixtureDirs.push(dir);
   mkdirSync(join(dir, 'scripts'));
-  mkdirSync(join(dir, 'docs'));
   mkdirSync(join(dir, '.github', 'workflows'), { recursive: true });
+  // The verifier reads docs/operations/ci-pipeline.md (DOCS, line 81). This fixture
+  // wrote docs/ci-pipeline.md, so all three cases failed with "docs not found" -- the
+  // doc moved under docs/operations/ during the 0.0.36 restructure and the fixture
+  // never followed. Nothing runs this file (see the header note), which is why it
+  // stayed red. docs/releases/checklist.md is deliberately NOT created: the verifier
+  // guards it with `if RELEASE_CHECKLIST.is_file()`, so absence is tolerated -- which
+  // also means the checklist branch is unexercised here and remains so.
+  mkdirSync(join(dir, 'docs', 'operations'), { recursive: true });
+  mkdirSync(join(dir, 'docs', 'releases'), { recursive: true });
   copyFileSync(VERIFIER, join(dir, 'scripts', 'verify-ci-docs-drift.py'));
   writeFileSync(join(dir, 'scripts', 'gates.json'), GATES_JSON);
   writeFileSync(join(dir, 'scripts', 'check.sh'), CHECK_SH);
   writeFileSync(join(dir, 'scripts', 'check-ui.mjs'), CHECK_UI);
-  writeFileSync(join(dir, 'docs', 'ci-pipeline.md'), docs);
+  writeFileSync(join(dir, 'docs', 'operations', 'ci-pipeline.md'), docs);
+  writeFileSync(join(dir, 'docs', 'releases', 'checklist.md'), CHECKLIST_MD);
   writeFileSync(join(dir, '.github', 'workflows', 'ci.yml'), CI_YML);
   return dir;
 }
@@ -179,6 +199,8 @@ describe('verify-ci-docs-drift.py exit contract (AUDIT-27 CI-08)', () => {
       '| `ci-docs-drift` | Docs drift check | ✅ Required |\n'
         + '| `ghost-job` | No such job anywhere | ✅ Required |',
     );
+    assert.notStrictEqual(drifted, DOCS,
+      'mutation changed nothing -- the anchor is stale and this case would pass vacuously');
     const dir = buildFixture({ docs: drifted });
     const { code, output } = runVerifier(dir);
     assert.strictEqual(code, 1, `expected exit 1, got ${code}:\n${output}`);
@@ -187,9 +209,15 @@ describe('verify-ci-docs-drift.py exit contract (AUDIT-27 CI-08)', () => {
   });
 
   it('exits 2 when a required docs section is missing', () => {
-    // Renaming the required "Job Matrix (ci.yml)" heading makes the section
-    // vanish, which must fail closed (exit 2) instead of passing vacuously.
-    const truncated = DOCS.replace('## Job Matrix (ci.yml)', '## Job Matrix (renamed)');
+    // Renaming the required "Job Matrix" heading makes the section vanish, which must
+    // fail closed (exit 2) instead of passing vacuously. This anchor was stale for a
+    // while -- it said '## Job Matrix (ci.yml)', the heading lost that suffix, and the
+    // replace became a no-op so the doc was never actually truncated and the case could
+    // only ever fail. Guarded now, in the same shape verify-agents-mirrors.py uses: a
+    // mutation that changes nothing is a broken test, not a passing one.
+    const truncated = DOCS.replace('## Job Matrix', '## Job Matrix (renamed)');
+    assert.notStrictEqual(truncated, DOCS,
+      'mutation changed nothing -- the anchor is stale and this case would pass vacuously');
     const dir = buildFixture({ docs: truncated });
     const { code, output } = runVerifier(dir);
     assert.strictEqual(code, 2, `expected exit 2, got ${code}:\n${output}`);

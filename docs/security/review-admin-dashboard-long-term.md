@@ -1,5 +1,18 @@
 # Admin Dashboard Review — Long-Term Sustainability Report
 
+<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE AFTER REPAIR (4 findings) .
+Verified every "✅ Resolved" status in §6 against the 0.0.37 tree: innerHTML->textContent
+(website/public/admin/admin.js), MOCK removal, tenants pagination+search
+(website/public/admin/admin.js, apps/license-server/admin_dashboard.go), no-store on SPA HTML
+and per-subdomain cookie scoping (website/worker.ts), ?token= and devices2 removal,
+STRINGS/t() (website/public/admin/admin-utils.js), the svgChart/svgDonut guards,
+maskLicenseKey at 11 non-test sites in 7 files plus its AST guard, and the version pin in
+apps/license-server/admin_dashboard.go. Repaired 4 items: two CI pointers at a workflow that
+is now inert, one gate mis-attribution, and the L2 a11y status (no admin JS file contains an
+aria-label today). Still-open items re-confirmed open, NOT weakened. Dated §1/§2/§8 prose left
+verbatim per rule E; corrections are bracketed and the end note carries re-measure commands.
+-->
+
 **Date**: 2026-08-29  
 **Scope**: `website/public/admin/` (SPA) + `website/worker.ts` (auth gate) + `apps/license-server/admin_*.go` (backend)  
 **Focus**: Maintainability, security, scalability, and resilience for the long run.
@@ -136,6 +149,23 @@ The KPI icons and chart SVGs have no `aria-hidden="true"` (or it's on the SVG it
 
 **Status (2026-08-30 re-review): ✅ Resolved (#75).** KPI icons carry `aria-label`s; decorative SVGs are `aria-hidden`.
 
+**Re-checked 2026-09-09 — this sentence no longer describes the tree, so it is
+not an enforced control.** The dashboard's cards are built by `statC`
+(`website/public/admin/admin-utils.js:292`), which takes no icon at all (call
+sites `website/public/admin/admin.js:196-199`), and `kpiC` — the helper that did
+take one — fills a plain `<div class="kpi-icon">` via `innerHTML` with neither
+`aria-label` nor `aria-hidden` (`website/public/admin/admin-utils.js:271-276`)
+and has no production caller left, only the two test files that exercise it.
+`grep -c aria-label` returns **0 for every JavaScript file** in
+`website/public/admin/`; the labels that do exist are static markup in
+`website/public/admin/index.html` (nav, back link, theme toggle) and
+`website/public/admin/login.html`, as are its 6 `aria-hidden` SVGs. The
+generated chart SVGs are likewise unlabelled and not hidden
+(`website/public/admin/admin-utils.js:205`, `:490`, `:553`). Nothing regressed
+for a user — the icons were removed rather than labelled — but nothing now
+guarantees the property the row claims. Re-measure:
+`grep -c aria-label website/public/admin/*.js`.
+
 ### L3 — `theme.js` Loaded Synchronously in `<head>`
 
 The theme script blocks rendering. For a 1KB file it's negligible, but it's a pattern to note.
@@ -158,7 +188,7 @@ The admin login page (`login.html`) is always dark. The dashboard has a theme to
 | 2 | **HIGH** | MOCK fallback masks failures (C4) | Show error banner when API fails; keep MOCK only as last-resort skeleton | ✅ Resolved — MOCK object removed; API errors render a retry/error state (Phase 1) |
 | 3 | **HIGH** | Tenants list has no pagination (C3) | Add page controls + pass `?page=` / `?perPage=` to the API | ✅ Resolved — pagination controls + `?page=`/`?perPage=`/`?search=` (Phase 2) |
 | 4 | **HIGH** | Monolithic admin.js (H1) | Split into testable modules (stats.js, tenants.js, charts.js) or move to a build step | ✅ Resolved — pure helpers extracted into `admin-utils.js` (charts, formatting, cards, API auth, i18n) with unit tests |
-| 5 | **HIGH** | Zero tests (H2) | Add unit tests for chart rendering, helpers, and API mock fallback | ✅ Resolved — 103 unit tests across `admin-utils.test.ts` (94, incl. a seeded property fuzz) and `admin-a11y.test.ts` (9), +19 in `worker.test.ts`, +13 Go tests in `admin_stats_test.go`, `admin_dashboard_test.go`, `enterprise_admin_test.go`, `addon_admin_robustness_test.go` and `enterprise_trial_race_test.go`; all suites execute in CI via the `website-tests` gate. The 2026-08-30→31 bug hunt added 81 of the website tests and fixed 40 real bugs (see §8.1) |
+| 5 | **HIGH** | Zero tests (H2) | Add unit tests for chart rendering, helpers, and API mock fallback | ✅ Resolved — 103 unit tests across `admin-utils.test.ts` (94, incl. a seeded property fuzz) and `admin-a11y.test.ts` (9), +19 in `worker.test.ts`, +13 Go tests in `admin_stats_test.go`, `admin_dashboard_test.go`, `enterprise_admin_test.go`, `addon_admin_robustness_test.go` and `enterprise_trial_race_test.go`; the JavaScript suites execute in CI via the `website-tests` gate, the Go suites via the `go` gate (`dev-ci.yml#static-gates` runs `go test -short` over `apps/license-server`, and none of these five files is skipped by `-short`). The 2026-08-30→31 bug hunt added 81 of the website tests and fixed 40 real bugs (see §8.1) |
 | 6 | **HIGH** | No i18n (H3) | Extract strings to an i18n structure; at minimum, add English `.ftl` keys for future localization | ✅ Resolved — `STRINGS` key-value table + `t()` helper; all admin/dashboard/login strings extracted |
 | 7 | **HIGH** | Shared session cookie (H4) | Restrict `Domain` to individual subdomains or use a dedicated auth domain | ✅ Resolved — cookie scoped to `admin.ozpos.my.id` / `dashboard.ozpos.my.id` (not the parent domain) |
 | 8 | **MEDIUM** | No loading/error states for charts (M1) | Guard `svgChart` against empty/NaN data; add per-chart error states | ✅ Resolved — `svgChart` / `svgDonut` guard empty/NaN/zero data |
@@ -220,6 +250,12 @@ merge history (`git log -S` + merge-ancestry), and a local test run:
   type-checks). Now gated end-to-end: `website-tests` registered in
   `scripts/gates.json`, `npm test` step in `website.yml` (fail-fast,
   before the portal build), `website test` step in `scripts/check.sh`.
+  _(Corrected 2026-09-09: that `website.yml` pointer is dead — the file is now
+  the inert `website.yml.bak`, which GitHub never runs. The live runner is the
+  `website` job of `.github/workflows/dev-ci.yml`: `npm run check` at line 159,
+  `npm test` at line 161, `npm run build` at line 163, so the fail-fast ordering
+  still holds, and `gates.json` itself now records `website-tests` ->
+  `dev-ci.yml#website`.)_
 - **L1 corrected to OPEN**, **L3 marked won't-fix/by-design** — see §5.
 - Test count corrected: **24**, not "25+".
 
@@ -403,7 +439,9 @@ entropy (acceptable for one-time, rate-limited admin-minted codes).
 **Self-caught regression:** round 8's `60a8c542` broke the `astro check`
 gate (possibly-null `getElementById` results + untyped
 `querySelectorAll` → 4 errors; `npm run check` at `website.yml:75` would
-have failed). Vitest can't see it — esbuild strips types without
+have failed — today that step is `dev-ci.yml:159` in the `website` job, since
+`website.yml` is retired and nothing in `.github/workflows/` except
+`dev-ci.yml` and `release.yml` executes). Vitest can't see it — esbuild strips types without
 checking. The website gate is `npm run check`, not `npm test`.
 
 **Round 10** (2026-08-31) swept the last admin Go file whose body I had
@@ -448,3 +486,64 @@ yields 500 not 409).
 compared an isolated test against a full-package run (package tests
 share process state), which briefly mis-attributed another agent's
 `TestActivateHandler_Lifecycle` failure to my mutex.
+
+---
+
+## Currency (re-checked 2026-09-09 against branch 0.0.37 — §1-§8 bodies are dated records and were left verbatim)
+
+**Re-verified true, with today's coordinates.** innerHTML is gone from the two data paths
+(`showTenantDetail` builds its grid with `el()` + `textContent`,
+`website/public/admin/admin.js:548-561`; `upgradePrompt` the same at `:794-812`); the MOCK
+object is gone (`admin.js:74` is only the comment saying so); pagination and search are live on
+both sides (`admin.js:464-465` sends `?page=&perPage=&search=`; `apps/license-server/admin_dashboard.go:108-126`
+clamps `perPage` to 1..100 and escapes the term with `regexp.QuoteMeta`); `devices2` is gone;
+`?token=` is gone; `Cache-Control: no-store` is applied to SPA HTML
+(`website/worker.ts:151` inside `withStrictCSP`, used at `:668`); the cookie is scoped to the
+requesting host (`website/worker.ts:111-113`); `STRINGS` + `t()` exist
+(`website/public/admin/admin-utils.js:1391`, `:1650`); `svgChart`/`svgDonut` carry their guards
+(`:87-99`, `:210-222`); `enterpriseRedeemMu` is held across check-and-redeem with a 409 for the
+loser (`apps/license-server/enterprise_trial.go:20`, `:110-111`, `:121`); the health version is a
+pinned const matching the current lock (`apps/license-server/admin_dashboard.go:40`,
+tested at `admin_dashboard_test.go:137`, updated by `scripts/bump-version.ps1`); and the masking
+round's numbers still check out — `maskLicenseKey` is defined at `apps/license-server/mask.go:36`
+with exactly 11 non-test call sites across 7 files, its AST guard
+`TestNoRawLicenseKeyLogging` in `mask_convention_test.go` runs under
+`dev-ci.yml#static-gates` because no admin or masking test is gated on `testing.Short`.
+
+**Still open, still unfixed — recorded so nobody reads the ✅ column as "all clear".**
+`apps/license-server/login_lockout.go:203`, `:218` and `:319` still write `key=%q`, and that key is
+`"email:"+email` (`:384-386`), so the customer's address goes to the server log. The list handler
+still stamps `updated_at` with request time rather than the record's
+(`apps/license-server/addon_admin.go:234` — note it is the **addons** handler; the enterprise list
+at `apps/license-server/enterprise_admin.go:146` returns the record's own `created`, which is why
+the earlier attribution kept failing to locate). The enterprise mint still pre-checks uniqueness and
+then calls `Save` (`apps/license-server/enterprise_admin.go:112-122`), relying on the unique index in
+`apps/license-server/pb_schema.json` to absorb the race, so a true concurrent duplicate is a 500,
+not a 409. And `style-src 'unsafe-inline'` is still shipped
+(`website/worker.ts:131`, L1 remains OPEN), with 9 `style="` occurrences across
+`website/public/admin/admin.js`, `admin-utils.js` and `index.html` plus 29 `cssText` writes —
+the L1 body's "~12 + 7" split is stale; the CSSOM half grew when helpers moved out of
+`admin.js`.
+
+**Counts that have moved (measured, not inferred).** `admin.js` is 1,214 lines where §2 said 448,
+and `website/public/admin/admin-utils.js` is 1,704 — so H1's "450-line file" framing only holds for
+the file that was split, not for what the split left behind. §6 row 5's 103 JS tests are now 156 in
+`website/src/__tests__/admin-utils.test.ts` + 9 in `admin-a11y.test.ts` + 26 in
+`website/src/__tests__/worker.test.ts`, and the whole website suite is 758 tests over 42 files, not
+the "644/644" of round 5; the five Go files named there now hold 15 `func Test` declarations, not 13.
+Round 6's "all 9 `/api/v1/admin/*` handlers wrap `adminAuth`" is now 18 routes, every one of them
+still guarded but split across two helpers — 12 `adminAuth` sites
+(`admin_dashboard.go` 7, `admin_tenant_lifecycle.go` 4, `admin_stats.go` 1) and 6 `authenticateAdmin`
+sites (`addon_admin.go` 3, `enterprise_admin.go` 2, `feature_grants.go` 1).
+§1's architecture line still reads "stats (real) → MOCK fallback" while §6 row 2 removed the
+fallback; read §6, not §1, for that. L4's "both admin and dashboard login pages" is one page
+today: `website/public/admin/login.html` only, because `dashboard.ozpos.my.id` now 302s
+(`website/worker.ts:193-209`) — the theme toggle on it is intact.
+
+**Re-measure:** `cd website && npx vitest run` ·
+`go -C apps/license-server test -short ./...` ·
+`grep -c 'func Test' apps/license-server/admin_*_test.go apps/license-server/enterprise_*_test.go apps/license-server/addon_admin_robustness_test.go` ·
+`grep -rn 'npm test\|npm run check' .github/workflows` ·
+`wc -l website/public/admin/*.js`.
+
+> last audited 09-09-26 by docs-auditor

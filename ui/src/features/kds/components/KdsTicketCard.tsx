@@ -3,9 +3,11 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useTicketSla, type SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
 import { requiredLocalized } from '@/frontend/shared';
-import { getKdsOrderLinesScoped, type KdsOrder, type KdsStatus, type KdsLineItem } from '@/api/kds';
+import { getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { contrastText } from '@/features/kds/kdsCardColors';
+import { ModifierBadge } from '@/features/kds/components/ModifierBadge';
+import { canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 
 /** Props for the KdsTicketCard component. */
@@ -53,10 +55,11 @@ const TAKEAWAY_ICON = (
 );
 
 /** Format duration in seconds as a human-readable string (e.g. "3m 12s", "1h 5m"). */
-function fmtDuration(seconds: number): string {
+export function fmtDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   const min = Math.floor(seconds / 60);
-  if (min < 60) return `${min}m ${seconds % 60 ? `${seconds % 60}s` : ''}`;
+  const sec = seconds % 60;
+  if (min < 60) return sec ? `${min}m ${sec}s` : `${min}m`;
   const h = Math.floor(min / 60);
   return `${h}h ${min % 60}m`;
 }
@@ -64,7 +67,12 @@ function fmtDuration(seconds: number): string {
 /** Course display order — items without a course map to "other" at the end. */
 const COURSE_ORDER = ['appetizer', 'main', 'side', 'dessert', 'beverage'] as const;
 
-const COURSE_L10N_KEYS: Record<string, string> = {
+/**
+ * Exported for testing. KdsTicketCardCourseLabel.test.ts redeclared this map value for
+ * value, alongside its own courseLabel(); a copied lookup table passes forever, because
+ * both the input and the expectation come from the same file.
+ */
+export const COURSE_L10N_KEYS: Record<string, string> = {
   appetizer: 'kds-course-appetizer',
   main: 'kds-course-main',
   side: 'kds-course-side',
@@ -72,8 +80,36 @@ const COURSE_L10N_KEYS: Record<string, string> = {
   beverage: 'kds-course-beverage',
 };
 
+/**
+ * The fluent key for a course, or the "other" fallback.
+ *
+ * The pure half of the component's courseLabel callback, which wraps this in
+ * requiredLocalized(). Extracted so the mapping can be tested without a localization
+ * context -- the previous suite reproduced the mapping by hand and labelled the copy
+ * "(without l10n)", which is exactly the kind of near-equivalent copy that drifts.
+ */
+export function courseL10nKey(course: string | null): string {
+  if (!course) return 'kds-course-other';
+  return COURSE_L10N_KEYS[course] ?? 'kds-course-other';
+}
+
+/**
+ * Card header background: dine-in colour when the ticket has a table, takeaway otherwise.
+ *
+ * Extracted from the inline ternary in the component body, which
+ * KdsTicketCardCourseLabel.test.ts had copied as its own headerBg(). Like the SLA clamp,
+ * production had no name for this expression, so a name-matching detector cannot see the
+ * copy at all -- naming it is the only way it becomes testable rather than re-invented.
+ */
+export function headerBg(
+  tableNumber: string | null,
+  colors: { dinein: string; takeaway: string },
+): string {
+  return tableNumber ? colors.dinein : colors.takeaway;
+}
+
 /** Group line items by course, preserving course order. Returns entries in display order. */
-function groupByCourse(items: KdsLineItem[]): { course: string | null; items: KdsLineItem[] }[] {
+export function groupByCourse(items: KdsLineItem[]): { course: string | null; items: KdsLineItem[] }[] {
   const groups = new Map<string | null, KdsLineItem[]>();
   for (const item of items) {
     const course = item.course ?? null;
@@ -95,15 +131,20 @@ function groupByCourse(items: KdsLineItem[]): { course: string | null; items: Kd
   return ordered;
 }
 
-const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
-
-/** An item is "done" when it has been served (or cancelled — off the board). */
-function itemDone(item: KdsLineItem): boolean {
+/**
+ * An item is "done" when it has been served (or cancelled — off the board).
+ *
+ * Takes the structural minimum rather than a full KdsLineItem: the body reads exactly one
+ * field, and the wider `Pick<...>` accepts every KdsLineItem unchanged while letting callers
+ * (and tests) pass a fixture without inventing unrelated fields. This is a widening, not a
+ * behaviour change -- both production call sites pass real items.
+ */
+export function itemDone(item: Pick<KdsLineItem, 'item_status'>): boolean {
   return item.item_status === 'served' || item.item_status === 'cancelled';
 }
 
 /** Next-action label key for the footer advance button, or null when terminal. */
-function nextActionKey(status: string): string | null {
+export function nextActionKey(status: string): string | null {
   switch (status) {
     case 'pending': return 'kds-advance-start';
     case 'preparing': return 'kds-advance-ready';
@@ -232,7 +273,13 @@ export const KdsTicketCard = memo(function KdsTicketCard({
   }, [handleSaveEdit, handleCancelEdit]);
 
   // ── Advance (footer button) — cooldown-guarded like the old card tap ──
-  const canAdvance = STATUS_ORDER.indexOf(order.status as KdsStatus) < STATUS_ORDER.length - 1;
+  // This used to read `STATUS_ORDER.indexOf(status) < STATUS_ORDER.length - 1`, which
+  // omits the `idx < 0` half of the progression test: for 'cancelled' indexOf returns -1,
+  // and -1 < 3 makes canAdvance TRUE. Unreachable today because KdsScreen.tsx:196 filters
+  // cancelled orders out before any card renders -- but it disagreed with both
+  // nextKdsStatus and nextActionKey below, which treat cancelled as terminal. Sharing the
+  // one helper removes the disagreement without changing behaviour on any reachable input.
+  const canAdvance = canAdvanceKdsStatus(order.status);
   const nextKey = nextActionKey(order.status);
   const handleAdvance = useMemo(
     () => createCooldownWrapper(() => {
@@ -264,18 +311,14 @@ export const KdsTicketCard = memo(function KdsTicketCard({
   };
 
   // ── Course label resolver ────────────────────────────────────────
-  const courseLabel = useCallback((course: string | null): string => {
-    if (!course) return requiredLocalized(l10n, 'kds-course-other');
-    const key = COURSE_L10N_KEYS[course];
-    if (key) return requiredLocalized(l10n, key);
-    return requiredLocalized(l10n, 'kds-course-other');
-  }, [l10n]);
+  const courseLabel = useCallback((course: string | null): string =>
+    requiredLocalized(l10n, courseL10nKey(course)), [l10n]);
 
   const advanceLabel = nextKey ? requiredLocalized(l10n, nextKey) : '';
 
   // Card header colour — from context (shared with hamburger panel)
   const { colors } = useKdsCardColors();
-  const hdrBg = order.table_number ? colors.dinein : colors.takeaway;
+  const hdrBg = headerBg(order.table_number, colors);
   const hdrText = contrastText(hdrBg);
 
   return (
@@ -393,7 +436,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                             {item.modifiers.length > 0 && (
                               <span className="kds-ticket-modifiers">
                                 {item.modifiers.map((mod, mi) => (
-                                  <span key={mi} className="kds-ticket-modifier-row">{mod.choice}</span>
+                                  <ModifierBadge key={mi} modifier={mod} />
                                 ))}
                               </span>
                             )}
@@ -436,6 +479,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                   onChange={(e) => setEditSummary(e.target.value)}
                   onKeyDown={handleKeyDown}
                   aria-label={requiredLocalized(l10n, 'kds-edit-items-aria')}
+                  data-testid={`kds-order-card-${order.display_number ?? order.id}-edit-input`}
                 />
                 <div className="kds-ticket-edit-row">
                   <label className="kds-ticket-edit-label">
@@ -451,6 +495,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                       }}
                       onKeyDown={handleKeyDown}
                       aria-label={requiredLocalized(l10n, 'kds-edit-count-aria')}
+                      data-testid={`kds-order-card-${order.display_number ?? order.id}-edit-count`}
                     />
                   </label>
                   <div className="kds-ticket-edit-actions">
@@ -496,6 +541,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                   className="kds-ticket-edit-btn"
                   onClick={startEditing}
                   aria-label={requiredLocalized(l10n, 'kds-edit-items-btn-aria')}
+                  data-testid={`kds-order-card-${order.display_number ?? order.id}-edit-items`}
                 >
                   <Localized id="kds-edit-items-btn">Edit Items</Localized>
                 </button>
@@ -508,6 +554,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                     onAddItems(order.id);
                   }}
                   aria-label={requiredLocalized(l10n, 'kds-add-items-btn-aria')}
+                  data-testid={`kds-order-card-${order.display_number ?? order.id}-add-items`}
                 >
                   <Localized id="kds-add-items-btn">Add Items</Localized>
                 </button>

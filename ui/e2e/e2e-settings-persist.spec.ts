@@ -38,16 +38,8 @@ test.describe('Critical Path: Settings Persistence', () => {
     const sidebar = page.locator('[data-testid="settings-sidebar"]');
     await expect(sidebar).toBeVisible({ timeout: 10_000 });
 
-    // Navigate to Receipt section (inside the "Operations" category).
-    // First ensure the Operations category is expanded. Only "Business" is
-    // expanded by default, so click the section header to expand Operations.
-    const opsCategory = page.locator('.settings-sidebar-section-header').filter({ hasText: 'Operations' });
-    if (await opsCategory.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      const opsExpanded = await opsCategory.getAttribute('aria-expanded');
-      if (opsExpanded === 'false') {
-        await opsCategory.click();
-      }
-    }
+    // Navigate to Receipt section — every nav item is always visible in the
+    // flat sidebar, so click it directly.
     const receiptNav = page.locator('.settings-nav-item').filter({ hasText: 'Receipt' });
     await expect(receiptNav).toBeVisible({ timeout: 3_000 });
     await receiptNav.click();
@@ -108,7 +100,7 @@ test.describe('Critical Path: Settings Persistence', () => {
 
     // ── Step 4: Return to the original section ──────────────────────
     if (selectExists) {
-        // Return to Receipt (Operations category already expanded).
+      // Return to Receipt.
       await page.locator('.settings-nav-item').filter({ hasText: 'Receipt' }).click();
 
       // Verify the select still shows the changed value.
@@ -157,14 +149,6 @@ test.describe('Critical Path: Settings Persistence', () => {
     expect(enteredValue).toBe(newName);
 
     // ── Step 3: Navigate away ──────────────────────────────────────
-    // Ensure the Operations category is expanded so Receipt nav item is visible.
-    const opsCategory = page.locator('.settings-sidebar-section-header').filter({ hasText: 'Operations' });
-    if (await opsCategory.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      const opsExpanded = await opsCategory.getAttribute('aria-expanded');
-      if (opsExpanded === 'false') {
-        await opsCategory.click();
-      }
-    }
     const receiptNav = page.locator('.settings-nav-item').filter({ hasText: 'Receipt' });
     await expect(receiptNav).toBeVisible({ timeout: 3_000 });
     await receiptNav.click();

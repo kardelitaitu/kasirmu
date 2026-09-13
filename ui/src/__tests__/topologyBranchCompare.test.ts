@@ -8,8 +8,8 @@
 // editing either one.
 
 import { describe, expect, it } from 'vitest';
-import { compareBranchTopologies, buildTopologyOverlay, layoutGhosts, buildGhostWireStubs, compareFocusDimIds } from '@/features/stores/topologyBranchCompare';
-import type { TopologyDiagram, GhostBounds } from '@/features/stores/topologyBranchCompare';
+import { compareBranchTopologies, buildTopologyOverlay, layoutGhosts, buildGhostWireStubs, compareFocusDimIds } from '@/features/locations/topologyBranchCompare';
+import type { TopologyDiagram, GhostBounds } from '@/features/locations/topologyBranchCompare';
 import type { TopologyNodePayload, TopologyWirePayload } from '@/api/topology';
 
 // ── Fixtures ──────────────────────────────────────────────────────

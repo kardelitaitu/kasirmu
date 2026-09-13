@@ -3,9 +3,15 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithFluentSync } from '@/__tests__/test-utils/render';
+import {
+  assertCaseDiscriminates,
+  discriminatingStoreZone,
+  expectedStoreDay,
+} from '@/__tests__/test-utils/storeZoneCase';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import analyticsFtl from '@/locales/analytics.ftl?raw';
+import subscriptionFtl from '@/locales/subscription.ftl?raw';
 import analyticsIdFtl from '@/locales/analytics.id.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import reportsFtl from '@/locales/reports.ftl?raw';
@@ -51,6 +57,17 @@ vi.mock('@/frontend/shell/Tooltip', () => ({
 const mockGoToPicker = vi.fn();
 vi.mock('@/hooks/useWorkspaceNav', () => ({
   useWorkspaceNav: () => ({ goToWorkspacePicker: mockGoToPicker }),
+}));
+
+// R36-05 (parity with DashboardScreen): AnalyticsScreen fetches the primary store
+// to anchor its derived ranges to the store's zone (REP-03). Before this mock the
+// call hit real invoke, rejected, and the component silently fell back to UTC -- so
+// the store-zone path looked green while never being exercised. The session token
+// from the global WorkspaceContext stub is truthy ('mock-session-token'), so the
+// fetch really does fire in every test here; only its result was being dropped.
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
 }));
 
 // AnalyticsCardContent (rendered inside each card) formats money via
@@ -243,10 +260,11 @@ vi.mock('@/api/tables', () => ({
   listTablesScoped: () => mockListTablesScoped(),
 }));
 
-import AnalyticsScreen, { nextExpandedKey, daysInCurrentMonth, monthCalendarGrid, smartScale, cardGranularity, cardRange } from '@/features/analytics/AnalyticsScreen';
+import AnalyticsScreen from '@/features/analytics/AnalyticsScreen';
+import { nextExpandedKey, daysInCurrentMonth, monthCalendarGrid, smartScale, cardGranularity, cardRange } from '@/features/analytics/utils/dateRangePresets';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
-import { yearlyHeatmapColumns, rangeForGranularity } from '@/features/analytics/analytics-data';
+import { yearlyHeatmapColumns, rangeForGranularity, isoToday } from '@/features/analytics/analytics-data';
 import { analyticsDataCache, clearAnalyticsCache } from '@/features/analytics/analytics-cache';
 import { registerAnalyticsFeature } from '@/features/analytics/register';
 import { registerStaffFeature } from '@/features/staff/register';
@@ -267,6 +285,12 @@ describe('AnalyticsScreen layout shell', () => {
     mockGetLowStockAlerts.mockReset();
     mockGetTopProducts.mockReset();
     mockGetHourlyHeatmap.mockReset();
+    // Default to a rejected store fetch so every pre-existing test keeps the
+    // behaviour it was written against (storeTz stays null → UTC fallback).
+    // Only the anchoring tests below resolve it, which keeps the new mock from
+    // silently changing the dates 60+ existing assertions depend on.
+    mockGetPrimaryLocationScoped.mockReset();
+    mockGetPrimaryLocationScoped.mockRejectedValue(new Error('no store in this test'));
     localStorage.clear();
     // The analytics cache is a module-level singleton — wipe it so each
     // test starts from a cold cache (otherwise the daily/retail query
@@ -610,10 +634,10 @@ describe('AnalyticsScreen layout shell', () => {
     const cards = () => [...document.querySelectorAll('.analytics-card')];
     const heat = cards()[0]!;
     const staff = cards().find((c) => c.querySelector('.analytics-card-title')?.textContent === 'Staff Performance')!;
-    fireEvent.dragStart(heat);
+    fireEvent.dragStart(heat.querySelector('.analytics-card-header')!);
     fireEvent.dragOver(staff);
     fireEvent.drop(staff);
-    fireEvent.dragEnd(heat);
+    fireEvent.dragEnd(heat.querySelector('.analytics-card-header')!);
 
     expect(screen.getByRole('button', { name: 'Reset layout' })).toBeTruthy();
 
@@ -665,10 +689,10 @@ describe('AnalyticsScreen layout shell', () => {
     // Drag Revenue Overview onto Staff Performance's slot
     const heat = cards()[0]!;
     const staff = cards().find((c) => c.querySelector('.analytics-card-title')?.textContent === 'Staff Performance')!;
-    fireEvent.dragStart(heat);
+    fireEvent.dragStart(heat.querySelector('.analytics-card-header')!);
     fireEvent.dragOver(staff);
     fireEvent.drop(staff);
-    fireEvent.dragEnd(heat);
+    fireEvent.dragEnd(heat.querySelector('.analytics-card-header')!);
 
     // Order changed: Staff Performance moved before Heat Map
     expect(titles().indexOf('Staff Performance')).toBeLessThan(titles().indexOf('Heat Map'));
@@ -678,6 +702,17 @@ describe('AnalyticsScreen layout shell', () => {
     expect(saved.indexOf('staff-shared')).toBeLessThan(saved.indexOf('heatmap-shared'));
   });
 
+  // ── R36-05: the quick presets anchor to the STORE, not the host ──────
+  // Expected values are computed with explicit UTC arithmetic via
+  // test-utils/storeZoneCase rather than by calling isoDaysAgo, so the
+  // assertion stays independent of the code under test. This test previously
+  // read `expect(from.value).toBe(isoDaysAgo(6))` while the preset itself sets
+  // `from` to `isoDaysAgo(days - 1, storeTz)` -- both sides called the same
+  // helper, so a wrong isoDaysAgo could never be caught here. That is the
+  // R36-01 defect class, and the sibling screen tests (Dashboard, SalesReport,
+  // CustomReport, MenuEngineering) all avoid it deliberately.
+  // scripts/check-tz-invariance.py replays this file under four host zones; if
+  // the range ever depended on the device calendar these would diverge.
   it('applies quick range presets to the custom date pickers', () => {
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
 
@@ -687,14 +722,39 @@ describe('AnalyticsScreen layout shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Last 7 days' }));
 
-    // Local calendar dates — matches the screen's local-time date handling
-    // (UTC toISOString can differ from the local date near midnight).
-    const iso = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const expectedFrom = new Date();
-    expectedFrom.setDate(expectedFrom.getDate() - 6);
-    expect(from.value).toBe(iso(expectedFrom));
-    expect(to.value).toBe(iso(new Date()));
+    // No store profile resolved (the default mock rejects), so the anchor is
+    // FALLBACK_STORE_TZ -- UTC, the same value the schema column defaults to.
+    const UTC_CASE = { offset: 'UTC', hours: 0 };
+    expect(from.value).toBe(expectedStoreDay(UTC_CASE, 6));
+    expect(to.value).toBe(expectedStoreDay(UTC_CASE, 0));
+  });
+
+  it('anchors the custom-range presets to the primary store timezone (R36-05)', async () => {
+    // The offset is chosen so its calendar day provably differs from UTC at the
+    // moment the test runs -- a hardcoded +14:00 is vacuous for ten hours a day.
+    const zone = discriminatingStoreZone();
+    assertCaseDiscriminates(zone);
+    mockGetPrimaryLocationScoped.mockResolvedValue({
+      id: 'store-a', name: 'Store A', timezone: zone.offset,
+    });
+
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl, reportsFtl);
+    await waitFor(() => expect(mockGetPrimaryLocationScoped).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Custom' }));
+    const from = screen.getByLabelText('From') as HTMLInputElement;
+    const to = screen.getByLabelText('To') as HTMLInputElement;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Last 7 days' }));
+
+    await waitFor(() => {
+      expect(to.value).toBe(expectedStoreDay(zone, 0));
+      expect(from.value).toBe(expectedStoreDay(zone, 6));
+    });
+    // The store must actually have been consulted -- otherwise storeTz stayed
+    // null and these values would be the UTC fallback, which for a ±10/±14
+    // offset is a different day and so would have failed above anyway.
+    expect(mockGetPrimaryLocationScoped).toHaveBeenCalled();
   });
 
   it('collapses all card bodies with the toggle and restores them', () => {
@@ -743,10 +803,10 @@ describe('AnalyticsScreen layout shell', () => {
     const cards = () => [...document.querySelectorAll('.analytics-card')];
     const heat = cards()[0]!;
     const staff = cards().find((c) => c.querySelector('.analytics-card-title')?.textContent === 'Staff Performance')!;
-    fireEvent.dragStart(heat);
+    fireEvent.dragStart(heat.querySelector('.analytics-card-header')!);
     fireEvent.dragOver(staff);
     fireEvent.drop(staff);
-    fireEvent.dragEnd(heat);
+    fireEvent.dragEnd(heat.querySelector('.analytics-card-header')!);
 
     expect(screen.getByText('Layout saved')).toBeTruthy();
   });
@@ -817,9 +877,8 @@ describe('AnalyticsScreen layout shell', () => {
     // range, never the current year's full 12 columns.
     fireEvent.click(screen.getByRole('radio', { name: 'Yearly' }));
     await flushRecalc();
-    const now = new Date();
-    const isoToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const yearlyCols = yearlyHeatmapColumns(`${now.getFullYear()}-01-01`, isoToday);
+    const today = isoToday();
+    const yearlyCols = yearlyHeatmapColumns(`${today.slice(0, 4)}-01-01`, today);
     const yearlyCells = yearlyCols.reduce((a, c) => a + c.cells, 0);
     expect(cellCount()).toBe(yearlyCells);
     expect(heatmap()?.querySelectorAll('.analytics-heat-column').length).toBe(yearlyCols.length);
@@ -1970,6 +2029,7 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
   afterEach(() => {
     vi.mocked(useSubscription).mockImplementation(() => ({
       caps: null,
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     }));
@@ -1978,6 +2038,7 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
   it('locks the screen with a blurred sample chart + upgrade CTA below Pro', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'plus', supportsAnalytics: false }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -1993,12 +2054,85 @@ describe('C2.2 analytics tab lock (Plus → Pro)', () => {
   it('renders the live dashboard when the tier supports analytics', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
     renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, sharedFtl);
     await waitFor(() => {
       expect(screen.queryByText('Analytics is a Pro feature')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('§B administrative gate (todo-global-saas-1.md)', () => {
+  afterEach(() => {
+    vi.mocked(useSubscription).mockImplementation(() => ({
+      caps: null,
+      state: 'active',
+      loading: false,
+      refresh: vi.fn(),
+    }));
+  });
+
+  it('locks the screen while the subscription is in grace — even for a Pro tier', async () => {
+    // §B: administrative features lock AT expiresAt; the tier entitlements
+    // survive grace for OPERATIONAL features only. An expired Premium/Pro
+    // subscription gets the admin lock, not the live dashboard.
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'grace',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+    // The admin lock replaces the content entirely — no live charts.
+    expect(screen.queryByTestId('echarts-mock')).not.toBeInTheDocument();
+  });
+
+  it('locks fail-closed when subscription data is unavailable', async () => {
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'unavailable',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+  });
+
+  it('prefers the admin lock over the tier upsell when both would apply', async () => {
+    // Expired Free-tier: the tier gate would say "upgrade to Pro", but §B
+    // says the admin lock is the truthful message — the tier is not the
+    // problem, the subscription state is.
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'free', supportsAnalytics: false }),
+      state: 'expired',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.getByText('Administrative features locked')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Analytics is a Pro feature')).not.toBeInTheDocument();
+  });
+
+  it('renders the live dashboard while active (no admin lock)', async () => {
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: makeSubscriptionCaps({ tier: 'pro', supportsAnalytics: true }),
+      state: 'active',
+      loading: false,
+      refresh: vi.fn(),
+    });
+    renderWithFluentSync(<AnalyticsScreen />, analyticsFtl, subscriptionFtl, sharedFtl);
+    await waitFor(() => {
+      expect(screen.queryByText('Administrative features locked')).not.toBeInTheDocument();
     });
   });
 });

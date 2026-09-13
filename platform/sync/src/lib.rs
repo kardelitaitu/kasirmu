@@ -34,7 +34,9 @@ next: none | perf: 64KB priority-sorted batches
 #![allow(clippy::items_after_test_module)]
 
 pub mod conflict;
+pub mod crdt;
 pub mod daemon;
+pub mod image_push;
 pub mod pg_daemon;
 pub mod pg_transport;
 pub mod queue;
@@ -181,10 +183,49 @@ pub fn build_batches(
     batches
 }
 
+/// Whether a snapshot tax rate's scope can be honoured in this database.
+///
+/// `true` means the row may be written. `false` covers two refusals:
+///
+/// * the row is scoped to a legal entity or location this store does not have
+///   — the FK would reject the write, and NULLing the scope out instead is the
+///   exact failure this guard exists to prevent, because a NULL scope IS the
+///   tenant-global answer and a single-location rate would start pricing every
+///   location;
+/// * the row is scoped to BOTH, which is ambiguous rather than narrower
+///   (one-or-the-other-or-neither — the same rule
+///   `oz_core::db::tax::TaxRateScope` encodes in its variants).
+///
+/// Refusing degrades safely: with no scoped row present, the resolver falls
+/// back to the tenant-global rate, which is what the branch used before the
+/// pull. Mirrored in `crate::sync_pull` (oz-core), the other end of this
+/// contract.
+fn snapshot_tax_rate_scope_is_applicable(
+    tx: &rusqlite::Transaction<'_>,
+    rate: &transport::SnapshotTaxRate,
+) -> SyncResult<bool> {
+    let exists = |sql: &str, id: &str| -> SyncResult<bool> {
+        match tx.query_row(sql, rusqlite::params![id], |_| Ok(())) {
+            Ok(()) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(SyncError::Replication(format!(
+                "tax rate scope lookup failed: {e}"
+            ))),
+        }
+    };
+    match (rate.legal_entity_id.as_deref(), rate.location_id.as_deref()) {
+        (None, None) => Ok(true),
+        (Some(_), Some(_)) => Ok(false),
+        (Some(entity), None) => exists("SELECT 1 FROM legal_entities WHERE id = ?1", entity),
+        (None, Some(location)) => exists("SELECT 1 FROM locations WHERE id = ?1", location),
+    }
+}
+
 /// Import a server snapshot into the local store (P-3 Step 5).
 ///
-/// Upserts products (by SKU), tax rates (by ID), and users (by username)
-/// inside a single transaction. Returns the total number of rows written.
+/// Upserts products (by SKU), tax rates (by ID, with their scope and validity
+/// window), and users (by username) inside a single transaction. Returns the
+/// total number of rows written.
 pub(crate) fn import_snapshot(
     store: &Store<'_>,
     snapshot: &transport::SyncSnapshotResponse,
@@ -290,23 +331,48 @@ pub(crate) fn import_snapshot(
         }
     }
 
-    // Upsert tax rates by ID.
+    // Upsert tax rates by ID — INCLUDING their scope and validity window.
+    //
+    // The four columns must travel or the pull is a money bug: a rate scoped
+    // to one location that lands with NULL scope reads as the TENANT-GLOBAL
+    // answer at the branch, so every location starts pricing with it. Kept
+    // column-for-column with oz-core's own pull path (crate::sync_pull), which
+    // is the other end of this contract.
     {
         let mut stmt = tx
             .prepare(
                 "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive,
-                                        created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, COALESCE(?6, ?8), COALESCE(?7, ?8))
+                                        created_at, updated_at,
+                                        legal_entity_id, location_id,
+                                        effective_from, effective_to,
+                                        rounding_mode)
+                 VALUES (?1, ?2, ?3, ?4, ?5, COALESCE(?6, ?8), COALESCE(?7, ?8),
+                         ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT(id) DO UPDATE SET
-                     name         = excluded.name,
-                     rate_bps     = excluded.rate_bps,
-                     is_default   = excluded.is_default,
-                     is_inclusive = excluded.is_inclusive,
-                     updated_at   = COALESCE(excluded.updated_at, ?8)",
+                     name            = excluded.name,
+                     rate_bps        = excluded.rate_bps,
+                     is_default      = excluded.is_default,
+                     is_inclusive    = excluded.is_inclusive,
+                     updated_at      = COALESCE(excluded.updated_at, ?8),
+                     legal_entity_id = excluded.legal_entity_id,
+                     location_id     = excluded.location_id,
+                     effective_from  = excluded.effective_from,
+                     effective_to    = excluded.effective_to,
+                     rounding_mode   = excluded.rounding_mode",
             )
             .map_err(|e| SyncError::Replication(format!("prepare tax_rates: {e}")))?;
 
+        let mut skipped: Vec<String> = Vec::new();
         for r in &snapshot.tax_rates {
+            // A scope this database cannot honour is REFUSED, never flattened:
+            // writing NULL would promote a single-location rate to the
+            // tenant-global answer, and the FK would reject the write anyway.
+            // Skipping degrades to "no scoped row here", which is the answer
+            // the branch already had.
+            if !snapshot_tax_rate_scope_is_applicable(&tx, r)? {
+                skipped.push(r.id.clone());
+                continue;
+            }
             stmt.execute(rusqlite::params![
                 r.id,
                 r.name,
@@ -316,9 +382,22 @@ pub(crate) fn import_snapshot(
                 r.created_at.as_deref(),
                 r.updated_at.as_deref(),
                 now,
+                r.legal_entity_id.as_deref(),
+                r.location_id.as_deref(),
+                r.effective_from.as_deref(),
+                r.effective_to.as_deref(),
+                r.rounding_mode.as_str(),
             ])
             .map_err(|e| SyncError::Replication(format!("upsert tax_rate: {e}")))?;
             count += 1;
+        }
+        if !skipped.is_empty() {
+            tracing::warn!(
+                tax_rate_ids = ?skipped,
+                count = skipped.len(),
+                "snapshot tax rates skipped: scope target absent locally, or the row is \
+                 scoped to both an entity and a location"
+            );
         }
     }
 
@@ -374,6 +453,34 @@ impl SyncEngine {
             transport: SyncTransport::new(&config.server_url, config.api_key.as_deref()),
             config,
         }
+    }
+
+    /// Stamp outgoing pushes with this terminal's causality metadata.
+    ///
+    /// [`SyncEngine::new`] cannot do this itself: it takes only a
+    /// [`SyncConfig`] and has no database handle, and the counter must be read
+    /// from the persisted clock — see
+    /// [`SyncTransport::with_vector_stamping`] for why seeding from zero is
+    /// wrong. Callers that hold a store should read
+    /// [`crate::crdt::CLOCK_KEY`] and the configured terminal id, then call
+    /// this, and persist [`SyncTransport::last_stamped_counter`] afterwards.
+    ///
+    /// Without it the immediate-sync path pushes unstamped payloads, and the
+    /// server skips conflict detection for them.
+    pub fn with_vector_stamping(mut self, terminal_id: &str, initial_counter: u64) -> Self {
+        self.transport = self
+            .transport
+            .with_vector_stamping(terminal_id, initial_counter);
+        self
+    }
+
+    /// Highest counter stamped so far, or `None` when stamping is disabled.
+    ///
+    /// Persist this after a successful sync cycle; otherwise the next process
+    /// restarts from the old value and the server classifies every push as
+    /// stale.
+    pub fn last_stamped_counter(&self) -> Option<u64> {
+        self.transport.last_stamped_counter()
     }
 
     /// Run a full sync cycle: push pending items in batches, then pull remote updates.

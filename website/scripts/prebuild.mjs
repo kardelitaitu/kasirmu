@@ -70,7 +70,7 @@ const total = Date.now();
 await parallel('static checks', [
   run('node', ['scripts/sync-dev-files.mjs'], { cwd: ROOT }),
   run('node', ['scripts/audit-i18n.mjs'],    { cwd: ROOT }),
-  run('node', ['scripts/check-password-policy.mjs'], { cwd: ROOT }),
+  run('node', ['--experimental-strip-types', 'scripts/check-password-policy.mjs'], { cwd: ROOT }),
 ]);
 
 // Phase 2: portal import (depends on sync-dev-files completing first)

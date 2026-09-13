@@ -14,9 +14,10 @@
  * test-utils/sourceAudit helper; this file owns the domain rule: every
  * undo/redo-stack entry-creation site across ALL of ui/src must route
  * through historyEntry or be declared in DOCUMENTED_EXCEPTIONS. The
- * topology editor's four sanitized sites are the only non-exempt
- * producers; a NEW raw push anywhere in the tree — especially a future
- * graph editor's own stack — fails until it is routed through
+ * topology editor family's four sanitized sites (three in the editor,
+ * one in the pointer hook — see ENTRY_CREATOR_SITES) are the only
+ * non-exempt producers; a NEW raw push anywhere in the tree — especially
+ * a future graph editor's own stack — fails until it is routed through
  * historyEntry or explicitly declared.
  */
 
@@ -28,21 +29,39 @@ import { collectSourceFiles, lineNumberAt, scanUpdaters } from '@/__tests__/test
 /* ── Paths ───────────────────────────────────────────────────── */
 
 const UI_SRC = resolve(__dirname, '..');
-const EDITOR_SRC = resolve(UI_SRC, 'features/stores/NodeTopologyEditor.tsx');
+const EDITOR_REL = 'features/locations/NodeTopologyEditor.tsx';
+const POINTER_REL = 'features/locations/nodeTopologyEditorPointer.ts';
+const EDITOR_SRC = resolve(UI_SRC, EDITOR_REL);
 
 /* ── Drift-guard baseline ─────────────────────────────────────── */
 // Every undo/redo entry-creation site must route through historyEntry().
 //
-// Baseline: 4 entry-creating updaters in the topology editor.
+// Baseline: 4 entry-creating updaters in the topology editor family.
+// After the 3.4 gesture/hook extractions the producers no longer all
+// live in the editor, so each row names the file that owns it TODAY:
 //   1. pushHistory          — setHistory block body (every mutation path)
-//   2. commitDuplicateDrag  — setHistory block body (the filtered entry)
-//   3. popUndo              — setRedo push (current state → redo branch)
-//   4. popRedo              — setHistory push (current state → history)
+//   2. popUndo              — setRedo push (current state → redo branch)
+//   3. popRedo              — setHistory push (current state → history)
+//   4. commitDuplicateDrag  — setHistory block body (the filtered entry):
+//        moved editor → pointer hook in 59d37d6c1 (slice 3.4c-2)
+//      (e9e0f0ef0's keyboard hook owns NO creator — it only calls
+//       popUndo/popRedo — verified: its diff moves no setHistory/setRedo
+//       updater lines.)
 //
 // When a new history-entry producer is added, route it through
-// historyEntry() AND increment this count. When one is removed or
-// refactored into a helper, update the count and re-check the list.
-const EXPECTED_ENTRY_CREATORS = 4;
+// historyEntry() AND add a row here. When one is removed, refactored, or
+// moved to a hook, re-point/remove its row — the whole-tree test pins the
+// exact per-file multiset, so a silent move fails until attributed here.
+const ENTRY_CREATOR_SITES: { creator: string; file: string }[] = [
+  { creator: 'pushHistory', file: EDITOR_REL },
+  { creator: 'popUndo', file: EDITOR_REL },
+  { creator: 'popRedo', file: EDITOR_REL },
+  { creator: 'commitDuplicateDrag', file: POINTER_REL },
+];
+const EXPECTED_ENTRY_CREATORS = ENTRY_CREATOR_SITES.length;
+const EDITOR_SCOPED_CREATORS = ENTRY_CREATOR_SITES.filter(
+  (s) => s.file === EDITOR_REL,
+).length;
 
 /* ── Documented exceptions (whole-tree scan) ──────────────────── */
 // Undo-stack entry creators that deliberately do NOT go through
@@ -87,11 +106,13 @@ describe('history-entry producer audit', () => {
     const sites = creating.map((u) => `${u.setter} (line ${lineNumberAt(source, u.index)})`).join('\n  ');
     expect(
       creating.length,
-      `expected exactly ${EXPECTED_ENTRY_CREATORS} entry-creation site(s), found ${creating.length}:\n  ` +
+      `expected exactly ${EDITOR_SCOPED_CREATORS} entry-creation site(s) in the editor file, ` +
+        `found ${creating.length}:\n  ` +
         sites +
-        '\nEvery new producer must use historyEntry() and the baseline must be updated ' +
-        '(see the EXPECTED_ENTRY_CREATORS comment in this test).',
-    ).toBe(EXPECTED_ENTRY_CREATORS);
+        '\nProducers that moved to a hook are attributed in ENTRY_CREATOR_SITES and covered ' +
+        'by the whole-tree audit. Every new producer must use historyEntry() and the ' +
+        'baseline table must be updated (see its comment in this test).',
+    ).toBe(EDITOR_SCOPED_CREATORS);
   });
 });
 
@@ -133,16 +154,34 @@ describe('history-entry producer audit — whole ui/src', () => {
     }
   });
 
-  it("the only non-exempt entry creators are the topology editor's four sanitized sites", () => {
+  it("the only non-exempt entry creators are the topology family's sanitized sites, at their declared hook homes", () => {
     const nonExempt = treeSites.filter((s) => !isExempt(s));
     const listing = nonExempt.map((s) => `${s.file}:${s.line} ${s.setter}`).join('\n  ');
     expect(
       nonExempt.length,
-      `expected the topology editor's ${EXPECTED_ENTRY_CREATORS} sanitized sites as the only ` +
+      `expected the topology family's ${EXPECTED_ENTRY_CREATORS} sanitized sites as the only ` +
         `non-exempt creators, found ${nonExempt.length}:\n  ${listing}`,
     ).toBe(EXPECTED_ENTRY_CREATORS);
+    // Exact per-file multiset: a producer that silently moves between the
+    // editor and a hook fails here until ENTRY_CREATOR_SITES is re-pointed.
+    const expectedByFile = new Map<string, number>();
+    for (const site of ENTRY_CREATOR_SITES) {
+      expectedByFile.set(site.file, (expectedByFile.get(site.file) ?? 0) + 1);
+    }
+    const actualByFile = new Map<string, number>();
     for (const site of nonExempt) {
-      expect(site.file).toBe('features/stores/NodeTopologyEditor.tsx');
+      actualByFile.set(site.file, (actualByFile.get(site.file) ?? 0) + 1);
+    }
+    const sorted = (m: Map<string, number>) =>
+      [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    expect(
+      sorted(actualByFile),
+      'entry creators drifted from their declared homes; expected per-file counts ' +
+        JSON.stringify(sorted(expectedByFile)) +
+        ', got ' +
+        JSON.stringify(sorted(actualByFile)),
+    ).toEqual(sorted(expectedByFile));
+    for (const site of nonExempt) {
       expect(site.body).toContain('historyEntry');
     }
   });

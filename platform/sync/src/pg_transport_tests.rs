@@ -490,6 +490,13 @@ async fn fetch_snapshot_scopes_to_tenant() {
                     rate_bps BIGINT NOT NULL DEFAULT 0,
                     is_default TEXT DEFAULT '0',
                     is_inclusive TEXT DEFAULT '0',
+                    -- Scope + validity window + statutory rounding: the hub
+                    -- SELECT (pg_transport.rs fetch_snapshot) reads all five;
+                    -- a fixture table without them fails the live-PG path.
+                    legal_entity_id TEXT, location_id TEXT,
+                    effective_from TEXT, effective_to TEXT,
+                    rounding_mode TEXT NOT NULL DEFAULT ''
+                       CHECK (rounding_mode IN ('', 'half_up', 'truncate')),
                     tenant_id TEXT NOT NULL DEFAULT 'default',
                     created_at TEXT, updated_at TEXT
                  );
@@ -502,12 +509,25 @@ async fn fetch_snapshot_scopes_to_tenant() {
                     tenant_id TEXT NOT NULL DEFAULT 'default',
                     created_at TEXT, updated_at TEXT
                  );
+                 -- The fixture runs against the SHARED dev PG: a tax_rates
+                 -- table created by an earlier fixture run predates the
+                 -- E1 scope/window/rounding columns the hub SELECT reads.
+                 ALTER TABLE tax_rates ADD COLUMN IF NOT EXISTS legal_entity_id TEXT;
+                 ALTER TABLE tax_rates ADD COLUMN IF NOT EXISTS location_id TEXT;
+                 ALTER TABLE tax_rates ADD COLUMN IF NOT EXISTS effective_from TEXT;
+                 ALTER TABLE tax_rates ADD COLUMN IF NOT EXISTS effective_to TEXT;
+                 ALTER TABLE tax_rates
+                    ADD COLUMN IF NOT EXISTS rounding_mode TEXT
+                    NOT NULL DEFAULT '';
                  DELETE FROM products WHERE tenant_id LIKE '{ns}%';
                  DELETE FROM tax_rates WHERE tenant_id LIKE '{ns}%';
                  DELETE FROM users WHERE tenant_id LIKE '{ns}%';
                  INSERT INTO products (id, sku, name, price_minor, currency, tenant_id)
                  VALUES ('{ns}-pa', 'SKU-A', 'Alpha', 100, 'USD', '{tenant_a}'),
-                        ('{ns}-pb', 'SKU-B', 'Beta', 200, 'USD', '{tenant_b}');"
+                        ('{ns}-pb', 'SKU-B', 'Beta', 200, 'USD', '{tenant_b}');
+                 INSERT INTO tax_rates (id, name, rate_bps, rounding_mode, tenant_id)
+                 VALUES ('{ns}-ta', 'VAT A', 1100, 'half_up', '{tenant_a}'),
+                        ('{ns}-tb', 'VAT B', 2200, 'truncate', '{tenant_b}');"
         ))
         .await
         .unwrap();
@@ -521,6 +541,27 @@ async fn fetch_snapshot_scopes_to_tenant() {
     assert!(
         skus.contains(&"SKU-A".to_string()),
         "tenant A snapshot must include its own product"
+    );
+
+    // E1 wire: the hub SELECT reads tax_rates.rounding_mode (fixture must
+    // carry the column or fetch_snapshot errors on a live PG), the value
+    // survives the Option<String> read, and the tenant B row stays out.
+    let tax: Vec<_> = resp
+        .tax_rates
+        .iter()
+        .filter(|t| t.id.starts_with(&ns))
+        .collect();
+    assert!(
+        tax.iter().all(|t| t.id != format!("{ns}-tb")),
+        "tenant A snapshot must not include tenant B tax rates, got: {tax:?}"
+    );
+    let own = tax
+        .iter()
+        .find(|t| t.id == format!("{ns}-ta"))
+        .expect("tenant A snapshot must include its own tax rate");
+    assert_eq!(
+        own.rounding_mode, "half_up",
+        "E1 mode must survive the PG wire"
     );
 
     client

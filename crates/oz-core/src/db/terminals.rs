@@ -9,7 +9,9 @@ next: none | perf: N/A
 use rusqlite::params;
 
 use crate::Terminal;
+use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
+use crate::subscription::SubscriptionTier;
 
 use super::Store;
 
@@ -58,6 +60,25 @@ impl Store<'_> {
         }
     }
 
+    /// Enforce the subscription tier's terminal/register limit before registering
+    /// a new terminal.
+    ///
+    /// When the tier's `max_pos_instances()` cap is reached, returns
+    /// [`QuotaError::RegisterLimit`]. Unlimited tiers (`None`) pass.
+    pub fn enforce_terminal_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
+        // W4-S1: decision centralized in `quota_gate`; same limit source
+        // (`max_pos_instances`), same count, same `RegisterLimit` error.
+        self.enforce_creation_quota(QuotaDimension::PosRegisters, tier)
+    }
+
+    /// Count all registered terminals in the store.
+    pub fn count_terminals(&self) -> Result<i64, CoreError> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))?;
+        Ok(count)
+    }
+
     /// Register a new terminal.
     pub fn create_terminal(&self, terminal: &Terminal) -> Result<(), CoreError> {
         if terminal.name.trim().is_empty() {
@@ -72,7 +93,18 @@ impl Store<'_> {
                 message: "terminal device_id must not be empty".into(),
             });
         }
-        self.conn.execute(
+        // W7-B: the write moved into a transaction so the armed quota verdict
+        // (armed by enforce_terminal_quota through the central gate) can be
+        // re-checked against the row it just inserted, atomically. Post-insert
+        // veto rather than a pre-insert count, because under WAL a pre-insert
+        // count reads only this connection snapshot: current > limit here is the
+        // same predicate the pre-tx gate applied (current >= limit before its own
+        // insert), which is what closes the race where two concurrent
+        // registrations both pass at limit-1. An un-armed Store (a programmatic
+        // create, the pre-auth provisioning path) keeps the legacy un-gated
+        // behaviour — no arm, no veto.
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO terminals (id, name, device_id, terminal_secret, is_active,
                                     last_seen_at, metadata, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -88,6 +120,23 @@ impl Store<'_> {
                 terminal.updated_at,
             ],
         )?;
+        let tier = self.take_armed_quota(QuotaDimension::PosRegisters);
+        if let Some(limit) = tier
+            .as_ref()
+            .and_then(|t| QuotaDimension::PosRegisters.limit_for(t))
+        {
+            let current: i64 = tx.query_row("SELECT COUNT(*) FROM terminals", [], |r| r.get(0))?;
+            if current > limit {
+                tx.rollback()?;
+                return Err(crate::subscription::QuotaError::RegisterLimit {
+                    tier: tier.as_ref().map(|t| t.name().into()).unwrap_or_default(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -157,7 +206,7 @@ impl Store<'_> {
     /// Update a terminal's device binding (store + instance).
     ///
     /// Also stores the HMAC signature for tamper detection.
-    /// `store_id` must exist in `store_profiles` (enforced by FK).
+    /// `store_id` must exist in `locations` (enforced by FK).
     /// `instance_id` is a logical reference validated at boot.
     pub fn update_terminal_binding(
         &self,
@@ -168,7 +217,7 @@ impl Store<'_> {
     ) -> Result<(), CoreError> {
         let affected = self.conn.execute(
             "UPDATE terminals SET
-                bound_store_id = ?1,
+                bound_location_id = ?1,
                 bound_instance_id = ?2,
                 binding_signature = ?3,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -198,7 +247,7 @@ impl Store<'_> {
         terminal_id: &str,
     ) -> Result<Option<(String, String, String)>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT bound_store_id, bound_instance_id, binding_signature
+            "SELECT bound_location_id, bound_instance_id, binding_signature
              FROM terminals WHERE id = ?1",
         )?;
         let result = stmt.query_row(params![terminal_id], |row| {
@@ -224,7 +273,7 @@ impl Store<'_> {
     pub fn clear_terminal_binding(&self, terminal_id: &str) -> Result<(), CoreError> {
         let affected = self.conn.execute(
             "UPDATE terminals SET
-                bound_store_id = NULL,
+                bound_location_id = NULL,
                 bound_instance_id = NULL,
                 binding_signature = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

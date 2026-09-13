@@ -17,7 +17,7 @@ import {
   resolveBootStore,
   type WorkspaceDto,
 } from "@/api/workspaces";
-import { createSession, destroySession, refreshPickerTicket } from "@/api/staff";
+import { createSession, destroySession, refreshPickerTicket, switchOrganization as switchOrganizationApi } from "@/api/staff";
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
 import { requiredLocalized } from "@/frontend/shared";
@@ -81,6 +81,25 @@ export interface WorkspaceContextValue {
    * but the new user's identity.
    */
   swapSessionToken: (newUserId: string, newRoleId: string) => Promise<void>;
+  /**
+   * SaaS-3 L194: display-only label of the Organization (legal entity) the
+   * session is currently scoped to. Never used as an auth input. Optional so
+   * existing test mocks need not override it; the real provider always sets it.
+   */
+  orgLabel?: string | null;
+  /**
+   * SaaS-3 L194: set the pre-login org selection (routing hint) that the next
+   * create_session call will carry as org_id. Cleared once the session is minted.
+   * Optional for the same reason as orgLabel.
+   */
+  setPendingOrgId?: (orgId: string | null) => void;
+  /**
+   * SaaS-3 L194: re-scope the active session to a different Organization
+   * (legal entity). Full PIN re-auth; backend invalidates the old token and
+   * mints a new one (invalidate-then-mint), then updates token + display label.
+   * Optional for the same reason as orgLabel.
+   */
+  switchOrganization?: (orgId: string, pin: string) => Promise<void>;
 }
 
 /** Exported for test helpers only — always use `useWorkspace` in production code. */
@@ -100,12 +119,29 @@ const DEFAULT_STORE_ID = "default";
  * creates session tokens (ADR #4 / ADR #7), and supports hot-swap
  * session token switching (ADR #6).
  */
+/**
+ * Stable stand-in for `useAuth().updatePickerTicket` on shells that do not expose it.
+ *
+ * Declared at module scope so the identity never changes. Written inline as `?? (() => {})` it
+ * produced a fresh function on every render, which is why the two hooks that call it could not list
+ * it as a dependency without re-firing forever -- eslint reported the omission and the omission was
+ * load-bearing. A module constant removes the reason it had to be omitted.
+ */
+const PICKER_TICKET_NOOP = (_ticket: string) => {};
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session, pickerTicket, updatePickerTicket } = useAuth();
   // Localized copy for the error state. WorkspaceProvider mounts inside
   // LocaleProvider (see contexts/AppProviders.tsx), so l10n is available.
   const { l10n } = useLocalization();
-  const updatePickerTicketFn = updatePickerTicket ?? (() => {});
+  const updatePickerTicketFn = updatePickerTicket ?? PICKER_TICKET_NOOP;
+  // swapSessionToken is deliberately dependency-free (see its `[], // stable — reads from refs`),
+  // so every value it reads has to arrive through a ref or the closure goes stale. `pickerTicket`
+  // did not, and with no prior session token swapSessionToken passed the captured ticket straight to
+  // createSession -- the previous cashier's ticket, which is the exact thing the comment above that
+  // call warns against. Mirroring sessionTokenRef above makes the "reads from refs" claim true.
+  const pickerTicketRef = useRef(pickerTicket);
+  pickerTicketRef.current = pickerTicket;
   // Standalone state — not derived from activeInstance, so it works
   // even before availableWorkspaces is loaded (no race condition).
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
@@ -128,6 +164,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const sessionTokenRef = useRef(sessionToken);
   sessionTokenRef.current = sessionToken;
+
+  // SaaS-3 L194: display-only label of the Organization (legal entity) the
+  // active session is scoped to. Never used as an auth input.
+  const [orgLabel, setOrgLabel] = useState<string | null>(null);
+  // SaaS-3 L194: pre-login org selection (routing hint) carried into the next
+  // create_session call. Cleared once the session is minted.
+  const [pendingOrgId, setPendingOrgId] = useState<string | null>(null);
+  const pendingOrgIdRef = useRef(pendingOrgId);
+  pendingOrgIdRef.current = pendingOrgId;
 
   // ADR #22: Device/terminal ID resolved once on mount.
   const [terminalId, setTerminalId] = useState('');
@@ -259,7 +304,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // Refresh the picker ticket using the old session before
         // destroying it — the hot-swap user needs a fresh ticket
         // bound to THEIR identity (not the previous user's).
-        let ticket = pickerTicket ?? "";
+        let ticket = pickerTicketRef.current ?? "";
         const prev = sessionTokenRef.current;
         if (prev) {
           try {
@@ -290,7 +335,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         isHotSwappingRef.current = false;
       }
     },
-    [], // stable — reads from refs
+    // Stable in practice: `updatePickerTicketFn` is either AuthContext's own
+    // useCallback(..., []) or the module-scope noop, so listing it cannot re-fire this.
+    [updatePickerTicketFn],
+  );
+
+  // SaaS-3 L194: switch the active Organization (legal entity) WITHOUT
+  // tearing down the workspace. The backend invalidates the old token and
+  // mints a new one (invalidate-then-mint), re-derives tenant authority from
+  // the user assignment (fail-closed), and re-runs tenant integrity. The
+  // workspace (store/instance) is unchanged — org is orthogonal to it under
+  // the single-tenant-DB model — so we only swap the token and display label.
+  //
+  // Requires a FULL PIN re-auth (no credential carryover). The backend has
+  // already invalidated the old token by the time the new one is returned, so
+  // we do not call destroySession here.
+  const switchOrganization = useCallback(
+    async (orgId: string, pin: string) => {
+      const token = sessionTokenRef.current;
+      if (!token) return;
+      const result = await switchOrganizationApi({
+        sessionToken: token,
+        orgId,
+        pin,
+      });
+      setOrgLabel(result.context.orgLabel ?? null);
+      setSessionToken(result.session_token);
+    },
+    [],
   );
 
   // ADR #4 Phase 3: Resolve the boot store first, then load workspaces.
@@ -443,10 +515,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         type_key: tokenInstance.type_key,
         terminal_id: deviceId,
         picker_ticket: ticket,
+        ...(pendingOrgIdRef.current ? { org_id: pendingOrgIdRef.current } : {}),
       })
         .then((result) => {
           if (!cancelled) {
             setSessionToken(result.session_token);
+            setOrgLabel(result.context.orgLabel ?? null);
+            setPendingOrgId(null);
           }
         })
         .catch((err) => {
@@ -459,7 +534,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeInstance, session, availableWorkspaces, pickerTicket]);
+  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn]);
 
 
   // Backward-compat: sets the type_key string directly.
@@ -513,26 +588,59 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [activeInstance],
   );
 
+  // Memoized so a provider re-render that changes none of these fields
+  // (any state churn outside this list) hands consumers the SAME value
+  // object and skips their re-render. Every function captured here is
+  // useCallback-stable: handleSetActive/handleSetActiveInstance ([]),
+  // retry ([pickerTicket, resolvedStoreId, fetchWorkspaces]),
+  // switchStore ([fetchWorkspaces]), swapSessionToken
+  // ([updatePickerTicketFn] — stable per the comment at its deps).
+  const value = useMemo(
+    () => ({
+      activeWorkspace,
+      setActiveWorkspace: handleSetActive,
+      activeInstance,
+      setActiveInstance: handleSetActiveInstance,
+      availableWorkspaces,
+      workspaceScreens,
+      loading,
+      error,
+      retry,
+      lastWorkspace,
+      switchStore,
+      resolvedStoreId,
+      sessionToken,
+      swapSessionToken,
+      terminalId,
+      orgLabel,
+      setPendingOrgId,
+      switchOrganization,
+    }),
+    [
+      activeWorkspace,
+      handleSetActive,
+      activeInstance,
+      handleSetActiveInstance,
+      availableWorkspaces,
+      workspaceScreens,
+      loading,
+      error,
+      retry,
+      lastWorkspace,
+      switchStore,
+      resolvedStoreId,
+      sessionToken,
+      swapSessionToken,
+      terminalId,
+      orgLabel,
+      setPendingOrgId,
+      switchOrganization,
+    ],
+  );
+
   return (
-    <WorkspaceScopeContext.Provider value={scope}>        <WorkspaceContext.Provider
-        value={{
-          activeWorkspace,
-          setActiveWorkspace: handleSetActive,
-          activeInstance,
-          setActiveInstance: handleSetActiveInstance,
-          availableWorkspaces,
-          workspaceScreens,
-          loading,
-          error,
-          retry,
-          lastWorkspace,
-          switchStore,
-          resolvedStoreId,
-          sessionToken,
-          swapSessionToken,
-          terminalId,
-        }}
-      >
+    <WorkspaceScopeContext.Provider value={scope}>
+      <WorkspaceContext.Provider value={value}>
         {children}
       </WorkspaceContext.Provider>
     </WorkspaceScopeContext.Provider>

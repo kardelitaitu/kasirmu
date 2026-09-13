@@ -257,9 +257,9 @@
   },
   "download": {
     "title": "Download OZ-POS",
-    "subtitle": "Version 0.0.36 — free forever, no signup required.",
+    "subtitle": "Version 0.0.37 — free forever, no signup required.",
     "version": "Current version",
-    "versionValue": "0.0.36",
+    "versionValue": "0.0.37",
     "platformsTitle": "Choose your platform",
     "requirementsTitle": "System requirements",
     "requirements": [

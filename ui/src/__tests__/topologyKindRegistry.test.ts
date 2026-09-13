@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
 import {
   cardKindToken,
   gatingSemanticId,
@@ -13,7 +13,7 @@ import {
   socketSemanticIds,
   visiblePortsForNode,
   workspaceTypeLabel,
-} from '@/features/stores/topologyCard';
+} from '@/features/locations/topologyCard';
 import {
   CartIcon,
   NodesIcon,
@@ -21,8 +21,8 @@ import {
   StoreIcon,
   UtensilsIcon,
   WarehouseIcon,
-} from '@/features/stores/NodeTopologyIcons';
-import topologySemantics from '@/features/stores/topologySemantics.json';
+} from '@/features/locations/NodeTopologyIcons';
+import topologySemantics from '@/features/locations/topologySemantics.json';
 
 // ADR #45 §3 — the kind registry, and the loop it closes with §1.
 //

@@ -48,7 +48,8 @@ const BACKOFF_JITTER = 0.3;
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 /** Build the store-scoped localStorage key. */
-function scopedKey(prefix: string, scope: string | undefined): string {
+/** Build the store-scoped localStorage key. Exported for testing. */
+export function scopedKey(prefix: string, scope: string | undefined): string {
   return scope ? `${prefix}:${scope}` : prefix;
 }
 
@@ -154,7 +155,8 @@ export interface UseKdsOfflineReturn {
 
 // ── LocalStorage helpers ─────────────────────────────────────────────
 
-function readLS<T>(key: string, fallback: T): T {
+/** Read from localStorage with JSON parse + fallback. Exported for testing. */
+export function readLS<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return fallback;
@@ -164,8 +166,8 @@ function readLS<T>(key: string, fallback: T): T {
   }
 }
 
-/** Write to localStorage. Returns false when persistence failed (OFF-08). */
-function writeLS<T>(key: string, value: T): boolean {
+/** Write to localStorage. Returns false when persistence failed (OFF-08). Exported for testing. */
+export function writeLS<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     return true;
@@ -175,8 +177,42 @@ function writeLS<T>(key: string, value: T): boolean {
   }
 }
 
+/**
+ * Filter pending actions to only those belonging to the given store scope.
+ * Actions without a storeId (legacy) are always included. Exported for testing.
+ */
+export function scopedActions(
+  queue: PendingKdsAction[],
+  storeId?: string,
+): PendingKdsAction[] {
+  if (!storeId) return queue;
+  return queue.filter((a) => !a.storeId || a.storeId === storeId);
+}
+
+/**
+ * Re-arm dead-letter actions for retry: reset retryCount, drop deadLetterAt,
+ * and merge with the existing queue (dedup by action ID).
+ * Exported for testing.
+ */
+export function rearmDeadLetters(
+  dead: DeadLetterKdsAction[],
+  queue: PendingKdsAction[],
+): PendingKdsAction[] {
+  const requeued: PendingKdsAction[] = dead.map((a) => ({
+    id: a.id,
+    orderId: a.orderId,
+    targetStatus: a.targetStatus,
+    retryCount: 0,
+    createdAt: a.createdAt,
+    lastError: a.lastError,
+    ...(a.storeId ? { storeId: a.storeId } : {}),
+  }));
+  const seen = new Set(requeued.map((a) => a.id));
+  return [...queue.filter((a) => !seen.has(a.id)), ...requeued];
+}
+
 /** OFF-05: compute the next retry timestamp with exponential backoff + jitter. */
-function nextAttemptAt(retryCount: number): string {
+export function nextAttemptAt(retryCount: number): string {
   const exp = Math.pow(2, retryCount - 1); // retry 1 → 1s, 2 → 2s, 3 → 4s…
   const jitter = 1 + (Math.random() * 2 - 1) * BACKOFF_JITTER; // ±30%
   const delayMs = Math.round(BACKOFF_BASE_MS * exp * jitter);
@@ -184,7 +220,7 @@ function nextAttemptAt(retryCount: number): string {
 }
 
 /** OFF-03: apply queued actions to a fetched snapshot deterministically. */
-function applyProjections(
+export function applyProjections(
   orders: KdsOrder[],
   queue: PendingKdsAction[],
 ): KdsOrder[] {

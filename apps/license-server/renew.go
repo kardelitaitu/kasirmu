@@ -180,15 +180,17 @@ func handleRenew(app core.App) func(e *core.RequestEvent) error {
 			// limits, which silently capped upgrades and over-provisioned
 			// downgrades. Quotas are now sourced from the same key the
 			// customer just paid for.
-			MaxStores:       keyRecord.GetInt("max_stores"),
+			MaxLocations:    keyRecord.GetInt("max_stores"),
 			MaxPOSInstances: keyRecord.GetInt("max_pos_instances"),
 			AllowedTypes:    allowedTypes,
 			StartsAt:        time.Now().UTC().Format(time.RFC3339),
 			ExpiresAt:       newExpiresAt.Format(time.RFC3339),
-			GraceUntil:      calculateGraceUntil(newExpiresAt).Format(time.RFC3339),
+			GraceUntil:      calculateGraceUntil(tierKey, newExpiresAt).Format(time.RFC3339),
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
 
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		sub.Features = featureGrantsForTenant(app, req.TenantID)
 		payloadStr, signature, err := signSubscription(sub)
 		if err != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{

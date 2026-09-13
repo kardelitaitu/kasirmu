@@ -6,6 +6,7 @@ fn complete_sale_result_serde_roundtrip() {
         sale_id: "sale-1".into(),
         status: SaleStatus::Completed,
         receipt_number: "REC-001".into(),
+        statutory_number: Some("INV/2026-09/0001".into()),
         deduct_tx_id: InventoryTransactionId::from("tx-1"),
     };
     let json = serde_json::to_string(&result).unwrap();
@@ -479,6 +480,7 @@ fn complete_sale_result_status_is_completed() {
         sale_id: "s1".into(),
         status: SaleStatus::Completed,
         receipt_number: "R1".into(),
+        statutory_number: None,
         deduct_tx_id: InventoryTransactionId::from("tx-1"),
     };
     assert_eq!(result.status, SaleStatus::Completed);
@@ -492,6 +494,7 @@ fn complete_sale_result_debug() {
         sale_id: "sale-debug".into(),
         status: SaleStatus::Completed,
         receipt_number: "REC-DBG".into(),
+        statutory_number: None,
         deduct_tx_id: InventoryTransactionId::from("tx-dbg"),
     };
     let debug = format!("{result:?}");
@@ -523,6 +526,7 @@ fn complete_sale_result_clone() {
         sale_id: "s1".into(),
         status: SaleStatus::Completed,
         receipt_number: "R1".into(),
+        statutory_number: None,
         deduct_tx_id: InventoryTransactionId::from("tx-1"),
     };
     let cloned = result.clone();

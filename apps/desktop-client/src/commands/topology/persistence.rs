@@ -3,9 +3,24 @@
 //!
 //! Extracted from commands/topology.rs. Depends on the semantic engine
 //! (`super::semantics`) for the save/Apply-time gates.
+//!
+//! Wave E (step d): the bodies moved to `oz_bridge::topology::persistence`;
+//! this module re-exports them and keeps three kinds of item of its own. The
+//! four `&AppState` adapters exist because `lib.rs` startup and the mounted
+//! tests call those helpers through a shared state handle the bridge never
+//! sees, and they hand over exactly the parts the moved bodies reach (`db`,
+//! `db_manager`, `topology_apply_lock`), so no lock is added, removed or
+//! reordered. The nine value adapters exist because `commands.rs` and the
+//! mounted tests consume those results where the `From<BridgeError>` seam
+//! cannot apply - a tail expression, or a pattern match against an
+//! `AppError` variant. The `#[cfg(test)]` save/load helpers at the bottom
+//! stay here on purpose: a dependency is compiled without `cfg(test)`, so a
+//! test-only item in the bridge would not exist in its artifact and no
+//! re-export of any visibility could hand it back to the desktop test suite.
+//! An explicitly declared item shadows the glob, so every name, path and
+//! visibility is what it was before the move.
 
-use rusqlite::{Connection, Transaction, TransactionBehavior};
-use serde::{Deserialize, Serialize};
+use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::commands::workspaces::CreateInstanceRequest;
@@ -13,236 +28,128 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 use super::model::*;
+use super::revisions::*;
+// Only the cfg(test) save/load helpers below reach semantics names (they call
+// validate_topology_envelope); the library half of this module needs none.
+#[cfg(test)]
 use super::semantics::*;
 
-/// Resolve the branch-scoped runtime plan key paired with a topology key.
-pub(crate) fn topology_runtime_setting_key(topology_key: &str) -> Result<String, AppError> {
-    if topology_key == TOPOLOGY_SETTING_KEY {
-        return Ok(TOPOLOGY_RUNTIME_SETTING_KEY.to_owned());
-    }
-    let prefix = format!("{TOPOLOGY_SETTING_KEY}/");
-    let branch_id = topology_key
-        .strip_prefix(&prefix)
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| AppError::Internal("invalid topology setting key".into()))?;
-    Ok(format!("{TOPOLOGY_RUNTIME_SETTING_KEY}/{branch_id}"))
+pub use oz_bridge::topology::persistence::*;
+
+/// Adapter over the bridge startup recovery. The bridge side still drops its
+/// global guard before acquiring the apply lock, exactly as before the move.
+pub async fn recover_pending_topology_apply_at_startup(state: &AppState) -> Result<(), AppError> {
+    oz_bridge::topology::persistence::recover_pending_topology_apply_at_startup(
+        &state.db,
+        &state.db_manager,
+        &state.topology_apply_lock,
+    )
+    .await
+    .map_err(Into::into)
 }
 
-/// Compile operational semantic wires into the runtime routing artifact.
-///
-/// Location ownership edges stay in the diagram contract; operational edges
-/// are copied into a branch-scoped manifest consumed by runtime adapters. The
-/// manifest deliberately keeps stable instance IDs and semantic port fields,
-/// never display names or canvas coordinates.
-pub(crate) fn compile_topology_runtime_plan(
-    nodes: &[Value],
-    wires: &[Value],
-    branch_id: Option<String>,
-) -> Value {
-    let node_ids: std::collections::HashSet<&str> = nodes
-        .iter()
-        .filter_map(|node| value_string(node, "id"))
-        .collect();
-    let node_by_id: std::collections::HashMap<&str, &Value> = nodes
-        .iter()
-        .filter_map(|node| value_string(node, "id").map(|id| (id, node)))
-        .collect();
-    let routes: Vec<Value> = wires
-        .iter()
-        .filter(|wire| value_string(wire, "relationship_type") != Some("location"))
-        .filter(|wire| {
-            node_ids.contains(value_string(wire, "from_node_id").unwrap_or_default())
-                && node_ids.contains(value_string(wire, "to_node_id").unwrap_or_default())
-        })
-        .map(|wire| {
-            serde_json::json!({
-                "wire_id": value_string(wire, "id").unwrap_or_default(),
-                "source_instance_id": value_string(wire, "from_node_id").unwrap_or_default(),
-                "target_instance_id": value_string(wire, "to_node_id").unwrap_or_default(),
-                "from_port_id": value_string(wire, "from_port_id").unwrap_or_default(),
-                "to_port_id": value_string(wire, "to_port_id").unwrap_or_default(),
-                "relationship_type": value_string(wire, "relationship_type").unwrap_or_default(),
-                "target_node_kind": value_string(
-                    node_by_id
-                        .get(value_string(wire, "to_node_id").unwrap_or_default())
-                        .copied()
-                        .unwrap_or(&Value::Null),
-                    "type",
-                ).unwrap_or_default(),
-            })
-        })
-        .collect();
-    serde_json::json!({
-        "schema_version": TOPOLOGY_SCHEMA_VERSION,
-        "branch_id": branch_id,
-        "routes": routes,
-    })
+/// Adapter over [`oz_bridge::topology::persistence::recover_pending_topology_apply`].
+#[allow(dead_code)]
+pub(crate) async fn recover_pending_topology_apply(
+    state: &AppState,
+    expected_store_id: &str,
+) -> Result<(), AppError> {
+    oz_bridge::topology::persistence::recover_pending_topology_apply(
+        &state.db,
+        &state.db_manager,
+        expected_store_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
-/// Resolve the settings key for one branch topology.
-///
-/// The unscoped key remains the compatibility path for legacy callers. New
-/// branch-aware callers always use a separate key, so one branch can never
-/// overwrite another branch's diagram.
+/// Adapter over [`oz_bridge::topology::persistence::snapshot_workspace_rows`].
+#[allow(dead_code)]
+pub(crate) async fn snapshot_workspace_rows(
+    state: &AppState,
+    store_id: &str,
+    updates: &[UpdateInstanceRequest],
+    archives: &[String],
+) -> Result<Vec<WorkspaceApplySnapshot>, AppError> {
+    oz_bridge::topology::persistence::snapshot_workspace_rows(
+        &state.db_manager,
+        store_id,
+        updates,
+        archives,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// Adapter over [`oz_bridge::topology::persistence::compensate_workspace_diff`].
+#[allow(dead_code)]
+pub(crate) async fn compensate_workspace_diff(
+    state: &AppState,
+    store_id: &str,
+    creations: &[CreateInstanceRequest],
+    snapshots: &[WorkspaceApplySnapshot],
+) -> Result<(), AppError> {
+    oz_bridge::topology::persistence::compensate_workspace_diff(
+        &state.db_manager,
+        store_id,
+        creations,
+        snapshots,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// Adapter over [`oz_bridge::topology::persistence::topology_setting_key`].
+#[allow(dead_code)]
 pub(crate) fn topology_setting_key(branch_id: Option<&str>) -> Result<String, AppError> {
-    let Some(branch_id) = branch_id else {
-        return Ok(TOPOLOGY_SETTING_KEY.to_owned());
-    };
-    if branch_id.trim().is_empty()
-        || branch_id.len() > 200
-        || branch_id.chars().any(|ch| ch.is_control() || ch == '/')
-    {
-        return Err(AppError::Invalid(
-            "topology branch id contains invalid characters".into(),
-        ));
-    }
-    Ok(format!("{TOPOLOGY_SETTING_KEY}/{branch_id}"))
+    oz_bridge::topology::persistence::topology_setting_key(branch_id).map_err(Into::into)
 }
 
-/// Validate a merchant-supplied template name and return its stored form.
-///
-/// The name becomes a segment of the settings key, so it is checked the way
-/// [`topology_setting_key`] checks a branch id rather than the way a display
-/// label is checked: trimmed, non-empty, bounded in length, and free of
-/// separators that would let one template forge a key outside the template
-/// namespace. Whitespace inside a name is kept — "Weekend Setup" is a fine
-/// template name.
-pub(crate) fn normalize_template_name(raw: &str) -> Result<String, AppError> {
-    let name = raw.trim();
-    if name.is_empty() {
-        return Err(AppError::Invalid("template name is empty".into()));
-    }
-    if name.chars().count() > MAX_TEMPLATE_NAME_CHARS {
-        return Err(AppError::Invalid(format!(
-            "template name exceeds {MAX_TEMPLATE_NAME_CHARS} characters"
-        )));
-    }
-    if name
-        .chars()
-        .any(|ch| ch.is_control() || ch == '/' || ch == '\\')
-    {
-        return Err(AppError::Invalid(
-            "template name contains invalid characters".into(),
-        ));
-    }
-    Ok(name.to_owned())
-}
-
-/// Settings key for one template under one branch's topology key.
-pub(crate) fn template_setting_key(topology_key: &str, name: &str) -> String {
-    format!("{topology_key}/{TOPOLOGY_TEMPLATE_SEGMENT}/{name}")
-}
-
-/// Shared prefix of every template under one branch's topology key.
-pub(crate) fn template_key_prefix(topology_key: &str) -> String {
-    format!("{topology_key}/{TOPOLOGY_TEMPLATE_SEGMENT}/")
-}
-
-/// Save a diagram template. `payload` is the serialized canvas, opaque to the
-/// backend: a template is a starting point a merchant edits before Apply, so it
-/// deliberately does NOT run the diagram gates that `apply_topology_diff` runs.
+/// Adapter over [`oz_bridge::topology::persistence::template_save`].
+#[allow(dead_code)]
 pub(crate) fn template_save(
     conn: &Connection,
     topology_key: &str,
     raw_name: &str,
     payload: &Value,
 ) -> Result<(), AppError> {
-    let name = normalize_template_name(raw_name)?;
-    let key = template_setting_key(topology_key, &name);
-    let json = serde_json::to_string(payload)
-        .map_err(|e| AppError::Internal(format!("serialize topology template: {e}")))?;
-    oz_core::Settings::set(conn, &key, &json)?;
-    Ok(())
+    oz_bridge::topology::persistence::template_save(conn, topology_key, raw_name, payload)
+        .map_err(Into::into)
 }
 
-/// Load one diagram template, or `None` when it was never saved or has become
-/// unreadable. A corrupt template is reported as absent rather than as an error:
-/// the list is built from keys, so one bad row must not brick the whole panel.
+/// Adapter over [`oz_bridge::topology::persistence::template_load`].
+#[allow(dead_code)]
 pub(crate) fn template_load(
     conn: &Connection,
     topology_key: &str,
     raw_name: &str,
 ) -> Result<Option<Value>, AppError> {
-    let name = normalize_template_name(raw_name)?;
-    let key = template_setting_key(topology_key, &name);
-    let Some(raw) = oz_core::Settings::get(conn, &key)? else {
-        return Ok(None);
-    };
-    Ok(serde_json::from_str(&raw).ok())
+    oz_bridge::topology::persistence::template_load(conn, topology_key, raw_name)
+        .map_err(Into::into)
 }
 
-/// Names of a branch's templates, sorted for a stable list.
-///
-/// Scoped to a key prefix in SQL instead of `Settings::load_all`, which would
-/// deserialize every stored setting — including every branch's diagram envelope
-/// and runtime plan — merely to list a handful of names. The `LIKE` is only an
-/// index-friendly prefilter: `%` and `_` are legal in a branch id and would
-/// over-match, so each candidate is still checked with `starts_with`.
+/// Adapter over [`oz_bridge::topology::persistence::template_list`].
+#[allow(dead_code)]
 pub(crate) fn template_list(
     conn: &Connection,
     topology_key: &str,
 ) -> Result<Vec<String>, AppError> {
-    let prefix = template_key_prefix(topology_key);
-    let mut stmt = conn.prepare("SELECT key FROM settings WHERE key LIKE ?1 || '%'")?;
-    let names = stmt
-        .query_map(rusqlite::params![prefix], |row| row.get::<_, String>(0))?
-        .filter_map(|r| r.ok())
-        .filter_map(|key| {
-            key.strip_prefix(&prefix)
-                .filter(|name| !name.is_empty() && !name.contains('/'))
-                .map(str::to_owned)
-        })
-        .collect();
-    Ok(sort_template_names(names))
+    oz_bridge::topology::persistence::template_list(conn, topology_key).map_err(Into::into)
 }
 
-/// Delete one template. Returns `false` when it did not exist.
+/// Adapter over [`oz_bridge::topology::persistence::template_delete`].
+#[allow(dead_code)]
 pub(crate) fn template_delete(
     conn: &Connection,
     topology_key: &str,
     raw_name: &str,
 ) -> Result<bool, AppError> {
-    let name = normalize_template_name(raw_name)?;
-    let key = template_setting_key(topology_key, &name);
-    Ok(oz_core::Settings::remove(conn, &key)?)
+    oz_bridge::topology::persistence::template_delete(conn, topology_key, raw_name)
+        .map_err(Into::into)
 }
 
-/// Sort template names for the list. Case-insensitive with a case-sensitive
-/// tiebreak so "café", "Café" and "apple" land in the order a merchant reads
-/// them, deterministically, on every platform.
-pub(crate) fn sort_template_names(mut names: Vec<String>) -> Vec<String> {
-    names.sort_by(|a, b| {
-        a.to_lowercase()
-            .cmp(&b.to_lowercase())
-            .then_with(|| a.cmp(b))
-    });
-    names
-}
-
-/// Test convenience wrapper: save a topology envelope under an explicit key.
-#[cfg(test)]
-pub(crate) fn save_topology_json_at_key(
-    conn: &Connection,
-    nodes: Vec<Value>,
-    wires: Vec<Value>,
-    setting_key: &str,
-) -> Result<u64, AppError> {
-    save_topology_json_at_key_with_revision(conn, nodes, wires, setting_key, &[], None, None, None)
-}
-
-/// Save a versioned topology envelope under a settings key.
-///
-/// Runs the semantic-ownership and diagram-payload gates, then writes the
-/// diagram and its compiled runtime plan in one IMMEDIATE transaction,
-/// bumping the revision. With `expected_revision`, a concurrent writer that
-/// committed first aborts this save with a `topology-revision-conflict`.
-/// When `request` is given, the request ledger is persisted and the Apply
-/// recovery journal is cleared in the same transaction.
-///
-/// `branch_registry` (ADR #7): when given, the canonical Branch Location
-/// profile may live in EITHER `conn` (global registry) or this connection
-/// (the session store's database, where the scoped profile family writes
-/// branch profiles). Pass `None` for single-registry callers and tests.
+/// Adapter over [`oz_bridge::topology::persistence::save_topology_json_at_key_with_revision`].
+#[allow(dead_code)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn save_topology_json_at_key_with_revision(
     conn: &Connection,
@@ -253,578 +160,81 @@ pub(crate) fn save_topology_json_at_key_with_revision(
     expected_revision: Option<u64>,
     request: Option<(&str, &str)>,
     branch_registry: Option<&Connection>,
+    revision_ctx: Option<&TopologyRevisionContext<'_>>,
 ) -> Result<u64, AppError> {
-    match branch_registry {
-        Some(branch_db) => validate_semantic_ownership_in(&[conn, branch_db], &nodes, &wires)?,
-        None => validate_semantic_ownership(conn, &nodes, &wires)?,
-    }
-    // The legacy typed structs validate geometry and known serialized node
-    // kinds. `branch-location` is a semantic alias, so normalize only the
-    // temporary validation copy; the raw command payload is persisted intact.
-    validate_diagram_payloads(&nodes, &wires)?;
-    // IMMEDIATE transaction: BEGIN takes the reserved write lock up front, so
-    // the revision read + conflict check below are atomic against peer
-    // writers. Previously the read ran outside any lock (TOCTOU) — a
-    // concurrent writer could commit between this read and this save's
-    // commit, and both saves would succeed, silently dropping the peer's
-    // revision (lost update). Serializing writers at BEGIN means a save that
-    // blocks on a peer re-reads the fresh revision after the peer commits and
-    // is rejected with a conflict.
-    let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)?;
-    let current_revision = current_topology_revision(&tx, setting_key)?;
-    if let Some(expected) = expected_revision
-        && expected != current_revision
-    {
-        return Err(topology_validation(
-            "topology-revision-conflict",
-            None,
-            None,
-            None,
-            format!("topology revision conflict: expected {expected}, current {current_revision}"),
-        ));
-    }
-    let revision = current_revision.saturating_add(1);
-    let runtime_key = topology_runtime_setting_key(setting_key)?;
-    let runtime_branch_id = setting_key
-        .strip_prefix(&format!("{TOPOLOGY_SETTING_KEY}/"))
-        .map(str::to_owned);
-    let runtime_plan = compile_topology_runtime_plan(&nodes, &wires, runtime_branch_id);
-    let runtime_json = serde_json::to_string(&runtime_plan)
-        .map_err(|e| AppError::Internal(format!("serialize topology runtime plan: {e}")))?;
-    let json = topology_envelope_json(&nodes, &wires, revision, resolved_issue_keys)?;
-    oz_core::Settings::set(&tx, setting_key, &json)?;
-    oz_core::Settings::set(&tx, &runtime_key, &runtime_json)?;
-    if let Some((request_key, fingerprint)) = request {
-        let ledger = topology_apply_ledger_json(revision, fingerprint)?;
-        oz_core::Settings::set(&tx, request_key, &ledger)?;
-        oz_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
-    }
-    tx.commit()?;
-    Ok(revision)
-}
-
-#[cfg(test)]
-/// Test convenience wrapper: unscoped save used only by the unit tests.
-///
-/// Production's unscoped save is the `save_topology` command with
-/// `branch_id: None`, which resolves the same key through
-/// `topology_setting_key(None)` and calls `save_topology_json_at_key`
-/// directly — this wrapper is a byte-equivalent alias of that exact path
-/// (same `TOPOLOGY_SETTING_KEY` constant, same keyed function), kept as a
-/// concise abbreviation for the test call sites. Do NOT wire it into
-/// production: the command's single key-resolution + single save is the
-/// cleaner expression of the unscoped case.
-pub(crate) fn save_topology_json(
-    conn: &Connection,
-    nodes: Vec<Value>,
-    wires: Vec<Value>,
-) -> Result<(), AppError> {
-    save_topology_json_at_key(conn, nodes, wires, TOPOLOGY_SETTING_KEY).map(|_| ())
-}
-
-/// Snapshot of a workspace row touched by a topology Apply.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct WorkspaceApplySnapshot {
-    id: String,
-    name: String,
-    description: String,
-    colour: Option<String>,
-    purpose_key: String,
-    status: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct TopologyApplyRecovery {
-    /// Store the Apply is scoped to (cross-database compensation identity).
-    pub(crate) store_id: String,
-    /// Branch the topology diff belongs to, when scoped.
-    #[serde(default)]
-    pub(crate) topology_branch_id: Option<String>,
-    /// Workspace instance creations to replay on compensation.
-    pub(crate) creations: Vec<CreateInstanceRequest>,
-    /// Pre-mutation workspace row snapshots for restore-on-failure.
-    pub(crate) snapshots: Vec<WorkspaceApplySnapshot>,
-    /// Exact previous topology setting JSON to restore on compensation.
-    pub(crate) previous_topology: Option<String>,
-    /// Exact canonical diagram JSON expected after the Apply. Recovery uses
-    /// it to distinguish a crash before the global write from a crash after
-    /// it, because the workspace and global databases cannot share a SQLite
-    /// transaction.
-    #[serde(default)]
-    pub(crate) desired_topology: Option<String>,
-}
-
-/// Restore the topology setting after a compensating Apply failure.
-///
-/// Diagram settings and workspace instances live in separate SQLite
-/// databases, so Apply uses a forward-write plus compensation boundary. The
-/// restore itself is transactional and preserves the exact prior raw setting,
-/// including legacy envelopes.
-pub(crate) fn restore_topology_setting(
-    conn: &Connection,
-    setting_key: &str,
-    previous: Option<&str>,
-) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-    match previous {
-        Some(json) => oz_core::Settings::set(&tx, setting_key, json)?,
-        None => {
-            oz_core::Settings::remove(&tx, setting_key)?;
-        }
-    }
-    tx.commit()?;
-    Ok(())
-}
-
-/// Persist the Apply compensation journal for crash-recovery replay.
-pub(crate) fn persist_topology_recovery(
-    conn: &Connection,
-    recovery: &TopologyApplyRecovery,
-) -> Result<(), AppError> {
-    let json = serde_json::to_string(recovery)
-        .map_err(|e| AppError::Internal(format!("serialize topology recovery: {e}")))?;
-    let tx = conn.unchecked_transaction()?;
-    oz_core::Settings::set(&tx, TOPOLOGY_APPLY_RECOVERY_KEY, &json)?;
-    tx.commit()?;
-    Ok(())
-}
-
-/// Remove the Apply compensation journal once both databases are settled.
-pub(crate) fn clear_topology_recovery(conn: &Connection) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-    oz_core::Settings::remove(&tx, TOPOLOGY_APPLY_RECOVERY_KEY)?;
-    tx.commit()?;
-    Ok(())
-}
-
-/// Complete a previously interrupted cross-database Apply before accepting a
-/// new mutation. The journal is intentionally retained until both databases
-/// are restored, making compensation retryable after a process crash or
-/// transient database lock.
-pub async fn recover_pending_topology_apply_at_startup(state: &AppState) -> Result<(), AppError> {
-    let expected_store_id = {
-        let db = state.db.lock().await;
-        let Some(raw) = oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)? else {
-            return Ok(());
-        };
-        serde_json::from_str::<TopologyApplyRecovery>(&raw)
-            .map(|recovery| recovery.store_id)
-            .map_err(|e| AppError::Internal(format!("invalid topology recovery journal: {e}")))?
-    };
-    let _apply_guard = state.topology_apply_lock.lock().await;
-    recover_pending_topology_apply(state, &expected_store_id).await
-}
-
-/// Replay or compensate a pending cross-database Apply for one store.
-///
-/// Shared by the startup recovery daemon and the tests; verifies the journal
-/// belongs to the expected store before touching either database.
-pub(crate) async fn recover_pending_topology_apply(
-    state: &AppState,
-    expected_store_id: &str,
-) -> Result<(), AppError> {
-    let recovery = {
-        let db = state.db.lock().await;
-        oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)?
-            .map(|json| serde_json::from_str::<TopologyApplyRecovery>(&json))
-            .transpose()
-            .map_err(|e| AppError::Internal(format!("invalid topology recovery journal: {e}")))?
-    };
-    let Some(recovery) = recovery else {
-        return Ok(());
-    };
-    if recovery.store_id != expected_store_id {
-        return Err(AppError::Internal(format!(
-            "topology Apply recovery is pending for store {}, not {}",
-            recovery.store_id, expected_store_id
-        )));
-    }
-    // If the desired diagram is already present, the process crashed after
-    // the global commit but before clearing the journal. Do not compensate a
-    // successful Apply; simply finalize the journal.
-    if let Some(desired) = recovery.desired_topology.as_deref() {
-        let current = {
-            let db = state.db.lock().await;
-            let key = topology_setting_key(recovery.topology_branch_id.as_deref())?;
-            oz_core::Settings::get(&db, &key)?
-        };
-        if current.as_deref() == Some(desired) {
-            let db = state.db.lock().await;
-            clear_topology_recovery(&db)?;
-            return Ok(());
-        }
-    }
-    compensate_workspace_diff(
-        state,
-        &recovery.store_id,
-        &recovery.creations,
-        &recovery.snapshots,
+    oz_bridge::topology::persistence::save_topology_json_at_key_with_revision(
+        conn,
+        nodes,
+        wires,
+        setting_key,
+        resolved_issue_keys,
+        expected_revision,
+        request,
+        branch_registry,
+        revision_ctx,
     )
-    .await?;
-    {
-        let db = state.db.lock().await;
-        let setting_key = topology_setting_key(recovery.topology_branch_id.as_deref())?;
-        restore_topology_setting(&db, &setting_key, recovery.previous_topology.as_deref())?;
-        clear_topology_recovery(&db)?;
-    }
-    Ok(())
+    .map_err(Into::into)
 }
 
-/// Capture rows that the workspace portion of Apply will update or archive.
-pub(crate) async fn snapshot_workspace_rows(
-    state: &AppState,
-    store_id: &str,
-    updates: &[UpdateInstanceRequest],
-    archives: &[String],
-) -> Result<Vec<WorkspaceApplySnapshot>, AppError> {
-    let conn = state
-        .db_manager
-        .open_store(store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db for compensation: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock for compensation: {e}")))?;
-    let mut ids = std::collections::HashSet::new();
-    ids.extend(updates.iter().map(|item| item.id.as_str()));
-    ids.extend(archives.iter().map(String::as_str));
-    let mut snapshots = Vec::with_capacity(ids.len());
-    for id in ids {
-        let row = db
-            .query_row(
-                "SELECT id, name, description, colour, purpose_key, status FROM workspace_instances WHERE id = ?1",
-                rusqlite::params![id],
-                |row| {
-                    Ok(WorkspaceApplySnapshot {
-                        id: row.get(0)?,
-                        name: row.get(1)?,
-                        description: row.get(2)?,
-                        colour: row.get(3)?,
-                        purpose_key: row.get(4)?,
-                        status: row.get(5)?,
-                    })
-                },
-            )
-            .map_err(|e| AppError::Internal(format!("snapshot workspace {id}: {e}")))?;
-        snapshots.push(row);
-    }
-    Ok(snapshots)
-}
-
-/// Compensate workspace mutations after a global diagram write fails.
-pub(crate) async fn compensate_workspace_diff(
-    state: &AppState,
-    store_id: &str,
-    creations: &[CreateInstanceRequest],
-    snapshots: &[WorkspaceApplySnapshot],
-) -> Result<(), AppError> {
-    let conn = state
-        .db_manager
-        .open_store(store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db for rollback: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock for rollback: {e}")))?;
-    let tx = db.unchecked_transaction()?;
-    for creation in creations {
-        tx.execute(
-            "DELETE FROM workspace_instances WHERE id = ?1",
-            rusqlite::params![creation.id],
-        )?;
-    }
-    for snapshot in snapshots {
-        tx.execute(
-            "UPDATE workspace_instances
-             SET name = ?2, description = ?3, colour = ?4, purpose_key = ?5,
-                 status = ?6, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?1",
-            rusqlite::params![
-                snapshot.id,
-                snapshot.name,
-                snapshot.description,
-                snapshot.colour,
-                snapshot.purpose_key,
-                snapshot.status,
-            ],
-        )?;
-    }
-    tx.commit()?;
-    Ok(())
-}
-
-/// Verify the canonical Branch Location exists in the given registry
-/// database.
-///
-/// Single-registry form of [`validate_semantic_ownership_in`]; see it for
-/// the ownership contract and the ADR #7 rationale for multiple
-/// registries.
+/// Adapter over [`oz_bridge::topology::persistence::validate_semantic_ownership`].
+/// Caller set collapsed when the desktop topology unit tests relocated to
+/// oz-bridge: production calls the `_in` variant directly and no mounted test
+/// reaches this wrapper in either build.
+#[allow(dead_code)]
 pub(crate) fn validate_semantic_ownership(
     conn: &Connection,
     nodes: &[Value],
     wires: &[Value],
 ) -> Result<(), AppError> {
-    validate_semantic_ownership_in(&[conn], nodes, wires)
+    oz_bridge::topology::persistence::validate_semantic_ownership(conn, nodes, wires)
+        .map_err(Into::into)
 }
 
-/// Verify the canonical Branch Location exists in at least one of the
-/// given registry databases.
-///
-/// ADR #7: the scoped store-profile family (create/list/delete) writes
-/// branch profiles into the **session store's** database, while the global
-/// database only carries the seeded default profile. A branch created
-/// after bootstrap therefore never appears in the global registry, and a
-/// diagram referencing it must not be rejected with
-/// `unknown-branch-location`. Ownership passes when the profile id exists
-/// in ANY registry; the semantic-shape checks (missing/multiple branch
-/// locations) still run once, on the first registry.
-pub(crate) fn validate_semantic_ownership_in(
-    registries: &[&Connection],
-    nodes: &[Value],
-    wires: &[Value],
-) -> Result<(), AppError> {
-    validate_semantic_json(nodes, wires)?;
-    if !has_semantic_fields(nodes, wires) {
-        return Ok(());
-    }
-    let Some(profile_id) = semantic_branch_profile_id(nodes, wires) else {
-        return Ok(());
-    };
-    for conn in registries {
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM store_profiles WHERE id = ?1)",
-            rusqlite::params![profile_id],
-            |row| row.get(0),
-        )?;
-        if exists {
-            return Ok(());
-        }
-    }
-    Err(topology_validation(
-        "unknown-branch-location",
-        None,
-        None,
-        None,
-        format!("Branch Location references unknown store_profile_id: {profile_id}"),
-    ))
-}
-
-/// Pre-mutation validation gate for a topology Apply.
-///
-/// Rejects malformed diagrams BEFORE any workspace creation, update, or
-/// archival. The semantic ownership checks are DB-backed (branch identity
-/// must exist); the structural checks (duplicate node/wire ids, unknown
-/// node types, unknown directions/ports, ghost endpoints) must also run
-/// here — running them only at the final save would let a malformed
-/// diagram mutate workspace rows and then fail at save, forcing the
-/// compensation cycle to unwind a partial apply.
-pub(crate) fn validate_apply_gate(
-    registries: &[&Connection],
-    nodes: &[Value],
-    wires: &[Value],
-) -> Result<(), AppError> {
-    // Production Apply is the strict semantic boundary. Legacy geometric
-    // payloads remain readable by the low-level load/save compatibility
-    // helpers, but they must not bypass ownership and entitlement checks on
-    // the authenticated mutation command.
-    if !has_semantic_fields(nodes, wires) {
-        return Err(topology_validation(
-            "semantic-contract-required",
-            None,
-            None,
-            None,
-            "topology Apply requires canonical semantic node and wire fields",
-        ));
-    }
-    validate_semantic_ownership_in(registries, nodes, wires)?;
-    validate_diagram_payloads(nodes, wires)
-}
-
-/// Enforce the subscription-tier warehouse count quota for a topology save.
+/// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_quota`].
+#[allow(dead_code)]
 pub(crate) fn validate_warehouse_quota(
     nodes: &[Value],
     tier: &oz_core::subscription::SubscriptionTier,
 ) -> Result<(), AppError> {
-    if let Some(limit) = tier.max_warehouses()
-        && nodes
-            .iter()
-            .filter(|node| value_string(node, "type") == Some("warehouse"))
-            .count() as i64
-            > limit
-    {
-        return Err(AppError::PermissionDenied(format!(
-            "topology warehouse quota exceeded: limit {limit}"
-        )));
-    }
-    Ok(())
+    oz_bridge::topology::persistence::validate_warehouse_quota(nodes, tier).map_err(Into::into)
 }
 
-/// Enforce the backend-owned warehouse capacity invariant for tiers that
-/// expose capacity-aware routing. UI validation remains useful feedback, but
-/// a direct IPC caller must not be able to route stock into a full warehouse.
+/// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_capacity`].
+#[allow(dead_code)]
 pub(crate) fn validate_warehouse_capacity(
     nodes: &[Value],
     wires: &[Value],
     tier: &oz_core::subscription::SubscriptionTier,
     resolved_issue_keys: &[String],
 ) -> Result<(), AppError> {
-    if !matches!(
+    oz_bridge::topology::persistence::validate_warehouse_capacity(
+        nodes,
+        wires,
         tier,
-        oz_core::subscription::SubscriptionTier::Pro
-            | oz_core::subscription::SubscriptionTier::Premium
-            | oz_core::subscription::SubscriptionTier::Enterprise
-    ) {
-        return Ok(());
-    }
-    for warehouse in nodes
-        .iter()
-        .filter(|node| semantic_node_type(node) == Some("warehouse"))
-    {
-        let Some(metadata) = warehouse.get("metadata") else {
-            continue;
-        };
-        let Some(stock) = metadata.get("stock").and_then(Value::as_f64) else {
-            continue;
-        };
-        let Some(capacity) = metadata.get("capacity").and_then(Value::as_f64) else {
-            continue;
-        };
-        let warehouse_id = value_string(warehouse, "id");
-        if stock >= capacity
-            && let Some(wire) = wires.iter().find(|wire| {
-                value_string(wire, "to_node_id") == warehouse_id
-                    && is_warehouse_operational_input_port(value_string(wire, "to_port_id"))
-                    && matches!(
-                        value_string(wire, "relationship_type"),
-                        Some("stock-routing" | "inventory-transfer")
-                    )
-            })
-        {
-            return Err(topology_validation(
-                "warehouse-at-capacity",
-                warehouse_id,
-                value_string(wire, "id"),
-                value_string(wire, "to_port_id"),
-                format!(
-                    "warehouse {} is at capacity ({stock}/{capacity})",
-                    warehouse_id.unwrap_or("<unknown>")
-                ),
-            ));
-        }
-
-        // A capacity-aware warehouse with room must have an operational
-        // stock/transfer route unless the user explicitly dismissed this
-        // branch-scoped prompt in the topology document. This mirrors the
-        // frontend contract but remains authoritative for direct IPC callers.
-        if stock < capacity {
-            let has_operational_route = wires.iter().any(|wire| {
-                value_string(wire, "to_node_id") == warehouse_id
-                    && is_warehouse_operational_input_port(value_string(wire, "to_port_id"))
-                    && matches!(
-                        value_string(wire, "relationship_type"),
-                        Some("stock-routing" | "inventory-transfer")
-                    )
-            });
-            let issue_key = format!(
-                "node:{}:topology-validation-warehouse-missing-stock-routing",
-                warehouse_id.unwrap_or_default()
-            );
-            if !has_operational_route && !resolved_issue_keys.iter().any(|key| key == &issue_key) {
-                return Err(topology_validation(
-                    "warehouse-missing-stock-routing",
-                    warehouse_id,
-                    None,
-                    None,
-                    format!(
-                        "warehouse {} has capacity but no operational stock or transfer route",
-                        warehouse_id.unwrap_or("<unknown>")
-                    ),
-                ));
-            }
-        }
-    }
-    Ok(())
+        resolved_issue_keys,
+    )
+    .map_err(Into::into)
 }
 
-/// Parse raw diagram values into the legacy typed payloads and run the
-/// structural validator (duplicate ids, unknown types/directions/ports,
-/// ghost endpoints) without persisting them. `branch-location` is a
-/// semantic alias, so normalize it only for the temporary validation copy;
-/// the raw command payload is persisted intact.
-pub(crate) fn validate_diagram_payloads(nodes: &[Value], wires: &[Value]) -> Result<(), AppError> {
-    let typed_node_values: Vec<Value> = nodes
-        .iter()
-        .map(|node| {
-            let mut node = node.clone();
-            if node.get("type").and_then(Value::as_str) == Some("branch-location") {
-                node["type"] = Value::String("store".into());
-            }
-            node
-        })
-        .collect();
-    let typed_nodes: Vec<TopologyNodePayload> =
-        serde_json::from_value(Value::Array(typed_node_values))
-            .map_err(|e| AppError::Internal(format!("invalid topology nodes: {e}")))?;
-    let typed_wires: Vec<TopologyWirePayload> =
-        serde_json::from_value(Value::Array(wires.to_vec()))
-            .map_err(|e| AppError::Internal(format!("invalid topology wires: {e}")))?;
-    // Reuse the existing structural validator without persisting its legacy
-    // representation — the save callers write the raw command payload intact.
-    validate_topology_structure(&typed_nodes, &typed_wires)
-}
-
-/// Validate typed node and wire structure without persisting it.
-pub(crate) fn validate_topology_structure(
-    nodes: &[TopologyNodePayload],
-    wires: &[TopologyWirePayload],
-) -> Result<(), AppError> {
-    let mut node_ids = std::collections::HashSet::new();
-    for node in nodes {
-        if !node_ids.insert(&node.id) {
-            return Err(AppError::Internal(format!(
-                "duplicate node id: {}",
-                node.id
-            )));
-        }
-        if node.node_type == NodeType::Unknown {
-            return Err(AppError::Internal(format!(
-                "node {} has unknown type",
-                node.id
-            )));
-        }
-    }
-    let mut wire_ids = std::collections::HashSet::new();
-    for wire in wires {
-        if !wire_ids.insert(&wire.id) {
-            return Err(AppError::Internal(format!(
-                "duplicate wire id: {}",
-                wire.id
-            )));
-        }
-        if wire.direction == WireDirection::Unknown {
-            return Err(AppError::Internal(format!(
-                "wire {} has unknown direction",
-                wire.id
-            )));
-        }
-        if wire.from_port == Some(PortName::Unknown) || wire.to_port == Some(PortName::Unknown) {
-            return Err(AppError::Internal(format!(
-                "wire {} has unknown port",
-                wire.id
-            )));
-        }
-        if !node_ids.contains(&wire.from_node_id) {
-            return Err(AppError::Internal(format!(
-                "wire {} references unknown from_node_id: {}",
-                wire.id, wire.from_node_id
-            )));
-        }
-        if !node_ids.contains(&wire.to_node_id) {
-            return Err(AppError::Internal(format!(
-                "wire {} references unknown to_node_id: {}",
-                wire.id, wire.to_node_id
-            )));
-        }
-    }
-    Ok(())
+/// Test convenience wrapper: save a topology envelope under an explicit key.
+#[cfg(test)]
+pub(crate) fn save_topology_json_at_key(
+    conn: &Connection,
+    nodes: Vec<Value>,
+    wires: Vec<Value>,
+    setting_key: &str,
+) -> Result<u64, AppError> {
+    save_topology_json_at_key_with_revision(
+        conn,
+        nodes,
+        wires,
+        setting_key,
+        &[],
+        None,
+        None,
+        None,
+        None,
+    )
 }
 
 /// Test-only legacy compat: serialise typed topology payloads to the
@@ -935,8 +345,3 @@ pub(crate) fn load_topology_data(conn: &Connection) -> Result<Option<TopologyDat
         None => Ok(None),
     }
 }
-
-// ── Unit tests for pure validation functions ─────────────────────
-#[cfg(test)]
-#[path = "persistence_tests.rs"]
-mod tests;

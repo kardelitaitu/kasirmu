@@ -25,6 +25,7 @@ import { hasUsers } from '@/api/staff';
 import LicenseActivationScreen from '@/features/auth/LicenseActivationScreen';
 import CreatePinScreen from '@/features/auth/CreatePinScreen';
 import SessionLockScreen from '@/features/auth/SessionLockScreen';
+import MemoBanner from '@/features/memo/MemoBanner';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 // These screens are only reachable after login, so each is code-split
@@ -244,10 +245,29 @@ export default function AppShell() {
     const syncFromHash = () => {
       const raw = window.location.hash.replace('#/', '');
       if (!raw) return;
-      // Only sync if the route is registered (prevents garbage hashes
-      // from setting currentRoute to an unknown value).
-      if (getPage(raw)) {
-        setCurrentRoute(raw);
+      // Cross-page deep links may carry a sub-section query — the settings
+      // hub reads its section out of the same hash
+      // (`#/settings/topology?branch=<id>` from the Locations dashboard's
+      // Configure topology action), so strip the query before matching the
+      // registered page route.
+      const route = raw.split('?')[0]!;
+      // Settings sub-sections (`#/settings/<section>…`) are not page routes
+      // themselves — the settings hub is, and SettingsPage validates the
+      // section against KEPT_SECTIONS (a stale one leaves the hub on its
+      // default). Syncing the prefix route here is what makes the deep link
+      // work when the user is ALREADY on the admin workspace but on another
+      // page (e.g. Locations → Configure topology): the hashchange fires,
+      // no workspace switch happens, and without this sync the shell would
+      // keep rendering the old page while SettingsPage — not yet mounted —
+      // had no listener to read the hash. When the hub IS already mounted
+      // this is a no-op (same route) and its own hashchange listener
+      // applies the section.
+      if (getPage(route)) {
+        setCurrentRoute(route);
+      } else if (route.startsWith('settings/')) {
+        if (getPage('settings')) {
+          setCurrentRoute('settings');
+        }
       }
     };
     // Sync once on mount so #/route bookmarks / direct nav work.
@@ -362,7 +382,11 @@ export default function AppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  // P12-4: Session lock screen takes precedence over all other views
+  // P12-4: Session lock screen takes precedence over all other views.
+  // Memo surface (owner ruling 2026-09-08): the banner is app-wide EXCEPT the
+  // login and lock screens — a locked terminal must not display ops memos to
+  // anyone standing at it. (This mount previously cited the memo spec's
+  // session-alive reasoning; the ruling supersedes it.)
   if (isLocked && session) {
     return <SessionLockScreen onUnlock={handleUnlock} />;
   }
@@ -419,6 +443,7 @@ export default function AppShell() {
   if (isKdsKiosk) {
     return (
       <>
+        <MemoBanner kds />
         <div className="workspace-fullscreen">
           <div className="kds-workspace">
             <LazyBoundary>
@@ -434,6 +459,7 @@ export default function AppShell() {
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
+        <MemoBanner />
         <LazyBoundary>
           <WorkspaceHome />
         </LazyBoundary>
@@ -452,6 +478,7 @@ export default function AppShell() {
     if (currentRoute === 'kds') {
       return (
         <>
+          <MemoBanner kds />
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -476,6 +503,7 @@ export default function AppShell() {
     }
     return (
       <>
+        <MemoBanner />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <PosScreen onNavigate={handleNavigate} />
@@ -492,6 +520,7 @@ export default function AppShell() {
     if (currentRoute === 'kds') {
       return (
         <>
+          <MemoBanner kds />
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -516,6 +545,7 @@ export default function AppShell() {
     }
     return (
       <>
+        <MemoBanner />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <RetailPosScreen onNavigate={handleNavigate} />
@@ -530,6 +560,7 @@ export default function AppShell() {
   if (activeWorkspace === 'kds') {
     return (
       <>
+        <MemoBanner kds />
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <KdsScreen />
@@ -540,18 +571,28 @@ export default function AppShell() {
     );
   }
 
-  // Fullscreen pages (e.g. Kiosk mode) render without AppLayout wrapper.
+  // Fullscreen pages render without the AppLayout wrapper. The memo banner
+  // follows them — EXCEPT the customer-facing kiosk, where memos are internal
+  // staff communication that must not display to customers (owner ruling
+  // 2026-09-08: banner everywhere except login + lock + kiosk).
   if (pageRegistration?.fullscreen) {
-    return pageDenied ? (
-      <PermissionDenied
-        action={pageRegistration!.label}
-        requiredRole={pageRegistration!.requiredRole!}
-        requiredPermission={pageRegistration!.requiredPermission}
-      />
-    ) : PageComponent ? (
-      <LazyBoundary>
-        <PageComponent />
-      </LazyBoundary>
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration!.label}
+          requiredRole={pageRegistration!.requiredRole!}
+          requiredPermission={pageRegistration!.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        <LazyBoundary>
+          <PageComponent />
+        </LazyBoundary>
+      </>
     ) : null;
   }
 

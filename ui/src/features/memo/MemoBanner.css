@@ -1,0 +1,418 @@
+/* ============================================================
+ * OZ-POS Memo Notification Stack — macOS-grade motion system
+ *
+ * The Memo display surface: a chat-bubble stack pinned to the
+ * bottom-left of the screen for the highest-priority active memos
+ * addressed to this terminal (owner-directed redesign rounds 1–4,
+ * 2026-09-07/08). Solid popover background so the rotated tail seam
+ * stays opaque; tokens carry dark mode.
+ *
+ * ── Motion language ──────────────────────────────────────────
+ * One damped spring drives every position/scale/height change:
+ * --memo-spring is a CSS linear() easing baked from a harmonic
+ * oscillator (damping ratio 0.7, natural frequency 12 → single
+ * 4.6% overshoot, settled by 83% of the timeline). Opacity NEVER
+ * uses the spring — alpha runs on plain --ease-out/--ease-in so
+ * it can never overshoot its 0/1 bounds.
+ *
+ * Motion match: the stack's identity is the bottom-left corner
+ * (the speech tail points at it), so bubbles are dealt in FROM the
+ * corner and exit back TOWARD it (transform-origin 0 100%).
+ *
+ * Rows are grid wrappers animating grid-template-rows 0fr↔1fr:
+ * a spawn expands (pushing the stack down) and a close collapses
+ * (letting the stack spring up) purely through layout flow — the
+ * reflow is the star, the leaver is a supporting act. Steady state
+ * must NOT clip (the (x) chip and the tail overflow the bubble's
+ * box); clipping is enabled only on rows that are animating.
+ * Unmount timing is owned by useExitAnimation; everything motion
+ * lives inside prefers-reduced-motion: no-preference (and
+ * animDuration() snaps the JS timers to zero under the reduce
+ * setting). The reading card zooms from the clicked bubble's rect
+ * (FLIP-lite, see MemoBanner.tsx) over a backdrop that follows the
+ * app's modal-blur convention and the HardwareAccel kill-switch.
+ * ============================================================ */
+
+/* Damped harmonic oscillator, ζ = 0.7, ω₀ = 12:
+   x(t) = 1 − e^(−ζω₀t)·(cos(ω_d t) + (ζω₀/ω_d)·sin(ω_d t)),
+   sampled at 24 points. Peak overshoot 4.598% at t ≈ 37%. */
+.memo-stack,
+.memo-expanded-overlay {
+  --memo-spring: linear(
+    0, 0.0983 4.2%, 0.3059 8.3%, 0.5313 12.5%, 0.7257 16.7%,
+    0.8706 20.8%, 0.9653 25%, 1.0185 29.2%, 1.0416 33.3%,
+    1.0458 37.5%, 1.0398 41.7%, 1.0298 45.8%, 1.0196 50%,
+    1.0111 54.2%, 1.0049 58.3%, 1.001 62.5%, 0.9988 66.7%,
+    0.998 70.8%, 0.9979 75%, 0.9983 79.2%, 0.9987 83.3%,
+    0.9992 87.5%, 0.9996 91.7%, 0.9998 95.8%, 1
+  );
+}
+
+/* ── Stack (fixed, bottom-left) ─────────────────────────────── */
+
+.memo-stack {
+  position: fixed;
+  left: var(--space-6);
+  bottom: var(--space-6);
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* Row wrapper: a pure height animator. Collapsed until mounted,
+   collapsing when exiting; the bubble inside owns every visible
+   transform. --memo-delay staggers simultaneous spawns (set inline
+   per index) and is forced to 0ms on exit. */
+.memo-stack-item {
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.memo-stack-item.is-mounted {
+  grid-template-rows: 1fr;
+}
+
+.memo-stack-item.is-exiting {
+  grid-template-rows: 0fr;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-stack-item {
+    transition: grid-template-rows var(--duration-500) var(--memo-spring);
+    transition-delay: var(--memo-delay, 0ms);
+  }
+
+  .memo-stack-item.is-exiting {
+    /* The collapse is quicker than the spawn and never staggered. */
+    transition: grid-template-rows 450ms var(--memo-spring);
+    transition-delay: 0ms;
+  }
+
+  /* The bubble: dealt in from the corner, returning to it. */
+  .memo-banner {
+    transform-origin: 0 100%;
+    transition:
+      transform var(--duration-400) var(--memo-spring),
+      opacity 240ms var(--ease-out);
+    transition-delay: var(--memo-delay, 0ms);
+  }
+
+  .memo-stack-item:not(.is-mounted) .memo-banner {
+    transform: translate(-24px, 8px) scale(0.94);
+    opacity: 0;
+  }
+
+  /* Exit: the leaver accelerates toward the corner and is gone by
+     60% of the row collapse — the survivors' spring-up is the star. */
+  .memo-stack-item.is-exiting .memo-banner {
+    transition:
+      transform 300ms var(--ease-in),
+      opacity 200ms var(--ease-in);
+    transition-delay: 0ms;
+    transform: translate(-24px, 12px) scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* Row clipping only while animating (see the header note): without
+   it the bubble's content would paint over the neighbouring rows
+   while the track is smaller than the content. */
+.memo-stack-item:not(.is-mounted) .memo-banner,
+.memo-stack-item.is-exiting .memo-banner {
+  overflow: hidden;
+}
+
+/* The bubble itself: adaptive width capped at 400px (owner direction,
+   2026-09-08). min-height: 0 lets the grid row actually collapse
+   below the content size. */
+.memo-banner {
+  position: relative;
+  min-height: 0;
+  max-width: 400px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-popover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Speech-bubble tail on the bottom-most bubble only: a rotated square
+   peeking from the bubble's bottom edge. Shares the bubble's solid
+   background and border on the two faces that face outward. */
+.memo-stack-item:last-child .memo-banner::after {
+  content: '';
+  position: absolute;
+  bottom: -6.5px;
+  left: var(--space-6);
+  width: 12px;
+  height: 12px;
+  background: var(--color-bg-popover);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  transform: rotate(45deg);
+}
+
+/* The whole title+body block is one button that opens the enlarged
+   card. Reset the button chrome so it reads as the bubble's body,
+   and keep the min-width:0 chain so long text clamps instead of
+   stretching the bubble. */
+.memo-banner-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-banner-open {
+    transition:
+      color var(--duration-150) var(--ease-out),
+      transform var(--duration-150) var(--ease-out);
+  }
+
+  /* Touch feedback: a small press-in squish that springs back. */
+  .memo-banner-open:active {
+    transform: scale(0.98);
+  }
+}
+
+.memo-banner-open:hover .memo-banner-text {
+  color: var(--color-fg);
+}
+
+.memo-banner-open:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Owner direction (round 3): the bubble text reads at body size,
+   not caption size. */
+.memo-banner-title {
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-tight);
+  text-align: left;
+}
+
+/* The bubble previews at most 10 lines; the full text lives in the
+   enlarged card behind the open button. */
+.memo-banner-text {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--color-fg-secondary);
+  line-height: var(--leading-normal);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 10;
+  overflow: hidden;
+  /* Long unbroken strings (URLs, ids) must wrap, not stretch the
+     adaptive bubble past its cap. */
+  overflow-wrap: anywhere;
+}
+
+/* The (x) floats OUTSIDE the bubble (owner direction, 2026-09-08):
+   a small circular chip overlapping the top-right corner. Anchored
+   to the bubble (the positioned ancestor); the row's overflow
+   clipping is disabled in steady state so the chip stays visible. */
+.memo-banner-close {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-fg-tertiary);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .memo-banner-close {
+    transition:
+      background-color var(--duration-150) var(--ease-out),
+      color var(--duration-150) var(--ease-out),
+      transform var(--duration-200) var(--ease-bounce);
+  }
+
+  /* Hover spins the (x) a quarter turn — the circle is rotationally
+     identical, so only the glyph appears to move. */
+  .memo-banner-close:hover {
+    background: var(--color-bg-surface);
+    color: var(--color-fg-secondary);
+    transform: rotate(90deg);
+  }
+
+  .memo-banner-close:active {
+    transform: rotate(90deg) scale(0.88);
+  }
+}
+
+.memo-banner-close:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.memo-banner-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Enlarged reading card (dedicated portal overlay) ───────── */
+
+/* Container carries no paint of its own: the backdrop is a sibling
+   layer so its fade can run on a shorter clock than the card's
+   reverse zoom without dimming the card through it. */
+.memo-expanded-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+}
+
+.memo-expanded-overlay.is-exiting {
+  pointer-events: none;
+}
+
+.memo-expanded-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--color-bg-overlay);
+  backdrop-filter: var(--modal-backdrop-blur, blur(2px));
+  -webkit-backdrop-filter: var(--modal-backdrop-blur, blur(2px));
+  will-change: backdrop-filter;
+}
+
+.memo-expanded-card {
+  position: relative;
+  max-width: min(640px, 100%);
+  padding: var(--space-8);
+  background: var(--color-bg-popover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2xl);
+}
+
+.memo-expanded-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+/* Full text at reading size — unclamped, pre-wrap so the author's
+   line breaks from the composer textarea survive, and the primary
+   foreground colour (this is the surface people actually read). */
+.memo-expanded-text {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--color-fg);
+  line-height: var(--leading-relaxed);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The single big (x) floats OUTSIDE the card's top-right corner —
+   no footer, no acknowledge button (owner direction, round 3).
+   Sized to the 44px touch-target floor like the other overlay
+   close buttons in the app. */
+.memo-expanded-close {
+  position: absolute;
+  top: calc(-1 * var(--space-4));
+  right: calc(-1 * var(--space-4));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-popover);
+  box-shadow: var(--shadow-lg);
+  color: var(--color-fg-tertiary);
+  cursor: pointer;
+}
+
+.memo-expanded-close:hover {
+  background: var(--color-bg-surface);
+  color: var(--color-fg-secondary);
+}
+
+.memo-expanded-close:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The card zooms from the clicked bubble's rect — FLIP-lite driven
+     from MemoBanner.tsx via an inline transform that transitions to
+     its cleared (identity) state once the from-style is committed. */
+  .memo-expanded-card {
+    transition:
+      transform 480ms var(--memo-spring),
+      opacity 240ms var(--ease-out);
+    will-change: transform;
+  }
+
+  /* Content fades in late enough to mask the non-uniform scale of
+     the zoom's first frames (Apple's sheet trick). */
+  .memo-expanded-card > * {
+    animation: memo-card-content-in 220ms var(--ease-out) 120ms backwards;
+  }
+
+  @keyframes memo-card-content-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .memo-expanded-backdrop {
+    animation: memo-backdrop-fade-in 240ms var(--ease-out);
+  }
+
+  @keyframes memo-backdrop-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* Exit: the card refolds into the bubble rect (inline transform,
+     same transition), the backdrop dims out sooner — the shorter
+     clock is safe because backdrop and card are sibling layers. */
+  .memo-expanded-overlay.is-exiting .memo-expanded-backdrop {
+    animation: memo-backdrop-fade-out 240ms var(--ease-in) both;
+  }
+
+  @keyframes memo-backdrop-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}

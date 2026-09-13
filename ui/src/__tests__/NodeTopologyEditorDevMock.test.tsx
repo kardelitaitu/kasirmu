@@ -14,10 +14,10 @@
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
-import NodeTopologyEditor from '../features/stores/NodeTopologyEditor';
+import NodeTopologyEditor from '../features/locations/NodeTopologyEditor';
 import { loadTopology, applyTopologyDiff } from '@/api/topology';
 import type { TopologyNodePayload, TopologyWirePayload } from '@/api/topology';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 
 // Route the REAL @tauri-apps/api/core invoke to the REAL dev-mock handlers —

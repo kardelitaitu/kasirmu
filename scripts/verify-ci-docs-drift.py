@@ -87,6 +87,7 @@ RELEASE_CHECKLIST = ROOT / "docs" / "releases" / "checklist.md"
 WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 GATES_MANIFEST = ROOT / "scripts" / "gates.json"
 CHECK_SH = ROOT / "scripts" / "check.sh"
+PRE_COMMIT_HOOK = ROOT / ".githooks" / "pre-commit"
 CHECK_UI = ROOT / "scripts" / "check-ui.mjs"
 
 # Docs headings this checker parses. "Job Matrix" was literally
@@ -236,6 +237,36 @@ def load_gates() -> list[dict] | None:
     return gates
 
 
+def unrecorded_active_gates(gates: list[dict]) -> list[str]:
+    """Active gates that name no CI job and give no reason why not.
+
+    load_gates() validates the SHAPE of a `ci` mapping and hard-errors when a
+    required-on-push gate omits one, but says nothing about a `required` gate that simply
+    has no `ci` key. That is the exact shape AGENTS.md records as the motivating bug:
+    migration column types and PG schema drift went unenforced for two releases and the
+    drift checker could not report them as unenforced, because an absent mapping is
+    indistinguishable from an intentional one.
+
+    Absence is not itself wrong -- several active gates here are legitimately local-only
+    (a11y has known open regressions and is advisory by design; the e2e gate needs a Docker
+    backend CI does not provision). So the invariant is that absence must be EXPLAINED:
+    either name the job, or carry a note saying why there is none. That keeps the check
+    green on honest local-only gates while failing on the forgotten kind, and it is why
+    this reports rather than hard-errors inside load_gates -- a missing rationale is a
+    finding to fix, not a malformed file.
+    """
+    out: list[str] = []
+    for g in gates:
+        if g.get("status") not in ("required", "advisory"):
+            continue
+        if g.get("ci"):
+            continue
+        if (g.get("_note") or g.get("note") or "").strip():
+            continue
+        out.append(g["id"])
+    return sorted(out)
+
+
 def doc_section(lines: list[str], title: str) -> list[str]:
     """Return the lines under a `## <title>` section (until the next `## `)."""
     out: list[str] = []
@@ -247,6 +278,151 @@ def doc_section(lines: list[str], title: str) -> list[str]:
         if in_section:
             out.append(line)
     return out
+
+
+def hook_step_orphans(gates: list[dict]) -> list[str]:
+    """Pre-commit steps whose tooling is unreachable from any gates.json record.
+
+    This closes a blind spot rather than a data error. Every other check in this file
+    iterates the gates that ARE in the manifest, so a gate with no record at all is
+    invisible to it -- it cannot be reported as "required but not enforced", because
+    the checker never learns to ask. That is how `verify-bundle-parity.py` (hook step
+    4, the step whose own docs record 14 broken keys shipping while it reported
+    clean) and both migration gates sat for a full release cycle with coverage in
+    exactly one place: the opt-in hook, on a machine that ran setup-dev.ps1.
+
+    The join is a two-hop chain rather than a filename search, because gate records
+    never contain script names -- they hold runner labels and CI step titles. So:
+    gate -> its `runners` labels -> the `step "<label>" "<cmd>"` line in check.sh ->
+    the scripts that command invokes. Every hop is data already in the repo, and the
+    middle hop is exactly the indirection gates.json exists to describe.
+
+    Matching is on filenames rather than fuzzy name similarity because gate IDs are
+    concepts ("i18n-lint") and hook headers are prose ("i18n lint"); joining those
+    by eye would invent links the manifest never claimed, which is the failure this
+    whole family of checks was built to stop.
+    """
+    if not (PRE_COMMIT_HOOK.is_file() and CHECK_SH.is_file()):
+        return []
+    hook = PRE_COMMIT_HOOK.read_text(encoding="utf-8", errors="replace")
+    check = CHECK_SH.read_text(encoding="utf-8", errors="replace")
+
+    # label -> scripts that label's command invokes
+    label_scripts: dict[str, set[str]] = {}
+    # Leading whitespace allowed: several steps are declared inside an `if` block
+    # (the ftl-dedupe one is, at an indent of 4), and anchoring on column 0 made
+    # those labels unresolvable -- which reported a fully-wired gate as an orphan.
+    for m in re.finditer(r'^\s*step\s+"([^"]+)"\s+"([^"]+)"', check, re.M):
+        label, cmd = m.group(1), m.group(2)
+        label_scripts.setdefault(label, set()).update(
+            re.findall(r"scripts/([A-Za-z0-9_.-]+\.(?:py|sh|mjs))", cmd))
+
+    reachable: set[str] = set()
+    for g in gates:
+        runners = g.get("runners") or {}
+        if isinstance(runners, dict):
+            for labels in runners.values():
+                items = labels if isinstance(labels, list) else [labels]
+                for lb in items:
+                    reachable |= label_scripts.get(str(lb), set())
+        # A gate may also name its tooling directly; honour that if it ever does.
+        reachable |= set(re.findall(
+            r"([A-Za-z0-9_.-]+\.(?:py|sh|mjs))", json.dumps(g)))
+
+    orphans: list[str] = []
+    headers = re.findall(r"^# ── (.+?) ─", hook, re.M)
+    for name in headers:
+        start = hook.index(f"# ── {name} ─")
+        nxt = [hook.index(f"# ── {x} ─") for x in headers
+               if hook.index(f"# ── {x} ─") > start]
+        body = hook[start: min(nxt) if nxt else len(hook)]
+        # Only scripts under scripts/ that the step actually invokes. `cargo fmt`
+        # and bare `go vet` have no script to name, and the EOL step is inline shell
+        # in the hook itself -- requiring a manifest entry for those would demand a
+        # record for something that is not a check with an identity.
+        scripts = sorted(set(re.findall(
+            r"scripts/([A-Za-z0-9_.-]+\.(?:py|sh|mjs))", body)))
+        if scripts and not any(s in reachable for s in scripts):
+            orphans.append(f"{name}  (invokes {', '.join(scripts)})")
+    return orphans
+
+
+def hook_workflow_pointers_from_text(text: str, live: set[str]) -> list[str]:
+    """Hook comments that cite a workflow GitHub does not actually run.
+
+    The pre-commit hook says things like "mirrors
+    `.github/workflows/ci.yml#ui i18n quality gate`" to tell an agent that a local
+    step has a CI backstop. When a workflow is retired -- and on this branch nine of
+    them were, renamed to `.bak` by `23c96330` with no replacement for several -- the
+    citation outlives the file and starts asserting the opposite of the truth.
+
+    That is not a cosmetic problem, because the hook is precisely where an agent
+    looks to answer "is this gate enforced anywhere?". A pointer at a file that only
+    exists as `.bak` reads as "enforced nowhere", which is how several rounds of
+    0.0.36-backlog were spent re-verifying coverage that was in fact present in
+    `dev-ci.yml` the whole time. The inverse failure is worse: an agent who greps for
+    the cited name, finds only `.bak`, and stops looking may conclude the *hook step*
+    itself is unbacked and skip reasoning about it.
+
+    So the rule is narrow and mechanical: every `.github/workflows/<name>.yml` the
+    hook mentions must be a live workflow file. `live` is deliberately built from a
+    `*.yml` glob by the caller rather than from a directory listing, because
+    `<name>.yml.bak` exists on disk and GitHub never executes it -- treating the
+    directory as the truth would let every retired workflow pass this check, which is
+    the exact bug being caught.
+    """
+    findings: set[str] = set()
+    for m in re.finditer(r"\.github/workflows/([A-Za-z0-9_.-]+)\.yml", text):
+        name = f"{m.group(1)}.yml"
+        if name in live:
+            continue
+        line = text[:m.start()].count("\n") + 1
+        findings.add(
+            f"hook L{line}: cites .github/workflows/{name} "
+            f"(not a live workflow -- only {', '.join(sorted(live)) or 'nothing'} is)")
+    return sorted(findings)
+
+
+def hook_workflow_pointers() -> list[str]:
+    """Real-path wrapper over hook_workflow_pointers_from_text()."""
+    if not PRE_COMMIT_HOOK.is_file():
+        return []
+    live = {p.name for p in (ROOT / ".github" / "workflows").glob("*.yml")}
+    return hook_workflow_pointers_from_text(
+        PRE_COMMIT_HOOK.read_text(encoding="utf-8", errors="replace"), live)
+
+
+def looks_like_actions_workflow(path: Path) -> tuple[bool, str]:
+    """Can GitHub actually run this file?
+
+    GitHub parses EVERY `*.yml` in `.github/workflows/` as an Actions workflow.
+    A file with no top-level `on:` cannot be triggered by anything, so it is not a
+    workflow that is merely undocumented -- it is a workflow that can never run, and
+    the Actions tab shows it as an error.
+
+    This distinction changes the fix completely. "Undocumented live workflow" sends
+    a reader to add a row to the inventory; a file that is not an Actions workflow
+    at all needs to be MOVED OUT of the directory, and documenting it would enshrine
+    the mistake. Found by exactly that confusion: a CircleCI config (`executors:`,
+    `commands:`, `workflows:`, no `on:`) was relocated into `.github/workflows/` to
+    match a CircleCI project setting, which makes GitHub try to execute it.
+
+    Deliberately line-based, matching workflow_jobs() above: importing a YAML parser
+    here would make the gate depend on a package the other checkers avoid.
+    """
+    text = path.read_text(encoding="utf-8", errors="replace")
+    has_on = bool(re.search(r"""^(?:on|'on'|"on")\s*:""", text, re.M))
+    circleci_keys = [k for k in ("executors", "commands", "workflows", "orbs")
+                     if re.search(rf"^{k}\s*:", text, re.M)]
+    if not has_on:
+        if circleci_keys:
+            return False, (f"no `on:` trigger and CircleCI-only keys "
+                           f"({', '.join(circleci_keys)}) -- this is not a GitHub "
+                           f"Actions workflow, it is a config for another CI system")
+        return False, "no top-level `on:` trigger, so nothing can ever run it"
+    if circleci_keys:
+        return True, f"has `on:` but also CircleCI keys ({', '.join(circleci_keys)})"
+    return True, ""
 
 
 def workflow_jobs(path: Path) -> set[str]:
@@ -348,6 +524,180 @@ def has_needle(gates: set[str], needles: tuple[str, ...]) -> bool:
     return any(n in g for g in gates for n in needles)
 
 
+def missing_needles(gates: set[str], needles: tuple[str, ...]) -> list[str]:
+    """Every needle that matches NO declared label.
+
+    This replaces an ANY-of test (`has_needle`) for the manifest -> runner direction,
+    and the difference is the whole point. With ANY-of, a gate listing three runner
+    labels is satisfied by one of them, so deleting the other two from check.sh leaves
+    the manifest asserting guards that no longer exist. Demonstrated against this
+    repo's own gate: `ci-docs-drift` declares both "ci docs drift" and "ci docs drift
+    self-test"; removing the self-test step from check.sh kept the checker at
+    "0 drift item(s)", because the first needle still matched.
+
+    A runner list is a claim about the set of steps that implement a gate, so every
+    member has to exist -- which is also how the `ci` block already works, where a
+    named job that is absent is an error rather than one of several alternatives.
+    Switching is safe here precisely because the manifest is currently accurate under
+    the stricter rule: all 5 multi-label gates resolve every label today, so this
+    tightens a latent gap rather than converting it into 15 false failures.
+    """
+    return [n for n in needles if not any(n in g for g in gates)]
+
+
+def self_test() -> int:
+    """Mutation-test the two pure classifiers this gate depends on.
+
+    Scoped deliberately: the full scan() lives inside main() against module-level
+    paths, and refactoring a 900-line gate that every other check leans on is a
+    bigger risk than the coverage is worth today. What IS tested here is the pair of
+    functions whose silent failure would make the gate lie: workflow_jobs() decides
+    which jobs exist, and looks_like_actions_workflow() decides whether a file is a
+    workflow at all. Both are exercised in the direction that matters -- a mutation
+    that should be caught, plus the negative control that proves the detector is not
+    simply always-on.
+    """
+    import tempfile
+
+    failed: list[str] = []
+
+    def check(label: str, got, want) -> bool:
+        ok = got == want
+        print(f"  {'ok  ' if ok else 'FAIL'}  {label}")
+        if not ok:
+            print(f"        want {want!r}\n        got  {got!r}")
+            failed.append(label)
+        return ok
+
+    good = (
+        "name: x\non:\n  pull_request:\n    branches: [main]\njobs:\n"
+        "  build:\n    runs-on: ubuntu-latest\n  lint:\n    runs-on: ubuntu-latest\n"
+    )
+    circleci = (
+        "version: 2.1\nexecutors:\n  node:\n    docker:\n      - image: cimg/node:22\n"
+        "commands:\n  setup:\n    steps: []\njobs:\n  static-gates:\n    executor: node\n"
+        "    steps: []\nworkflows:\n  build:\n    jobs:\n      - static-gates\n"
+    )
+    no_trigger = "name: x\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+
+    with tempfile.TemporaryDirectory() as td:
+        def w(text: str) -> Path:
+            p = Path(td) / "wf.yml"
+            p.write_text(text, encoding="utf-8")
+            return p
+
+        print("\n  looks_like_actions_workflow")
+        ok, _ = looks_like_actions_workflow(w(good))
+        check("a real workflow with `on:` is accepted", ok, True)
+        ok, why = looks_like_actions_workflow(w(circleci))
+        check("a CircleCI config is rejected", ok, False)
+        check("  ... and named as another CI system's config",
+              "CircleCI" in why or "not a GitHub" in why, True)
+        ok, why = looks_like_actions_workflow(w(no_trigger))
+        check("a workflow missing `on:` is rejected", ok, False)
+        check("  ... without claiming it is CircleCI", "CircleCI" in why, False)
+
+        print("\n  workflow_jobs")
+        check("both jobs found in a real workflow",
+              workflow_jobs(w(good)), {"build", "lint"})
+        # The negative control that matters: `pull_request` and `branches` are
+        # 2-space indented under `on:`, which appears BEFORE `jobs:`. Collecting
+        # from column 0 would add them and the gate would then demand docs for
+        # trigger keys that are not jobs at all.
+        check("trigger keys under `on:` are not mistaken for jobs",
+              "pull_request" in workflow_jobs(w(good)), False)
+        # CircleCI nests job bodies differently; the point is this must not crash
+        # and must not invent jobs from `workflows:`.
+        cj = workflow_jobs(w(circleci))
+        check("a CircleCI file yields its `jobs:` names, not `workflows:`",
+              cj, {"static-gates"})
+
+        print("\n  hook_step_orphans")
+        full = json.loads(
+            GATES_MANIFEST.read_text(encoding="utf-8"))["gates"]
+        # Control: the manifest as it stands covers every scripted hook step.
+        check("current gates.json leaves no hook step orphaned",
+              hook_step_orphans(full), [])
+        # Remove one record and require its hook step to surface. This is the whole
+        # point of the check: an absent gate must become visible, not silently
+        # unpoliced.
+        trimmed = [g for g in full if g["id"] != "bundle-parity"]
+        assert len(trimmed) == len(full) - 1, "bundle-parity not in the manifest"
+        orph = hook_step_orphans(trimmed)
+        check("deleting the bundle-parity record orphans hook step 4",
+              any("Bundle parity" in o for o in orph), True)
+        check("  ... and names the script that lost its cover",
+              any("verify-bundle-parity.py" in o for o in orph), True)
+        # An empty manifest must not read as "nothing orphaned".
+        check("an empty manifest orphans every scripted step",
+              len(hook_step_orphans([])) > 0, True)
+
+        print("\n  unrecorded_active_gates")
+        # Control: the manifest as it stands answers every active gate with either a
+        # job or a reason.
+        check("current gates.json leaves no active gate unexplained",
+              unrecorded_active_gates(full), [])
+        # Positive: strip the rationale from a gate that has no CI job. This is the
+        # exact shape the check exists for -- `e2e` is legitimately local-only, and
+        # the only thing separating it from a forgotten gate is its _note.
+        target = next(g for g in full if g["id"] == "e2e")
+        assert "ci" not in target and target.get("_note"), \
+            "e2e no longer has the shape this case depends on"
+        stripped = [dict(g) for g in full]
+        for g in stripped:
+            if g["id"] == "e2e":
+                g.pop("_note")
+        check("removing a local-only gate's note makes it unexplained",
+              unrecorded_active_gates(stripped), ["e2e"])
+        # Negative control: the same gate with its note intact is NOT flagged, so the
+        # check is not simply firing on every entry that lacks a ci mapping.
+        check("  ... and restoring the note clears it",
+              unrecorded_active_gates([dict(target)]), [])
+        # A gate that names a CI job needs no note.
+        check("a gate with a ci mapping is never flagged",
+              unrecorded_active_gates(
+                  [{"id": "x", "status": "required",
+                    "ci": {"workflow": "dev-ci.yml", "job": "static-gates"}}]), [])
+        # Retired gates run nowhere by definition; excluding them is what keeps the
+        # check at 5 findings rather than 24. If that exclusion ever stopped working
+        # the gate would arrive red on sixteen honest entries and get silenced.
+        check("a retired gate with neither ci nor note is not flagged",
+              unrecorded_active_gates([{"id": "old", "status": "retired"}]), [])
+        # A note that is only whitespace is not an explanation.
+        check("a whitespace-only note does not excuse a missing ci",
+              unrecorded_active_gates(
+                  [{"id": "lazy", "status": "required", "_note": "   "}]), ["lazy"])
+
+        print("\n  hook_workflow_pointers_from_text")
+        # A citation of a workflow that is not live must surface...
+        stale = hook_workflow_pointers_from_text(
+            "# mirrors `.github/workflows/ci.yml#ui i18n gate`\n", {"dev-ci.yml"})
+        check("a citation of a retired workflow is reported",
+              len(stale), 1)
+        check("  ... and names the file it points at",
+              any("ci.yml" in s for s in stale), True)
+        # ...but the detector must not simply be always-on: the same prose about a
+        # live workflow is correct and has to stay silent.
+        check("a citation of a live workflow is not reported",
+              hook_workflow_pointers_from_text(
+                  "# see `.github/workflows/dev-ci.yml#static-gates`\n",
+                  {"dev-ci.yml"}), [])
+        # A `.bak` sitting beside the name is the exact trap: the file exists on disk
+        # but GitHub never runs it, so glob("*.yml") must be the live set.
+        check("a workflow only present as .bak counts as not live",
+              len(hook_workflow_pointers_from_text(
+                  "x .github/workflows/nightly.yml y", {"dev-ci.yml"})), 1)
+
+    print()
+    if failed:
+        print(f"  {len(failed)} self-test case(s) FAILED:")
+        for f in failed:
+            print(f"    {f}")
+        return 1
+    print("  all self-test cases passed")
+    return 0
+
+
 def main() -> int:
     # Drift reports carry doc markers (✅/⚠️) — a cp1252 Windows console
     # must never crash with UnicodeEncodeError instead of failing the gate.
@@ -374,7 +724,16 @@ def main() -> int:
         action="store_true",
         help="Print OK rows in addition to problems.",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        dest="self_test",
+        help="Mutation-test the classifiers this gate depends on and exit.",
+    )
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     gates = load_gates()
     if gates is None:
@@ -551,7 +910,26 @@ def main() -> int:
         )
     )
     # Inverse gap: a workflow that RUNS but is absent from the inventory.
-    undocumented_live = sorted(live_files - inventory_files)
+    # Computed after the misplaced split below and excluding those files: a config
+    # that can never be triggered is not "a live workflow nobody documented", and
+    # reporting it under both headings would double-count one defect while pointing
+    # half the readers at the wrong fix.
+    misplaced: list[tuple[str, str]] = []
+    for name in sorted(live_files):
+        ok, why = looks_like_actions_workflow(WORKFLOWS_DIR / name)
+        if not ok:
+            misplaced.append((name, why))
+    undocumented_live = sorted(
+        live_files - inventory_files - {n for n, _ in misplaced}
+    )
+    # Hook steps with no manifest record at all -- the blind spot, not a lie.
+    orphans = hook_step_orphans(gates)
+    # Active manifest entries that cite no CI job and give no reason. The mirror of
+    # `orphans`: an orphan is a step the manifest never saw, this is a gate the manifest
+    # claims to track while recording nothing about whether anything enforces it.
+    unrecorded = unrecorded_active_gates(gates)
+    # Hook prose pointing at a workflow GitHub never runs.
+    pointers = hook_workflow_pointers()
 
     # ── 3. Gate vocabulary: manifest → runners ──────────────────────
     sh_gates = check_sh_gates(CHECK_SH) if CHECK_SH.is_file() else set()
@@ -561,16 +939,23 @@ def main() -> int:
     for gate in gates:
         gid, label = gate["id"], gate["label"]
         runners = gate.get("runners") or {}
-        sh_needles = tuple(runners.get("check.sh") or ())
-        ui_needles = tuple(runners.get("check:all") or ())
-        if sh_needles and not has_needle(sh_gates, sh_needles):
-            gate_problems.append(
-                f"manifest gate '{gid}' ({label}) not declared in scripts/check.sh"
-            )
-        if ui_needles and not has_needle(ui_gates, ui_needles):
-            gate_problems.append(
-                f"manifest gate '{gid}' ({label}) not declared in check:all"
-            )
+        sh_needles = tuple(n.lower() for n in (runners.get("check.sh") or ()))
+        ui_needles = tuple(n.lower() for n in (runners.get("check:all") or ()))
+        for src, needles, pool, present in (
+                ("scripts/check.sh", sh_needles, sh_gates, CHECK_SH.is_file()),
+                ("check:all", ui_needles, ui_gates, CHECK_UI.is_file())):
+            if not needles:
+                continue
+            if not present:
+                gate_problems.append(
+                    f"manifest gate '{gid}' ({label}) names runners for {src}, "
+                    f"which does not exist")
+                continue
+            for miss in missing_needles(pool, needles):
+                gate_problems.append(
+                    f"manifest gate '{gid}' ({label}) declares runner {miss!r} "
+                    f"for {src}, but no step there matches it -- the label was "
+                    f"either renamed or the step deleted")
 
     # Informational: labels the runners declare that no manifest gate covers.
     all_sh_needles = {
@@ -810,6 +1195,62 @@ def main() -> int:
         )
         print("    " + ", ".join(sorted(retired_gates)))
         print()
+    if orphans:
+        print(
+            f"  PRE-COMMIT STEPS WITH NO gates.json RECORD — {len(orphans)}:\n"
+            "    gates.json is the declared source of truth for gate names, and this\n"
+            "    checker only polices gates it can see. A step absent from the\n"
+            "    manifest is therefore unreportable by design -- which is how\n"
+            "    bundle-parity ran for a release cycle with no record, no CI job and\n"
+            "    no check.sh step while this file printed 0 drift."
+        )
+        for o in orphans:
+            print(f"    {o}")
+        print()
+    if unrecorded:
+        print(
+            f"  ACTIVE GATES WITH NO CI JOB AND NO REASON — {len(unrecorded)}:\n"
+            "    An absent `ci` mapping is not itself wrong: several gates here are\n"
+            "    legitimately local-only (a11y is advisory with known open\n"
+            "    regressions; e2e needs a Docker backend CI does not provision).\n"
+            "    What is wrong is silence -- an entry that says `required`, cites no\n"
+            "    job and explains nothing is indistinguishable from the two that went\n"
+            "    unenforced for two releases (migration column types, PG schema\n"
+            "    drift), which AGENTS.md records as the reason this manifest exists.\n"
+            "    Fix by naming the job, or by adding a `_note` saying why there is\n"
+            "    none. Either answer is acceptable; having no answer is not."
+        )
+        for u in unrecorded:
+            print(f"    {u}")
+        print()
+    if pointers:
+        print(
+            f"  HOOK COMMENTS CITING A DEAD WORKFLOW — {len(pointers)}:\n"
+            "    These comments exist to tell an agent that a local step has a CI\n"
+            "    backstop. When the cited workflow is retired the claim inverts: the\n"
+            "    gate looks enforced nowhere even when dev-ci.yml runs it today, and\n"
+            "    the reverse reading is worse -- an agent that greps the cited name,\n"
+            "    finds only a .bak, and stops looking may conclude the hook step is\n"
+            "    unbacked and skip reasoning about it entirely. Several rounds of the\n"
+            "    0.0.36 backlog went to re-verifying coverage that was present all\n"
+            "    along, because of exactly this kind of stale pointer."
+        )
+        for p in pointers:
+            print(f"    {p}")
+        print()
+    if misplaced:
+        print(
+            f"  NON-ACTIONS CONFIGS IN .github/workflows/ — {len(misplaced)}:\n"
+            "    GitHub parses every *.yml in this directory as an Actions workflow,\n"
+            "    so a config for another CI system here is shown as an errored\n"
+            "    workflow that can never run. The fix is to MOVE the file, not to\n"
+            "    document it — adding an inventory row would record the mistake as\n"
+            "    if it were intended."
+        )
+        for name, why in misplaced:
+            print(f"    {name}\n      {why}")
+            print(f"      -> move it out of .github/workflows/ (e.g. .circleci/config.yml)")
+        print()
     if undocumented_live:
         print(
             f"  UNDOCUMENTED LIVE WORKFLOWS (executed by GitHub, absent from the "
@@ -869,6 +1310,25 @@ def main() -> int:
         + len(docs_status_problems)
         + len(unlabelled_retired)
         + len(undocumented_live)
+        # A non-Actions config sitting in .github/workflows/ is blocking, not
+        # informational: GitHub shows it as an errored workflow, and the existing
+        # "undocumented live workflow" line would misreport it as a docs gap.
+        + len(misplaced)
+        # Blocking: an unrecorded step is the one defect this checker could not
+        # previously express at all, so leaving it informational would restore the
+        # blind spot under a heading that says "informational".
+        + len(orphans)
+        # Blocking for the same reason as orphans: a wrong pointer is not a stale
+        # comment, it is a claim about enforcement that is now false, and this file's
+        # whole purpose is that such claims be checkable rather than remembered.
+        + len(pointers)
+        # Blocking, on the same grounds as orphans and pointers. It arrives red on five
+        # entries, which is the honest state: each is a gate the manifest tracks while
+        # recording nothing about its enforcement. All five are then answered -- four by a
+        # `_note` saying the gate is local-only and why, one by the CI job it actually has
+        # -- so the check is green in the same commit that introduces it and cannot be
+        # dismissed as a gate written to be bypassed.
+        + len(unrecorded)
         # Escalated from informational to blocking. It was informational while it
         # compared against ci.yml's jobs, i.e. while it could never find anything;
         # pointed at the live workflows it immediately found four undocumented

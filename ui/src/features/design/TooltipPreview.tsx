@@ -437,7 +437,7 @@ export default function TooltipPreview() {
                 <Tooltip content="Backend connected" position="top">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)', boxShadow: '0 0 4px var(--color-success)', display: 'inline-block' }} />
-                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-fg-secondary)' }}>OZ-POS v0.0.36</span>
+                    <span style={{ fontSize: '0.625rem', fontWeight: 600, color: 'var(--color-fg-secondary)' }}>OZ-POS v0.0.37</span>
                   </div>
                 </Tooltip>
 

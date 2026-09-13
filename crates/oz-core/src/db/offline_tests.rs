@@ -1,4 +1,5 @@
 use super::*;
+use crate::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use crate::migrations;
 use rusqlite::Connection;
 
@@ -898,4 +899,351 @@ fn status_summary_debug_output() {
     let debug = format!("{summary:?}");
     assert!(debug.contains("pending_count: 1"));
     assert!(debug.contains("synced_count: 2"));
+}
+
+// ── COR-20 degradation visibility (2026-09-06) ─────────────────────
+
+#[test]
+fn query_or_none_passes_through_a_real_value() {
+    let got = query_or_none("test", Ok("2026-09-06T00:00:00Z".into()));
+    assert_eq!(got.as_deref(), Some("2026-09-06T00:00:00Z"));
+}
+
+#[test]
+fn query_or_none_treats_empty_result_as_silent_none() {
+    // The normal "no rows" answer must NOT be logged as a degradation —
+    // an empty queue is the expected common case for last_synced_at and
+    // oldest_pending_at.
+    let got = query_or_none("test", Err(rusqlite::Error::QueryReturnedNoRows));
+    assert_eq!(got, None);
+}
+
+#[test]
+fn query_or_none_degrades_real_db_errors_to_none() {
+    // Same observable result as the empty case (None) but the log path —
+    // a real failure must not be silently indistinguishable in the log.
+    let err = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some("boom".into()));
+    let got = query_or_none("test", Err(err));
+    assert_eq!(got, None);
+}
+
+#[test]
+fn status_summary_empty_db_returns_defaults_not_error() {
+    // Regression pin for the QueryReturnedNoRows separation: with no rows at all,
+    // the summary must still return Ok with zeros/None (the pre-fix .ok()
+    // did this by conflation; the fix must not turn empty into Err).
+    let conn = fresh();
+    let s = store(&conn);
+    let summary = s
+        .offline_queue_status_summary()
+        .expect("empty summary must be Ok");
+    assert_eq!(summary.pending_count, 0);
+    assert_eq!(summary.synced_count, 0);
+    assert_eq!(summary.failed_count, 0);
+    assert_eq!(summary.total_retry_count, 0);
+    assert_eq!(summary.last_synced_at, None);
+    assert_eq!(summary.oldest_pending_at, None);
+    assert_eq!(summary.conflict_count, 0);
+}
+
+#[test]
+fn status_summary_timestamps_survive_after_mark_synced() {
+    // The Ok path of query_or_none must still surface real timestamps —
+    // guarding against the separation accidentally dropping values.
+    let conn = fresh();
+    let s = store(&conn);
+    let item = s.enqueue_offline("sale.create", "{}").unwrap();
+    assert!(
+        s.offline_queue_status_summary()
+            .unwrap()
+            .oldest_pending_at
+            .is_some()
+    );
+    s.mark_offline_synced(&item.id).unwrap();
+    let summary = s.offline_queue_status_summary().unwrap();
+    assert!(
+        summary.last_synced_at.is_some(),
+        "synced_at must surface via query_or_none Ok path"
+    );
+    assert_eq!(summary.oldest_pending_at, None, "no pending items left");
+}
+
+#[test]
+fn test_enqueue_offline_fails_when_subscription_read_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Update the seeded bootstrap subscription to Plus, expiring 30 days ago (past the 14-day offline grace period).
+    let past_expiry = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![past_expiry],
+    )
+    .unwrap();
+
+    let err = s.enqueue_offline("sale.create", "{}").unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionReadOnly(_)),
+        "expected SubscriptionReadOnly error, got: {err:?}"
+    );
+
+    // Verify queue remains empty.
+    let items = s.list_all_offline().unwrap();
+    assert_eq!(
+        items.len(),
+        0,
+        "no offline items may be enqueued when POS is read-only"
+    );
+}
+
+// ── Transactional outbox primitive ──────────────────────────────
+
+/// The row written by `enqueue_offline_in_tx` must live or die with the
+/// caller's transaction - that IS the fix for the commit-then-enqueue loss
+/// window. Rolled back: no queue row, so a settlement that never happened
+/// can never be pushed.
+#[test]
+fn enqueue_offline_in_tx_rolls_back_with_its_transaction() {
+    let conn = fresh();
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::enqueue_offline_in_tx(
+            &tx,
+            "complete_sale",
+            "{\"sale_id\":\"s-9\"}",
+            "store-7",
+            SyncPriority::Critical,
+        )
+        .unwrap();
+        // Visible inside the same transaction, and only there.
+        let inside: i64 = tx
+            .query_row("SELECT COUNT(*) FROM offline_queue", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(inside, 1);
+        drop(tx); // rusqlite rolls back a dropped transaction
+    }
+    let after: i64 = conn
+        .query_row("SELECT COUNT(*) FROM offline_queue", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        after, 0,
+        "a rolled-back settlement must leave no outbox row"
+    );
+}
+
+/// Committed: the row is there, with the tenant it was given and the
+/// priority tier the sale lane needs. The tenant is the part worth pinning -
+/// `enqueue_offline_priority` hardcodes "default", so a helper that silently
+/// did the same would reintroduce the multi-store bug this one avoids.
+#[test]
+fn enqueue_offline_in_tx_commits_with_its_transaction_and_keeps_the_tenant() {
+    let conn = fresh();
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::enqueue_offline_in_tx(
+            &tx,
+            "complete_sale",
+            "{\"sale_id\":\"s-8\"}",
+            "store-7",
+            SyncPriority::Critical,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    }
+    let (tenant, priority, status): (String, i32, String) = conn
+        .query_row(
+            "SELECT tenant_id, priority, status FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        tenant, "store-7",
+        "the real tenant, not a hardcoded default"
+    );
+    assert_eq!(priority, SyncPriority::Critical as i32);
+    assert_eq!(status, "pending");
+}
+
+// ── Wired settlement doors write the outbox row in-transaction ──
+
+fn money(minor: i64) -> crate::Money {
+    crate::Money {
+        minor_units: minor,
+        currency: "USD".parse().unwrap(),
+    }
+}
+
+fn seed_item(conn: &Connection, sku: &str, stock: i64) {
+    let s = store(conn);
+    s.create_product(sku, sku, money(500), None, None, 0, Some("retail"))
+        .unwrap();
+    if stock > 0 {
+        // adjust_stock is deprecated (single-column path); the canonical
+        // successor needs a tx + location, same shape as the products_tests
+        // shim. Seed data uses the canonical default location.
+        let tx = conn.unchecked_transaction().unwrap();
+        let loc = LocationId::from(CANONICAL_DEFAULT_LOCATION_UUID);
+        s.adjust_stock_at_location_with_reason(&tx, sku, stock, &loc, None, None, None, None)
+            .unwrap();
+        tx.commit().unwrap();
+    }
+}
+
+fn sale_with_one_line(sku: &str, qty: i64, unit_minor: i64) -> crate::Sale {
+    let id = uuid::Uuid::now_v7().to_string();
+    let line_id = uuid::Uuid::now_v7().to_string();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let total = unit_minor * qty;
+    crate::Sale {
+        id: id.clone(),
+        status: crate::SaleStatus::Pending,
+        total: money(total),
+        currency: "USD".parse().unwrap(),
+        line_count: 1,
+        payment_method: Some("cash".into()),
+        tendered_minor: Some(total),
+        discount_percent: 0,
+        discount_label: None,
+        user_id: None,
+        created_at: now.clone(),
+        updated_at: now,
+        subtotal: money(total),
+        tax_total: money(0),
+        customer_id: None,
+        base_currency: None,
+        base_total_minor: None,
+        tender_rate_millionths: None,
+        tip_minor: 0,
+        service_charge_minor: 0,
+        version: 1,
+        lines: vec![crate::SaleLine {
+            id: line_id,
+            sale_id: id,
+            sku: sku.into(),
+            qty,
+            unit_price: money(unit_minor),
+            line_total: money(total),
+            line_position: 1,
+            tax_amount: money(0),
+            tax_rate_id: None,
+            tax_breakdown_json: None,
+            serial_number: None,
+            course: None,
+            modifiers_json: None,
+        }],
+    }
+}
+
+fn split(amount: i64, key: Option<&str>) -> crate::PaymentSplitArg {
+    crate::PaymentSplitArg {
+        method: "cash".into(),
+        amount_minor: amount,
+        gateway_reference: None,
+        gateway_status: None,
+        gateway_response: None,
+        idempotency_key: key.map(str::to_string),
+    }
+}
+
+fn outbox_rows(conn: &Connection, sale_id: &str) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM offline_queue WHERE action = 'complete_sale' AND instr(payload, ?1) > 0",
+        rusqlite::params![format!("\"sale_id\":\"{sale_id}\"")],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// A committed settlement through the main checkout door must leave EXACTLY
+/// ONE queue row - the in-transaction one - and the handler's probe must see
+/// it, which is what stops the second row. Two rows would push the sale twice.
+#[test]
+fn wired_settlement_leaves_exactly_one_outbox_row() {
+    let conn = fresh();
+    seed_item(&conn, "OUTBOX-A", 5);
+    let s = store(&conn);
+    let sale = sale_with_one_line("OUTBOX-A", 2, 500);
+    let id = sale.id.clone();
+
+    s.complete_sale_deduction(&sale, None, &[split(1000, None)], "user-a", None)
+        .unwrap();
+
+    assert_eq!(outbox_rows(&conn, &id), 1, "the settlement wrote one row");
+    assert!(
+        s.has_pending_outbox_row_for_sale("complete_sale", &id)
+            .unwrap()
+    );
+    let (tenant, priority): (String, i32) = conn
+        .query_row(
+            "SELECT tenant_id, priority FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(tenant, "default", "tenant read from the sale row");
+    assert_eq!(priority, SyncPriority::Critical as i32);
+
+    // The handler's guarded path, run after the commit as the bus does:
+    // it must add nothing.
+    if !s
+        .has_pending_outbox_row_for_sale("complete_sale", &id)
+        .unwrap()
+    {
+        s.enqueue_offline_priority(
+            "complete_sale",
+            &format!("{{\"sale_id\":\"{id}\"}}"),
+            SyncPriority::Critical,
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        outbox_rows(&conn, &id),
+        1,
+        "the handler must not add a second row for a wired lane"
+    );
+}
+
+/// The rollback proof, and it is only possible because the enqueue sits
+/// BEFORE the payment inserts: two splits sharing one idempotency key collide
+/// on the UNIQUE index, the whole transaction rolls back, and the outbox row
+/// that had already been written inside it must be gone with the sale.
+#[test]
+fn rolled_back_settlement_enqueues_nothing() {
+    let conn = fresh();
+    seed_item(&conn, "OUTBOX-B", 5);
+    let s = store(&conn);
+    let sale = sale_with_one_line("OUTBOX-B", 2, 500);
+    let id = sale.id.clone();
+
+    let err = s
+        .complete_sale_deduction(
+            &sale,
+            None,
+            &[split(500, Some("dup-key")), split(500, Some("dup-key"))],
+            "user-a",
+            None,
+        )
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Db(_)), "{err:?}");
+
+    assert_eq!(
+        outbox_rows(&conn, &id),
+        0,
+        "a rolled-back settlement must leave no outbox row"
+    );
+    let sales: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sales WHERE id = ?1",
+            rusqlite::params![&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(sales, 0, "and no sale - the row and the sale die together");
+    assert!(
+        !s.has_pending_outbox_row_for_sale("complete_sale", &id)
+            .unwrap()
+    );
 }

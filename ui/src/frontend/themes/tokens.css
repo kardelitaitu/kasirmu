@@ -56,6 +56,14 @@
   --color-bg-secondary:    #1e293b;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
 
+  /* --color-paper is THEME-INVARIANT on purpose (like the --text-* scale): declared
+     in this :root block only, never overridden per theme. It is the scannable-surface
+     white — QR quiet zones, printed-code surfaces — which must stay #ffffff in dark,
+     light and dark-solid alike, because a scanner rejects a code whose quiet zone
+     follows the theme into near-black. Anything printed on it takes --color-ink, not
+     --color-fg. */
+  --color-paper:           #ffffff;
+
   /* ── Semantic: Text ───────────────────────────────────────── */
   --color-fg:              #e8eaef;
   --color-fg-primary:      #f1f5f9;
@@ -78,6 +86,10 @@
   --color-danger-border:   #FF6B68;
 
   /* ── Semantic: Brand / Accent ─────────────────────────────── */
+  /* ACCENT stays the contrast-managed ladder (WCAG: accent-as-text on
+     bg must hit 4.5:1 — the compliance gate enforces it). The USER's
+     per-theme primary lives in --color-primary below: light #147EFB,
+     dark #1155CC. */
   --color-accent:          #147EFB;
   --color-accent-hover:    #1A8FFF;
   --color-accent-active:   #1168D4;
@@ -89,8 +101,8 @@
   --color-accent-active-fg:#151E2D;
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
-  --color-primary:         #147EFB;
-  --color-primary-soft:    rgba(20, 126, 251, 0.15);
+  --color-primary:         #1155CC;
+  --color-primary-soft:    rgba(17, 85, 204, 0.10);
 
   /* ── Semantic: Links ──────────────────────────────────────── */
   --color-link:            #60a5fa;
@@ -300,6 +312,26 @@
   --color-toast-accent-error:   #ef4444;
   --color-toast-accent-warning: #f59e0b;
   --color-toast-accent-info:    #3b82f6;
+
+  /* ── Settings scope tags (§H, stable across themes) ─────────
+     Component-local palette for the five scope-level pills.
+     Tokenized (not raw values) per themeTokenCompliance; the §H
+     levels are a fixed vocabulary, not themeable states. */
+  --color-scope-organization:        #c084fc;
+  --color-scope-organization-bg:     rgba(168, 85, 247, 0.12);
+  --color-scope-organization-border: rgba(168, 85, 247, 0.25);
+  --color-scope-legal-entity:        #60a5fa;
+  --color-scope-legal-entity-bg:     rgba(59, 130, 246, 0.12);
+  --color-scope-legal-entity-border: rgba(59, 130, 246, 0.25);
+  --color-scope-location:            #34d399;
+  --color-scope-location-bg:         rgba(16, 185, 129, 0.12);
+  --color-scope-location-border:     rgba(16, 185, 129, 0.25);
+  --color-scope-workspace:           #fbbf24;
+  --color-scope-workspace-bg:        rgba(245, 158, 11, 0.12);
+  --color-scope-workspace-border:    rgba(245, 158, 11, 0.25);
+  --color-scope-terminal:            #94a3b8;
+  --color-scope-terminal-bg:         rgba(148, 163, 184, 0.12);
+  --color-scope-terminal-border:     rgba(148, 163, 184, 0.25);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -365,6 +397,8 @@
   --color-danger-border:   #FC3D39;
 
   /* ── Brand / Accent ───────────────────────────────────────── */
+  /* ACCENT = contrast-managed ladder (see :root note). PRIMARY = the
+     user's per-theme brand blue: bright #147EFB on light. */
   --color-accent:          #1155CC;
   --color-accent-hover:    #0E47A8;
   --color-accent-active:   #0C3D94;
@@ -376,8 +410,8 @@
   --color-accent-active-fg:#ffffff;
   --color-accent-subtle-fg:#1a1d23;
   --color-accent-secondary:#2874A6;
-  --color-primary:         #1155CC;
-  --color-primary-soft:    rgba(17, 85, 204, 0.10);
+  --color-primary:         #147EFB;
+  --color-primary-soft:    rgba(20, 126, 251, 0.15);
 
   /* ── Links ────────────────────────────────────────────────── */
   --color-link:            #1155CC;
@@ -506,6 +540,8 @@
   --color-border-subtle:   rgba(255, 255, 255, 0.06);
 
   /* ── Brand / Accent ───────────────────────────────────────── */
+  /* Explicit dark block mirrors :root (contrast-managed accent ladder;
+     user's primary blue in --color-primary). */
   --color-accent:          #147EFB;
   --color-accent-hover:    #1A8FFF;
   --color-accent-active:   #1168D4;
@@ -517,7 +553,7 @@
   --color-accent-active-fg:#151E2D;
   --color-accent-subtle-fg:#e8eaef;
   --color-accent-secondary:#1A8FFF;
-  --color-primary:         #147EFB;
+  --color-primary:         #1155CC;
 
   /* ── Links ────────────────────────────────────────────────── */
   --color-link:            #1A8FFF;
@@ -561,20 +597,36 @@
 }
 
 /* ── Smooth theme transitions ──────────────────── */
+/* Perf note (round AI): this rule deliberately animates ONLY paint-cheap
+   color properties. box-shadow and backdrop-filter were removed — both
+   repaint the full element every frame, and on card-heavy screens (KDS
+   board) the 200ms crossfade dropped frames behind the theme toggle's
+   own click feedback. Shadows and blurs now snap with the new theme. */
 html.is-theme-transitioning *,
 html.is-theme-transitioning *::before,
 html.is-theme-transitioning *::after {
   transition-property: color, background-color, border-color,
-    box-shadow, text-decoration-color, backdrop-filter !important;
+    text-decoration-color !important;
   transition-duration: var(--duration-200) !important;
   transition-timing-function: var(--ease-out) !important;
+}
+
+/* The KDS theme toggle's pill must keep its own slide while the rest of
+   the document fades: the global rule above replaces the element's
+   transition shorthand mid-flight, cancelling `left` and making the
+   pill teleport on click. Specificity (0,2,1) beats the (0,1,1) rule. */
+html.is-theme-transitioning .kds-theme-indicator {
+  transition:
+    left 280ms cubic-bezier(0.33, 1, 0.68, 1),
+    background-color var(--duration-200) var(--ease-out),
+    border-color var(--duration-200) var(--ease-out) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: var(--duration-0) !important;
-    animation-duration: var(--duration-0) !important;
+    transition: none;
+    animation: none;
   }
 }

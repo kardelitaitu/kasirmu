@@ -100,6 +100,13 @@ const SCREENS: ScreenEntry[] = [
     name: 'StaffManagementScreen',
     tsx: 'staff/StaffManagementScreen.tsx',
     css: ['staff/StaffManagementScreen.css'],
+    // The Agent 3 extraction moved the table/drawer/assignment JSX into
+    // components/*.tsx; they share the screen's stylesheet (global classes).
+    additionalTsx: [
+      'staff/components/StaffListTable.tsx',
+      'staff/components/StaffDetailDrawer.tsx',
+      'staff/components/RoleAssignmentMatrix.tsx',
+    ],
   },
 
   // ── Setup ─────────────────────────────────────────────
@@ -171,28 +178,53 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'KdsScreen',
     tsx: 'kds/KdsScreen.tsx',
-    css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css'],
+    css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css', 'kds/components/ModifierBadge.css'],
     dynamicClassPrefixes: [
+      // Static array of complete names in KdsLayoutMasonry.tsx:70.
       'kds-column--',
+      // `kds-ticket kds-ticket--${level}` in KdsTicketCard.tsx:271.
       'kds-ticket',
+      // Built in AppShell.tsx, outside this screen's own file -- which is why a
+      // KdsScreen-scoped search calls this stale and is wrong.
       'kds-workspace',
-      'kds-history-card-status--',
-      'kds-shortcut-',
-      'kds-shortcuts-',
+      // `status status--${order.status}` in KdsTicketCard.tsx:307.
       'status--',
+      // `kds-main-track active-${activeTab}` in KdsScreen.tsx:627, resolving to
+      // .active-open / .active-completed, both defined. One template literal
+      // without this entry produces THREE findings: the fragment `active-` reads
+      // as unstyled, and both real rules read as dead.
       'active-',
-      'kds-main-pane--',
+      // REMOVED, with the orphaned rules they were hiding:
+      //   'kds-shortcut-', 'kds-shortcuts-'  -- the shortcuts popover was deleted
+      //     from the markup in ccc932c4; nothing in ui/src names either prefix, so
+      //     these muted five unreachable rules. A prefix entry suppresses BOTH
+      //     directions of the check, so one matching nothing is a permanent mute
+      //     over that whole name family.
+      //   'kds-history-card-status--' -- 0 CSS rules and 0 references outside
+      //     this test file: an entry that outlived the code it excused.
+      //   'kds-main-pane--' -- both uses are complete static literals, not
+      //     dynamic, so this was the wrong category; and a28edfda added the CSS,
+      //     so the classes are genuinely styled and need no exemption.
     ],
     externalClasses: [
       'kds-empty',
+      // `document.body.classList.toggle('no-anim', …)` at KdsScreen.tsx:127. A
+      // body class is outside the component subtree the parser walks, and seven
+      // rules are keyed on it.
       'no-anim',
-      'leaving',
-      'kds-moving',
+      // REMOVED: 'leaving' and 'kds-moving' were listed as "defined in another
+      // stylesheet", but both were defined in THIS one and applied by nothing --
+      // the wrong category used to silence a real finding. `leaving` in
+      // particular is a trap: a substring search returns 16 non-test hits, all of
+      // them `const [leaving, setLeaving] = useState(false)` in
+      // features/sales/PaymentModal.tsx plus prose, none of them a className.
     ],
     knownDynamicFragments: [
       'completed',
       'dark',
       'light',
+      // Members of `useState<'all' | 'dinein' | 'takeaway'>` at
+      // KdsScreen.tsx:111 -- TypeScript string-literal TYPES, never class names.
       'dinein',
       'takeaway',
       'active-',
@@ -201,14 +233,40 @@ const SCREENS: ScreenEntry[] = [
       // Global screen-reader-only utility (frontend/themes/components.css),
       // outside this screen's scanned stylesheet list.
       'sr-only',
+      // Ternary COMPARISON values inside ModifierBadge.tsx's className
+      // template (`tone === 'removal' ? ' kds-modifier-badge--removal' : …`).
+      // The parser fishes every quoted string out of a className template,
+      // so the bare tone names read as class names. Same category as the
+      // 'dinein'/'takeaway' entries above: data, not selectors.
+      'removal',
+      'addition',
     ],
     additionalTsx: [
       'kds/KdsLayoutMasonry.tsx',
       'kds/components/KdsTicketCard.tsx',
+      'kds/components/ModifierBadge.tsx',
       'kds/KdsCompletedView.tsx',
       'kds/KdsHamburgerPanel.tsx',
       'kds/KdsScreenFooter.tsx',
     ],
+  },
+  {
+    name: 'ExpoScreen',
+    tsx: 'kds/ExpoScreen.tsx',
+    css: ['kds/ExpoScreen.css'],
+    // The station selector shares the Expo sheet (global classes), same
+    // arrangement the StaffManagementScreen/RestaurantMenu entries use.
+    additionalTsx: [
+      'kds/components/StationSelectorModal.tsx',
+    ],
+  },
+  {
+    // Routing-rules editor (todo-kds-agents-1 UI follow-up) — mounted by
+    // KdsHamburgerPanel but styled entirely from its own sheet, so the
+    // classes are checked against THIS entry, not the KdsScreen one.
+    name: 'KdsRoutingRulesEditor',
+    tsx: 'kds/components/KdsRoutingRulesEditor.tsx',
+    css: ['kds/components/KdsRoutingRulesEditor.css'],
   },
 
   // ── Loyalty ───────────────────────────────────────────
@@ -322,20 +380,16 @@ const SCREENS: ScreenEntry[] = [
     dynamicClassPrefixes: ['shift-mgmt-status-badge--', 'shift-mgmt-close-info'],
   },
 
-  // ── Stores ────────────────────────────────────────────
+  // ── Locations (moved from stores/ in the Store→Location rename) ──
   {
     name: 'MultiStoreDashboardScreen',
-    tsx: 'stores/MultiStoreDashboardScreen.tsx',
-    css: ['stores/MultiStoreDashboardScreen.css'],
-    externalClasses: [
-      'multi-store-view-toggle',
-      'multi-store-dashboard-topology-view',
-    ],
+    tsx: 'locations/MultiStoreDashboardScreen.tsx',
+    css: ['locations/MultiStoreDashboardScreen.css'],
   },
   {
     name: 'TerminalStatusPanel',
-    tsx: 'stores/TerminalStatusPanel.tsx',
-    css: ['stores/TerminalStatusPanel.css'],
+    tsx: 'locations/TerminalStatusPanel.tsx',
+    css: ['locations/TerminalStatusPanel.css'],
   },
 
   // ── Tables ────────────────────────────────────────────
@@ -365,6 +419,14 @@ const SCREENS: ScreenEntry[] = [
     name: 'WorkspaceHome',
     tsx: 'workspaces/WorkspaceHome.tsx',
     css: ['workspaces/WorkspaceHome.css'],
+    // The ToolCard/ToolsCategoryGrid extraction (agents-2, 09-13): the
+    // workspace-tool-* classes moved WITH the JSX into these children —
+    // the styles still live in the screen's CSS, so the reachability
+    // walk must read the children to see them.
+    additionalTsx: [
+      'workspaces/components/ToolsCategoryGrid.tsx',
+      'workspaces/components/ToolCard.tsx',
+    ],
     dynamicClassPrefixes: ['ws-color-', 'role-badge--'],
     externalClasses: [
       'workspace-home-user',
@@ -528,6 +590,16 @@ const SCREENS: ScreenEntry[] = [
     css: ['restaurant/RestaurantMenu.css'],
     dynamicClassPrefixes: ['restaurant-hamburger-item--', 'restaurant-card--'],
     externalClasses: ['restaurant-card', 'restaurant-pill-dot'],
+    // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
+    // components/*.tsx; they share the screen's stylesheet (global classes).
+    additionalTsx: [
+      'restaurant/components/MenuItemTile.tsx',
+      'restaurant/components/MenuCategoryTabBar.tsx',
+      'restaurant/components/MenuItemGrid.tsx',
+      'restaurant/components/MenuItemContextMenu.tsx',
+      'restaurant/components/MenuPreferencesMenu.tsx',
+      'restaurant/components/MenuSearchBar.tsx',
+    ],
     knownDynamicFragments: [
       // Global utility from frontend/themes/components.css (not the screen's
       // own stylesheet) — the menu card's visible "Add" label moved into an
@@ -572,6 +644,79 @@ const SCREENS: ScreenEntry[] = [
       'visible',
       'section-loading',
     ],
+  },
+
+  // ── Settings screen scaffolds (rebuild) ────────────────────
+  // Blank placeholders under features/settings/screens/, one file per screen.
+  // They share screens-placeholder.css, so each entry lists that single
+  // companion sheet. The duplicate-class check is scoped to the css list of
+  // one entry, so sharing one stylesheet across entries stays clean.
+  // Each scaffold is swapped for the migrated screen during the settings
+  // campaign, at which point its entry points at that screen's own sheet.
+  {
+    name: 'GeneralScreen',
+    tsx: 'settings/screens/GeneralScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'LicenseSubscriptionScreen',
+    tsx: 'settings/screens/LicenseSubscriptionScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'DevicesConnectivityScreen',
+    tsx: 'settings/screens/DevicesConnectivityScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'BusinessDefaultsScreen',
+    tsx: 'settings/screens/BusinessDefaultsScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'FeaturesModulesScreen',
+    tsx: 'settings/screens/FeaturesModulesScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'SecurityAccountScreen',
+    tsx: 'settings/screens/SecurityAccountScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'DataSyncScreen',
+    tsx: 'settings/screens/DataSyncScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'DataManagementScreen',
+    tsx: 'settings/screens/DataManagementScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'SyncStatusScreen',
+    tsx: 'settings/screens/SyncStatusScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'OfflineQueueScreen',
+    tsx: 'settings/screens/OfflineQueueScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'TaxConfigurationScreen',
+    tsx: 'settings/screens/TaxConfigurationScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'ExchangeRatesScreen',
+    tsx: 'settings/screens/ExchangeRatesScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
+  },
+  {
+    name: 'SystemDiagnosticsScreen',
+    tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
+    css: ['settings/screens/screens-placeholder.css'],
   },
 ];
 
@@ -662,3 +807,43 @@ describe.each(SCREENS)(
     });
   },
 );
+
+// ── The extractor itself ─────────────────────────────────────────
+//
+// Everything above tests the SCREENS against the extractor, so a bug in the extractor
+// shows up as a false finding about a screen rather than as a failure here. That is how
+// the interpolation strip went unnoticed: `body.replace(/\$\{[^}]*\}/g, '')` stopped at
+// the first `}` even when that brace belonged to something nested, and KdsHamburgerPanel
+// :415 embeds `/^#[0-9a-f]{6}$/i` -- a quantifier brace -- inside `${...}`. The residue
+// glued itself to the preceding class name, so `kds-hex-input` was reported DEAD while
+// genuinely in use. These cases pin the behaviour directly, so a future regression fails
+// here with a message about the extractor instead of a misleading one about a screen.
+
+describe('extractUsedClassNames', () => {
+  it('reads a plain static className', () => {
+    expect(extractUsedClassNames('<div className="a b" />')).toEqual(new Set(['a', 'b']));
+  });
+
+  it('keeps the base class when an interpolation contains a regex quantifier', () => {
+    // The exact shape from KdsHamburgerPanel.tsx:415.
+    const src = 'className={`kds-hex-input${hexDraft?.key === key && !/^#[0-9a-f]{6}$/i.test(hexDraft.value) ? \' kds-hex-input--invalid\' : \'\'}`}';
+    const got = extractUsedClassNames(src);
+    expect(got.has('kds-hex-input')).toBe(true);
+    expect(got.has('kds-hex-input--invalid')).toBe(true);
+    // The failure mode was residue, so assert the absence explicitly rather than only
+    // that "something" was found.
+    expect([...got].some((c) => c.includes('0-9a-f'))).toBe(false);
+  });
+
+  it('keeps the base class through nested braces and template-in-interpolation', () => {
+    const src = 'className={`pos-cart-line-wrap${items.map((i) => ` col-${i.n}`)} x`}';
+    const got = extractUsedClassNames(src);
+    expect(got.has('pos-cart-line-wrap')).toBe(true);
+    expect(got.has('x')).toBe(true);
+  });
+
+  it('handles an interpolation that ends the template', () => {
+    const got = extractUsedClassNames('className={`a${cond}`}');
+    expect(got.has('a')).toBe(true);
+  });
+});

@@ -161,6 +161,24 @@ async fn set_plan_unknown_plan_rejected() {
 }
 
 #[tokio::test]
+async fn set_plan_rejects_invalid_tenant_id() {
+    let app = test_app();
+    // Same charset rule as settings.rs — a tenant ID outside `[A-Za-z0-9_-]`
+    // or longer than 64 must be rejected before touching the store. Use an
+    // overlong (65-char) ID: it is URI-safe, so the request builds, and
+    // `valid_tenant` rejects it.
+    let tenant = "t".repeat(65);
+    let uri = format!("/api/v1/tenants/{tenant}/plan");
+    let resp = app
+        .oneshot(put_plan(&uri, r#"{"plan":"pro"}"#, None))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(resp).await;
+    assert_eq!(json["error"], "invalid_tenant");
+}
+
+#[tokio::test]
 async fn set_plan_requires_admin_key_when_configured() {
     let conn = oz_core::migrations::fresh_db();
     let state = AppState {

@@ -2,7 +2,11 @@
 
 - **Audit ID:** 2026-07-12-desktop-app-audit
 - **Status:** All CRITICAL + HIGH findings resolved — **SHIPPABLE TO RELEASE**
-- **Auditor:** RSA-Agent (Buffy) following the [`rust-auditor`](../../.agents/skills/rust-auditor/SKILL.md) framework
+- **Auditor:** RSA-Agent (Buffy) following the `rust-auditor` framework (a
+  harness-provided skill, not versioned in this repo — the previous form was a
+  link to `.agents/skills/rust-auditor/SKILL.md`, which has never existed here;
+  `.agents/skills/` ships `rust-backend`, `tdd`, `tauri-ipc` and others, but not
+  that one)
 - **Audit date:** 12-07-26
 - **C-1 closure:** closed in Epic X-3 PR (see §11) — exchange rates converted end-to-end to `i64` millionths.
 - **H-1/H-2/H-3 closure:** closed in 0.0.23 (see §12) — LAN retry, sync pull safety, brand logo validation all resolved.
@@ -48,7 +52,7 @@ pub rate: f64,                       // line 54, CreateExchangeRateArgs
 if args.rate <= 0.0 { /* reject */ } // line 65 — float-comparison validation
 ```
 
-**Why critical:** Violates [`rust-backend` rule #1](../../AGENTS.md#rust-standards) ("Money is always `i64` minor units, never `f32`/`f64`"). Exchange rates feed `Money::checked_add`/`from_major` conversions; their float source contaminates every downstream multiplication. The `<= 0.0` check is also non-deterministic near zero (`1e-20` flips to negative).
+**Why critical:** Violates [`rust-backend` rule #1](../../../AGENTS.md#1-rust-standards) ("Money is always `i64` minor units, never `f32`/`f64`"). Exchange rates feed `Money::checked_add`/`from_major` conversions; their float source contaminates every downstream multiplication. The `<= 0.0` check is also non-deterministic near zero (`1e-20` flips to negative).
 
 **Fix:** Replace `f64` with `i64` minor units (e.g. `rate_millionths` or `rate_scaled_by_1_000_000`). Update `<= 0.0` to `<= 0`. Update the DB column type (`exchange_rate.rate` SQL schema in `oz-core`). Re-validate every consumer (`cart.rs` multi-currency paths, frontend `formatMoney` on cross-currency totals, reporting aggregates).
 
@@ -107,11 +111,13 @@ Tighten incrementally as the audit progresses.
 
 ### C-5 (was H-2) — License API key + machine-id stored plaintext in SQLite
 
-**Location:** `apps/desktop-client/src/commands/license.rs:108` writes `license.payload`, `license.signature`, `license.tenant_id`, `license.api_key` via `Settings::set_batch` into the global settings table. SQLite is plaintext at rest. On Windows any user with file-system access (`%APPDATA%\com.ozpos.app\`) can read the license.
+**Location:** `apps/desktop-client/src/commands/license.rs` writes `license.payload`, `license.signature`, `license.tenant_id`, `license.api_key` via `Settings::set_batch` into the global settings table. SQLite is plaintext at rest. ~~On Windows any user with file-system access (`%APPDATA%\com.ozpos.app\`) can read the license.~~
+
+> **CORRECTION 2026-09-12 — true when written, incomplete now, and it understates in one direction while the fix overstates in the other. Measured:** the **database file is still not encrypted** — no whole-file layer exists (see the correction in ADR #4 §5 and the NEVER ADOPTED banner on `docs/archived/sqlcipher-migration-plan.md`) — but **some columns are**. Since `e105109f6` (2026-08-29, `security(H-5): extract oz-crypto crate + transparent secret encryption at rest`) `license.api_key` is stored as ciphertext bound to the machine id: `crates/oz-bridge/src/license.rs` encrypts before the write and decrypts on read, so a bare file read now returns sealed bytes for that one key, not the key. `license.payload`, `license.signature` and `license.tenant_id` are still plaintext in the file, as is **any `license.api_key` row written before 2026-08-29** — the read path passes legacy plaintext straight through (see ADR #4 §5), so the exposure this finding describes is closed for new writes and open for old ones. So: whole-file encryption, no; field-level encryption of named secrets, yes; and "anyone with the file can read the license" is now true only of the non-secret license fields and of pre-`e105109f6` rows.
 
 **Why critical:** With machine-id (60-bit entropy) guessable and the API key extracted via local file read, an attacker can mint a cloned license bound to a different machine and exfiltrate tenant-API access. This is a one-step credential-exfiltration primitive — local-file read yields full tenant takeover. Promoted from HIGH to CRITICAL after reviewer pass.
 
-**Fix:** (1) Encrypt SQLite at rest with SQLCipher (rusqlite `bundled-sqlcipher` feature); (2) move API key to OS credential store via the `keyring` crate; (3) bump machine-id entropy to ≥128 bits and re-key license on machine identity change.
+**Fix:** (1) ~~Encrypt SQLite at rest with SQLCipher (rusqlite `bundled-sqlcipher` feature)~~ **never adopted — 2026-09-12: no `Cargo.toml` in this workspace mentions sqlcipher in any form and the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`; the shipped substitute is field-level encryption of the API key via `crates/oz-crypto`, which is a different and weaker thing than this clause promises.** (2) ~~move API key to OS credential store via the `keyring` crate~~ **not done either: `keyring` appears in no manifest, and `license.api_key` still lives in the SQLite settings table, encrypted — `crates/oz-bridge/src/license.rs` writes it through `Settings::set_batch`; `oz_security::Keyring` is used for other material, not for this key** ; (3) bump machine-id entropy to ≥128 bits and re-key license on machine identity change.
 
 **Severity:** CRITICAL — local-file → license takeover.
 
@@ -328,7 +334,7 @@ All CRITICAL and HIGH findings are now resolved across the 0.0.22 / 0.0.23 relea
 2. ~~**C-1** — Exchange rates to `i64` millionths.~~ **CLOSED in Epic X-3 (see §11).**
 3. ~~**C-3** — CSP enabled in `tauri.conf.json`.~~ **CLOSED.**
 4. ~~**C-4** — LAN default-bind to `127.0.0.1` + PSK gate.~~ **CLOSED.**
-5. ~~**C-5** — License key moved to OS credential store via `oz-security` crate.~~ **CLOSED.**
+5. ~~**C-5** — License key moved to OS credential store via `oz-security` crate.~~ **CLOSED — but CLOSED AS SOMETHING ELSE, corrected 2026-09-12:** the key was never moved to the OS credential store (it is still a row in the SQLite `settings` table, written by `crates/oz-bridge/src/license.rs` through `Settings::set_batch`); what shipped is that the row's value is encrypted at rest and bound to the machine id. The `oz_security::Keyring` surface this line credits exists and is used for other material, so the closure was recorded against the wrong mechanism — and the whole-file encryption the finding's own fix asked for was never adopted at all.
 6. ~~**H-1** — LAN handler bounded retry loop.~~ **CLOSED.**
 7. ~~**H-2** — Sync pull `confirm_destructive` + backup.~~ **CLOSED.**
 8. ~~**H-3** — Brand logo path validation.~~ **CLOSED.**
@@ -346,7 +352,7 @@ Remaining items (M-1 through M-6) are MEDIUM-priority backlog.
 
 ---
 
-## 9. Audit stamps applied (Phase 4) — per [`rust-auditor` skill](../../.agents/skills/rust-auditor/SKILL.md)
+## 9. Audit stamps applied (Phase 4) — per the `rust-auditor` skill (harness-provided, not in-repo; see the note in §1)
 
 | File                                                  | Status  | Lint   |
 |-------------------------------------------------------|---------|--------|

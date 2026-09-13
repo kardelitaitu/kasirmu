@@ -715,3 +715,524 @@ fn log_audit_keeps_non_secret_json_intact() {
     assert!(entries[0].details.contains("1000"));
     assert!(!entries[0].details.contains("[REDACTED]"));
 }
+
+// ── Tier audit retention sweep (todo-global-saas-2.md P1) ───────
+
+use crate::subscription::SubscriptionTier;
+
+/// Insert an audit row with an explicit RFC3339 timestamp and id.
+fn insert_audit_at(conn: &Connection, id: &str, created_at: &str) {
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, details, outcome, created_at)
+         VALUES (?1, 'sweeper-test', 'sale.void', '{}', 'success', ?2)",
+        rusqlite::params![id, created_at],
+    )
+    .unwrap();
+}
+
+/// Count rows in audit_log.
+fn audit_count(conn: &Connection) -> i64 {
+    conn.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0))
+        .unwrap()
+}
+
+/// The sweep must leave the trigger marker disarmed after every path.
+fn marker_count(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM settings WHERE key = 'audit.retention_sweep_active'",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+#[test]
+fn audit_retention_row_inside_window_survives() {
+    let conn = fresh();
+    let s = store(&conn);
+    // Plus = 90 days. `now` is far in the future of the seeded timestamps;
+    // a row 10 days old is inside the window.
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-win", "2099-12-22T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, now)
+        .unwrap();
+    assert_eq!(deleted, 0, "nothing is past the Plus window");
+    assert_eq!(audit_count(&conn), 1);
+    assert_eq!(marker_count(&conn), 0, "marker must not linger");
+}
+
+#[test]
+fn audit_retention_row_outside_window_is_swept() {
+    let conn = fresh();
+    let s = store(&conn);
+    // Plus = 90 days: a row 91 days old is out, a row 89 days old is in.
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-old", "2099-10-02T00:00:00.000Z");
+    insert_audit_at(&conn, "aud-new", "2099-10-04T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, now)
+        .unwrap();
+    assert_eq!(deleted, 1, "only the 91-day-old row is past the window");
+    assert_eq!(audit_count(&conn), 1);
+    let remaining = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(remaining[0].id, "aud-new");
+    assert_eq!(marker_count(&conn), 0);
+}
+
+#[test]
+fn audit_retention_window_is_measured_from_event_timestamp() {
+    // The schedule is measured from the EVENT timestamp, not from row
+    // insertion order: insert the IN-WINDOW row first and the EXPIRED row
+    // second (higher rowid, newer in the table) — only the expired one
+    // goes, despite being the most recently inserted.
+    let conn = fresh();
+    let s = store(&conn);
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-in-window", "2099-12-22T00:00:00.000Z");
+    insert_audit_at(&conn, "aud-expired-but-late", "2099-01-01T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, now)
+        .unwrap();
+    assert_eq!(deleted, 1, "event timestamp, not insertion order, decides");
+    let remaining = s.list_audit_entries(10, 0).unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, "aud-in-window");
+    assert_eq!(marker_count(&conn), 0);
+}
+
+#[test]
+fn audit_retention_per_tier_windows() {
+    // One row exactly N days + 1ms old is expired for every tier with a
+    // shorter window and survives for every tier with a longer one.
+    let cases: &[(SubscriptionTier, &str, usize)] = &[
+        // 200 days old: Plus(90) and Pro(180) sweep it;
+        // Premium(365)/Enterprise(1095) keep it.
+        (SubscriptionTier::Plus, "2099-06-15T00:00:00.000Z", 1),
+        (SubscriptionTier::Pro, "2099-06-15T00:00:00.000Z", 1),
+        (SubscriptionTier::Premium, "2099-06-15T00:00:00.000Z", 0),
+        (SubscriptionTier::Enterprise, "2099-06-15T00:00:00.000Z", 0),
+    ];
+    for (tier, ts, expected) in cases {
+        let conn = fresh();
+        let s = store(&conn);
+        insert_audit_at(&conn, "aud-tier", ts);
+        let deleted = s
+            .sweep_audit_retention(tier, "2100-01-01T00:00:00.000Z")
+            .unwrap();
+        assert_eq!(
+            deleted, *expected,
+            "tier {:?} swept {deleted} rows, expected {expected}",
+            tier
+        );
+        assert_eq!(marker_count(&conn), 0);
+    }
+}
+
+#[test]
+fn audit_retention_free_purges_everything() {
+    // Free has NO retention entitlement: every row goes, regardless of
+    // age ("Free has no tenant-facing audit logs").
+    let conn = fresh();
+    let s = store(&conn);
+    let now = "2100-01-01T00:00:00.000Z";
+    insert_audit_at(&conn, "aud-fresh", now); // brand new — still purged
+    insert_audit_at(&conn, "aud-ancient", "2019-01-01T00:00:00.000Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Free, now)
+        .unwrap();
+    assert_eq!(deleted, 2);
+    assert_eq!(audit_count(&conn), 0);
+    assert_eq!(marker_count(&conn), 0);
+}
+
+#[test]
+fn audit_retention_sweep_is_noop_when_nothing_expired() {
+    let conn = fresh();
+    let s = store(&conn);
+    // Empty-table fast path (paid tier, nothing at all).
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Enterprise, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(deleted, 0);
+    // Free on an empty table also fast-paths (no transaction, no marker).
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Free, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(deleted, 0);
+
+    // Non-empty table, nothing past the cutoff (paid tier): the row 1ms
+    // inside the Enterprise window survives.
+    insert_audit_at(&conn, "aud-live", "2099-12-31T23:59:59.999Z");
+    let deleted = s
+        .sweep_audit_retention(&SubscriptionTier::Enterprise, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(deleted, 0);
+    assert_eq!(audit_count(&conn), 1);
+    assert_eq!(marker_count(&conn), 0, "no sweep left a marker behind");
+}
+
+#[test]
+fn audit_retention_sweep_is_idempotent() {
+    let conn = fresh();
+    let s = store(&conn);
+    insert_audit_at(&conn, "aud-x", "2099-01-01T00:00:00.000Z");
+    let first = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    let second = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, "2100-01-01T00:00:00.000Z")
+        .unwrap();
+    assert_eq!(first, 1);
+    assert_eq!(second, 0, "second sweep finds nothing to do");
+}
+
+#[test]
+fn audit_retention_trigger_still_blocks_direct_delete() {
+    // The carve-out is transaction-scoped: a plain DELETE outside a live
+    // sweep must still hit the immutability trigger.
+    let conn = fresh();
+    insert_audit_at(&conn, "aud-locked", "2019-01-01T00:00:00.000Z");
+    let err = conn
+        .execute("DELETE FROM audit_log WHERE id = 'aud-locked'", [])
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("immutable"),
+        "expected the immutability trigger, got: {err}"
+    );
+}
+
+#[test]
+fn audit_retention_update_remains_absolutely_immutable() {
+    // Deletion is the implemented retention policy; UPDATE stays blocked
+    // with NO carve-out (migration 20260920 touches only the DELETE
+    // trigger).
+    let conn = fresh();
+    insert_audit_at(&conn, "aud-frozen", "2019-01-01T00:00:00.000Z");
+    let err = conn
+        .execute(
+            "UPDATE audit_log SET details = '{}' WHERE id = 'aud-frozen'",
+            [],
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("immutable"), "got: {err}");
+}
+
+#[test]
+fn audit_retention_bad_now_timestamp_fails_closed() {
+    let conn = fresh();
+    let s = store(&conn);
+    insert_audit_at(&conn, "aud-badts", "2099-01-01T00:00:00.000Z");
+    let err = s
+        .sweep_audit_retention(&SubscriptionTier::Plus, "not-a-timestamp")
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("bad `now` timestamp"),
+        "got: {err}"
+    );
+    assert_eq!(audit_count(&conn), 1, "nothing deleted on error");
+    assert_eq!(marker_count(&conn), 0);
+}
+
+// ── Filtered export (security-event export, owner ruling D61-7) ──
+
+#[test]
+fn filtered_export_actions_allowlist_restricts_rows() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    // Restricted to the two sale actions.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            Some(&["sale.create", "sale.void"]),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].id, "aud-2");
+    assert_eq!(items[1].id, "aud-1");
+    // Empty allow-list fails CLOSED: a caller that forgets to populate
+    // its allow-list must not be rewarded with every audit row (the
+    // shared WHERE builder's rule, carried into the export).
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(Some(&[]), None, None, None, None, None)
+        .unwrap();
+    assert!(items.is_empty());
+}
+
+#[test]
+fn filtered_export_actor_is_exact_user_id_match() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES ('aud-5', 'user-10', 'sale.create', 'sale', 'sale-10', '{}', 'success', '2025-01-01T15:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    // EXACT match (journal D84 ruling 2): user-1 must not pick up the
+    // user-10 row the way a LIKE filter would.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(None, Some("user-1"), None, None, None, None)
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().all(|e| e.user_id == "user-1"));
+    // 'system' resolves the SYSTEM_ACTOR rows naturally — the column
+    // literal is the value.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(None, Some("system"), None, None, None, None)
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "aud-4");
+}
+
+#[test]
+fn filtered_export_date_bounds_inclusive_after_exclusive_before() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    // created_after is INCLUSIVE: aud-3 sits exactly at 13:00 and IS returned.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            None,
+            None,
+            Some("2025-01-01T13:00:00.000Z".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].id, "aud-4");
+    assert_eq!(items[1].id, "aud-3");
+    // created_before is EXCLUSIVE: aud-4 sits exactly at 14:00 and is NOT.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            None,
+            None,
+            None,
+            Some("2025-01-01T14:00:00.000Z".into()),
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 3);
+    assert!(items.iter().all(|e| e.id != "aud-4"));
+    // Fixed-width strftime values sort lexicographically == chronologically.
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            None,
+            None,
+            Some("2025-01-01T12:05:00.000Z".into()),
+            Some("2025-01-01T13:00:00.000Z".into()),
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "aud-2");
+}
+
+#[test]
+fn filtered_export_combined_filters() {
+    let conn = fresh();
+    seed_audit_entries(&conn);
+    let items = store(&conn)
+        .list_audit_entries_export_filtered(
+            Some(&["sale.create", "product.create"]),
+            Some("user-1"),
+            Some("2025-01-01T12:05:00.000Z".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    // sale.create falls before the `after` bound; product.create survives
+    // actions + actor + date together.
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].id, "aud-3");
+}
+
+// ── In-transaction audit writer (log_audit_in_tx / has_audit_row_for) ──
+//
+// Shared primitive for the settlement doors: write the audit row inside
+// the SAME transaction as the rows it describes (the pattern refunds.rs
+// already uses by hand), and probe it idempotently, so the sale.completed
+// audit row can no longer be lost to a crash between commit and publish
+// on the handler's separate connection.
+//
+// HEAD-failure status, for the whole block: explicitly NOT measured.
+// log_audit_in_tx and has_audit_row_for are introduced by this change, so
+// this file does not compile against HEAD — a missing-symbol compile
+// failure by construction, not a behavioural one. No HEAD run of these
+// tests exists or can exist.
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The success path of the door contract: the audit row enters the
+/// caller's transaction and becomes visible exactly when that transaction
+/// commits, together with whatever else it carried.
+#[test]
+fn log_audit_in_tx_row_persists_after_commit() {
+    let mut conn = fresh();
+    let entry = AuditEntry::new(
+        "", // system-initiated, handler-shaped
+        "sale.completed",
+        Some("sale"),
+        Some("sale-c1"),
+        Some("{\"total_minor\":1500}"),
+        "success",
+    );
+    let tx = conn.transaction().unwrap();
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.commit().unwrap();
+
+    assert_eq!(audit_count(&conn), 1);
+    let stored = store(&conn).list_audit_entries(10, 0).unwrap();
+    assert_eq!(stored[0].action, "sale.completed");
+    assert_eq!(stored[0].user_id, "");
+    assert_eq!(stored[0].target_id.as_deref(), Some("sale-c1"));
+    assert_eq!(stored[0].outcome, "success");
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The atomicity half of the door contract: log_audit_in_tx never writes
+/// outside the caller's transaction. rusqlite rolls a Transaction BACK
+/// when it is dropped without commit, so a settlement that dies mid-way
+/// (panic, error return, crash) leaves no half-written audit row behind.
+/// This is the dropped-transaction case stated honestly: a dropped tx
+/// MUST NOT leave the row visible — a row that survived a dropped
+/// transaction would mean the writer had bypassed the transaction.
+#[test]
+fn log_audit_in_tx_row_vanishes_on_drop_without_commit() {
+    let mut conn = fresh();
+    let entry = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-d1"),
+        Some("{}"),
+        "success",
+    );
+    {
+        let tx = conn.transaction().unwrap();
+        Store::log_audit_in_tx(&tx, &entry).unwrap();
+        // Scope ends with no commit and no rollback: plain drop.
+    }
+    assert_eq!(audit_count(&conn), 0);
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The explicit-rollback twin of the drop test: a settlement that rolls
+/// back deliberately (validation failure after the audit write seat)
+/// takes the audit row down with it.
+#[test]
+fn log_audit_in_tx_row_vanishes_on_explicit_rollback() {
+    let mut conn = fresh();
+    let entry = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-r0"),
+        Some("{}"),
+        "success",
+    );
+    let tx = conn.transaction().unwrap();
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.rollback().unwrap();
+    assert_eq!(audit_count(&conn), 0);
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// AUD-06 through the second writer: details that would leak secrets are
+/// redacted before persistence, exactly as the standalone log_audit
+/// redacts. A door-written row must not become a redaction bypass.
+#[test]
+fn log_audit_in_tx_redacts_sensitive_details() {
+    let mut conn = fresh();
+    let leaky =
+        "{\"sale_id\":\"sale-r1\",\"api_key\":\"sk-live-secret\",\"session_token\":\"tok-123\"}";
+    let entry = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-r1"),
+        Some(leaky),
+        "success",
+    );
+    let tx = conn.transaction().unwrap();
+    Store::log_audit_in_tx(&tx, &entry).unwrap();
+    tx.commit().unwrap();
+
+    let stored = store(&conn).list_audit_entries(10, 0).unwrap();
+    let details = &stored[0].details;
+    assert!(
+        !details.contains("sk-live-secret"),
+        "api_key leaked: {details}"
+    );
+    assert!(
+        !details.contains("tok-123"),
+        "session_token leaked: {details}"
+    );
+    assert!(details.contains("[REDACTED]"), "marker missing: {details}");
+    assert!(
+        details.contains("sale-r1"),
+        "non-secret field lost: {details}"
+    );
+}
+
+/// HEAD-failure: not measurable — the function under test does not exist
+/// at HEAD (compile failure by construction).
+///
+/// The guard contract the doors will rely on: inside ONE transaction the
+/// probe answers false before the write and true after, so the check and
+/// the insert see the same snapshot. Outcome is irrelevant to the probe
+/// (a failure row counts), and a different action or target does not
+/// collide. After commit the same probe, handed the bare connection,
+/// still answers true.
+#[test]
+fn has_audit_row_for_false_before_true_after_in_same_tx() {
+    let mut conn = fresh();
+    let tx = conn.transaction().unwrap();
+
+    assert!(!Store::has_audit_row_for(&tx, "sale.completed", "sale-p1").unwrap());
+
+    let ok = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-p1"),
+        Some("{}"),
+        "success",
+    );
+    Store::log_audit_in_tx(&tx, &ok).unwrap();
+    assert!(Store::has_audit_row_for(&tx, "sale.completed", "sale-p1").unwrap());
+
+    // Outcome is irrelevant: a failure-outcome row satisfies the probe.
+    let failed = AuditEntry::new(
+        "",
+        "sale.completed",
+        Some("sale"),
+        Some("sale-p2"),
+        Some("{}"),
+        "failure",
+    );
+    Store::log_audit_in_tx(&tx, &failed).unwrap();
+    assert!(Store::has_audit_row_for(&tx, "sale.completed", "sale-p2").unwrap());
+
+    // Other action, other target: no collision.
+    assert!(!Store::has_audit_row_for(&tx, "sale.refund", "sale-p1").unwrap());
+    assert!(!Store::has_audit_row_for(&tx, "sale.completed", "sale-p3").unwrap());
+
+    tx.commit().unwrap();
+    assert!(Store::has_audit_row_for(&conn, "sale.completed", "sale-p1").unwrap());
+}

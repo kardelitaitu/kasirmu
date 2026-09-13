@@ -16,6 +16,11 @@ const mockPickImportFile = vi.fn();
 vi.mock('@/api/data', () => ({
   getBackupStatus: () => mockGetBackupStatus(),
   createBackup: () => mockCreateBackup(),
+  // DataManagementScreen routes through these whenever a session token is present (the harness
+  // supplies one), and a missing mock export is a hard error that fails every test in the file
+  // rather than only the scoped ones. See DataManagementBackup.test.tsx for the full rationale.
+  getBackupStatusScoped: (token: string) => mockGetBackupStatus(token),
+  createBackupScoped: (token: string) => mockCreateBackup(token),
   exportData: (args: unknown) => mockExportData(args),
   importPreview: (filePath: string, password: string) => mockImportPreview(filePath, password),
   importData: (filePath: string, password: string) => mockImportData(filePath, password),

@@ -93,4 +93,6 @@ Implement `WorkspaceSettingsModal.tsx` — the Tier 2 contextual modal that open
 - `ui/src/hooks/useFocusTrap.ts`
 - `ui/src/features/stores/NodeTopologyEditor.tsx` (inspector drawer CSS pattern for slideover)
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

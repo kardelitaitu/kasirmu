@@ -1,20 +1,60 @@
 # Subscription Tiers — Final Decisions
 
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair — this is the first audit this file ever had: it carried no stamp and no footer in 757 lines, while describing itself as the single source of truth for feature gates.
+
+FIXED
+- The † footnote denied that product-count and KDS quotas exist. Both are enforced,
+  through QuotaDimension plus a per-mutation enforce_*_quota guard. Worse, the test
+  file that pins the KDS numbers opens with "KDS screen quota
+  (subscription-tiers.md §Numeric Limits)" — the code cites this table while the table
+  denies the quota. The * and ** footnotes likewise still read "MUST be enforced before
+  launch" for staff users and the sales-history cap; both are enforced (C1.1 and C1.2),
+  the history cap behind signature verification.
+- Added §3 "Grant precedence". Phase D1 (12443a1e, 1eb5b753, abda8574) let a signed
+  payload override any row of the matrix per tenant, in both directions, and the page
+  never mentioned it. Recorded honestly as not-yet-authorable: no build site sets the
+  block, so the matrix stays the effective truth until D2 — the mechanism exists, the
+  lever cannot be pulled yet.
+
+LEFT ALONE
+- §5 vertical go-to-market and §7 churn figures are commercial judgement, not code
+  claims; auditing them would be an opinion, not a verification.
+
+VERIFIED ACCURATE
+- Five-tier lineup; the numeric-limit rows sampled against the
+  *_matches_published_contract tests; canonical workspace types (retail-pos, resto-pos,
+  kds, warehouse) and the store-pos / restaurant-pos compatibility aliases. -->
+
 > **Status: FINAL** — Approved 2026-08-17. Single source of truth for tier
 > pricing, quotas, and feature gates. Supersedes the tier/pricing sections of
-> `docs/BUSINESS_PLAN.md` §2, ADR #5, and the older pricing content until
+> `docs/guides/BUSINESS_PLAN.md` §2, ADR #5, and the older pricing content until
 > those are updated to match.
-
+>
+> **R36-14 ruling, 2026-09-07 (sole maintainer):** this file is the single
+> authority; the duplicate `docs/records/` copy is removed. Entitlements
+> ruled on the two disputed rows — full audit logging (`audit:view`):
+> **Premium + Enterprise** (consistent with the Phase 2 audit-baseline
+> item in `todo-global-saas-2.md`); white-label branding:
+> **Enterprise-only** (the only deliberate edit on record, 2026-08-19 —
+> rebranding stays the top-tier differentiator).
+>
+> **Amendment, 2026-09-08 (docs audit):** "single source of truth for …
+> feature gates" is still right about *which tier gets what by default*, but
+> it is no longer the whole rule. Phase D1 landed a signed-payload override that
+> can flip any row per tenant, in both directions. See §3 "Grant precedence".
+> The override has no authoring path yet, so nothing emitted today uses it —
+> which is why this file remains authoritative in practice and is amended rather
+> than demoted.
 ## 1. Lineup
 
 **Five tiers: Free · Plus · Pro · Premium · Enterprise**
 
 | Tier | Position |
 | :--- | :--- |
-| **Free** | Free forever — 1 workspace only (1 store, 1 terminal, 1 warehouse, 3-month sales history) |
+| **Free** | Free forever — 1 workspace only (1 location, 1 terminal, 1 warehouse workspace, 3-month sales history) |
 | **Plus** | Entry paid tier — hero feature: **Daily Sales Dashboard** (Laporan Harian) |
-| **Pro** ⭐ **Most Popular** | Mid paid tier — best for growing single-to-multi-store businesses |
-| **Premium** | Top paid tier — multi-store chains with loyalty & automation |
+| **Pro** ⭐ **Most Popular** | Mid paid tier — best for growing single-to-multi-location businesses |
+| **Premium** | Top paid tier — multi-location chains with loyalty & automation |
 | **Enterprise** | Bespoke — no list price, contact sales |
 
 ## 2. Pricing
@@ -39,11 +79,11 @@ Six Paddle prices total (Plus/Pro/Premium × monthly/yearly).
 ### Enterprise Pricing Guidance
 
 Enterprise pricing should be defined within these ranges to ensure consistency:
-- **Small Enterprise (5-20 stores):** $100-200/mo or Rp 1.000.000-2.000.000/mo
-- **Medium Enterprise (21-100 stores):** $200-400/mo or Rp 2.000.000-4.000.000/mo
-- **Large Enterprise (100+ stores):** $400+/mo or Rp 4.000.000+/mo
+- **Small Enterprise (5-20 locations):** $100-200/mo or Rp 1.000.000-2.000.000/mo
+- **Medium Enterprise (21-100 locations):** $200-400/mo or Rp 2.000.000-4.000.000/mo
+- **Large Enterprise (100+ locations):** $400+/mo or Rp 4.000.000+/mo
 
-Final pricing determined by: number of stores, terminals, users, support level, and custom integrations required.
+Final pricing determined by: number of locations, terminals, users, support level, and custom integrations required.
 
 ### Payment routing
 
@@ -71,6 +111,54 @@ Final pricing determined by: number of stores, terminals, users, support level, 
 
 ## 3. Quota & feature matrix
 
+> **This matrix is the default answer, not the final one.** A signed license payload
+> can override any row of it per tenant. Read the precedence note below before treating
+> a cell as a guarantee.
+
+### Grant precedence (Phase D1, landed 08-09-26)
+
+The signed payload may carry a `features` block — an explicit per-feature instruction
+keyed by the client's canonical feature key:
+
+```json
+{ "plan": "plus", "features": { "supports_analytics": true, "warehouses": false } }
+```
+
+Semantics, in the order the code applies them:
+
+| Payload says | Effect |
+|---|---|
+| key **absent** | the tier's own answer from the matrix above stands, untouched |
+| `false` | withholds **even where the tier would allow** |
+| `true` | grants **beyond tier** |
+
+An explicit instruction about *this feature* outranks a statement about a workspace type
+that merely implies something about it, so the check runs **before** the inferred
+`allows_workspace_type` path. Both directions are pinned by tests in both clients
+(`80a2168c`).
+
+**Three ways to get this wrong, all silent:**
+
+1. **Wrong key name.** Keys are `AvailabilityFeature::as_str()` — `supports_analytics`,
+   `supports_qris`, `supports_loyalty`, `supports_daily_dashboard`, `supports_cloud_sync`,
+   `sales_history_days`, `locations`, `staff_users`, `pos_instances`, `warehouses`.
+   A shortened `analytics` is a lookup **miss**, not an error: the tier answer stands and
+   nothing reports the typo.
+2. **Malformed block.** If `features` is not an object of booleans (a string, say), every
+   entry is dropped rather than partially trusting the block. Again silent.
+3. **Assuming it is wired up end to end.** It is not. `1eb5b753` added the Go wire field
+   and `abda8574` the Rust parse, and both clients honour the value — but **no build site
+   sets it**: `license_keys` and `subscriptions` have no column to flow it from, so no
+   payload the license server emits today carries the block (verified: zero `Features:`
+   assignments in `apps/license-server`). It is `omitempty`, so a payload with no grants
+   marshals byte-identically to a pre-Phase-D one. Authoring is explicitly owed to D2.
+   **Until then the matrix above is the effective truth**, and this section describes the
+   mechanism, not a lever you can pull today.
+
+Code of record: `payload_feature_grant` in `crates/oz-core/src/subscription.rs`,
+`server_grant_for` in each client's `src/commands/subscription.rs`, and the `Features`
+field in `apps/license-server/main.go`.
+
 ### Quick Reference: Best For
 
 > **Positioning statement:** OZ-POS is the QRIS-native POS with offline-first reliability,
@@ -80,36 +168,92 @@ Final pricing determined by: number of stores, terminals, users, support level, 
 | Tier | Best For | Hero Feature |
 | :--- | :--- | :--- |
 | **Free** | Warung / kios trying OZ-POS — limited to 3 months of sales history | Cash POS + receipt printing |
-| **Plus** | Single-store shops ready to grow from manual to smart | **Daily Sales Dashboard** (Laporan Harian) + QRIS |
+| **Plus** | Single-location shops ready to grow from manual to smart | **Daily Sales Dashboard** (Laporan Harian) + QRIS |
 | **Pro** ⭐ | Cafes, toko, growing businesses ready for full analytics & KDS | Analytics + KDS + multi-terminal |
-| **Premium** | Multi-store chains needing loyalty & automation | Loyalty program + 5 stores + 1h support |
+| **Premium** | Multi-location chains needing loyalty & automation | Loyalty program + 5 locations + 1h support |
 | **Enterprise** | Large organizations needing white-label, custom hardware & dedicated support | Account manager + custom HAL drivers |
 
 ### Numeric Limits
 
 | Feature | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| Max stores | 1 | 1 | 2 | 5 | Unlimited |
-| Max terminals (registers) / store | 1 | 2 | 5 | Unlimited | Unlimited |
-| Max warehouses | 1 | 2 | 3 | Unlimited | Unlimited |
-| Max KDS screens | 0 | 0 | 2 | Unlimited | Unlimited |
-| Max products/menu | 200 | 500 | 1,000 | 10,000 | Unlimited |
+| Max locations | 1 | 1 | 2 | 5 | Unlimited |
+| Max terminals (registers) / location | 1 | 2 | 5 | Unlimited | Unlimited |
+| Max warehouse workspaces | 1 | 2 | 3 | Unlimited | Unlimited |
+| Max KDS screens † | 0 | 0 | 2 | Unlimited | Unlimited |
+| Max products/menu † | 200 | 500 | 1,000 | 10,000 | Unlimited |
 | Max staff users * | 1 | 5 | 20 | 50 | Unlimited |
 | Sales history (view & export) ** | 3 months | 1 year | 5 years | Unlimited | Unlimited |
+| Audit log retention *** | — | 90 days | 180 days | 1 year | 3 years |
 
-\* Max staff users — **MUST be enforced before launch** to prevent revenue leakage.
+† **Enforced.** This footnote said the opposite until 08-09-26: it claimed the KDS
+count was only a dashboard-side derivation `maxKDSForTier()` and that "no product-count
+quota ships at all". Both were stale by a full phase. Phase 1 "Centralize quota
+enforcement" landed, and the code that landed **cites this table** — the header comment
+of `crates/oz-core/src/db/workspaces_tests.rs` reads "KDS screen quota
+(subscription-tiers.md §Numeric Limits)" — while this page still denied the quota
+existed. What is enforced now, all through `QuotaDimension`
+(`crates/oz-core/src/downgrade.rs`) plus an `enforce_*_quota` guard on the mutation:
 
-\*\* Sales history cap — **MUST be enforced before launch**. Free users see only the last
-3 months of transactions. After 3+ months of use, the owner naturally wants to compare
-months — that is the primary upgrade trigger for Free → Plus. Show a blurred/locked
-history preview with an upgrade CTA, not a hard error.
+| Dimension | Cap fn | Enforced at |
+|---|---|---|
+| Locations | `max_locations()` | `enforce_location_quota` / `enforce_store_quota` (`db/locations.rs`) |
+| POS registers | `max_pos_instances()` | `enforce_terminal_quota` (`db/terminals.rs`) |
+| Warehouses | `max_warehouses()` | `enforce_warehouse_quota` (`db/inventory.rs`) |
+| Staff | `max_staff_users()` | `enforce_staff_quota` (`db/staff.rs`) |
+| Products | `max_products()` | `enforce_product_quota` (`db/products_crud.rs`) |
+| KDS screens | `max_kds_screens()` | `enforce_instance_quota` (`db/workspaces_lifecycle.rs`) |
+
+A breach returns `QuotaError::*Limit`, surfaced as `SubscriptionLimitExceeded`, which
+the UI maps to an upgrade CTA; unlimited tiers are `None` and pass. Each published number
+is pinned by a `*_matches_published_contract` test, so a row above that disagrees with
+code fails `cargo test` — that is the mechanism that replaced "the pricing-page invariant
+test pins it".
+
+KDS specifically: Free/Plus `Some(0)`, Pro `Some(2)`, Premium/Enterprise `None`, and a
+third Pro screen is rejected with its own actionable message rather than the register or
+workspace-type one (`enforce_instance_quota_rejects_third_kds_on_pro`).
+
+\* Max staff users — **enforced** (`enforce_staff_quota`, C1.1: "§9 pre-launch item 1:
+prevents revenue leakage from unlimited Free/Plus team accounts"). Counts active staff
+users with the owner excluded.
+
+\*\* Sales history cap — **enforced** in both clients' history commands
+(`apps/desktop-client/src/commands/history.rs`,
+`apps/tablet-client/src/commands/history.rs`, C1.2): the tier window is read from the
+tenant subscription **after signature verification** and applied by
+`list_sales_with_history_cap(days)`, which returns the rows plus a `capped` flag instead
+of erroring — the blurred-preview-with-CTA behaviour this note asked for. Free users see
+only the last 3 months; after 3+ months the owner naturally wants to compare months, which
+remains the primary Free → Plus trigger.
+
+\*\*\* Audit retention — per the Phase 2 audit baseline
+(`todo-global-saas-2.md`): paid tiers retain basic security events (failed
+login, role changes, terminal registration, topology Apply, license changes,
+destructive actions); Premium+ add full business audit logging, filtering,
+export, and compliance views. Retention is measured from the event timestamp;
+Enterprise supports a configurable contract override. Free has no
+tenant-facing audit logs.
+
+Retention applies to rows that are actually written, and the write path for sale
+completion differs by settling door: as of the 2026-09-12 audit fix (`d7bd33ea8`) the
+two wired settlement doors write the `sale.completed` row inside the sale transaction,
+while the legacy `complete_sale` lane still writes it after the fact via the event
+handler — a window in which a crash loses the row — so a sale settled through that lane
+may contribute nothing for the retention window to retain (see
+`docs/security/PCI-DSS_CHECKLIST.md` §10.2.1).
 
 ### Workspace Types
 
-| Feature | Free | Plus | Pro | Premium | Enterprise |
+These are terminal workspace contexts, not hierarchy resources. The canonical
+runtime types are `retail-pos`, `resto-pos`, `kds`, and `warehouse`; the old
+`store-pos` and `restaurant-pos` keys remain compatibility aliases.
+
+| Workspace type | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| `restaurant-pos` / `store-pos` / `admin` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `inventory` / `warehouse` | ✗ | ✓ | ✓ | ✓ | ✓ |
+| `retail-pos` (legacy `store-pos`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `resto-pos` (legacy `restaurant-pos`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `warehouse` | ✗ | ✓ | ✓ | ✓ | ✓ |
 | `kds` | ✗ | ✗ | ✓ | ✓ | ✓ |
 
 ### Payments
@@ -117,7 +261,8 @@ history preview with an upgrade CTA, not a hard error.
 | Feature | Free | Plus | Pro | Premium | Enterprise |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Cash & manual split | ✓ | ✓ | ✓ | ✓ | ✓ |
-| QRIS (Midtrans) | ✗ | ✓ | ✓ | ✓ | ✓ |
+| QRIS (Midtrans dynamic) | ✗ | ✓ | ✓ | ✓ | ✓ |
+| QRIS (static / at-counter) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Stripe cards | ✗ | ✗ | ✓ | ✓ | ✓ |
 | Multi-currency | ✗ | ✗ | ✓ | ✓ | ✓ |
 
@@ -127,7 +272,7 @@ history preview with an upgrade CTA, not a hard error.
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | Offline-first SQLite engine | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Cloud sync (PostgreSQL outbox) | ✗ | ✓ | ✓ | ✓ | ✓ |
-| Multi-store dashboard | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Multi-location dashboard | ✗ | ✗ | ✓ | ✓ | ✓ |
 | CSV / data export | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ### Business Logic
@@ -137,6 +282,7 @@ history preview with an upgrade CTA, not a hard error.
 | Custom tax (PPN / PB1 / service) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Daily Sales Dashboard** (Laporan Harian) — Plus hero; show blurred teaser to Free | ✗ | ✓ | ✓ | ✓ | ✓ |
 | Reports & analytics (`analytics:view`) | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Memo (staff announcements on login/lock screen + recurring notification, `memo:write`) | ✗ | ✗ | ✓ | ✓ | ✓ |
 | Scheduled report emails | ✗ | ✗ | ✗ | ✓ | ✓ |
 | Full audit logging & review (`audit:view`) | ✗ | ✗ | ✗ | ✓ | ✓ |
 | Product bundles | ✗ | ✓ | ✓ | ✓ | ✓ |
@@ -164,8 +310,8 @@ history preview with an upgrade CTA, not a hard error.
 | Priority support | ✗ | ✗ | ✗ | ✓ | ✓ |
 | Support response SLA | — | 24h | 8h | 1h (24/7) | account manager |
 | Software updates | minor + major | minor + major | minor + major | minor + major | minor + major |
-| White-label branding | ✗ | ✗ | ✗ | ✓ | ✓ |
-| Offline grace period | 7 days | 14 days | 14 days | 30 days | custom |
+| White-label branding | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Offline grace period | 7 days | 14 days | 14 days | 30 days | 60 days (contract overrides available) |
 | Enterprise services (dedicated hosting, ERP adaptors, account manager) | ✗ | ✗ | ✗ | ✗ | ✓ |
 
 ---
@@ -173,7 +319,7 @@ history preview with an upgrade CTA, not a hard error.
 ## 4. Trial & Conversion Strategy
 
 ### Free Tier Trial Flow
-- Free tier provides permanent access to basic features (1 store, 1 terminal, 1 staff, **3-month sales history**)
+- Free tier provides permanent access to basic features (1 location, 1 terminal, 1 staff, **3-month sales history**)
 - Trial offer is **segmented by signup vertical** — do NOT offer Pro trial universally:
   a Pro trial anchors users to features they won't pay for and suppresses Plus conversion.
 
@@ -234,7 +380,7 @@ A **hardware-fingerprint trial lock** prevents trial reset abuse by limiting one
 | **Toko / Minimarket** | Inventory + multi-terminal | Pro | Multi-terminal, warehouse, stock visibility |
 | **Salon / Laundry** | Staff & receipt management | Plus/Pro | Staff management, product bundles |
 | **Restoran / Rumah Makan** | KDS + loyalty | Pro → Premium | KDS, loyalty points, scheduled reports |
-| **Retail chain** | Multi-store ops | Premium | 5 stores, analytics, priority support |
+| **Retail chain** | Multi-location ops | Premium | 5 locations, analytics, priority support |
 
 ### Vertical Landing Pages (Month 1-3 priority)
 Create dedicated landing pages per vertical — higher-converting than a generic pricing page:
@@ -271,13 +417,13 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 | Condition | Trigger message |
 | :--- | :--- |
 | User opens analytics/reports tab (locked) | Locked screen with sample chart: *"Lihat laporan lengkap — upgrade ke Pro"* |
-| User attempts to add a second store | *"Buka toko ke-2 — upgrade ke Pro"* |
-| Terminal count reaches 2 (Plus limit) | *"Butuh lebih banyak kasir? Pro mendukung hingga 5 terminal per toko"* |
+| User attempts to add a second location | *"Buka lokasi ke-2 — upgrade ke Pro"* |
+| Terminal count reaches 2 (Plus limit) | *"Butuh lebih banyak kasir? Pro mendukung hingga 5 terminal per lokasi"* |
 
 ### Pro → Premium Triggers
 | Condition | Trigger message |
 | :--- | :--- |
-| Store count reaches 2 (approaching Pro limit) | *"Buka toko ke-3? Upgrade ke Premium — 5 stores"* |
+| Location count reaches 2 (approaching Pro limit) | *"Buka lokasi ke-3? Upgrade ke Premium — 5 locations"* |
 | Staff count reaches 16+ (approaching 20 limit) | *"Tim Anda berkembang! Premium mendukung 50 staff"* |
 | User views loyalty module (locked teaser) | Animated loyalty dashboard preview: *"Hadirkan program poin — upgrade ke Premium"* |
 
@@ -290,14 +436,14 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 | Tier | Churn risk | Primary reason | Key intervention |
 | :--- | :---: | :--- | :--- |
 | **Plus** | 🔴 High | "Doesn't do enough" or post-Pro-trial letdown | Strong Daily Sales Dashboard onboarding, 3-month history trigger |
-| **Pro** | 🟡 Medium | Staff/store limit reached without prompt | Proactive usage alerts at 80% of limits |
+| **Pro** | 🟡 Medium | Staff/location limit reached without prompt | Proactive usage alerts at 80% of limits |
 | **Premium** | 🟢 Low | Occasional downgrade to Pro | Enterprise self-serve pathway |
 | **Enterprise** | 🟢 Very Low | Long contracts | Quarterly business reviews |
 
 ### Features to Implement
 - ✅ **Pause subscription:** Allow 1-3 month pause (retain data, no billing) — C3.3
 - ✅ **Win-back campaigns:** Automated emails at 7d + 30d post-expiry with 20%/30% discount offers
-- ✅ **Usage monitoring:** Alert at 80% of limits (staff at 16/20, stores at cap, terminals at cap)
+- ✅ **Usage monitoring:** Alert at 80% of limits (staff at 16/20, locations at cap, terminals at cap)
 - ✅ **Feedback collection:** Exit survey modal with 6 churn-reason options
 
 ### Metrics to Track
@@ -312,7 +458,7 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 
 | File | Role | Tier source |
 | :--- | :--- | :--- |
-| `docs/BUSINESS_PLAN.md` §2 | Market/pricing plan (IDR, annual) | 1-Time / Standard / Pro / Enterprise — **rewritten 2026-08-26 to the 5-tier lineup** (Free/Plus/Pro/Premium/Enterprise); no longer historical |
+| `docs/guides/BUSINESS_PLAN.md` §2 | Market/pricing plan (IDR, annual) | 1-Time / Standard / Pro / Enterprise — **rewritten 2026-08-26 to the 5-tier lineup** (Free/Plus/Pro/Premium/Enterprise); no longer historical |
 | `docs/decisions/archived/2026-07-10-subscription-tier-entitlement.md` (ADR #5) | Design intent | Free / Pro / Premium / Enterprise with numeric quotas — **supersession note added 2026-08-17** (mechanism still valid; quotas from §3) |
 | `docs/decisions/archived/2026-07-20-free-trial-lifecycle-and-license-activation-workflow.md` (ADR #23) | Trial lifecycle + custom_data contracts | 90-day trial — **re-scope note + 3 deviation notes** (see cross-ref (see ADR Index)): **Dev 1:** segmented trials implemented 2026-08-18 (`trial_vertical` in `activate.go`, 14-day Plus general / 14-day Pro restaurant-cafe / 30-day Pro enterprise-referral). **Dev 2:** Paddle `custom_data` contract documented — `email` (register-first, webhook upserts tenant) + `bundle` (C3.2, cross-checked against price map) + `phone` (backfilled); signup vertical **not** carried. **Dev 3:** hardware-fingerprint trial lock shipped (`trial_registrations`, `POST /license/trial`, `enforceTrialLock`, client `get_hardware_fingerprint`). |
 | `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md` (ADR #39) | Midtrans webhook + custom-field contracts | Midtrans checkout routing + 8 deviation notes (see cross-ref (see ADR Index)): SHA-512 not HMAC, `custom_field1`–`custom_field4` contract (tier/email/period/bundle), period cross-check, amount-authoritative tier resolution, grace, dedup, notification fallthrough, key fast-path. |
@@ -340,13 +486,13 @@ Create dedicated landing pages per vertical — higher-converting than a generic
 5. ✅ **Reframe annual discount as "2 bulan gratis" / "2 months free"** — all docs and pricing pages
 6. ✅ **Build Daily Sales Dashboard as the hero feature of Plus** — `DailyTotalWidget.tsx` with Free-tier lock (blurred teaser + upgrade CTA)
 7. ✅ **Define Enterprise pricing guidance** — ranges defined in §2
-8. ✅ **Enforce store-count quota on creation** — `enforce_store_quota()` blocks Free/Plus at 1, Pro at 2
+8. ✅ **Enforce location-count quota on creation** — `enforce_location_quota()` blocks Free/Plus at 1, Pro at 2
 9. ✅ **Enforce warehouse-count quota on creation** — `enforce_warehouse_quota()` blocks Free at 1, Plus at 2, Pro at 3
 
 ### Short-Term (Month 1-3)
 10. ✅ **Implement segmented trial strategy** — 14-day Plus trial for general; 14-day Pro for restaurant/cafe; 30-day Pro for enterprise-referral
 11. ✅ **Build vertical landing pages** — `/untuk-kafe`, `/untuk-warung`, `/untuk-minimarket`, `/untuk-restoran` — `VerticalLanding.astro` component with i18n, segmented trial CTAs, bundle paths
-12. ✅ **Implement in-app upgrade triggers** — All 9 triggers wired: TierLockedFeature (analytics, loyalty, daily dashboard, QRIS), quota error banners (staff, store, terminal), proactive alerts at 80% (staff approaching 16/20, store at 2/2)
+12. ✅ **Implement in-app upgrade triggers** — All 9 triggers wired: TierLockedFeature (analytics, loyalty, daily dashboard, QRIS), quota error banners (staff, location, terminal), proactive alerts at 80% (staff approaching 16/20, location at 2/2)
 13. ✅ **Implement upgrade/downgrade proration** — `paddleUpdate()` in paddle_webhook.go handles tier transitions; Paddle handles proration billing; grace period via `offline_grace_days`
 
 ### Medium-Term (Month 3-6)
@@ -723,3 +869,7 @@ Target: >100% (growth from existing customers)
 - **Expansion Revenue:** 10-15% annually from existing customers
 - **Enterprise Mix:** 5% of customers, 25% of revenue
 - **Geographic Mix:** 70% Indonesia, 30% global
+
+---
+
+> last audited 08-09-26 by docs-auditor

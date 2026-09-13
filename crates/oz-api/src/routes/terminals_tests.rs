@@ -47,6 +47,11 @@ async fn device_secret_from(response: axum::response::Response) -> String {
     json["device_secret"].as_str().unwrap().to_owned()
 }
 
+async fn body_json(response: axum::response::Response) -> serde_json::Value {
+    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 // ── register_terminal_handler paths ────────────────────────────────
 
 #[tokio::test]
@@ -112,6 +117,78 @@ async fn register_terminal_rejects_blank_terminal_id() {
     .await
     .into_response();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn register_terminal_rejects_invalid_terminal_id_charset() {
+    let body = RegisterTerminalRequest {
+        terminal_id: "bad/terminal!".into(),
+        label: None,
+        tenant_id: None,
+    };
+    let response = register_terminal_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Json(body),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(response).await;
+    assert_eq!(json["error"], "invalid_terminal_id");
+}
+
+#[tokio::test]
+async fn register_terminal_rejects_overlong_terminal_id() {
+    let body = RegisterTerminalRequest {
+        terminal_id: "t".repeat(65),
+        label: None,
+        tenant_id: None,
+    };
+    let response = register_terminal_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Json(body),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn register_terminal_rejects_overlong_label() {
+    let body = RegisterTerminalRequest {
+        terminal_id: "term-ok".into(),
+        label: Some("l".repeat(129)),
+        tenant_id: None,
+    };
+    let response = register_terminal_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Json(body),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn register_terminal_rejects_invalid_tenant_id() {
+    let body = RegisterTerminalRequest {
+        terminal_id: "term-ok".into(),
+        label: None,
+        tenant_id: Some("bad tenant!".into()),
+    };
+    let response = register_terminal_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Json(body),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = body_json(response).await;
+    assert_eq!(json["error"], "invalid_tenant");
 }
 
 #[tokio::test]

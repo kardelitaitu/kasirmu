@@ -28,7 +28,7 @@ This skill defines the standardized, disciplined workflow for diagnosing, reprod
 | 2 | **Reproduce locally in isolation.** | Reproduce the failing test or check locally using the smallest possible command before writing fixes. |
 | 3 | **Minimal surgical fixes.** | Address the root cause. Never delete assertions, skip tests, widen tolerances, or suppress linters unless the test was demonstrably testing an obsolete specification. |
 | 4 | **Maintain architectural standards.** | Money values stay in `i64` minor units (`Money`), database writes in `rusqlite` transactions, UI text in `@fluent/react` via `<Localized>`, and Tauri IPC routed through `ui/src/api/`. |
-| 5 | **Version is locked at `0.0.36`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
+| 5 | **Version is locked at `0.0.37`.** | Never modify the version number in `Cargo.toml`, `package.json`, or any manifest. |
 | 6 | **Scope verification to the affected area.** | Run targeted tests during iteration. Full `scripts/check.sh` is reserved for final pre-push or explicit requests. |
 | 7 | **Never kill running background processes.** | Do not kill `.exe` or background services that may belong to other agents or active dev servers. |
 | 8 | **Never `git push` without an explicit direct command.** | Always stop at local commit. Even after full verification, ask or wait for the user to explicitly tell you to push. |
@@ -77,7 +77,7 @@ git pull origin $(git branch --show-current)
 
 > [!IMPORTANT]
 > **Never run bare `gh pr checks --watch` to wait for all checks to finish.**
-> In OZ-POS, CI runs 38+ jobs across multiple OS matrices taking 15–25 minutes. Fast gates (Docker, lints, UI tests) often fail in seconds. Use 30-second fail-fast polling to catch early failures immediately and start fixing them while the rest of the matrix is still pending!
+> In OZ-POS, `dev-ci.yml` runs **11 jobs**, all on `ubuntu-latest` — there is **no OS matrix**, so "waiting for the matrix" is not a thing here. Typical wall time is a few minutes, dominated by `cargo-nextest` and `ui-test`. (This line previously claimed "38+ jobs across multiple OS matrices taking 15–25 minutes", which overstates the count ~3.5x and invents a dimension that does not exist; `release.yml` adds 5 more, but only on `v*` tags.) The fail-fast advice below stands regardless, and is if anything more valuable here: with 11 jobs and no matrix, a green run arrives quickly, so a slow poll wastes the whole window in which you could already be fixing the first failure.
 
 ```powershell
 # Option A: Native gh CLI with 30s interval and fail-fast (exits on the first failed check!):

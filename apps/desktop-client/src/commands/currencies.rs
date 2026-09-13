@@ -2,44 +2,43 @@
 //!
 //! R2 Phase 3: `list_currencies` migrated to use [`modules_currency::repository::CurrencyRepository`]
 //! directly. `CurrencyDto` now comes from [`modules_currency::commands`].
+//!
+//! Wave A / S4: the bodies now live in the headless `oz_bridge::currency`
+//! module. Each `#[tauri::command]` below keeps its exact name, parameter list
+//! and `Result<_, AppError>` return so the registered IPC surface and the
+//! serialized error shape never move; it borrows a `BridgeCtx` from
+//! `AppState`, calls the bridge, and maps `BridgeError` back to `AppError`
+//! variant-for-variant. The two DTOs defined here moved with the bodies and are
+//! re-exported so `use super::*` in `currencies_tests.rs` still resolves them.
+//! The four legacy commands still take no session at all — the bridge reads the
+//! GLOBAL database for them, as before.
 
+// Retained for the sibling test module, which reaches these through
+// `use super::*`; the command bodies themselves no longer name them.
+#[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use modules_currency::commands::CurrencyDto;
-use modules_currency::repository::CurrencyRepository;
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Currency info returned to the front-end for formatting.
-#[derive(Debug, Serialize)]
-pub struct CurrencyInfo {
-    /// ISO-4217 alpha-3 code, e.g. "USD".
-    pub code: String,
-    /// Minor-unit exponent (decimal places), e.g. 2 for USD.
-    pub exponent: u32,
-}
+pub use oz_bridge::currency::{CurrencyInfo, SetDefaultCurrencyArgs};
 
 #[tauri::command]
 /// Currency info.
 pub async fn currency_info(code: String) -> Result<CurrencyInfo, AppError> {
-    let currency: oz_core::Currency = code
-        .parse()
-        .map_err(|_| AppError::Invalid(format!("invalid currency code: {code}")))?;
-    Ok(CurrencyInfo {
-        code: String::from_utf8_lossy(&currency.0).into_owned(),
-        exponent: currency.minor_unit_exponent(),
-    })
+    oz_bridge::currency::currency_info(&code).map_err(Into::into)
 }
 
 #[tauri::command]
 /// List currencies.
 pub async fn list_currencies(state: State<'_, AppState>) -> Result<Vec<CurrencyDto>, AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    Ok(repo.list_currencies()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::list_currencies(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -48,31 +47,19 @@ pub async fn list_currencies_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CurrencyDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    Ok(repo.list_currencies()?)
-}
-
-#[derive(Debug, Deserialize)]
-/// Setdefaultcurrencyargs.
-pub struct SetDefaultCurrencyArgs {
-    /// Code.
-    pub code: String,
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::list_currencies_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
 /// Get default currency.
 pub async fn get_default_currency(state: State<'_, AppState>) -> Result<Option<String>, AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    Ok(repo.get_default_currency()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::get_default_currency(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -81,10 +68,10 @@ pub async fn set_default_currency(
     args: SetDefaultCurrencyArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    repo.set_default_currency(&args.code)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::set_default_currency(&ctx, &args.code)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Scoped variants (CUR-03) ─────────────────────────────────────────
@@ -94,6 +81,7 @@ pub async fn set_default_currency(
 // Scoped variants resolve the store from the session token and enforce
 // `SETTINGS_READ` / `SETTINGS_EDIT` on the backend, so multi-store
 // deployments cannot read or mutate another store's currency setting.
+// The gate now runs inside the bridge, in the same order as before.
 
 /// Get the default currency in the store resolved from a session token. ADR #7.
 ///
@@ -104,16 +92,10 @@ pub async fn get_default_currency_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    let out = repo.get_default_currency()?;
-    drop(db);
-    Ok(out)
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::get_default_currency_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Set the default currency in the store resolved from a session token. ADR #7.
@@ -127,19 +109,10 @@ pub async fn set_default_currency_scoped(
     args: SetDefaultCurrencyArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    args.code
-        .parse::<oz_core::Currency>()
-        .map_err(|_| AppError::Invalid(format!("invalid currency code: {}", args.code)))?;
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_EDIT).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let repo = CurrencyRepository::new(&db);
-    repo.set_default_currency(&args.code)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::set_default_currency_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of [`currency_info`].
@@ -149,10 +122,8 @@ pub async fn currency_info_scoped(
     code: String,
     state: State<'_, AppState>,
 ) -> Result<CurrencyInfo, AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    currency_info(code).await
+    let ctx = state.bridge_ctx();
+    oz_bridge::currency::currency_info_scoped(&ctx, &session_token, &code)
+        .await
+        .map_err(Into::into)
 }
-
-#[cfg(test)]
-#[path = "currencies_tests.rs"]
-mod tests;

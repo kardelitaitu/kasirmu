@@ -1,0 +1,72 @@
+/* StatutoryNumberingCard — Business Defaults screen (numbering axis).
+ * Mirrors ReceiptFormatSettingsCard.css rhythm; theme-var driven with fallbacks. */
+
+.fiscalnum-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 0.5rem);
+  width: 100%;
+}
+
+.fiscalnum-intro {
+  margin: 0 0 var(--space-3, 0.75rem);
+  color: var(--text-secondary, #555);
+  font-size: var(--text-base);
+}
+
+.fiscalnum-pair,
+.fiscalnum-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3, 0.75rem);
+  margin-bottom: var(--space-3, 0.75rem);
+}
+
+.fiscalnum-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+
+.fiscalnum-pair label,
+.fiscalnum-field label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.fiscalnum-current {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+  margin: 0 0 var(--space-3, 0.75rem);
+  padding: 0.5rem;
+  border: 1px dashed var(--border-color, #ddd);
+  border-radius: 6px;
+}
+
+.fiscalnum-current-note,
+.fiscalnum-unset,
+.fiscalnum-empty,
+.fiscalnum-loading {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary, #888);
+}
+
+.fiscalnum-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+}
+
+.fiscalnum-saved {
+  font-size: var(--text-sm);
+  color: var(--text-secondary, #555);
+}
+
+.fiscalnum-error {
+  font-size: var(--text-sm);
+  color: var(--danger-text, #b00020);
+}

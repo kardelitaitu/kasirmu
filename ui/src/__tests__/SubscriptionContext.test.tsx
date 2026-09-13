@@ -2,16 +2,18 @@
  * Tests for `SubscriptionProvider` / `useSubscription` — the C2.2
  * subscription capabilities context.
  *
- * Fetches capabilities once at mount, degrades to null on failure, and
- * exposes a refresh callback. The provider is the gate for every
- * tier-limited feature (analytics, loyalty, QRIS, store limits).
+ * Fetches capabilities once at mount, exposes the lifecycle state (§B:
+ * active/grace/expired/canceled/paused/unavailable, plus the provider's
+ * own `loading` phase), reports `unavailable` on failure (fail-closed),
+ * and exposes a refresh callback. The provider is the gate for every
+ * tier-limited feature (analytics, loyalty, QRIS, location limits).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import { SubscriptionProvider, useSubscription } from '@/contexts/SubscriptionContext';
+import { SubscriptionProvider, useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import type { SubscriptionCapabilities } from '@/api/subscription';
 
 // ── Opt out of the global SubscriptionContext stub ─────────────────────
@@ -31,7 +33,11 @@ const mocks = vi.hoisted(() => ({
   getSubscriptionCapabilities: vi.fn(),
 }));
 
-vi.mock('@/api/subscription', () => ({
+vi.mock('@/api/subscription', async (importOriginal) => ({
+  // Spread the real module so named imports elsewhere in the graph (e.g.
+  // OverQuotaCard's perLocationMarkers, added with the per-location quota
+  // caps) resolve even though this suite only spies on one function.
+  ...(await importOriginal<typeof import('@/api/subscription')>()),
   getSubscriptionCapabilities: (...args: unknown[]) =>
     mocks.getSubscriptionCapabilities(...args),
 }));
@@ -42,9 +48,18 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 const caps: SubscriptionCapabilities = {
   tier: 'pro',
-  maxStores: 10,
+  status: 'active',
+  state: 'active',
+  // Hard-required C+D-RES-1 keys (W7-C residual): paid Pro, no trial,
+  // no payload feature overrides.
+  isTrial: false,
+  trialEndsAt: null,
+  features: {},
+  maxLocations: 10,
   maxPosInstances: 5,
   maxWarehouses: 3,
+  // Pro tier's per-location KDS cap (SubscriptionTier::max_kds_screens).
+  maxKdsScreens: 2,
   maxStaffUsers: 20,
   salesHistoryDays: 365,
   supportsQris: true,
@@ -54,7 +69,10 @@ const caps: SubscriptionCapabilities = {
   supportsDailyDashboard: true,
   supportsCloudSync: true,
   offlineGraceDays: 30,
-  storeCount: 2,
+  expiresAt: null,
+  graceUntil: null,
+  isExpired: false,
+  locationCount: 2,
   staffCount: 5,
   terminalCount: 3,
 };
@@ -74,6 +92,7 @@ describe('SubscriptionProvider', () => {
     const { result } = renderHook(() => useSubscription(), { wrapper });
     expect(result.current.loading).toBe(true);
     expect(result.current.caps).toBeNull();
+    expect(result.current.state).toBe('loading');
   });
 
   it('resolves caps and sets loading=false on success', async () => {
@@ -81,13 +100,32 @@ describe('SubscriptionProvider', () => {
     const { result } = renderHook(() => useSubscription(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.caps).toEqual(caps);
+    expect(result.current.state).toBe('active');
   });
 
-  it('degradates to caps=null on API failure', async () => {
+  it('reports the backend lifecycle state verbatim', async () => {
+    // §B: the backend is the state authority — grace/expired/canceled/
+    // paused flow through verbatim with the fail-closed Free entitlements
+    // the command already applied.
+    mocks.getSubscriptionCapabilities.mockResolvedValue({
+      ...caps,
+      tier: 'free',
+      state: 'grace',
+      supportsQris: false,
+    });
+    const { result } = renderHook(() => useSubscription(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.state).toBe('grace');
+    expect(result.current.caps?.tier).toBe('free');
+  });
+
+  it('degradates to caps=null + unavailable state on API failure', async () => {
     mocks.getSubscriptionCapabilities.mockRejectedValue(new Error('offline'));
     const { result } = renderHook(() => useSubscription(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.caps).toBeNull();
+    // §B fail-closed: a missing response must not look like a healthy one.
+    expect(result.current.state).toBe('unavailable');
   });
 
   it('refresh re-fetches capabilities and loads them', async () => {
@@ -106,10 +144,11 @@ describe('SubscriptionProvider', () => {
     expect(result.current.loading).toBe(false);
   });
 
-  it('refresh degrades to null on failure', async () => {
+  it('refresh degrades to null + unavailable on failure', async () => {
     mocks.getSubscriptionCapabilities.mockResolvedValue(caps);
     const { result } = renderHook(() => useSubscription(), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.state).toBe('active');
 
     // Refresh fails.
     mocks.getSubscriptionCapabilities.mockRejectedValue(new Error('gone'));
@@ -119,5 +158,40 @@ describe('SubscriptionProvider', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(result.current.caps).toBeNull());
+    expect(result.current.state).toBe('unavailable');
+  });
+
+  describe('useAdminGate (§B operational vs admin split)', () => {
+    it('reports unlocked when subscription state is active', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        state: 'active',
+      });
+      const { result } = renderHook(() => useAdminGate(), { wrapper });
+      await waitFor(() => expect(result.current.locked).toBe(false));
+      expect(result.current.state).toBe('active');
+    });
+
+    it('reports locked when subscription state is grace (operational continues, admin locks)', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        state: 'grace',
+      });
+      const { result } = renderHook(() => useAdminGate(), { wrapper });
+      await waitFor(() => expect(result.current.locked).toBe(true));
+      expect(result.current.state).toBe('grace');
+    });
+
+    it('reports locked when subscription state is expired, canceled, paused, or unavailable', async () => {
+      for (const st of ['expired', 'canceled', 'paused', 'unavailable'] as const) {
+        mocks.getSubscriptionCapabilities.mockResolvedValue({
+          ...caps,
+          state: st,
+        });
+        const { result } = renderHook(() => useAdminGate(), { wrapper });
+        await waitFor(() => expect(result.current.locked).toBe(true));
+        expect(result.current.state).toBe(st);
+      }
+    });
   });
 });

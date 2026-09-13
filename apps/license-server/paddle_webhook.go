@@ -533,12 +533,12 @@ func buildReceiptEmail(from, to, licenseKey, tier, expiresAt string) []byte {
 		tier, licenseKey, expiresAt)
 
 	var sb strings.Builder
-	sb.WriteString("From: OZ-POS <" + from + ">\r\n")
-	sb.WriteString("To: " + to + "\r\n")
-	sb.WriteString("Subject: " + subject + "\r\n")
+	fmt.Fprintf(&sb, "From: OZ-POS <%s>\r\n", from)
+	fmt.Fprintf(&sb, "To: %s\r\n", to)
+	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	sb.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
+	fmt.Fprintf(&sb, "Date: %s\r\n", time.Now().UTC().Format(time.RFC1123Z))
 	sb.WriteString("\r\n")
 	sb.WriteString(body)
 	return []byte(sb.String())
@@ -1074,12 +1074,12 @@ func paddleProvision(app core.App, ev paddleEvent, sendReceipt bool) error {
 	// there (checkout webhook or trial activation).
 	maxStores, maxPOS, allowedTypes := tierQuotas(tier, bundle)
 	status := "active"
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(tier, mustParseTime(expiresAt)).Format(time.RFC3339)
 	payload := SubscriptionPayload{
 		TenantID:        tenant.Id,
 		TierKey:         tier,
 		Status:          status,
-		MaxStores:       maxStores,
+		MaxLocations:    maxStores,
 		MaxPOSInstances: maxPOS,
 		AllowedTypes:    allowedTypes,
 		StartsAt:        startsAt,
@@ -1087,6 +1087,8 @@ func paddleProvision(app core.App, ev paddleEvent, sendReceipt bool) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, tenant.Id)
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign subscription: %w", err)
@@ -1256,7 +1258,7 @@ func paddleUpdate(app core.App, ev paddleEvent) error {
 	// Persist the refreshed grace window too — the dashboard reads
 	// grace_until from this record, so a stale value would make the account
 	// page's "Grace until" disagree with the re-signed payload below.
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(subRecord.GetString("tier_key"), mustParseTime(expiresAt)).Format(time.RFC3339)
 	subRecord.Set("grace_until", graceUntil)
 	if keyRecord, err := app.FindFirstRecordByData("license_keys", "paddle_sub_id", sub.ID); err == nil {
 		keyRecord.Set("expires_at", expiresAt)
@@ -1270,7 +1272,7 @@ func paddleUpdate(app core.App, ev paddleEvent) error {
 		TenantID:        subRecord.GetString("tenant_id"),
 		TierKey:         subRecord.GetString("tier_key"),
 		Status:          subRecord.GetString("status"),
-		MaxStores:       subRecord.GetInt("max_stores"),
+		MaxLocations:    subRecord.GetInt("max_stores"),
 		MaxPOSInstances: subRecord.GetInt("max_pos_instances"),
 		AllowedTypes:    parseAllowedTypes(subRecord.GetString("allowed_types")),
 		StartsAt:        startsAt,
@@ -1278,6 +1280,8 @@ func paddleUpdate(app core.App, ev paddleEvent) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, subRecord.GetString("tenant_id"))
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign updated subscription: %w", err)
@@ -1318,7 +1322,7 @@ func paddleSetGrace(app core.App, ev paddleEvent) error {
 		TenantID:        subRecord.GetString("tenant_id"),
 		TierKey:         subRecord.GetString("tier_key"),
 		Status:          "grace_period",
-		MaxStores:       subRecord.GetInt("max_stores"),
+		MaxLocations:    subRecord.GetInt("max_stores"),
 		MaxPOSInstances: subRecord.GetInt("max_pos_instances"),
 		AllowedTypes:    parseAllowedTypes(subRecord.GetString("allowed_types")),
 		StartsAt:        subRecord.GetString("starts_at"),
@@ -1326,6 +1330,8 @@ func paddleSetGrace(app core.App, ev paddleEvent) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, subRecord.GetString("tenant_id"))
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign %s subscription: %w", ev.EventType, err)
@@ -1359,7 +1365,7 @@ func paddleResume(app core.App, ev paddleEvent) error {
 	// window on the record AND re-sync the license key's expiry, or /me and
 	// the POS would keep the canceled-era dates while the signed payload
 	// says otherwise.
-	graceUntil := calculateGraceUntil(mustParseTime(expiresAt)).Format(time.RFC3339)
+	graceUntil := calculateGraceUntil(subRecord.GetString("tier_key"), mustParseTime(expiresAt)).Format(time.RFC3339)
 	subRecord.Set("grace_until", graceUntil)
 	if keyRecord, err := app.FindFirstRecordByData("license_keys", "paddle_sub_id", sub.ID); err == nil {
 		keyRecord.Set("expires_at", expiresAt)
@@ -1371,7 +1377,7 @@ func paddleResume(app core.App, ev paddleEvent) error {
 		TenantID:        subRecord.GetString("tenant_id"),
 		TierKey:         subRecord.GetString("tier_key"),
 		Status:          "active",
-		MaxStores:       subRecord.GetInt("max_stores"),
+		MaxLocations:    subRecord.GetInt("max_stores"),
 		MaxPOSInstances: subRecord.GetInt("max_pos_instances"),
 		AllowedTypes:    parseAllowedTypes(subRecord.GetString("allowed_types")),
 		StartsAt:        startsAt,
@@ -1379,6 +1385,8 @@ func paddleResume(app core.App, ev paddleEvent) error {
 		GraceUntil:      graceUntil,
 		IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// D2: carry any admin-authored per-feature grants into the signed payload.
+	payload.Features = featureGrantsForTenant(app, subRecord.GetString("tenant_id"))
 	payloadStr, signature, err := signSubscription(payload)
 	if err != nil {
 		return fmt.Errorf("failed to sign resumed subscription: %w", err)

@@ -131,10 +131,10 @@ impl SubscriptionTier {
         }
     }
 
-    /// Maximum number of stores allowed for this tier.
-    /// C4.2: Premium allows up to 5 stores self-serve; more requires
+    /// Maximum number of locations allowed for this tier.
+    /// C4.2: Premium allows up to 5 locations self-serve; more requires
     /// Enterprise contract. Enterprise is unlimited.
-    pub fn max_stores(&self) -> Option<i64> {
+    pub fn max_locations(&self) -> Option<i64> {
         match self {
             Self::Free | Self::OneTime | Self::Plus => Some(1),
             Self::Pro => Some(2),
@@ -143,7 +143,15 @@ impl SubscriptionTier {
         }
     }
 
-    /// Maximum POS register instances per store for this tier.
+    /// Deprecated compatibility alias, retained through the staged
+    /// migration; the last caller is gone — use
+    /// [`max_locations`](Self::max_locations).
+    #[deprecated(note = "use max_locations")]
+    pub fn max_stores(&self) -> Option<i64> {
+        self.max_locations()
+    }
+
+    /// Maximum POS register instances per location for this tier.
     /// Returns `None` for unlimited (Premium / Enterprise).
     pub fn max_pos_instances(&self) -> Option<i64> {
         match self {
@@ -154,7 +162,7 @@ impl SubscriptionTier {
         }
     }
 
-    /// Maximum inventory warehouse storage locations allowed for this tier.
+    /// Maximum inventory warehouse storage points allowed for this tier.
     /// Returns `None` for unlimited (Premium / Enterprise).
     pub fn max_warehouses(&self) -> Option<i64> {
         match self {
@@ -178,6 +186,32 @@ impl SubscriptionTier {
         }
     }
 
+    /// Maximum products/menu items allowed for this tier
+    /// (subscription-tiers.md §Numeric Limits — published contract,
+    /// now enforced). Returns `None` for unlimited (Enterprise).
+    pub fn max_products(&self) -> Option<i64> {
+        match self {
+            Self::Free | Self::OneTime => Some(200),
+            Self::Plus => Some(500),
+            Self::Pro => Some(1_000),
+            Self::Premium => Some(10_000),
+            Self::Enterprise => None,
+        }
+    }
+
+    /// Maximum KDS (kitchen display) screens allowed for this tier
+    /// (subscription-tiers.md §Numeric Limits — published contract,
+    /// now enforced). Free/Plus cannot run KDS at all (also rejected by
+    /// `allows_workspace_type`); Pro is capped at 2; Premium/Enterprise
+    /// are unlimited (`None`).
+    pub fn max_kds_screens(&self) -> Option<i64> {
+        match self {
+            Self::Free | Self::OneTime | Self::Plus => Some(0),
+            Self::Pro => Some(2),
+            Self::Premium | Self::Enterprise => None,
+        }
+    }
+
     /// How far back (in days) sales history can be viewed/exported.
     /// Returns `None` for unlimited (Premium/Enterprise). Free/Plus/Pro
     /// have capped history as a tier differentiator.
@@ -187,6 +221,32 @@ impl SubscriptionTier {
             Self::Plus => Some(365),                  // 1 year
             Self::Pro => Some(5 * 365),               // 5 years
             Self::Premium | Self::Enterprise => None, // Unlimited
+        }
+    }
+
+    /// Tier audit-log retention window in days, measured from the event
+    /// timestamp (todo-global-saas-2.md §Audit baseline — the adopted
+    /// schedule the pricing page publishes).
+    ///
+    /// `None` means the tier has **no audit-log retention entitlement**:
+    /// Free keeps no tenant-facing audit logs, so the retention sweep
+    /// purges every row (and the read surface is gated off — see the
+    /// audit commands). Paid tiers retain the basic security-event set
+    /// for the published window; Enterprise's 3 years is the *default* —
+    /// a contracted override ships as a signed custom entitlement, not a
+    /// client-side fallback (same ruling as `offline_grace_days`).
+    ///
+    /// Note the deliberate inversion of `sales_history_days`' `None`
+    /// ("unlimited"): here `None` means "nothing retained", because no
+    /// tier carries an unlimited audit window.
+    #[must_use]
+    pub fn audit_retention_days(&self) -> Option<i64> {
+        match self {
+            Self::Free | Self::OneTime => None, // no retention entitlement
+            Self::Plus => Some(90),
+            Self::Pro => Some(180),
+            Self::Premium => Some(365),      // 1 year
+            Self::Enterprise => Some(1_095), // 3 years default
         }
     }
 
@@ -255,16 +315,18 @@ impl SubscriptionTier {
         )
     }
 
-    /// Offline grace period in days before quotas revert to Free
-    /// (subscription-tiers.md §3 Support table). Enterprise grace is
-    /// negotiated per contract — the fallback below is a generous client-side
-    /// default so a custom contract never locks a customer out client-side.
+    /// Offline grace period in days before POS runtime locks read-only
+    /// (subscription-tiers.md §Numeric Limits + todo-global-saas-1.md §B:
+    /// Free/OneTime 7, Plus 14, Pro 14, Premium 30, Enterprise 60 — the
+    /// same numbers the pricing page publishes). Standard Enterprise uses
+    /// 60; a contract requiring a different window ships as a signed
+    /// custom override, not a client-side fallback.
     pub fn offline_grace_days(&self) -> i64 {
         match self {
             Self::Free | Self::OneTime => 7,
             Self::Plus | Self::Pro => 14,
             Self::Premium => 30,
-            Self::Enterprise => 3650, // custom per contract; ~10-year fallback
+            Self::Enterprise => 60,
         }
     }
 
@@ -288,7 +350,10 @@ impl SubscriptionTier {
 // ── Subscription Row ──────────────────────────────────────────────────
 
 /// A row from the `tenant_subscription` table.
-#[derive(Debug, Clone)]
+///
+/// `Debug` is implemented by hand below — not derived — because three of
+/// these fields are credential material.
+#[derive(Clone)]
 pub struct TenantSubscription {
     /// The unique identifier of the tenant.
     pub tenant_id: String,
@@ -298,8 +363,10 @@ pub struct TenantSubscription {
     pub status: String,
     /// The optional expiration timestamp in RFC 3339 format.
     pub expires_at: Option<String>,
-    /// The maximum number of stores allowed for this tenant.
-    pub max_stores: i64,
+    /// The maximum number of locations allowed for this tenant. Rust field
+    /// aligned with the `max_locations` column (renamed from `max_stores`
+    /// by migration 20260906); the SIGNED payload keeps its own wire names.
+    pub max_locations: i64,
     /// The maximum number of POS instances allowed for this tenant.
     pub max_pos_instances: i64,
     /// A JSON string listing the workspace types allowed on this tier.
@@ -314,11 +381,63 @@ pub struct TenantSubscription {
     pub updated_at: String,
 }
 
+/// Hand-written `std::fmt::Debug` that redacts the three secret fields:
+/// `api_key`, `signature` and `signed_payload`.
+///
+/// The derived impl printed all three. `api_key` used to be the worst of
+/// them: `crates/oz-bridge/src/license.rs` once stored the RAW server
+/// response value on this struct while the settings row held the
+/// machine-bound ciphertext, so the row carried the weaker of two copies of
+/// one credential. It no longer does — since `5e054714e` both call sites
+/// (`license.rs:174` on activate, `license.rs:285` on renew) hand
+/// `store_subscription` four arguments and no key, so this struct never
+/// receives one. That makes `signature` and `signed_payload` the live
+/// secrets on this row and `api_key` the least of the three; all three stay
+/// redacted. Those two are redacted for the
+/// reason the tree already records at
+/// `platform/core/src/settings/keys.rs` (`LICENSE_PAYLOAD`): replaying the
+/// signed grant into another install re-binds a license, so it never
+/// leaves the backend — and a `Debug` line is the backend's own exit.
+///
+/// Nothing formats this row today, so this commit prevents rather than
+/// repairs: the idiomatic future log line for this value is
+/// `tracing::debug!(?sub)`, and once the credential is in a log file no
+/// front-end redaction can scrub it. Every other field stays printed so
+/// the row remains debuggable for quota and sync work. The impl — rather
+/// than no impl at all — is what `Debug` is needed for, but NOT because
+/// tests compare this type: `TenantSubscription` derives `Clone` only and
+/// implements no `PartialEq`, so no `assert_eq!` in the tree can name it
+/// (the roughly forty `TenantSubscription { .. }` literals in the tests
+/// CONSTRUCT rows, they do not assert against one). What actually depends
+/// on `Debug` is the tests and callers that `unwrap()` / `expect` a loaded
+/// row, which need it to panic WITH. A derived `Debug` would still satisfy
+/// them, which is exactly why this hand-written one exists.
+///
+/// House precedent: `modules/loyalty/src/models.rs` (`impl Debug for
+/// GiftCard`, redacting `pin` the same way).
+impl std::fmt::Debug for TenantSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TenantSubscription")
+            .field("tenant_id", &self.tenant_id)
+            .field("tier", &self.tier)
+            .field("status", &self.status)
+            .field("expires_at", &self.expires_at)
+            .field("max_locations", &self.max_locations)
+            .field("max_pos_instances", &self.max_pos_instances)
+            .field("allowed_types_json", &self.allowed_types_json)
+            .field("signature", &"<redacted>")
+            .field("signed_payload", &"<redacted>")
+            .field("api_key", &"<redacted>")
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
+}
+
 impl TenantSubscription {
     /// Load the subscription for a tenant from the global database.
     pub fn load(conn: &rusqlite::Connection, tenant_id: &str) -> Result<Option<Self>, CoreError> {
         let mut stmt = conn.prepare(
-            "SELECT tenant_id, tier_key, status, expires_at, max_stores,
+            "SELECT tenant_id, tier_key, status, expires_at, max_locations,
                     max_pos_instances, allowed_types_json, signature, signed_payload,
                     api_key, updated_at
              FROM tenant_subscription
@@ -331,7 +450,7 @@ impl TenantSubscription {
                 tier: SubscriptionTier::from_db(&row.get::<_, String>(1)?),
                 status: row.get(2)?,
                 expires_at: row.get(3)?,
-                max_stores: row.get(4)?,
+                max_locations: row.get(4)?,
                 max_pos_instances: row.get(5)?,
                 allowed_types_json: row.get(6)?,
                 signature: row.get(7)?,
@@ -440,6 +559,34 @@ impl TenantSubscription {
     /// Returns `true` if the subscription is still valid (not expired or
     /// within grace period).
     pub fn is_within_grace_period(&self) -> bool {
+        self.is_within_grace_period_at(chrono::Utc::now())
+    }
+
+    /// Check if the subscription is within grace evaluated against the database's monotonic ledger time.
+    ///
+    /// Computes the maximum ledger timestamp across domain tables (`compute_max_ledger_timestamp`),
+    /// protecting against local clock rollback or tampering while offline.
+    pub fn is_within_grace_period_for_connection(&self, conn: &rusqlite::Connection) -> bool {
+        match Self::compute_max_ledger_timestamp(conn) {
+            Ok(ts) => self.is_within_grace_period_with_timestamp(&ts),
+            Err(_) => false,
+        }
+    }
+
+    /// Check if the subscription is within grace evaluated against a specific RFC3339 timestamp.
+    ///
+    /// Useful for validating grace against a monotonic ledger timestamp (e.g. `compute_max_ledger_timestamp`)
+    /// to detect and resist local system clock tampering/rollback.
+    /// Fails closed to `false` if `reference_timestamp` cannot be parsed.
+    pub fn is_within_grace_period_with_timestamp(&self, reference_timestamp: &str) -> bool {
+        match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
+            Ok(dt) => self.is_within_grace_period_at(dt.with_timezone(&chrono::Utc)),
+            Err(_) => false,
+        }
+    }
+
+    /// Check if the subscription is within grace evaluated at a specific UTC datetime.
+    pub fn is_within_grace_period_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
         // Canceled subscriptions are never within grace.
         if self.status == "canceled" {
             return false;
@@ -457,11 +604,19 @@ impl TenantSubscription {
         };
 
         let expiry = match chrono::DateTime::parse_from_rfc3339(expires_at) {
-            Ok(dt) => dt,
+            Ok(dt) => dt.with_timezone(&chrono::Utc),
             Err(_) => return false, // Unparseable expiry → assume expired
         };
 
-        let now = chrono::Utc::now();
+        // When marked as a trial with an explicit trial_ends_at, the trial deadline
+        // strictly governs offline validity (0 offline grace days post-trial).
+        if self
+            .trial_ends_at_datetime()
+            .is_some_and(|trial_end| now > trial_end)
+        {
+            return false;
+        }
+
         let grace_deadline = expiry + chrono::Duration::days(self.tier.offline_grace_days());
 
         now <= grace_deadline
@@ -476,7 +631,7 @@ impl TenantSubscription {
             tier: SubscriptionTier::Free,
             status: "active".into(),
             expires_at: None,
-            max_stores: 1,
+            max_locations: 1,
             max_pos_instances: 1,
             allowed_types_json: "[]".into(),
             signature: String::new(),
@@ -533,6 +688,114 @@ impl TenantSubscription {
         self.addons().iter().any(|a| a.to_lowercase() == lower)
     }
 
+    /// Trial state carried by the signed payload (Phase C), parsed in one
+    /// pass: `(is_trial, trial_ends_at)`.
+    ///
+    /// Read from the signed payload rather than a column — Phase C is
+    /// deliberately JSON-only with no schema migration, and the payload is
+    /// the signature-covered source of truth, so a tampered row cannot
+    /// invent a trial. Everything that cannot be trusted fails closed to
+    /// `(false, None)`: an empty or unparseable payload, an absent or
+    /// wrongly-typed `is_trial`, an absent or empty `trial_ends_at` — and,
+    /// the interesting case, a `trial_ends_at` that is not valid RFC3339.
+    /// A trial whose end date cannot be parsed is not a trial we can warn
+    /// about, so it reports as not-a-trial rather than as a trial with no
+    /// deadline.
+    fn parsed_trial(&self) -> (bool, Option<String>) {
+        if self.signed_payload.is_empty() {
+            return (false, None);
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&self.signed_payload) else {
+            return (false, None);
+        };
+        let is_trial = value
+            .get("is_trial")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let ends_at = value
+            .get("trial_ends_at")
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| !s.is_empty())
+            .filter(|s| chrono::DateTime::parse_from_rfc3339(s).is_ok())
+            .map(str::to_string);
+        (is_trial, ends_at)
+    }
+
+    /// Whether the signed payload marks this period as a trial.
+    ///
+    /// Orthogonal to the tier on purpose: `SubscriptionTier::from_db("trial")`
+    /// keeps resolving to Free, so this flag is the only thing that survives
+    /// the collapse. See [`Self::parsed_trial`] for the fail-closed contract.
+    #[must_use]
+    pub fn is_trial(&self) -> bool {
+        self.parsed_trial().0
+    }
+
+    /// When the trial ends, from the signed payload (`None` when this is
+    /// not a trial, or when the date is absent or unparseable).
+    ///
+    /// Returned owned because it is parsed per call, like [`Self::addons`].
+    #[must_use]
+    pub fn trial_ends_at(&self) -> Option<String> {
+        self.parsed_trial().1
+    }
+
+    /// When the trial ends, parsed as a UTC `DateTime` (`None` when this is
+    /// not a trial, or when the date is absent or unparseable).
+    #[must_use]
+    pub fn trial_ends_at_datetime(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        let (is_trial, ends_at) = self.parsed_trial();
+        if !is_trial {
+            return None;
+        }
+        ends_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    }
+
+    /// The signed payload's explicit per-feature instructions (Phase D1).
+    ///
+    /// Keyed by the canonical [`crate::availability::AvailabilityFeature`]
+    /// wire name. An absent `features` block, an empty one, an unparseable
+    /// payload and a wrongly-typed value all yield NO override, leaving the
+    /// tier's own answer in place. That direction is deliberate: an
+    /// unreadable block must not hand out a feature nobody signed, and it
+    /// must not withhold one either — silence is the only safe reading of
+    /// data that cannot be trusted.
+    ///
+    /// Unknown keys are returned as-is but are inert, because every caller
+    /// looks up by `AvailabilityFeature::as_str()`. The enum therefore stays
+    /// the single source of the key vocabulary: a shortened alias such as
+    /// `"analytics"` is not a recognised key and silently does nothing.
+    ///
+    /// Parsed from the signed payload like [`Self::addons`] and
+    /// [`Self::parsed_trial`], so the signature covers it and no migration
+    /// is needed.
+    #[must_use]
+    pub fn payload_features(&self) -> std::collections::HashMap<String, bool> {
+        if self.signed_payload.is_empty() {
+            return std::collections::HashMap::new();
+        }
+        serde_json::from_str::<serde_json::Value>(&self.signed_payload)
+            .ok()
+            .and_then(|v| v.get("features").cloned())
+            .and_then(|v| serde_json::from_value::<std::collections::HashMap<String, bool>>(v).ok())
+            .unwrap_or_default()
+    }
+
+    /// The payload's instruction for one feature, or `None` when it has no
+    /// opinion and the tier's answer stands.
+    ///
+    /// Pass `AvailabilityFeature::as_str()` — anything else is a lookup miss
+    /// by design, not an error. A whole-block type error (e.g. `features`
+    /// being a string) drops every entry rather than partially trusting the
+    /// block.
+    #[must_use]
+    pub fn payload_feature_grant(&self, key: &str) -> Option<bool> {
+        self.payload_features().get(key).copied()
+    }
+
     /// Whether the subscription supports analytics, accounting for add-ons.
     ///
     /// Pro+ natively supports analytics. Plus gains analytics via the
@@ -553,7 +816,28 @@ impl TenantSubscription {
     /// - If the grace period has elapsed and the register is still
     ///   offline, returns `Free` (downgraded).
     pub fn effective_tier(&self) -> SubscriptionTier {
-        if self.is_within_grace_period() {
+        self.effective_tier_at(chrono::Utc::now())
+    }
+
+    /// Determine the effective subscription tier evaluated against the database's monotonic ledger time.
+    pub fn effective_tier_for_connection(&self, conn: &rusqlite::Connection) -> SubscriptionTier {
+        match Self::compute_max_ledger_timestamp(conn) {
+            Ok(ts) => self.effective_tier_with_timestamp(&ts),
+            Err(_) => SubscriptionTier::Free,
+        }
+    }
+
+    /// Determine the effective subscription tier evaluated against a specific RFC3339 timestamp.
+    pub fn effective_tier_with_timestamp(&self, reference_timestamp: &str) -> SubscriptionTier {
+        match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
+            Ok(dt) => self.effective_tier_at(dt.with_timezone(&chrono::Utc)),
+            Err(_) => SubscriptionTier::Free,
+        }
+    }
+
+    /// Determine the effective subscription tier evaluated at a specific UTC datetime.
+    pub fn effective_tier_at(&self, now: chrono::DateTime<chrono::Utc>) -> SubscriptionTier {
+        if self.is_within_grace_period_at(now) {
             self.tier.clone()
         } else {
             tracing::warn!(
@@ -562,6 +846,183 @@ impl TenantSubscription {
                 "subscription grace period expired — reverting to Free tier"
             );
             SubscriptionTier::Free
+        }
+    }
+
+    /// Normalize the row into the shared lifecycle state contract
+    /// (todo-global-saas-1.md §B: loading/active/grace/expired/canceled/
+    /// paused/unavailable — `loading` is the UI's fetch phase, the rest
+    /// live here).
+    ///
+    /// Status strings the license server writes (`active`, `grace_period`,
+    /// `paused`, `canceled`, `revoked`, `expired`) map first; anything else
+    /// is [`SubscriptionLifecycleState::Unavailable`] — unrecognized data
+    /// must fail closed, not guess. An `active` row is then refined by
+    /// date, mirroring [`Self::is_within_grace_period`] exactly so the
+    /// reported state can never disagree with `effective_tier`: Free is
+    /// active forever, a missing expiry is a perpetual license, an
+    /// unparseable expiry fails closed as expired, and a paid row past its
+    /// expiry reports `Grace` until the tier's offline grace window ends.
+    pub fn lifecycle_state(&self) -> SubscriptionLifecycleState {
+        self.lifecycle_state_at(chrono::Utc::now())
+    }
+
+    /// Normalize the row into the shared lifecycle state contract evaluated against a specific RFC3339 timestamp.
+    ///
+    /// Fails closed to `SubscriptionLifecycleState::Expired` if `reference_timestamp` cannot be parsed.
+    pub fn lifecycle_state_with_timestamp(
+        &self,
+        reference_timestamp: &str,
+    ) -> SubscriptionLifecycleState {
+        match chrono::DateTime::parse_from_rfc3339(reference_timestamp) {
+            Ok(dt) => self.lifecycle_state_at(dt.with_timezone(&chrono::Utc)),
+            Err(_) => SubscriptionLifecycleState::Expired,
+        }
+    }
+
+    /// Normalize the row into the shared lifecycle state contract evaluated at a specific UTC datetime.
+    pub fn lifecycle_state_at(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> SubscriptionLifecycleState {
+        match self.status.as_str() {
+            "canceled" | "revoked" => return SubscriptionLifecycleState::Canceled,
+            "paused" => return SubscriptionLifecycleState::Paused,
+            "expired" => return SubscriptionLifecycleState::Expired,
+            "grace_period" => return SubscriptionLifecycleState::Grace,
+            "active" => {}
+            _ => return SubscriptionLifecycleState::Unavailable,
+        }
+        // Free is active forever (same semantics as is_within_grace_period).
+        if self.tier == SubscriptionTier::Free {
+            return SubscriptionLifecycleState::Active;
+        }
+        let Some(expires_at) = &self.expires_at else {
+            return SubscriptionLifecycleState::Active; // perpetual / lifetime
+        };
+        let Ok(expiry) = chrono::DateTime::parse_from_rfc3339(expires_at) else {
+            // Unparseable expiry — is_within_grace_period fails closed here.
+            return SubscriptionLifecycleState::Expired;
+        };
+        let expiry = expiry.with_timezone(&chrono::Utc);
+
+        // When marked as a trial with an explicit trial_ends_at, the trial deadline
+        // strictly governs offline validity (0 offline grace days post-trial).
+        if self
+            .trial_ends_at_datetime()
+            .is_some_and(|trial_end| now > trial_end)
+        {
+            return SubscriptionLifecycleState::Expired;
+        }
+
+        if now <= expiry {
+            return SubscriptionLifecycleState::Active;
+        }
+        if now <= expiry + chrono::Duration::days(self.tier.offline_grace_days()) {
+            return SubscriptionLifecycleState::Grace;
+        }
+        SubscriptionLifecycleState::Expired
+    }
+
+    /// Whether POS runtime is locked to a read-only state (§B).
+    ///
+    /// True ONLY when the offline grace window has fully lapsed
+    /// ([`SubscriptionLifecycleState::Expired`]): no new sales, order
+    /// mutations, or sync queueing — viewing, data export, and sign-out
+    /// remain available, and the register reopens automatically once
+    /// connectivity returns and a valid subscription is verified.
+    ///
+    /// Deliberately narrow: `Canceled`/`Paused` revert entitlements to
+    /// Free (Free can still sell), and missing/tampered data degrades to
+    /// Free-tier operations rather than bricking a register — the §B
+    /// fail-closed rule targets administrative features, not the
+    /// operational sale path. Data-integrity responses live in the
+    /// capabilities command and the admin gate.
+    pub fn pos_read_only(&self) -> bool {
+        self.pos_read_only_at(chrono::Utc::now())
+    }
+
+    /// Whether POS runtime is locked to a read-only state evaluated against the database's monotonic ledger time.
+    pub fn pos_read_only_for_connection(&self, conn: &rusqlite::Connection) -> bool {
+        match Self::compute_max_ledger_timestamp(conn) {
+            Ok(ts) => self.pos_read_only_with_timestamp(&ts),
+            Err(_) => true,
+        }
+    }
+
+    /// Whether POS runtime is locked to a read-only state evaluated against a specific RFC3339 timestamp.
+    pub fn pos_read_only_with_timestamp(&self, reference_timestamp: &str) -> bool {
+        self.lifecycle_state_with_timestamp(reference_timestamp)
+            == SubscriptionLifecycleState::Expired
+    }
+
+    /// Whether POS runtime is locked to a read-only state evaluated at a specific UTC datetime.
+    pub fn pos_read_only_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        self.lifecycle_state_at(now) == SubscriptionLifecycleState::Expired
+    }
+
+    /// Enforce [`Self::pos_read_only`] — returns
+    /// [`CoreError::SubscriptionReadOnly`] when the register is locked.
+    pub fn enforce_pos_writable(&self) -> Result<(), CoreError> {
+        if self.pos_read_only() {
+            return Err(CoreError::SubscriptionReadOnly(
+                "The offline grace window has expired. This register is read-only: ".to_string()
+                    + "sales and order changes are locked until the subscription is verified online. "
+                    + "Data export and viewing remain available.",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Enforce [`Self::pos_read_only_for_connection`] — returns
+    /// [`CoreError::SubscriptionReadOnly`] when the register is locked against monotonic ledger time.
+    pub fn enforce_pos_writable_for_connection(
+        &self,
+        conn: &rusqlite::Connection,
+    ) -> Result<(), CoreError> {
+        if self.pos_read_only_for_connection(conn) {
+            return Err(CoreError::SubscriptionReadOnly(
+                "The offline grace window has expired. This register is read-only: ".to_string()
+                    + "sales and order changes are locked until the subscription is verified online. "
+                    + "Data export and viewing remain available.",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Normalized subscription lifecycle state shared by the license server,
+/// the local snapshot, and the UI (todo-global-saas-1.md §B).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubscriptionLifecycleState {
+    /// Paid period valid (`now <= expires_at`, or no expiry, or Free).
+    Active,
+    /// Paid period elapsed but still inside the tier's offline grace
+    /// window. Operational entitlements continue; grace never grants new
+    /// access.
+    Grace,
+    /// Expired and outside grace (or the server marked the row expired).
+    Expired,
+    /// Canceled or revoked server-side — never within grace.
+    Canceled,
+    /// Paused by the server (pause window / billing hold).
+    Paused,
+    /// Missing, tampered, or unrecognized subscription data — fail closed
+    /// for tier-gated features.
+    Unavailable,
+}
+
+impl SubscriptionLifecycleState {
+    /// Database/wire representation (snake_case, matches the serde form).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Grace => "grace",
+            Self::Expired => "expired",
+            Self::Canceled => "canceled",
+            Self::Paused => "paused",
+            Self::Unavailable => "unavailable",
         }
     }
 }
@@ -613,6 +1074,26 @@ pub enum QuotaError {
         /// The maximum number of warehouse locations allowed.
         limit: i64,
         /// The current active warehouse count.
+        current: i64,
+    },
+    /// The tenant has reached their product/menu-item limit
+    /// (subscription-tiers.md §Numeric Limits).
+    ProductLimit {
+        /// The subscription tier name.
+        tier: String,
+        /// The maximum number of products allowed.
+        limit: i64,
+        /// The current product count.
+        current: i64,
+    },
+    /// The tenant has reached their KDS screen limit
+    /// (subscription-tiers.md §Numeric Limits).
+    KdsScreenLimit {
+        /// The subscription tier name.
+        tier: String,
+        /// The maximum number of KDS screens allowed.
+        limit: i64,
+        /// The current active KDS screen count.
         current: i64,
     },
 }
@@ -668,6 +1149,28 @@ impl std::fmt::Display for QuotaError {
                 write!(
                     f,
                     "Your {tier} tier allows maximum {limit} warehouse locations. \
+                     You currently have {current}. Upgrade to add more."
+                )
+            }
+            Self::ProductLimit {
+                tier,
+                limit,
+                current,
+            } => {
+                write!(
+                    f,
+                    "Your {tier} tier allows maximum {limit} products. \
+                     You currently have {current}. Upgrade to add more."
+                )
+            }
+            Self::KdsScreenLimit {
+                tier,
+                limit,
+                current,
+            } => {
+                write!(
+                    f,
+                    "Your {tier} tier allows maximum {limit} KDS screens. \
                      You currently have {current}. Upgrade to add more."
                 )
             }

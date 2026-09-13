@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getHardwareSettings, setHardwareSettings, type HardwareSettingsDto } from '@/api/settings';
+import {
+  getHardwareSettings,
+  getHardwareSettingsScoped,
+  setHardwareSettings,
+  setHardwareSettingsScoped,
+  type HardwareSettingsDto,
+} from '@/api/settings';
+import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { plainErrorMessage } from '@/utils/app-error';
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -209,6 +216,8 @@ export function useTerminalHardware(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initializedRef = useRef(false);
+  const { sessionToken: rawSessionToken } = useWorkspace();
+  const sessionToken = rawSessionToken ?? '';
 
   // ── Load profile from IPC on mount ──────────────────────────
 
@@ -223,7 +232,11 @@ export function useTerminalHardware(
     setError(null);
 
     try {
-      const dto = await getHardwareSettings();
+      // ADR #7 conditional scoping. On desktop this is not merely the permission-checked path:
+      // get_hardware_settings is unregistered, so the unscoped call is the one that fails.
+      const dto = sessionToken
+        ? await getHardwareSettingsScoped(sessionToken)
+        : await getHardwareSettings();
       const resolved = fromHardwareSettingsDto(terminalId, storeId, dto);
       setProfile(resolved);
       setIsLoading(false);
@@ -232,7 +245,7 @@ export function useTerminalHardware(
       setProfile(createDefaultProfile(terminalId, storeId));
       setIsLoading(false);
     }
-  }, [terminalId, storeId]);
+  }, [terminalId, storeId, sessionToken]);
 
   useEffect(() => {
     if (!initializedRef.current || terminalId !== profile?.terminalId) {
@@ -314,14 +327,22 @@ export function useTerminalHardware(
     setError(null);
 
     try {
-      await setHardwareSettings(toHardwareSettingsDto(profile), userId ?? '');
+      // ADR #7 conditional scoping. On desktop this is not merely the permission-checked path:
+      // set_hardware_settings is not registered there at all (only set_hardware_settings_scoped,
+      // settings.rs:650 / lib.rs:704), so the unscoped call rejected on every save. The scoped
+      // setter derives the user from the session, so `userId` is only meaningful on the fallback.
+      if (sessionToken) {
+        await setHardwareSettingsScoped(sessionToken, toHardwareSettingsDto(profile));
+      } else {
+        await setHardwareSettings(toHardwareSettingsDto(profile), userId ?? '');
+      }
       setIsLoading(false);
     } catch (err) {
       const msg = plainErrorMessage(err, 'Failed to save hardware profile');
       setError(msg);
       setIsLoading(false);
     }
-  }, [profile, terminalId]);
+  }, [profile, terminalId, sessionToken]);
 
   // ── Reload ──────────────────────────────────────────────────
 

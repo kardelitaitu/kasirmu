@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   resolveBootStore: vi.fn(),
   createSession: vi.fn(),
   destroySession: vi.fn(),
+  refreshPickerTicket: vi.fn(),
   getDeviceId: vi.fn(),
 }));
 
@@ -57,6 +58,11 @@ vi.mock('@/api/workspaces', () => ({
 vi.mock('@/api/staff', () => ({
   createSession: (...args: unknown[]) => mocks.createSession(...args),
   destroySession: (...args: unknown[]) => mocks.destroySession(...args),
+  // Previously absent from this mock, which meant every hot-swap test silently took the
+  // `catch { /* use the existing ticket */ }` branch in swapSessionToken: calling an undefined
+  // function throws, and the fallback is exactly the path that reads `pickerTicket`. Having it
+  // here as a controllable fn is what makes both branches testable.
+  refreshPickerTicket: (...args: unknown[]) => mocks.refreshPickerTicket(...args),
 }));
 
 vi.mock('@/api/system', () => ({
@@ -200,6 +206,11 @@ beforeEach(() => {
   ]);
   mocks.createSession.mockResolvedValue(makeSessionResult());
   mocks.destroySession.mockResolvedValue(undefined);
+  // Default to rejecting. Before this mock existed, refreshPickerTicket was `undefined`, so the
+  // call threw synchronously into the same `catch` and every hot-swap test took the
+  // "use the existing ticket" fallback. A rejected promise reaches the identical branch, so this
+  // preserves the existing suite's behaviour while making the other branch reachable.
+  mocks.refreshPickerTicket.mockRejectedValue(new Error('no refreshed ticket in this test'));
   mocks.getDeviceId.mockResolvedValue('');
 });
 
@@ -571,6 +582,52 @@ describe('WorkspaceContext', () => {
 
       expect(result.current.workspace.resolvedStoreId).toBe('branch-5');
       expect(mocks.listWorkspaces).toHaveBeenCalledWith('ticket-abc', 'branch-5');
+    });
+  });
+
+  // ── swapSessionToken reads the CURRENT picker ticket ──────────────────
+  //
+  // swapSessionToken is declared with `[], // stable — reads from refs` (WorkspaceContext.tsx:293),
+  // and that comment is the whole point: the callback is deliberately dep-free because it is handed
+  // to children whose identity must not churn. But it reads `pickerTicket` at :262, which is a value
+  // from useAuth, not a ref -- so with no prior session token it sends whatever ticket existed the
+  // first time the callback was built, straight into createSession's picker_ticket at :285. The
+  // comment three lines above that read says the hot-swap user "needs a fresh ticket bound to THEIR
+  // identity (not the previous user's)". A captured ticket is precisely the previous user's.
+  describe('swapSessionToken picker ticket freshness', () => {
+    function renderWithMutableTicket() {
+      const ticketRef: { current: string | null } = { current: 'ticket-first-user' };
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        withFluent(
+          <MockAuthCtx.Provider value={{ session: DEFAULT_SESSION, pickerTicket: ticketRef.current }}>
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </MockAuthCtx.Provider>,
+        );
+      const hook = renderHook(() => useWorkspace(), { wrapper });
+      return { ...hook, ticketRef };
+    }
+
+    it('sends the ticket current at swap time, not the one captured when the callback was built', async () => {
+      const { result, rerender, ticketRef } = renderWithMutableTicket();
+
+      // A second cashier signs in behind the scenes and the auth context now carries a different
+      // ticket. This is a re-render the provider must observe.
+      ticketRef.current = 'ticket-second-user';
+      await act(async () => {
+        rerender();
+      });
+
+      await act(async () => {
+        result.current.setActiveInstance(STORE_POS);
+      });
+
+      await act(async () => {
+        await result.current.swapSessionToken('user-2', 'role-2');
+      });
+
+      const call = mocks.createSession.mock.calls.at(-1);
+      const sent = (call?.[0] as { picker_ticket?: string } | undefined)?.picker_ticket;
+      expect(sent).toBe('ticket-second-user');
     });
   });
 });

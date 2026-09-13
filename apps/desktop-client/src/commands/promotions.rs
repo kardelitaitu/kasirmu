@@ -1,57 +1,25 @@
 //! Promotion management commands.
 //!
 //! CRUD for promotion rules and recording promotion applications against sales.
+//!
+//! Wave D / D4b: the bodies now live in the headless
+//! `oz_bridge::promotions` module. Each `#[tauri::command]` below keeps
+//! its exact name, parameter list, attributes and `Result<_, AppError>`
+//! wire contract; it builds a `BridgeCtx` from `AppState` and
+//! delegates, preserving the shell's deliberate gate asymmetry
+//! (list/get/get_sale_promotions ungated; create/update/delete/apply
+//! gated + open-store path) and the PROMO-3/4 atomic apply comment. The
+//! args DTO moved with the bodies and is re-exported so `use super::*`
+//! in `promotions_tests.rs` still resolves it.
 
-use serde::Deserialize;
 use tauri::State;
 
-use oz_core::{Promotion, PromotionApplication, Store};
+use oz_core::{Promotion, PromotionApplication};
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
-/// Createpromotionargs.
-pub struct CreatePromotionArgs {
-    /// Display name.
-    pub name: String,
-    #[serde(default)]
-    /// Human-readable description.
-    pub description: String,
-    /// Promo Type.
-    pub promo_type: String,
-    /// Value Minor.
-    pub value_minor: i64,
-    /// Min Qty.
-    pub min_qty: Option<i64>,
-    /// Trigger Sku.
-    pub trigger_sku: Option<String>,
-    /// Reward Sku.
-    pub reward_sku: Option<String>,
-    /// Reward Qty.
-    pub reward_qty: Option<i64>,
-    /// Starts At.
-    pub starts_at: Option<String>,
-    /// Ends At.
-    pub ends_at: Option<String>,
-    #[serde(default)]
-    /// Min Order Minor.
-    pub min_order_minor: i64,
-    /// ID of the associated category.
-    pub category_id: Option<String>,
-    #[serde(default = "default_true")]
-    /// Whether this record is active.
-    pub active: bool,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-#[cfg(test)]
-#[path = "promotions_tests.rs"]
-mod tests;
+pub use oz_bridge::promotions::CreatePromotionArgs;
 
 /// List promotions for the store resolved from a session token. ADR #7.
 #[tauri::command]
@@ -59,14 +27,10 @@ pub async fn list_promotions_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<Promotion>, AppError> {
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let promos = store.list_promotions()?;
-    drop(db);
-    Ok(promos)
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::list_promotions_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get a promotion from the store resolved from a session token. ADR #7.
@@ -76,14 +40,10 @@ pub async fn get_promotion_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<Promotion>, AppError> {
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let promo = store.get_promotion(&id)?;
-    drop(db);
-    Ok(promo)
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::get_promotion_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create a promotion in the store resolved from a session token. ADR #7.
@@ -93,41 +53,10 @@ pub async fn create_promotion_scoped(
     args: CreatePromotionArgs,
     state: State<'_, AppState>,
 ) -> Result<Promotion, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_CREATE)
-        .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let promo = Promotion {
-        id: uuid::Uuid::now_v7().to_string(),
-        name: args.name,
-        description: args.description,
-        promo_type: args.promo_type,
-        value_minor: args.value_minor,
-        min_qty: args.min_qty,
-        trigger_sku: args.trigger_sku,
-        reward_sku: args.reward_sku,
-        reward_qty: args.reward_qty,
-        starts_at: args.starts_at,
-        ends_at: args.ends_at,
-        min_order_minor: args.min_order_minor,
-        category_id: args.category_id,
-        active: args.active,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let result = store.create_promotion(&promo)?;
-    drop(db);
-    Ok(result)
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::create_promotion_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update a promotion in the store resolved from a session token. ADR #7.
@@ -137,23 +66,10 @@ pub async fn update_promotion_scoped(
     promotion: Promotion,
     state: State<'_, AppState>,
 ) -> Result<Promotion, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_EDIT).await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let mut p = promotion;
-    p.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let result = store.update_promotion(&p)?;
-    drop(db);
-    Ok(result)
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::update_promotion_scoped(&ctx, &session_token, promotion)
+        .await
+        .map_err(Into::into)
 }
 
 /// Delete a promotion in the store resolved from a session token. ADR #7.
@@ -163,21 +79,10 @@ pub async fn delete_promotion_scoped(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_DELETE)
-        .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    store.delete_promotion(&id)?;
-    drop(db);
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::delete_promotion_scoped(&ctx, &session_token, &id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Apply a promotion in the store resolved from a session token. ADR #7.
@@ -188,29 +93,22 @@ pub async fn apply_promotion_scoped(
     promotion_id: String,
     state: State<'_, AppState>,
 ) -> Result<PromotionApplication, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_APPLY)
-        .await?;
-    let conn = state
-        .db_manager
-        .open_store(&session.store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_apply_promotion_unchecked(&db, &sale_id, &promotion_id)
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::apply_promotion_scoped(&ctx, &session_token, &sale_id, &promotion_id)
+        .await
+        .map_err(Into::into)
 }
 
+/// Apply a promotion against a store-scoped database connection.
+/// Scoped commands authorize the session against the global identity DB
+/// before opening the store connection, then call this business path.
+#[allow(dead_code)]
 fn run_apply_promotion_unchecked(
     db: &rusqlite::Connection,
     sale_id: &str,
     promotion_id: &str,
 ) -> Result<PromotionApplication, AppError> {
-    // Atomic pipeline (PROMO-3/4): engine-computed discount, dedup guard,
-    // application row, and the sale-total reduction — one transaction.
-    Store::new(db)
-        .apply_promotion_to_sale(sale_id, promotion_id, chrono::Utc::now())
+    oz_bridge::promotions::apply_promotion_unchecked(db, sale_id, promotion_id)
         .map_err(AppError::from)
 }
 
@@ -221,12 +119,8 @@ pub async fn get_sale_promotions_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<PromotionApplication>, AppError> {
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let apps = store.get_promotion_applications_for_sale(&sale_id)?;
-    drop(db);
-    Ok(apps)
+    let ctx = state.bridge_ctx();
+    oz_bridge::promotions::get_sale_promotions_scoped(&ctx, &session_token, &sale_id)
+        .await
+        .map_err(Into::into)
 }

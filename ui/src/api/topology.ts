@@ -63,6 +63,107 @@ export const loadTopology = (branchId?: string): Promise<TopologyData | null> =>
     branchId !== undefined ? { branchId } : undefined,
   );
 
+// ── Deployed revision history (ADR #46) ─────────────────────────
+
+/** One row of a branch's deploy history. Metadata only — the diagram is not
+ *  included, because a listing of up to 200 rows of ~5 KB envelopes is a
+ *  megabyte-scale payload for a panel that renders one line each. Fetch the
+ *  graph with {@link loadTopologyRevision}. */
+export interface TopologyRevisionSummary {
+  revision: number;
+  /** Merchant-authored "what changed and why"; empty when not given. */
+  changeNote: string;
+  publishedAt: string;
+  publishedBy: string;
+  /** Exempt from pruning and deflation. */
+  pinned: boolean;
+  nodeCount: number;
+  wireCount: number;
+  workspaceCreations: number;
+  workspaceUpdates: number;
+  workspaceArchives: number;
+  /** Contract axis the revision was authored under (ADR #46 §7). */
+  contractSchemaVersion: number;
+  /** False once the retention sweep pruned the snapshot (ADR #46 §4).
+   *  Render "record only — snapshot pruned"; do NOT offer a restore. */
+  restorable: boolean;
+}
+
+/** One revision's graph, for diffing or loading as a draft.
+ *
+ *  `"deflated"` and `"not-found"` are distinct deliberately: a pruned deploy
+ *  still happened, and collapsing the two silently rewrites history at the
+ *  moment someone is reconstructing an incident. */
+export interface TopologyRevisionGraph {
+  status: 'restorable' | 'deflated' | 'not-found';
+  revision: number;
+  changeNote: string;
+  publishedAt: string;
+  publishedBy: string;
+  /** Absent for a deflated row — there is no graph to judge. */
+  contractSchemaVersion?: number;
+  /** Present only when `status === 'restorable'`. */
+  diagram?: TopologyData;
+}
+
+/** Read a branch's deploy history, newest first. Gated on `audit:view`. */
+export const listTopologyRevisions = (
+  sessionToken: string,
+  branchId?: string,
+  limit?: number,
+): Promise<TopologyRevisionSummary[]> =>
+  loggedInvoke<TopologyRevisionSummary[]>('list_topology_revisions', {
+    sessionToken,
+    ...(branchId !== undefined ? { branchId } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  });
+
+/** Fetch one revision's graph. Never mutates — restore-to-draft is
+ *  client-side, and re-Applying a past revision is out of scope for v1
+ *  (ADR #46 §5). */
+export const loadTopologyRevision = (
+  sessionToken: string,
+  revision: number,
+  branchId?: string,
+): Promise<TopologyRevisionGraph> =>
+  loggedInvoke<TopologyRevisionGraph>('load_topology_revision', {
+    sessionToken,
+    revision,
+    ...(branchId !== undefined ? { branchId } : {}),
+  });
+
+/** Outcome of a pin/unpin (ADR #46 §4). */
+export interface TopologyRevisionPinResult {
+  status: 'updated' | 'not-found';
+  revision: number;
+  /** The state the row is now in. */
+  pinned: boolean;
+  /** False when the snapshot was ALREADY deflated. The pin succeeded and the
+   *  record is protected, but there is no graph to restore — do not offer a
+   *  restore on the strength of a successful pin. */
+  restorable: boolean;
+  /** True when unpinning leaves this row outside the retention budget, so the
+   *  next sweep (within 300s) will deflate it. Without this the UI says
+   *  "unpinned" and the snapshot silently disappears minutes later. */
+  prunedByNextSweep: boolean;
+}
+
+/** Pin or unpin a revision, exempting it from deflation. Gated on
+ *  `topology:write` — pinning decides which deploys stay restorable, which is
+ *  the same authority Apply needs. */
+export const pinTopologyRevision = (
+  sessionToken: string,
+  revision: number,
+  pinned: boolean,
+  branchId?: string,
+): Promise<TopologyRevisionPinResult> =>
+  loggedInvoke<TopologyRevisionPinResult>('pin_topology_revision', {
+    sessionToken,
+    revision,
+    pinned,
+    ...(branchId !== undefined ? { branchId } : {}),
+  });
+
 // ── Diagram templates (ADR #45 §4.2) ─────────────────────────────
 
 /** Save a diagram template for a branch, replacing any template of that name.
@@ -154,6 +255,10 @@ export interface TopologyApplyResult {
  * `baseRevision` prevents stale editors from overwriting a newer branch
  * diagram. `requestId` makes retries and accidental double-submits safe to
  * deduplicate on the backend.
+ *
+ * `changeNote` (ADR #46 §6) is recorded on the immutable revision row and the
+ * audit entry. Optional; the backend trims it and rejects it above 500
+ * characters before touching anything.
  */
 export const applyTopologyDiff = (
   sessionToken: string,
@@ -166,6 +271,7 @@ export const applyTopologyDiff = (
   baseRevision = 0,
   requestId: `${string}-${string}-${string}-${string}-${string}` = crypto.randomUUID(),
   resolvedIssueKeys: string[] = [],
+  changeNote?: string,
 ): Promise<TopologyApplyResult> =>
   loggedInvoke<TopologyApplyResult>('apply_topology_diff', {
     sessionToken,
@@ -181,4 +287,8 @@ export const applyTopologyDiff = (
     // dismissal must overwrite the branch document instead of leaving a
     // previously persisted key behind on the backend.
     resolvedIssueKeys,
+    // Omitted when absent, unlike resolvedIssueKeys: an empty note and no
+    // note mean the same thing to the backend, so there is nothing to clear
+    // and no stale value a subsequent Apply could inherit.
+    ...(changeNote !== undefined ? { changeNote } : {}),
   });

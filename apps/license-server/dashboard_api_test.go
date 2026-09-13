@@ -123,8 +123,8 @@ func TestWebUsage_ReturnsUsageStats(t *testing.T) {
 	if body["subscription_count"] != float64(1) {
 		t.Errorf("expected subscription_count 1, got %v", body["subscription_count"])
 	}
-	if body["max_stores"] != float64(3) {
-		t.Errorf("expected max_stores 3, got %v", body["max_stores"])
+	if body["max_locations"] != float64(3) {
+		t.Errorf("expected max_locations 3, got %v", body["max_locations"])
 	}
 	if body["max_pos_instances"] != float64(5) {
 		t.Errorf("expected max_pos_instances 5, got %v", body["max_pos_instances"])
@@ -610,7 +610,7 @@ func TestWebUsage_ContractFields(t *testing.T) {
 	testContractFields(t, body, map[string]string{
 		"device_count":       "float64",
 		"subscription_count": "float64",
-		"max_stores":         "float64",
+		"max_locations":      "float64",
 		"max_pos_instances":  "float64",
 	})
 	if body["device_count"].(float64) < 1 {

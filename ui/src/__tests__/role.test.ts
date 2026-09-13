@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeRole } from '@/utils/role';
+import { normalizeRole, roleAtLeast } from '@/utils/role';
 
 describe('normalizeRole', () => {
   it('returns staff for null', () => {
@@ -80,5 +80,64 @@ describe('normalizeRole', () => {
 
   it('handles mixed case with whitespace', () => {
     expect(normalizeRole('  AuDiToR  ')).toBe('auditor');
+  });
+});
+
+describe('roleAtLeast', () => {
+  it('clears the admin floor as owner', () => {
+    expect(roleAtLeast('owner', 'admin')).toBe(true);
+  });
+
+  it('clears a floor it sits exactly on', () => {
+    expect(roleAtLeast('admin', 'admin')).toBe(true);
+  });
+
+  it('does not clear the owner floor as admin', () => {
+    expect(roleAtLeast('admin', 'owner')).toBe(false);
+  });
+
+  it('does not clear the admin floor as manager', () => {
+    expect(roleAtLeast('manager', 'admin')).toBe(false);
+  });
+
+  it('does not clear the admin floor as the role-manager preset', () => {
+    expect(roleAtLeast('role-manager', 'admin')).toBe(false);
+  });
+
+  it('fails closed for a missing role name', () => {
+    expect(roleAtLeast(undefined, 'staff')).toBe(false);
+    expect(roleAtLeast(null, 'staff')).toBe(false);
+    expect(roleAtLeast('', 'staff')).toBe(false);
+  });
+
+  it('clears the auditor floor as auditor', () => {
+    expect(roleAtLeast('auditor', 'auditor')).toBe(true);
+  });
+
+  it('accepts raw role-* preset ids at their own rank', () => {
+    expect(roleAtLeast('role-owner', 'admin')).toBe(true);
+    expect(roleAtLeast('role-admin', 'admin')).toBe(true);
+    expect(roleAtLeast('role-auditor', 'auditor')).toBe(true);
+    expect(roleAtLeast('role-staff', 'manager')).toBe(false);
+  });
+
+  it('normalizes nothing itself — only the table spellings resolve', () => {
+    // Case-folding and trimming belong to normalizeRole; the table carries the
+    // bare names and the role-* preset ids and nothing else.
+    expect(roleAtLeast('OWNER', 'admin')).toBe(false);
+    expect(roleAtLeast(' owner', 'admin')).toBe(false);
+    expect(roleAtLeast('Role-Admin', 'admin')).toBe(false);
+  });
+
+  it('fails closed for retired and unknown roles', () => {
+    expect(roleAtLeast('cashier', 'staff')).toBe(false);
+    expect(roleAtLeast('role-kitchen', 'auditor')).toBe(false);
+    expect(roleAtLeast('supervisor', 'auditor')).toBe(false);
+  });
+
+  it('holds staff at the staff floor and below manager', () => {
+    expect(roleAtLeast('staff', 'auditor')).toBe(true);
+    expect(roleAtLeast('staff', 'staff')).toBe(true);
+    expect(roleAtLeast('staff', 'manager')).toBe(false);
   });
 });

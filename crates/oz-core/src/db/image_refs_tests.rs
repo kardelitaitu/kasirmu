@@ -176,3 +176,75 @@ fn clear_push_entry_removes_row() {
     let batch = store.peek_push_batch(10).unwrap();
     assert!(batch.is_empty());
 }
+
+// `── Dynamic `IN (…)` chunking ────────────────────────
+
+/// The chunk size is a CHUNK SIZE, never a threshold that switches the filter
+/// off: a candidate list longer than `IMAGE_REFS_IN_CHUNK` must be
+/// read in MORE chunks, and the union of the per-chunk hits must equal what
+/// one query over the whole list returns — no chunk skipped, none bleeding
+/// into another, tenant scoping intact on every chunk.
+///
+/// The fixture interleaves present and absent hashes on BOTH sides of the
+/// chunk boundary (`IMAGE_REFS_IN_CHUNK + 100` candidates → exactly
+/// 2 chunks), so a present hash from the FIRST chunk must still be excluded
+/// after the SECOND chunk ran (accumulator = union, not last chunk), and the
+/// result must come back in the caller's candidate order (the statement has no
+/// ORDER BY and never had one — ordering is the caller's list, not the
+/// query's). Absent hashes carry an active `tenant-b` ref so a chunk
+/// that dropped the tenant filter would wrongly report them present. A
+/// placeholder-numbering regression (the `?1` tenant-id collision
+/// class) becomes a parameter-count error or a wrong set, which fails HERE
+/// instead of being swallowed by the route handlers' `unwrap_or_default()`
+/// into an empty nudge.
+#[test]
+fn missing_hashes_survives_a_list_longer_than_the_chunk() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    let total = IMAGE_REFS_IN_CHUNK + 100; // forces exactly 2 chunks
+    let candidates: Vec<String> = (0..total)
+        .map(|i| {
+            if i % 5 == 0 {
+                format!("absent{i:06}")
+            } else {
+                format!("present{i:06}")
+            }
+        })
+        .collect();
+    for (i, hash) in candidates.iter().enumerate() {
+        if i % 5 == 0 {
+            store.ref_image("tenant-b", hash, 100).unwrap();
+        } else {
+            store.ref_image("tenant-a", hash, 100).unwrap();
+        }
+    }
+    let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    let missing = store.missing_hashes("tenant-a", &refs).unwrap();
+    let expected: Vec<String> = candidates
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % 5 == 0)
+        .map(|(_, h)| h.clone())
+        .collect();
+    assert_eq!(missing.len(), expected.len());
+    let missing: Vec<String> = missing.into_iter().map(str::to_owned).collect();
+    assert_eq!(
+        missing, expected,
+        "result is the candidate-ordered union across all chunks, not the last chunk"
+    );
+}
+
+/// Mirrors the compile-time `const _: () = assert!(…)` in
+/// `image_refs.rs` so raising the chunk past the historical ceiling
+/// fails a test run too, not only a build.
+// The operands are constants by design; clippy's `const { assert!(..) }` form
+// would abort the build, which is the single signal this test duplicates. The
+// level has to sit on the function: as a statement attribute on `assert!`
+// itself rustc reports `unused_attribute`.
+#[allow(clippy::assertions_on_constants)]
+#[test]
+fn image_refs_in_chunk_stays_under_the_sqlite_ceiling() {
+    // SQLITE_MAX_VARIABLE_NUMBER: 32 766 on the bundled 3.4x, 999 pre-3.32.
+    assert_eq!(SQLITE_MAX_VARIABLES, 999);
+    assert!(IMAGE_REFS_IN_CHUNK + IMAGE_REFS_LEAD_PARAMS < SQLITE_MAX_VARIABLES);
+}

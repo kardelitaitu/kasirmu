@@ -1,12 +1,21 @@
 //! Integration tests for the stock transfer module — full lifecycle
-//! from draft → send (decrement inventory) → receive (increment
-//! destination inventory) → cancel. Also tests partial receive, line
-//! management, and validation.
+//! from draft → send (decrement source-location stock) → receive
+//! (increment destination-location stock) → cancel. Also tests partial
+//! receive, line management, and validation.
 //!
 //! Tests exercise the full persistence layer via the public
 //! [`oz_core::Store`] API against an in-memory SQLite database.
+//!
+//! Seeding contract (ADR-19 §3.1): stock is placed through the canonical
+//! per-location writer [`Store::adjust_stock_at_location_with_reason`],
+//! NOT by inserting the legacy single-PK `inventory` row directly. The
+//! transfer path pre-checks the location-scoped `stock_summary` ledger,
+//! and the legacy-inventory bridge materialises any aggregate at the
+//! canonical default location — so a legacy-only seed reads as
+//! "insufficient stock: have 0" at the transfer's named source location.
 
 use oz_core::db::stock_transfers::ReceivedLine;
+use oz_core::inventory::LocationId;
 use oz_core::{Store, migrations};
 use rusqlite::Connection;
 
@@ -57,26 +66,53 @@ fn seed_product(conn: &Connection, sku: &str, name: &str) {
     .unwrap();
 }
 
-fn seed_inventory(conn: &Connection, sku: &str, qty: i64) {
-    let pid: String = conn
-        .query_row(
-            "SELECT id FROM products WHERE sku=?1",
-            rusqlite::params![sku],
-            |r| r.get(0),
+/// Seed `qty` units of `sku` at `location` through the canonical
+/// ADR-19 §3.1 writer — the same code path production uses for every
+/// sale/refund/transfer. One call appends the `stock_movements` delta,
+/// upserts the per-location `stock_summary` row, and recomputes the
+/// legacy `inventory` aggregate as the SUM over locations, so the
+/// transfer path's location-scoped pre-check sees the seeded stock.
+/// (The previous fixture inserted only the legacy `inventory` row, which
+/// the bridge materialises at the canonical default location — never at
+/// the transfer's named source — so every send saw "have 0".)
+fn seed_inventory(conn: &Connection, sku: &str, qty: i64, location: &str) {
+    let tx = conn.unchecked_transaction().unwrap();
+    store(conn)
+        .adjust_stock_at_location_with_reason(
+            &tx,
+            sku,
+            qty,
+            &LocationId::from(location),
+            Some("test-seed"),
+            None,
+            None,
+            None,
         )
         .unwrap();
-    conn.execute(
-        "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, '2025-01-01T00:00:00.000Z')",
-        rusqlite::params![pid, qty],
-    )
-    .unwrap();
+    tx.commit().unwrap();
 }
 
+/// Legacy single-PK `inventory` aggregate (cross-location SUM maintained
+/// by the canonical writer).
 fn get_inventory_qty(conn: &Connection, sku: &str) -> i64 {
     conn.query_row(
         "SELECT COALESCE(qty, 0) FROM inventory i
          JOIN products p ON i.product_id = p.id WHERE p.sku = ?1",
         rusqlite::params![sku],
+        |r| r.get(0),
+    )
+    .unwrap_or(0)
+}
+
+/// Qty at one (sku, location) read from the canonical per-location
+/// `stock_summary` ledger — the view the transfer path pre-checks and
+/// writes.
+fn get_location_qty(conn: &Connection, sku: &str, location: &str) -> i64 {
+    conn.query_row(
+        "SELECT COALESCE(SUM(s.qty), 0) FROM stock_summary s
+         JOIN products p ON s.item_id = p.id
+         WHERE p.sku = ?1 AND s.location_id = ?2",
+        rusqlite::params![sku, location],
         |r| r.get(0),
     )
     .unwrap_or(0)
@@ -120,7 +156,7 @@ fn create_transfer_starts_as_draft() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-W", "Widget");
-    seed_inventory(&conn, "SKU-W", 100);
+    seed_inventory(&conn, "SKU-W", 100, "Warehouse A");
 
     let t = create_draft(&conn, "staff-1", &[make_line("SKU-W", "Widget", 10)]);
     assert_eq!(t.status, "draft");
@@ -150,7 +186,7 @@ fn list_transfers_newest_first() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-W", "Widget");
-    seed_inventory(&conn, "SKU-W", 100);
+    seed_inventory(&conn, "SKU-W", 100, "Warehouse A");
 
     let lines = vec![make_line("SKU-W", "Widget", 5)];
     let t1 = store(&conn)
@@ -184,7 +220,7 @@ fn send_transfer_moves_to_in_transit_and_decrements_inventory() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-A", "Product A");
-    seed_inventory(&conn, "SKU-A", 50);
+    seed_inventory(&conn, "SKU-A", 50, "Warehouse A");
 
     let lines = vec![make_line("SKU-A", "Product A", 15)];
     let t = create_draft(&conn, "staff-1", &lines);
@@ -195,6 +231,10 @@ fn send_transfer_moves_to_in_transit_and_decrements_inventory() {
 
     // Source inventory decremented: 50 - 15 = 35.
     assert_eq!(get_inventory_qty(&conn, "SKU-A"), 35);
+    // Per-location truth (ADR-19 §3.1): the decrement landed at the SOURCE
+    // location, and nothing was credited to the destination pre-receipt.
+    assert_eq!(get_location_qty(&conn, "SKU-A", "Warehouse A"), 35);
+    assert_eq!(get_location_qty(&conn, "SKU-A", "Store B"), 0);
 }
 
 #[test]
@@ -202,18 +242,29 @@ fn send_transfer_insufficient_stock_fails() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-B", "Product B");
-    seed_inventory(&conn, "SKU-B", 5);
+    seed_inventory(&conn, "SKU-B", 5, "Warehouse A");
 
     let lines = vec![make_line("SKU-B", "Product B", 20)];
     let t = create_draft(&conn, "staff-1", &lines);
 
     let err = store(&conn).send_transfer(&t.id).unwrap_err();
-    assert!(matches!(
-        err,
-        oz_core::CoreError::Validation { field: "qty", .. }
-    ));
+    match err {
+        oz_core::CoreError::Validation { field, message } => {
+            assert_eq!(field, "qty");
+            // The shortfall must be measured against the 5 units seeded AT
+            // THE SOURCE LOCATION — not against a phantom 0 from a ledger
+            // the seed never reached. The old field-only assertion passed
+            // on "have 0, need 20", which masked exactly that staleness.
+            assert!(
+                message.contains("SKU-B") && message.contains("have 5, need 20"),
+                "expected a typed 5-of-20 shortfall, got: {message}"
+            );
+        }
+        other => panic!("expected CoreError::Validation, got {other:?}"),
+    }
     // Inventory unchanged.
     assert_eq!(get_inventory_qty(&conn, "SKU-B"), 5);
+    assert_eq!(get_location_qty(&conn, "SKU-B", "Warehouse A"), 5);
 }
 
 #[test]
@@ -221,7 +272,7 @@ fn send_already_sent_transfer_fails() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-C", "Product C");
-    seed_inventory(&conn, "SKU-C", 50);
+    seed_inventory(&conn, "SKU-C", 50, "Warehouse A");
 
     let lines = vec![make_line("SKU-C", "Product C", 10)];
     let t = create_draft(&conn, "staff-1", &lines);
@@ -245,7 +296,7 @@ fn receive_transfer_increments_inventory_and_sets_received() {
     seed_user(&conn, "staff-1");
     seed_user(&conn, "staff-2");
     seed_product(&conn, "SKU-D", "Product D");
-    seed_inventory(&conn, "SKU-D", 50);
+    seed_inventory(&conn, "SKU-D", 50, "Warehouse A");
 
     let lines = vec![make_line("SKU-D", "Product D", 10)];
     let t = create_draft(&conn, "staff-1", &lines);
@@ -271,6 +322,11 @@ fn receive_transfer_increments_inventory_and_sets_received() {
     // Destination inventory: 50 - 10 (send) + 10 (receive) = 50.
     // The send decremented first because source and receiver use the same product.
     assert_eq!(get_inventory_qty(&conn, "SKU-D"), 50);
+    // Per-location proof of the move: the aggregate alone cannot show the
+    // destination was credited (a misdirected credit keeps it at 50). The
+    // source holds 40, the destination holds the received 10.
+    assert_eq!(get_location_qty(&conn, "SKU-D", "Warehouse A"), 40);
+    assert_eq!(get_location_qty(&conn, "SKU-D", "Store B"), 10);
 }
 
 #[test]
@@ -279,7 +335,7 @@ fn partial_receive_writes_received_partial_status() {
     seed_user(&conn, "staff-1");
     seed_user(&conn, "staff-2");
     seed_product(&conn, "SKU-E", "Product E");
-    seed_inventory(&conn, "SKU-E", 30);
+    seed_inventory(&conn, "SKU-E", 30, "Warehouse A");
 
     let lines = vec![make_line("SKU-E", "Product E", 10)];
     let t = create_draft(&conn, "staff-1", &lines);
@@ -300,6 +356,11 @@ fn partial_receive_writes_received_partial_status() {
 
     assert_eq!(result.status, "received_partial");
     // Only 4 received of 10 total — status becomes received_partial per ADR-18 §34.
+    // The destination is credited exactly the 4 received units (not the
+    // ordered 10); the source keeps its post-send 20.
+    assert_eq!(get_location_qty(&conn, "SKU-E", "Store B"), 4);
+    assert_eq!(get_location_qty(&conn, "SKU-E", "Warehouse A"), 20);
+    assert_eq!(get_inventory_qty(&conn, "SKU-E"), 24);
 }
 
 #[test]
@@ -340,7 +401,7 @@ fn cancel_received_transfer_fails() {
     seed_user(&conn, "staff-1");
     seed_user(&conn, "staff-2");
     seed_product(&conn, "SKU-F", "Product F");
-    seed_inventory(&conn, "SKU-F", 50);
+    seed_inventory(&conn, "SKU-F", 50, "Warehouse A");
 
     let lines = vec![make_line("SKU-F", "Product F", 10)];
     let t = create_draft(&conn, "staff-1", &lines);
@@ -375,7 +436,7 @@ fn add_and_remove_lines_from_draft() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-G", "Product G");
-    seed_inventory(&conn, "SKU-G", 100);
+    seed_inventory(&conn, "SKU-G", 100, "Warehouse A");
 
     let t = create_draft(&conn, "staff-1", &[]);
 
@@ -398,7 +459,7 @@ fn add_line_to_non_draft_transfer_fails() {
     let conn = setup();
     seed_user(&conn, "staff-1");
     seed_product(&conn, "SKU-H", "Product H");
-    seed_inventory(&conn, "SKU-H", 100);
+    seed_inventory(&conn, "SKU-H", 100, "Warehouse A");
 
     let t = create_draft(&conn, "staff-1", &[]);
     store(&conn).send_transfer(&t.id).unwrap();

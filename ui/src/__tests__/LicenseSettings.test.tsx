@@ -3,6 +3,7 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
 import LicenseSettings from '@/features/settings/LicenseSettings';
+import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 import salesFtl from '@/locales/sales.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
@@ -16,6 +17,11 @@ const mockGetLicenseStatus = vi.fn();
 const mockCheckLicenseStatus = vi.fn();
 const mockPauseSubscription = vi.fn();
 const mockResumeSubscription = vi.fn();
+// Separate spies, not delegates: a mirror registers a call on the unscoped spy, which makes
+// `expect(unscoped).not.toHaveBeenCalled()` unprovable and the test would pass whichever path
+// ran. See DataManagementBackup.test.tsx for the full reasoning.
+const mockPauseSubscriptionScoped = vi.fn();
+const mockResumeSubscriptionScoped = vi.fn();
 const mockAddToast = vi.fn();
 
 vi.mock('@/api/license', () => ({
@@ -23,6 +29,9 @@ vi.mock('@/api/license', () => ({
   checkLicenseStatus: () => mockCheckLicenseStatus(),
   pauseSubscription: (...args: unknown[]) => mockPauseSubscription(...args),
   resumeSubscription: () => mockResumeSubscription(),
+  pauseSubscriptionScoped: (token: string, months: number) =>
+    mockPauseSubscriptionScoped(token, months),
+  resumeSubscriptionScoped: (token: string) => mockResumeSubscriptionScoped(token),
 }));
 
 vi.mock('@/frontend/shared/Toast', () => ({
@@ -280,7 +289,11 @@ describe('LicenseSettings — EN', () => {
       fireEvent.click(screen.getByText(/pause subscription/i));
       fireEvent.click(screen.getByText(/confirm pause/i));
       await waitFor(() => {
-        expect(mockPauseSubscription).toHaveBeenCalledWith(1);
+        // pause_subscription reads the stored API key and calls the billing server with no
+        // session and no permission check; pause_subscription_scoped (license.rs:806) enforces
+        // permissions::SETTINGS_EDIT first. Pausing a subscription is a billing action.
+        expect(mockPauseSubscriptionScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN, 1);
+        expect(mockPauseSubscription).not.toHaveBeenCalled();
       });
     });
 
@@ -295,7 +308,8 @@ describe('LicenseSettings — EN', () => {
       await renderWithFluent(<LicenseSettings />);
       fireEvent.click(screen.getByText(/resume subscription/i));
       await waitFor(() => {
-        expect(mockResumeSubscription).toHaveBeenCalled();
+        expect(mockResumeSubscriptionScoped).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN);
+        expect(mockResumeSubscription).not.toHaveBeenCalled();
       });
     });
   });

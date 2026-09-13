@@ -3,29 +3,38 @@
 //! Exposes `list_categories`, `create_category`, `update_category`, and
 //! `delete_category` to the front-end so the Category Management UI can
 //! display and manipulate product categories.
+//!
+//! Wave A / S3: the bodies now live in the headless `oz_bridge::categories`
+//! module. Each `#[tauri::command]` below keeps its exact name, parameter
+//! list and `Result<_, AppError>` return so the registered IPC surface and
+//! the serialized error shape are unchanged; it borrows a `BridgeCtx` from
+//! `AppState`, calls the bridge, and maps `BridgeError` back to `AppError`
+//! variant-for-variant. The DTOs moved with the bodies and are re-exported so
+//! `use super::*` in `categories_tests.rs` still resolves them.
+//!
+//! The permission gate (F-017) and store resolution run inside the bridge, in
+//! the same order as before: resolve the session, authorize against the GLOBAL
+//! identity DB, then open the store-scoped connection.
 
+// Retained for the sibling test module, which reaches these through
+// `use super::*`; the command bodies themselves no longer name them.
+#[allow(unused_imports)]
+use oz_core::Store;
+#[allow(unused_imports)]
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use oz_core::Store;
+#[allow(unused_imports)]
+// sibling categories_tests.rs reaches `permissions` via `use super::*`
 use oz_core::permissions;
 
-use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// A category DTO for the front-end.
-#[derive(Debug, Serialize)]
-pub struct CategoryDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Colour.
-    pub colour: String,
-    /// Icon.
-    pub icon: String,
-}
+pub use oz_bridge::categories::{
+    CategoryDto, CreateCategoryArgs, CreateCategoryResult, DeleteCategoryArgs,
+    DeleteCategoryResult, UpdateCategoryArgs, UpdateCategoryResult,
+};
 
 /// Fetch all categories for the store resolved from a session token. ADR #7.
 #[tauri::command]
@@ -34,54 +43,23 @@ pub async fn list_categories_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<CategoryDto>, AppError> {
     // F-017: enforce per-domain permission on this scoped command.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    run_list_categories(&db)
+    let ctx = state.bridge_ctx();
+    oz_bridge::categories::list_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for listing categories (extracted for testing).
+///
+/// Thin adapter over `oz_bridge::categories::run_list_categories`: the name,
+/// parameter list and `Result<_, AppError>` type are unchanged so the sibling
+/// test module keeps matching on `AppError::Core`.
+#[allow(dead_code)] // retained by the Wave-A extraction contract for sibling tests
 fn run_list_categories(conn: &rusqlite::Connection) -> Result<Vec<CategoryDto>, AppError> {
-    let store = Store::new(conn);
-    let categories = store.list_categories()?;
-
-    let dtos: Vec<CategoryDto> = categories
-        .into_iter()
-        .map(|c| CategoryDto {
-            id: c.id,
-            name: c.name,
-            colour: c.colour,
-            icon: c.icon,
-        })
-        .collect();
-
-    Ok(dtos)
+    oz_bridge::categories::run_list_categories(conn).map_err(AppError::from)
 }
 
 // ── Create category ──────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Createcategoryargs.
-pub struct CreateCategoryArgs {
-    /// Unique category id (e.g. "cat-drinks", "cat-bakery").
-    pub id: String,
-    /// Display name (must be unique across all categories).
-    pub name: String,
-    /// Hex colour string (e.g. "#06b6d4").
-    pub colour: String,
-    /// Icon identifier (e.g. a lucide icon name or empty string).
-    pub icon: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Createcategoryresult.
-pub struct CreateCategoryResult {
-    /// Unique identifier.
-    pub id: String,
-}
 
 /// Create category in the store resolved from a session token (CAT-01).
 ///
@@ -94,42 +72,13 @@ pub async fn create_category_scoped(
     args: CreateCategoryArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateCategoryResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    // Permission is checked against the GLOBAL identity DB (ADR #4/#7)
-    // before the store-scoped connection is opened.
-    require_category_permission(&state, &session.user_id, permissions::PRODUCTS_CREATE).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.create_category(&args.id, &args.name, &args.colour, &args.icon)?;
-
-    Ok(CreateCategoryResult { id: args.id })
+    let ctx = state.bridge_ctx();
+    oz_bridge::categories::create_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Update category ──────────────────────────────────────────────────
-
-/// Arguments for updating an existing category.
-#[derive(Debug, Deserialize)]
-pub struct UpdateCategoryArgs {
-    /// Existing category id (immutable).
-    pub id: String,
-    /// New display name.
-    pub name: String,
-    /// New hex colour string.
-    pub colour: String,
-    /// New icon identifier.
-    pub icon: String,
-}
-
-#[derive(Debug, Serialize)]
-/// Updatecategoryresult.
-pub struct UpdateCategoryResult {
-    /// Unique identifier.
-    pub id: String,
-}
 
 /// Update a category in the store resolved from a session token (CAT-01).
 ///
@@ -140,33 +89,13 @@ pub async fn update_category_scoped(
     args: UpdateCategoryArgs,
     state: State<'_, AppState>,
 ) -> Result<UpdateCategoryResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_category_permission(&state, &session.user_id, permissions::PRODUCTS_UPDATE).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    store.update_category(&args.id, &args.name, &args.colour, &args.icon)?;
-    Ok(UpdateCategoryResult { id: args.id })
+    let ctx = state.bridge_ctx();
+    oz_bridge::categories::update_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Delete category ──────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Deletecategoryargs.
-pub struct DeleteCategoryArgs {
-    /// Unique identifier.
-    pub id: String,
-}
-
-/// Result of deleting a category (CAT-02).
-#[derive(Debug, Serialize)]
-pub struct DeleteCategoryResult {
-    /// Number of products unlinked from the deleted category.
-    pub affected_products: i64,
-}
 
 /// Delete a category in the store resolved from a session token (CAT-01/02).
 ///
@@ -180,35 +109,8 @@ pub async fn delete_category_scoped(
     args: DeleteCategoryArgs,
     state: State<'_, AppState>,
 ) -> Result<DeleteCategoryResult, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_category_permission(&state, &session.user_id, permissions::PRODUCTS_DELETE).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-
-    let affected_products = store.delete_category_with_unlink(&args.id)?;
-    Ok(DeleteCategoryResult { affected_products })
+    let ctx = state.bridge_ctx();
+    oz_bridge::categories::delete_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
-
-/// Verify a category permission against the global identity database.
-///
-/// Users and roles are global authentication records (ADR #4 / ADR #7);
-/// category business data is read from the store-scoped connection after
-/// this check succeeds. Mirror of `require_tax_permission` in tax.rs.
-async fn require_category_permission(
-    state: &AppState,
-    user_id: &str,
-    permission: &str,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, user_id, permission)
-}
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-#[path = "categories_tests.rs"]
-mod tests;

@@ -252,7 +252,7 @@ async fn set_store_restarts_server_against_new_target() {
     {
         let db = state.db.lock().await;
         db.execute(
-            "INSERT INTO store_profiles (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('store-b', 'B', '', '', 'USD', 'UTC', 0, 'x', 'x')",
             [],
         )

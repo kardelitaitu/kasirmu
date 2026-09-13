@@ -3,14 +3,15 @@
 //! Key functions: `create_sale` / `create_sale_in_tx`, the `list_sales*`
 //! family (history cap, store, user, customer scopes), `get_sale` and
 //! `update_sale_status`, with the shared `validate_sale_money` /
-//! `insert_sale_with_lines` helpers and the `row_to_sale_line` row
-//! mapper.
+//! `insert_sale_with_lines` helpers and the shared `row_to_sale_line` /
+//! `row_to_sale_header` row mappers.
 //!
 //! Invariants: money and quantities are i64 minor units validated by
 //! the MONEY-06/07 rules; all writes run in explicit transactions.
 
 use super::*;
 use crate::SaleStatus;
+use rusqlite::OptionalExtension;
 
 /// Validate the non-negative money/qty class guarded by MONEY-06/MONEY-07
 /// (shared by `create_sale` and `create_sale_in_tx`).
@@ -149,7 +150,77 @@ impl Store<'_> {
         })
     }
 
+    /// Map one row of the standard 21-column sale projection onto a [`Sale`]
+    /// header with `lines` left empty. Four read paths (the shared
+    /// `list_sales_sql`, `list_sales_for_store`, `list_sales_for_customer`
+    /// and `get_sale`) mapped this row identically; they now share this
+    /// mapper. `list_sales_by_user` deliberately keeps its own strict
+    /// variant (propagating rather than defaulting a NULL discount/version).
+    fn row_to_sale_header(row: &rusqlite::Row) -> rusqlite::Result<Sale> {
+        let cur_str: String = row.get("currency")?;
+        let status_str: String = row.get("status")?;
+        let currency: Currency = cur_str.parse::<Currency>().map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
+            )
+        })?;
+        let status = SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending);
+        Ok(Sale {
+            id: row.get("id")?,
+            status,
+            total: Money {
+                minor_units: row.get("total_minor")?,
+                currency,
+            },
+            line_count: row.get("line_count")?,
+            currency,
+            payment_method: row.get("payment_method")?,
+            tendered_minor: row.get("tendered_minor")?,
+            discount_percent: row
+                .get::<_, Option<i64>>("discount_percent")
+                .unwrap_or(Some(0))
+                .unwrap_or(0),
+            discount_label: row.get("discount_label")?,
+            user_id: row.get("user_id")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
+            lines: Vec::new(),
+            subtotal: Money {
+                minor_units: row.get("subtotal_minor")?,
+                currency,
+            },
+            tax_total: Money {
+                minor_units: row.get("tax_total_minor")?,
+                currency,
+            },
+            customer_id: row.get("customer_id")?,
+            base_currency: row.get("base_currency")?,
+            base_total_minor: row.get("base_total_minor")?,
+            tender_rate_millionths: row.get("tender_rate_millionths")?,
+            tip_minor: row.get("tip_minor")?,
+            service_charge_minor: row.get("service_charge_minor")?,
+            version: row.get("version").unwrap_or(1),
+        })
+    }
+
     /// Persist a [`Sale`] (header + all line items) inside a single transaction.
+    ///
+    /// SYNC OUTBOX - lane one, deliberately unwired. Three doors produce a
+    /// `SaleCompleted`; two of them (sales_checkout.rs:527,
+    /// sales_lifecycle.rs:470) now write the `complete_sale` outbox row inside
+    /// the settlement transaction. This one cannot: the legacy `complete_sale`
+    /// command completes a sale across THREE separate transactions - create_sale
+    /// here, then `update_sale_status(Active)`, then
+    /// `update_sale_status(Completed)` (apps/tablet-client/src/commands/pos.rs
+    /// :978-982) - so no transaction spans completion and there is no commit
+    /// point to hang the row on. Restructuring it is a different change with a
+    /// different risk, on the deprecated path. It keeps relying on
+    /// SaleSyncEnqueuer, which still enqueues whenever no pending row exists for
+    /// the sale id - the two mechanisms are per-lane, not one stale and one
+    /// live. What this lane keeps is exactly the window the wired lanes closed:
+    /// a crash, or a handler error the bus swallows (event_bus.rs:259-281),
+    /// between the status commit and the handler INSERT loses the sync row
+    /// permanently and invisibly.
     pub fn create_sale(&self, sale: &Sale) -> Result<(), CoreError> {
         // MONEY-07: this legacy global-db door deserializes a Sale straight from
         // import/CLI JSON (oz-cli) — CartLine::new's qty > 0 assert never runs.
@@ -239,52 +310,7 @@ impl Store<'_> {
              {from_clause}"
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map([], |row| {
-            let cur_str: String = row.get("currency")?;
-            let status_str: String = row.get("status")?;
-            let currency: Currency = cur_str.parse::<Currency>().map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
-                )
-            })?;
-            let status = SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending);
-            Ok(Sale {
-                id: row.get("id")?,
-                status,
-                total: Money {
-                    minor_units: row.get("total_minor")?,
-                    currency,
-                },
-                line_count: row.get("line_count")?,
-                currency,
-                payment_method: row.get("payment_method")?,
-                tendered_minor: row.get("tendered_minor")?,
-                discount_percent: row
-                    .get::<_, Option<i64>>("discount_percent")
-                    .unwrap_or(Some(0))
-                    .unwrap_or(0),
-                discount_label: row.get("discount_label")?,
-                user_id: row.get("user_id")?,
-                created_at: row.get("created_at")?,
-                updated_at: row.get("updated_at")?,
-                lines: Vec::new(),
-                subtotal: Money {
-                    minor_units: row.get("subtotal_minor")?,
-                    currency,
-                },
-                tax_total: Money {
-                    minor_units: row.get("tax_total_minor")?,
-                    currency,
-                },
-                customer_id: row.get("customer_id")?,
-                base_currency: row.get("base_currency")?,
-                base_total_minor: row.get("base_total_minor")?,
-                tender_rate_millionths: row.get("tender_rate_millionths")?,
-                tip_minor: row.get("tip_minor")?,
-                service_charge_minor: row.get("service_charge_minor")?,
-                version: row.get("version").unwrap_or(1),
-            })
-        })?;
+        let rows = stmt.query_map([], Self::row_to_sale_header)?;
         rows.map(|r| Ok(r?)).collect()
     }
 
@@ -308,52 +334,7 @@ impl Store<'_> {
              WHERE store_id IS NULL OR store_id = ?1
              ORDER BY created_at DESC",
         )?;
-        let rows = stmt.query_map(params![store_id], |row| {
-            let cur_str: String = row.get("currency")?;
-            let status_str: String = row.get("status")?;
-            let currency: Currency = cur_str.parse::<Currency>().map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
-                )
-            })?;
-            let status = SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending);
-            Ok(Sale {
-                id: row.get("id")?,
-                status,
-                total: Money {
-                    minor_units: row.get("total_minor")?,
-                    currency,
-                },
-                line_count: row.get("line_count")?,
-                currency,
-                payment_method: row.get("payment_method")?,
-                tendered_minor: row.get("tendered_minor")?,
-                discount_percent: row
-                    .get::<_, Option<i64>>("discount_percent")
-                    .unwrap_or(Some(0))
-                    .unwrap_or(0),
-                discount_label: row.get("discount_label")?,
-                user_id: row.get("user_id")?,
-                created_at: row.get("created_at")?,
-                updated_at: row.get("updated_at")?,
-                lines: Vec::new(),
-                subtotal: Money {
-                    minor_units: row.get("subtotal_minor")?,
-                    currency,
-                },
-                tax_total: Money {
-                    minor_units: row.get("tax_total_minor")?,
-                    currency,
-                },
-                customer_id: row.get("customer_id")?,
-                base_currency: row.get("base_currency")?,
-                base_total_minor: row.get("base_total_minor")?,
-                tender_rate_millionths: row.get("tender_rate_millionths")?,
-                tip_minor: row.get("tip_minor")?,
-                service_charge_minor: row.get("service_charge_minor")?,
-                version: row.get("version").unwrap_or(1),
-            })
-        })?;
+        let rows = stmt.query_map(params![store_id], Self::row_to_sale_header)?;
         rows.map(|r| Ok(r?)).collect()
     }
 
@@ -450,52 +431,10 @@ impl Store<'_> {
              FROM sales WHERE customer_id = ?1
              ORDER BY created_at DESC LIMIT ?2 OFFSET ?3",
         )?;
-        let rows = stmt.query_map(params![customer_id, bounded, offset], |row| {
-            let cur_str: String = row.get("currency")?;
-            let status_str: String = row.get("status")?;
-            let currency: Currency = cur_str.parse::<Currency>().map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
-                )
-            })?;
-            let status = SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending);
-            Ok(Sale {
-                id: row.get("id")?,
-                status,
-                total: Money {
-                    minor_units: row.get("total_minor")?,
-                    currency,
-                },
-                line_count: row.get("line_count")?,
-                currency,
-                payment_method: row.get("payment_method")?,
-                tendered_minor: row.get("tendered_minor")?,
-                discount_percent: row
-                    .get::<_, Option<i64>>("discount_percent")
-                    .unwrap_or(Some(0))
-                    .unwrap_or(0),
-                discount_label: row.get("discount_label")?,
-                user_id: row.get("user_id")?,
-                created_at: row.get("created_at")?,
-                updated_at: row.get("updated_at")?,
-                lines: Vec::new(),
-                subtotal: Money {
-                    minor_units: row.get("subtotal_minor")?,
-                    currency,
-                },
-                tax_total: Money {
-                    minor_units: row.get("tax_total_minor")?,
-                    currency,
-                },
-                customer_id: row.get("customer_id")?,
-                base_currency: row.get("base_currency")?,
-                base_total_minor: row.get("base_total_minor")?,
-                tender_rate_millionths: row.get("tender_rate_millionths")?,
-                tip_minor: row.get("tip_minor")?,
-                service_charge_minor: row.get("service_charge_minor")?,
-                version: row.get("version").unwrap_or(1),
-            })
-        })?;
+        let rows = stmt.query_map(
+            params![customer_id, bounded, offset],
+            Self::row_to_sale_header,
+        )?;
         let items = rows
             .map(|r| Ok(r?))
             .collect::<Result<Vec<_>, CoreError>>()?;
@@ -514,52 +453,7 @@ impl Store<'_> {
              FROM sales WHERE id = ?1",
         )?;
 
-        let sale_result = sale_stmt.query_row(params![id], |row| {
-            let cur_str: String = row.get("currency")?;
-            let status_str: String = row.get("status")?;
-            let currency: Currency = cur_str.parse::<Currency>().map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
-                )
-            })?;
-            let status = SaleStatus::from_stored_str(&status_str).unwrap_or(SaleStatus::Pending);
-            Ok(Sale {
-                id: row.get("id")?,
-                status,
-                total: Money {
-                    minor_units: row.get("total_minor")?,
-                    currency,
-                },
-                line_count: row.get("line_count")?,
-                currency,
-                payment_method: row.get("payment_method")?,
-                tendered_minor: row.get("tendered_minor")?,
-                discount_percent: row
-                    .get::<_, Option<i64>>("discount_percent")
-                    .unwrap_or(Some(0))
-                    .unwrap_or(0),
-                discount_label: row.get("discount_label")?,
-                user_id: row.get("user_id")?,
-                created_at: row.get("created_at")?,
-                updated_at: row.get("updated_at")?,
-                lines: Vec::new(),
-                subtotal: Money {
-                    minor_units: row.get("subtotal_minor")?,
-                    currency,
-                },
-                tax_total: Money {
-                    minor_units: row.get("tax_total_minor")?,
-                    currency,
-                },
-                customer_id: row.get("customer_id")?,
-                base_currency: row.get("base_currency")?,
-                base_total_minor: row.get("base_total_minor")?,
-                tender_rate_millionths: row.get("tender_rate_millionths")?,
-                tip_minor: row.get("tip_minor")?,
-                service_charge_minor: row.get("service_charge_minor")?,
-                version: row.get("version").unwrap_or(1),
-            })
-        });
+        let sale_result = sale_stmt.query_row(params![id], Self::row_to_sale_header);
 
         let mut sale = match sale_result {
             Ok(s) => s,
@@ -579,6 +473,33 @@ impl Store<'_> {
         }
 
         Ok(Some(sale))
+    }
+
+    /// The F2 audit stamp for one sale: the `tax_estimate_note` column core
+    /// writes when the cart's tax was computed against a non-fresh estimate
+    /// (client claim + core-verified delta, F2-5's JSON shape).
+    ///
+    /// A dedicated read accessor rather than a field on [`Sale`]: widening the
+    /// domain struct would force `tax_estimate_note: None,` into every `Sale`
+    /// literal across the kds/reports/tables/multi-terminal/promotions test
+    /// corpora and the modules-sales mirror (~45 sites, 9 files) for a value
+    /// only the history surface consumes — the same trade C2 made for
+    /// `legal_entity_id` vs the location-profile struct. `None` = unstamped
+    /// (legacy row, or the tax was computed live): absence is the honest
+    /// answer and must never read as a claim.
+    pub fn sale_tax_estimate_note(&self, sale_id: &str) -> Result<Option<String>, CoreError> {
+        // Two independent absences to flatten: the OUTER Option is row
+        // existence (no sale with that id — .optional()), the INNER is the
+        // NULL column (an unstamped sale — rusqlite's Option<String> get).
+        let note: Option<Option<String>> = self
+            .conn
+            .query_row(
+                "SELECT tax_estimate_note FROM sales WHERE id = ?1",
+                params![sale_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?;
+        Ok(note.flatten())
     }
 
     /// Update the status of a sale, validating the state machine transition.

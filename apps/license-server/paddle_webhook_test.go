@@ -609,7 +609,7 @@ func TestPaddleWebhook_SubscriptionUpdated_SyncsTierAndExpiry(t *testing.T) {
 	// re-signed payload already carries calculateGraceUntil(new expires_at),
 	// and /me (subscriptionSummary) reads the record — a stale value would
 	// make the dashboard's "Grace until" disagree with the signed payload.
-	wantGrace := calculateGraceUntil(subRec.GetDateTime("expires_at").Time())
+	wantGrace := calculateGraceUntil("premium", subRec.GetDateTime("expires_at").Time())
 	gotGrace := subRec.GetDateTime("grace_until").Time()
 	if !wantGrace.Equal(gotGrace) {
 		t.Errorf("expected grace_until refreshed to %s after period extension, got %s",
@@ -683,7 +683,7 @@ func TestActivate_PaddleKeyWithoutAPIKey_MintsKeyAndReusesSubscription(t *testin
 	// The webhook-created active subscription (signed_payload "{}" marks it).
 	seedSubscription(t, app, tenantID, "pro", "active")
 
-	body := fmt.Sprintf(`{"key":"OZ-PRO-PADDLE-0001","machine_id":"aaaaaaaaaaaaaaa","email":"paddle-activate@example.com"}`)
+	body := `{"key":"OZ-PRO-PADDLE-0001","machine_id":"aaaaaaaaaaaaaaa","email":"paddle-activate@example.com"}`
 	rec := webRequest(t, se, http.MethodPost, "/api/v1/license/activate", body, "", "")
 
 	if rec.Code != http.StatusOK {
@@ -737,7 +737,7 @@ func TestActivate_ManualKeyExistingTenantStillRequiresAPIKey(t *testing.T) {
 	expiresAt := time.Now().UTC().AddDate(1, 0, 0).Format(time.RFC3339)
 	seedLicenseKey(t, app, "OZ-PRO-MANUAL-0001", "pro", "unused", expiresAt)
 
-	body := fmt.Sprintf(`{"key":"OZ-PRO-MANUAL-0001","machine_id":"aaaaaaaaaaaaaaa","email":"MANUALTENANT001@example.com"}`)
+	body := `{"key":"OZ-PRO-MANUAL-0001","machine_id":"aaaaaaaaaaaaaaa","email":"MANUALTENANT001@example.com"}`
 	rec := webRequest(t, se, http.MethodPost, "/api/v1/license/activate", body, "", "")
 
 	if rec.Code != http.StatusUnauthorized {
@@ -826,7 +826,7 @@ func TestPaddleWebhook_SubscriptionResumed_BackToActive(t *testing.T) {
 	// refreshed and the license key's expiry re-synced — otherwise /me shows
 	// a stale grace date and the key expires at the old date while the
 	// subscription says otherwise.
-	wantGrace := calculateGraceUntil(subRec.GetDateTime("expires_at").Time())
+	wantGrace := calculateGraceUntil("pro", subRec.GetDateTime("expires_at").Time())
 	gotGrace := subRec.GetDateTime("grace_until").Time()
 	if !wantGrace.Equal(gotGrace) {
 		t.Errorf("expected grace_until refreshed to %s after resume, got %s",
@@ -919,7 +919,7 @@ func TestWebhookLifecycle_MeTracksCancelAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription not found: %v", err)
 	}
-	wantGrace := calculateGraceUntil(newEnds)
+	wantGrace := calculateGraceUntil("premium", newEnds)
 	if got := subRec.GetDateTime("grace_until").Time(); !wantGrace.Equal(got) {
 		t.Errorf("after update: expected record grace_until %s, got %s",
 			wantGrace.Format(time.RFC3339), got.Format(time.RFC3339))
@@ -975,7 +975,7 @@ func TestWebhookLifecycle_MeTracksCancelAndResume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscription not found: %v", err)
 	}
-	wantGrace = calculateGraceUntil(subRec.GetDateTime("expires_at").Time())
+	wantGrace = calculateGraceUntil("premium", subRec.GetDateTime("expires_at").Time())
 	if got := subRec.GetDateTime("grace_until").Time(); !wantGrace.Equal(got) {
 		t.Errorf("after resume: expected record grace_until %s, got %s",
 			wantGrace.Format(time.RFC3339), got.Format(time.RFC3339))
@@ -1313,7 +1313,7 @@ func TestPaddlePlus_WebhookToRenew_EndToEnd(t *testing.T) {
 		t.Fatal("expected api_key in activate response")
 	}
 	actPayload := signedPayloadFrom(t, actRec.Body.Bytes())
-	assertPlusQuotaBlock(t, actPayload.TierKey, actPayload.MaxStores, actPayload.MaxPOSInstances, actPayload.AllowedTypes)
+	assertPlusQuotaBlock(t, actPayload.TierKey, actPayload.MaxLocations, actPayload.MaxPOSInstances, actPayload.AllowedTypes)
 
 	keyAfterActivate, err := app.FindFirstRecordByData("license_keys", "key", keyA)
 	if err != nil || keyAfterActivate.GetString("status") != "activated" {
@@ -1351,7 +1351,7 @@ func TestPaddlePlus_WebhookToRenew_EndToEnd(t *testing.T) {
 	// Renewed payload keeps the plus quota block and appends +1y onto the
 	// second webhook subscription (already +1y) → ~2 years from now.
 	renPayload := signedPayloadFrom(t, renewRec.Body.Bytes())
-	assertPlusQuotaBlock(t, renPayload.TierKey, renPayload.MaxStores, renPayload.MaxPOSInstances, renPayload.AllowedTypes)
+	assertPlusQuotaBlock(t, renPayload.TierKey, renPayload.MaxLocations, renPayload.MaxPOSInstances, renPayload.AllowedTypes)
 	renExpiry, err := time.Parse(time.RFC3339, renPayload.ExpiresAt)
 	if err != nil {
 		t.Fatalf("failed to parse renewed expires_at: %v", err)

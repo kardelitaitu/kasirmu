@@ -16,12 +16,31 @@ use crate::AppState;
 
 /// Convert a Store error into an HTTP response.
 fn store_error_response(e: CoreError) -> Response {
-    tracing::error!("store error: {e}");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(serde_json::json!({"error": "internal error"})),
-    )
-        .into_response()
+    match e {
+        CoreError::Validation { message, .. } => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": message})),
+        )
+            .into_response(),
+        CoreError::Conflict { .. } => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": "resource already exists"})),
+        )
+            .into_response(),
+        CoreError::NotFound { .. } => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "not found"})),
+        )
+            .into_response(),
+        e => {
+            tracing::error!("unexpected store error: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// List all categories, ordered by name.

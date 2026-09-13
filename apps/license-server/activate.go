@@ -108,12 +108,20 @@ func sendAPIKeyRotationNoticeSMTP(to string) error {
 		"your devices, revoke unknown machines, and contact support.\n"
 
 	var sb strings.Builder
-	sb.WriteString("From: OZ-POS <" + from + ">\r\n")
-	sb.WriteString("To: " + to + "\r\n")
-	sb.WriteString("Subject: " + subject + "\r\n")
+	sb.WriteString("From: OZ-POS <")
+	sb.WriteString(from)
+	sb.WriteString(">\r\n")
+	sb.WriteString("To: ")
+	sb.WriteString(to)
+	sb.WriteString("\r\n")
+	sb.WriteString("Subject: ")
+	sb.WriteString(subject)
+	sb.WriteString("\r\n")
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	sb.WriteString("Date: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n")
+	sb.WriteString("Date: ")
+	sb.WriteString(time.Now().UTC().Format(time.RFC1123Z))
+	sb.WriteString("\r\n")
 	sb.WriteString("\r\n")
 	sb.WriteString(body)
 	return sendMailSMTP(host, port, user, password, from, []string{to}, []byte(sb.String()))
@@ -924,16 +932,34 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 			TenantID:        tenantID,
 			TierKey:         tierKey,
 			Status:          "active",
-			MaxStores:       maxStores,
+			MaxLocations:    maxStores,
 			MaxPOSInstances: maxPOSInstances,
 			AllowedTypes:    allowedTypes,
 			StartsAt:        time.Now().UTC().Format(time.RFC3339),
 			ExpiresAt:       expiresAt.Format(time.RFC3339),
-			GraceUntil:      calculateGraceUntil(expiresAt).Format(time.RFC3339),
+			GraceUntil:      calculateGraceUntil(tierKey, expiresAt).Format(time.RFC3339),
 			IssuedAt:        time.Now().UTC().Format(time.RFC3339),
 		}
 
+		// ── Trial state, client-visible (Phase C) ─────────────────
+		// The client collapses a trial tier to Free for quota purposes
+		// (SubscriptionTier::from_db("trial") => Free), which is the right
+		// quota answer but throws away the fact that this tenant is on a
+		// trial and when it ends. Publish both here so trial UI/policy needs
+		// no new wire surface. expiresAt is already the segmented trial's own
+		// end (overridden above from trialDays), so trial_ends_at is the trial
+		// deadline rather than a billing period.
+		//
+		// Paid keys never enter this branch, and both fields are omitempty —
+		// a paid payload carries neither, exactly like a pre-Phase-C payload.
+		if isTrialKey {
+			sub.IsTrial = true
+			sub.TrialEndsAt = expiresAt.Format(time.RFC3339)
+		}
+
 		// ── Build and sign subscription payload ───────────────────
+		// D2: carry any admin-authored per-feature grants into the signed payload.
+		sub.Features = featureGrantsForTenant(app, tenantID)
 		payloadStr, signature, err := signSubscription(sub)
 		if err != nil {
 			return e.JSON(http.StatusInternalServerError, map[string]any{
@@ -956,8 +982,9 @@ func handleActivate(app core.App) func(e *core.RequestEvent) error {
 		subRecord.Set("expires_at", sub.ExpiresAt)
 		subRecord.Set("grace_until", sub.GraceUntil)
 		// Persist the quota block on the subscription record so /status reads
-		// real values (mirrors renew.go's M5-audit fix).
-		subRecord.Set("max_stores", sub.MaxStores)
+		// real values (mirrors renew.go's M5-audit fix). Storage keeps the
+		// historical max_stores field name (1g renamed the wire only).
+		subRecord.Set("max_stores", sub.MaxLocations)
 		subRecord.Set("max_pos_instances", sub.MaxPOSInstances)
 		if b, err := json.Marshal(sub.AllowedTypes); err == nil {
 			subRecord.Set("allowed_types", string(b))

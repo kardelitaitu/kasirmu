@@ -113,7 +113,7 @@ export default function HeroCarousel({ labels, descriptions, comingSoon }: Props
               aria-label={labels[id]}
               className={`rounded-full px-4 py-2 text-sm font-medium transition duration-200 border ${
                 isActive
-                  ? 'border-primary bg-primary text-white shadow-sm'
+                  ? 'border-primary bg-primary text-on-primary shadow-sm'
                   : 'border-ink/10 bg-surface/60 text-muted hover:border-primary/40 hover:text-ink hover:bg-surface'
               }`}
             >

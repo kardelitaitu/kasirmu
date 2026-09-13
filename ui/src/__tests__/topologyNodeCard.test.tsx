@@ -2,12 +2,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { TopologyNodeCard } from '@/features/stores/topologyNodeCard';
-import type { TopologyNodeData, PortName } from '@/features/stores/NodeTopologyEditor';
-import type { TopologyValidationError } from '@/features/stores/topologyContract';
+import { TopologyNodeCard } from '@/features/locations/topologyNodeCard';
+import type { TopologyNodeData, PortName } from '@/features/locations/NodeTopologyEditor';
+import type { TopologyValidationError } from '@/features/locations/topologyContract';
 import type { ReactLocalization } from '@fluent/react';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
-import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
+import multiStoreIdFtl from '@/locales/multi-location.id.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
 

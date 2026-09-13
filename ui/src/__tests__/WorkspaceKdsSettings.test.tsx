@@ -12,7 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/frontend/shared/Toast';
 import { WorkspaceKdsSettings } from '@/features/settings/workspace-cards/WorkspaceKdsSettings';
-import { getSettingScoped } from '@/api/settings';
+import { getSettingScoped, setSettingsScoped } from '@/api/settings';
 
 const testL10n = {
   bundles: [], areBundlesEmpty: () => true,
@@ -164,6 +164,62 @@ describe('WorkspaceKdsSettings', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled(), { timeout: 3000 });
+  });
+
+  // ── The save payload ───────────────────────────────────────────
+  //
+  // `calls onSaved after successful save` above asserts the callback fired, never what
+  // was sent. setSettingsScoped was mocked and never asserted on -- in this file or in
+  // either sibling card's test -- so the entire batch payload had zero coverage. That is
+  // how fcfddf79 shipped a regression: it turned DisplayDensity from a string union into
+  // a number, converted the read path and the control, and missed the write-back at
+  // WorkspaceKdsSettings.tsx:130.
+  //
+  // The consequence was not cosmetic. setSettingsScoped takes Record<string, string> and
+  // the Rust command deserializes HashMap<String, String>
+  // (apps/desktop-client/src/commands/settings.rs), so a JSON number anywhere in the map
+  // fails serde for the WHOLE call. All five keys go in one batch, so saving the sound
+  // toggle or a threshold failed too -- not just density -- and the user got the
+  // settings-save-error toast. TypeScript caught it; the test suite would not have.
+
+  it('sends every KDS setting as a string, and all five keys in one batch', async () => {
+    renderCard();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const t = document.getElementById('kds-auto-ack') as HTMLInputElement;
+    fireEvent.click(t);
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() => expect(setSettingsScoped).toHaveBeenCalled());
+
+    const [token, entries] = vi.mocked(setSettingsScoped).mock.calls[0]!;
+    expect(token).toBe('test-token');
+    expect(Object.keys(entries!).sort()).toEqual([
+      'kds.auto_acknowledge', 'kds.density', 'kds.red_threshold_min',
+      'kds.sound_enabled', 'kds.yellow_threshold_min',
+    ]);
+    // The contract with the Rust command, asserted rather than left to the compiler:
+    // one non-string value rejects the entire batch at deserialisation.
+    for (const [k, v] of Object.entries(entries!)) {
+      expect(typeof v, `${k} must be serialised as a string`).toBe('string');
+    }
+    expect(entries!['kds.density']).toBe('3');
+  });
+
+  it('persists a changed column count as its string form, not a bare number', async () => {
+    renderCard();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const sel = document.getElementById('kds-density') as HTMLSelectElement;
+    fireEvent.change(sel, { target: { value: '5' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
+    vi.mocked(setSettingsScoped).mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() => expect(setSettingsScoped).toHaveBeenCalled());
+
+    const [, entries] = vi.mocked(setSettingsScoped).mock.calls[0]!;
+    // Regression pin for the exact line that broke: '3' not 3, so serde accepts it.
+    expect(entries!['kds.density']).toBe('5');
   });
 
   it('keeps a toggle made before the settings load lands (no draft-overwrite race)', async () => {

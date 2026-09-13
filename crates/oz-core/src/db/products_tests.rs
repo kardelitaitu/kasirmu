@@ -1022,7 +1022,15 @@ fn rebuild_stock_summary_from_ledger() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(qty1, 40, "prod-1: 50 + (-10) = 40");
+    // 40 -> 50. seed_everything writes inventory (prod-1 = 50) with NO movement
+    // behind it — exactly the legacy shape rebuild_stock_summary_for now closes
+    // with one `legacy-backfill` compensating movement. The ledger is no longer
+    // short by 10, so the re-derive lands on the seeded 50 instead of destroying
+    // the unbacked units. Same reader, same call; only the expected qty moved.
+    assert_eq!(
+        qty1, 50,
+        "prod-1: 50 + (-10) + 10 healed unbacked units = 50"
+    );
 
     let qty2: i64 = conn
         .query_row(
@@ -1035,7 +1043,10 @@ fn rebuild_stock_summary_from_ledger() {
 
     // Verify inventory was synced.
     let inv1 = store(&conn).get_stock("prod-1").unwrap();
-    assert_eq!(inv1, 40);
+    // 40 -> 50 for the same reason: the aggregate is re-derived from a ledger
+    // that the compensating row made complete. prod-2 is untouched by the heal
+    // (its inventory 12 is BELOW its ledger 75, so the predicate reads false).
+    assert_eq!(inv1, 50);
     let inv2 = store(&conn).get_stock("prod-2").unwrap();
     assert_eq!(inv2, 75);
 }
@@ -2130,8 +2141,8 @@ fn seed_allow_negative_terminal(conn: &rusqlite::Connection) -> String {
     }
 
     conn.execute_batch(&format!(
-        "INSERT OR IGNORE INTO store_profiles (id, name) VALUES ('store-neg', 'Neg Store');
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name) \
+        "INSERT OR IGNORE INTO locations (id, name) VALUES ('store-neg', 'Neg Store');
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
            VALUES ('{ws}', (SELECT key FROM workspace_types LIMIT 1), 'store-neg', 'NegTest');
          INSERT OR IGNORE INTO workspace_inventory_locations \
            (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \
@@ -2388,4 +2399,123 @@ fn list_products_stock_is_sum_across_locations() {
         Some(15),
         "stock column must total units across all locations (ADR #36 D3)"
     );
+}
+
+// ── Product quota (subscription-tiers.md §Numeric Limits) ─────────────
+
+#[test]
+fn tier_max_products_matches_published_contract() {
+    use crate::subscription::SubscriptionTier;
+    assert_eq!(SubscriptionTier::Free.max_products(), Some(200));
+    assert_eq!(SubscriptionTier::Plus.max_products(), Some(500));
+    assert_eq!(SubscriptionTier::Pro.max_products(), Some(1_000));
+    assert_eq!(SubscriptionTier::Premium.max_products(), Some(10_000));
+    assert_eq!(SubscriptionTier::Enterprise.max_products(), None);
+}
+
+#[test]
+fn enforce_product_quota_allows_under_limit() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let store = Store::new(&conn);
+    // 3 seeded products, Free cap is 200 — passes.
+    store
+        .enforce_product_quota(&crate::subscription::SubscriptionTier::Free)
+        .expect("3 products must be under the Free 200 cap");
+}
+
+#[test]
+fn create_product_tx_veto_closes_limit_race() {
+    // W4-S4: Free caps at 200. Seed 199 rows (un-gated raw SQL), then the
+    // 200th ARMED create passes (current 199 -> 200) and the 201st is vetoed
+    // inside its transaction — the over-cap row never commits.
+    let conn = fresh();
+    let store = Store::new(&conn);
+    for i in 0..199 {
+        conn.execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency) VALUES (?1, ?2, ?3, 100, 'USD')",
+            rusqlite::params![format!("seed-{i:03}"), format!("SEED{i:03}"), "Seed"],
+        )
+        .unwrap();
+    }
+    let tier = crate::subscription::SubscriptionTier::Free;
+    store.arm_creation_quota(crate::downgrade::QuotaDimension::Products, tier.clone());
+    store
+        .create_product("SKU-199", "P199", Money::zero(usd()), None, None, 0, None)
+        .expect("200th product is at the cap, not over it");
+    store.arm_creation_quota(crate::downgrade::QuotaDimension::Products, tier);
+    let err = store
+        .create_product("SKU-200", "P200", Money::zero(usd()), None, None, 0, None)
+        .expect_err("201st product must be refused in-tx");
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Free at 200/200 must be refused in-tx: {err:?}"
+    );
+    assert_eq!(store.count_products().unwrap(), 200);
+}
+
+#[test]
+fn create_product_unarmed_is_ungated() {
+    // Arm-once: without an armed gate verdict the create keeps the exact
+    // legacy behavior, even past the tier cap (policy stays at the gate).
+    let conn = fresh();
+    let store = Store::new(&conn);
+    store
+        .create_product("SKU-1", "P1", Money::zero(usd()), None, None, 0, None)
+        .unwrap();
+    store
+        .create_product("SKU-2", "P2", Money::zero(usd()), None, None, 0, None)
+        .unwrap();
+    assert_eq!(store.count_products().unwrap(), 2);
+}
+
+#[test]
+fn enforce_product_quota_rejects_at_limit() {
+    let conn = fresh();
+    let store = Store::new(&conn);
+    // Free cap is 200 — insert exactly 200 rows, then the next must fail.
+    for i in 0..200 {
+        store
+            .create_product(
+                &format!("SKU-{i:03}"),
+                &format!("P{i}"),
+                Money::zero(usd()),
+                None,
+                None,
+                0,
+                None,
+            )
+            .expect("insert under cap");
+    }
+    let err = store
+        .enforce_product_quota(&crate::subscription::SubscriptionTier::Free)
+        .expect_err("200 products must hit the Free cap");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("200 products"),
+        "actionable message expected, got: {msg}"
+    );
+    assert!(msg.contains("Free"), "tier name expected, got: {msg}");
+}
+
+#[test]
+fn enforce_product_quota_enterprise_unlimited() {
+    let conn = fresh();
+    let store = Store::new(&conn);
+    for i in 0..210 {
+        store
+            .create_product(
+                &format!("SKU-{i:03}"),
+                &format!("P{i}"),
+                Money::zero(usd()),
+                None,
+                None,
+                0,
+                None,
+            )
+            .expect("enterprise has no product cap");
+    }
+    store
+        .enforce_product_quota(&crate::subscription::SubscriptionTier::Enterprise)
+        .expect("Enterprise is unlimited");
 }

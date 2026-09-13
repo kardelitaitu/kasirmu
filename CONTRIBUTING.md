@@ -1,6 +1,6 @@
 # Contributing to OZ-POS
 
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (2 noted findings) · F1 (doc bug): internal contradiction — line 45 lists `fix/<name>` as a valid branch prefix and line 79 shows `fix(payment):` as a correct example, but line 85 forbids `fix` as a commit prefix; the `fix/` type is simultaneously allowed and forbidden and the doc's own example violates its rule · F2 (minor): references SECURITY.md ("when it exists") — file still absent, but hedged so consistent · verified accurate: all referenced docs/skills/scripts exist (WHITEPAPER, QUICKSTART, ROADMAP, ARCHITECTURE, AGENTS, LICENSE, onboarding-guide, skill-drift-guard, detect.sh, coverage.sh); PR commands match AGENTS.md -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 doc drifts fixed, 2 enforcement gaps recorded) · SUPERSEDES the 2026-07-22 stamp, whose two findings are carried forward here rather than stacked below it · FIXED: (1) F1 from 2026-07-22 — found and then never repaired for 48 days: `fix` was listed as a forbidden commit prefix while .githooks/commit-msg accepts it, `fix/<name>` is a documented branch prefix, and `fix(payment):` appears as a correct example in the same section, so the doc's own example violated its own rule and every agent reading it inherited a false constraint. (2) "type matches the branch prefix" restated against the live TYPES list (10 accepted types, 6 branch prefixes; style/perf/ci/audit have no prefix). (3) the skill-anatomy list now marks which of its six items a machine actually enforces — only the footer (Check 9) — and records that 4 of 13 skills lack "When to use" and 2 lack "Common pitfalls". · FLAGGED NOT FIXED: "the skill-drift-guard script will catch the omission on the next CI run" (a new skill missing from the onboarding router) is FALSE — Check 6 is one-directional; proved by creating a valid throwaway skill and getting exit 0 with no findings. Corrected to "by hand, because nothing checks it"; adding the reverse check to Check 6 is a code change and was not made. · verified accurate: all 8 quick-link targets resolve including the ui/README.md#install-script-approvals anchor (heading at ui/README.md:36); F2 from 2026-07-22 still holds — SECURITY.md remains absent and the reference stays hedged, so it is consistent rather than correct; PR commands still match AGENTS.md · RE-AUDITED 2026-09-09 by DSH (docs-auditor): the PR-gate section was wrong about CI and my own 09-08 pass missed it. CONTRIBUTING claimed the CI coverage job uploads coverage artifacts; no coverage job exists in either live workflow - it lived only in .github/workflows/ci.yml.bak, retired by 23c96330 on 09-02 and never restored, so nothing uploads them. The optional-and-not-a-gate sentence next to it was already correct, which is how the pair read as consistent. Warned about the near-miss too: dev-ci.yml#static-gates has a step named 'Scoped command coverage' running bash scripts/verify-scoped-coverage.sh, which checks IPC _scoped-command parity and emits no artifact - grepping the word coverage in dev-ci.yml finds it and would re-validate the false claim. Added the platform warning that bare bash on this Windows workstation is WSL and can hang rather than fail (AGENTS.md), since this section instructs bash scripts/coverage.sh, scripts/reset-dev-pg.sh and detect.sh; the pwsh reset-dev-pg.ps1 line is the unaffected Windows-native form. Re-confirmed true: scripts/coverage.sh, scripts/reset-dev-pg.sh, scripts/reset-dev-pg.ps1 and .agents/skills/skill-drift-guard/scripts/detect.sh all exist, detect.sh does accept --report (usage at :9, parsed at :38), coverage.sh takes rust|ui via target=\"${1:-all}\" as documented, and its preflight reports missing cargo-llvm-cov/llvm-cov/ui deps rather than half-running. --> · REV 2 (same day): a fourth drift, found while auditing docs/operations/ci-pipeline.md — §Flaky tests told contributors that "the flaky-quarantine job (required in CI) runs scripts/verify-flaky-quarantine.py". No such job exists in either live workflow (grep -ci flaky dev-ci.yml = 0), check.sh never calls it, and gates.json records the gate as retired with no runner. The script works; nothing runs it, so an expired quarantine entry fails nothing. Item 3 rewritten to say so and the closing sentence no longer promises a gate that will fire. · REV 3 (09-09-26, docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (3 findings from .agents/skills/docs-auditor/scripts/check-ci-claims.py). Rev 2 fixed only the quarantine item; the section still asserted a nightly schedule two lines above it. Repaired: "The nightly `flaky-detect` job runs it on a schedule and uploads the report" — that job exists only in `.github/workflows/nightly.yml.bak` (job list at `nightly.yml.bak`, incl. `flaky-detect`), renamed `.bak` by `23c963303` on 2026-09-02; neither live workflow declares a `schedule:` trigger, so nothing runs `scripts/report-flaky.sh` any more, and `scripts/gates.json` records `nightly-flaky-detect` as retired with no `ci` block. Also re-flowed the rev-2 item 3 so its own refutation sits on the same line as the job name (the checker is line-scoped, so a claim split across wrapped lines read as an unhedged assertion), and corrected its step count: `static-gates` has 28 named steps, not 29 — re-measure with grep -c '^      - name:' on the static-gates block, since 0938af645 removed one gate step earlier this week. Verified true and left alone: all ten `dev-ci.yml` job names still match the workflow, `scripts/flaky-quarantine.json` + `scripts/verify-flaky-quarantine.py` + `scripts/report-flaky.sh` all exist (git ls-files), and the "an expired quarantine fails nothing" consequence is unchanged.
 
 Thanks for your interest in OZ-POS! This project is a Rust + Tauri v2 POS framework built around a "wizard behind the curtain" philosophy: the merchant sees effortless checkout, and the lean Rust engine silently handles transactions, encryption, hardware, sync, and business logic.
 
@@ -45,7 +45,7 @@ If your change touches more than one layer (Rust core, Tauri IPC, UI, HAL, proje
 |--------|-------------|---------|
 | `feat/<name>` | New feature, capability, or user-visible change | `feat/cart-line-discount` |
 | `fix/<name>` | Bug fix | `fix/cart-overflow-on-coupon` |
-| `docs/<name>` | Documentation only | `docs/i18n-contributor-guide` |
+| `docs/<name>` | Documentation only | `docs/i18n-contributor-guide` <!-- dead-ref: ok: an invented example subject, not a path claim --> |
 | `chore/<name>` | Maintenance, deps, config, refactor with no behavior change | `chore/bump-tauri-v2.1` |
 | `test/<name>` | Test additions or fixes | `test/integration-sales-flow` |
 | `refactor/<name>` | Code restructuring, no behavior change | `refactor/extract-payment-port` |
@@ -60,7 +60,11 @@ If your change touches more than one layer (Rust core, Tauri IPC, UI, HAL, proje
 <type>(<optional scope>): <short summary> [optional body] [optional footer(s)]
 ```
 
-- `type` matches the branch prefix.
+- `type` is one of the ten the commit-msg gate accepts: `feat`, `fix`, `docs`,
+  `style`, `refactor`, `perf`, `test`, `ci`, `chore`, `audit` — read live from
+  `.githooks/commit-msg` (`TYPES=\`), never from this page. Six of them have a matching
+  branch prefix (see above); `style`, `perf`, `ci`, `audit` do not, so "type matches the
+  branch prefix" is a guideline for feature work, not the acceptance rule.
 - Summary is ≤ 72 characters, imperative mood ("add" not "added").
 - Body explains *why*; the diff shows *what*.
 - Footer for breaking changes: `BREAKING CHANGE: <description>`.
@@ -84,7 +88,15 @@ Stripe occasionally returns 502 on authorization. A single retry with
 a 250ms backoff recovers most cases without idempotency risk.
 ```
 
-**Forbidden prefixes:** `update`, `fix`, `changes`, `wip`, `minor`. These are too vague.
+**Forbidden prefixes:** `update`, `changes`, `wip`, `minor`. These are too vague, and
+the gate rejects them.
+
+> **`fix` was on this list until 08-09-26 — it is not forbidden.** `.githooks/commit-msg`
+> accepts it (`TYPES='feat|fix|docs|style|refactor|perf|test|ci|chore|audit'`),
+> `fix/<name>` is a documented branch prefix two sections above, and `fix` is the most
+> common type in the log. The list contradicted the gate it describes, and an agent
+> following it would have reached for `refactor` or `chore` on a bug fix to avoid a
+> rejection that was never coming.
 
 ---
 
@@ -92,16 +104,32 @@ a 250ms backoff recovers most cases without idempotency risk.
 
 Skills are the project's living documentation. When you discover a pattern that the skills don't cover — a new crate convention, a new CI check, a new accessibility rule — write a new skill under `.agents/skills/<skill-name>/SKILL.md`.
 
-**Anatomy of a good skill:**
+**Anatomy of a good skill** — items 1–5 are convention, item 6 is the only one a
+machine enforces:
 
-1. **YAML frontmatter** with `name` and `description` (description is what the agent router matches against).
-2. **"When to use"** section — be explicit about the trigger conditions.
-3. **"Golden rules"** table — the non-negotiables for this area.
-4. **Concrete examples** with copy-pasteable code.
-5. **"Common pitfalls"** section at the end.
-6. **Footer**: `> last audited <DD-MM-YY> by <who>`.
+| # | Element | Enforced? |
+|---|---------|-----------|
+| 1 | YAML frontmatter with `name` and `description` (the description is what the agent router matches against) | no |
+| 2 | "When to use" section — explicit trigger conditions | no |
+| 3 | "Golden rules" table — the non-negotiables for this area | no |
+| 4 | Concrete examples with copy-pasteable code | no |
+| 5 | "Common pitfalls" section at the end | no |
+| 6 | Footer `> last audited <DD-MM-YY> by <who>` | **yes** — `detect.sh` Check 9 (shape + real calendar date + within 30 days) |
 
-After adding a skill, update `.agents/skills/onboarding-guide/SKILL.md` so the router table points to it. The `skill-drift-guard` script will catch the omission on the next CI run.
+Measured on 08-09-26, 4 of the 13 skills have no "When to use" heading and 2 have no
+"Common pitfalls", so the list above is a target, not a description of the corpus. If
+you add a skill, matching items 1–5 is still the right thing to do — just do not assume
+CI will tell you.
+
+After adding a skill, update `.agents/skills/onboarding-guide/SKILL.md` so the router
+table points to it — **by hand, because nothing checks it.** `skill-drift-guard` Check 6
+runs in one direction only: it flags a router row whose token resolves to nothing. A
+skill that exists and is never mentioned produces no token, so there is nothing to flag.
+Verified 08-09-26 by creating a throwaway `.agents/skills/zz-probe-test/SKILL.md` with a
+valid footer and running `detect.sh --check=refs`: **exit 0, no findings** (the probe was
+deleted immediately after). The claim this paragraph replaces was that the script "will
+catch the omission on the next CI run". Adding the reverse-direction check to Check 6
+would make that claim true again; it has not been added, because that is a code change.
 
 ---
 
@@ -128,12 +156,32 @@ cd ui && npm run lint && npm run typecheck && npm run test && npm run build
 For coverage spot-checks (optional, not part of the PR gate yet):
 
 ```bash
-bash scripts/coverage.sh         # rust + ui
+bash scripts/coverage.sh         # rust + ui (default target: all)
 bash scripts/coverage.sh rust    # just rust
 bash scripts/coverage.sh ui      # just ui
 ```
 
-Reports land in `coverage/{rust,ui}/index.html`. The CI `coverage` job uploads the same artifacts on every push to `main`. Use them to spot under-tested modules after refactors.
+Reports land in `coverage/{rust,ui}/index.html`.
+
+> ⚠️ **There is no CI coverage job.** This sentence previously said the CI `coverage` job
+> uploads these artifacts. It does not: a `coverage:` job exists in exactly one workflow file,
+> `.github/workflows/ci.yml.bak`, which `23c96330` retired on 09-02 and never restored, and the
+> two live workflows (`dev-ci.yml`, `release.yml`) contain no such job. Nothing uploads coverage
+> today, which is consistent with the line above calling coverage optional and "not part of the
+> PR gate" — the gate sentence was right and the CI sentence was not.
+>
+> Do not be reassured by grepping for the word: `dev-ci.yml#static-gates` has a step named
+> **"Scoped command coverage"** (`bash scripts/verify-scoped-coverage.sh`), and that checks
+> whether every registered IPC command has a `_scoped` twin. It has nothing to do with test
+> coverage and produces no artifact.
+
+> ⚠️ **On this Windows workstation, run these through Git's bash by full path.** Bare `bash`
+> resolves to `C:\Windows\System32\bash.exe` (WSL), which can hang instead of failing — see
+> "Running CLI Tools on Windows" in `AGENTS.md`. Use
+> `& 'C:\Program Files\Git\bin\bash.exe' scripts/coverage.sh` rather than assuming a timeout
+> means the script is broken. The same applies to `scripts/reset-dev-pg.sh` and `detect.sh`
+> below; the `pwsh` line for `reset-dev-pg.ps1` is the Windows-native alternative and is
+> unaffected.s on every push to `main`. Use them to spot under-tested modules after refactors.
 
 If a PostgreSQL integration test skips with `Migration error` (the dev DB drifted from the committed `PG_INIT` schema), reset the dev container before running the suite:
 
@@ -190,8 +238,15 @@ Be specific in your review comments. "This is wrong" is not actionable; "This Mo
 ## Flaky tests (AUDIT-27 CI-09)
 
 Flaky tests are detected with `scripts/report-flaky.sh` (runs the suite N
-`--runs` times and lists tests that fail intermittently). The nightly
-`flaky-detect` job runs it on a schedule and uploads the report.
+`--runs` times and lists tests that fail intermittently). **Nothing runs it on a
+schedule for you.** It used to be the nightly `flaky-detect` job, which lived in
+`nightly.yml`; `23c963303` renamed that whole workflow to
+`.github/workflows/nightly.yml.bak` on 2026-09-02 and GitHub never executes a
+`.bak` file, so no scheduled workflow exists at all — `dev-ci.yml` triggers on
+`pull_request` targeting `main` plus `workflow_dispatch`, `release.yml` on `v*`
+tags, and neither declares a schedule. `scripts/gates.json` records the gate as
+`nightly-flaky-detect`, status `retired`, no `ci` block. Run it by hand: from
+Git bash on Windows, `& 'C:\Program Files\Git\bin\bash.exe' scripts/report-flaky.sh --runs 5`.
 
 Quarantining a test is a **documented, temporary, enforced** action — it is
 not a permanent exclusion:
@@ -202,15 +257,32 @@ not a permanent exclusion:
    `scripts/flaky-quarantine.json` with `test`, `owner`, `issue` (URL or
    `#NN`), `reason`, `date`, and `expiry`. Optionally tag the test with
    `#[cfg_attr(feature = "slow-tests", ignore)]` as the report suggests.
-3. **CI enforces the loop.** The `flaky-quarantine` job (required in CI)
-   runs `scripts/verify-flaky-quarantine.py`, which **fails** if an entry is
-   expired, missing an issue, or missing an owner — forcing re-investigation.
+3. **Nothing enforces the loop.** Until 08-09-26 this page presented the
+   `flaky-quarantine` job as required in CI. It is not — no such job exists in
+   either live workflow, and the file that made that statement true was itself
+   retired: `ci.yml` defined the job (manifest check at
+   `.github/workflows/ci.yml.bak:1061-1067`) and `23c963303` renamed that whole
+   workflow to `.bak` on 2026-09-02 without a replacement. `dev-ci.yml`'s ten jobs
+   are `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`,
+   `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`, and
+   none of its 28 `static-gates` steps is it. Re-measure either claim with
+   `grep -ci flaky .github/workflows/dev-ci.yml`, which returns **0**, and
+   `check.sh` does not call it either. The script itself exists and works — run by hand it prints `PASS:
+   quarantine manifest valid (0 entries, none expired)` — but nothing invokes it,
+   and `scripts/gates.json` records the gate as **retired** with no CI runner.
+   **The consequence is the part to internalise:** an expired quarantine entry
+   will not fail anything. It will simply sit there, silently skipping a test
+   past the date someone decided was the deadline. The registry's expiry field is
+   a promise nobody keeps.
 4. **Critical-path tests cannot be quarantined silently.** If a test
    covers a critical path, open the issue and get review sign-off on the
    quarantine before adding it.
 
 A quarantined test is a debt item: it must be fixed before the entry's
-`expiry`, at which point the gate fails until it is renewed or resolved.
+`expiry`. Nothing will tell you when it passes — run
+`python3 scripts/verify-flaky-quarantine.py` yourself, or add the call to
+`check.sh` / `dev-ci.yml#static-gates` (a code change, deliberately not made here,
+and it needs a `gates.json` record too or the drift checker will not see it).
 
 ---
 
@@ -235,4 +307,4 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ---
 
-> last audited 17-07-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor

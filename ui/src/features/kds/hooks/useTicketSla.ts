@@ -33,11 +33,44 @@ export interface TicketSlaResult {
 
 // ── Constants ─────────────────────────────────────────────────────────
 
-/** Red-urgent threshold: ≥ 900 seconds (15 minutes). Adds bg + badge. */
-const RED_URGENT = 900;
+/**
+ * Red-urgent threshold: ≥ 900 seconds (15 minutes). Adds bg + badge.
+ *
+ * Exported for testing. Two suites (KdsSlaThresholdClamp and KdsSlaEscalationPipeline) each
+ * declared their own `const RED_URGENT = 900`. A copied threshold is the quietest version of
+ * this bug: move the real one and both files keep asserting the old boundary against a value
+ * they made up themselves, still green.
+ */
+export const RED_URGENT = 900;
 
 /** Tick interval in milliseconds (every second). */
 const TICK_MS = 1000;
+
+/**
+ * Clamp thresholds so the state machine stays monotonic: yellow must precede red.
+ *
+ * Extracted from the inline object in useTicketSla, which KdsSlaThresholdClamp.test.ts had
+ * copied wholesale ("Same clamping logic as useTicketSla") along with RED_URGENT. The copy
+ * was invisible to a name-matching detector precisely because production had no name for
+ * this expression -- there is nothing to collide with. Naming it is what makes it testable.
+ */
+export function clampSlaThresholds(thresholds: SlaThresholds): SlaThresholds {
+  return {
+    yellowAtSec: Math.max(30, Math.min(thresholds.yellowAtSec, RED_URGENT - 60)),
+    redAtSec: Math.max(60, Math.min(thresholds.redAtSec, RED_URGENT)),
+  };
+}
+
+/**
+ * Whether a ticket has crossed into red-urgent.
+ *
+ * Extracted from the inline `elapsed >= RED_URGENT` in the hook's compute(), which
+ * KdsSlaEscalationPipeline.test.ts had copied as isUrgent() alongside its own RED_URGENT
+ * and its own copy of DEFAULT_SLA_THRESHOLDS under the name DEFAULTS.
+ */
+export function isSlaUrgent(elapsed: number): boolean {
+  return elapsed >= RED_URGENT;
+}
 
 // ── Shared 1 Hz ticker ────────────────────────────────────────────────
 //
@@ -73,14 +106,14 @@ function subscribeToTicker(fn: Ticker): () => void {
 // ── Helpers ───────────────────────────────────────────────────────────
 
 /** Compute the SLA level from elapsed seconds (P3-1 progressive thresholds). */
-function computeLevel(elapsed: number, t: SlaThresholds): SlaLevel {
+export function computeLevel(elapsed: number, t: SlaThresholds): SlaLevel {
   if (elapsed < t.yellowAtSec) return 'green';
   if (elapsed < t.redAtSec) return 'yellow';
   return 'red';
 }
 
 /** Format elapsed seconds into a short display string like "5m 30s". */
-function formatElapsed(seconds: number): string {
+export function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   if (m === 0) return `${s}s`;
@@ -116,10 +149,7 @@ export function useTicketSla(
   thresholds: SlaThresholds = DEFAULT_SLA_THRESHOLDS,
 ): TicketSlaResult {
   // Clamp so the state machine stays monotonic: yellow must precede red.
-  const t: SlaThresholds = {
-    yellowAtSec: Math.max(30, Math.min(thresholds.yellowAtSec, RED_URGENT - 60)),
-    redAtSec: Math.max(60, Math.min(thresholds.redAtSec, RED_URGENT)),
-  };
+  const t = clampSlaThresholds(thresholds);
 
   // Store the parsed epoch in a ref so we don't re-parse on every tick.
   const createdAtMs = useRef(Date.now());
@@ -135,7 +165,7 @@ export function useTicketSla(
   const compute = (): TicketSlaResult => {
     const elapsed = Math.max(0, Math.floor((Date.now() - createdAtMs.current) / 1000));
     const level = computeLevel(elapsed, thresholdsRef.current);
-    const urgent = elapsed >= RED_URGENT;
+    const urgent = isSlaUrgent(elapsed);
     return { elapsedSeconds: elapsed, level, urgent, display: formatElapsed(elapsed) };
   };
 

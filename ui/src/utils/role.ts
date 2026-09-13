@@ -22,3 +22,53 @@ export function normalizeRole(roleString?: string | null): RoleVariant {
   if (r === 'auditor' || r === 'role-auditor') return 'auditor';
   return 'staff';
 }
+
+/**
+ * Numeric ranks for the five-role taxonomy (ADR #35 D4 / spec 0048), keyed by
+ * BOTH the bare role name and its `role-*` preset id, so a caller holding
+ * either spelling can compare without normalizing first.
+ *
+ * This deliberately mirrors the table inlined in
+ * `features/workspaces/WorkspaceHome.tsx` (`ROLE_HIERARCHY`, :96). Folding
+ * WorkspaceHome onto this export is a recorded follow-up — that file is out of
+ * scope for this change and stays untouched, so the duplication is known and
+ * temporary rather than accidental.
+ */
+export const ROLE_HIERARCHY: Record<string, number> = {
+  owner: 5,
+  'role-owner': 5,
+  admin: 4,
+  'role-admin': 4,
+  manager: 3,
+  'role-manager': 3,
+  staff: 2,
+  'role-staff': 2,
+  auditor: 1,
+  'role-auditor': 1,
+};
+
+/** Acceptable floors for {@link roleAtLeast}, weakest (`auditor`) to strongest (`owner`). */
+export type RoleFloor = 'auditor' | 'staff' | 'manager' | 'admin' | 'owner';
+
+/**
+ * True when `roleName` ranks at or above `floor` in {@link ROLE_HIERARCHY}.
+ *
+ * Consumed by the settings page gate: the settings surface is owner/admin
+ * only, and the copy shown to everyone else lives in `settings-locked-title`
+ * / `settings-locked-desc`.
+ *
+ * Fails closed on both ends — a missing, blank, retired (`cashier`, `kitchen`)
+ * or otherwise unrecognized role resolves to level `0` and clears no floor,
+ * while an unrecognized floor demands `Number.MAX_SAFE_INTEGER` so nothing
+ * clears it. No case-folding or trimming happens here (that is
+ * {@link normalizeRole}'s job); the table carries the raw `role-*` preset ids
+ * instead, which is exactly how WorkspaceHome reads its copy of the table.
+ *
+ * @param roleName raw role name or preset id, e.g. `'admin'` or `'role-admin'`.
+ * @param floor the minimum rank the caller requires.
+ */
+export function roleAtLeast(roleName: string | null | undefined, floor: RoleFloor): boolean {
+  const level = ROLE_HIERARCHY[roleName ?? ''] ?? 0;
+  const required = ROLE_HIERARCHY[floor] ?? Number.MAX_SAFE_INTEGER;
+  return level >= required;
+}

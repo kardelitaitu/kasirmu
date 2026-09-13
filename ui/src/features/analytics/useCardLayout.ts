@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { AnalyticsCard, WorkspaceView } from './AnalyticsScreen';
+import type { AnalyticsCard } from './AnalyticsScreen';
+import type { WorkspaceView } from './utils/dateRangePresets';
 
 /**
  * Card ordering and collapse state for the analytics dashboard — extracted

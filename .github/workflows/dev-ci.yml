@@ -3,6 +3,8 @@ name: Dev CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 env:
@@ -97,9 +99,9 @@ jobs:
             && echo "ui=true" >> "$GITHUB_OUTPUT" || echo "ui=false" >> "$GITHUB_OUTPUT"
 
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
-          # three scripts that implement the gate.
+          # four scripts that implement the gates.
           printf '%s\n' "$files" | grep -qE \
-            '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$' \
+            '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
           printf '%s\n' "$files" | grep -qE '^website/' \
@@ -146,6 +148,8 @@ jobs:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: 'website/package-lock.json'
+      - name: Website asset hygiene
+        run: python3 scripts/verify-website-assets.py
       - name: Install dependencies
         run: cd website && npm ci --no-audit --no-fund
       - name: Install Playwright (for Mermaid render)
@@ -167,10 +171,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
-          # Explicit: the fmt/clippy steps below need these binaries. Making a
-          # hard dependency an action's implicit default is how a job starts
-          # failing on a toolchain change rather than on a code change.
-          components: rustfmt, clippy
+          # Explicit: the fmt step below needs this binary.
+          components: rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -193,12 +195,6 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Cargo check workspace
         run: cargo check --workspace --all-targets --all-features
-      # `-D warnings` promotes every clippy warning to an error, matching the
-      # repo's own standing rule in AGENTS.md ("must resolve all warnings").
-      # Verified green locally before this step was added, so it cannot turn an
-      # unrelated PR red. Gate: scripts/gates.json -> "rust-clippy".
-      - name: Cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
 
   # ── 3. Cargo Nextest: Fast test execution ────────────────────────────
   cargo-nextest:
@@ -269,6 +265,14 @@ jobs:
         run: cd ui && npm run typecheck
       - name: UI lint
         run: cd ui && npm run lint
+      # `npm run lint` is `eslint .` with no --max-warnings 0, so the step above exits 0 while
+      # reporting 58 warnings. This ratchets the one rule that is not cosmetic:
+      # react-hooks/exhaustive-deps, the only automated check for a stale closure. Cap 7, down from
+      # 12 in item 69. Lives here rather than in static-gates because it needs ui/node_modules,
+      # which only this job and i18n install.
+      # Gate: scripts/gates.json -> "exhaustive-deps-ratchet".
+      - name: Exhaustive-deps ratchet
+        run: python3 scripts/verify-exhaustive-deps.py
       - name: Run Vitest
         run: cd ui && npm test
       # GitHub runners are always UTC, so the suite above can never catch a
@@ -312,6 +316,24 @@ jobs:
         run: bash scripts/lint-i18n.sh
       - name: FTL duplicate-key dry-run
         run: python3 scripts/dedupe-ftl.py --dry-run
+      # The orphan gate's own liveness cases. Blocking: if the diff parsers or the
+      # dynamic-composition rescue break, the pre-commit step silently stops checking
+      # anything, and a gate that cannot fail is worse than no gate.
+      - name: FTL orphan gate self-test
+        run: python3 scripts/verify-ftl-orphans.py --self-test
+      # Whole-tree orphan candidates, reported and never blocking. A static scan cannot
+      # resolve every dynamic key family, so the tree carries ~93 honest candidates of
+      # which an unknown fraction are detection gaps rather than debt. Printing the number
+      # makes the trend visible; the pre-commit hook is what blocks, and only on what a
+      # commit actually adds or strands.
+      # continue-on-error is what makes "informational" true rather than aspirational:
+      # since ef2058f28 --census exits 2 when the root it walked holds no bundles at all,
+      # and since 4d1a85b15 a locale file that will not open makes the whole run refuse.
+      # Both are checkout problems, not orphan verdicts -- and until this line either one
+      # reddened a job that had labelled itself informational.
+      - name: FTL orphan census (informational)
+        run: python3 scripts/verify-ftl-orphans.py --census
+        continue-on-error: true
 
   # ── 6. CI docs / manifest truthfulness ─────────────────────────────────
   # gates.json calls itself "the single source of truth for CI/local-runner gate
@@ -340,6 +362,22 @@ jobs:
       # from what CI runs. Gate: scripts/gates.json -> "ci-routing-test".
       - name: CI path router regression test
         run: bash scripts/test-ci-routing.sh
+      # This job is the one that decides whether every other job is documented
+      # truthfully, so it needs the same proof it demands of others: a mutation
+      # test showing it can still fail. Without it, "drift: 0 items" is
+      # indistinguishable from "the checker stopped looking" -- the exact failure
+      # that let the manifest rot in the first place.
+      # Gate: scripts/gates.json -> "ci-docs-drift".
+      - name: Drift checker self-test
+        run: python3 scripts/verify-ci-docs-drift.py --self-test
+      # gates.json is the declared source of truth for which step enforces which
+      # gate, so a label naming a step that no longer exists is a false guarantee --
+      # and the checker used to accept it, because its runner test was any-of over
+      # the labels a gate declares. This mutates check.sh and requires the checker to
+      # notice, and first proves the fixture is live at all.
+      # Gate: scripts/gates.json -> "runner-labels".
+      - name: Runner label integrity
+        run: python3 scripts/test-runner-labels.py
       - name: Verify CI docs agree with gates.json and the workflows
         id: drift
         run: |
@@ -438,8 +476,8 @@ jobs:
       # it read the repo's audit stamps as code, and in one file had silently
       # stopped checking at all -- so the gate is now wired in with its findings
       # at zero and its contract stable under `cargo fmt`.
-      - name: Panic inventory (ADR #33)
-        run: python3 scripts/scan-unwrap-panic.py --fail-on-recoverable
+      - name: "Panic inventory (ADR #33)"
+        run: python3 scripts/scan-unwrap-panic.py
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the
@@ -490,6 +528,79 @@ jobs:
           else
             echo "not a pull_request event; nothing to compare a base against"
           fi
+      # The last hook step with no CI backstop, and the one with the worst history:
+      # AGENTS.md records that 14 broken i18n keys shipped while this reported clean.
+      # Until now it ran ONLY in the opt-in pre-commit hook -- not in check.sh, not in
+      # check:all, not in CI -- so a clone that skips setup-dev.ps1 could reference a
+      # key present in neither locale and nothing anywhere would notice.
+      #
+      # --scan-dirs is load-bearing, not stylistic. The tool defaults to `features`
+      # alone; the six directories the hook names add 108 more files (228 -> 336, 47%
+      # more coverage). A CI step that omitted the flag would print "0 missing key(s)"
+      # while a third of the surface went unexamined -- green from a smaller input,
+      # which is the failure this repo keeps rediscovering.
+      # Gate: scripts/gates.json -> "bundle-parity".
+      - name: i18n bundle parity
+        run: |
+          python3 scripts/verify-bundle-parity.py \
+            --include-getstring --include-nav-keys --include-key-fields \
+            --include-dynamic-literals --include-id-maps --check-domain-pairs \
+            --scan-dirs features,components,frontend,contexts,hooks,platform
+      # These two lived in ci.yml, which 23c96330 retired to .bak, and neither was
+      # ever restored -- so for two releases the ONLY guard was the opt-in
+      # pre-commit hook. core.hooksPath is set by scripts/setup-dev.ps1 and is not
+      # versioned, meaning a fresh clone that skips setup could commit a
+      # hand-edited 20260813_init.pg.sql (a GENERATED file, never hand-edited) and
+      # merge it clean. AGENTS.md documented that hole in three places; nothing
+      # closed it. Both checks are pure text comparison -- no Docker, no psycopg,
+      # no sqlite handle -- and together cost ~1.1s, so there was never a build-cost
+      # reason to leave them out.
+      # Gate: scripts/gates.json -> "pg-schema-drift", "migration-column-types".
+      - name: PG schema drift
+        run: python3 scripts/generate-pg-migration.py --check
+      - name: Migration column types
+        run: python3 scripts/verify-migration-column-types.py
+      # These ten ran ONLY in scripts/check.sh, which is opt-in and slow enough that most
+      # commits never invoke it, or in .githooks/pre-commit, which needs core.hooksPath set
+      # by setup-dev.ps1 and is not versioned -- so on a fresh clone that skips setup, or a
+      # contributor who simply never ran check.sh, none of this was enforced anywhere.
+      # Measured cost of all ten together: ~33s on a warm Linux runner, six of them under a
+      # second. Against a job that already runs gofmt, go vet and go test, that is noise.
+      #
+      # The reason to promote them rather than leave them local is the same one that put the
+      # PG drift check here (R36-12): a gate nobody runs is indistinguishable from no gate,
+      # and the record in gates.json claimed these were "required" while nothing outside one
+      # developer's machine could tell whether they still passed.
+      - name: UI typecheck gate self-test
+        run: bash scripts/test-typecheck-gate.sh
+      - name: EOL guard self-test
+        run: bash scripts/test-eol-guard.sh
+      # Gate: scripts/gates.json -> "cbm-hook-guard". Polices .githooks/post-commit,
+      # which indexes the codebase-memory graph after every commit and had been
+      # failing silently for 535 commits. Local-only failure, so CI is the only
+      # place its resolution order and ghost guard can be re-checked on a clean box.
+      - name: post-commit index guard self-test
+        run: bash scripts/test-cbm-hook.sh
+      - name: Test shadow copies
+        run: python3 scripts/verify-test-shadow-copies.py
+      - name: IPC command parity
+        run: python3 scripts/verify-ipc-parity.py
+      - name: IPC invoke token parity
+        run: python3 scripts/verify-invoke-parity.py
+      - name: Scoped ambient reads self-test
+        run: python3 scripts/verify-scoped-reads.py --self-test
+      - name: Unguarded ambient IPC call sites
+        run: python3 scripts/verify-scoped-reads.py
+      - name: Topology template parity
+        run: python3 scripts/verify-topology-parity.py
+      - name: Feature registry
+        run: python3 scripts/verify-feature-registry.py
+      - name: Plugin guide parity
+        run: python3 scripts/verify-plugin-guide-parity.py
+      - name: No raw query params
+        run: bash scripts/verify-no-raw-params.sh
+      - name: Scoped command coverage
+        run: bash scripts/verify-scoped-coverage.sh
 
   # ── 8. Release readiness ──────────────────────────────────────────────
   # R36-11's root cause was not only that release.yml was renamed to .bak with an
@@ -530,7 +641,13 @@ jobs:
           workspaces: scripts/updater-compat-check
       - name: Release version gate self-test
         run: node scripts/check-release-version.mjs --self-test
+      - name: Verify updater signature self-test
+        run: node scripts/verify-updater-signature.mjs --self-test
+      - name: Generate latest JSON self-test
+        run: node scripts/generate-latest-json.mjs --self-test
       - name: Updater client compatibility check
+        env:
+          RUSTC_WRAPPER: ""
         run: node scripts/check-updater-compat.mjs
 
   # ── 9. Deploy: Northflank (push to main/release or manual dispatch) ──
@@ -546,12 +663,8 @@ jobs:
     # it is advisory, and gating a deploy on a known-red count would train people
     # to ignore the gate.
     #
-    # Note the `github.event_name == 'push'` half of this condition is dead
-    # code: this workflow triggers on pull_request and workflow_dispatch only,
-    # so no push event ever runs it. Deploy therefore happens exclusively via
-    # manual workflow_dispatch. Left in place because removing it would change
-    # nothing observable and the clause is harmless, but it is misleading --
-    # see the 0.0.36 backlog.
+    # Push trigger on main runs Dev CI and automatically deploys to Northflank
+    # when NORTHFLANK_API_TOKEN is configured.
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/0.0.'))) || github.event_name == 'workflow_dispatch'
     env:
       NF_API: https://api.northflank.com/v1

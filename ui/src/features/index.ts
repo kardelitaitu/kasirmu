@@ -6,7 +6,7 @@ import { registerGiftCardsFeature } from './gift-cards/register';
 import { registerLoyaltyFeature } from './loyalty/register';
 import { registerStaffFeature } from './staff/register';
 import { registerTerminalsFeature } from './terminals/register';
-import { registerStoresFeature } from './stores/register';
+import { registerStoresFeature } from './locations/register';
 import { registerSettingsFeature } from './settings/register';
 import { registerTaxFeature } from './tax/register';
 import { registerCurrencyFeature } from './currency/register';
@@ -24,6 +24,7 @@ import { registerPromotionsFeature } from './promotions/register';
 import { registerPurchasingFeature } from './purchasing/register';
 import { registerStockTransfersFeature } from './stock-transfers/register';
 import { registerWarehouseFeature } from './warehouse/register';
+import { registerMemoFeature } from './memo/register';
 
 /**
  * Register all UI features, pages, navigation items, and widgets.
@@ -70,4 +71,5 @@ export function registerAllFeatures() {
   registerPurchasingFeature();
   registerStockTransfersFeature();
   registerWarehouseFeature();
+  registerMemoFeature();
 }

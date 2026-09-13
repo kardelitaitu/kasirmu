@@ -1,64 +1,50 @@
 //! Health-check commands used by the front-end's startup smoke test and
 //! the About dialog. No state required.
 
-use serde::Serialize;
+// Phase 3.3 T1 (tablet bridge-sharing): the bodies moved to
+// oz_bridge::health, same Wave-F shape the desktop shell landed. The
+// compile-time identity constants (env!/option_env!) still resolve HERE —
+// they are per-crate, and threading them keeps the About dialog answering
+// with the tablet shell's values (name would otherwise read "oz-bridge").
+// The tablet registers no scoped health commands today, so this slice
+// needs no BridgeCtx; the scoped twins arrive with a later slice that
+// also builds the tablet seam.
+
 use tauri::command;
 
 use crate::error::AppError;
 
-/// Get the stable device identifier (hostname) for terminal binding.
-#[command]
-pub async fn get_device_id() -> Result<String, AppError> {
-    Ok(std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "unknown-device".to_string()))
-}
+pub use oz_bridge::health::VersionInfo;
 
 /// Liveness probe. Returns `Ok("pong")` if the Tauri runtime is alive.
 #[command]
 pub async fn ping() -> Result<String, AppError> {
-    Ok("pong".into())
-}
-
-/// Build/version information for the About dialog.
-#[derive(Debug, Serialize)]
-pub struct VersionInfo {
-    /// Display name.
-    pub name: &'static str,
-    /// Version.
-    pub version: &'static str,
-    /// Rust Version.
-    pub rust_version: &'static str,
-    /// Target.
-    pub target: &'static str,
+    oz_bridge::health::ping().await.map_err(Into::into)
 }
 
 #[command]
 /// Version.
 pub async fn version() -> Result<VersionInfo, AppError> {
-    Ok(VersionInfo {
-        name: env!("CARGO_PKG_NAME"),
-        version: env!("CARGO_PKG_VERSION"),
-        rust_version: env!("CARGO_PKG_RUST_VERSION"),
-        target: option_env!("TARGET").unwrap_or("unknown"),
-    })
+    oz_bridge::health::version(
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_RUST_VERSION"),
+        option_env!("TARGET").unwrap_or("unknown"),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+/// Get the stable device identifier (hostname) for terminal binding.
+#[command]
+pub async fn get_device_id() -> Result<String, AppError> {
+    oz_bridge::health::get_device_id().await.map_err(Into::into)
 }
 
 /// Get the local IP address of the machine.
 #[command]
 pub async fn get_local_ip() -> Result<String, AppError> {
-    use std::net::UdpSocket;
-    // A trick to get the local IP address without making actual network requests.
-    let socket = match UdpSocket::bind("0.0.0.0:0") {
-        Ok(s) => s,
-        Err(_) => return Ok("127.0.0.1".into()),
-    };
-    if let Ok(()) = socket.connect("8.8.8.8:80")
-        && let Ok(local_addr) = socket.local_addr()
-    {
-        return Ok(local_addr.ip().to_string());
-    }
-    Ok("127.0.0.1".into())
+    oz_bridge::health::get_local_ip().await.map_err(Into::into)
 }
 
 #[cfg(test)]

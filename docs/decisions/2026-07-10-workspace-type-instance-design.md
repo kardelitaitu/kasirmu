@@ -488,13 +488,17 @@ Shared touchscreen fast-switching (ADR #6's `FastPINOverlay.tsx`) follows the sa
 
 ### 5. Database File Encryption at Rest
 
-Each store's SQLite file is encrypted using SQLCipher (Community Edition, BSD-style license) or an equivalent at-rest encryption layer. The encryption key is derived from a master key stored in the OS keyring. This provides defense-in-depth:
+~~Each store's SQLite file is encrypted using SQLCipher (Community Edition, BSD-style license) or an equivalent at-rest encryption layer. The encryption key is derived from a master key stored in the OS keyring.~~ This provides defense-in-depth:
 
-- If an attacker copies a `store-<id>.sqlite` file, they cannot open it without the keyring secret.
-- The global database (containing device bindings and user auth) is also encrypted.
-- Combined with the HMAC device binding, this creates two layers: you can't read the file (SQLCipher), and if you somehow bypass encryption, modifying the binding is detectable (HMAC).
+> **CORRECTION 2026-09-12 — the layer described above was never built, and the database file is NOT encrypted.** The decision text is kept as written; this marks what does not exist. Measured against the tree: no `Cargo.toml` in the workspace depends on SQLCipher (the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`, not `bundled-sqlcipher`), no code path opens a database with a cipher key, and the only non-document hit for the word anywhere is a carried `next: SQLCipher (carried)` note in the `apps/desktop-client` state audit stamp — a to-do, not an implementation. `docs/archived/sqlcipher-migration-plan.md` states it plainly in its own correction banner: *SQLCipher at-rest encryption did not ship*, status NEVER ADOPTED. So a copied `store-<id>.db` opens in any SQLite reader with no keyring secret involved.
+>
+> **What does exist is field-level encryption, not whole-file encryption** — and the distinction is the part worth carrying forward, because the two families fail in opposite directions by design. Since `e105109f6` (2026-08-29, `security(H-5): extract oz-crypto crate + transparent secret encryption at rest`) specific *columns* are sealed by `crates/oz-crypto` and only unsealed through their typed accessors: the settings credential family (`sync_api_key`, `sync_terminal_secret`, `pg_sync_password`, `rate_sync.api_key`, `lan_server.psk`, the SMTP password, `license.api_key`) and the profile PII columns (national id, pay). The **PII side fails closed** — `StoredCipher::classify` in `crates/oz-core/src/db/profile.rs` maps a stored value that looks like our ciphertext but will not decrypt to `Unreadable`, and `Store::get_user_profile` returns no value rather than garbage. The **settings side fails open**: the decrypt path treats anything that is not recognisably our ciphertext format as legacy plaintext and returns it unchanged (`crates/oz-crypto/src/lib.rs`, format-gated passthrough from audit F-029; the same shape in `crates/oz-bridge/src/license.rs`), logging a warning. That is deliberate — a pre-`e105109f6` install must keep working — but it means **rows written before 2026-08-29 may still sit in the table in cleartext until something rewrites them**, which is precisely the residue the plaintext-carrying `.db` / `.backup.db` snapshots expose. Whole-file encryption would have covered every column at once; field-level encryption covers named columns on their typed path and nothing else.
 
-SQLCipher Community Edition is available under a permissive license compatible with commercial distribution. If a paid commercial license is later required, alternative encryption backends (e.g., `sqlite3mc`) can be substituted via a trait abstraction.
+- ~~If an attacker copies a `store-<id>.sqlite` file, they cannot open it without the keyring secret.~~ **Corrected 2026-09-12: they can, with any SQLite reader.** Only the named columns listed above are unreadable, and only when they were written through the encrypted accessor.
+- ~~The global database (containing device bindings and user auth) is also encrypted.~~ **Corrected 2026-09-12: it is not encrypted at all** — same measurement, and the global DB is where the settings and license keys live, so the field-level carve-out above is the only thing standing between a file copy and those values.
+- Combined with the HMAC device binding, this creates ~~two layers: you can't read the file (SQLCipher), and if you somehow bypass encryption,~~ **one layer, corrected 2026-09-12:** modifying the binding is detectable (HMAC). The HMAC is real and shipped; the reading-prevention layer never was, so the defence-in-depth claim in this bullet reduces to detection only.
+
+~~SQLCipher Community Edition is available under a permissive license compatible with commercial distribution. If a paid commercial license is later required, alternative encryption backends (e.g., `sqlite3mc`) can be substituted via a trait abstraction.~~ **Corrected 2026-09-12: this licensing paragraph was a procurement note for a backend that was never adopted, so no trait abstraction exists to substitute into. It is not evidence that any encryption layer shipped — see the correction above.**
 
 This is tracked in ADR #7 (Data Scope Guard) but noted here as a dependency of the store-scoped model.
 
@@ -520,12 +524,12 @@ All audit events are written to the immutable append-only audit log. **Audit log
 |---|---|
 | Frontend requests wrong store's data | `SessionContext` resolves `store_id` from opaque token, not from frontend params |
 | SQLite row tampering of device binding | HMAC signature on binding, verified against OS keyring at boot |
-| Attacker with OS keyring access forges bindings | Defense-in-depth: SQLCipher prevents reading the SQLite; HMAC is a detection layer, not prevention |
+| Attacker with OS keyring access forges bindings | ~~Defense-in-depth: SQLCipher prevents reading the SQLite;~~ HMAC is a detection layer, not prevention. **Corrected 2026-09-12: the SQLCipher half of this row is false — no file-level encryption exists, so only the HMAC detection layer ships (see §5).** |
 | Compromised owner account accesses all stores | `user_store_access` limits owner to explicitly assigned stores; empty rows = scoped mode |
 | Admin self-escalates store access | `chain:manage_stores` permission required to modify `user_store_access` |
 | Admin store switching bypasses access control | Session token invalidation + re-resolution on every store switch |
 | Stale session token after store switch | Token rotation invalidates old token; concurrent tabs fail and re-resolve |
-| Stolen SQLite file opened directly | SQLCipher encryption at rest (ADR #7) |
+| Stolen SQLite file opened directly | ~~SQLCipher encryption at rest (ADR #7)~~ **Corrected 2026-09-12: there is no control here. The file opens directly — that is the whole finding. What resists is per-column: the credential and PII columns written through `crates/oz-crypto` since `e105109f6` (2026-08-29) come back as ciphertext, everything else, including any credential row predating that commit, reads as plaintext.** ADR #7 is the Data Scope Guard, a query-layer control, not an encryption layer.** |
 | Shared terminal user hot-swap inherits wrong scope | `FastPINOverlay` triggers full session re-resolution + new token |
 | No audit trail for security events | Required audit events logged to immutable append-only audit table |
 
@@ -676,7 +680,7 @@ Allow a user to have multiple workspaces open simultaneously in tabs.
 | **Hard `ScopeGuard` compile-time enforcement** | Follow-up to soft scoping; the `SessionContext` pattern described in Security Architecture is the soft version. ADR #7 completed the migration — all 84 desktop commands use `session_token` + `resolve_session()`, enforced by `scripts/verify-no-raw-params.sh` in CI. | ADR #7 ✅ |
 | **Scoped real-time event bus** | Events carry `store_id`; LAN forwarder is inherently store-scoped since each POS terminal is device-bound to one store. KDS tablets filter by store. | ADR #8 ✅ |
 | **Cross-store sync protocol** | The sync layer (`platform/sync/`) already exists; cross-store sync is an extension. | Future ADR |
-| **SQLCipher / at-rest database encryption** | Defense-in-depth; encrypts per-store SQLite files and the global DB. | Future ADR |
+| **SQLCipher / at-rest database encryption** | ~~Defense-in-depth; encrypts per-store SQLite files and the global DB.~~ **Corrected 2026-09-12: still genuinely future — nothing is encrypted at the file level today (§5). What shipped instead is per-column encryption via `crates/oz-crypto` (since `e105109f6`, 2026-08-29), which does not cover this file.** | Future ADR |
 | **Hardware-backed device attestation (TPM/Secure Enclave)** | Stronger device binding beyond HMAC; requires TPM/SE integration. | Future ADR |
 
 ---

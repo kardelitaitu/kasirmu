@@ -29,6 +29,8 @@ pub mod customers;
 pub mod exchange_rates;
 /// Feature-flag commands.
 pub mod features;
+/// Fiscal scheme + statutory numbering commands.
+pub mod fiscal;
 /// Gift-card management commands.
 pub mod gift_cards;
 /// Hardware / peripheral commands.
@@ -41,8 +43,14 @@ pub mod history;
 pub mod inventory_counts;
 /// KDS commands.
 pub mod kds;
+/// Organization/Tenant Legal Entity commands.
+pub mod legal_entities;
+/// Local payment method commands (slice 6).
+pub mod local_payment;
 /// Loyalty / rewards commands.
 pub mod loyalty;
+/// Memo read/consumer commands (list/acknowledge).
+pub mod memo;
 /// Offline-mode commands.
 pub mod offline;
 /// Pre-session picker-ticket HMAC (audit-open-findings residual, desktop parity).
@@ -57,8 +65,17 @@ pub mod products;
 pub mod promotions;
 /// Purchasing / supplier / purchase-order commands.
 pub mod purchasing;
+/// QRIS Auto dynamic charge & settlement-poll IPC (cloud Midtrans).
+pub mod qris_auto;
+/// Receipt format commands (receipt-format axis).
+pub mod receipt_format;
 /// Refund commands.
 pub mod refunds;
+/// Regional-configuration read commands (settings:read).
+pub mod regional;
+#[cfg(test)]
+#[path = "registration_gate_tests.rs"]
+mod registration_gate_tests;
 /// Reporting commands.
 pub mod reports;
 /// Weight-scale commands.

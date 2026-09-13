@@ -120,7 +120,7 @@ export default function AccountSubscription({
                 type="button"
                 onClick={() => void onSubscribe(bundleYearly?.priceId ?? '', 'plus', plusBundle.id)}
                 disabled={subscribing !== null}
-                className="mt-3 block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+                className="mt-3 block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-60"
               >
                 {subscribing === 'plus' ? '…' : t(locale, 'account.bundleUpgrade')}
               </button>
@@ -146,7 +146,7 @@ export default function AccountSubscription({
                     type="button"
                     onClick={() => void onSubscribe(plan.priceId, plan.tierKey)}
                     disabled={subscribing !== null}
-                    className="mt-3 block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+                    className="mt-3 block w-full rounded-md bg-accent px-4 py-2.5 text-center text-sm font-semibold text-on-primary transition hover:opacity-90 disabled:opacity-60"
                   >
                     {subscribing === plan.tierKey ? '…' : t(locale, 'account.subscribe')}
                   </button>

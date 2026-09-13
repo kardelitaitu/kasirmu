@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, waitFor, act, screen, fireEvent, within } from '@testing-library/react';
-import TopologyScreen from '@/features/stores/TopologyScreen';
+import TopologyScreen from '@/features/locations/TopologyScreen';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import type { SubscriptionCapabilities } from '@/api/subscription';
 
@@ -17,7 +17,7 @@ import type { SubscriptionCapabilities } from '@/api/subscription';
 // the screen's Apply gate must agree with the editor's live gate. The screen
 // reads the tier from `caps` (the same local source the backend quota gate
 // uses), so `mockLicenseTier` now flows through the default caps rather than a
-// separate `checkLicenseStatus` probe. `maxStores: null` keeps the store-limit
+// separate `checkLicenseStatus` probe. `maxLocations: null` keeps the store-limit
 // gate inactive by default, matching the previous `caps === null` behaviour;
 // tests that want the limit set caps explicitly.
 let mockLicenseTier: string = 'plus';
@@ -35,11 +35,11 @@ const mockListStores = vi.fn();
 const mockCreateStore = vi.fn();
 const mockUpdateStore = vi.fn();
 const mockDeleteStore = vi.fn();
-vi.mock('@/api/stores', () => ({
-  listStoresScoped: (...args: unknown[]) => mockListStores(...args),
-  createStoreProfileScoped: (...args: unknown[]) => mockCreateStore(...args),
-  updateStoreProfileScoped: (...args: unknown[]) => mockUpdateStore(...args),
-  deleteStoreProfileScoped: (...args: unknown[]) => mockDeleteStore(...args),
+vi.mock('@/api/locations', () => ({
+  listLocationsScoped: (...args: unknown[]) => mockListStores(...args),
+  createLocationProfileScoped: (...args: unknown[]) => mockCreateStore(...args),
+  updateLocationProfileScoped: (...args: unknown[]) => mockUpdateStore(...args),
+  deleteLocationProfileScoped: (...args: unknown[]) => mockDeleteStore(...args),
 }));
 
 const mockListWorkspacesScoped = vi.fn();
@@ -71,10 +71,11 @@ const { mockUseSubscriptionCaps } = vi.hoisted(() => ({
 vi.mock('@/contexts/SubscriptionContext', () => ({
   useSubscription: () => ({
     caps:
-      mockUseSubscriptionCaps(null) ?? makeSubscriptionCaps({ tier: mockLicenseTier, maxStores: null }),
+      mockUseSubscriptionCaps(null) ?? makeSubscriptionCaps({ tier: mockLicenseTier, maxLocations: null }),
     loading: false,
     refresh: vi.fn(),
   }),
+  useAdminGate: () => ({ locked: false, state: 'active' }),
 }));
 
 // The editor's Apply gate mirrors the backend `staff:update` permission via
@@ -139,6 +140,9 @@ let capturedEditorProps: {
   workspaceInstances?: unknown[];
   branchToolbar?: unknown;
   branchLocations?: unknown[];
+  /** The branch id the editor remounts under — the deep-link scoping
+   *  tests read it because the editor is mocked and renders no canvas. */
+  branchId?: string;
   onRenameBranch?: (id: string, name: string) => Promise<boolean>;
   onRenameWorkspace?: (id: string, name: string) => Promise<boolean>;
   onDirtyChange?: (dirty: boolean) => void;
@@ -150,12 +154,13 @@ let capturedEditorProps: {
   /** The tier the header badge renders from — asserted by the badge tests. */
   currentTier?: string;
 } = {};
-vi.mock('@/features/stores/NodeTopologyEditor', () => ({
+vi.mock('@/features/locations/NodeTopologyEditor', () => ({
   default: (props: {
     onSave?: (n: unknown[], w: unknown[]) => Promise<Record<string, string> | void>;
     workspaceInstances?: unknown[];
     branchToolbar?: unknown;
     branchLocations?: unknown[];
+    branchId?: string;
     onRenameBranch?: (id: string, name: string) => Promise<boolean>;
     onRenameWorkspace?: (id: string, name: string) => Promise<boolean>;
     onDirtyChange?: (dirty: boolean) => void;
@@ -1450,23 +1455,23 @@ describe('TopologyScreen', () => {
   // ── C2.2: second-store gate (Plus→Pro trigger) ───────────────
 
   it('shows the store-limit upgrade banner at the tier cap and blocks creation (C2.2)', async () => {
-    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 1, storeCount: 1 }));
+    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxLocations: 1, locationCount: 1 }));
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     // Opening the branch-add form surfaces the inline upgrade banner.
     fireEvent.click(screen.getByRole('button', { name: 'topology-branch-add' }));
-    expect(screen.getByText('store-limit-upgrade-pro')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'store-limit-upgrade-cta' })).toBeInTheDocument();
+    expect(screen.getByText('location-limit-upgrade-pro')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'location-limit-upgrade-cta' })).toBeInTheDocument();
   });
 
   it('hides the store-limit banner when under the cap (C2.2)', async () => {
-    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxStores: 2, storeCount: 1 }));
+    mockUseSubscriptionCaps.mockReturnValue(makeSubscriptionCaps({ maxLocations: 2, locationCount: 1 }));
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     fireEvent.click(screen.getByRole('button', { name: 'topology-branch-add' }));
-    expect(screen.queryByText('store-limit-upgrade-pro')).not.toBeInTheDocument();
+    expect(screen.queryByText('location-limit-upgrade-pro')).not.toBeInTheDocument();
   });
 
   // ── Tier badge must agree with the quota gate ──────────────────
@@ -1480,7 +1485,7 @@ describe('TopologyScreen', () => {
     // the wrong one. It now reads `caps`, which is the gate's own source, so the
     // debug override is inherited rather than duplicated.
     mockUseSubscriptionCaps.mockReturnValue(
-      makeSubscriptionCaps({ tier: 'Premium', maxStores: null }),
+      makeSubscriptionCaps({ tier: 'Premium', maxLocations: null }),
     );
     render(<TopologyScreen />);
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
@@ -1500,5 +1505,80 @@ describe('TopologyScreen', () => {
     await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
 
     expect(mockCheckLicenseStatus).not.toHaveBeenCalled();
+  });
+
+  // ── Locations → Topology deep-link hints (§"Locations and Topology
+  //    navigation") ──────────────────────────────────────────────
+
+  it('opens scoped to the deep-linked branch instead of the session default', async () => {
+    // Locations → Configure topology passes ?branch=<id>; the editor must
+    // mount on that location's graph, not the session's resolved store.
+    mockListStores.mockResolvedValue([
+      ...sampleStores,
+      { id: 'store-target', name: 'Deep Linked', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
+    ]);
+    render(<TopologyScreen initialBranchId="store-target" />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    // The selected branch is only observable through the editor's key
+    // (branchId) and the seeds: both must reflect the deep-linked branch.
+    expect(capturedEditorProps.branchId).toBe('store-target');
+    expect(capturedEditorProps.branchLocations).toEqual([
+      { id: 'store-target', name: 'Deep Linked' },
+    ]);
+    expect(mockListWorkspacesScoped).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the default branch when the deep-linked branch no longer exists', async () => {
+    // The dashboard click and this mount are two different store-list
+    // fetches: the location may have been deleted in between. A stale
+    // hint must not strand an unowned canvas with a ghost selector value.
+    render(<TopologyScreen initialBranchId="store-deleted" />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(capturedEditorProps.branchId).toBe('store-1');
+    expect(capturedEditorProps.branchLocations).toEqual([
+      { id: 'store-1', name: 'Main Street' },
+    ]);
+  });
+
+  it('does not honour a deep-link branch once the user picks another one', async () => {
+    // The hint is consumed by the first defaulting pass; afterwards the
+    // user's own selection must win (a stale hint re-asserting itself over
+    // a deliberate user choice would fight the operator).
+    mockListStores.mockResolvedValue([
+      ...sampleStores,
+      { id: 'store-target', name: 'Deep Linked', is_primary: false, address: '', tax_id: '', currency: 'USD', timezone: 'UTC', created_at: '', updated_at: '' },
+    ]);
+    mockListWorkspacesScoped
+      .mockResolvedValueOnce(loadedInstances)
+      .mockResolvedValueOnce([]);
+    render(<TopologyScreen initialBranchId="store-target" />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+    expect(capturedEditorProps.branchId).toBe('store-target');
+
+    act(() => { capturedBranchOnChange?.('store-1'); });
+    await waitFor(() => expect(mockListWorkspacesScoped).toHaveBeenCalledTimes(2));
+    expect(capturedEditorProps.branchId).toBe('store-1');
+  });
+
+  it('arms the Add Branch form for the creation hand-off (?create=1)', async () => {
+    // Location creation begins from Locations for discoverability, then
+    // opens the editor with its Add Branch form armed — the editor owns
+    // the actual profile mutation.
+    render(<TopologyScreen openCreateOnMount />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(screen.getByRole('button', { name: 'topology-branch-add-confirm' })).toBeInTheDocument();
+  });
+
+  it('leaves Add Branch closed without the creation hint (default entry)', async () => {
+    // A manager who navigates to the topology section manually must not
+    // find the creation form open — the hint is mount-scoped, not global.
+    render(<TopologyScreen />);
+    await waitFor(() => expect(capturedEditorProps.onSave).toBeDefined());
+
+    expect(screen.getByRole('button', { name: 'topology-branch-add' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'topology-branch-add-confirm' })).not.toBeInTheDocument();
   });
 });

@@ -5,6 +5,8 @@ import { openUpgradePricing as openUpgradePricingPage } from '@/utils/upgrade';
 import {
   listSales,
   getSale,
+  getSaleScoped,
+  listSalesScoped,
   printSalesReceipt,
   listRefundsScoped,
   voidSaleScoped,
@@ -52,6 +54,20 @@ function statusFluentId(status: string): string {
   }
 }
 
+/** F2-7: whether the F2 audit stamp marks this sale's tax as estimated.
+ *  The note is core-authored JSON (F2-5: client claim + core-verified
+ *  delta); the badge keys off the `estimated` flag with minimal parsing —
+ *  a non-JSON or absent note means NOT estimated, which is the honest
+ *  default for legacy rows (NULL) whose tax was computed live. */
+function isTaxEstimated(note: string | null | undefined): boolean {
+  if (!note) return false;
+  try {
+    return JSON.parse(note)?.estimated === true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Swipeable order row ──────────────────────────────────────────────
 
 interface SwipeableOrderRowProps {
@@ -87,6 +103,9 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
             <span>{sale.status}</span>
           </Localized>
         </Badge>
+        {/* F2-7: the audit stamp is a DETAIL-level fact (the note rides the
+            sale row, not the list projection), so the badge renders in the
+            detail dialog only. */}
       </td>
       <td>{sale.paymentMethod ?? '\u2014'}</td>
       <td className="sales-history-cell-cashier">{cashierName}</td>
@@ -209,7 +228,10 @@ export default function SalesHistoryScreen() {
     setLoadError(null);
     try {
       const [response, staffList] = await Promise.all([
-        listSales(),
+        // ADR #7, matching the listStaffScoped call immediately below -- which already had the
+        // conditional. Reading the ambient list here meant the cashier's own sales history could
+        // come from a different store than the staff list rendered beside it.
+        sessionToken ? listSalesScoped(sessionToken) : listSales(),
         sessionToken
           ? listStaffScoped(sessionToken).catch(() => [] as StaffMemberDto[])
           : Promise.resolve([] as StaffMemberDto[]),
@@ -273,7 +295,14 @@ export default function SalesHistoryScreen() {
     } finally {
       setVoiding(false);
     }
-  }, [voidTarget, voidReason, session, load, l10n, invalidateCache]);
+    // sessionToken is read at :266 and was missing. `session` was in the array but is never
+    // read in this body -- eslint only reported the missing token until the token was added,
+    // because the rule surfaces one problem per hook, so the unnecessary dep was latent behind
+    // it. `session` comes from useAuth() at :163 (staff identity) and is a different value from
+    // useWorkspace()'s sessionToken at :164; listing one never covered the other. A void is an
+    // audit-trail event: a stale token either fails the permission check outright or, if the old
+    // session were still live, attributes the void to the previous cashier.
+  }, [voidTarget, voidReason, load, l10n, invalidateCache, sessionToken]);
 
   // ── Client-side filtering + sorting ────────────────────────────
   const filteredSales = useMemo(() => {
@@ -366,7 +395,10 @@ export default function SalesHistoryScreen() {
     setLineMargins([]);
     try {
       const [sale, refundData, margins] = await Promise.all([
-        getSale(id),
+        // Three calls, three different scoping treatments in one expression: this one was
+        // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
+        // Now all three resolve from the session when one exists.
+        sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
         listRefundsScoped(sessionToken!, id).catch(() => [] as RefundDto[]),
         sessionToken
           ? getSaleLineMarginsScoped(sessionToken, id).catch(() => [] as SaleLineMarginDto[])
@@ -433,7 +465,12 @@ export default function SalesHistoryScreen() {
     } finally {
       setPrinting(false);
     }
-  }, [detail, l10n]);
+    // sessionToken is read at :406. Because the catch above deliberately swallows everything,
+    // this is the quietest failure in the set: after a hot-swap the reprint presents a dead
+    // token, the call rejects, and the UI shows nothing at all -- no toast, no error, just a
+    // button that stops doing anything. Listing the token at least makes the next attempt use
+    // a live one.
+  }, [detail, l10n, sessionToken]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {
@@ -455,7 +492,12 @@ export default function SalesHistoryScreen() {
     } finally {
       setRefundsLoading(false);
     }
-  }, []);
+    // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
+    // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
+    // change -- this array just omitted it. With [] the callback kept the mount-time token, and
+    // because :467 lists loadRefunds in its own deps, the refund list for an opened sale was
+    // fetched against whatever session was active when the screen mounted.
+  }, [sessionToken]);
 
   const handleRefunded = useCallback(() => {
     closeRefund();
@@ -1147,6 +1189,13 @@ export default function SalesHistoryScreen() {
                         <strong><span>Tax:</span></strong>
                       </Localized>
                       {' '}{formatMoney(detail.taxTotal)}
+                      {isTaxEstimated(detail.taxEstimateNote) && (
+                        <Badge variant="warning" style={{ marginLeft: 8 }}>
+                          <Localized id="sales-history-tax-estimated-badge">
+                            <span>Estimated</span>
+                          </Localized>
+                        </Badge>
+                      )}
                     </div>
                   )}
                   <div>

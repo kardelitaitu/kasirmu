@@ -6,6 +6,14 @@
   width: 100%;
 }
 
+/* Shrink-to-fit variant: for triggers that must keep their own box (toolbar
+   buttons, badges, inline spans) so wrapping them does not stretch the
+   trigger or disturb the surrounding flex/grid layout. */
+.tooltip-wrapper--inline {
+  display: inline-flex;
+  width: auto;
+}
+
 /* ── Tooltip bubble ─────────────────────────────── */
 .tooltip-content {
   position: absolute;
@@ -20,7 +28,13 @@
   overflow-wrap: break-word;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  pointer-events: auto;
+  /* Inert while hidden. The bubble stays mounted (opacity: 0) so the
+     show/hide classes can cross-fade — but it must not intercept the
+     pointer, or an invisible portal bubble floating over the content
+     pane (sidebar nav) swallows hovers/clicks and its onMouseEnter
+     force-shows the tooltip with no trigger under the cursor — the
+     "stuck tooltip" bug. pointer-events flips on with --visible. */
+  pointer-events: none;
   z-index: var(--z-tooltip);
   opacity: 0;
   transform: scale(0.95);
@@ -44,6 +58,7 @@
 .tooltip-content--visible {
   opacity: 1;
   transform: scale(1);
+  pointer-events: auto;
 }
 
 /* ── Position: right (default for collapsed sidebar) ─ */

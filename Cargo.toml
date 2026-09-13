@@ -34,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.36"
+version = "0.0.37"
 edition = "2024"
 rust-version = "1.88"   # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"
@@ -48,7 +48,10 @@ readme = "README.md"
 # all crates import from here: oz-core = { workspace = true }
 oz-api = { path = "crates/oz-api" }
 oz-core = { path = "crates/oz-core" }
+oz-bridge = { path = "crates/oz-bridge" }
 oz-crypto = { path = "crates/oz-crypto" }
+oz-lan = { path = "crates/oz-lan" }
+oz-local-api = { path = "crates/oz-local-api" }
 oz-hal = { path = "crates/oz-hal" }
 oz-lua = { path = "crates/oz-lua" }
 oz-plugin = { path = "crates/oz-plugin" }
@@ -243,8 +246,9 @@ opt-level = 3
 [profile.test]
 inherits = "dev"
 strip = "symbols"
-debug = 1
+debug = 0
 codegen-units = 16
+
 
 # A01: foundation tests are runtime-trivial (0.1s for 475 tests);
 # higher codegen-units trades binary size for faster compile with zero

@@ -2,12 +2,12 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { TopologyRelationshipPicker } from '@/features/stores/topologyRelationshipPicker';
-import type { TopologyPickerState } from '@/features/stores/nodeTopologyEditorConnectionState';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
-import type { WireRelationshipOption } from '@/features/stores/topologyCard';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
-import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
+import { TopologyRelationshipPicker } from '@/features/locations/topologyRelationshipPicker';
+import type { TopologyPickerState } from '@/features/locations/nodeTopologyEditorConnectionState';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
+import type { WireRelationshipOption } from '@/features/locations/topologyCard';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
+import multiStoreIdFtl from '@/locales/multi-location.id.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
 

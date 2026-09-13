@@ -10,294 +10,62 @@ next: none | perf: fine
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::auth::hash_pin;
+use oz_core::availability::UsageCounts;
 use oz_core::db::Store;
-use oz_core::db::assignments::{Assignment, AssignmentSpec, ScopeMode};
-use oz_core::db::profile::{UserProfile, mask_last4};
+use oz_core::db::audit_security::{
+    SECURITY_ACTION_USER_CREATE, SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_ACCOUNT_CREATED,
+    SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
+};
+use oz_core::entitlements::Entitlements;
 use oz_core::permissions;
 use oz_core::subscription::TenantSubscription;
-use oz_core::{Role, User};
+
+use oz_core::Role;
 
 use foundation::{validate_min_length, validate_not_empty};
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::auth::record_security_event;
+use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// ── Staff member DTO ────────────────────────────────────────────────
+// Phase 3.3 T5: the staff wire DTOs and their helpers moved to the shared
+// `oz_bridge::staff` module and are re-exported here, same as the desktop
+// shell — one wire definition, ending the fork. `to_staff_dto`,
+// `assignment_dto`, `parse_scope_mode`, `assignment_spec` and
+// `enforce_role_assignment_policy` re-export as-is (their error type is the
+// bridge's `BridgeError`, which the tablet converts via the `From<BridgeError>`
+// seam); the shell keeps two thin `AppError` adapters that the sibling test
+// modules call directly. Command bodies stay tablet-native.
+pub use oz_bridge::staff::{
+    AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
+    CreateStaffArgs, CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto,
+    RoleHolderDto, RoleHoldersDto, StaffMemberDto, UpdateRoleArgs, UpdateStaffArgs,
+    UpdateStaffScopedArgs, assignment_dto, assignment_spec, enforce_role_assignment_policy,
+    parse_scope_mode, to_staff_dto,
+};
 
-/// A user's single effective assignment as seen by the front-end (ADR #35
-/// D5 / spec 0048): scope mode plus the per-dimension explicit-all flag and
-/// list. Legacy users without an assignment row resolve as global all/all.
-#[derive(Debug, Serialize)]
-pub struct AssignmentDto {
-    /// `"global"` or `"scoped"`.
-    pub scope_mode: String,
-    /// Branch dimension is explicit `all`.
-    pub branches_all: bool,
-    /// Branch ids in scope when `branches_all` is false.
-    pub branch_ids: Vec<String>,
-    /// Workspace dimension is explicit `all`.
-    pub workspaces_all: bool,
-    /// Workspace keys in scope when `workspaces_all` is false.
-    pub workspace_keys: Vec<String>,
+/// Serialize a grant set into the JSON array roles.permissions stores.
+///
+/// Stays in the shell and is passed into the bridge as a `&str`: encoding
+/// needs `serde_json`, which is not an `oz-bridge` dependency (mirrors the
+/// desktop staff.rs adapter exactly).
+fn grants_json(keys: &[String]) -> Result<String, AppError> {
+    serde_json::to_string(keys).map_err(|e| AppError::Internal(format!("encoding grants: {e}")))
 }
 
-/// The assignment scope carried by the staff create/edit IPC args (ADR #35
-/// D5 / spec 0048): `scope_mode` plus the per-dimension explicit-all flag
-/// and list. Empty lists never mean "all" — the `*_all` flags are the
-/// explicit marker, so `list` with no ids is a deny.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct AssignmentArgs {
-    /// `"global"` or `"scoped"`.
-    pub scope_mode: String,
-    /// Branch dimension is explicit `all`.
-    pub branches_all: bool,
-    /// Branch ids in scope when `branches_all` is false.
-    pub branch_ids: Vec<String>,
-    /// Workspace dimension is explicit `all`.
-    pub workspaces_all: bool,
-    /// Workspace keys in scope when `workspaces_all` is false.
-    pub workspace_keys: Vec<String>,
-}
-
-/// Staff member as seen by the front-end (no pin_hash exposed).
-#[derive(Debug, Serialize)]
-pub struct StaffMemberDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Username.
-    pub username: String,
-    /// Display Name.
-    pub display_name: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// Role Name.
-    pub role_name: String,
-    /// Whether this is active.
-    pub is_active: bool,
-    /// National id rendered last-4 masked (ADR #35 D6).
-    pub national_id_masked: String,
-    /// Whether all 8 required profile fields are present.
-    pub is_profile_complete: bool,
-    /// The user's single effective assignment (ADR #35 D5 / spec 0048).
-    pub assignment: AssignmentDto,
-}
-
-/// The 17 profile fields carried by the staff create/edit IPC args (ADR #35
-/// D6 / spec 0049). All optional on the wire — creation-time mandatory-ness
-/// is enforced by `create_user_with_profile`, and the form blocks submission
-/// before the command is ever called.
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default)]
-pub struct ProfileArgs {
-    /// ISO date (`YYYY-MM-DD`), never in the future.
-    pub date_of_birth: Option<String>,
-    /// Phone in E.164 form.
-    pub phone: Option<String>,
-    /// `"ssn"` or `"nik"`.
-    pub national_id_type: Option<String>,
-    /// National id (ssn 9 / nik 16 digits) — encrypted at rest.
-    pub national_id: Option<String>,
-    /// Lowercase email, unique when present.
-    pub email: Option<String>,
-    /// Monthly take-home pay in i64 minor units — encrypted at rest.
-    pub monthly_take_home_minor: Option<i64>,
-    /// Emergency contact name (required at creation).
-    pub emergency_contact_name: Option<String>,
-    /// Emergency contact phone (required at creation).
-    pub emergency_contact_phone: Option<String>,
-    /// Job title (free text).
-    pub job_title: Option<String>,
-    /// Free-text notes.
-    pub notes: Option<String>,
-    /// Street address.
-    pub address: Option<String>,
-    /// UI language preference.
-    pub language: Option<String>,
-    /// Avatar reference.
-    pub avatar: Option<String>,
-    /// Tax identification number.
-    pub tax_id: Option<String>,
-    /// Expiry of the national id document (`YYYY-MM-DD`).
-    pub national_id_expires_at: Option<String>,
-    /// Relationship of the emergency contact (e.g. "spouse").
-    pub emergency_contact_relationship: Option<String>,
-    /// Hire date (`YYYY-MM-DD`).
-    pub hire_date: Option<String>,
-}
-
-impl ProfileArgs {
-    /// Build the domain [`UserProfile`] (empty strings for the stable slots).
-    pub fn into_profile(self) -> UserProfile {
-        UserProfile {
-            date_of_birth: self.date_of_birth,
-            phone: self.phone,
-            national_id_type: self.national_id_type,
-            national_id: self.national_id,
-            email: self.email,
-            monthly_take_home_minor: self.monthly_take_home_minor,
-            emergency_contact_name: self.emergency_contact_name,
-            emergency_contact_phone: self.emergency_contact_phone,
-            job_title: self.job_title.unwrap_or_default(),
-            notes: self.notes.unwrap_or_default(),
-            address: self.address,
-            language: self.language,
-            avatar: self.avatar,
-            tax_id: self.tax_id,
-            national_id_expires_at: self.national_id_expires_at,
-            emergency_contact_relationship: self.emergency_contact_relationship,
-            hire_date: self.hire_date,
-        }
-    }
-}
-
-/// A staff profile as seen by the caller (ADR #35 D6).
-#[derive(Debug, Serialize)]
-pub struct ProfileViewDto {
-    /// Target user id.
-    pub user_id: String,
-    /// Login username.
-    pub username: String,
-    /// Display name.
-    pub display_name: String,
-    /// ISO date of birth.
-    pub date_of_birth: Option<String>,
-    /// Phone in E.164 form.
-    pub phone: Option<String>,
-    /// `"ssn"` or `"nik"`.
-    pub national_id_type: Option<String>,
-    /// Full national id — present only with `staff:read_identity`.
-    pub national_id: Option<String>,
-    /// Last-4 masked national id — always present.
-    pub national_id_masked: String,
-    /// Lowercase email.
-    pub email: Option<String>,
-    /// Monthly take-home pay — present only with `staff:read_payroll`.
-    pub monthly_take_home_minor: Option<i64>,
-    /// Emergency contact name.
-    pub emergency_contact_name: Option<String>,
-    /// Emergency contact phone.
-    pub emergency_contact_phone: Option<String>,
-    /// Job title.
-    pub job_title: String,
-    /// Free-text notes.
-    pub notes: String,
-    /// Street address.
-    pub address: Option<String>,
-    /// UI language preference.
-    pub language: Option<String>,
-    /// Avatar reference.
-    pub avatar: Option<String>,
-    /// Tax id — present only with `staff:read_identity`.
-    pub tax_id: Option<String>,
-    /// National id document expiry.
-    pub national_id_expires_at: Option<String>,
-    /// Emergency contact relationship.
-    pub emergency_contact_relationship: Option<String>,
-    /// Hire date.
-    pub hire_date: Option<String>,
-    /// Whether all 8 required profile fields are present.
-    pub is_complete: bool,
-}
-
-impl From<oz_core::db::profile::ProfileView> for ProfileViewDto {
-    fn from(view: oz_core::db::profile::ProfileView) -> Self {
-        Self {
-            user_id: String::new(),
-            username: view.username,
-            display_name: view.display_name,
-            date_of_birth: view.date_of_birth,
-            phone: view.phone,
-            national_id_type: view.national_id_type,
-            national_id: view.national_id,
-            national_id_masked: view.national_id_masked,
-            email: view.email,
-            monthly_take_home_minor: view.monthly_take_home_minor,
-            emergency_contact_name: view.emergency_contact_name,
-            emergency_contact_phone: view.emergency_contact_phone,
-            job_title: view.job_title,
-            notes: view.notes,
-            address: view.address,
-            language: view.language,
-            avatar: view.avatar,
-            tax_id: view.tax_id,
-            national_id_expires_at: view.national_id_expires_at,
-            emergency_contact_relationship: view.emergency_contact_relationship,
-            hire_date: view.hire_date,
-            is_complete: view.is_complete,
-        }
-    }
-}
-
-fn to_staff_dto(
-    user: &User,
-    roles: &[Role],
-    profile: Option<&UserProfile>,
-    assignment: Option<&Assignment>,
-) -> StaffMemberDto {
-    let role_name = roles
-        .iter()
-        .find(|r| r.id == user.role_id)
-        .map(|r| r.name.clone())
-        .unwrap_or_default();
-    StaffMemberDto {
-        id: user.id.clone(),
-        username: user.username.clone(),
-        display_name: user.display_name.clone(),
-        role_id: user.role_id.clone(),
-        role_name,
-        is_active: user.is_active,
-        national_id_masked: profile
-            .and_then(|p| p.national_id.as_deref())
-            .map(mask_last4)
-            .unwrap_or_else(|| "****".to_string()),
-        is_profile_complete: profile.map(|p| p.is_complete()).unwrap_or(false),
-        assignment: assignment_dto(assignment),
-    }
-}
-
-/// Render an assignment for the wire. Legacy users without an assignment
-/// row (pre-0048 databases) resolve as global all/all — the same effective
-/// semantics as `users.role_id` alone.
-fn assignment_dto(assignment: Option<&Assignment>) -> AssignmentDto {
-    match assignment {
-        Some(a) => AssignmentDto {
-            scope_mode: a.scope_mode.as_str().to_string(),
-            branches_all: a.branches_all,
-            branch_ids: a.branches.clone(),
-            workspaces_all: a.workspaces_all,
-            workspace_keys: a.workspaces.clone(),
-        },
-        None => AssignmentDto {
-            scope_mode: ScopeMode::Global.as_str().to_string(),
-            branches_all: true,
-            branch_ids: vec![],
-            workspaces_all: true,
-            workspace_keys: vec![],
-        },
-    }
-}
-
-/// Parse the wire `scope_mode` string, rejecting anything else.
-fn parse_scope_mode(s: &str) -> Result<ScopeMode, AppError> {
-    ScopeMode::parse(s).ok_or_else(|| AppError::Invalid(format!("invalid scope_mode: {s}")))
-}
-
-/// Map the wire args to an oz-core assignment spec.
-fn assignment_spec(args: &AssignmentArgs) -> Result<AssignmentSpec, AppError> {
-    Ok(AssignmentSpec {
-        scope_mode: parse_scope_mode(&args.scope_mode)?,
-        branches_all: args.branches_all,
-        branches: args.branch_ids.clone(),
-        workspaces_all: args.workspaces_all,
-        workspaces: args.workspace_keys.clone(),
-    })
+/// Build the authoring DTO from a domain role, adding the two facts the
+/// surface needs in order to decide what it may offer.
+///
+/// Thin adapter over `oz_bridge::staff::role_dto`: same name, parameters
+/// and `Result<_, AppError>` so the sibling test modules keep building DTOs
+/// from a shell-held `Store` (mirrors the desktop staff.rs adapter).
+fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
+    oz_bridge::staff::role_dto(store, role).map_err(AppError::from)
 }
 
 // ── List staff ─────────────────────────────────────────────────────
@@ -316,21 +84,6 @@ pub async fn list_staff(_state: State<'_, AppState>) -> Result<Vec<StaffMemberDt
 
 // ── List roles ─────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-/// Roledto.
-pub struct RoleDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Human-readable description.
-    pub description: String,
-    /// Granted permission keys, verbatim from the role's permissions JSON
-    /// (may include `"*"`). Shown in the staff screen so an admin can see
-    /// exactly what each role can do.
-    pub permissions: Vec<String>,
-}
-
 #[command]
 /// List roles.
 ///
@@ -342,21 +95,6 @@ pub async fn list_roles(_state: State<'_, AppState>) -> Result<Vec<RoleDto>, App
 }
 
 // ── Create staff member ────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Createstaffargs.
-pub struct CreateStaffArgs {
-    /// Username.
-    pub username: String,
-    /// Pin.
-    pub pin: String,
-    /// Display Name.
-    pub display_name: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// User ID of the caller (from `LoginSession`). Used for permission check.
-    pub caller_user_id: String,
-}
 
 #[command]
 /// Create staff.
@@ -374,23 +112,6 @@ pub async fn create_staff(
 }
 
 // ── Update staff member ────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Updatestaffargs.
-pub struct UpdateStaffArgs {
-    /// Unique identifier.
-    pub id: String,
-    /// Username.
-    pub username: String,
-    /// Display Name.
-    pub display_name: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// Whether this is active.
-    pub is_active: bool,
-    /// User ID of the caller (from `LoginSession`). Used for permission check.
-    pub caller_user_id: String,
-}
 
 #[command]
 /// Update staff.
@@ -414,60 +135,6 @@ pub async fn update_staff(
 // caller-supplied `caller_user_id`. Users/roles are GLOBAL identity
 // records (ADR #4 / ADR #7) — the permission check and CRUD run against
 // the global identity DB.
-
-/// Arguments for creating a staff member from a session token.
-///
-/// Deliberately carries NO caller identity field.
-#[derive(Debug, Deserialize)]
-/// Createstaffscopedargs.
-pub struct CreateStaffScopedArgs {
-    /// Username.
-    pub username: String,
-    /// Pin.
-    pub pin: String,
-    /// Display Name.
-    pub display_name: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// ADR #35 D6 profile fields — creation requires the 9 mandatory fields.
-    pub profile: ProfileArgs,
-    /// Optional assignment scope (spec 0048). When `Some`, the user is
-    /// created with this scope instead of the default global all/all.
-    #[serde(default)]
-    pub assignment: Option<AssignmentArgs>,
-}
-
-/// Arguments for updating a staff member from a session token.
-///
-/// Deliberately carries NO caller identity field.
-#[derive(Debug, Deserialize)]
-/// Updatestaffscopedargs.
-pub struct UpdateStaffScopedArgs {
-    /// Unique identifier.
-    pub id: String,
-    /// Username.
-    pub username: String,
-    /// Display Name.
-    pub display_name: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// Whether this is active.
-    pub is_active: bool,
-    /// Optional new PIN (STAFF-03). When `Some(non-empty)` the PIN is
-    /// validated, hashed server-side, and persisted via `update_user_pin`.
-    /// `None`/empty leaves the current PIN unchanged.
-    pub pin: Option<String>,
-    /// ADR #35 D6 profile fields (validated + encrypted at rest). When
-    /// `Some`, they are written atomically with the user update.
-    #[serde(default)]
-    pub profile: Option<ProfileArgs>,
-    /// Optional assignment scope (ADR #35 D5 / spec 0048). When `Some`, it
-    /// is written atomically with the user + profile update inside the same
-    /// transaction (replaces the legacy store-scoped workspace write for
-    /// callers using the new model).
-    #[serde(default)]
-    pub assignment: Option<AssignmentArgs>,
-}
 
 /// List staff members. Caller identity is resolved from the session token.
 #[command]
@@ -527,77 +194,143 @@ pub async fn list_roles_scoped(
     let store = Store::new(&db);
     require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
     let roles = store.list_roles()?;
-    drop(db);
-    Ok(roles
+    let dtos = roles
         .into_iter()
-        .map(|r| {
-            let permissions = r.permission_keys();
-            RoleDto {
-                id: r.id,
-                name: r.name,
-                description: r.description,
-                permissions,
-            }
+        .map(|r| role_dto(&store, r))
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(db);
+    Ok(dtos)
+}
+
+// ── Role authoring (ADR #47 ruling 4) ──────────────────────────────
+
+/// List the registered permission keys.
+///
+/// Without this the authoring UI would have to hardcode the vocabulary, which
+/// is what ADR #35 forbids: the registry is the single source of truth, and a
+/// picker fed from a copy of it drifts from the keys the gate actually
+/// honors. Gated on 'staff:read' rather than 'staff:manage_roles' — knowing
+/// which keys exist is not the power to grant them.
+#[command]
+pub async fn list_permission_keys_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<PermissionKeyDto>, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_READ).await?;
+    Ok(oz_core::permission_registry::REGISTRY
+        .iter()
+        .map(|entry| PermissionKeyDto {
+            key: entry.key.to_string(),
+            family: entry.family.to_string(),
+            sensitive: entry.sensitive,
+            description: entry.description.to_string(),
         })
         .collect())
 }
 
-/// Enforce role-assignment policy (STAFF-02).
+/// Create a custom role: a named key-set row in the same vocabulary
+/// enforcement already speaks (ADR #47 ruling 4).
 ///
-/// - Only a caller with `staff:manage_roles` (i.e. the Owner preset, which
-///   carries `*`) may create or promote an account to the Owner role.
-/// - A caller may not change their own role (no self-promotion).
-/// - The last active Owner may not be deactivated, demoted, or edited away.
-fn enforce_role_assignment_policy(
-    store: &Store<'_>,
-    caller_user_id: &str,
-    target_user_id: Option<&str>,
-    target_role_id: &str,
-    target_is_active: bool,
+/// The id is generated here and never accepted from the wire. A row whose id
+/// the preset seeder owns is rewritten by the next seed_default_roles_scoped,
+/// so letting a caller choose ids would put them one typo away from authoring
+/// something they cannot keep; a generated 'role-<uuidv7>' is outside
+/// ROLE_PRESETS by construction.
+#[command]
+pub async fn create_role_scoped(
+    session_token: String,
+    args: CreateRoleArgs,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
+    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let role = store.create_role(
+        &format!("role-{}", uuid::Uuid::now_v7()),
+        &args.name,
+        &args.description,
+        &grants_json(&args.permissions)?,
+    )?;
+    role_dto(&store, role)
+}
+
+/// Re-name, re-describe, or re-grant an authored role.
+///
+/// Editing re-points every holder, so the grant set is validated against the
+/// registry core-side and preset ids are refused there too — the rule lives in
+/// one place, so this command cannot become the way around it.
+#[command]
+pub async fn update_role_scoped(
+    session_token: String,
+    args: UpdateRoleArgs,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    let role = store.update_role(
+        &args.id,
+        &args.name,
+        &args.description,
+        &grants_json(&args.permissions)?,
+    )?;
+    role_dto(&store, role)
+}
+
+/// Delete an authored role.
+///
+/// Refused for preset ids and for any role still referenced. The second guard
+/// matters more here than a usual FK: authorize_with fails closed on an
+/// unresolvable role, so dropping one out from under a holder would be a
+/// silent loss of access rather than an error.
+#[command]
+pub async fn delete_role_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    // Only Owner-level roles may assign the Owner role.
-    if target_role_id == oz_core::builtin_roles::OWNER {
-        require_permission_for_user(store, caller_user_id, permissions::STAFF_MANAGE_ROLES)?;
-    }
-
-    if let Some(target_id) = target_user_id {
-        // No self-promotion / self-deactivation: a user cannot change their
-        // own role and cannot deactivate their own account (STAFF-10).
-        if target_id == caller_user_id {
-            let caller = store
-                .get_user(caller_user_id)?
-                .ok_or_else(|| AppError::PermissionDenied("user not found".into()))?;
-            if caller.role_id != target_role_id {
-                return Err(AppError::PermissionDenied(
-                    "you cannot change your own role".into(),
-                ));
-            }
-            if !target_is_active {
-                return Err(AppError::PermissionDenied(
-                    "you cannot deactivate your own account".into(),
-                ));
-            }
-        }
-
-        // Last-owner protection: cannot deactivate/demote the last active Owner.
-        if let Some(target) = store.get_user(target_id)?
-            && target.role_id == oz_core::builtin_roles::OWNER
-            && (target_role_id != oz_core::builtin_roles::OWNER || !target_is_active)
-        {
-            let active_owners = store
-                .list_users()?
-                .iter()
-                .filter(|u| u.role_id == oz_core::builtin_roles::OWNER && u.is_active)
-                .count();
-            if active_owners <= 1 {
-                return Err(AppError::PermissionDenied(
-                    "cannot deactivate or demote the last active Owner".into(),
-                ));
-            }
-        }
-    }
-
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
+    let db = state.db.lock().await;
+    Store::new(&db).delete_role(&id)?;
     Ok(())
+}
+
+/// List the accounts that hold one role, org-wide.
+///
+/// No store filter, deliberately: `users`, `assignments` and `roles` are
+/// tenant-global identity records (ADR #4 / #7) and a store-scoped database
+/// holds none of them, so "who holds this role" has exactly one honest
+/// answer for the whole organization. Gated on `staff:read`, the same gate
+/// [`list_staff_scoped`] uses, because that command already discloses these
+/// accounts and their role — asking for `staff:manage_roles` here would
+/// imply this reveals something the staff list does not.
+///
+/// The predicate lives in core (`Store::role_holders`) and resolves a role
+/// the way authorization does — assignment first, `users.role_id` as the
+/// fallback. A holder list that disagreed with what a user can actually do
+/// would be worse than no list, because this is the surface an admin reads
+/// before revoking something.
+#[tauri::command]
+pub async fn list_role_holders_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<RoleHoldersDto, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
+    let (holders, total) = store.role_holders(&id, oz_core::db::roles::ROLE_HOLDERS_MAX)?;
+    Ok(RoleHoldersDto {
+        holders: holders.into_iter().map(RoleHolderDto::from).collect(),
+        total,
+        cap: oz_core::db::roles::ROLE_HOLDERS_MAX,
+    })
 }
 
 /// Create a staff member. Caller identity is resolved from the session token.
@@ -633,7 +366,8 @@ pub async fn create_staff_scoped(
     let sub = TenantSubscription::load(&db, "default")?
         .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
-    store.enforce_staff_quota(&sub.effective_tier())?;
+    store
+        .enforce_staff_quota(&Entitlements::from_subscription(&sub, UsageCounts::default()).tier)?;
     let profile = args.profile.into_profile();
     let assignment = args.assignment.as_ref().map(assignment_spec).transpose()?;
     let user = store.create_user_with_profile(
@@ -646,6 +380,23 @@ pub async fn create_staff_scoped(
     )?;
     let roles = store.list_roles()?;
     let assignment = store.assignment_for_user(&user.id)?;
+    // Creating a staff account is a security event: it is how an attacker
+    // with a stolen admin session installs persistence. Actor goes in
+    // `user_id`, the new account in `target_id` — the same split
+    // `staff.identity.read` already uses. `create_user_with_profile` commits
+    // its own transaction, so this row is written just after the account
+    // exists rather than inside it; a failure here loses the event but can
+    // never strand the account.
+    record_security_event(
+        &store,
+        &SecurityEvent::staff_change(
+            &session.user_id,
+            &user.id,
+            &user.username,
+            SECURITY_ACTION_USER_CREATE,
+            SECURITY_REASON_ACCOUNT_CREATED,
+        ),
+    );
     drop(db);
 
     Ok(to_staff_dto(
@@ -690,8 +441,12 @@ pub async fn update_staff_scoped(
         )?;
     }
 
-    // STAFF-05 compensation: snapshot the profile BEFORE the update so we can
-    // restore it if the store-scoped workspace write fails afterwards.
+    // Snapshot the profile BEFORE the update. Used below ONLY to default the
+    // returned DTO's profile when the caller didn't send one — there is no
+    // restore/compensation path and none is needed: the legacy store-scoped
+    // `workspace_keys` write this snapshot once compensated was retired
+    // (50337ba1b), and the assignment scope now joins the same transaction
+    // as the user update below, so any later failure rolls both back.
     let previous_profile = {
         let store = Store::new(&db);
         let user = store.get_user(&args.id)?;
@@ -757,6 +512,35 @@ pub async fn update_staff_scoped(
             .get_user(&args.id)?
             .ok_or_else(|| AppError::Internal(format!("updated user {} vanished", args.id)))?;
         let roles = store.list_roles()?;
+        // Recorded INSIDE the transaction, so the audit row commits with the
+        // change it describes: a rolled-back edit leaves no phantom event, and
+        // a committed one can never be missing its trail.
+        record_security_event(
+            &store,
+            &SecurityEvent::staff_change(
+                &session.user_id,
+                &args.id,
+                &user.username,
+                SECURITY_ACTION_USER_UPDATE,
+                SECURITY_REASON_PROFILE_CHANGED,
+            ),
+        );
+        // A PIN rotation is a SECOND, distinct fact — it dropped every other
+        // session for the account (STAFF-03). It reuses the catalogued
+        // `user.update` action with its own classifier rather than inventing
+        // `user.pin_change`, which has no Fluent label and would strand one.
+        if pin_rotated {
+            record_security_event(
+                &store,
+                &SecurityEvent::staff_change(
+                    &session.user_id,
+                    &args.id,
+                    &user.username,
+                    SECURITY_ACTION_USER_UPDATE,
+                    SECURITY_REASON_PIN_ROTATED,
+                ),
+            );
+        }
         tx.commit()?;
         (user, roles, pin_rotated)
     };
@@ -792,34 +576,6 @@ pub async fn update_staff_scoped(
 // same first-owner path so a fresh installation can be provisioned from the
 // tablet itself. Like `staff_login`, the command mints a short-lived picker
 // ticket so the pre-session workspace picker stays bound to the real user.
-
-/// Arguments for the `bootstrap_owner` command.
-#[derive(Debug, Deserialize)]
-/// Bootstrapownerargs.
-pub struct BootstrapOwnerArgs {
-    /// Username for the first owner account.
-    pub username: String,
-    /// Plain-text PIN (minimum 4 characters).
-    pub pin: String,
-    /// Display name for the first owner.
-    pub display_name: String,
-}
-
-/// Result of a successful owner bootstrap — returns a login session
-/// so the front-end can auto-login immediately.
-#[derive(Debug, Serialize)]
-/// Bootstrapownerresult.
-pub struct BootstrapOwnerResult {
-    /// LoginSession dto.
-    pub session: oz_core::auth::LoginSession,
-    /// Short-lived picker ticket (audit-open-findings residual).
-    ///
-    /// The pre-session `list_workspaces` / `list_workspace_screens`
-    /// commands verify this ticket and resolve the caller's REAL role
-    /// from the database — caller-supplied `role_id` / `user_id` are
-    /// never trusted for the workspace picker.
-    pub picker_ticket: String,
-}
 
 /// Create the first owner user in a fresh installation.
 ///
@@ -918,3 +674,13 @@ fn run_bootstrap_owner(
 #[cfg(test)]
 #[path = "staff_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "staff_security_events_tests.rs"]
+mod security_events_tests;
+
+/// Role-holder tests: a sibling module for the same reason the audit slice
+/// used one — `staff_tests.rs` is another stream's in-flight file.
+#[cfg(test)]
+#[path = "staff_role_holders_tests.rs"]
+mod role_holders_tests;

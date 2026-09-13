@@ -455,12 +455,50 @@ fn set_setting_enqueues_settings_update_item() {
     assert_eq!(v["terminal_id"], "term-1");
 }
 
+/// INVERTED from `set_setting_persists_and_get_returns_it`, which asserted
+/// that `sync.auth_token` round-trips back to the renderer through
+/// `get_setting`. That claim was never testable, because the reader it
+/// described does not exist: `git grep -n auth_token -- ui/src` returns the
+/// writer (`SettingsPage.tsx`) and a copy of that writer inside a UI test,
+/// and nothing else — no `getSettingScoped(.., 'sync.auth_token')` call, no
+/// Rust reader outside this suite. A test that asserts a round trip needs two
+/// ends; this one only ever exercised the write, so it was pinning the
+/// storage layer to itself and calling the pair a contract.
+///
+/// The key is now registered as `keys::AUTH_TOKEN` and sits on the shared
+/// credential deny list, so the honest assertion is the refusal — the same
+/// shape `get_setting_redacts_secret_keys` already takes. The row is seeded
+/// through `Settings::set`, NOT through the funnel: since 0f26a4b29 the tracked
+/// funnel refuses a deny-listed credential stored in cleartext as well, so the
+/// old premise — that the funnel guards only manager-owned keys and the write
+/// therefore still lands — is false, and a funnel seed would fail on the write
+/// before the read boundary was ever exercised. The read is still the thing
+/// under test, which is why the row has to exist for it to mean anything.
+///
+/// Named for the two INDEPENDENT facts it pins: the row is in the table (when
+/// a raw door put it there) and the read still refuses it. The first half used
+/// to read "set_setting persists", which stopped being true at 0f26a4b29 — the
+/// funnel refuses the write now — so the persistence claim is scoped to the
+/// door that actually performed it.
 #[test]
-fn set_setting_persists_and_get_returns_it() {
+fn denied_key_persists_when_written_raw_but_get_refuses_it() {
     let conn = fresh_conn();
-    run_set_setting(&conn, "sync.auth_token", "sk_test_abc123", "term-1").unwrap();
-    let result = run_get_setting(&conn, "sync.auth_token").unwrap();
-    assert_eq!(result, Some("sk_test_abc123".into()));
+    // Seed door: the untracked `Settings::set`. The funnel refuses this write
+    // now, so it cannot be the scaffolding for a read-side test.
+    Settings::set(&conn, oz_core::settings::keys::AUTH_TOKEN, "sk_test_abc123").unwrap();
+    assert_eq!(
+        run_get_setting(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
+        None,
+        "sync.auth_token is a cleartext copy of the sync API key and must never reach the renderer"
+    );
+    // The row is still there — the refusal is at the IPC surface, not in the
+    // table. Naming the difference keeps the next reader from "fixing" this
+    // by deleting the write and concluding the guard works.
+    assert_eq!(
+        Settings::get(&conn, oz_core::settings::keys::AUTH_TOKEN).unwrap(),
+        Some("sk_test_abc123".into()),
+        "the row must exist, or the read refusal above proves nothing"
+    );
 }
 
 #[test]
@@ -494,13 +532,27 @@ fn get_setting_after_multiple_keys_only_returns_requested() {
 #[test]
 fn get_setting_redacts_secret_keys() {
     let conn = fresh_conn();
-    run_set_setting(&conn, "sync_api_key", "secret-key", "t").unwrap();
-    run_set_setting(&conn, "pg_sync.password", "db-pass", "t").unwrap();
-    run_set_setting(&conn, "lan_server.psk", "psk-val", "t").unwrap();
+    // WHY THESE SEEDS DO NOT GO THROUGH run_set_setting: this test asserts a
+    // READ-side property, so the write is scaffolding only. Since 0f26a4b29 the
+    // tracked funnel refuses a deny-listed credential stored in cleartext
+    // (Settings::refuse_cleartext_credential), so funnel-seeding it fails on the
+    // write and never reaches the redaction assertion. Settings::set is the
+    // untracked door the lifecycle managers themselves use, and it stores what it
+    // is handed - the same seed the desktop bridge redaction test uses. Do NOT
+    // tidy these lines back onto run_set_setting.
+    Settings::set(&conn, "sync_api_key", "secret-key").unwrap();
+    Settings::set(&conn, "pg_sync.password", "db-pass").unwrap();
+    // lan_server.* is manager-owned: the guarded writer rejects it (see
+    // run_set_setting_rejects_lan_server_bind), so seed it raw — same as the
+    // desktop bridge's redaction test.
+    Settings::set(&conn, "lan_server.psk", "psk-val").unwrap();
+    // smtp_config is the one named exception to that cleartext refusal
+    // (Settings::CLEARTEXT_CREDENTIAL_EXCEPTION), so it still goes through the
+    // writer a real tablet save takes - the merge seam, not a refusal.
     run_set_setting(&conn, "smtp_config", "smtp-secret", "t").unwrap();
-    run_set_setting(&conn, "stripe.api_key", "sk_test_stripe", "t").unwrap();
-    run_set_setting(&conn, "square.api_key", "sq_test_square", "t").unwrap();
-    run_set_setting(&conn, "midtrans.server_key", "mid_test", "t").unwrap();
+    Settings::set(&conn, "stripe.api_key", "sk_test_stripe").unwrap();
+    Settings::set(&conn, "square.api_key", "sq_test_square").unwrap();
+    Settings::set(&conn, "midtrans.server_key", "mid_test").unwrap();
     assert_eq!(run_get_setting(&conn, "pg_sync.password").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "lan_server.psk").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "smtp_config").unwrap(), None);
@@ -508,6 +560,9 @@ fn get_setting_redacts_secret_keys() {
     assert_eq!(run_get_setting(&conn, "stripe.api_key").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "square.api_key").unwrap(), None);
     assert_eq!(run_get_setting(&conn, "midtrans.server_key").unwrap(), None);
+    // license.api_key was asserted here without ever being seeded, so the
+    // refusal passed over an absent row; seed it like the desktop twin does.
+    Settings::set(&conn, "license.api_key", "lic-key").unwrap();
     assert_eq!(run_get_setting(&conn, "license.api_key").unwrap(), None);
     run_set_setting(&conn, "store.name", "My Store", "t").unwrap();
     assert_eq!(
@@ -516,22 +571,291 @@ fn get_setting_redacts_secret_keys() {
     );
 }
 
+/// Manager-owned keys (`local_api.*`, `lan_server.*`) must be refused by the
+/// tablet write funnel exactly as the desktop bridge refuses them — the shared
+/// `platform_core::settings::is_manager_owned_key` predicate is the rule, so
+/// the two shells cannot drift on what the prefixes mean. A tablet save of
+/// `local_api.secret` would silently replace the Local API signing secret.
 #[test]
-fn sync_auth_token_cross_screen_roundtrip() {
-    // C-3 fix verification: the sync.auth_token key written by
-    // one screen (SettingsPage) must be readable by another
-    // (RetailOptionsScreen / useCloudSync) via get_setting.
+fn run_set_setting_rejects_local_api_secret_and_writes_nothing() {
     let conn = fresh_conn();
+    let err = run_set_setting(&conn, "local_api.secret", "attacker-secret", "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m) if m.contains("local_api.secret")),
+        "refusal must be the bridge-shaped Invalid error naming the key: {err:?}"
+    );
+    // And nothing was persisted — no value, no delta row.
+    assert!(
+        Settings::get(&conn, "local_api.secret").unwrap().is_none(),
+        "a refused write must not reach the settings table"
+    );
+    assert!(
+        Settings::get_version(&conn, "local_api.secret", "term-1")
+            .unwrap()
+            .is_none(),
+        "a refused write must not create a delta row either"
+    );
+}
 
-    // Simulate SettingsPage saving a token
-    run_set_setting(&conn, "sync.auth_token", "jwt-token-xyz", "term-1").unwrap();
+/// lan_server.* is the same manager-owned class (PSK + bind + enabled owned by
+/// the LAN server module): the tablet funnel must refuse it too.
+#[test]
+fn run_set_setting_rejects_lan_server_bind() {
+    let conn = fresh_conn();
+    let err = run_set_setting(&conn, "lan_server.bind", "0.0.0.0:48080", "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m) if m.contains("lan_server.bind")),
+        "refusal must name the key: {err:?}"
+    );
+    assert!(
+        Settings::get(&conn, "lan_server.bind").unwrap().is_none(),
+        "a refused write must not reach the settings table"
+    );
+}
 
-    // Simulate useCloudSync loading the token on the other screen
-    let loaded = run_get_setting(&conn, "sync.auth_token").unwrap();
+/// The refusal sentence itself, spelled out. Out-of-band ON PURPOSE.
+///
+/// The parity sweep at the bottom of this file proves the lanes do not RESTATE
+/// the manager-owned-key sentence. This proves the sentence does not MOVE — a
+/// different question, and one the sweep is structurally unable to ask: by
+/// design it reads the expected words out of the producer at run time, so it
+/// transcribes no single word of the sentence and therefore cannot notice a word
+/// leaving. `9f1eca86c` is the demonstration: it centralised the sentence,
+/// reworded what this lane shows the operator, and the sweep stayed green
+/// because the sweep was right to.
+///
+/// Nor can the two door tests above fail on a rewording — they assert only that
+/// the message contains the KEY NAME, and every paraphrase keeps the key.
+///
+/// So the expectation here is deliberately NOT asked of the producer: an
+/// expectation derived from the thing under test cannot notice a paraphrase of
+/// it. It also deliberately lives in THIS file and not in `settings.rs`: the
+/// sweep reads that file's literals and fails on a restated sentence, and does
+/// not read this one.
+#[test]
+fn tablet_manager_refusal_sentence_drift_pin() {
+    let conn = fresh_conn();
+    // Both keys are genuinely manager-owned — `is_manager_owned_key` matches the
+    // `local_api.` / `lan_server.` prefixes in
+    // `platform/core/src/settings/raw.rs` — and the manager door in
+    // `run_set_setting` runs BEFORE the credential door, so this probe value is
+    // refused by the door under test whichever way the predicates are ordered.
+    // This lane has no manager-name lookup, so it passes `None` and the producer
+    // substitutes its generic label. `\u{2014}` is the em dash inside that
+    // sentence, spelled as an escape exactly as the bridge's byte-identical
+    // literals at `crates/oz-bridge/src/settings_tests.rs` spell theirs.
+    for (key, expected) in [
+        (
+            "local_api.enabled",
+            "local_api.enabled is managed by the dedicated controls \u{2014} use those",
+        ),
+        (
+            "lan_server.bind",
+            "lan_server.bind is managed by the dedicated controls \u{2014} use those",
+        ),
+    ] {
+        let err = run_set_setting(&conn, key, "not-a-value-just-a-probe", "term-1").unwrap_err();
+        let AppError::Invalid(message) = &err else {
+            panic!("{key}: the manager door must refuse as AppError::Invalid, got {err:?}");
+        };
+        assert_eq!(
+            message.as_str(),
+            expected,
+            "{key}: this lane's refusal sentence has moved off the producer's — a \
+             reworded refusal is a second definition of the policy"
+        );
+    }
+}
+
+/// The THIRD refusal this door must raise, and the one that was misclassified.
+///
+/// `pg_sync.password` is on the credential deny list but is NOT manager-owned,
+/// so neither the `local_api.*` / `lan_server.*` guard above nor the read-side
+/// redaction can be what stops it — only the cleartext-credential rule can.
+///
+/// READ THIS BEFORE CALLING IT A DOOR: the tablet never stored the credential.
+/// `run_set_setting` ends in `Settings::set_tracked`, and platform-core asks
+/// `refuse_cleartext_credential` before it opens the transaction (and again per
+/// row inside it), so the write was refused here all along. What was missing was
+/// the CLASS: platform-core raises `PlatformError::Internal`, which reaches a
+/// tablet renderer as `AppError::Core { sub_kind: Platform }` — "the shell
+/// broke" — while the desktop bridge pre-flights the same rule and answers
+/// `Invalid` — "you asked for the wrong thing". Same refusal, two error
+/// classes, and the operator sees the wrong one on exactly one of the two
+/// shells. The pre-flight is now mirrored; these assertions pin both halves.
+#[test]
+fn run_set_setting_refuses_a_deny_listed_credential_as_invalid() {
+    let conn = fresh_conn();
+    const SPOOF: &str = "spoofed-db-password";
+    let err = run_set_setting(&conn, "pg_sync.password", SPOOF, "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m)
+            if m.contains("pg_sync.password") && !m.contains(SPOOF)),
+        "refusal must be Invalid, must name the key, and must never carry the value: {err:?}"
+    );
+    // And nothing was persisted — no value, no delta row. This is the leg that
+    // proves the class fix did not open a door on its way to renaming one.
+    assert!(
+        Settings::get(&conn, "pg_sync.password").unwrap().is_none(),
+        "a refused credential must not reach the settings table"
+    );
+    assert!(
+        Settings::get_version(&conn, "pg_sync.password", "term-1")
+            .unwrap()
+            .is_none(),
+        "a refused credential must not create a delta row either"
+    );
+}
+
+/// The tablet must not PARAPHRASE the rule. The sentence it returns has to be
+/// platform-core's, byte for byte — the same text the desktop bridge hands back
+/// (the bridge's `both_write_doors_credential_refusals_carry_the_identical_message`
+/// pins the pair on that side). A reworded refusal is a second definition of the
+/// policy wearing a message, and the day the exception changes, one shell keeps
+/// refusing while the other starts accepting and nothing fails.
+#[test]
+fn run_set_setting_credential_refusal_carries_platform_core_wording() {
+    let conn = fresh_conn();
+    let expected = platform_core::settings::Settings::cleartext_credential_refusal(
+        oz_core::settings::keys::STRIPE_API_KEY,
+    )
+    .expect("stripe.api_key must be on the credential deny list");
+    let err = run_set_setting(
+        &conn,
+        oz_core::settings::keys::STRIPE_API_KEY,
+        "sk_test_live",
+        "term-1",
+    )
+    .unwrap_err();
+    match err {
+        AppError::Invalid(m) => assert_eq!(m, expected),
+        other => panic!("expected AppError::Invalid, got {other:?}"),
+    }
+}
+
+/// Control for the two tests directly above, run on ONE connection: a guard
+/// that refused every key would pass them and brick the settings page. The
+/// ordinary key leg is what separates the pin from the decoration, and the
+/// `smtp_config` leg is the exception the pre-flight must NOT restate — if this
+/// lane ever writes its own copy of the deny list instead of asking
+/// `cleartext_credential_refusal`, the email card's save turns into a refusal
+/// here first.
+#[test]
+fn credential_refusal_is_per_key_and_the_smtp_exception_still_writes() {
+    let conn = fresh_conn();
+    let err = run_set_setting(&conn, "sync_api_key", "secret-key", "term-1").unwrap_err();
+    assert!(
+        matches!(&err, AppError::Invalid(m) if m.contains("sync_api_key")),
+        "the credential must be refused as Invalid: {err:?}"
+    );
+    run_set_setting(&conn, "store.name", "My Store", "term-1").unwrap();
     assert_eq!(
-        loaded,
+        Settings::get(&conn, "store.name").unwrap(),
+        Some("My Store".into())
+    );
+    assert_eq!(
+        Settings::get_version(&conn, "store.name", "term-1").unwrap(),
+        Some(1)
+    );
+    // Non-blob value: `merged_smtp_password_json` passes it through unchanged,
+    // so this line exercises the exception, not the merge seam.
+    run_set_setting(&conn, "smtp_config", "smtp-blob", "term-1").unwrap();
+    assert_eq!(
+        Settings::get(&conn, "smtp_config").unwrap(),
+        Some("smtp-blob".into())
+    );
+}
+
+/// Control: a guard that refused EVERYTHING would pass the two tests above
+/// and fail the shop — an ordinary store-owned key must still land through
+/// the tracked path, exactly as before the guard existed.
+#[test]
+fn run_set_setting_store_name_control_still_writes() {
+    let conn = fresh_conn();
+    run_set_setting(&conn, "store.name", "My Store", "term-1").unwrap();
+    assert_eq!(
+        Settings::get(&conn, "store.name").unwrap(),
+        Some("My Store".into())
+    );
+    assert_eq!(
+        Settings::get_version(&conn, "store.name", "term-1").unwrap(),
+        Some(1)
+    );
+}
+
+/// INVERTED from `sync_auth_token_cross_screen_roundtrip`, which pinned the
+/// opposite contract: that a token saved on SettingsPage must be readable by
+/// "another screen (RetailOptionsScreen / useCloudSync)" through
+/// `get_setting`. No such reader exists. `useCloudSync` is not in the tree at
+/// all — the only surviving mention of it is the comment on the writer at
+/// `ui/src/features/settings/SettingsPage.tsx:478` and a doc line in
+/// `ui/src/hooks/useSyncConnection.ts` saying that hook replaced it — and
+/// `RetailOptionsScreen` survives only as two prose mentions in
+/// `PosScreen.tsx`. So the "cross-screen" leg this test claimed to verify was
+/// never a screen: both ends of the round trip were the same test writing and
+/// reading one row, which is why it could assert a contract the code had no
+/// way to honour and still pass.
+///
+/// What the key actually did was leave the device: a second cleartext copy of
+/// the sync API key, posted through the generic funnel, on no deny list, so
+/// both untrusted lanes carried it. Now that it is registered as
+/// `keys::AUTH_TOKEN` and denied, the honest assertion is the refusal on the
+/// read surface AND on the sync egress surface. Since 0f26a4b29 the generic
+/// funnel refuses the WRITE too, so the row below is seeded through
+/// `Settings::set`: a funnel seed would leave the row absent and turn every
+/// refusal asserted on it into a pass over a missing key.
+#[test]
+fn sync_auth_token_is_refused_on_read_and_never_replicated() {
+    use oz_core::settings::IngestPolicyKind as _;
+    let conn = fresh_conn();
+    let key = oz_core::settings::keys::AUTH_TOKEN;
+
+    // Seeded through the untracked door so every refusal below is a refusal of
+    // an EXISTING row, not a vacuous pass over a missing one; the row-exists
+    // assertion right below is what keeps that honest.
+    Settings::set(&conn, key, "jwt-token-xyz").unwrap();
+    assert_eq!(
+        Settings::get(&conn, key).unwrap(),
         Some("jwt-token-xyz".into()),
-        "C-3 regression: token saved via SettingsPage must be readable via get_setting"
+        "the row must exist for the refusals below to mean anything"
+    );
+
+    // Read surface: no screen gets it back, which is the claim this test used
+    // to make in the opposite direction.
+    assert_eq!(
+        run_get_setting(&conn, key).unwrap(),
+        None,
+        "sync.auth_token is a cleartext copy of the sync API key and must never reach the renderer"
+    );
+    assert!(
+        platform_core::settings::keys::is_secret_setting_key(key),
+        "it must be denied as a credential, not merely absent"
+    );
+    assert!(
+        !platform_core::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&key),
+        "it is a credential, not device identity — the two lists record different acts"
+    );
+
+    // Both untrusted lanes refuse it; the local lane still admits it, because
+    // SettingsPage writes it locally and that write is not what is being
+    // refused here.
+    for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
+        assert!(
+            !policy.admits(key),
+            "{policy:?} must refuse sync.auth_token"
+        );
+    }
+    assert!(
+        IngestPolicy::TrustedLocal.admits(key),
+        "the local write must keep working"
+    );
+
+    // Egress: a locally saved token must not be offered to the network.
+    let store = Store::new(&conn);
+    enqueue_settings_update(&store, key, "jwt-token-xyz", "term-1").unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "the duplicate sync secret must not be queued for sync egress"
     );
 }
 
@@ -637,4 +961,523 @@ async fn scoped_user_preferences_roundtrip_targets_session_store_and_user() {
         other.is_empty(),
         "another user in the same store must not see cashier-a preferences"
     );
+}
+/// The bypass reproduce (egress-gate parity with the bridge funnel): a
+/// locally written credential must NOT leave the device in a settings.update
+/// sync item, even though the local write itself succeeds and is non-fatal.
+#[test]
+fn enqueue_settings_update_refuses_credential_key_for_egress() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    enqueue_settings_update(
+        &store,
+        oz_core::settings::keys::LOCAL_API_SECRET,
+        "signing-secret",
+        "term-1",
+    )
+    .unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "local_api.secret must not be queued for sync egress"
+    );
+}
+
+/// Tablet-lane mirror of the bridge finding: `redis.url` is spelled like an
+/// endpoint but the form operators save is `redis://:PASSWORD@host:6379`, so
+/// the value IS the credential. It must not be readable through this shell's
+/// get_setting and must not be queued for peers, while the daemon's typed
+/// accessor keeps reading it for cache setup.
+#[test]
+fn redis_url_with_embedded_password_is_refused_for_read_and_egress() {
+    let conn = fresh_conn();
+    let url = "redis://:s3cr3t@10.0.0.5:6379";
+    let key = oz_core::settings::keys::REDIS_URL;
+    // Seed door: the untracked `Settings::set`. Since 0f26a4b29 the funnel
+    // refuses a cleartext `redis.url`, so seeding through it would fail the
+    // write and leave the read and egress refusals below untested. Do NOT tidy
+    // this back onto run_set_setting.
+    Settings::set(&conn, key, url).unwrap();
+    assert_eq!(
+        run_get_setting(&conn, key).unwrap(),
+        None,
+        "the redis password must never reach the renderer"
+    );
+    let store = Store::new(&conn);
+    enqueue_settings_update(&store, key, url, "term-1").unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "redis.url must not be queued for sync egress"
+    );
+    assert_eq!(
+        oz_core::Settings::get_redis_url(&conn).unwrap(),
+        url,
+        "the local typed accessor is not an egress surface"
+    );
+}
+
+/// Control for the gate: an ordinary key still queues, so the refusal above
+/// is the policy and not a broken enqueue path.
+#[test]
+fn enqueue_settings_update_still_queues_ordinary_key() {
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    enqueue_settings_update(
+        &store,
+        oz_core::settings::keys::STORE_NAME,
+        "Renamed",
+        "term-1",
+    )
+    .unwrap();
+    let pending = store.list_pending_offline().unwrap();
+    assert_eq!(pending.len(), 1, "store.name must still queue for egress");
+    assert_eq!(pending[0].action, "settings.update");
+}
+/// license.phone is PII captured at activation and per-install identity, not
+/// device identity: the credential act (deny list — also hidden from the raw
+/// get_setting surface) is the correct set, argued by family consistency with
+/// license.tenant_id, which was already denied while identifying LESS. Both
+/// untrusted lanes must refuse it; the local activation write keeps working,
+/// and a restore to a second till is unaffected because the whole license
+/// family (api_key KDF-bound to machine_id, payload, signature, tenant_id)
+/// already refused the portable package before this key was registered.
+#[test]
+fn license_phone_is_denied_as_a_credential_and_refused_on_egress() {
+    use oz_core::settings::IngestPolicyKind as _;
+    let phone = oz_core::settings::keys::LICENSE_PHONE;
+    assert!(
+        platform_core::settings::keys::is_secret_setting_key(phone),
+        "license.phone must be IPC-hidden like the rest of the license family"
+    );
+    assert!(
+        !oz_core::settings::keys::NON_EXPORTABLE_DEVICE_KEYS.contains(&phone),
+        "it is per-install identity, not device identity — the acts differ"
+    );
+    for policy in [IngestPolicy::RemoteSync, IngestPolicy::PortablePackage] {
+        assert!(
+            !policy.admits(phone),
+            "{policy:?} must refuse license.phone"
+        );
+    }
+    assert!(
+        IngestPolicy::TrustedLocal.admits(phone),
+        "the activation write in license.rs is local and must keep working"
+    );
+
+    // And the tablet egress boundary queues nothing for it.
+    let conn = fresh_conn();
+    let store = Store::new(&conn);
+    enqueue_settings_update(&store, phone, "+62-811-000-0000", "term-1").unwrap();
+    assert!(
+        store.list_pending_offline().unwrap().is_empty(),
+        "license.phone must not be queued for sync egress"
+    );
+}
+
+// -- Parity: the manager-owned refusal has exactly one producer ----------
+//
+// The credential sentence got one at fb63dc535 and a sweep at 371b6ace0.
+// This is the same seam one rule over: both lanes already asked
+// `is_manager_owned_key`, but the WORDING had no owner — the tablet
+// hardcoded one phrasing and the bridge built another at both of its
+// doors, so a paraphrase could drift with nothing failing.
+// `manager_owned_key_refusal` in platform-core is now the only place the
+// sentence exists.
+//
+// Mirrors the pattern the credential sweep established and transcribes no
+// wording: the sentence is read out of the producer at run time with a
+// marker owner name, split into the fixed words on either side of the
+// marker, and the lanes are read out of their own files. Nothing below is
+// a copy of a sentence, so a fix to platform-core wording moves this test
+// with it instead of failing here first. The helpers are duplicated from
+// `crates/oz-bridge/src/settings_tests.rs` because that file guards the
+// credential seam and is not this commit to edit.
+
+/// The producer, named once so the three files below are compared against it.
+use platform_core::settings::Settings as ManagerProducer;
+
+const PLAT_RAW_RS: &str = include_str!("../../../../platform/core/src/settings/raw.rs");
+const BRIDGE_SETTINGS_RS: &str = include_str!("../../../../crates/oz-bridge/src/settings.rs");
+const TABLET_SETTINGS_RS: &str = include_str!("settings.rs");
+
+/// String literals in a file, comments removed, so prose cannot be counted
+/// as a restated sentence.
+fn swept_literals(source: &str) -> Vec<String> {
+    let chars: Vec<char> = source.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        if c == '/' && next == Some('/') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == '/' && next == Some('*') {
+            i += 2;
+            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            i += 2;
+            continue;
+        }
+        if c == '"' {
+            i += 1;
+            let mut lit = String::new();
+            while i < chars.len() && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    lit.push(chars[i + 1]);
+                    i += 2;
+                } else {
+                    lit.push(chars[i]);
+                    i += 1;
+                }
+            }
+            i += 1;
+            out.push(lit);
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Code only: comments never count as a call site.
+fn swept_code_lines(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_block = false;
+    for line in source.lines() {
+        let t = line.trim_start();
+        if in_block {
+            if t.contains("*/") {
+                in_block = false;
+            }
+            continue;
+        }
+        if t.starts_with("/*") {
+            in_block = true;
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        let cut = match line.find("//") {
+            Some(at) => &line[..at],
+            None => line,
+        };
+        out.push(cut.to_string());
+    }
+    out
+}
+
+/// The longest contiguous case-insensitive word run two sentences share:
+/// the paraphrase meter — a copy shares everything, a paraphrase a phrase.
+fn longest_shared_word_run(text: &str, sentence: &str) -> usize {
+    let a: Vec<&str> = sentence.split_whitespace().collect();
+    let b: Vec<&str> = text.split_whitespace().collect();
+    let mut best = 0usize;
+    for i in 0..a.len() {
+        for j in 0..b.len() {
+            let mut k = 0usize;
+            while i + k < a.len() && j + k < b.len() && a[i + k].eq_ignore_ascii_case(b[j + k]) {
+                k += 1;
+            }
+            if k > best {
+                best = k;
+            }
+        }
+    }
+    best
+}
+
+#[test]
+fn both_shell_lanes_take_the_manager_refusal_from_its_one_producer() {
+    // (A) Read the sentence out of the producer with a marker in the NAME
+    // slot, so the fixed words on either side of the label are derived.
+    let marker = "marker-owner-name";
+    let probe = "local_api.enabled";
+    let sentence = ManagerProducer::manager_owned_key_refusal(probe, Some(marker))
+        .expect("the producer refuses a manager-owned key");
+    assert!(
+        sentence.starts_with(probe),
+        "the refusal must name the key: {sentence:?}"
+    );
+    let (head, tail) = sentence
+        .split_once(marker)
+        .expect("the producer puts the owner name inside the sentence");
+    let head_words: Vec<&str> = head[probe.len()..].split_whitespace().collect();
+    let tail_words: Vec<&str> = tail.split_whitespace().collect();
+    let frame = head_words.len() + tail_words.len();
+    assert!(
+        head_words.len() >= 3 && tail_words.len() >= 3 && frame >= 6,
+        "the sentence frame around the owner name collapsed to {frame} words, too thin to sweep against: {sentence:?}"
+    );
+    let head_run = head_words.join(" ");
+    let tail_run = tail_words.join(" ");
+
+    // The rule, asked of the producer: a generic label where a lane has no
+    // name, and silence for a key nobody owns — including a credential,
+    // which is the other door and must not collapse into this one.
+    let generic = ManagerProducer::manager_owned_key_refusal("lan_server.bind", None)
+        .expect("lan_server.* is manager-owned");
+    assert!(
+        !generic.contains(marker) && generic != sentence,
+        "the generic refusal is not a named one: {generic:?}"
+    );
+    for not_mine in [
+        "store.name",
+        "sync.auth_token",
+        "local_api",
+        "my_local_api.x",
+    ] {
+        assert!(
+            ManagerProducer::manager_owned_key_refusal(not_mine, None).is_none(),
+            "{not_mine} is not manager-owned, so the producer must not refuse it"
+        );
+    }
+
+    // (B) Exactly one of the three swept files carries the sentence.
+    let mut carriers: Vec<String> = Vec::new();
+    for (label, source) in [
+        ("platform/core/src/settings/raw.rs", PLAT_RAW_RS),
+        ("crates/oz-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        (
+            "apps/tablet-client/src/commands/settings.rs",
+            TABLET_SETTINGS_RS,
+        ),
+    ] {
+        let literals = swept_literals(source);
+        assert!(
+            literals.len() >= 5,
+            "the sweep read only {} string literals out of {label}: the include_str path moved, so this leg finds nothing rather than finding agreement",
+            literals.len()
+        );
+        let borrowed: Vec<String> = literals
+            .iter()
+            // A paraphrase keeps one half of the frame and bends the other, so
+            // the meter adds the two runs and lets exactly one word go: a copy
+            // scores the full frame, a reworded lane still scores frame - 1, and
+            // an unrelated sentence about the same subject scores one or two.
+            .filter(|lit| {
+                let h = longest_shared_word_run(lit, &head_run);
+                let t = longest_shared_word_run(lit, &tail_run);
+                h >= 2 && t >= 2 && h + t >= frame - 1
+            })
+            .cloned()
+            .collect();
+        assert!(
+            borrowed.len() <= 1,
+            "{label} carries the manager-refusal wording in {} separate literals, so the sentence is being rebuilt inside one lane: {borrowed:?}",
+            borrowed.len()
+        );
+        if !borrowed.is_empty() {
+            carriers.push(label.to_string());
+        }
+    }
+    let carrier_n = carriers.len();
+    assert_eq!(
+        carriers,
+        vec!["platform/core/src/settings/raw.rs".to_string()],
+        "the manager-owned-key refusal sentence has {carrier_n} carrier(s) among the swept lanes: {carriers:?} — it must live in raw.rs alone, beside cleartext_credential_refusal, and be CALLED from the lanes. Swept scope is those three files, not the whole tree."
+    );
+
+    // (C) Each lane asks the producer and wraps the answer in its own
+    // Invalid. Counts are what the files hold: bridge at two doors,
+    // tablet at one, platform-core defining it once.
+    for (label, source, wrap, asks) in [
+        (
+            "platform/core/src/settings/raw.rs",
+            PLAT_RAW_RS,
+            "pub fn",
+            1usize,
+        ),
+        (
+            "crates/oz-bridge/src/settings.rs",
+            BRIDGE_SETTINGS_RS,
+            "BridgeError::Invalid(refusal)",
+            2usize,
+        ),
+        (
+            "apps/tablet-client/src/commands/settings.rs",
+            TABLET_SETTINGS_RS,
+            "AppError::Invalid(refusal)",
+            1usize,
+        ),
+    ] {
+        let lines = swept_code_lines(source);
+        let asked: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.contains("manager_owned_key_refusal("))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            asked.len(),
+            asks,
+            "{label} names manager_owned_key_refusal at code lines {asked:?}, expected {asks}"
+        );
+        if wrap != "pub fn" {
+            let wrapped = asked
+                .iter()
+                .filter(|i| {
+                    lines
+                        .iter()
+                        .skip(**i)
+                        .take(5)
+                        .any(|later| later.contains(wrap))
+                })
+                .count();
+            assert_eq!(
+                wrapped, asks,
+                "{label} asks the producer {asks} time(s) but wraps the answer in {wrap} only {wrapped} time(s): a lane refusing the same act with a different variant, or building its own wording, is what this sweep exists to catch"
+            );
+        }
+    }
+
+    // (D) Executable leg, tablet side: the door emits the producer sentence
+    // unchanged and leaks no value into it.
+    let conn = fresh_conn();
+    let value = "0.0.0.0:48080";
+    let err = run_set_setting(&conn, "lan_server.bind", value, "term-1").unwrap_err();
+    let AppError::Invalid(message) = &err else {
+        panic!("the tablet door must refuse a manager key as Invalid: {err:?}")
+    };
+    assert_eq!(
+        message,
+        &ManagerProducer::manager_owned_key_refusal("lan_server.bind", None)
+            .expect("the producer refuses lan_server.bind"),
+        "the tablet lane did not pass the producer sentence through unchanged: {message:?}"
+    );
+    assert!(
+        !message.contains(value),
+        "the refusal leaked the value it was handed: {message}"
+    );
+}
+
+// ── The read door and the key the status bar asks for ─────────────────────
+//
+// Appended for the `useGatewayStatus` claim: a reviewer measured that
+// `ui/src/hooks/useGatewayStatus.ts:23` calls the UNGATED `get_setting`
+// command with a deny-listed credential name and concluded the credential
+// reaches the renderer, because the refusal built all night sits on the write
+// path (`set_tracked`) and on the egress/ingest policies. These two tests
+// settle whether the READ half answers it. It refuses.
+
+/// A sentinel value, not a credential — shaped like a Stripe test key so a
+/// reader recognises the field, and carrying a word no real key contains so it
+/// cannot be mistaken for live material.
+const GATEWAY_PROBE_SENTINEL: &str = "sk_test_SENTINEL_NOT_A_REAL_KEY_deadbeef";
+
+/// Extract one function body, through its closing brace, from a source string.
+fn read_door_body(src: &str, signature: &str) -> String {
+    let start = src
+        .find(signature)
+        .unwrap_or_else(|| panic!("signature `{signature}` no longer exists: the door moved"));
+    let rest = &src[start..];
+    let open = rest.find('{').expect("a function body opens with a brace");
+    let mut depth = 0usize;
+    let mut body = String::new();
+    for ch in rest[open..].chars() {
+        body.push(ch);
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    body
+}
+
+/// DECISION PIN — `run_get_setting` refuses `stripe.api_key`; the caller is
+/// dead code, not a leak.
+///
+/// The refusal is on the READ path, not only the write path: `run_get_setting`
+/// asks `is_secret_key` (-> `platform_core::settings::keys::is_secret_setting_key`
+/// -> `credential_base` -> whole-key equality against `SECRET_KEY_DENY_LIST`)
+/// and returns `Ok(None)` before it touches the table. The bare spelling
+/// `stripe.api_key` is inside that domain by construction; the suffix-blind
+/// miss (`smtp_config:tenant-a`) is a different shape and is pinned in
+/// `keys_tests.rs`, not here.
+///
+/// The second assertion is the one that keeps the first honest, and it is also
+/// the measurement the claim turned on: BELOW the door, `Settings::get` hands
+/// the sentinel back byte for byte. There is no decrypt step on this path, so
+/// whatever is stored is what a caller would receive — the name test is the
+/// only thing between a stored credential and an IPC surface that checks no
+/// permission. If a read gate is ever removed, this pin does not "become
+/// wrong": the hazard it names becomes real, and the value it asserts is the
+/// evidence.
+#[test]
+fn decision_pin_run_get_setting_refuses_the_key_the_status_bar_hook_asks_for() {
+    let conn = fresh_conn();
+    // Premise, measured: the caller's spelling resolves to a credential base.
+    assert_eq!(
+        platform_core::settings::keys::credential_base("stripe.api_key"),
+        Some("stripe.api_key"),
+        "the bare spelling must be inside the credential domain, or this pin          refuses a key nothing owns"
+    );
+    assert!(
+        platform_core::settings::keys::is_secret_setting_key("stripe.api_key"),
+        "SECRET_KEY_DENY_LIST lost stripe.api_key"
+    );
+
+    // Seed through the untracked door: the tracked funnel refuses a cleartext
+    // deny-listed write, so a funnel seed would leave the row absent and make
+    // the refusal below a pass over nothing.
+    Settings::set(&conn, "stripe.api_key", GATEWAY_PROBE_SENTINEL).unwrap();
+    assert_eq!(
+        Settings::get(&conn, "stripe.api_key").unwrap().as_deref(),
+        Some(GATEWAY_PROBE_SENTINEL),
+        "one level below the door the read path returns the stored value          verbatim — it does not decrypt, it does not withhold"
+    );
+    assert_eq!(
+        run_get_setting(&conn, "stripe.api_key").unwrap(),
+        None,
+        "the ungated get_setting door must answer a deny-listed name with None"
+    );
+    // Control: the door is a name test, not a broken read.
+    Settings::set(&conn, "store.name", "Counter Store").unwrap();
+    assert_eq!(
+        run_get_setting(&conn, "store.name").unwrap().as_deref(),
+        Some("Counter Store"),
+        "an ordinary key must still read back through the same door"
+    );
+}
+
+/// DECISION PIN — both doors, on both shells, reach that one refused function.
+///
+/// The unscoped command is what `useGatewayStatus` calls; the scoped twin is
+/// what a future "fix" would reach for. Both must delegate. A door that reads
+/// the table itself puts the credential back on the wire, and on the scoped
+/// side a `settings:read` permission is NOT a credential rule — a manager can
+/// hold the permission and still have no business reading a secret. Sweep, not
+/// a call, because the standing-up of a session adds nothing to what is being
+/// pinned here: which function the body names.
+#[test]
+fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
+    for (label, src) in [
+        ("tablet settings.rs", TABLET_SETTINGS_RS),
+        ("oz-bridge settings.rs", BRIDGE_SETTINGS_RS),
+    ] {
+        for signature in [
+            "pub async fn get_setting(",
+            "pub async fn get_setting_scoped(",
+        ] {
+            let body = read_door_body(src, signature);
+            assert!(
+                body.contains("run_get_setting"),
+                "{label}: `{signature}` no longer reaches the refused door —                  it either reads the table itself or the door was renamed. Body: {body}"
+            );
+            assert!(
+                !body.contains("Settings::get"),
+                "{label}: `{signature}` grew its own read of the settings                  table, which bypasses the credential refusal in run_get_setting"
+            );
+        }
+    }
 }

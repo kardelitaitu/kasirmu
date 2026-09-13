@@ -5,16 +5,33 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listKdsOrdersScoped, type KdsOrder } from '@/api/kds';
 import './KdsCompletedView.css';
 
-/** Time-bucket labels and their day-range condition. */
-const BUCKETS = [
+/** Time-bucket labels and their day-range condition. Exported so tests use the real
+ *  ranges instead of a second copy that nothing keeps in step. */
+export const BUCKETS = [
   { key: 'today',     start: 0, end: 1 },
   { key: 'yesterday', start: 1, end: 2 },
   { key: 'this-week', start: 2, end: 7 },
   { key: 'older',     start: 7, end: Infinity },
 ] as const;
 
+/**
+ * The bucket an order's day-offset falls into, or null when none does.
+ *
+ * Extracted from the inline loop in the `bucketed` memo, which previously scanned BUCKETS
+ * inside the component. Returning null rather than a default preserves the old behaviour
+ * exactly: an offset matching no range was silently dropped, not filed under "older".
+ * That is unreachable today -- dayOffset clamps at 0 and `older` spans [7, Infinity) --
+ * but the fallback was never part of the contract, so it is not being added now.
+ */
+export function bucketForOffset(offset: number): string | null {
+  for (const b of BUCKETS) {
+    if (offset >= b.start && offset < b.end) return b.key;
+  }
+  return null;
+}
+
 /** Day offset from today for the order's completion time (served_at or received_at). */
-function dayOffset(ts: string): number {
+export function dayOffset(ts: string): number {
   const now = new Date();
   const d = new Date(ts);
   // Normalise to date-only (midnight) so "today" = same calendar day.
@@ -24,7 +41,7 @@ function dayOffset(ts: string): number {
 }
 
 /** Format duration between two timestamps as "Xm Ys" or "Xh Ym". */
-function fmtDuration(from: string, to: string): string {
+export function fmtDuration(from: string, to: string): string {
   const sec = Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 1000));
   if (sec < 60) return `${sec}s`;
   const min = Math.floor(sec / 60);
@@ -104,13 +121,8 @@ export function KdsCompletedView({
     for (const b of BUCKETS) map.set(b.key, []);
     for (const o of filteredOrders) {
       const ref = o.served_at || o.received_at;
-      const offset = dayOffset(ref);
-      for (const b of BUCKETS) {
-        if (offset >= b.start && offset < b.end) {
-          map.get(b.key)!.push(o);
-          break;
-        }
-      }
+      const key = bucketForOffset(dayOffset(ref));
+      if (key) map.get(key)!.push(o);
     }
     return map;
   }, [filteredOrders]);
@@ -145,6 +157,7 @@ export function KdsCompletedView({
             className="kds-btn kds-btn--muted"
             onClick={load}
             aria-label={requiredLocalized(l10n, 'kds-completed-retry-aria')}
+            data-testid="kds-completed-retry"
           >
             <Localized id="kds-offline-retry">Retry</Localized>
           </button>

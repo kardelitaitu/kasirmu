@@ -167,7 +167,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `cargo clippy -- -D warnings` passes with zero warnings
 - [x] 5,800+ unit tests across the `oz-*` crate ecosystem, plus ~6,700 UI tests across 405 test files
 - [x] Data Management UI wired to real IPC (backup, export/import .ozpkg)
-- [x] `oz-cli import-ozpkg` writes data to DB (products, categories, sales, customers, users, settings)
+- [x] `oz-cli import-ozpkg` writes data to DB (products, categories, sales, customers, users, settings) — except settings rows the shared platform-core predicate `is_non_exportable_setting_key` marks non-exportable, which are skipped rather than written
 - [x] StaffLoginScreen supports hardware keyboard PIN entry (digits, Backspace, Enter, Escape)
 - [ ] App launches on Windows and Linux
 
@@ -200,13 +200,61 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] File writer with rotation (`oz_logging::init_with_file()`, `oz_logging::init_json_with_file()`)
     - Uses `tracing-appender` for hourly rolling files
     - Spawns background cleanup thread for log retention (configurable days)
+    - **Implemented, never wired — corrected 2026-09-12.** The two sentences
+      above are true of the crate and are kept checked: the functions exist,
+      rotate hourly, run the retention cleanup thread, and are exercised by
+      `lib_tests`. What no shipped binary does is **call** them. `git grep` for
+      `init_with_file` / `init_json_with_file` across the tree returns their
+      definitions and doc examples in `crates/oz-logging`, this box, and
+      `docs/operations/runbook.md` §8.6 — no hit under `apps/`, `modules/` or
+      `platform/`, and the `try_*` variants are called only from the crate's own
+      tests. Both Tauri clients initialise with `oz_logging::try_init()`
+      (`apps/desktop-client/src/lib.rs`, `apps/tablet-client/src/lib.rs`), which
+      installs an `EnvFilter` + `fmt` subscriber with **no writer**, so a
+      double-clicked desktop build discards its stdout and **no POS device has a
+      log file to open.** Name the missing call site: a client `setup` calling
+      `init_with_file(app_log_dir, "oz-pos", retention_days)` — there is no
+      `log_dir` / `LogRoot` / `app_log` / `path_resolver` anywhere in `apps/` to
+      hand it, so the call site needs a directory resolver with it. Not the same
+      as "no file writer": `docs/operations/runbook.md` §8.6 carries the
+      consequence for an operator.
 - [x] Syslog output (Linux) — `oz_logging::syslog::init_syslog()`
     - Uses `libc` FFI for syslog API
     - Combined subscriber: stdout + syslog via `tracing_subscriber::registry()`
     - Configurable facility (local0–local7, daemon, user, etc.)
-- [x] Windows Event Log output — `oz_logging::eventlog::init_eventlog()`
+    - **Implemented, never wired — corrected 2026-09-12.** Capability as
+      described: true, tested in `syslog_tests`, and left checked. `git grep`
+      `init_syslog` returns its definition, its module doc example and that
+      test file only — nothing in `apps/`, `modules/` or `platform/` calls it,
+      including `apps/cloud-server`, which is the one Linux process that ships
+      and which picks `try_init()` / `try_init_json()` instead. So no deployment
+      emits to a syslog daemon today; the container's stdout is the whole
+      surface (see runbook §8.6).
+- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — `oz_logging::eventlog::init_eventlog()`
     - Uses `OutputDebugStringW` via windows-sys FFI
     - Combined subscriber: stdout + debug output via registry()
+    - **Title corrected 2026-09-12, and also never wired.** Two separate
+      problems, stated in the order a reader will be harmed by them. (a) The
+      heading said
+      "Event Log", but `OutputDebugStringW` is the Win32 **debugger** channel —
+      visible to an attached debugger and to DebugView, gone when neither is
+      present. The Event Log API is a different thing (`RegisterEventSource` /
+      `ReportEvent`), and `git grep` for either returns nothing in this crate.
+      That is why a machine inspection of registered EventLog sources shows no
+      OZ-POS entry: nothing ever wrote one, so the surface cannot be diagnosed
+      by looking for our source name. The sub-bullet below was always honest —
+      it says "debug output", not "event log" — the heading oversold it. (b) The
+      sink itself is never installed: `git grep` `init_eventlog` returns its
+      definition, its module doc example and `eventlog_tests` only, with no
+      caller in `apps/`, `modules/` or `platform/` — including
+      `apps/desktop-client`, the only Windows binary that ships, which calls
+      `try_init()`.
+    - So the accurate statement of what a Windows field install gives you:
+      **no log file, no Event Log entry, and no debug channel** — one discarded
+      stdout stream. Anything reading this box as "Windows logs exist" is wrong
+      twice over.
+    - Kept checked as a delivered *capability* (it compiles, is tested, and
+      works when called); the wiring and the name were the lies, not the code.
 - [x] Shared `MessageVisitor` for field formatting (extracted to `visitor.rs`)
 
 ### Testing
@@ -218,13 +266,13 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] `.tarpaulin.toml` config + coverage CI job + local coverage gate in `scripts/check.sh`
 
 ### CI/CD
-- [x] `.github/workflows/ci.yml`: lint → test → Tauri bundle
+- [x] `.github/workflows/ci.yml`: lint → test → Tauri bundle — **retired to `ci.yml.bak` by `23c96330`**; the live pipeline is `dev-ci.yml`, and `release.yml` was restored desktop-only in 0.0.36. Kept because it records what shipped, not what runs.
   - `cargo fmt --check`
   - `cargo clippy -- -D warnings`
   - `cargo test --workspace`
   - `npm run lint` + `npm run test` in `ui/`
   - Tauri build for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`
-  - `.github/workflows/security.yml`: weekly `cargo audit` + `cargo deny`
+  - `.github/workflows/security.yml`: weekly `cargo audit` + `cargo deny` — **never lived; the file exists only as `security.yml.bak`.** Security and nightly suites are not enforced in CI, so a green Dev CI run is not proof they passed.
 - [x] `.github/workflows/release.yml`: tag → build all targets → draft GitHub release
   - Verify job: fmt, clippy, tests (cargo + npm)
   - Build matrix: ubuntu-latest, windows-latest, macos-latest
@@ -289,7 +337,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 ### Transaction Lifecycle
 - [x] Audit log SQL migration + domain type (`010_audit_log.sql`, `audit.rs`)
 - [x] Store methods: `log_audit`, `list_audit_entries`, `void_sale` (atomic tx with stock restoration)
-- [x] `void_sale` Tauri IPC command (`apps/desktop-client/src/commands/sales.rs`)
+- [x] `void_sale` Tauri IPC command — lives in `apps/desktop-client/src/commands/void.rs` as `void_sale_scoped` (there is no `commands/sales.rs`)
 - [x] **Void Sale UI** — Orders screen with search, status filters, detail view, reason picker, void confirmation
 - [x] Refund / return flow (partial or full, linked to original order) — `RefundModal.tsx`, `SalesHistoryScreen.tsx` integration, previous refunds display
 - [x] Hold order (park a sale, resume later — multiple holds simultaneously)
@@ -392,9 +440,9 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Payment result stored in `payments` table linked to `sale_id` (gateway reference, status, response in migration `027_payment_gateway_fields.sql`)
 
 ### Multi-Currency
-- [x] `exchange_rate` table populated by background sync from external API (`RateSyncDaemon` — Frankfurter API via `platform/startup/src/rate_sync.rs`)
+- [ ] ~~`exchange_rate` table populated by background sync from external API (`RateSyncDaemon` — Frankfurter API via `platform/startup/src/rate_sync.rs`)~~ **NOT WIRED — corrected 2026-09-12 (the box was checked; the feature does not run).** Unwired, not broken: storage and crypto are complete (`RateSyncDaemon::run_tick` fetches `https://api.frankfurter.app`, converts to `rate_millionths`, upserts via `CurrencyRepository::upsert_exchange_rate` into `exchange_rates`; `Settings::set_rate_sync_api_key` encrypts the key at rest), but nothing starts the daemon. Its only start path, **`init_rate_sync` in `platform/startup/src/lib.rs` (line 337 as measured 2026-09-12), has zero callers** — neither Tauri client starts it — no `platform_startup::spawn_daemon` call in `apps/desktop-client/src/lib.rs` or `apps/tablet-client/src/lib.rs` names rate sync, `rate_sync` and `RateSyncDaemon` appear nowhere in `apps/`, `ui/` or `crates/oz-bridge`, and `git grep init_rate_sync` over the tree matches only its own definition. **Exchange rates today are entered by a manager on the exchange-rates screen** (`ui/src/features/currency/ExchangeRateScreen.tsx`, route `exchange-rates`, `requiredRole: 'manager'`) — manual create and delete only; that is the sentence an operator or a sales conversation needs. The UI has no API-key field and no auto-sync toggle, and no IPC command writes `rate_sync.*`, so all four keys (`platform/core/src/settings/keys.rs:159-165`) have zero production writers; three are read only by the daemon that never starts, and `rate_sync.api_key` is read by nothing at all — the fetcher targets a keyless endpoint, so there was never a credential for that accessor to feed. To turn it on: call `platform_startup::init_rate_sync(db)` from a client `setup` (and note `run_tick` discards `rate_sync.interval`, so the interval would still need wiring). ⚠️ Deleting those dormant keys is not a dead-code cleanup — `rate_sync.api_key` "encrypted at rest" is a claimed remediation row in `docs/security/security-audit-completion.md` (H-5), so that doc must be updated in the same change. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 - [x] Currency selector in checkout UI (when `MultiCurrency` flag enabled)
-- [x] Receipts show both charge currency and base currency
+- [ ] ~~Receipts show both charge currency and base currency~~ **FALSE FOR RECEIPTS — corrected 2026-09-12: a receipt carries one currency per amount, and it is the charge one.** Measured at the same sha as the box above, on the two payload types rather than inherited: `PrintSalesReceiptArgs` in `ui/src/api/sales.ts` and `SalesReceipt` in `crates/oz-hal/src/drivers/receipt.rs` each hold a single `subtotal`, `tax` and `total`, and their `Money` type carries exactly one `currency` — there is no base-currency amount anywhere in either, so the thermal renderer has no second figure to print. The base currency and base total do exist and are persisted on the sale (`20260821_tender_currency.sql`, surfaced as the sale-detail fields), and the checkout dialog shows both amounts side by side — that pairing is real one screen earlier, and never on the receipt. What a merchant can do today: see charge and base side by side on the payment screen, and print a receipt denominated only in the charge currency. The honest alternative to implementing it is to scope the box to the checkout screen, where it is true. Not fixed here: adding a base-currency line is a payload, bridge and driver change plus a printed-artefact decision.
 - [x] **R2 — Currency DB Extraction (ADR #30)**: 6-phase extraction of currency, exchange-rate, and currency-format settings from the monolithic `oz-core` Store facade into a dedicated `modules/currency` crate:
   - Phase 1: `ExchangeRateRow`, `CurrencyRepository`, `CurrencyError` moved into `modules/currency`; `oz-core` Store methods became thin delegating wrappers
   - Phase 2: Shared DTOs (`ExchangeRateDto`, `CreateExchangeRateArgs`) in `modules/currency/src/commands.rs`
@@ -404,7 +452,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
   - Phase 6: All 15 delegated Store methods marked `#[deprecated]`; tests annotated `#[allow(deprecated)]`
 
 ### Mobile Builds
-- [x] Android tablet build (Tauri mobile → APK, signed) — CI builds a signed `aarch64` APK on tag push (`.github/workflows/android.yml`); physical-device testing still needs infra
+- [x] Android tablet build (Tauri mobile → APK, signed) — CI **no longer** builds it: `android.yml` and `ios.yml` are retired `.bak`, and `release.yml` covers desktop only. The build path exists (`cargo tauri android build`); the automation does not.; physical-device testing still needs infra
 - [ ] iPad build (Tauri mobile → `.ipa`, TestFlight distribution)
 - [x] Touch-optimised UI layout for tablet screen sizes (tablet shell + responsive breakpoints + touch targets)
 - [x] `packaging/mobile/README.md` — Tauri v2 mobile build guide for Android & iOS
@@ -428,7 +476,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] **Payment Gateway status badge** — online / offline indicator in sidebar
 - [x] **QRIS QR code display** — full-screen QR overlay on checkout, auto-dismiss on payment confirm
 - [x] **Currency selector** — dropdown at checkout when MultiCurrency enabled
-- [x] **Exchange rate notice** — show rate used and timestamp on receipt
+- [ ] ~~**Exchange rate notice** — show rate used and timestamp on receipt~~ **ONE SCREEN SHORT — corrected 2026-09-12: the notice is real and rich, but it is in the checkout dialog, not on the receipt.** Unwired at the last layer, not broken. What ships: `ui/src/features/sales/PaymentModal.tsx` renders an exchange-rate notice (rate, rate source, rate timestamp) whenever the tendered currency differs from the sale currency, backed by the `payment-exchange-*` / `payment-rate-*` keys in `ui/src/locales/sales.ftl`. What does not: that notice never reaches a receipt, on screen or on paper, because the same `PrintSalesReceiptArgs` object feeds the preview and the print call, and the type has no rate field, no source field and no effective date — and one layer down, the struct the thermal renderer consumes (`SalesReceipt` in `crates/oz-hal/src/drivers/receipt.rs`) defines the same absence, so the ESC/POS path has nothing to print. Confirmed by searching `exchange`, `rate_millionths`, `base_currency` and `tender_rate` across all four layers of the print path — the payload type (`ui/src/api/sales.ts`), the on-screen preview (`ui/src/features/sales/ReceiptPreview.tsx`), the bridge builder that turns the args into the driver struct (`crates/oz-bridge/src/hardware.rs`) and the thermal driver (`crates/oz-hal/src/drivers/receipt.rs`): zero hits in every one. The `show_currency` hits that do appear across those files are the currency-symbol prefix toggle, a different feature. The rate itself is captured and persisted — `crates/oz-core/migrations/20260821_tender_currency.sql` adds `base_currency`, `base_total_minor` and `tender_rate_millionths` to the sale header, and they round-trip through `crates/oz-bridge/src/pos.rs` into the sale-detail fields — so storage is complete and display is not. What is **not** persisted is the rate's `source` and `effective_date`, which live only on the `exchange_rates` row, and at checkout the number displayed comes from a live latest-rate lookup rather than from the stored list row: **so a printed receipt can show the converted total without being able to reproduce the conversion, and editing or deleting that rate row erases the provenance of a conversion already booked on a sale.** A merchant today: a multi-currency sale records the converted amount and the rate used in the database, the checkout screen shows the rate with its source and date before payment, and the printed receipt shows neither — the customer walks out with a paper record of the converted total and no record of the conversion. Both endings are legitimate and only one is claimed: put the notice on the receipt (payload type, bridge builder and driver struct, with the source and effective date persisted on the sale rather than re-looked-up), or drop the box. That is a behaviour change with a product decision attached — a merchant record, not a wiring fix — so it is listed, not made.
 
 **Hardware Integration UI**
 - [x] **Customer display wired to PosScreen** — `useCustomerDisplay` hook auto-detects the first registered display, shows cart total + item count on two 20-char lines, clears on payment complete or cart empty
@@ -474,7 +522,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [ ] `tokio-console` integration macros
 - [ ] `cargo flamegraph` helpers
 - [x] Benchmark suite: barcode lookup < 1 ms, transaction commit < 5 ms (criterion benches in `crates/oz-core/benches/`, targets defined in `docs/archived/benchmarks.md`)
-- [x] Prometheus metrics endpoint (optional, in `oz-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)
+- [ ] ~~Prometheus metrics endpoint (optional, in `oz-reporting` behind `metrics` feature — counters, gauges, histograms + HTTP server in `platform-startup`)~~ **NOT STARTED — corrected 2026-09-12: the app-side server half was never finished, and on 2026-09-12 it was retired.** What ships: `oz-reporting`'s feature-gated counters, gauges and histograms. What never did: the `platform-startup` HTTP endpoint — its whole `pub mod server` sat behind `#[cfg(feature = "metrics")]`, a feature `platform/startup/Cargo.toml` does not declare, so it compiled in no build, and `start_metrics_server` had no call site in either Tauri client or in `apps/cloud-server`. The box stays unchecked: nothing serves `/metrics` in the desktop or tablet app today, and the only `/metrics` route in the tree is the cloud server's own separate registry (`apps/cloud-server/src/metrics.rs`), which this box never described. `CHANGELOG.md` keeps its original entry: a changelog records what was believed at release time.
 
 ### UI / UX — Reports, Dashboard & i18n Screens
 
@@ -518,12 +566,12 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 - [x] Plugin manifest format (`plugin.toml` — Permission enum with 8 variants, enforced at load time)
 - [x] Plugin sandbox: Lua-based, no unsafe Rust from plugins (14 dangerous globals nil, instruction limit 100k, safe env)
 - [x] Plugin discovery and hot-reload (notify-based file watcher in desktop-client, auto-reload on .lua changes)
-- [x] Developer docs: `docs/plugin-guide.md` + CONTRIBUTING.md + QUICKSTART.md + HAL example driver
+- [x] Developer docs: `docs/guides/plugin-guide.md` + CONTRIBUTING.md + `docs/guides/QUICKSTART.md` + HAL example driver (both moved out of `docs/` root into `docs/guides/`)
 
 ### Developer Experience
 - [x] `cargo doc` generated and shipped in the docs portal (hosted on Cloudflare via `website/` + `scripts/build-docs.sh`, sccache, preserves workspace index)
 - [x] `CONTRIBUTING.md` — contribution guide, PR template
-- [x] `docs/QUICKSTART.md` — local dev setup
+- [x] `docs/guides/QUICKSTART.md` — local dev setup
 - [x] Example Lua scripts in `scripts/examples/` (discount_bulk, tax_overrides, validate_order)
 - [x] Example custom HAL driver in `crates/oz-hal/examples/custom_barcode_scanner.rs`
 
@@ -544,7 +592,7 @@ This document defines the phased delivery plan for OZ-POS. Each phase has a clea
 
 **Theming & White-Label**
 - [x] Merchant logo upload (shown in header, on receipts, on kiosk attract screen — AppearanceSettings)
-- [x] Brand primary colour picker → applies to buttons, accents, active states across the whole UI (deriveAccentPalette)
+- [x] Brand primary colour picker → applies to buttons, accents, active states AND the per-theme primary tokens across the whole UI (deriveAccentPalette); per-theme primaries: light `#147EFB`, dark `#1155CC`; reset returns to "follow theme" (empty sentinel)
 - [x] Theme preview in Settings before applying (live preview in AppearanceSettings, real-time reconciliation)
 - [x] Dark / light / system-default theme saved per device (ThemeProvider, persisted preference)
 
@@ -593,5 +641,5 @@ On-Features can be activated at any phase once the core infrastructure is in pla
 
 *Last updated: 2026-08-31 (re-audited by docs-auditor).* (Phases 1–3 ✓. Phase 4 ~96% — R2 currency module extraction complete; Android APK CI exists but physical device testing needs infra. Phase 5 ~95% — scheduled report delivery shipped in 0.0.22; Thai locale removed (not a target market); custom report builder + cloud warehouse export remain. Phase 6 ~98% — all features implemented and verified; voice-controlled checkout research deferred.)
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 

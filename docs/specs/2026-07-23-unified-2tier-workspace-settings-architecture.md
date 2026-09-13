@@ -326,4 +326,4 @@ All E2E tests must use `locale: 'en-US'` (already configured in `ui/e2e/playwrig
 
 ---
 
-> Last audited: 2026-08-08 by docs-auditor (repairs applied).
+> last audited 08-08-26 by docs-auditor

@@ -10,6 +10,7 @@ import {
 import staffFtl from '@/locales/staff.ftl?raw';
 import StaffManagementScreen from '@/features/staff/StaffManagementScreen';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { ImpersonationProvider } from '@/contexts/ImpersonationContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 
 // FAST_WAIT: 5ms polling for async assertions (10x faster than default 50ms).
@@ -25,18 +26,20 @@ const SAMPLE_ROLES = [
   { id: 'role-custom', name: 'custom', description: 'Custom', permissions: [] },
 ];
 
-/** Global fallback assignment (ADR #35 D5) carried by the staff DTO. */
+/** Global fallback assignment (ADR #35 D5 + #47) carried by the staff DTO. */
 const GLOBAL_ASSIGNMENT = {
   scope_mode: 'global',
   branches_all: true,
   branch_ids: [],
   workspaces_all: true,
   workspace_keys: [],
+  scope_type: 'organization',
+  scope_id: null,
 };
 
 const SAMPLE_STAFF = [
   { id: 'staff-1', username: 'jane', display_name: 'Jane Smith', role_id: 'role-owner', role_name: 'owner', is_active: true, national_id_masked: '*****6789', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT },
-  { id: 'staff-2', username: 'john', display_name: 'John Doe', role_id: 'role-staff', role_name: 'staff', is_active: false, national_id_masked: '****', is_profile_complete: false, assignment: { scope_mode: 'scoped', branches_all: true, branch_ids: [], workspaces_all: false, workspace_keys: ['restaurant'] } },
+  { id: 'staff-2', username: 'john', display_name: 'John Doe', role_id: 'role-staff', role_name: 'staff', is_active: false, national_id_masked: '****', is_profile_complete: false, assignment: { scope_mode: 'scoped', branches_all: true, branch_ids: [], workspaces_all: false, workspace_keys: ['restaurant'], scope_type: 'organization', scope_id: null } },
 ];
 
 /** Store profiles = the branch ids the assignment scopes on. */
@@ -103,7 +106,22 @@ beforeEach(() => {
       { key: 'restaurant', name: 'Restaurant', description: 'Dine-in service', icon: 'restaurant' },
       { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
     ]);
-    if (cmd === 'list_store_profiles_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+    if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+    if (cmd === 'list_legal_entities_scoped') {
+      return Promise.resolve([
+        {
+          id: 'default:default-legal-entity',
+          tenantId: 'default',
+          name: 'Default Legal Entity',
+          legalName: 'Default Legal Entity',
+          registrationNumber: '',
+          taxId: '',
+          status: 'active',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ]);
+    }
     // Reached via the app shell's branding provider, not the screen itself.
     // Without it every test below rendered the error branch -- 23 of 26.
     // Shape matches the other suites that mock this (CloudSyncSettings.test.tsx).
@@ -135,14 +153,14 @@ async function fillRequiredProfile(dialog: HTMLElement) {
 
 describe('StaffManagementScreen', () => {
   it('renders title and add button', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.getByRole('heading', { name: /staff/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
   });
 
   it('renders staff table rows', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.getAllByText('Jane Smith').length).toBeGreaterThan(0);
     expect(screen.getAllByText('John Doe').length).toBeGreaterThan(0);
@@ -161,7 +179,7 @@ describe('StaffManagementScreen', () => {
       if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
       return Promise.resolve([]);
     });
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitFor(() => {
       expect(screen.getByText(/no staff members yet/i)).toBeInTheDocument();
     }, FAST_WAIT);
@@ -170,14 +188,14 @@ describe('StaffManagementScreen', () => {
 
   it('shows loading skeleton initially', async () => {
     invokeMock.mockImplementation(() => new Promise(() => {}));
-    const { container } = renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    const { container } = renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     const skeleton = container.querySelector('[aria-hidden="true"].staff-mgmt-loading-skeleton');
     expect(skeleton).toBeInTheDocument();
     expect(screen.queryByText(/loading staff/i)).not.toBeInTheDocument();
   });
 
   it('opens add modal', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
     const dialog = screen.getByRole('dialog');
@@ -186,7 +204,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('opens edit modal pre-filled', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     const editBtn = screen.getByRole('button', { name: /edit.*jane smith/i });
     fireEvent.click(editBtn);
@@ -198,7 +216,7 @@ describe('StaffManagementScreen', () => {
   // ── STAFF-09 regression — editing must not reactivate inactive staff ─
 
   it('preserves is_active when editing an inactive member', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Edit John (inactive) and save a profile change.
@@ -227,7 +245,7 @@ describe('StaffManagementScreen', () => {
   // ── New edge-case tests ─────────────────────────────────────────
 
   it('deactivates an active staff member after confirming the dialog (STAFF-10)', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Find the Deactivate button for Jane (active)
@@ -257,7 +275,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('reactivates an inactive staff member when Restore is clicked', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Find the Restore button for John (inactive) via visible text content
@@ -277,7 +295,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('closes the add modal when Escape is pressed', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Open add modal
@@ -296,7 +314,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('creates a new staff member via the add modal', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Open add modal and fill form
@@ -340,21 +358,21 @@ describe('StaffManagementScreen', () => {
   // ── ADR #35 D6 UI behaviors ────────────────────────────────────
 
   it('renders the national id masked to last-4 in the list', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.getByText('*****6789')).toBeInTheDocument();
     expect(screen.queryByText('123456789')).not.toBeInTheDocument();
   });
 
   it('flags incomplete-profile users with a badge', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     // John (staff-2) has is_profile_complete: false.
     expect(screen.getAllByText(/profile incomplete/i).length).toBeGreaterThan(0);
   });
 
   it('disables role and workspace assignment while the profile is incomplete', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     fireEvent.click(screen.getByRole('button', { name: /edit.*john doe/i }));
     const dialog = await screen.findByRole('dialog');
@@ -369,7 +387,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('blocks create submission with per-field errors when a required profile field is missing', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
     const dialog = screen.getByRole('dialog');
@@ -399,7 +417,7 @@ describe('StaffManagementScreen', () => {
       return Promise.resolve([]);
     });
 
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Open add modal and fill form
@@ -440,7 +458,7 @@ describe('StaffManagementScreen', () => {
       return Promise.resolve([]);
     });
 
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
@@ -462,7 +480,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('renders the workspace column from the DTO assignment (spec 0048)', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Jane is global all/all → "All"; John is scoped to restaurant → the
@@ -474,7 +492,7 @@ describe('StaffManagementScreen', () => {
   // ── Five-role taxonomy (ADR #35 D4 / spec 0048) ───────────────────
 
   it('presents exactly the five-role taxonomy in the role dropdown', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
     const dialog = screen.getByRole('dialog');
@@ -494,7 +512,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('shows the selected role\'s granted permission keys as chips', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
     const dialog = screen.getByRole('dialog');
@@ -518,7 +536,7 @@ describe('StaffManagementScreen', () => {
   // ── Assignment editor (ADR #35 D5 / spec 0048) ───────────────────
 
   it('pre-fills the assignment editor from the member DTO', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // John is scoped → the scoped radio is selected and his workspace list
@@ -535,7 +553,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('saves a scoped assignment with branch and workspace lists', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // Jane is global — switch her to scoped with a branch + workspace list.
@@ -563,6 +581,8 @@ describe('StaffManagementScreen', () => {
             branch_ids: ['store-b'],
             workspaces_all: false,
             workspace_keys: ['store'],
+            // The org-wide axis default rides along (ADR #47).
+            scope_type: 'organization',
           },
         }),
       }));
@@ -570,7 +590,7 @@ describe('StaffManagementScreen', () => {
   });
 
   it('blocks saving a scoped assignment with an empty list dimension', async () => {
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     // John is scoped with workspace list [restaurant] — uncheck restaurant,
@@ -586,15 +606,53 @@ describe('StaffManagementScreen', () => {
     expect(within(dialog).getByRole('button', { name: /update/i })).toBeDisabled();
   });
 
-  // ── C2.2: Pro→Premium approaching-limit banner (16+ staff) ──
+  it('binds a manager to one location via the ADR #47 resource scope', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    // Jane is org-wide — scope her to the Bandung location. The wire must
+    // carry scope_type=location + scope_id=store-b, and the save button
+    // must stay disabled until a resource is chosen.
+    fireEvent.click(screen.getByRole('button', { name: /edit.*jane smith/i }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Date of Birth *')).toHaveValue('1990-05-14');
+    }, FAST_WAIT);
+
+    const scopeSelect = within(dialog).getByLabelText(/resource scope/i);
+    fireEvent.change(scopeSelect, { target: { value: 'location' } });
+
+    // No location chosen yet — the pair is invalid, save is blocked.
+    expect(within(dialog).getByRole('button', { name: /update/i })).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText(/choose a location/i), {
+      target: { value: 'store-b' },
+    });
+    expect(within(dialog).getByRole('button', { name: /update/i })).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /update/i }));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('update_staff_scoped', expect.objectContaining({
+        sessionToken: 'session-1',
+        args: expect.objectContaining({
+          id: 'staff-1',
+          assignment: expect.objectContaining({
+            scope_type: 'location',
+            scope_id: 'store-b',
+          }),
+        }),
+      }));
+    }, FAST_WAIT);
+  });
 
   it('shows the approaching-limit banner at 16+ staff on Pro (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', maxStaffUsers: 20, staffCount: 16 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.getByText(/nearing the Pro plan's 20-staff limit/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /upgrade to premium/i })).toBeInTheDocument();
@@ -603,10 +661,11 @@ describe('StaffManagementScreen', () => {
   it('hides the approaching-limit banner on Premium below its 50-staff cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'premium', maxStaffUsers: 50, staffCount: 16 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.queryByText(/nearing the Pro plan's 20-staff limit/i)).not.toBeInTheDocument();
   });
@@ -614,10 +673,11 @@ describe('StaffManagementScreen', () => {
   it('hides the approaching-limit banner below 80% threshold on Pro (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ tier: 'pro', maxStaffUsers: 20, staffCount: 15 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
-    renderWithProvidersSync(<StaffManagementScreen />, staffFtl);
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
     expect(screen.queryByText(/nearing the Pro plan's 20-staff limit/i)).not.toBeInTheDocument();
   });});

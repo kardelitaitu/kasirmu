@@ -5,7 +5,7 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
 import { useWorkspaceScope, useWorkspace } from '@/contexts/WorkspaceContext';
-import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsStatus, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
+import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
@@ -19,15 +19,15 @@ import { KdsLayoutMasonry } from '@/features/kds/KdsLayoutMasonry';
 import { KdsHamburgerPanel } from '@/features/kds/KdsHamburgerPanel';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
-import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/KdsSettingsPanel';
+import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
 import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';
 import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal';
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
+import { nextKdsStatus } from '@/features/kds/kdsStatus';
+import { isAutoAckEligible } from '@/features/kds/kdsAutoAccept';
 import './KdsScreen.css';
-
-const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
 
 /**
  * PERF-KDS-01: shallow structural comparison of two ticket boards.
@@ -39,7 +39,7 @@ const STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
  * on WebView2 saturated the PostMessage queue. Only the fields the board
  * actually renders are compared.
  */
-function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
+export function sameOrders(a: KdsOrder[], b: KdsOrder[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -290,9 +290,8 @@ export default function KdsScreen() {
   const clearError = useCallback(() => setError(null), []);
 
   const advanceStatus = useCallback(async (order: KdsOrder) => {
-    const currentIdx = STATUS_ORDER.indexOf(order.status as KdsStatus);
-    if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) return;
-    const nextStatus = STATUS_ORDER[currentIdx + 1]!;
+    const nextStatus = nextKdsStatus(order.status);
+    if (!nextStatus) return;
 
     // 3b: Offline-aware status update — queue on failure + optimistic local update.
     const ok = await wrapUpdate(order.id, nextStatus, () =>
@@ -317,10 +316,11 @@ export default function KdsScreen() {
 
   // ── Per-item status advance (TODO 3e) ──────────────────────────
   const advanceItemStatus = useCallback(async (item: KdsLineItem) => {
-    const ITEM_STATUS_ORDER: KdsStatus[] = ['pending', 'preparing', 'ready', 'served'];
-    const currentIdx = ITEM_STATUS_ORDER.indexOf(item.item_status as KdsStatus);
-    if (currentIdx < 0 || currentIdx >= ITEM_STATUS_ORDER.length - 1) return;
-    const nextStatus = ITEM_STATUS_ORDER[currentIdx + 1]!;
+    // ITEM_STATUS_ORDER used to be re-declared here as a fresh array literal on every
+    // call; the item ladder is the same progression as the ticket ladder, so it now
+    // shares nextKdsStatus instead of duplicating it.
+    const nextStatus = nextKdsStatus(item.item_status);
+    if (!nextStatus) return;
 
     try {
       await updateKdsLineItemStatusScoped(sessionToken, item.id, nextStatus);
@@ -359,26 +359,17 @@ export default function KdsScreen() {
   useEffect(() => {
     if (!prefs.autoAcknowledge || prefs.acknowledgeDelayMin <= 0) return;
 
-    const delayMs = prefs.acknowledgeDelayMin * 60 * 1000;
     const now = Date.now();
 
     for (const order of orders) {
-      if (order.status !== 'pending') continue;
-      if (!order.received_at) continue;
-      if (autoAckInFlightRef.current.has(order.id)) continue;
-
-      const receivedAt = new Date(order.received_at).getTime();
-      if (isNaN(receivedAt)) continue;
-
-      if (now - receivedAt >= delayMs) {
-        autoAckInFlightRef.current.add(order.id);
-        // Fire-and-forget — advance silently without awaiting.
-        void advanceStatus(order).finally(() => {
-          autoAckInFlightRef.current.delete(order.id);
-        });
-      }
+      if (!isAutoAckEligible(order, autoAckInFlightRef.current, prefs, now)) continue;
+      autoAckInFlightRef.current.add(order.id);
+      // Fire-and-forget — advance silently without awaiting.
+      void advanceStatus(order).finally(() => {
+        autoAckInFlightRef.current.delete(order.id);
+      });
     }
-  }, [orders, prefs.autoAcknowledge, prefs.acknowledgeDelayMin, advanceStatus]);
+  }, [orders, prefs.autoAcknowledge, prefs.acknowledgeDelayMin, advanceStatus, prefs]);
 
   // Reset ephemeral dropdown zone selection when the persistent zone preference changes.
   useEffect(() => {
@@ -671,7 +662,7 @@ export default function KdsScreen() {
             className="kds-main-pane kds-main-pane--open"
             aria-hidden={activeTab !== 'open'}
           >
-            <div className={`kds-content-wrap${settings.density === 'compact' ? ' kds--compact' : ''}`} {...pullRefreshProps}>
+            <div className={`kds-content-wrap${settings.density <= 2 ? ' kds--compact' : ''}`} {...pullRefreshProps}>
               <KdsLayoutMasonry
                 orders={filteredOrders}
                 filtered={boardFiltered}
@@ -919,8 +910,17 @@ export default function KdsScreen() {
             <KdsHamburgerPanel
               settings={{ ...settings, autoAcknowledge: prefs.autoAcknowledge }}
               onChangeSound={(v) => setSettings((s) => ({ ...s, soundEnabled: v }))}
-              onChangeYellowThreshold={(v) => setSettings((s) => ({ ...s, yellowThresholdMin: v }))}
-              onChangeRedThreshold={(v) => setSettings((s) => ({ ...s, redThresholdMin: v }))}
+              onChangeYellowThreshold={(v) => setSettings((s) => ({
+                ...s,
+                // Fixed range 3–30, but also ensure yellow < red
+                yellowThresholdMin: Math.max(3, Math.min(v, s.redThresholdMin - 1, 30)),
+              }))}
+              onChangeRedThreshold={(v) => setSettings((s) => ({
+                ...s,
+                // Fixed range 4–60, then force yellow below new red
+                redThresholdMin: Math.max(4, Math.min(v, 60)),
+                yellowThresholdMin: Math.min(s.yellowThresholdMin, Math.max(4, Math.min(v, 60)) - 1),
+              }))}
               onChangeAutoAcknowledge={(v) => setAutoAcknowledge(v)}
               onChangeDensity={(v) => setSettings((s) => ({ ...s, density: v }))}
               showOrderId={prefs.showOrderId}
@@ -976,6 +976,7 @@ export default function KdsScreen() {
               fetchOrders();
             }}
             aria-label={requiredLocalized(l10n, 'kds-error-retry-aria')}
+            data-testid="kds-error-retry"
           >
             <Localized id="kds-offline-retry">Retry</Localized>
           </button>
@@ -983,6 +984,7 @@ export default function KdsScreen() {
             className="kds-error-dismiss-btn"
             onClick={clearError}
             aria-label={requiredLocalized(l10n, 'kds-error-dismiss-aria')}
+            data-testid="kds-error-dismiss"
           >
             &times;
           </button>
@@ -1021,6 +1023,7 @@ export default function KdsScreen() {
               });
             }}
             aria-label={requiredLocalized(l10n, 'kds-offline-retry-aria')}
+            data-testid="kds-deadletter-retry"
           >
             <Localized id="kds-offline-retry">Retry</Localized>
           </button>
@@ -1028,6 +1031,7 @@ export default function KdsScreen() {
             className="kds-offline-dismiss-btn"
             onClick={clearDeadLetter}
             aria-label={requiredLocalized(l10n, 'kds-offline-dead-letter-clear-aria')}
+            data-testid="kds-deadletter-dismiss"
           >
             &times;
           </button>
@@ -1061,6 +1065,7 @@ export default function KdsScreen() {
                 // which triggers fetchOrders via the event listener.
               }}
               aria-label={requiredLocalized(l10n, 'kds-offline-retry-aria')}
+              data-testid="kds-offline-retry"
             >
               <Localized id="kds-offline-retry">Retry</Localized>
             </button>
@@ -1069,6 +1074,7 @@ export default function KdsScreen() {
             className="kds-offline-dismiss-btn"
             onClick={() => setOfflineDismissed(true)}
             aria-label={requiredLocalized(l10n, 'kds-offline-dismiss-aria')}
+            data-testid="kds-offline-dismiss"
           >
             &times;
           </button>

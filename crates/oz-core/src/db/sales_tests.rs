@@ -59,6 +59,37 @@ fn create_sale_persists_header() {
     assert_eq!(tenant, "default");
 }
 
+// F2-7 read half: the F2 audit stamp rides its own column (20260930), and the
+// read surface must round-trip it WITHOUT widening the Sale domain struct —
+// a getter was chosen deliberately (see sale_tax_estimate_note's doc).
+#[test]
+fn sale_tax_estimate_note_round_trips_and_defaults_to_none() {
+    let conn = fresh();
+    let store = store(&conn);
+    let sale = Sale::from_cart(&make_cart()).unwrap();
+    store.create_sale(&sale).unwrap();
+
+    // An unstamped sale — the shape every pre-F2-5 writer produces — reads
+    // back as None: absence is the honest answer, never a claim.
+    assert_eq!(store.sale_tax_estimate_note(&sale.id).unwrap(), None);
+    // Unknown sale id: None, not an error (the history row may outlive its
+    // detail in a concurrent delete; no error path to surface).
+    assert_eq!(store.sale_tax_estimate_note("no-such-sale").unwrap(), None);
+
+    // A stamped sale round-trips the free-text note byte-for-byte (the F2-5
+    // JSON shape is core-authored prose at rest; the reader does not parse it).
+    let stamp = r#"{"estimated":true,"claim":1200,"verified":1180,"delta":-20}"#;
+    conn.execute(
+        "UPDATE sales SET tax_estimate_note = ?1 WHERE id = ?2",
+        rusqlite::params![stamp, sale.id],
+    )
+    .unwrap();
+    assert_eq!(
+        store.sale_tax_estimate_note(&sale.id).unwrap().as_deref(),
+        Some(stamp)
+    );
+}
+
 // CUR-02: multi-currency tender metadata must round-trip atomically with
 // the sale. Single-currency sales persist NULLs; multi-currency sales
 // persist base currency / base total / rate.
@@ -2768,8 +2799,8 @@ fn complete_sale_partial_shortfall_rolls_back_sale_row() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES
             ('loc-pri', 'Primary', 'store'),
             ('loc-sec', 'Secondary', 'warehouse');
-         INSERT OR IGNORE INTO store_profiles (id, name, is_primary) VALUES ('store-1', 'Test Store', 1);
-         INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name)
+         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-1', 'Test Store', 1);
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
             VALUES ('ws-multi-test',
                 (SELECT key FROM workspace_types LIMIT 1),
                 'store-1', 'Multi-Test');
@@ -2828,6 +2859,68 @@ fn complete_sale_partial_shortfall_rolls_back_sale_row() {
         !sale_exists,
         "sale row must not exist after shortfall rollback"
     );
+}
+
+/// F2-5: a claimed estimate stamps the core-authored note at insert.
+#[test]
+fn checkout_stamps_estimate_note_when_the_client_claims_one() {
+    let conn = fresh();
+    let s = store(&conn);
+    setup_locations_with_stock(&conn, "ESP", "loc-pri", 10, "loc-sec", 0);
+    let mut sale = make_single_line_sale("ESP", 2, 350);
+    sale.tax_total = price(70);
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from("loc-pri")],
+        &tender(770),
+        "cashier-1",
+        None,
+        &[],
+        true,
+    )
+    .unwrap();
+    let note: String = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&note).unwrap();
+    assert_eq!(parsed["estimated"], true, "the claim is recorded");
+    assert_eq!(
+        parsed["computed_tax"], 70,
+        "the tax is CORE's computed number, not a client string"
+    );
+}
+
+/// F2-5: no claim = no stamp — NULL must never read as a claim.
+#[test]
+fn checkout_leaves_the_note_null_without_a_claim() {
+    let conn = fresh();
+    let s = store(&conn);
+    setup_locations_with_stock(&conn, "ESP", "loc-pri", 10, "loc-sec", 0);
+    let sale = make_single_line_sale("ESP", 2, 350);
+    s.complete_sale_deduction_with_locations_and_estimate(
+        &sale,
+        None,
+        &[crate::inventory::LocationId::from("loc-pri")],
+        &tender(770),
+        "cashier-1",
+        None,
+        &[],
+        false,
+    )
+    .unwrap();
+    let note: Option<String> = conn
+        .query_row(
+            "SELECT tax_estimate_note FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(note.is_none(), "no claim must leave the note NULL");
 }
 
 /// Void of a multi-location pending sale credits stock back to
@@ -3028,6 +3121,62 @@ fn void_pending_sale_malformed_deduction_locations_errors() {
             ..
         }
     ));
+}
+
+/// RED (round AB): a sale created through the import/CLI door
+/// (`create_sale`) has NO deduction_locations — the column is nullable
+/// and the INSERT omits it — yet `void_pending_sale` read it as a
+/// non-null String, so voiding such a sale crashed with
+/// Db(InvalidColumnType) instead of voiding. Desired semantics: a NULL
+/// deduction history means there is nothing to credit back — the void
+/// succeeds WITHOUT inventing stock movements (skip-credit, not
+/// default-credit: crediting the canonical default location would
+/// fabricate stock for an import with no proven deduction).
+#[test]
+fn void_pending_sale_with_null_deduction_locations_succeeds_without_crediting() {
+    let conn = fresh();
+    let s = store(&conn);
+    let cart = make_cart();
+    let sale = Sale::from_cart(&cart).unwrap();
+
+    // Import-door shape: INSERT without the deduction_locations column,
+    // leaving it NULL.
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            tendered_minor, discount_percent, discount_label, user_id,
+                            created_at, updated_at, subtotal_minor, tax_total_minor, version)
+         VALUES (?1, 1150, 'USD', 3, 'pending', 'CASH', 1150, 0, NULL, 'user-1',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1150, 0, 1)",
+        rusqlite::params![sale.id],
+    )
+    .unwrap();
+
+    s.void_pending_sale(&sale.id).unwrap();
+
+    // The sale is voided…
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "voided", "import-door sale must be voidable");
+
+    // …and NO stock movements were invented by the void.
+    let movements: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_movements sm
+             JOIN products p ON p.id = sm.item_id
+             WHERE sm.reason = 'void_pending' AND p.sku IN ('COFFEE', 'BAGEL')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        movements, 0,
+        "void of a sale with no deduction history must not credit stock"
+    );
 }
 
 #[test]
@@ -3806,4 +3955,633 @@ fn complete_sale_deduction_persists_every_split_keyed_to_one_attempt() {
     );
     let keys: Vec<&str> = rows.iter().map(|(k, _)| k.as_deref().unwrap()).collect();
     assert_eq!(keys, vec!["attempt-a:0", "attempt-a:1"]);
+}
+
+// ── Scoped resolution through the SALE path (tax-separation P1) ────
+//
+// The money-math seam. `db::tax_tests` already proves the resolver picks the
+// right ROW; these prove the right NUMBER reaches the receipt, and — the load
+// bearing one — that a tenant whose rows all predate scoping prices
+// identically whichever door the caller used.
+
+fn seed_entity_and_locations(conn: &Connection, entity: &str, locations: &[&str]) {
+    conn.execute(
+        "INSERT OR IGNORE INTO legal_entities (id, tenant_id, name) VALUES (?1, 'default', ?1)",
+        rusqlite::params![entity],
+    )
+    .unwrap();
+    for loc in locations {
+        conn.execute(
+            "INSERT OR IGNORE INTO locations (id, name, legal_entity_id) VALUES (?1, ?1, ?2)",
+            rusqlite::params![loc, entity],
+        )
+        .unwrap();
+    }
+}
+
+/// Like `seed_tax_rate` but able to express scope, window and inclusivity —
+/// `create_tax_rate` predates all three and writes no scope columns.
+#[allow(clippy::too_many_arguments)]
+fn seed_scoped_rate(
+    conn: &Connection,
+    id: &str,
+    rate_bps: i64,
+    is_default: bool,
+    is_inclusive: bool,
+    legal_entity_id: Option<&str>,
+    location_id: Option<&str>,
+    effective_from: Option<&str>,
+    effective_to: Option<&str>,
+) {
+    conn.execute(
+        "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, is_active,
+                                legal_entity_id, location_id, effective_from, effective_to)
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9)",
+        rusqlite::params![
+            id,
+            format!("rate {id}"),
+            rate_bps,
+            is_default,
+            is_inclusive,
+            legal_entity_id,
+            location_id,
+            effective_from,
+            effective_to
+        ],
+    )
+    .unwrap();
+}
+
+fn at(location: &str, as_of: &str) -> crate::TaxSaleScope {
+    crate::TaxSaleScope {
+        location_id: location.to_string(),
+        as_of: as_of.to_string(),
+    }
+}
+
+#[test]
+fn a_legacy_tenant_prices_identically_through_either_door() {
+    // THE equivalence proof. One default row, both scope columns NULL — every
+    // tenant on the planet today. The scoped door must not move a single
+    // minor unit, or this slice has changed money math for existing data.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a", "loc-b"]);
+    s.create_tax_rate("VAT 10%", 1000, true, false).unwrap();
+
+    let mut plain = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax(&mut plain, &[], RoundingMode::Truncate)
+        .unwrap();
+    let mut scoped = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut scoped,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+
+    assert_eq!(plain.tax_total, scoped.tax_total);
+    assert_eq!(plain.subtotal, scoped.subtotal);
+    assert_eq!(plain.total, scoped.total, "grand total must not drift");
+    assert_eq!(
+        plain.lines[0].tax_amount, scoped.lines[0].tax_amount,
+        "per-line tax must not drift"
+    );
+    assert_eq!(
+        plain.lines[0].tax_rate_id, scoped.lines[0].tax_rate_id,
+        "and it must be the same rate, not an equal-valued different one"
+    );
+    assert_eq!(
+        plain.lines[0].tax_breakdown_json,
+        scoped.lines[0].tax_breakdown_json
+    );
+    assert_eq!(scoped.tax_total.minor_units, 70, "sanity: 10% of 700");
+}
+
+#[test]
+fn a_location_scoped_rate_stops_that_branch_inheriting_the_default() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a", "loc-b"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-jkt",
+        1100,
+        false,
+        false,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+
+    let mut here = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut here,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(here.lines[0].tax_rate_id.as_deref(), Some("r-jkt"));
+    assert_eq!(here.tax_total.minor_units, 77, "11% of 700");
+
+    // The neighbouring branch keeps the default answer — the scoped row must
+    // not leak across locations through the sale path.
+    let mut there = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut there,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-b", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(there.tax_total.minor_units, 70);
+    assert_ne!(here.total, there.total, "two branches, two receipts");
+}
+
+#[test]
+fn the_sale_path_respects_the_exclusive_window_boundary() {
+    // Consistent with the exclusive `effective_to` ruling: the successor takes
+    // over ON the boundary day, so a sale cannot match both periods.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-period",
+        1100,
+        false,
+        false,
+        None,
+        Some("loc-a"),
+        Some("2026-01-01"),
+        Some("2027-01-01"),
+    );
+
+    let mut before = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut before,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-12-31")),
+    )
+    .unwrap();
+    assert_eq!(before.lines[0].tax_rate_id.as_deref(), Some("r-period"));
+    assert_eq!(before.tax_total.minor_units, 77);
+
+    let mut on_boundary = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut on_boundary,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2027-01-01")),
+    )
+    .unwrap();
+    assert_eq!(
+        on_boundary.tax_total.minor_units, 70,
+        "the window has closed"
+    );
+    assert_ne!(
+        on_boundary.lines[0].tax_rate_id, before.lines[0].tax_rate_id,
+        "the boundary day must flip to the successor"
+    );
+}
+
+#[test]
+fn a_scoped_rate_carries_its_own_inclusive_flag_into_the_money_math() {
+    // Per-scope is_inclusive. The tenant default is EXCLUSIVE; the location row
+    // is INCLUSIVE at the same bps. If the flag were inherited from the
+    // default, both branches would add tax to the total.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a", "loc-b"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-inc",
+        1000,
+        false,
+        true,
+        None,
+        Some("loc-a"),
+        None,
+        None,
+    );
+
+    let mut incl = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut incl,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+    let mut excl = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut excl,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-b", "2026-09-08")),
+    )
+    .unwrap();
+
+    assert!(
+        incl.tax_total.minor_units > 0,
+        "inclusive tax is still reported"
+    );
+    assert_eq!(
+        incl.total, incl.subtotal,
+        "inclusive tax is embedded in the displayed price, never added on top"
+    );
+    assert_eq!(
+        excl.total.minor_units,
+        excl.subtotal.minor_units + excl.tax_total.minor_units,
+        "exclusive tax is collected on top"
+    );
+}
+
+#[test]
+fn a_product_assigned_rate_scoped_elsewhere_falls_through_to_the_global_row() {
+    // An assignment says USE this rate, not "ignore where this rate applies".
+    // COFFEE is pinned to a Bali-only rate; priced in Jakarta it must fall
+    // through levels 1 and 2 to the tenant-global answer.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-jkt", "loc-bali"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-bali",
+        1500,
+        false,
+        false,
+        None,
+        Some("loc-bali"),
+        None,
+        None,
+    );
+    seed_product(&conn, "COFFEE", None);
+    conn.execute(
+        "INSERT INTO product_taxes (product_sku, tax_rate_id) VALUES ('COFFEE', 'r-bali')",
+        [],
+    )
+    .unwrap();
+
+    let mut in_jkt = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut in_jkt,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-jkt", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(
+        in_jkt.tax_total.minor_units, 70,
+        "Bali's rate must not price Jakarta"
+    );
+
+    let mut in_bali = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut in_bali,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-bali", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(in_bali.lines[0].tax_rate_id.as_deref(), Some("r-bali"));
+    assert_eq!(in_bali.tax_total.minor_units, 105, "15% of 700");
+
+    // And the unscoped door still sees the assignment — the filter is scoped-only.
+    let mut legacy = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax(&mut legacy, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(legacy.lines[0].tax_rate_id.as_deref(), Some("r-bali"));
+}
+
+#[test]
+fn an_expired_assigned_rate_falls_through_but_a_live_one_does_not() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+    seed_scoped_rate(
+        &conn,
+        "r-dead",
+        1500,
+        false,
+        false,
+        None,
+        None,
+        Some("2020-01-01"),
+        Some("2021-01-01"),
+    );
+    seed_product(&conn, "COFFEE", None);
+    conn.execute(
+        "INSERT INTO product_taxes (product_sku, tax_rate_id) VALUES ('COFFEE', 'r-dead')",
+        [],
+    )
+    .unwrap();
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax_for_location(
+        &mut sale,
+        &[],
+        RoundingMode::Truncate,
+        Some(&at("loc-a", "2026-09-08")),
+    )
+    .unwrap();
+    assert_eq!(
+        sale.tax_total.minor_units, 70,
+        "a closed period prices nothing"
+    );
+}
+
+#[test]
+fn a_malformed_business_date_errors_rather_than_priceing() {
+    // Same rule as the resolver: a bad date is the caller's bug. Falling back
+    // to "no scoped rate applies" would look like a configuration answer and
+    // silently bill the tenant-global rate.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_entity_and_locations(&conn, "ent-a", &["loc-a"]);
+    s.create_tax_rate("National VAT", 1000, true, false)
+        .unwrap();
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    let err = s
+        .compute_sale_tax_for_location(
+            &mut sale,
+            &[],
+            RoundingMode::Truncate,
+            Some(&at("loc-a", "2026-9-8")),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "as_of"),
+        "expected the same as_of validation error the resolver raises, got {err:?}"
+    );
+}
+// E1-2: a statutory directive outranks the caller's preference mode, per
+// rate, in both compute loops.
+#[test]
+fn statutory_truncate_outranks_the_half_up_preference_in_the_sale() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
+    conn.execute(
+        "UPDATE tax_rates SET rounding_mode = 'truncate' WHERE id = ?1",
+        [&rate],
+    )
+    .unwrap();
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
+
+    // 3335 * 1000 / 10000 = 333.5: HalfUp gives 334, truncate gives 333.
+    let mut sale = make_single_line_sale("COFFEE", 1, 3335);
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::HalfUp)
+        .unwrap();
+    assert_eq!(
+        sale.lines[0].tax_amount.minor_units, 333,
+        "the row's statutory truncate must outrank the HalfUp preference"
+    );
+
+    // The freeze-at-write stamp records WHAT rounded and WHY.
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "truncate");
+    assert_eq!(breakdown[0]["rounding_source"], "statutory");
+}
+
+#[test]
+fn statutory_truncate_outranks_the_preference_in_the_cart_preview() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
+    conn.execute(
+        "UPDATE tax_rates SET rounding_mode = 'truncate' WHERE id = ?1",
+        [&rate],
+    )
+    .unwrap();
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
+
+    // The preview and the receipt must round the same way, or they disagree
+    // about what the customer owes (the scope-preview contract, extended to
+    // rounding).
+    let lines = vec![CartLineTaxInput {
+        sku: "COFFEE".into(),
+        qty: 1,
+        unit_price_minor: 3335,
+    }];
+    let r = s
+        .compute_cart_tax(&lines, usd(), RoundingMode::HalfUp)
+        .unwrap();
+    assert_eq!(r.tax_minor, 333);
+}
+
+#[test]
+fn empty_directive_keeps_the_pre_e1_output_and_stamps_preference() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "VAT 10%", 1000, true, false);
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
+
+    // 3335 * 1000 / 10000 = 333.5 → HalfUp 334: the same answer the pre-E1
+    // code produced for this shape (the zero-behavior-change invariant; the
+    // whole pre-E1 suite runs unmodified with '' rows).
+    let mut sale = make_single_line_sale("COFFEE", 1, 3335);
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::HalfUp)
+        .unwrap();
+    assert_eq!(sale.lines[0].tax_amount.minor_units, 334);
+
+    // New sales always carry the stamp; pre-E1 rows carry neither key and
+    // read as preference (the only mode that existed) — documented in the
+    // sales_tax module doc.
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "half_up");
+    assert_eq!(breakdown[0]["rounding_source"], "preference");
+}
+
+// D89-1 Option B (D90 rulings): the plugin owns the amount/rate, but the
+// WINNING rate's statutory directive governs how that amount is rounded.
+// 3335 x 1000bps = 333.5: the truncate directive applies => 333 statutory,
+// NOT the 334 the HalfUp preference would have produced — the money change
+// on directive-carrying override lines is BY DESIGN.
+#[test]
+fn lua_override_applies_the_winning_statutory_directive() {
+    let conn = fresh();
+    let s = store(&conn);
+    let rate = seed_tax_rate(&conn, "Statutory 10%", 1000, true, false);
+    conn.execute(
+        "UPDATE tax_rates SET rounding_mode = 'truncate' WHERE id = ?1",
+        [&rate],
+    )
+    .unwrap();
+    seed_product_with_category(&conn, "COFFEE", None);
+    s.set_product_tax_rates("COFFEE", std::slice::from_ref(&rate))
+        .unwrap();
+
+    let mut sale = make_single_line_sale("COFFEE", 1, 3335);
+    s.compute_sale_tax(
+        &mut sale,
+        &[("COFFEE".into(), 1000, false)],
+        RoundingMode::HalfUp,
+    )
+    .unwrap();
+    assert_eq!(
+        sale.lines[0].tax_amount.minor_units, 333,
+        "the FIRST-ROW directive (truncate) rounds the override amount"
+    );
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "truncate");
+    assert_eq!(breakdown[0]["rounding_source"], "statutory");
+    assert_eq!(
+        breakdown[0]["rate_source"], "lua_override",
+        "the override provenance rides the same breakdown entry"
+    );
+}
+
+// Option B fallback: with NO rates resolved (no product/category/default
+// rows), there is no winning directive — the preference applies and stamps.
+#[test]
+fn lua_override_with_no_resolved_rates_falls_back_to_preference() {
+    let conn = fresh();
+    let s = store(&conn);
+    // No tax rates seeded at all: the resolver returns an empty chain.
+    seed_product_with_category(&conn, "WATER", None);
+
+    let mut sale = make_single_line_sale("WATER", 1, 3335);
+    s.compute_sale_tax(
+        &mut sale,
+        &[("WATER".into(), 1000, false)],
+        RoundingMode::HalfUp,
+    )
+    .unwrap();
+    assert_eq!(
+        sale.lines[0].tax_amount.minor_units, 334,
+        "no winning rate => the preference rounds the override amount"
+    );
+    let breakdown: Vec<serde_json::Value> =
+        serde_json::from_str(sale.lines[0].tax_breakdown_json.as_deref().unwrap()).unwrap();
+    assert_eq!(breakdown[0]["rounding"], "half_up");
+    assert_eq!(breakdown[0]["rounding_source"], "preference");
+    assert_eq!(breakdown[0]["rate_source"], "lua_override");
+}
+
+#[test]
+fn test_complete_sale_deduction_fails_when_subscription_read_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Update the seeded bootstrap subscription to Plus, expiring 30 days ago (past the 14-day offline grace period).
+    let past_expiry = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![past_expiry],
+    )
+    .unwrap();
+
+    seed_product_with_stock(&conn, "COFFEE", 10);
+    let sale = make_single_line_sale("COFFEE", 2, 350);
+
+    let err = s
+        .complete_sale_deduction(&sale, None, &tender(700), "cashier-1", None)
+        .unwrap_err();
+
+    assert!(
+        matches!(err, CoreError::SubscriptionReadOnly(_)),
+        "expected SubscriptionReadOnly error, got: {err:?}"
+    );
+
+    // Verify no sale row was persisted.
+    let sale_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    assert!(
+        !sale_exists,
+        "sale row must not exist when POS is read-only"
+    );
+}
+
+#[test]
+fn test_complete_sale_with_resolved_shortfalls_fails_when_subscription_read_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let past_expiry = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    conn.execute(
+        "UPDATE tenant_subscription SET
+            tier_key = 'plus', status = 'active', expires_at = ?1
+         WHERE tenant_id = 'default'",
+        rusqlite::params![past_expiry],
+    )
+    .unwrap();
+
+    setup_locations_with_stock(
+        &conn,
+        "COFFEE",
+        crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        10,
+        "loc-wh",
+        20,
+    );
+
+    let sale = make_single_line_sale("COFFEE", 3, 350);
+    let resolution = crate::sale_deduction::ResolvedShortfall {
+        sku: "COFFEE".into(),
+        allocations: vec![crate::sale_deduction::LocationAllocation {
+            location_id: crate::inventory::LocationId::from("loc-wh"),
+            qty: 3,
+        }],
+    };
+
+    let err = s
+        .complete_sale_with_resolved_shortfalls(
+            &sale,
+            None,
+            &tender(1050),
+            "cashier-1",
+            None,
+            &[resolution],
+            &[],
+        )
+        .unwrap_err();
+
+    assert!(
+        matches!(err, CoreError::SubscriptionReadOnly(_)),
+        "expected SubscriptionReadOnly error, got: {err:?}"
+    );
+
+    let sale_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sales WHERE id = ?1",
+            rusqlite::params![sale.id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    assert!(
+        !sale_exists,
+        "sale row must not exist when POS is read-only"
+    );
 }

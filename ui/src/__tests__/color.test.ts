@@ -8,6 +8,7 @@ import {
   contrastFg,
   deriveAccentPalette,
   applyAccentPalette,
+  clearAccentPalette,
 } from '@/utils/color';
 
 describe('hexToRgb', () => {
@@ -232,5 +233,48 @@ describe('applyAccentPalette', () => {
     expect(root.style.getPropertyValue('--color-accent-dim')).toBe(palette.dim);
     expect(root.style.getPropertyValue('--color-accent-alpha')).toBe(palette.alpha);
     expect(root.style.getPropertyValue('--color-accent-secondary')).toBe(palette.secondary);
+  });
+
+  // Brand override must reach --color-primary too: before this pin the
+  // picker only overrode the --color-accent family, so --color-primary
+  // kept its static per-theme value and every primary-token consumer
+  // (statusbar good tone, analytics, loyalty, reports…) ignored the
+  // user's brand colour.
+  it('also drives --color-primary and --color-primary-soft from the base', () => {
+    const palette = deriveAccentPalette('#ff5500');
+    applyAccentPalette(palette);
+
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--color-primary')).toBe('#ff5500');
+    expect(root.style.getPropertyValue('--color-primary-soft')).toBe('rgba(255, 85, 0, 0.15)');
+  });
+});
+
+describe('clearAccentPalette', () => {
+  it('removes the inline overrides so theme tokens show through again', () => {
+    applyAccentPalette(deriveAccentPalette('#ff5500'));
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--color-accent')).not.toBe('');
+
+    clearAccentPalette();
+
+    expect(root.style.getPropertyValue('--color-accent')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-hover')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-active')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-fg')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-dim')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-alpha')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-secondary')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-subtle')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-subtle-fg')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-hover-fg')).toBe('');
+    expect(root.style.getPropertyValue('--color-accent-active-fg')).toBe('');
+    expect(root.style.getPropertyValue('--color-primary')).toBe('');
+    expect(root.style.getPropertyValue('--color-primary-soft')).toBe('');
+  });
+
+  it('is safe to call when nothing was applied (idempotent)', () => {
+    expect(() => clearAccentPalette()).not.toThrow();
+    expect(document.documentElement.style.getPropertyValue('--color-accent')).toBe('');
   });
 });

@@ -55,6 +55,28 @@ step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scrip
 # so the list shrinks to zero as F-006 removes the dead surface.
 step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-ipc-parity.py
 
+# ── IPC session-token payload parity (round AE) ──────────────────────────
+# Fails when the UI invokes a command whose Rust signature requires
+# session_token without carrying a sessionToken payload (the round-AC edc
+# class). Union semantics across desktop + tablet shells.
+step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
+
+# ipc-parity-allowlist.json records "UI command strings not yet registered in this shell", which
+# covers two very different things: an ambient call sitting in an ADR #7 else-branch (dead surface,
+# harmless) and an ambient call made unconditionally (a runtime `command not found` on that shell).
+# The list cannot tell them apart, and one entry that looked like the first was the second --
+# get_cart_deduction_location, which made every desktop sale with a stock-target item throw. This
+# reads the allowlist, finds each command's wrapper and its production call sites, and fails on any
+# call not sitting behind a token test.
+step "scoped ambient reads" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
+step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+# Ratchet on react-hooks/exhaustive-deps. `npm run lint` is `eslint .` with no --max-warnings 0, so
+# it exits 0 while reporting 58 warnings -- and that rule is the ONLY automated check for a stale
+# closure. Item 69 found five callbacks listing `userId`, which no component body ever read, while
+# two of those same arrays omitted `promotionIds`, which is sent in the checkout payload. Neither was
+# gated. This freezes the count at 7 (down from 12): it may go down, never up.
+step "exhaustive-deps ratchet" "python3 scripts/verify-exhaustive-deps.py" python3 scripts/verify-exhaustive-deps.py
+
 # ── Architecture boundary checker (P1 pilot) ────────────────────────────
 # Existing transitional debt is reported but only new, expired, or stale
 # baseline entries fail. This is static-only and has no runtime impact.
@@ -65,6 +87,15 @@ step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.p
 # format strings instead of foundation::format_minor(). Pure python — no
 # toolchain deps, so it stays fast.
 step "no-hardcoded-money-format" "python3 scripts/verify-no-hardcoded-money-format.py" python3 scripts/verify-no-hardcoded-money-format.py
+
+# ── Test shadow-copy gate ──────────────────────────────────────────────
+# A test file that redeclares a production function and asserts against its
+# own copy cannot fail, no matter what the real code does. Five such suites
+# were found in one sweep; one of them (KdsAutoAcceptLogic) had copied the
+# in-flight guard onto the wrong field and annotated it "simplified", so its
+# test named "rejects when order is in-flight" validated a rule the app does
+# not implement. Pure python, no toolchain deps.
+step "test shadow copies" "python3 scripts/verify-test-shadow-copies.py" python3 scripts/verify-test-shadow-copies.py
 
 # Workspace-wide test via cargo-nextest — runs each test in its own process
 # for 4.5× faster re-runs after compilation. Also run doctests separately
@@ -79,7 +110,14 @@ else
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
 fi
 
-# ── Migration (mirrors CI `migration` job) ────────────────────────────────
+# ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
+# This comment used to read "mirrors CI `migration` job". There is no such job:
+# dev-ci.yml's ten jobs are changes, website, cargo-check, cargo-nextest, ui-test,
+# i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy. The
+# confusion is understandable because two neighbouring gates DO have CI backing since
+# 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
+# one is the SQLite migrate-up path and nothing enforces it off a developer machine.
+# Recorded in scripts/gates.json -> "migration".
 step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm
@@ -175,14 +213,20 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # anchor can pass here and fail on a UTC CI runner. Re-runs the analytics
     # anchor test under four zones and requires identical results.
     step "analytics tz invariance" "python3 scripts/check-tz-invariance.py" python3 ../scripts/check-tz-invariance.py
-    # AUDIT-27 CI-06: A11y regression suite (advisory, mirrors CI's
-    # continue-on-error since known product-level a11y bugs are tracked
-    # but not yet fixed). Never fails the gate — reports status only.
+    # AUDIT-27 CI-06: A11y regression suite (advisory). Never fails the gate —
+    # reports status only, because known product-level a11y bugs are tracked but
+    # not yet fixed and a blocking gate here would be disabled within a day.
+    # This used to say it "mirrors CI's continue-on-error", and the WARN line used
+    # to tell the developer to "see CI". Both were false: `git grep a11y
+    # .github/workflows/dev-ci.yml` returns nothing, and AGENTS.md states plainly
+    # that E2E, a11y, security and nightly suites are NOT enforced in CI. So this
+    # run is the only place a11y is ever checked -- a green Dev CI is no evidence it
+    # passed. Recorded in scripts/gates.json -> "a11y-advisory".
     echo -n "ui a11y (advisory)... "
     if npm run test:a11y >/dev/null 2>&1; then
         echo -e "${GREEN}PASS${NC}"
     else
-        echo -e "${YELLOW}WARN (a11y regressions exist — non-blocking, see CI)${NC}"
+        echo -e "${YELLOW}WARN (a11y regressions exist — non-blocking, and NOT checked in CI)${NC}"
     fi
     # i18n lint: runs AFTER ui test (which proves vitest works) but
     # BEFORE ui build (which is ~30s). Fail-fast on a ~1s lint check
@@ -194,6 +238,11 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local
     # validation matches check-ui.mjs and the pre-commit gate.
     step "ftl dedupe" "python3 scripts/dedupe-ftl.py" python3 scripts/dedupe-ftl.py
+    # Orphan gate: its own liveness cases must pass, and the whole-tree candidate count
+    # should be visible locally too, not just in CI. The blocking form of this check is
+    # staged-scoped in the pre-commit hook; here it runs the self-test and census.
+    step "ftl orphans" "python3 scripts/verify-ftl-orphans.py --self-test" \
+        python3 scripts/verify-ftl-orphans.py --self-test
     step "feature registry parity" "python3 scripts/verify-feature-registry.py" python3 scripts/verify-feature-registry.py
     # Topology contract parity — the vendored oz-core copy and the UI copy
     # must stay byte-identical (both sides of the IPC boundary read it).
@@ -271,6 +320,48 @@ step "healthcheck script test" "sh apps/unified/test-healthcheck.sh" sh apps/uni
 step "ci routing test" "bash scripts/test-ci-routing.sh" bash scripts/test-ci-routing.sh
 
 step "ci docs drift" "python3 scripts/verify-ci-docs-drift.py" python3 scripts/verify-ci-docs-drift.py
+# This is the gate that polices every other gate's CI claim, and until 0.0.37 it
+# was the only one of the family with no self-test -- six siblings carry one and
+# this did not. It now mutates four of its own classifiers and requires each to be
+# noticed, plus a control that must still pass, so "the drift gate is green" cannot
+# mean "the drift gate stopped looking".
+step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-test" python3 scripts/verify-ci-docs-drift.py --self-test
+# scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
+# `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
+# It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs
+# built a fixture writing docs/ci-pipeline.md after the doc moved to docs/operations/, and
+# asserted on a `## Job Matrix (ci.yml)` heading whose suffix had been dropped, so its
+# mutation became a no-op. pipefail.test.mjs read the retired ci.yml and nightly.yml (ENOENT)
+# and used bare `bash`, which on Windows is WSL and hangs instead of failing.
+# Both are fixed, so the whole glob is wired -- not one file at a time. A suite that has to be
+# cherry-picked into a gate is a suite whose failures are being negotiated file by file, and
+# the only reason either of these stayed red was that nothing ran them.
+step "script tests" "node --test scripts/__tests__/*.test.mjs" node --test scripts/__tests__/*.test.mjs
+# The drift gate checks that a runner label matches SOME step, using any-of -- so a
+# gate declaring three labels was satisfied by one, and deleting the other two left
+# gates.json asserting guards that no longer existed while the checker printed
+# "0 drift item(s)". The rule is now per-needle; this proves it stays that way, and
+# proves the fixture is live (ROOT comes from __file__, so a fixture that forgot to
+# copy the checker itself would silently test the real repo and agree with itself).
+# Gate: scripts/gates.json -> "runner-labels".
+step "runner labels" "python3 scripts/test-runner-labels.py" python3 scripts/test-runner-labels.py
+
+# Gate: scripts/gates.json -> "bundle-parity".
+step "bundle parity" "python3 scripts/verify-bundle-parity.py --scan-dirs features,components,frontend,contexts,hooks,platform" python3 scripts/verify-bundle-parity.py --include-getstring --include-nav-keys --include-key-fields --include-dynamic-literals --include-id-maps --check-domain-pairs --scan-dirs features,components,frontend,contexts,hooks,platform
+
+# ── Migration correctness (steps 6 and 7 of the pre-commit hook) ───────────
+# Both lived in ci.yml, retired to .bak by 23c96330, and were never restored in
+# dev-ci.yml -- and, as this file proves, they were never in check.sh either. So
+# the ONLY guard was the opt-in pre-commit hook, and core.hooksPath is set by
+# scripts/setup-dev.ps1 without being versioned: a fresh clone that skips setup
+# could hand-edit 20260813_init.pg.sql (a generated file) or add a float column for
+# an exact-decimal amount, and merge it clean. AGENTS.md documented the CI half of
+# that hole in three places and nobody closed it. Both are pure text comparison --
+# no Docker, no psycopg, no sqlite handle -- and cost ~1.1s together, so there was
+# never a build-time reason to leave them out.
+# Gate: scripts/gates.json -> "pg-schema-drift", "migration-column-types".
+step "pg schema drift" "python3 scripts/generate-pg-migration.py --check" python3 scripts/generate-pg-migration.py --check
+step "migration column types" "python3 scripts/verify-migration-column-types.py" python3 scripts/verify-migration-column-types.py
 
 # ── Document uniqueness (R36-14) ────────────────────────────────────────────
 # f3d9cca6 moved the repo-root subscription-tiers.md into docs/records/ without
@@ -295,6 +386,24 @@ step "doc uniqueness self-test" "python3 scripts/verify-doc-uniqueness.py --self
 # cannot drift from the thing it polices.
 # Gate: scripts/gates.json -> "eol-guard".
 step "eol guard" "bash scripts/test-eol-guard.sh" bash scripts/test-eol-guard.sh
+
+# The UI typecheck gate in .githooks/pre-commit only fires when a commit stages
+# ui/src TypeScript, so on a Rust-only or docs-only release branch it can go many commits
+# without ever being exercised -- and a gate that never runs is indistinguishable from one
+# that was deleted. This proves it still fires: it extracts the live step from the hook and
+# drives it against a throwaway git repo with a stubbed npm.
+# Gate: scripts/gates.json -> "typecheck-gate".
+step "typecheck gate" "bash scripts/test-typecheck-gate.sh" bash scripts/test-typecheck-gate.sh
+
+# .githooks/post-commit refreshes the codebase-memory graph on every commit. It
+# ran 535 commits without indexing once and nothing reported it: it resolved the
+# indexer off PATH onto a stale build that refuses to join a newer running
+# daemon, and sent the 30s handshake failure to /dev/null. Same lesson as the two
+# guards above -- a hook step that fails silently is indistinguishable from one
+# that was deleted -- plus a second hazard: a 'nul' ghost in the repo root (what
+# '2> nul' makes under Git bash) aborts discovery before .cbmignore applies.
+# Gate: scripts/gates.json -> "cbm-hook-guard".
+step "cbm hook guard" "bash scripts/test-cbm-hook.sh" bash scripts/test-cbm-hook.sh
 
 # ── AGENTS.md mirror truthfulness ──────────────────────────────────────────
 # Three copies of the agent rules exist and `bump-version.ps1` syncs only their

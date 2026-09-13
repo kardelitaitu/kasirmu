@@ -859,17 +859,22 @@ fn apply_remote_stock_movement_rebuilds_summary() {
     queue.apply_remote(&store, &remote).unwrap(); // Rebuild to verify the ledger-based computation.
     store.rebuild_stock_summary().unwrap();
 
-    // Ledger SUM = just the cross-store delta (30) since the migration
-    // backfill ran against empty inventory (pre-seed).
+    // 30 -> 50. seed_product_and_inventory writes inventory (prod-coffee = 50)
+    // with no movement behind it — exactly the legacy shape the scoped rebuild
+    // now closes with one `legacy-backfill` compensating movement. The pulled
+    // cross-store delta is still the only REMOTE row, but the ledger is no
+    // longer short by the 20 unbacked units, so the re-derive lands on 50
+    // instead of destroying them. Same reader, same call; only the expected
+    // quantity moved.
     let from_ledger = store.get_stock_from_ledger("prod-coffee").unwrap();
     assert_eq!(
-        from_ledger, 30,
-        "SUM of deltas for prod-coffee should be 30"
+        from_ledger, 50,
+        "SUM of deltas for prod-coffee: 30 pulled + 20 healed unbacked units"
     );
 
-    // The materialized inventory should now also reflect 30.
+    // The materialized inventory now reflects the healed ledger too.
     let inv_qty = store.get_stock("prod-coffee").unwrap();
-    assert_eq!(inv_qty, 30, "inventory should be rebuilt to 30");
+    assert_eq!(inv_qty, 50, "inventory should be rebuilt to 50, not 30");
 }
 
 // ── SYNC-02: shared conflict-application service ────────────────
@@ -1044,4 +1049,753 @@ fn crdt_merge_end_to_end_resolve_to_apply() {
     // Step 3: consume — the normal remote dispatcher applies BOTH deltas.
     queue.apply_remote(&store, winner).unwrap();
     assert_eq!(inventory_qty(&store, "COFFEE"), 57, "50 + 10 - 3");
+}
+
+/// Seed a product whose stock lives at TWO named locations via the canonical
+/// per-location writer (summary {loc-a: 7, loc-b: 3}, aggregate 10).
+fn seed_two_location_stock(store: &Store<'_>) -> String {
+    let conn = store.conn();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+         VALUES ('prod-loc', 'LOC-TWO', 'Loc Two', 100, 'USD',
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    for loc in ["loc-a", "loc-b"] {
+        conn.execute(
+            "INSERT INTO inventory_locations (id, name, type, created_at, updated_at)
+             VALUES (?1, ?1, 'store', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [loc],
+        )
+        .unwrap();
+    }
+    let tx = conn.unchecked_transaction().unwrap();
+    for (loc, delta) in [("loc-a", 7), ("loc-b", 3)] {
+        store
+            .adjust_stock_at_location_with_reason(
+                &tx,
+                "LOC-TWO",
+                delta,
+                &oz_core::inventory::LocationId::from(loc),
+                Some("seed"),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    tx.commit().unwrap();
+    store.product_id_by_sku("LOC-TWO").unwrap().unwrap()
+}
+
+fn location_carrying_crdt_winner() -> OfflineQueueItem {
+    let local = OfflineQueueItem {
+        id: "crdt-loc-local".into(),
+        action: "stock.adjusted".into(),
+        payload: r#"{"sku":"LOC-TWO","delta":10,"location_id":"loc-a"}"#.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    let remote = OfflineQueueItem {
+        id: "crdt-loc-remote".into(),
+        action: "stock.adjusted".into(),
+        payload: r#"{"sku":"LOC-TWO","delta":-3,"location_id":"loc-b"}"#.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    crate::conflict::resolve_stock_crdt(&local, &remote).winner
+}
+
+/// The three per-location assertions every CRDT stock merge must satisfy.
+fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
+    let conn = store.conn();
+    let mut stmt = conn
+        .prepare(
+            "SELECT location_id, qty FROM stock_summary WHERE item_id = ?1 ORDER BY location_id",
+        )
+        .unwrap();
+    let rows: Vec<(String, i64)> = stmt
+        .query_map([pid], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    drop(stmt);
+
+    // 1. Each location row moved by its OWN delta (7+10, 3-3).
+    assert_eq!(
+        rows,
+        vec![("loc-a".to_string(), 17), ("loc-b".to_string(), 0)],
+        "per-location rows must carry their own deltas"
+    );
+    // 2. The legacy aggregate equals the SUM over BOTH locations.
+    let sum: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(qty), 0) FROM stock_summary WHERE item_id = ?1",
+            [pid],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inventory_qty(store, "LOC-TWO"), 17);
+    assert_eq!(sum, 17, "aggregate must equal the sum of both locations");
+    // 3. Rows not collapsed into the canonical default location.
+    let default_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            [pid, oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(default_rows, 0, "no phantom row at the default location");
+}
+
+/// SYNC-05 regression (a04865100 follow-up): a CRDT conflict envelope whose
+/// INNER local and remote objects each name a location_id must apply each
+/// delta at its own location through the atomic pull path - the same
+/// apply_remote_in_tx stock.adjusted arm the daemon pull uses.
+#[test]
+fn apply_remote_atomic_crdt_envelope_applies_location_scoped_deltas() {
+    let store = setup_store();
+    let pid = seed_two_location_stock(&store);
+    let winner = location_carrying_crdt_winner();
+    assert!(
+        SyncQueue::new()
+            .apply_remote_atomic(&store, &winner)
+            .unwrap(),
+        "merged crdt winner must apply"
+    );
+    assert_location_scoped_merge(&store, &pid);
+}
+
+/// Same envelope through the deprecated non-atomic apply_remote mirror -
+/// both pull arms must treat location_id identically (and correctly).
+#[test]
+fn apply_remote_crdt_envelope_applies_location_scoped_deltas() {
+    let store = setup_store();
+    let pid = seed_two_location_stock(&store);
+    let winner = location_carrying_crdt_winner();
+    SyncQueue::new().apply_remote(&store, &winner).unwrap();
+    assert_location_scoped_merge(&store, &pid);
+}
+/// Version-skew regression (SYNC-05): a CRDT envelope whose local side names
+/// a location (ADR-19-aware terminal) and whose remote side is a bare
+/// sku/delta from an older sender. The named delta must move its own row,
+/// the unscoped delta must land at the canonical default location, and the
+/// legacy aggregate must stay the SUM over every stock_summary row.
+#[test]
+fn apply_remote_atomic_crdt_envelope_mixed_location_and_unscoped_sides() {
+    let store = setup_store();
+    let pid = seed_two_location_stock(&store);
+    let local = OfflineQueueItem {
+        id: "crdt-mixed-local".into(),
+        action: "stock.adjusted".into(),
+        payload: r#"{"sku":"LOC-TWO","delta":10,"location_id":"loc-a"}"#.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    let remote = OfflineQueueItem {
+        id: "crdt-mixed-remote".into(),
+        action: "stock.adjusted".into(),
+        payload: r#"{"sku":"LOC-TWO","delta":5}"#.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    let winner = crate::conflict::resolve_stock_crdt(&local, &remote).winner;
+    assert!(
+        SyncQueue::new()
+            .apply_remote_atomic(&store, &winner)
+            .unwrap(),
+        "mixed crdt winner must apply"
+    );
+
+    let conn = store.conn();
+    let qty_at = |loc: &str| -> i64 {
+        conn.query_row(
+            "SELECT COALESCE(qty, 0) FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![pid, loc],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        qty_at("loc-a"),
+        17,
+        "located side moved its own row (7 + 10)"
+    );
+    assert_eq!(qty_at("loc-b"), 3, "unrelated named row untouched");
+    assert_eq!(
+        qty_at(oz_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID),
+        5,
+        "unscoped side landed at the canonical default location"
+    );
+
+    // Reader-writer agreement: aggregate equals the SUM over ALL rows.
+    let sum: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(qty), 0) FROM stock_summary WHERE item_id = ?1",
+            [pid.as_str()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inventory_qty(&store, "LOC-TWO"), 25);
+    assert_eq!(sum, 25, "aggregate must equal the SUM over all rows");
+}
+// ── SYNC ingest policy: a remote settings write cannot plant credentials ──
+
+/// Helper: a remote `settings.update` for an arbitrary key/value, as the
+/// cloud server or a compromised peer would deliver it.
+fn remote_settings_kv(id: &str, key: &str, value: &str) -> OfflineQueueItem {
+    let payload = serde_json::json!({
+        "key": key,
+        "value": value,
+        "terminal_id": "term-remote",
+        "version": 3,
+    });
+    let mut item = OfflineQueueItem::new("settings.update", payload.to_string());
+    item.id = id.into();
+    item.created_at = "2026-01-02T00:00:00.000Z".into();
+    item
+}
+
+/// The live hole: a `settings.update` carrying `machine_id` — the device-bound
+/// KDF factor and trial lock — must NOT be applied. Fails against HEAD, where
+/// the arm called `Settings::set` with no predicate at all.
+#[test]
+fn remote_settings_update_refuses_machine_id_and_keeps_local_value() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
+
+    let outcome = queue
+        .apply_remote_atomic_full(
+            &store,
+            &remote_settings_kv("ingest-mid", "machine_id", "PLANTED"),
+        )
+        .unwrap();
+    assert_eq!(
+        Settings::get(store.conn(), "machine_id")
+            .unwrap()
+            .as_deref(),
+        Some("own-machine-fingerprint"),
+        "a remote item must not overwrite this install's machine_id"
+    );
+    assert_eq!(
+        outcome.settings_change, None,
+        "a refused key must not be reported as a settings change either"
+    );
+}
+
+/// Same for the lifecycle-manager prefixes: `local_api.secret` is the per-install
+/// JWT signing key and `local_api.enabled` is manager-owned intent. Fails against
+/// HEAD.
+#[test]
+fn remote_settings_update_refuses_local_api_and_lan_server_keys() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    Settings::set(store.conn(), "local_api.secret", "own-signing-secret").unwrap();
+
+    for (id, key) in [
+        ("ingest-las", "local_api.secret"),
+        ("ingest-lae", "local_api.enabled"),
+        ("ingest-lsb", "lan_server.bind"),
+        ("ingest-sts", "sync_terminal_secret"),
+        ("ingest-sti", "sync_terminal_id"),
+        ("ingest-lak", "license.api_key"),
+    ] {
+        queue
+            .apply_remote_atomic(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        let value = Settings::get(store.conn(), key).unwrap();
+        assert!(
+            value.as_deref() != Some("PLANTED"),
+            "{key} was applied from a remote sync item"
+        );
+    }
+}
+
+/// The regression guard for the queue suite: a refusal must not abort the batch,
+/// so an ordinary key arriving alongside a planted one still lands — under BOTH
+/// dispatchers, since the legacy `apply_remote` arm is a separate copy of the
+/// logic.
+#[test]
+fn remote_settings_batch_continues_past_a_refused_key() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
+
+    for (n, apply) in [("atomic", true), ("legacy", false)] {
+        let key = format!("store.name-{n}");
+        if apply {
+            queue
+                .apply_remote_atomic(
+                    &store,
+                    &remote_settings_kv("b-mid-a", "machine_id", "PLANTED"),
+                )
+                .unwrap();
+            queue
+                .apply_remote_atomic(
+                    &store,
+                    &remote_settings_kv("b-ok-a", "receipt.footer", "Terima kasih"),
+                )
+                .unwrap();
+        } else {
+            queue
+                .apply_remote(
+                    &store,
+                    &remote_settings_kv("b-mid-l", "machine_id", "PLANTED"),
+                )
+                .unwrap();
+            queue
+                .apply_remote(
+                    &store,
+                    &remote_settings_kv("b-ok-l", "receipt.footer", "Terima kasih"),
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            Settings::get(store.conn(), "receipt.footer")
+                .unwrap()
+                .as_deref(),
+            Some("Terima kasih"),
+            "the ordinary key after a refused one must still apply ({n} dispatcher)"
+        );
+        assert_eq!(
+            Settings::get(store.conn(), "machine_id")
+                .unwrap()
+                .as_deref(),
+            Some("own-machine-fingerprint"),
+            "{n} dispatcher must still refuse machine_id"
+        );
+        let _ = key;
+    }
+}
+
+/// The refused key must be ABSENT, not merely unchanged: with no local value
+/// seeded, a remote `settings.update` carrying a deny-listed key must leave no
+/// row behind after the legacy (non-atomic) dispatcher runs — asserted by
+/// reading the row back, because a warn line followed by a write is exactly
+/// what a log-based assertion would pass on. Companion to
+/// `remote_settings_batch_continues_past_a_refused_key`, which seeds a local
+/// value and asserts it is retained; both must hold for the early-return
+/// guard in the legacy settings arm to mean anything.
+#[test]
+fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+
+    for (id, key) in [
+        ("ingest-absent-sak", "sync_api_key"),
+        ("ingest-absent-mid", "machine_id"),
+    ] {
+        queue
+            .apply_remote(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        assert_eq!(
+            Settings::get(store.conn(), key).unwrap(),
+            None,
+            "{key} was written by the legacy dispatcher despite the ingest policy refusal"
+        );
+    }
+}
+
+/// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. INVERT THIS TEST, DO NOT DELETE IT.
+///
+/// What the four refusal pins above prove is that the ingest gate refuses
+/// SECRET_KEY_DENY_LIST, the device-bound ids and the two manager prefixes. What they do
+/// not prove is the shape of the rule: IngestPolicy::RemoteSync is an EXCLUSION list over
+/// an OPEN namespace (platform/core/src/settings/raw.rs:660-670), not an allow-list, so
+/// every name the exclusion list does not carry — including names no screen can write
+/// through the local doors but a peer can type into a payload — is admitted and written
+/// through the bare Settings::set INSERT (raw.rs:98-114 delegating to raw.rs:37-45). The
+/// applied key is the payload's own string, read verbatim at queue.rs:525-531.
+///
+/// Two properties make that serious, and they are the whole reason this is pinned in a
+/// test rather than parked in a report:
+///
+/// 1. **The sender is not an authority.** Nothing in transport or sync_api signs or MACs
+///    a settings item (queue.rs:10-12), and the server stores a pushed payload opaquely
+///    (apps/cloud-server/src/sync_store.rs:201), so any peer inside the tenant — or the
+///    server operator — can name the key.
+/// 2. **The reader carries a bearer secret.** crates/oz-core/src/sync_auth.rs:72 sends
+///    `Authorization: Bearer <sync api key>` to whatever sync_server_url currently holds,
+///    so planting that one name exfiltrates a credential without ever naming a credential
+///    key. sync_enabled, pg_sync.host, pg_sync.user, pg_sync.dbname and redis.cache_ttl
+///    are the same door in other shapes.
+///
+/// INVERTED, not deleted, 13-09-26, for the interim hazard-set fix (option B).
+/// Read the five paragraphs above as the HISTORY of the finding: at 29f8f2634 this
+/// test was GREEN and its greenness WAS the finding. Every assertion below now
+/// carries the opposite polarity, so it is RED until the refusal lands — that red
+/// set is the deliverable, and a pin asserting the door was shut before the code
+/// shut it would have been a lie. After the hazard set lands, green here means the
+/// opposite of what it meant at 29f8f2634: the planted row must NOT arrive, the
+/// delta ledger must stay empty for the remote terminal, and the change must not be
+/// published as SettingsUpdated. The fn name is kept, per the original instruction,
+/// so the inversion reads as a flip in the diff rather than a deletion; rename it
+/// (`remote_settings_update_refuses_a_key_the_exclusion_list_misses`) in the same
+/// commit that turns it green.
+#[test]
+fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    let planted = "https://sync-ingest-hazard.invalid/";
+    let mine = "https://my-own-server.invalid/";
+    Settings::set(store.conn(), "sync_server_url", mine).unwrap();
+
+    // Positive control FIRST: the gate must still admit what normal operation
+    // replicates, or every refusal below would pass for a gate that refuses
+    // everything. Reversed polarity from the original, same purpose.
+    assert!(
+        IngestPolicy::RemoteSync.admits("ui.locale"),
+        "ui.locale stopped being admitted - the refusals below would prove nothing"
+    );
+
+    // The hazard name, now required to be refused.
+    assert!(
+        !IngestPolicy::RemoteSync.admits("sync_server_url"),
+        "RED UNTIL THE HAZARD SET LANDS: a peer must not be able to repoint this install's sync target"
+    );
+
+    let outcome = queue
+        .apply_remote_atomic_full(
+            &store,
+            &remote_settings_kv("ingest-unlisted", "sync_server_url", planted),
+        )
+        .unwrap();
+
+    assert_eq!(
+        Settings::get(store.conn(), "sync_server_url")
+            .unwrap()
+            .as_deref(),
+        Some(mine),
+        "RED UNTIL THE HAZARD SET LANDS: an unsigned item must not overwrite the sync target"
+    );
+    assert_eq!(
+        Settings::get_version(store.conn(), "sync_server_url", "term-remote").unwrap(),
+        None,
+        "RED UNTIL THE HAZARD SET LANDS: a refused key must not reach the delta ledger as an operator edit"
+    );
+    assert_eq!(
+        outcome.settings_change.as_ref().map(|(k, _)| k.as_str()),
+        None,
+        "RED UNTIL THE HAZARD SET LANDS: a key that was not applied must not be published to the UI (SYNC-10)"
+    );
+}
+
+/// The rest of the named hazard set - one refusal per name, all six on the door,
+/// both dispatchers.
+///
+/// Not one of these is a credential, a device identity, or manager-owned, which is
+/// exactly why they are admitted at HEAD and why this test is RED for every name in
+/// the loop: an exclusion list over an open namespace can only refuse what its
+/// author thought to name. Why each is worth a line despite that:
+///
+/// * sync_server_url - the reader carries a bearer secret
+///   (crates/oz-core/src/sync_auth.rs:72 sends Authorization: Bearer <sync api key>
+///   to whatever this row says), so the plant exfiltrates a credential without
+///   ever naming a credential key.
+/// * sync_enabled - switches the transport on or off tenant-wide. The one name in
+///   the set that had to be bought: it was the example a fold-leg pin used for
+///   "an ordinary key", and the example moved to ui.locale
+///   (raw_tests.rs:732-760) rather than the leg being deleted. Six doors, six
+///   refusals, no silent member lost.
+/// * pg_sync.host / pg_sync.user / pg_sync.dbname - repoint where this install
+///   reads its reference data from. The password stays deny-listed; the destination
+///   does not, and the destination is the half an attacker needs.
+/// * redis.cache_ttl - an availability knob, included because severity is not the
+///   criterion. The criterion is "a peer named it and nobody meant that".
+///
+/// None of the six is ever a queue producer on the paths that matter, so refusing
+/// them at the ingest door drops no working traffic: sync_server_url's four writers
+/// are crates/oz-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
+/// apps/desktop-client/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
+/// none of which calls Store::enqueue_settings_update_superseding
+/// (crates/oz-core/src/db/offline.rs:194). That is what makes this set safe to
+/// refuse while the wider allow-list is not.
+#[test]
+fn remote_settings_update_refuses_the_named_hazard_set() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    // Six names, six legs. The count is the point: a set that quietly loses a
+    // member is how the twelve stayed a twelve, so the list length is asserted
+    // below rather than trusted.
+    let hazard = [
+        ("hz-url", "sync_server_url"),
+        ("hz-enabled", "sync_enabled"),
+        ("hz-pg-host", "pg_sync.host"),
+        ("hz-pg-user", "pg_sync.user"),
+        ("hz-pg-dbname", "pg_sync.dbname"),
+        ("hz-redis-ttl", "redis.cache_ttl"),
+    ];
+    // Every name is measured before anything is asserted, so ONE red run lists every
+    // hazard name the gate still lets through. A per-name assert stops at the first,
+    // which is a poor instrument for a fix that has to cover all six.
+    let mut open: Vec<String> = Vec::new();
+    for (id, key) in hazard {
+        let admitted = IngestPolicy::RemoteSync.admits(key);
+        let outcome = queue
+            .apply_remote_atomic_full(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        let row = Settings::get(store.conn(), key).unwrap();
+        let delta = Settings::get_version(store.conn(), key, "term-remote").unwrap();
+        let published = outcome
+            .settings_change
+            .as_ref()
+            .map(|(k, _)| k.as_str().to_string());
+        if admitted || row.is_some() || delta.is_some() || published.is_some() {
+            open.push(format!(
+                "{key} (admits={admitted}, row={row:?}, delta={delta:?}, published_to_ui={published:?})"
+            ));
+        }
+    }
+    // The legacy arm carries its own copy of the settings logic, so the refusal has
+    // to hold there too - same fixture as
+    // legacy_apply_remote_leaves_a_refused_key_absent_from_the_database.
+    for (id, key) in [
+        ("hz-legacy-url", "sync_server_url"),
+        ("hz-legacy-ttl", "redis.cache_ttl"),
+    ] {
+        queue
+            .apply_remote(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        if Settings::get(store.conn(), key).unwrap().is_some() {
+            open.push(format!("{key} (written by the LEGACY dispatcher)"));
+        }
+    }
+    // The count is pinned as well as the behaviour: a hazard list that quietly
+    // loses a member keeps every other leg green, and the change still reads as
+    // the one that was briefed. Six names, six legs on the atomic door.
+    assert_eq!(hazard.len(), 6, "the named hazard set is six doors");
+    assert!(
+        open.is_empty(),
+        "RED UNTIL THE HAZARD SET LANDS: {} refusal checks are still open across the six hazard names (six on the atomic door, two on the legacy door): {:?}",
+        open.len(),
+        open
+    );
+}
+
+/// The half that must NEVER regress: the names ordinary operation actually puts on
+/// the wire have to keep applying from a peer - row, delta row, and the
+/// SettingsUpdated report. Green at HEAD, green after the refusal lands; red here
+/// means replication broke, not that a door opened. Every name below is one of the
+/// twelve a screen writes today, with its call site pinned by
+/// ingestible_keys_cover_the_ui_egress_call_sites.
+#[test]
+fn remote_settings_still_applies_the_names_normal_operation_replicates() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    let twelve = [
+        ("leg-locale", "ui.locale", "id"),
+        ("leg-survey", "exit_survey.last_response", "fine"),
+        ("leg-prev-ver", "updater.previous_version", "0.0.36"),
+        (
+            "leg-backup-path",
+            "updater.last_backup_path",
+            "/var/lib/oz/back.ozpkg",
+        ),
+        ("leg-low-stock", "inventory.low_stock_threshold", "5"),
+        (
+            "leg-pref-wh",
+            "inventory.deduction_prefer_warehouse",
+            "true",
+        ),
+        ("leg-sound", "kds.sound_enabled", "true"),
+        ("leg-yellow", "kds.yellow_threshold_min", "10"),
+        ("leg-red", "kds.red_threshold_min", "20"),
+        ("leg-auto-ack", "kds.auto_acknowledge", "false"),
+        ("leg-density", "kds.density", "3"),
+        ("leg-course", "restaurant.course_firing", "true"),
+    ];
+    for (n, (id, key, value)) in twelve.into_iter().enumerate() {
+        assert!(
+            IngestPolicy::RemoteSync.admits(key),
+            "{key} is a name the UI replicates and the ingest gate now refuses it"
+        );
+        let outcome = queue
+            .apply_remote_atomic_full(&store, &remote_settings_kv(id, key, value))
+            .unwrap();
+        assert_eq!(
+            Settings::get(store.conn(), key).unwrap().as_deref(),
+            Some(value),
+            "{key} must still apply from a remote item"
+        );
+        assert_eq!(
+            Settings::get_version(store.conn(), key, "term-remote").unwrap(),
+            Some(1),
+            "{key} must still write its delta row"
+        );
+        assert_eq!(
+            outcome.settings_change.as_ref().map(|(k, _)| k.as_str()),
+            Some(key),
+            "{key} must still be reported as a settings change"
+        );
+        let _ = n;
+    }
+}
+
+/// The two refusal legs that already work, restated INSIDE this change so the
+/// hazard-set extension is proved to add a refusal without subtracting one. A
+/// deny-listed credential, a device-bound identity and a manager-owned prefix name
+/// are refused by the same accessor on the same door as the hazard set - if the
+/// new arm ever replaces the shared rule instead of standing under it, this goes
+/// red first. Green at HEAD and expected green after.
+#[test]
+fn remote_settings_refusal_legs_stay_closed_beside_the_hazard_set() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    for (id, key) in [
+        ("leg-token", "sync.auth_token"),
+        ("leg-pg-pass", "pg_sync.password"),
+        ("leg-redis-url", "redis.url"),
+        ("leg-mid", "machine_id"),
+        ("leg-sti", "sync_terminal_id"),
+        ("leg-lae", "local_api.enabled"),
+        ("leg-lsb", "lan_server.bind"),
+    ] {
+        assert!(
+            !IngestPolicy::RemoteSync.admits(key),
+            "{key} stopped being refused - the hazard set must not displace the existing rule"
+        );
+        let outcome = queue
+            .apply_remote_atomic_full(&store, &remote_settings_kv(id, key, "PLANTED"))
+            .unwrap();
+        assert_eq!(
+            Settings::get(store.conn(), key).unwrap(),
+            None,
+            "{key} must not be created by a remote item"
+        );
+        assert_eq!(
+            outcome.settings_change.as_ref().map(|(k, _)| k.as_str()),
+            None,
+            "{key} must not be published as a settings change"
+        );
+    }
+}
+
+/// DRIFT SURFACE, stated rather than allowed to look authoritative. The list below
+/// is derived from UI call sites that NOTHING reconciles against the ingest gate -
+/// the same class of defect the two hand-copied shell deny lists were, all night.
+/// It cannot be expressed as a code assertion (the callers are TypeScript, the gate
+/// is Rust, and no build step reads one to generate the other), so it is a
+/// documented enumeration naming each key and the line that writes it, and it
+/// asserts the one property that must survive any shape of refusal: every name the
+/// UI puts on the wire is admitted at the ingest door. The day a refusal list
+/// covers one of these, this goes red instead of replication breaking quietly.
+///
+/// And the honesty clause, because the count matters more than the code: this is a
+/// census of what someone thought to TRACE, not of what a caller can SEND. Both
+/// shells' setters take an arbitrary key string from the renderer
+/// (crates/oz-bridge/src/settings.rs run_set_setting / set_setting_scoped /
+/// set_settings_scoped, apps/tablet-client/src/commands/settings.rs) and hand it to
+/// the one enqueue funnel, so the reachable egress surface is every setting the UI
+/// can write - see .agents/egress-surface.md for the enumeration and the size. A
+/// full allow-list must be built against THAT number, not against the twelve.
+#[test]
+fn ingestible_keys_cover_the_ui_egress_call_sites() {
+    let traced: &[(&str, &str)] = &[
+        (
+            "ui.locale",
+            "ui/src/features/settings/sections/GeneralSection.tsx:50",
+        ),
+        (
+            "exit_survey.last_response",
+            "ui/src/components/ExitSurveyModal.tsx:54",
+        ),
+        (
+            "updater.previous_version",
+            "ui/src/frontend/shell/UpdateBanner.tsx:13",
+        ),
+        (
+            "updater.last_backup_path",
+            "ui/src/frontend/shell/UpdateBanner.tsx:16",
+        ),
+        (
+            "inventory.low_stock_threshold",
+            "ui/src/features/settings/workspace-cards/WorkspaceInventorySettings.tsx:98",
+        ),
+        (
+            "inventory.deduction_prefer_warehouse",
+            "ui/src/features/settings/workspace-cards/WorkspaceInventorySettings.tsx:99",
+        ),
+        (
+            "kds.sound_enabled",
+            "ui/src/features/settings/workspace-cards/WorkspaceKdsSettings.tsx:137",
+        ),
+        (
+            "kds.yellow_threshold_min",
+            "ui/src/features/settings/workspace-cards/WorkspaceKdsSettings.tsx:138",
+        ),
+        (
+            "kds.red_threshold_min",
+            "ui/src/features/settings/workspace-cards/WorkspaceKdsSettings.tsx:139",
+        ),
+        (
+            "kds.auto_acknowledge",
+            "ui/src/features/settings/workspace-cards/WorkspaceKdsSettings.tsx (kds block)",
+        ),
+        (
+            "kds.density",
+            "ui/src/features/settings/workspace-cards/WorkspaceKdsSettings.tsx (kds block)",
+        ),
+        (
+            "restaurant.course_firing",
+            "ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:114",
+        ),
+    ];
+    assert_eq!(traced.len(), 12, "the traced egress census is twelve names");
+    for (key, site) in traced {
+        assert!(
+            IngestPolicy::RemoteSync.admits(key),
+            "{key} ({site}) is a name the UI puts on the wire today; refusing it at ingest silently stops it replicating"
+        );
+    }
+}
+
+/// The asymmetry this change deliberately creates, asserted in the direction that
+/// is easy to break by accident: a name refused FROM THE NETWORK must still travel
+/// IN A PACKAGE.
+///
+/// A restore legitimately contains whatever the app owns, so narrowing
+/// PortablePackage would break restores - which is why the six hazard names are
+/// refused by the RemoteSync arm alone, and why they are declared as a THIRD list
+/// (keys::PEER_NAMED_HAZARD_KEYS) rather than folded into
+/// is_non_exportable_setting_key, which both arms share. Fold them in and this
+/// test is the thing that goes red, which is the point: the two lanes look
+/// tidier side by side and a backup stops restoring a sync target.
+///
+/// Also the drift canary for the shared-predicate problem the interim fix has to
+/// live with: admits() answers BOTH the ingest door and the two egress doors, so
+/// refusing a name here stops it being OFFERED as well as APPLIED. That is the
+/// symmetric behaviour the two egress call sites were written to demand, and none
+/// of these six names is produced by a UI setter today (see
+/// .agents/egress-surface.md), so it costs no working traffic - but it is a real
+/// narrowing of the egress surface, and this is where it is recorded.
+#[test]
+fn a_hazard_name_refused_from_the_network_still_travels_in_a_package() {
+    for key in [
+        "sync_server_url",
+        "sync_enabled",
+        "pg_sync.host",
+        "pg_sync.user",
+        "pg_sync.dbname",
+        "redis.cache_ttl",
+    ] {
+        assert!(
+            !IngestPolicy::RemoteSync.admits(key),
+            "{key} must be refused by remote sync"
+        );
+        // This ONE assertion is also the shape check: PortablePackage refuses
+        // exactly the shared credential list, the device list and the two manager
+        // prefixes, and nothing else. So an admits here proves the name is on none
+        // of them - the hazard refusal belongs to one lane only - without this
+        // crate reaching across a dependency edge it does not have (platform-sync
+        // deliberately has no platform-core edge; queue.rs imports the policy
+        // through the oz_core::settings facade, and reaching for
+        // platform_core::settings::keys here would build one).
+        //
+        // The same boolean therefore carries two facts, and the pair is what a
+        // future fold of these names into is_non_exportable_setting_key breaks:
+        // the moment the hazard list joins the shared list, PortablePackage stops
+        // admitting and this test goes red on the line above.
+        assert!(
+            IngestPolicy::PortablePackage.admits(key),
+            "{key} must STILL travel in a portable package: a refusal here means it was folded into the shared exclusion rule, and restores break"
+        );
+    }
 }

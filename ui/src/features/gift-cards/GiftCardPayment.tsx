@@ -68,7 +68,9 @@ export default function GiftCardPayment({
     } finally {
       setLoading(false);
     }
-  }, [cardInput, l10n]);
+    // sessionToken arrives as a prop (:11) and is read at :54, so it is a closure variable like
+    // any other -- being a prop rather than a hook value does not make it stable.
+  }, [cardInput, l10n, sessionToken]);
 
   const handleApply = useCallback(async () => {
     const code = cardInput.trim();
@@ -90,7 +92,11 @@ export default function GiftCardPayment({
     } finally {
       setLoading(false);
     }
-  }, [cardInput, cardBalance, totalMinor, saleId, onApplied, onComplete, onError, l10n]);
+  // :85 redeems real money through redeemGiftCard(sessionToken, ...). With the token missing,
+  // a cashier hot-swap left this presenting the destroyed session, so the tender failed with a
+  // redemption error on a card that was fine -- the worst kind of failure at a checkout counter,
+  // because it looks like a problem with the customer's gift card.
+  }, [cardInput, cardBalance, totalMinor, saleId, onApplied, onComplete, onError, l10n, sessionToken]);
 
   return (
     <div className="gift-card-payment">

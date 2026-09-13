@@ -13,7 +13,12 @@ import {
   type ReactNode,
 } from 'react';
 import { useBrand } from '@/contexts/BrandContext';
-import { deriveAccentPalette, applyAccentPalette, applyThemeContrasts } from '@/utils/color';
+import {
+  deriveAccentPalette,
+  applyAccentPalette,
+  clearAccentPalette,
+  applyThemeContrasts,
+} from '@/utils/color';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -96,15 +101,21 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 
   // Reactively apply brand accent palette whenever brand settings change.
+  // An empty primary_colour is the "follow the active theme" sentinel: no
+  // inline override, so the per-theme tokens (light #147EFB, dark
+  // #1155CC) show through.
   const { settings: brandSettings } = useBrand();
+  const brandColour = brandSettings.primary_colour;
   useEffect(() => {
-    if (brandSettings.primary_colour) {
-      const palette = deriveAccentPalette(brandSettings.primary_colour);
+    if (brandColour) {
+      const palette = deriveAccentPalette(brandColour);
       applyAccentPalette(palette);
+    } else {
+      clearAccentPalette();
     }
     // Reconcile foreground contrasts when brand colour (or any theme token) changes.
     requestAnimationFrame(() => applyThemeContrasts());
-  }, [brandSettings.primary_colour]);
+  }, [brandColour]);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => (prev === 'light' ? 'dark' : 'light'));

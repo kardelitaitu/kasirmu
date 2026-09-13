@@ -77,4 +77,6 @@ Wire the shared workspace cards into `NodeTopologyEditor.tsx`'s existing right I
 - `ui/src/features/stores/TopologyScreen.tsx`
 - `ui/src/features/stores/NodeTopologyIcons.tsx`
 
-> Last audited: 2026-08-08 by docs-auditor (status corrected to IMPLEMENTED).
+> (status corrected to IMPLEMENTED).
+>
+> last audited 08-08-26 by docs-auditor

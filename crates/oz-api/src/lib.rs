@@ -261,6 +261,7 @@ impl AppState {
 /// - `GET /api/v1/products`
 /// - `GET /api/v1/products/:sku`
 /// - `GET /api/v1/categories`
+/// - `POST /api/v1/memos/sync` / `GET /api/v1/memos/active`
 pub fn router(state: AppState) -> Router {
     router_with_openapi(state, None, None)
 }
@@ -353,6 +354,18 @@ pub fn router_with_openapi(
             get(routes::plans::get_my_plan_handler),
         )
         .route("/api/v1/users", post(routes::users::create_user))
+        .route(
+            "/api/v1/memos/sync",
+            post(routes::memos::sync_memos_handler),
+        )
+        .route(
+            "/api/v1/memos/active",
+            get(routes::memos::list_active_memos_handler),
+        )
+        .route(
+            "/api/v1/memos/{memo_id}/ack",
+            post(routes::memos::ack_memo_handler),
+        )
         .route("/api/v1/sales", post(routes::sales::create_sale))
         .route("/api/v1/sales/{id}", get(routes::sales::get_sale))
         .route(

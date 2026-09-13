@@ -12,6 +12,7 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Refundlinearg.
 pub struct RefundLineArg {
     /// ID of the associated sale line.
@@ -44,6 +45,7 @@ pub struct ProcessRefundArgs {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 /// Processrefundresult.
 pub struct ProcessRefundResult {
     /// ID of the associated refund.
@@ -75,6 +77,7 @@ pub async fn process_refund(
 
 /// Args for `process_refund_scoped` — without `user_id`.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProcessRefundScopedArgs {
     /// ID of the associated sale.
     pub sale_id: String,

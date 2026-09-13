@@ -2,10 +2,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { withFluent, withFluentLocale } from '@/locales/test-utils';
-import { TopologyNodeFinder } from '@/features/stores/topologyNodeFinder';
-import type { TopologyNodeData } from '@/features/stores/NodeTopologyEditor';
-import multiStoreFtl from '@/locales/multi-store.ftl?raw';
-import multiStoreIdFtl from '@/locales/multi-store.id.ftl?raw';
+import { TopologyNodeFinder } from '@/features/locations/topologyNodeFinder';
+import type { TopologyNodeData } from '@/features/locations/NodeTopologyEditor';
+import multiStoreFtl from '@/locales/multi-location.ftl?raw';
+import multiStoreIdFtl from '@/locales/multi-location.id.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import sharedIdFtl from '@/locales/shared.id.ftl?raw';
 

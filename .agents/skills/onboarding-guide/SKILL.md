@@ -3,10 +3,7 @@ name: onboarding-guide
 description: Meta-skill that routes tasks to the right OZ-POS skill. Use when starting a new task and unsure which specialized skill applies. Read this first when joining the project or picking up an unfamiliar area.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the oz-lua, oz-payment, oz-security and oz-reporting crate READMEs, crates/oz-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed) -->
-
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — oz-lua/oz-payment/oz-security/cloud-sync/oz-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
-
+<!-- Audit stamp: 2026-09-08 · DSH · status: PARTIAL — router only. Added the `codebase-memory` row and the standing graph-first-discovery note under the router table; verified `.agents/skills/codebase-memory/` exists and that `AGENTS.md` really does mandate graph-first discovery. Nothing else in this file was re-audited this pass; the 03-09-26 rev-2 stamp below still stands for the rest. · STAMPS MERGED INTO THIS ONE on 2026-09-08 (§13: replace, do not stack) — carrying forward the superseded audits’ evidence verbatim:  ·· [2026-09-03] · DSH · status: ACCURATE (rev 2 — pre-commit gate count corrected: the hook now runs six gates (cargo fmt, i18n lint, bundle parity, FTL dedupe, migration column-type lint, PG schema drift guard) plus LF normalization and a conditional Go gate for apps/license-server; verified against .githooks/pre-commit itself) · verified this pass: the oz-lua, oz-payment, oz-security and oz-reporting crate READMEs, crates/oz-core/src/db/reports.rs, platform/sync, apps/cloud-server, scripts/test-tdd.sh, .agents/skills/skill-drift-guard/scripts/detect.sh all exist · prior: 2026-08-31 docs-auditor rev (obsolete-defer section rewritten; EdcTerminal/mlua/per-domain api fixes; embedded-hal removed)  ·· [2026-08-31] · docs-auditor · status: ACCURATE (obsolete-defer + convention refs repaired) · FIXED 31-08: 'Skills to defer (no code yet)' was obsolete — oz-lua/oz-payment/oz-security/cloud-sync/oz-reporting all ship code now; rewritten to 'Areas with code but no dedicated skill yet' pointing at each crate README; nonexistent PaymentTerminal trait -> EdcTerminal (hal-drivers); rlua -> mlua; pos.ts -> per-domain ui/src/api/<feature>.ts (router + workflow); device list NFC -> real (customer display, weight scale, EDC); embedded-hal -> async-trait · verified accurate: exit-animation-pattern skill exists, scripts verify-bundle-parity.py + dedupe-ftl.py + lint-i18n.sh + check.sh exist, .githooks/pre-commit 4-gate description matches -->
 # OZ-POS Onboarding Guide
 
 OZ-POS is a Rust + Tauri v2 POS framework. The codebase is organized into clear layers, and each layer has a dedicated skill. This guide routes you to the right skill for the work you want to do.
@@ -17,14 +14,14 @@ OZ-POS is a Rust + Tauri v2 POS framework. The codebase is organized into clear 
 
 ## First-time setup
 
-Before you read the skill router below, enable the project's pre-commit hook so its gates fire on every commit. Without this setup, the hooks are silently bypassed at commit time. CI's `scripts/lint-i18n.sh` runs the bundle-parity check too, but only as an informational stderr surface — it never fails-closed in CI. **Pre-commit is currently the only fail-closed path for bundle-parity regressions.**
+Before you read the skill router below, enable the project's pre-commit hook so its gates fire on every commit. Without this setup, the hooks are silently bypassed at commit time. **CI does fail-closed on bundle parity** — `dev-ci.yml#static-gates` runs `verify-bundle-parity.py` as a plain failing step with no `continue-on-error`, across `features,components,frontend,contexts,hooks,platform` and *without* `--staged-only`, so CI's scan is broader than the hook's. An earlier revision of this line asserted the opposite ("only as an informational stderr surface... Pre-commit is currently the only fail-closed path"), which stopped being true when the `i18n` and `static-gates` jobs were restored in 0.0.37 and would have told an agent to trust the hook over CI exactly backwards. **The hook is still the only thing that catches a bad commit before it is made**, and `core.hooksPath` is local config that `scripts/setup-dev.ps1` sets but never versions — so a fresh clone that skips setup has no local gate and learns about it only from CI.
 
 ```bash
 git config core.hooksPath .githooks
 chmod +x .githooks/pre-commit
 ```
 
-Once enabled, verify with `git config --get core.hooksPath` (output should be the path you set; empty result means the commands above didn't take). `.githooks/pre-commit` then runs before every commit: **six core gates** — cargo fmt (re-stages formatted `.rs`) + LF line-ending normalization + i18n lint (`scripts/lint-i18n.sh`) + bundle parity: staged files only (`scripts/verify-bundle-parity.py --staged-only …`) + FTL dedupe dry-run (`scripts/dedupe-ftl.py --dry-run`) + migration column-type lint (`scripts/verify-migration-column-types.py --staged-only`, when migrations are staged) + PG schema drift guard (`scripts/generate-pg-migration.py --check`, when any migration file, the migration registry, or the generator script is staged) — **plus** a conditional Go gate (gofmt re-stage + `go vet ./...`) that fires only when `apps/license-server/*.go` files are staged.
+Once enabled, verify with `git config --get core.hooksPath` (output should be the path you set; empty result means the commands above didn't take). `.githooks/pre-commit` then runs **seven steps** before every commit (<1s): LF line-ending normalization + bundle parity: staged files only (`scripts/verify-bundle-parity.py --staged-only …`) + FTL dedupe dry-run (`scripts/dedupe-ftl.py --dry-run`, when `.ftl` staged) + migration column-type lint (`scripts/verify-migration-column-types.py --staged-only`, when migrations are staged) + PG schema drift guard (`scripts/generate-pg-migration.py --check`, when any migration file, the migration registry, or the generator script is staged) + a conditional Go gate (gofmt re-stage + `go vet ./...`, only when `apps/license-server/*.go` is staged) + **FTL orphan lint** (`scripts/verify-ftl-orphans.py --staged-only`, only when a `.ftl` is staged). cargo fmt was an eighth step until 2026-09-13, when it was removed — it ran `cargo fmt --all` workspace-wide, reformating other agents' in-flight `.rs` files under concurrent sessions; formatting is now check-only in `.githooks/pre-push`, CI, `check.sh`, and `release.sh`. Heavy UI typechecks (`npm run typecheck`) and Vitest i18n (`lint-i18n.sh`) are offloaded to `.githooks/pre-push` (`scripts/run-pre-push.py`) and CI. **Source of truth is the hook: `grep -n '^# ──' .githooks/pre-commit`.**
 
 For comprehensive local validation that mirrors the entire CI matrix (not just the pre-commit subset), run `bash scripts/check.sh`. For the rationale, see [`AGENTS.md`](../../AGENTS.md) Quick Setup.
 
@@ -62,6 +59,12 @@ What do you want to do?
 | Audit any project document (README, ARCHITECTURE.md, api-reference, spec, admin guide) against the current codebase — verify claims, classify drift, patch the doc, stamp it audited | **`docs-auditor`** |
 | Diagnose, reproduce, and repair failing tests or CI checks on an active pull request | **`pr-repair`** |
 | Create a new pull request with branch-prefixed title and comprehensive description derived from 50–100 commits | **`pr-create-pull-request`** |
+| Explore code structurally instead of grepping — find symbols, trace callers and callees, map a change's blast radius, audit dead code or hot paths, query the knowledge graph | **`codebase-memory`** |
+
+**Discovery is not a router row — it is a standing rule.** `AGENTS.md` requires the knowledge
+graph *before* reading files or grepping for symbols, so `codebase-memory` applies to every
+row above; read it first if you have not used the graph from `run_code` before. Its
+"Mandatory first two calls" section is the whole on-ramp.
 
 If your task touches more than one layer, read each relevant skill in the order shown above (rust-backend → tauri-ipc → ui-components). The skills are designed to be cross-referenced. After making your change, run `skill-drift-guard` to verify the skills still match the code.
 
@@ -163,4 +166,4 @@ If this passes locally, the PR is ready.
 
 ---
 
-> last audited 03-09-26 by DSH
+> last audited 08-09-26 by DSH

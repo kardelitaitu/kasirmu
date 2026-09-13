@@ -223,6 +223,7 @@ describe('TerminalManagementScreen', () => {
   it('shows the non-blocking limit banner at the tier\'s register cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ maxPosInstances: 2, terminalCount: 2 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });
@@ -237,6 +238,7 @@ describe('TerminalManagementScreen', () => {
   it('hides the terminal-limit banner under the cap (C2.2)', async () => {
     vi.mocked(useSubscription).mockReturnValue({
       caps: makeSubscriptionCaps({ maxPosInstances: 5, terminalCount: 2 }),
+      state: 'active',
       loading: false,
       refresh: vi.fn(),
     });

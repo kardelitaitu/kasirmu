@@ -26,7 +26,7 @@ Each section maps one design-language tab to concrete work in the Tauri apps. Ch
 
 Reference: design-language #colors / #spacing (radii, elevation, motion tokens).
 
-- [ ] **Primary:** confirm `--brand-primary` maps to the page's primary `#147EFB`-family; introduce `--primary`, `--primary-hover`, `--primary-active` ladder if absent.
+- [x] **Primary:** resolved 0.0.37 (round AH) — the semantic tokens are `--color-primary` (user-facing brand blue: **light `#147EFB`, dark `#1155CC`**; overridden at runtime by Settings → Appearance via `applyAccentPalette`; an empty persisted colour means "follow the theme") and `--color-accent` (the contrast-managed fill/text hover-active ladder, WCAG-gated per theme by `colorContrastCompliance.test.ts` — do NOT swap it with primary: a naive swap fails 4.5:1 on both themes).
 - [ ] **Semantic tokens:** introduce `--success`, `--warning`, `--danger`, `--info` as semantic *roles* (not raw brand hex) — components must reference roles only.
 - [ ] **Text tokens:** `--text`, `--text-muted`, `--text-on-color`; document the AA floor (muted is decorative-only, never essential info).
 - [ ] **Surfaces:** `--bg`, `--bg-surface`, `--ghost-bg`, `--border`, `--border-strong`; verify dark + light both defined.

@@ -26,6 +26,12 @@ export interface RotationInfo {
 export const getKeyRotationInfo = (): Promise<KeyRotationStatus> =>
   loggedInvoke<KeyRotationStatus>('get_key_rotation_info');
 
-/** Rotate (re-generate) the encryption key, archiving the previous one. */
-export const rotateEncryptionKey = (): Promise<RotationInfo> =>
-  loggedInvoke<RotationInfo>('rotate_encryption_key');
+/**
+ * Result of a rotation. There is deliberately NO wrapper for the old
+ * `rotate_encryption_key`: that command was ungated and is deleted, and its one
+ * and only front-end reference was the wrapper here. The type stays because it
+ * is the declared response shape of the surviving gated command
+ * `rotate_encryption_key_scoped`, which no screen calls yet — so key rotation has
+ * no front door in this build. A scoped wrapper is a decision for an owner, not
+ * a side effect of this commit.
+ */

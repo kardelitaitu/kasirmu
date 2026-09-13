@@ -237,6 +237,26 @@ describe('topology.ts IPC contract', () => {
     }));
   });
 
+  it('applyTopologyDiff sends changeNote only when the merchant wrote one', async () => {
+    // ADR #46 §6: the note is the commit-message equivalent, so it must reach
+    // the backend — and it must be ABSENT rather than `changeNote: undefined`
+    // when unwritten, which is what the exact-payload assertions above rely on.
+    mockInvoke.mockResolvedValue({ revision: 9 });
+    await applyTopologyDiff(
+      'tok', [], [], [], [], [], 'branch-a', 8, '00000000-0000-4000-8000-000000000004',
+      [], 'opened the second register',
+    );
+    expect(mockInvoke).toHaveBeenCalledWith('apply_topology_diff', expect.objectContaining({
+      changeNote: 'opened the second register',
+    }));
+
+    await applyTopologyDiff(
+      'tok', [], [], [], [], [], 'branch-a', 9, '00000000-0000-4000-8000-000000000005',
+    );
+    const payload = mockInvoke.mock.calls.at(-1)![1] as Record<string, unknown>;
+    expect('changeNote' in payload).toBe(false);
+  });
+
   it('applyTopologyDiff includes the active branch id and revision controls', async () => {
     mockInvoke.mockResolvedValue(undefined);
     await applyTopologyDiff('tok', [], [], [], [], [], 'branch-a', 3, '00000000-0000-4000-8000-000000000002');
@@ -507,7 +527,10 @@ import {
   createWorkspaceInstanceScoped,
   updateWorkspaceInstanceScoped,
   archiveWorkspaceInstanceScoped,
+  suspendSurplusWorkspaceInstancesScoped,
+  recoverWorkspaceInstancesScoped,
 } from '@/api/workspaces';
+import { impersonateUserScoped } from '@/api/staff';
 
 describe('workspaces.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
@@ -581,8 +604,79 @@ describe('workspaces.ts IPC contract', () => {
     });
   });
 
+  // §J B1. The command signatures take Option<String> store_id, and the api
+  // layer always sends the key (null when unspecified) rather than dropping it.
+  // Pinned both ways because "omitted" and "null" are different payloads and
+  // Tauri only accepts one of them as None — a call site that stops sending the
+  // key would still typecheck.
+  it('suspendSurplusWorkspaceInstancesScoped invokes "suspend_surplus_workspace_instances_scoped" with an explicit store', async () => {
+    mockInvoke.mockResolvedValue(3);
+    const n = await suspendSurplusWorkspaceInstancesScoped('tok', 'store-2');
+    expect(n).toBe(3);
+    expect(mockInvoke).toHaveBeenCalledWith('suspend_surplus_workspace_instances_scoped', {
+      sessionToken: 'tok',
+      storeId: 'store-2',
+    });
+  });
+
+  it('suspendSurplusWorkspaceInstancesScoped sends storeId: null when the store is omitted', async () => {
+    mockInvoke.mockResolvedValue(0);
+    const n = await suspendSurplusWorkspaceInstancesScoped('tok');
+    expect(n).toBe(0);
+    expect(mockInvoke).toHaveBeenCalledWith('suspend_surplus_workspace_instances_scoped', {
+      sessionToken: 'tok',
+      storeId: null,
+    });
+  });
+
+  it('recoverWorkspaceInstancesScoped invokes "recover_workspace_instances_scoped" and returns the restored count', async () => {
+    mockInvoke.mockResolvedValue(2);
+    const n = await recoverWorkspaceInstancesScoped('tok', 'store-1');
+    expect(n).toBe(2);
+    expect(mockInvoke).toHaveBeenCalledWith('recover_workspace_instances_scoped', {
+      sessionToken: 'tok',
+      storeId: 'store-1',
+    });
+  });
+
+  it('both remediation commands propagate backend errors instead of swallowing them', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('unknown store: nope'));
+    await expect(suspendSurplusWorkspaceInstancesScoped('tok', 'nope')).rejects.toThrow('unknown store');
+    mockInvoke.mockRejectedValueOnce(new Error('not registered'));
+    await expect(recoverWorkspaceInstancesScoped('tok')).rejects.toThrow('not registered');
+  });
+
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('conflict'));
     await expect(listWorkspacesScoped('tok')).rejects.toThrow('conflict');
+  });
+});
+
+describe('staff.ts IPC contract', () => {
+  beforeEach(() => mockInvoke.mockReset());
+
+  it('impersonateUserScoped invokes "impersonate_user_scoped" with sessionToken + targetUserId', async () => {
+    mockInvoke.mockResolvedValue({
+      session_token: 'tok-imp',
+      context: {
+        userId: 'u1',
+        roleId: 'role-owner',
+        storeId: 'store-1',
+        instanceId: 'inst-1',
+        typeKey: 'organization',
+        terminalId: 'term-1',
+      },
+    });
+    const res = await impersonateUserScoped('tok', 'u1');
+    expect(mockInvoke).toHaveBeenCalledWith('impersonate_user_scoped', {
+      sessionToken: 'tok',
+      targetUserId: 'u1',
+    });
+    expect(res.session_token).toBe('tok-imp');
+  });
+
+  it('propagates backend errors', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('denied'));
+    await expect(impersonateUserScoped('tok', 'u1')).rejects.toThrow('denied');
   });
 });

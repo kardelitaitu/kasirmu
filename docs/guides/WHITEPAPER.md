@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-25 · Hermes-Agent · status: ACCURATE (0 findings) · resolved F1: "Implemented in Rust using the embedded-hal traits" -> oz-hal uses #[async_trait] async traits (`BarcodeScanner`, `ReceiptPrinter`, `CashDrawer`) and a `DriverRegistry`; no universal `Device::connect/read/write` API · otherwise architectural prose holds (Rust + Tauri v2 + Lua via rlua + SQLite + optional PostgreSQL sync) · re-audited 2026-08-08 by docs-auditor: rlua -> mlua, crate list completed to 11 (oz-api/oz-notification/oz-plugin), Android minSdk 26, RocksDB/LMDB claim corrected to SQLite offline_queue outbox · 31-08: removed 'NFC' device claim (no NFC trait/driver exists); crate list 11 -> 13 (+oz-crypto, +oz-media); HAL async-trait list 3 -> 6 (+CustomerDisplay, WeightScale, EdcTerminal) -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE (0 findings, re-verified) · Replaces the 2026-07-25 Hermes-Agent stamp, whose one repair still stands: the platform stack is oz-hal's #[async_trait] device traits (BarcodeScanner, ReceiptPrinter, CashDrawer, CustomerDisplay, WeightScale, EdcTerminal) plus the optional ProtocolCodec, not embedded-hal. · Checked today rather than assumed, because this page is the one most likely to be read by someone who will never open the code: minSdk 26 is confirmed twice, in apps/tablet-client/gen/android/app/build.gradle.kts:35 and as tauri.conf.json:38 minSdkVersion, and API 26 is Android 8.0 as claimed; Tauri v2 (workspace dependency, v2 conventions throughout); SQLite local storage with a sync module; the five-layer stack description matches docs/guides/ARCHITECTURE.md. · Note the incidental evidence: gen/android IS committed (49 tracked files), which is what makes a claim like minSdk checkable at all - and the reason its iOS counterpart in docs/guides/ios-*.md is not is that gen/apple was never generated. Same document family, opposite verifiability. -->
 
 # Whitepaper: OZ-POS Software Framework
 
@@ -139,5 +139,5 @@ OZ-POS is more than a POS system — it is a **platform**. Like the wizard behin
 
 > *Small codebase. Limitless possibilities.*
 
-> last audited 31-08-26 by docs-auditor
+> last audited 08-09-26 by docs-auditor
 

@@ -28,6 +28,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 pub mod audit;
 /// Authentication and session management.
 pub mod auth;
+/// Feature-availability verdicts — *why* a feature is unavailable.
+pub mod availability;
 /// In-memory and Redis-backed caching.
 pub mod cache;
 /// Open cart and checkout session.
@@ -44,6 +46,8 @@ pub mod crypto;
 pub mod customer;
 /// SQLite data access layer — one module per domain aggregate.
 pub mod db;
+/// Downgrade assessment — which existing resources exceed a lower tier's quotas.
+pub mod downgrade;
 /// Domain error types.
 pub mod error;
 /// Domain event types for cross-crate communication.
@@ -51,9 +55,10 @@ pub mod events;
 // Note: ExchangeRateRow re-exported from `modules-currency`.
 // The old `pub mod exchange_rate` shim was removed in R2 Phase 4.
 // Import directly from `modules_currency::ExchangeRateRow`.
+/// Feature-gate registry and runtime guards.
+pub mod entitlements;
 /// Unified analytics export — JSON bundle of all report types.
 pub mod export;
-/// Feature-gate registry and runtime guards.
 pub mod features;
 /// Gift cards — issue, redeem, top-up, freeze, balance checks.
 pub mod gift_card;
@@ -63,12 +68,18 @@ pub mod inventory;
 pub mod inventory_transaction;
 /// Kitchen Display System order pipeline.
 pub mod kds;
+/// Organization/Tenant legal business identity.
+pub mod legal_entity;
 /// License server client — verify, activate, renew subscriptions (ADR #9).
 pub mod license_verification;
+/// Location profile settings.
+pub mod location_profile;
 /// Workspace-to-location resolution — which inventory location should a POS deduct from? (ADR-19 §4).
 pub mod location_resolver;
 /// Loyalty program — points, tiers, and redemption.
 pub mod loyalty;
+/// Memo lifecycle — status/delivery state machines, duration, and stop rule.
+pub mod memo;
 /// SQL migration definitions embedded at compile time.
 pub mod migrations;
 /// Money and currency primitives (re-exported from `foundation`).
@@ -77,6 +88,8 @@ pub mod money;
 pub mod offline;
 /// OZ-POS package metadata reader (`.ozpkg` bundles).
 pub mod ozpkg;
+/// Accounts Payable (Hutang) domain model — status machine and row shapes.
+pub mod payable;
 /// Payment processing and split-tender allocation.
 pub mod payment;
 /// Product popularity scoring (ADR #37) — pure decayed/smoothed blend.
@@ -99,10 +112,17 @@ pub mod rate_limiter;
 pub mod recipe;
 /// Refund and return processing.
 pub mod refund;
+/// Regional configuration — the market facts a location trades under
+/// (locale / timezone / currency) and the Location → Legal Entity →
+/// Organization → built-in chain that resolves them.
+pub mod regional;
 /// Completed sale records and sale-line items.
 pub mod sale;
 /// Sale-deduction result types — CompleteSaleResult vs PartialStockResult (ADR-19 §2).
 pub mod sale_deduction;
+/// Service health contracts — shared state vocabulary for license, sync,
+/// payment and device connectivity, and the license-server classifier.
+pub mod service_health;
 /// Active user session state.
 pub mod session;
 /// Persistent key-value settings store.
@@ -115,8 +135,6 @@ pub mod sku;
 pub mod stock_count;
 /// Inter-store stock transfers.
 pub mod stock_transfer;
-/// Store/branch profile settings.
-pub mod store_profile;
 /// Tenant subscription and license state.
 pub mod subscription;
 /// Supplier directory.
@@ -135,6 +153,7 @@ pub mod terminal;
 pub mod terminal_override;
 /// Terminal profile configuration.
 pub mod terminal_profile;
+pub mod timezone;
 /// Semantic validation for the topology graph (ADR #34 contract gates).
 pub mod topology;
 /// Staff user accounts and role-based access control.
@@ -179,6 +198,7 @@ pub use db::reports::{
     CategoryBreakdownRow, DailyRevenueRow, HourlyHeatmapRow, LowStockAlert, MonthlyRevenueRow,
     StockAlertEvent, TopProductRow, WeeklyRevenueRow,
 };
+pub use db::tax::TaxSaleScope;
 pub use db::{ProductWithDetails, RemoteSyncFailure, Store};
 pub use error::{CoreError, CoreErrorKind};
 pub use features::{
@@ -203,6 +223,12 @@ pub use kds::{
     CreateKdsLineItemInput, CreateKdsOrderInput, KdsLineItem, KdsModifier, KdsOrder, KdsStatus,
     RegisterKdsDeviceInput, UpdateKdsOrderItemsInput,
 };
+pub use legal_entity::{LegalEntity, UpdateLegalEntity};
+pub use location_profile::LocationProfile;
+
+/// Deprecated compatibility alias for the pre-Phase 1 site-unit name.
+#[deprecated(note = "use LocationProfile; Store is now Location")]
+pub type StoreProfile = LocationProfile;
 pub use location_resolver::{
     get_default_location_id, resolve_all_locations, resolve_location_chain_for_sku,
     resolve_primary_location,
@@ -222,6 +248,7 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLine
 pub use rate_limiter::LoginRateLimiter;
 pub use recipe::RecipeItem;
 pub use refund::{Refund, RefundLine};
+pub use regional::{ConfigScope, RegionalConfig, RegionalLayer, RegionalValue};
 pub use sale::{Sale, SaleLine};
 pub use sale_deduction::{
     CompleteSaleResult, LocationAllocation, LocationStock, PartialStockResult, ResolvedShortfall,
@@ -232,7 +259,6 @@ pub use shift::Shift;
 pub use sku::{LineId, Sku};
 pub use stock_count::{CountType, StockAdjustment, StockCount, StockCountLine, StockCountStatus};
 pub use stock_transfer::{StockTransfer, StockTransferLine};
-pub use store_profile::StoreProfile;
 pub use subscription::{InstanceStatus, SubscriptionTier, TenantSubscription};
 pub use supplier::Supplier;
 pub use sync_client::{

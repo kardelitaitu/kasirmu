@@ -61,9 +61,46 @@ async fn push_retry_after_auth_refresh(
             Some("push rejected (401) and refreshed key is not usable".into()),
         );
     };
+    // Enable conflict-detection stamping when this terminal has an identity.
+    // The counter is seeded from the persisted clock and written back after
+    // the push, so a restart resumes where it left off instead of rewinding.
+    let seeded = {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            let terminal = oz_core::settings::Settings::get_sync_terminal_id(&conn)
+                .ok()
+                .flatten();
+            let counter = oz_core::Store::new(&conn)
+                .get_setting(crate::crdt::CLOCK_KEY)
+                .ok()
+                .flatten()
+                .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
+                .unwrap_or(0);
+            (terminal, counter)
+        })
+        .await
+        .unwrap_or((None, 0))
+    };
+    let transport = match seeded.0 {
+        Some(terminal_id) => transport.with_vector_stamping(&terminal_id, seeded.1),
+        None => transport,
+    };
+
     match transport.push_items(&pending).await {
         Ok(results) => {
             let pushed = results.len();
+            if let Some(counter) = transport.last_stamped_counter() {
+                let db_clone = db.clone();
+                let value = counter.to_string();
+                // Persisting is best-effort: a failed write costs one restart's
+                // worth of detection, never the pushed data.
+                let _ = tokio::task::spawn_blocking(move || {
+                    let conn = db_clone.blocking_lock();
+                    oz_core::Store::new(&conn).set_setting(crate::crdt::CLOCK_KEY, &value)
+                })
+                .await;
+            }
             let apply_err = apply_push_results(db, pending, results).await;
             (pushed, apply_err)
         }
@@ -198,9 +235,49 @@ pub(super) async fn run_tick(
                 }
             };
             if let Some(transport) = transport {
+                // Enable conflict-detection stamping when this terminal has an
+                // identity. The counter is seeded from the persisted clock and
+                // written back after the push: a counter that rewinds on
+                // restart makes the server classify every push as stale, and
+                // detection would quietly stop for this terminal.
+                let seeded = {
+                    let db_clone = db.clone();
+                    tokio::task::spawn_blocking(move || {
+                        let conn = db_clone.blocking_lock();
+                        let terminal = oz_core::settings::Settings::get_sync_terminal_id(&conn)
+                            .ok()
+                            .flatten();
+                        let counter = oz_core::Store::new(&conn)
+                            .get_setting(crate::crdt::CLOCK_KEY)
+                            .ok()
+                            .flatten()
+                            .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
+                            .unwrap_or(0);
+                        (terminal, counter)
+                    })
+                    .await
+                    .unwrap_or((None, 0))
+                };
+                let transport = match seeded.0 {
+                    Some(terminal_id) => transport.with_vector_stamping(&terminal_id, seeded.1),
+                    None => transport,
+                };
+
                 match transport.push_items(&pending).await {
                     Ok(results) => {
                         pushed = results.len();
+                        if let Some(counter) = transport.last_stamped_counter() {
+                            let db_clone = db.clone();
+                            let value = counter.to_string();
+                            // Best-effort: a failed write costs one restart's
+                            // worth of detection, never the pushed data.
+                            let _ = tokio::task::spawn_blocking(move || {
+                                let conn = db_clone.blocking_lock();
+                                oz_core::Store::new(&conn)
+                                    .set_setting(crate::crdt::CLOCK_KEY, &value)
+                            })
+                            .await;
+                        }
                         // Phase 3: Apply push results to DB (blocking).
                         // SYNC-02: carry the FULL local items (not just ids)
                         // so a conflict is resolved by the shared ADR #21

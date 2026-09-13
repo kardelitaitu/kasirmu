@@ -18,6 +18,26 @@
 /website/.astro/
 .wrangler/
 lighthouse*
+# Ad-hoc watch-mode Vitest log written at the repo root by agents running the
+# UI suite. No repo tooling produces or reads it, it reappears on every watch
+# run, and it reached 1.3 MB in one sitting — close enough to a broad `git add`
+# to be committed by accident.
+.vitest_monitor.txt
+# Commit-message drafts agents write to the repo root before `git commit -F`
+# (observed: .cmsg-dupid-2.txt, .cmsg-memoread.txt). Transient by nature, but
+# while they exist they sit untracked in `git status`, where every concurrent
+# agent has to stop and work out whether someone else owns the file — on a
+# branch where several agents commit in parallel, clean status output is a
+# coordination primitive, not just tidiness.
+.cmsg-*
+# Redirected `cargo check`/`cargo test` output agents write to the repo root to
+# read a long build log back in chunks (observed: .cargo_check.txt,
+# .cargo_check_core.txt, .cargo_test.txt — three variants, all regenerated
+# within minutes during the 0.0.37 store→location rename). Same reason as the
+# two entries above: untracked files in the root make `git status` ambiguous for
+# every concurrent agent, and a broad `git add` would commit a build log.
+# Ignored rather than deleted, because the producing agent is reading them.
+.cargo_*.txt
 
 # Cargo workspaces have a single Cargo.lock at the workspace root, not
 # one per crate. OZ-POS ships binaries (oz-cli, and the Tauri app in
@@ -107,6 +127,7 @@ nul
 # skill-drift-report.md was tracked at the repo root as a baseline until
 # f3d9cca6 deleted it; detect.sh --report still writes it there, so it now
 # reappears as an untracked file after any local report run.
+/skill-drift-report.md
 
 # Legacy TypeDoc HTML drop. TypeDoc now emits into docs/src/api/ts/ (covered by
 # /docs/src/api/ below), so nothing writes here anymore — the rule is kept as a
@@ -185,3 +206,68 @@ __pycache__/
 .tox/
 .coverage
 htmlcov/
+
+# ── Vendored OSS references (research only, NOT build deps) ──
+# Third-party source cloned locally to study API shapes. Never imported by
+# ui/ or any Rust crate; intentionally untracked so it is never shipped.
+/references/midtrans-nodejs-client/
+/references/midtrans-php/
+ui-coder-19-journal.md
+ui-coder-20-journal.md
+ui-coder-21-journal.md
+ui-coder-22-journal.md
+ui-coder-23-journal.md
+ui-coder-24-journal.md
+.tmp-28-a.txt
+.tmp-28-b.txt
+.tmp-28-call.txt
+.tmp-28-cluster.txt
+ui-coder-25-journal.md
+ui-coder-26-journal.md
+ui-coder-27-journal.md
+coder-5-journal.md
+orchestrator-journal.md
+ui-coder-28-journal.md
+ui-coder-29-journal.md
+ui-coder-30-journal.md
+ui-coder-31-journal.md
+ui-coder-32-journal.md
+ui-coder-33-journal.md
+ui-coder-34-journal.md
+ui-coder-35-journal.md
+ui-coder-36-journal.md
+ui-coder-37-journal.md
+ui-coder-38-journal.md
+ui-coder-40-journal.md
+ui-coder-42-journal.md
+ui-coder-43-journal.md
+ui-coder-44-journal.md
+ui-coder-45-journal.md
+ui-coder-46-journal.md
+ui-coder-48-journal.md
+ui-coder-49-journal.md
+ui-coder-50-journal.md
+ui-coder-51-journal.md
+manager-journal.md
+.agents/manager-journal*
+.workbuddy-ai
+.vscode
+# Transient per-session agent scratch under .agents (inventory 2026-09-13).
+# Hidden from status, NOT safe to delete: every salvage/blobs/* file and
+# salvage/registration_gate_tests.rs are the only surviving copies of git
+# objects unreachable from any ref (git rev-list --objects --all misses them).
+/.agents/salvage/
+/.agents/devmock-*
+/.agents/tauri-api.pre-*.ts
+/.agents/gate-cont*.sh
+/.agents/gate-continuation.sh
+/.agents/gate-wave-12.sh
+/.agents/gate-gap.raw.txt
+/.agents/phase21-commitmsg.txt
+/.agents/registration-gate-harness-state.md
+# Owner sign-off 2026-09-13: kept on disk, out of status. Both are provably
+# redundant (..rev_ae_bridge_commands.rs is byte-identical to
+# crates/oz-bridge/src/topology/commands.rs; orphan-mod-rs.diff's shims
+# already live in both commands/mod.rs files) but deletion stays the owner's call.
+/..rev_ae_bridge_commands.rs
+/.agents/orphan-mod-rs.diff

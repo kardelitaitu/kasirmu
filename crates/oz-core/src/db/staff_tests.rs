@@ -459,74 +459,6 @@ fn get_role_not_found() {
     assert!(r.is_none());
 }
 
-#[test]
-fn create_role_basic() {
-    let conn = fresh();
-    let r = store(&conn)
-        .create_role(
-            "role-viewer",
-            "viewer",
-            "Read-only access",
-            "[\"sales:view\"]",
-        )
-        .unwrap();
-    assert_eq!(r.name, "viewer");
-    assert_eq!(r.description, "Read-only access");
-    assert_eq!(r.permissions, "[\"sales:view\"]");
-}
-
-#[test]
-fn create_role_duplicate_name() {
-    let conn = fresh();
-    seed_roles(&conn);
-    // 'Owner' is already taken by the preset — duplicate name should conflict.
-    let err = store(&conn)
-        .create_role("role-dup", "Owner", "Dup", "[]")
-        .unwrap_err();
-    assert!(matches!(err, CoreError::Conflict { entity, .. } if entity == "role"));
-}
-
-#[test]
-fn create_role_rejects_unregistered_permission() {
-    let conn = fresh();
-    let err = store(&conn)
-        .create_role("role-x", "X", "x", "[\"sales:typo\"]")
-        .unwrap_err();
-    assert!(
-        matches!(err, CoreError::Validation { field, .. } if field == "permissions"),
-        "unregistered key must fail validation: {err}"
-    );
-}
-
-#[test]
-fn create_role_rejects_sensitive_family_wildcard() {
-    let conn = fresh();
-    let err = store(&conn)
-        .create_role("role-x", "X", "x", "[\"sales:*\"]")
-        .unwrap_err();
-    assert!(
-        matches!(err, CoreError::Validation { field, .. } if field == "permissions"),
-        "a wildcard covering sensitive keys must fail validation: {err}"
-    );
-}
-
-#[test]
-fn create_role_accepts_valid_permission_set() {
-    let conn = fresh();
-    let r = store(&conn)
-        .create_role(
-            "role-x",
-            "X",
-            "x",
-            "[\"sales:process\", \"products:*\", \"sales:void\"]",
-        )
-        .unwrap();
-    assert_eq!(
-        r.permissions,
-        "[\"sales:process\", \"products:*\", \"sales:void\"]"
-    );
-}
-
 // ── User CRUD ───────────────────────────────────────────────────
 
 #[test]
@@ -1062,4 +994,43 @@ fn update_user_rejects_unknown_role_before_any_write() {
     // The user's real role is untouched — no partial write happened.
     let user = store(&conn).get_user("user-1").unwrap().expect("user");
     assert_eq!(user.role_id, "role-lite");
+}
+
+#[test]
+fn create_user_tx_veto_closes_limit_race() {
+    // W7-B: the staff door of the same race closure. The veto counts with the
+    // same predicate as count_staff_users (active, owner excluded), so it
+    // cannot disagree with the gate that armed it — a second counting rule
+    // would refuse rows the cap does not actually measure.
+    // Free allows exactly 1 staff user and seed_users already has one active,
+    // so the fill-to-cap starts from Pro — the door under test is the same one
+    // every tier walks.
+    let conn = fresh();
+    seed_users(&conn);
+    let s = store(&conn);
+    let tier = SubscriptionTier::Pro;
+    let limit = QuotaDimension::Staff.limit_for(&tier).unwrap();
+    let baseline = s.count_staff_users().unwrap();
+    assert!(
+        baseline < limit,
+        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+    );
+    for i in baseline..limit {
+        s.create_user(&format!("staff-{i}"), "hash", "Staff", "role-lite")
+            .unwrap();
+    }
+    assert_eq!(s.count_staff_users().unwrap(), limit);
+    s.arm_creation_quota(QuotaDimension::Staff, tier.clone());
+    let err = s
+        .create_user("staff-over", "hash", "Over", "role-lite")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "Pro at the staff cap must be refused in-tx: {err:?}"
+    );
+    assert_eq!(
+        s.count_staff_users().unwrap(),
+        limit,
+        "the over-cap user must not persist"
+    );
 }

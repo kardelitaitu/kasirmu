@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (counts refreshed) · F1: test counts 228 files/3476 tests -> 400 files/~6700 tests · F2: api/ 34 -> 40 .ts files · F3: locales 48 -> 50 .ftl files (en + id variants) · verified accurate: ui/src/locales per-feature bundles; ui/src/frontend/themes/ (reset.css/tokens.css/components.css/responsive.css); Vite ^6.0.0 in ui/package.json; React 18 + @fluent/react + @tauri-apps/api 2 + Vitest + eslint-plugin-jsx-a11y; api/pos.ts sole invoke() (AGENTS.md rule); formatMoney in types/domain.ts; no hardcoded colors rule -->
+<!-- Audit stamp: 2026-08-29 · docs-auditor · status: ACCURATE (counts refreshed) · F1: test counts 228 files/3476 tests -> 400 files/~6700 tests · F2: api/ 34 -> 40 .ts files · F3: locales 48 -> 50 .ftl files (en + id variants) · verified accurate: ui/src/locales per-feature bundles; ui/src/frontend/themes/ (reset.css/tokens.css/components.css/responsive.css); Vite ^6.0.0 in ui/package.json; React 18 + @fluent/react + @tauri-apps/api 2 + Vitest + eslint-plugin-jsx-a11y; api/pos.ts sole invoke() (AGENTS.md rule); formatMoney in types/domain.ts; no hardcoded colors rule  RE-AUDITED 2026-09-09 by DSH (docs-auditor): the file-count claim was stale. `npm run test` was described twice as 400 files / ~6700 tests; re-counted as 532 test/spec files under ui/src (dedup glob; vitest at ui/vite.config.ts:107 excludes only e2e/** and sets no narrower include, so the file layout IS the test universe and the comparison is apples-to-apples). The ~6700 tests / ~14s figures were NOT touched - they are a runtime measurement nothing here re-derives, so they are relabelled a dated observation of one run rather than deleted. Added what the page never said: two shells, dev:tablet/build:tablet on 1422 (ui/vite.tablet.config.ts) vs desktop 1420, both confirmed against devUrl in the two tauri.conf.json files. All ten npm scripts the page names exist and do what its one-liners say (build = tsc -b && vite build, check:all = scripts/check-ui.mjs, e2e = scripts/run-e2e.mjs, typecheck = tsc --noEmit). Stamp extended, not stacked. -->
 
 # `ui/` — OZ-POS Frontend
 
@@ -22,7 +22,7 @@ npm run dev            # vite dev server on http://localhost:1420
 npm run check:all      # chained validation: lint → typecheck → test → i18n → E2E*
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint .
-npm run test           # vitest run (400 files, ~6700 tests)
+npm run test           # vitest run (532 test files under ui/src)
 npm run build          # tsc -b && vite build
 npm run e2e            # Full E2E suite: Docker → Vite → Playwright → cleanup
 npm run e2e:headed     # E2E with browser visible
@@ -53,6 +53,13 @@ Only approve packages you trust and understand. The approval is written to `pack
 CI skips postinstall scripts entirely via `npm ci --ignore-scripts`, so these local approvals only affect development environments.
 
 `npm run dev` is what `cargo tauri dev` (from `apps/desktop-client/`) launches.
+
+> The tablet shell has its own pair: `npm run dev:tablet` serves **1422** and
+> `npm run build:tablet` builds it (`ui/vite.tablet.config.ts`); desktop stays on 1420.
+> Both match the `devUrl` keys in `apps/desktop-client/tauri.conf.json:8` and
+> `apps/tablet-client/tauri.conf.json:8`. This page named only the desktop half until
+> 09-09-26, which is how a two-surface repo reads as a one-surface repo to whoever
+> follows it.
 
 ## Structure
 
@@ -130,7 +137,11 @@ ui/src/
 - Each feature screen has a `__tests__/<Screen>.test.tsx` file
 - IPC is mocked via `vi.hoisted()` → `vi.mock('@tauri-apps/api/core')`
 - Fluent strings are provided inline via `FluentBundle` + `FluentResource`
-- Run: `npm run test` (400 test files, ~6700 tests, ~14s)
+- Run: `npm run test` (532 test files under `ui/src`; vitest excludes only `e2e/**`, so
+  re-count with `ls ui/src/**/*.test.* ui/src/**/*.spec.*`). The earlier "~6700 tests,
+  ~14s" figures are a runtime measurement of one run rather than a file count - kept as a
+  dated observation, because nothing in this repo re-derives them and a number nobody can
+  reproduce is a claim, not a measurement:
 
 ## Conventions
 
@@ -143,4 +154,4 @@ ui/src/
 | Every screen has a test file | `__tests__/` audit |
 | Money displayed via `formatMoney()` | Import from `types/domain.ts` |
 
-> last audited 29-08-26 by docs-auditor
+> last audited 09-09-26 by docs-auditor

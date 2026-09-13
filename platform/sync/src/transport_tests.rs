@@ -178,6 +178,78 @@ fn push_outcome_all_variants_serde_roundtrip() {
     }
 }
 
+/// Wire-shape pin for the push-outcome contract (spec 0047 §3, guard 5).
+///
+/// PushOutcome is an INTERNALLY tagged enum —
+/// `#[serde(tag = "outcome", rename_all = "snake_case")]` — so every variant
+/// travels as a JSON object carrying the discriminator, and the Conflict
+/// newtype payload (a whole OfflineQueueItem) is serde-flattened next to that
+/// tag instead of nested under a "Conflict" key.
+///
+/// This is the shape the published OpenAPI document must describe. The
+/// cloud-server side asserts the document against serde_json::to_value of
+/// these same variants
+/// (openapi_tests.rs::push_outcome_documented_schema_matches_serde_wire_shape),
+/// so a tag change here fails a test on both sides of the wire instead of
+/// quietly rotting the contract. The println! lines surface under --nocapture
+/// and print the wire truth for a human auditing the document.
+#[test]
+fn push_outcome_serialises_as_internally_tagged_flat_object() {
+    let accepted = serde_json::to_value(PushOutcome::Accepted).unwrap();
+    assert_eq!(
+        accepted,
+        serde_json::json!({ "outcome": "accepted" }),
+        "Accepted must be a flat object carrying the tag and nothing else"
+    );
+
+    let rejected = serde_json::to_value(PushOutcome::Rejected {
+        reason: "duplicate id: 0190".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        rejected,
+        serde_json::json!({ "outcome": "rejected", "reason": "duplicate id: 0190" }),
+        "Rejected must carry the tag plus a flat 'reason' string"
+    );
+
+    let item = OfflineQueueItem::new("void_sale", "{}");
+    let conflict = serde_json::to_value(PushOutcome::Conflict(item.clone())).unwrap();
+    let conflict_obj = conflict
+        .as_object()
+        .expect("Conflict must serialise as an object, never a bare string or a wrapped value");
+    assert_eq!(conflict_obj["outcome"], "conflict");
+    assert!(
+        !conflict_obj.contains_key("Conflict"),
+        "an externally tagged Conflict would nest the payload under a 'Conflict' key"
+    );
+
+    // Every field of the server item sits beside the tag, unchanged.
+    let item_obj = serde_json::to_value(&item).unwrap();
+    let item_obj = item_obj.as_object().unwrap();
+    for (key, value) in item_obj {
+        assert_eq!(
+            conflict_obj.get(key),
+            Some(value),
+            "Conflict payload field `{key}` must be flattened next to the tag"
+        );
+    }
+    let mut added: Vec<&str> = conflict_obj
+        .keys()
+        .map(String::as_str)
+        .filter(|k| !item_obj.contains_key(*k))
+        .collect();
+    added.sort_unstable();
+    assert_eq!(
+        added,
+        vec!["outcome"],
+        "the tag is the only key a Conflict adds to the item payload"
+    );
+
+    println!("push-outcome wire truth  accepted = {accepted}");
+    println!("push-outcome wire truth  conflict  = {conflict}");
+    println!("push-outcome wire truth  rejected  = {rejected}");
+}
+
 // ── PushResponse tests ───────────────────────────────────────────
 
 #[test]
@@ -392,6 +464,11 @@ fn typed_response() -> SyncSnapshotResponse {
             is_inclusive: false,
             created_at: None,
             updated_at: None,
+            legal_entity_id: None,
+            location_id: None,
+            effective_from: None,
+            effective_to: None,
+            rounding_mode: String::new(),
         }],
         users: vec![SnapshotUser {
             id: "u-1".into(),
@@ -482,7 +559,7 @@ fn classify_transport_error_timeout() {
             .await
             .unwrap_err()
     });
-    let msg = super::classify_transport_error(&err, "http://example.com");
+    let msg = super::classify_transport_error(&err, "http://example.com", 30);
     assert!(
         msg.contains("timed out") || msg.contains("timeout"),
         "expected timeout message, got: {msg}"
@@ -507,7 +584,7 @@ fn classify_transport_error_connection_refused() {
             .await
             .unwrap_err()
     });
-    let msg = super::classify_transport_error(&err, "http://127.0.0.1:1");
+    let msg = super::classify_transport_error(&err, "http://127.0.0.1:1", 30);
     assert!(
         msg.contains("cloud server not running")
             || msg.contains("cannot connect")
@@ -531,7 +608,7 @@ fn classify_transport_error_includes_url() {
             .unwrap_err()
     });
     let url = "http://192.0.2.1:9999";
-    let msg = super::classify_transport_error(&err, url);
+    let msg = super::classify_transport_error(&err, url, 30);
     // The error message should either contain the URL or describe the issue.
     assert!(!msg.is_empty(), "error message should not be empty");
     assert!(
@@ -558,7 +635,7 @@ fn classify_transport_error_non_empty() {
             .await
             .unwrap_err()
     });
-    let msg = super::classify_transport_error(&err, "http://test.example.com");
+    let msg = super::classify_transport_error(&err, "http://test.example.com", 30);
     assert!(!msg.is_empty(), "classification should produce a message");
 }
 
@@ -771,5 +848,82 @@ async fn health_check_fails_when_server_returns_error() {
     assert!(
         err.contains("500") || err.contains("Internal Server Error"),
         "error should mention status code, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn health_check_timeout_reports_its_own_deadline_not_the_sync_one() {
+    use axum::{Router, routing::get};
+
+    // Regression pin (2026-09-13): the health probe runs on a 5-second
+    // client, but its timeout message used to hardcode the sync client's
+    // "30s" — a 6x misreport that sends whoever reads the log tuning the
+    // wrong knob. A server that accepts but never answers forces a
+    // genuine timeout (no connect-refused race), so the classified
+    // message can be asserted directly.
+    async fn hang() -> &'static str {
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        "late"
+    }
+
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = Router::new().route("/api/health", get(hang));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let transport = SyncTransport::new(&format!("http://localhost:{port}"), None);
+    let err = transport
+        .health_check()
+        .await
+        .expect_err("a hanging server must time the health check out");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("after 5s"),
+        "health-check timeouts must report the 5s deadline that actually applied, got: {msg}"
+    );
+    assert!(
+        !msg.contains("30s"),
+        "the health probe's message must not claim the sync client's 30s deadline, got: {msg}"
+    );
+}
+
+// ── SnapshotTaxRate wire shape (tax scoping) ─────────────────────
+
+#[test]
+fn snapshot_tax_rate_accepts_a_payload_without_the_scope_keys() {
+    // The back-compat ruling, pinned at the wire: a server predating
+    // 20260921 sends seven keys, not eleven. That must deserialize — to the
+    // tenant-global shape — rather than fail the whole snapshot.
+    let legacy = r#"{"id":"t-1","name":"Tax One","rate_bps":1000}"#;
+    let rate: SnapshotTaxRate = serde_json::from_str(legacy).unwrap();
+    assert_eq!(rate.id, "t-1");
+    assert_eq!(rate.rate_bps, 1000);
+    assert_eq!(rate.legal_entity_id, None);
+    assert_eq!(rate.location_id, None);
+    assert_eq!(rate.effective_from, None);
+    assert_eq!(rate.effective_to, None);
+}
+
+#[test]
+fn snapshot_tax_rate_round_trips_scope_and_window_verbatim() {
+    // Values are carried, not re-derived: the exclusive-end rule lives in
+    // oz_core::db::tax and must not be restated per transport.
+    let json = r#"{"id":"t-2","name":"Jakarta","rate_bps":1100,
+                   "legal_entity_id":null,"location_id":"loc-jkt",
+                   "effective_from":"2026-01-01","effective_to":"2027-01-01"}"#;
+    let rate: SnapshotTaxRate = serde_json::from_str(json).unwrap();
+    assert_eq!(rate.legal_entity_id, None, "explicit null stays None");
+    assert_eq!(rate.location_id.as_deref(), Some("loc-jkt"));
+    assert_eq!(rate.effective_from.as_deref(), Some("2026-01-01"));
+    assert_eq!(rate.effective_to.as_deref(), Some("2027-01-01"));
+
+    let back = serde_json::to_value(&rate).unwrap();
+    assert_eq!(back["location_id"], "loc-jkt");
+    assert_eq!(back["effective_to"], "2027-01-01");
+    assert_eq!(
+        back["legal_entity_id"],
+        serde_json::Value::Null,
+        "an unscoped-by-entity row serializes as null, which the branch reads back as None"
     );
 }

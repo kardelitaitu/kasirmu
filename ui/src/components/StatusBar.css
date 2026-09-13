@@ -60,9 +60,9 @@
   100% { opacity: 0.3; }
 }
 
-/* ── Good (green): latency < 1 s ──────────────────────────────── */
+/* ── Good: latency < 1 s (primary blue) ───────────────────────── */
 .statusbar-item.statusbar-tone--good {
-  color: var(--color-success);
+  color: var(--color-primary);
 }
 
 /* ── Warn (yellow): latency 1–3 s ─────────────────────────────── */

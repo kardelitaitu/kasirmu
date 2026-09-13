@@ -704,7 +704,7 @@ async fn pg_integration_rls_fails_closed() {
 /// Two proofs, both on a dedicated connection (never the shared pool):
 ///
 /// 1. **The shipped script executes.** Run verbatim (via `include_str!`)
-///    inside a transaction, twice (idempotency), and assert all 15
+///    inside a transaction, twice (idempotency), and assert all 19
 ///    tenant-scoped tables are FORCEd; the rollback leaves the shared
 ///    schema untouched.
 /// 2. **FORCE blocks the table owner.** A dedicated NON-superuser role
@@ -742,9 +742,10 @@ async fn pg_integration_rls_force_blocks_owner() {
                 FOR r IN
                     SELECT relname FROM pg_class
                     WHERE relkind = 'r' AND relforcerowsecurity
-                      AND relname IN ('bundle_items','offline_queue','product_activity',
+                      AND relname IN ('bundle_items','memo_locations','memo_recipients',
+                                      'memos','offline_queue','product_activity',
                                       'product_bundles','product_taxes','product_variants',
-                                      'products','sales','sent_reports','stripe_customers',
+                                      'products','refunds','sales','sent_reports','stripe_customers',
                                       'sync_terminals','tax_rates','tenant_plans',
                                       'tenant_subscription','users')
                 LOOP
@@ -783,14 +784,15 @@ async fn pg_integration_rls_force_blocks_owner() {
         .batch_execute(CUTOVER)
         .await
         .expect("cutover script must be idempotent");
-    // Count FORCEd tables among the 15 canonical tenant-scoped tables
+    // Count FORCEd tables among the 19 canonical tenant-scoped tables
     // only (a stray probe table must not skew the proof).
     let forced: i64 = client
         .query_one(
             "SELECT count(*) FROM pg_class c
-             JOIN unnest(ARRAY['bundle_items','offline_queue','product_activity',
+             JOIN unnest(ARRAY['bundle_items','memo_locations','memo_recipients',
+                               'memos','offline_queue','product_activity',
                                'product_bundles','product_taxes','product_variants',
-                               'products','sales','sent_reports','stripe_customers',
+                               'products','refunds','sales','sent_reports','stripe_customers',
                                'sync_terminals','tax_rates','tenant_plans',
                                'tenant_subscription','users']) AS t(name)
                ON c.relname = t.name
@@ -801,7 +803,7 @@ async fn pg_integration_rls_force_blocks_owner() {
         .expect("count should succeed")
         .get(0);
     assert_eq!(
-        forced, 15,
+        forced, 19,
         "the cutover must FORCE every tenant-scoped table"
     );
     client
@@ -811,9 +813,10 @@ async fn pg_integration_rls_force_blocks_owner() {
     let forced: i64 = client
         .query_one(
             "SELECT count(*) FROM pg_class c
-             JOIN unnest(ARRAY['bundle_items','offline_queue','product_activity',
+             JOIN unnest(ARRAY['bundle_items','memo_locations','memo_recipients',
+                               'memos','offline_queue','product_activity',
                                'product_bundles','product_taxes','product_variants',
-                               'products','sales','sent_reports','stripe_customers',
+                               'products','refunds','sales','sent_reports','stripe_customers',
                                'sync_terminals','tax_rates','tenant_plans',
                                'tenant_subscription','users']) AS t(name)
                ON c.relname = t.name

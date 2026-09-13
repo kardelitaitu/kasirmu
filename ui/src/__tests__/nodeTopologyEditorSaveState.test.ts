@@ -5,7 +5,7 @@ import {
   useTopologyEditorSaveLifecycle,
   initialTopologySaveState,
   type TopologySaveState,
-} from '@/features/stores/nodeTopologyEditorSaveState';
+} from '@/features/locations/nodeTopologyEditorSaveState';
 
 describe('topologySaveReducer', () => {
   it('starts in the loading phase with revision 0', () => {

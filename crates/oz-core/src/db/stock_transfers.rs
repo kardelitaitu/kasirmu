@@ -424,6 +424,14 @@ impl Store<'_> {
             });
         }
 
+        // Source location for the per-location deduction (migration 081 FK
+        // column; create_transfer resolves None to the canonical default).
+        let source_location_id: String = tx.query_row(
+            "SELECT source_location_id FROM stock_transfers WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+
         let mut lines_stmt = tx.prepare(
             "SELECT id, transfer_id, sku, product_name, qty, received_qty
              FROM stock_transfer_lines WHERE transfer_id = ?1 ORDER BY id",
@@ -461,33 +469,42 @@ impl Store<'_> {
                     id: line.sku.clone(),
                 })?;
 
-            let prev_qty: i64 = match tx.query_row(
-                "SELECT COALESCE(qty, 0) FROM inventory WHERE product_id = ?1",
-                params![product_id],
-                |row| row.get(0),
+            // Route the deduction through the canonical per-location adjust
+            // fn (ADR-19 §3.1) so there is exactly one stock writer: it
+            // pre-checks stock_summary at the SOURCE location, appends the
+            // stock_movements delta row, upserts the per-location row, and
+            // recomputes the legacy inventory aggregate as the SUM over all
+            // locations. The legacy single-PK precheck/write this replaces
+            // clobbered the aggregate and was invisible to stock_summary.
+            self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+            if let Err(err) = self.adjust_stock_at_location_with_reason(
+                &tx,
+                &line.sku,
+                -line.qty,
+                &crate::inventory::LocationId::from(source_location_id.as_str()),
+                Some("stock_transfer_out"),
+                None,
+                None,
+                None,
             ) {
-                Ok(q) => q,
-                Err(rusqlite::Error::QueryReturnedNoRows) => 0,
-                Err(e) => return Err(CoreError::Db(e)),
-            };
-
-            let new_qty = prev_qty
-                .checked_sub(line.qty)
-                .filter(|&v| v >= 0)
-                .ok_or_else(|| CoreError::Validation {
-                    field: "qty",
-                    message: format!(
-                        "insufficient stock for SKU '{}': have {prev_qty}, need {}",
-                        line.sku, line.qty
-                    ),
-                })?;
-
-            tx.execute(
-                "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(product_id) DO UPDATE SET qty = excluded.qty,
-                                                         updated_at = excluded.updated_at",
-                params![product_id, new_qty, now],
-            )?;
+                return Err(match err {
+                    CoreError::InsufficientStockAtLocation {
+                        sku,
+                        requested_delta,
+                        available_qty,
+                        ..
+                    } => CoreError::Validation {
+                        field: "qty",
+                        message: format!(
+                            "insufficient stock for SKU '{}': have {}, need {}",
+                            sku,
+                            available_qty,
+                            requested_delta.abs()
+                        ),
+                    },
+                    other => other,
+                });
+            }
         }
 
         tx.commit()?;
@@ -515,11 +532,11 @@ impl Store<'_> {
         // destination inventory writes. A pre-transaction status read would
         // allow a concurrent cancellation to win and still let this receive
         // path credit stock on a cancelled transfer.
-        let status: String = tx
+        let (status, destination_location_id): (String, String) = tx
             .query_row(
-                "SELECT status FROM stock_transfers WHERE id = ?1",
+                "SELECT status, destination_location_id FROM stock_transfers WHERE id = ?1",
                 params![id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|error| match error {
                 rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
@@ -593,26 +610,19 @@ impl Store<'_> {
                         id: sku.clone(),
                     })?;
 
-                // Increment destination inventory.
-                let prev_qty: i64 = match tx.query_row(
-                    "SELECT COALESCE(qty, 0) FROM inventory WHERE product_id = ?1",
-                    params![product_id],
-                    |row| row.get(0),
-                ) {
-                    Ok(q) => q,
-                    Err(rusqlite::Error::QueryReturnedNoRows) => 0,
-                    Err(e) => return Err(CoreError::Db(e)),
-                };
-
-                let new_qty = prev_qty
-                    .checked_add(newly_received)
-                    .ok_or_else(|| CoreError::Internal("inventory overflow on receive".into()))?;
-
-                tx.execute(
-                    "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(product_id) DO UPDATE SET qty = excluded.qty,
-                                                             updated_at = excluded.updated_at",
-                    params![product_id, new_qty, now],
+                // Route the credit through the canonical per-location adjust
+                // fn at the DESTINATION location (see send_transfer) so the
+                // per-location rows and the legacy aggregate stay consistent.
+                self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+                self.adjust_stock_at_location_with_reason(
+                    &tx,
+                    &sku,
+                    newly_received,
+                    &crate::inventory::LocationId::from(destination_location_id.as_str()),
+                    Some("stock_transfer_in"),
+                    None,
+                    None,
+                    None,
                 )?;
             }
         }
@@ -680,11 +690,11 @@ impl Store<'_> {
         // transaction, which allowed a concurrent send to be observed as
         // `draft` and then cancelled without restoring the stock that send
         // deducted.
-        let status: String = tx
+        let (status, source_location_id): (String, String) = tx
             .query_row(
-                "SELECT status FROM stock_transfers WHERE id = ?1",
+                "SELECT status, source_location_id FROM stock_transfers WHERE id = ?1",
                 params![id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|error| match error {
                 rusqlite::Error::QueryReturnedNoRows => CoreError::NotFound {
@@ -726,27 +736,19 @@ impl Store<'_> {
                         },
                         other => CoreError::Db(other),
                     })?;
-                let previous_qty: i64 = match tx.query_row(
-                    "SELECT qty FROM inventory WHERE product_id = ?1",
-                    params![product_id],
-                    |row| row.get(0),
-                ) {
-                    Ok(value) => value,
-                    Err(rusqlite::Error::QueryReturnedNoRows) => 0,
-                    Err(other) => return Err(CoreError::Db(other)),
-                };
-                let restored_qty =
-                    previous_qty
-                        .checked_add(qty)
-                        .ok_or_else(|| CoreError::Validation {
-                            field: "qty",
-                            message: format!("stock overflow while cancelling SKU '{sku}'"),
-                        })?;
-                tx.execute(
-                    "INSERT INTO inventory (product_id, qty, updated_at) VALUES (?1, ?2, ?3)
-                     ON CONFLICT(product_id) DO UPDATE SET qty = excluded.qty,
-                                                             updated_at = excluded.updated_at",
-                    params![product_id, restored_qty, now],
+                // Route the reversal through the canonical per-location
+                // adjust fn: the dispatched qty is credited back at the
+                // SOURCE location it was deducted from (see send_transfer).
+                self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+                self.adjust_stock_at_location_with_reason(
+                    &tx,
+                    &sku,
+                    qty,
+                    &crate::inventory::LocationId::from(source_location_id.as_str()),
+                    Some("stock_transfer_cancel"),
+                    None,
+                    None,
+                    None,
                 )?;
             }
         }

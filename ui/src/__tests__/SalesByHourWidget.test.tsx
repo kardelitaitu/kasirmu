@@ -4,6 +4,8 @@ import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import SalesByHourWidget from '@/features/sales/widgets/SalesByHourWidget';
 import salesFtl from '@/locales/sales.ftl?raw';
 import type { SalesByHourRow } from '@/api/sales';
+import { clearWidgets, getDeniedWidgets, getWidgets } from '@/platform/ui/widget-registry';
+import { registerSalesWidgets } from '@/features/sales/widgets';
 
 const mockExportSalesByHour = vi.fn();
 
@@ -13,6 +15,15 @@ vi.mock('@/api/sales', () => ({
   exportSalesByHour: (...args: unknown[]) => mockExportSalesByHour(...args),
   exportSalesByHourScoped: (...args: unknown[]) => mockExportSalesByHour(...args),
 }));
+
+// ── access ─────────────────────────────────────────────────────────
+// The tile no longer decides its own access; what its own suite pins is the
+// DECLARATION that arms the host gate. Delete `requiredPermission` from the
+// sales-by-hour registration in ../widgets/index.ts and these tests go red.
+/** Staff: sales:view, no reports:export (platform/core rbac_presets.rs:136). */
+const STAFF = { userRole: 'Staff', permissions: ['sales:view'] };
+/** Anything holding the key the scoped command enforces. */
+const MANAGER = { userRole: 'Manager', permissions: ['sales:view', 'reports:export'] };
 
 beforeEach(() => {
   mockExportSalesByHour.mockReset();
@@ -87,5 +98,21 @@ describe('SalesByHourWidget', () => {
       const list = screen.getByRole('list');
       expect(list.getAttribute('aria-label')).toBe('Hourly sales bars');
     });
+  });
+
+  // ── access: owned by the registration + the host, not by this component ──
+
+  it('is registered with requiredPermission reports:export', () => {
+    clearWidgets();
+    registerSalesWidgets();
+    const tile = getWidgets(undefined, MANAGER).find((w) => w.id === 'sales-by-hour');
+    expect(tile?.requiredPermission).toBe('reports:export');
+  });
+
+  it('is refused to a Staff session and reported as denied, not removed', () => {
+    clearWidgets();
+    registerSalesWidgets();
+    expect(getWidgets(new Set(['simple-retail']), STAFF).map((w) => w.id)).not.toContain('sales-by-hour');
+    expect(getDeniedWidgets(new Set(['simple-retail']), STAFF).map((w) => w.id)).toContain('sales-by-hour');
   });
 });

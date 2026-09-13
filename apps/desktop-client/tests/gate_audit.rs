@@ -17,11 +17,22 @@
 //!   gate, but they would break the command, so they are pinned out of
 //!   existence.
 //!
-//! Scope: `src/commands/*.rs`, excluding the `authz.rs` helper module and
-//! `mod.rs`. Test-module blocks are stripped before census. The gate itself
-//! is `oz_core::db::Store::require_permission`; the client wrappers in
-//! `authz.rs` are the only entry points, so a module with zero gate calls is
-//! ungated by construction (its census is pinned as `0, &[]`).
+//! Scope: the *path a client actually executes*, not one directory. The
+//! desktop shell's `src/commands` and the tablet shell's are walked with the
+//! `authz.rs` wrapper names, and - because Wave A-E lifted the desktop
+//! command bodies into `crates/oz-bridge/src` (the shell files are shims that
+//! build a `BridgeCtx` and forward) - the bridge is walked too, with its own
+//! wrapper names, merged into the desktop table by module stem. A stem that
+//! exists in both is summed; a stem that exists in only one is pinned as
+//! found. So `analytics` still reads 2 after the move, because its two gate
+//! calls moved rather than vanished - and a gate that is dropped instead of
+//! moved still trips the pin.
+//!
+//! Test-module blocks are stripped before census. The gate itself is
+//! `oz_core::db::Store::require_permission`; the wrappers in each root's helper
+//! module (`authz.rs` in the shells, `ctx.rs` in the bridge) are the only
+//! entry points, so a module with zero gate calls is ungated by construction
+//! (its census is pinned as `0, &[]`).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -29,14 +40,19 @@ use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
 // Pinned census — desktop client.
-// Generated from the current source; update deliberately, never silently.
+// Shell gate calls plus the gate calls in `crates/oz-bridge/src`, which the shell
+// forwards to. Generated from the current source; update deliberately,
+// never silently.
+//
+// `currencies` and `exchange_rates` read 0 because their bodies were folded
+// into the bridge's single `currency` module, which pins 7 - exactly the
+// 2 + 5 they used to carry. The count moved; it did not disappear.
 // ---------------------------------------------------------------------------
 static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("analytics", 2, &["ANALYTICS_VIEW"]),
-    ("audit", 1, &["AUDIT_EXPORT", "AUDIT_VIEW"]),
-    ("auth", 0, &[]),
+    ("audit", 7, &["AUDIT_EXPORT", "AUDIT_VIEW"]),
+    ("auth", 1, &["OPERATOR_IMPERSONATE"]),
     ("branding", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    // ADR #36/#37/#38 opener browser plugin: no permission-gated commands.
     ("browser", 0, &[]),
     (
         "bundles",
@@ -50,7 +66,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ),
     (
         "categories",
-        2,
+        4,
         &[
             "PRODUCTS_CREATE",
             "PRODUCTS_DELETE",
@@ -58,10 +74,11 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "PRODUCTS_UPDATE",
         ],
     ),
-    ("currencies", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("currencies", 0, &[]),
+    ("currency", 7, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "customers",
-        5,
+        10,
         &[
             "CUSTOMERS_CREATE",
             "CUSTOMERS_DELETE",
@@ -72,8 +89,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("data", 5, &["DATA_EXPORT", "SETTINGS_EDIT"]),
     ("edc", 3, &["SALES_PROCESS", "SALES_REFUND", "SALES_VOID"]),
     ("email", 3, &["REPORTS_SCHEDULE", "SETTINGS_EDIT"]),
-    ("exchange_rates", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("exchange_rates", 0, &[]),
     ("features", 2, &["SETTINGS_EDIT"]),
+    ("fiscal", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "gift_cards",
         8,
@@ -84,22 +102,25 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("history", 5, &["REPORTS_EXPORT", "SALES_VIEW"]),
     (
         "inventory",
-        1,
+        25,
         &[
             "INVENTORY_LOCATIONS_MANAGE",
             "INVENTORY_VIEW",
             "SALES_PROCESS",
         ],
     ),
-    ("inventory_counts", 1, &["INVENTORY_COUNT"]),
+    ("inventory_counts", 10, &["INVENTORY_COUNT"]),
     ("kds", 9, &["KDS_UPDATE", "KDS_VIEW"]),
     ("kds_device", 6, &["KDS_UPDATE", "KDS_VIEW"]),
-    ("kds_routing", 1, &["KDS_VIEW"]),
+    ("kds_routing", 3, &["KDS_UPDATE", "KDS_VIEW"]),
+    ("legal_entities", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("license", 3, &["SETTINGS_EDIT"]),
     ("local_api", 6, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("local_payment", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("locations", 13, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "loyalty",
-        1,
+        8,
         &[
             "LOYALTY_EARN",
             "LOYALTY_MANAGE",
@@ -107,7 +128,19 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "LOYALTY_VIEW",
         ],
     ),
+    ("memo", 5, &["MEMO_STOP", "MEMO_WRITE"]),
     ("offline", 4, &["SYNC_MANAGE"]),
+    (
+        "payables",
+        4,
+        &[
+            "PAYABLES_CREATE",
+            "PAYABLES_SETTLE",
+            "PAYABLES_VIEW",
+            "PAYABLES_WRITEOFF",
+        ],
+    ),
+    ("picker", 0, &[]),
     ("picker_ticket", 0, &[]),
     ("plugins", 0, &[]),
     (
@@ -149,13 +182,22 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("purchasing", 10, &["PURCHASING_MANAGE", "PURCHASING_VIEW"]),
+    // The QRIS auto-rail command gates with SALES_PROCESS (3d50b3ac5/903b30a71);
+    // row added at the round-14 review, count measured from source.
+    ("qris_auto", 1, &["SALES_PROCESS"]),
+    ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
+    ("regional", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // The measured debt ledger is a .rs under src/commands, so the census walks it. It
+    // names no gate and no permission (6c574ee07 landed it): that is a row to record,
+    // not a file to skip - adding the stem to `skip` would stop ever looking at it.
+    ("registration_gate_debt.generated", 0, &[]),
     ("reports", 1, &["REPORTS_EXPORT", "REPORTS_VIEW"]),
     ("scale", 0, &[]),
     ("security", 2, &["SECURITY_MANAGE"]),
     (
         "settings",
-        14,
+        15,
         &["SALES_VIEW", "SETTINGS_EDIT", "SETTINGS_READ"],
     ),
     ("setup", 1, &["STAFF_MANAGE_ROLES"]),
@@ -171,7 +213,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ),
     (
         "staff",
-        6,
+        11,
         &[
             "STAFF_CREATE",
             "STAFF_MANAGE_ROLES",
@@ -179,10 +221,24 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "STAFF_UPDATE",
         ],
     ),
-    ("stock_transfers", 1, &["INVENTORY_TRANSFER"]),
-    ("store_profiles", 7, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    ("subscription", 0, &[]),
-    ("sync", 10, &["SYNC_MANAGE"]),
+    ("stock_transfers", 10, &["INVENTORY_TRANSFER"]),
+    (
+        "subscription",
+        3,
+        &[
+            "ANALYTICS_VIEW",
+            "INVENTORY_LOCATIONS_MANAGE",
+            "LOYALTY_VIEW",
+            "REPORTS_VIEW",
+            "SALES_PROCESS",
+            "SALES_VIEW",
+            "SETTINGS_READ",
+            "STAFF_CREATE",
+            "SYNC_MANAGE",
+            "TOPOLOGY_WRITE",
+        ],
+    ),
+    ("sync", 12, &["SYNC_MANAGE"]),
     (
         "tables",
         6,
@@ -194,7 +250,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "TABLES_EDIT",
         ],
     ),
-    ("tax", 1, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("tax", 8, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "terminals",
         17,
@@ -205,7 +261,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "TERMINALS_REGISTER",
         ],
     ),
-    ("topology", 3, &["STAFF_UPDATE"]),
+    ("topology", 6, &["AUDIT_VIEW", "TOPOLOGY_WRITE"]),
     ("void", 1, &["SALES_VOID"]),
     (
         "workspaces",
@@ -220,7 +276,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
 static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("analytics", 2, &["ANALYTICS_VIEW"]),
     ("audit", 1, &["AUDIT_EXPORT", "AUDIT_VIEW"]),
-    ("auth", 0, &[]),
+    ("auth", 1, &["OPERATOR_IMPERSONATE"]),
     ("branding", 0, &[]),
     // ADR #36/#37/#38 opener browser plugin: no permission-gated commands.
     ("browser", 0, &[]),
@@ -252,6 +308,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ),
     ("exchange_rates", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("features", 2, &["SETTINGS_EDIT"]),
+    ("fiscal", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "gift_cards",
         8,
@@ -259,9 +316,16 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ),
     ("hardware", 0, &[]),
     ("health", 0, &[]),
-    ("history", 0, &[]),
+    // Re-pinned 13-09-26: 3a15dafe8 put a real permission check in the five
+    // scoped history twins. Counted at apps/tablet-client/src/commands/history.rs
+    // lines 297, 340 (SALES_VIEW) and 380, 404, 428 (REPORTS_EXPORT), using the
+    // SHELL_GATES vocabulary this census applies. history_tests.rs is skipped by
+    // stem, so 268198aba contributes nothing to this row.
+    ("history", 5, &["REPORTS_EXPORT", "SALES_VIEW"]),
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
     ("kds", 5, &["KDS_UPDATE", "KDS_VIEW"]),
+    ("legal_entities", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("local_payment", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "loyalty",
         1,
@@ -272,6 +336,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "LOYALTY_VIEW",
         ],
     ),
+    ("memo", 0, &[]),
     ("offline", 4, &["SYNC_MANAGE"]),
     ("picker_ticket", 0, &[]),
     (
@@ -310,14 +375,23 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("purchasing", 10, &["PURCHASING_MANAGE", "PURCHASING_VIEW"]),
+    // Tablet mirrors the QRIS auto-rail landing with two gated calls; same
+    // key, reviewed at the round-14 census repair.
+    ("qris_auto", 2, &["SALES_PROCESS"]),
+    ("receipt_format", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
+    ("regional", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    // Same as the desktop leg: the tablet ledger landed in 3c793f8e3 and the census
+    // walks every non-skipped .rs in the commands dir. Pinned at its measured
+    // (0 calls, no keys) rather than skipped out of existence.
+    ("registration_gate_debt.generated", 0, &[]),
     ("reports", 1, &["REPORTS_EXPORT", "REPORTS_VIEW"]),
     ("scale", 0, &[]),
-    ("settings", 12, &["SETTINGS_EDIT"]),
+    ("settings", 13, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("setup", 0, &[]),
     (
         "staff",
-        6,
+        10,
         &[
             "STAFF_CREATE",
             "STAFF_MANAGE_ROLES",
@@ -326,8 +400,23 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("stock_transfers", 1, &["INVENTORY_TRANSFER"]),
-    ("subscription", 0, &[]),
-    ("sync", 7, &["SYNC_MANAGE"]),
+    (
+        "subscription",
+        3,
+        &[
+            "ANALYTICS_VIEW",
+            "INVENTORY_LOCATIONS_MANAGE",
+            "LOYALTY_VIEW",
+            "REPORTS_VIEW",
+            "SALES_PROCESS",
+            "SALES_VIEW",
+            "SETTINGS_READ",
+            "STAFF_CREATE",
+            "SYNC_MANAGE",
+            "TOPOLOGY_WRITE",
+        ],
+    ),
+    ("sync", 9, &["SYNC_MANAGE"]),
     (
         "tables",
         12,
@@ -388,13 +477,82 @@ fn strip_test_blocks(src: &str) -> String {
     out
 }
 
+/// Is this line *defining* a gate wrapper rather than calling one?
+///
+/// A client shell keeps its wrappers in `authz.rs` (skipped wholesale), but
+/// `oz-bridge` defines its thin wrappers inside the same module that calls
+/// them, so the definition line has to be told apart from a call site.
+fn is_wrapper_definition(line: &str) -> bool {
+    let mut rest = line;
+    while let Some(i) = rest.find("fn require_") {
+        // `fn require_x(` at the start of the remainder, or preceded only by
+        // qualifiers (`pub`, `async`, `unsafe`, visibility), is a definition.
+        let before = line[..i].trim_end();
+        if before.is_empty()
+            || before.ends_with("fn")
+            || before.ends_with("async")
+            || before.ends_with("unsafe")
+            || before.ends_with("pub")
+            || before.ends_with("crate")
+            || before.ends_with("super")
+            || before.ends_with("pub(crate)")
+            || before.ends_with("pub(super)")
+        {
+            return true;
+        }
+        rest = &rest[i + 3..];
+    }
+    false
+}
+
+/// Gate entry points counted in a client shell's `src/commands`: the
+/// `authz.rs` wrappers. `authz.rs` itself is skipped, so a hit is always a
+/// command asking the gate.
+const SHELL_GATES: &[&str] = &[
+    "require_permission_for_user(",
+    "require_permission_for_session(",
+];
+
+/// Gate entry points counted in `crates/oz-bridge/src`. The extraction that
+/// moved the command bodies out of the desktop shell moved the gates with
+/// them, and renamed them: `BridgeCtx::require_session_permission` and
+/// `BridgeCtx::require_permission_for_user` are the bridge's equivalents of
+/// the shell's `authz.rs` wrappers, `ctx.rs` (skipped, like `authz.rs`) is
+/// where they reach `Store::require_permission`, and each bridge module keeps
+/// its own thin wrapper (`require_inventory_permission` and friends) that
+/// commands call. A line that *defines* a wrapper is not a call site, so
+/// definition lines are skipped; a command that calls the store gate
+/// directly is counted by the `.require_permission(&` form, which never
+/// matches a wrapper body (those pass the bare `user_id` parameter).
+const BRIDGE_GATES: &[&str] = &[
+    "require_session_permission(",
+    "require_permission_for_user(",
+    "require_permission_for_session(",
+    "require_user_permission_scoped(",
+    "require_permission_for_session_resource(",
+    "require_session_resource_permission(",
+    "require_inventory_permission(",
+    "require_inventory_count_permission(",
+    "require_customer_permission(",
+    "require_category_permission(",
+    "require_tax_permission(",
+    "require_loyalty_permission(",
+    "require_audit_permission(",
+    ".require_permission(&",
+];
+
+// `require_audit_tier(` (bridge audit/auth, tablet audit) is deliberately not
+// counted in either vocabulary: it is a subscription-tier/plan check on the
+// entitlement read model, not a permission gate — it never consults the 0046
+// registry, so it stays out of this census. Enumerating `require_` names and
+// adding it to the lists above would reach the opposite conclusion.
+
 /// The gate census for one module: `(gate_call_count, sorted_keys)`.
 ///
 /// Mirrors the generator that produced the pins: comments and `use` lines
-/// are skipped, inline `//` comments are cut, `require_permission_for_user(`
-/// / `require_permission_for_session(` call starts are counted, and every
-/// `permissions::KEY` token is collected.
-fn census(src: &str) -> (usize, Vec<String>) {
+/// are skipped, inline `//` comments are cut, every call start named in
+/// `gates` is counted, and every `permissions::KEY` token is collected.
+fn census(src: &str, gates: &[&str]) -> (usize, Vec<String>) {
     let mut calls = 0usize;
     let mut keys = std::collections::BTreeSet::new();
     for raw in src.lines() {
@@ -406,8 +564,11 @@ fn census(src: &str) -> (usize, Vec<String>) {
             Some(i) => &trimmed[..i],
             None => trimmed,
         };
-        calls += line.matches("require_permission_for_user(").count()
-            + line.matches("require_permission_for_session(").count();
+        if !is_wrapper_definition(line) {
+            for gate in gates {
+                calls += line.matches(gate).count();
+            }
+        }
         let mut rest = line;
         while let Some(i) = rest.find("permissions::") {
             let after = &rest[i + "permissions::".len()..];
@@ -424,17 +585,17 @@ fn census(src: &str) -> (usize, Vec<String>) {
     (calls, keys.into_iter().collect())
 }
 
-/// Raw string-literal permissions passed to a gate call (e.g.
+/// Raw string-literal permissions passed to a gate call named in `gates` (e.g.
 /// `"sales:typo"`). The gate denies these fail-closed, but a live command
 /// would break, so they are pinned out of existence.
-fn raw_permission_literals(src: &str) -> Vec<String> {
+fn raw_permission_literals(src: &str, gates: &[&str]) -> Vec<String> {
     let mut bad = Vec::new();
     for raw in src.lines() {
         let trimmed = raw.trim_start();
         if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("use ") {
             continue;
         }
-        if !trimmed.contains("require_permission_for_") {
+        if !gates.iter().any(|g| trimmed.contains(*g)) {
             continue;
         }
         let mut rest = trimmed;
@@ -458,19 +619,19 @@ fn raw_permission_literals(src: &str) -> Vec<String> {
 /// (split modules like `topology/`) is aggregated under its directory name
 /// so the pin tracks the *module's* permission surface wherever its files
 /// live. `calls` sums across files; `keys` unions.
-fn census_file(path: &Path) -> (usize, Vec<String>) {
+fn census_file(path: &Path, gates: &[&str]) -> (usize, Vec<String>) {
     let src = fs::read_to_string(path).expect("read command file");
     let stripped = strip_test_blocks(&src);
-    let raw = raw_permission_literals(&stripped);
+    let raw = raw_permission_literals(&stripped, gates);
     let label = path.to_string_lossy().into_owned();
     assert!(
         raw.is_empty(),
         "{label} passes raw string-literal permissions to the gate: {raw:?}"
     );
-    census(&stripped)
+    census(&stripped, gates)
 }
 
-fn census_dir(dir: &Path) -> BTreeMap<String, (usize, Vec<String>)> {
+fn census_dir(dir: &Path, gates: &[&str], skip: &[&str]) -> BTreeMap<String, (usize, Vec<String>)> {
     let mut out: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
     for entry in fs::read_dir(dir).expect("read commands dir") {
         let entry = entry.expect("dir entry");
@@ -482,7 +643,7 @@ fn census_dir(dir: &Path) -> BTreeMap<String, (usize, Vec<String>)> {
             .to_string_lossy()
             .into_owned();
         if file_type.is_dir() {
-            let (dir_calls, dir_keys) = census_dir(&path)
+            let (dir_calls, dir_keys) = census_dir(&path, gates, skip)
                 .into_values()
                 .reduce(|a, b| {
                     (a.0 + b.0, {
@@ -514,10 +675,14 @@ fn census_dir(dir: &Path) -> BTreeMap<String, (usize, Vec<String>)> {
             continue;
         }
         // Skip split test files and excluded modules.
-        if stem == "authz" || stem == "mod" || stem.ends_with("_tests") {
+        if stem == "authz"
+            || stem == "mod"
+            || stem.ends_with("_tests")
+            || skip.contains(&stem.as_str())
+        {
             continue;
         }
-        let (file_calls, file_keys) = census_file(&path);
+        let (file_calls, file_keys) = census_file(&path, gates);
         match out.get_mut(&stem) {
             Some((calls, keys)) => {
                 *calls += file_calls;
@@ -533,46 +698,122 @@ fn census_dir(dir: &Path) -> BTreeMap<String, (usize, Vec<String>)> {
     out
 }
 
-fn assert_pin(dir: &Path, pinned: &[(&str, usize, &[&str])]) {
-    let actual = census_dir(dir);
+/// One census root: a directory plus the gate vocabulary that applies there.
+struct Root<'a> {
+    dir: PathBuf,
+    gates: &'a [&'a str],
+    /// Non-command support files to skip (the crate's `authz.rs` equivalent).
+    skip: &'a [&'a str],
+}
 
+/// Compare the merged two-root census against the pin, and report EVERY
+/// drifted row in one failure.
+///
+/// A pinned census is only worth what it shows when it breaks: an assertion
+/// that panics on the first mismatch turns a fifty-row drift into a one-row
+/// report and queues the rest behind repeated reruns. Count drift, key-set
+/// drift, a pinned row with no module on disk, and a gating module missing
+/// from the pin are all collected first, then reported together as one table.
+fn assert_pin(roots: &[Root], pinned: &[(&str, usize, &[&str])]) {
+    let mut actual: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+    for root in roots {
+        for (stem, (calls, keys)) in census_dir(&root.dir, root.gates, root.skip) {
+            match actual.get_mut(&stem) {
+                Some((c, k)) => {
+                    *c += calls;
+                    k.extend(keys);
+                    k.sort();
+                    k.dedup();
+                }
+                None => {
+                    actual.insert(stem, (calls, keys));
+                }
+            }
+        }
+    }
+
+    // Collect every mismatch before reporting — the full table is the review
+    // signal; the first row alone is a queue.
+    let mut rows: Vec<String> = Vec::new();
     for (stem, exp_calls, exp_keys) in pinned {
-        let (got_calls, got_keys) = actual
-            .get(*stem)
-            .unwrap_or_else(|| panic!("module `{stem}` is pinned but not found on disk"));
-        assert_eq!(
-            *exp_calls, *got_calls,
-            "`{stem}.rs` gate-call count drifted: pin says {exp_calls}, source has {got_calls}. \
-             Update the pin deliberately — a changed gate call is the review signal."
-        );
+        let Some((got_calls, got_keys)) = actual.get(*stem) else {
+            rows.push(format!(
+                "{stem:<20} absent   pinned, but no module on disk (pin: {exp_calls} gate calls, keys {exp_keys:?})"
+            ));
+            continue;
+        };
+        if *exp_calls != *got_calls {
+            rows.push(format!(
+                "{stem:<20} count    pin {exp_calls}, source {got_calls}"
+            ));
+        }
         let got: Vec<&str> = got_keys.iter().map(String::as_str).collect();
-        assert_eq!(
-            *exp_keys,
-            &got[..],
-            "`{stem}.rs` permission surface drifted from the pin. \
-             Update the pin deliberately."
-        );
+        if *exp_keys != &got[..] {
+            rows.push(format!(
+                "{stem:<20} keys     pin {exp_keys:?}, source {got:?}"
+            ));
+        }
+    }
+    for stem in actual.keys() {
+        if !pinned.iter().any(|(s, _, _)| s == stem) {
+            let (calls, keys) = &actual[stem];
+            rows.push(format!(
+                "{stem:<20} unpinned gates permissions on disk but is NOT in the pinned \
+                 census (source: {calls} gate calls, keys {keys:?})"
+            ));
+        }
     }
 
-    for stem in actual.keys() {
-        assert!(
-            pinned.iter().any(|(s, _, _)| s == stem),
-            "module `{stem}` gates permissions but is NOT in the pinned census. \
-             Every permission-sensitive command must be reviewed and pinned."
-        );
-    }
+    assert!(
+        rows.is_empty(),
+        "gate-census drift: {} of {} pinned rows disagree. Update every pin deliberately — \
+         the full set is the review signal.\n  {:<20} {}\n{}",
+        rows.len(),
+        pinned.len(),
+        "module",
+        "drift",
+        rows.into_iter()
+            .map(|r| format!("  {r}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
 }
 
 #[test]
 fn desktop_command_census_matches_pin() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/commands");
-    assert_pin(&dir, PINNED_DESKTOP);
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // The desktop path is the shell *plus* the crate the shell delegates to:
+    // Wave A-E moved the command bodies (and their gate calls) into
+    // `oz-bridge`, so the shell alone no longer measures anything.
+    assert_pin(
+        &[
+            Root {
+                dir: manifest.join("src/commands"),
+                gates: SHELL_GATES,
+                skip: &[],
+            },
+            Root {
+                dir: manifest.join("../../crates/oz-bridge/src"),
+                gates: BRIDGE_GATES,
+                skip: &["ctx", "lib", "error", "testing"],
+            },
+        ],
+        PINNED_DESKTOP,
+    );
 }
 
 #[test]
 fn tablet_command_census_matches_pin() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tablet-client/src/commands");
-    assert_pin(&dir, PINNED_TABLET);
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Tablet still owns its command bodies, so its shell is the whole path.
+    assert_pin(
+        &[Root {
+            dir: manifest.join("../tablet-client/src/commands"),
+            gates: SHELL_GATES,
+            skip: &[],
+        }],
+        PINNED_TABLET,
+    );
 }
 
 /// Resolve a census constant *name* to its permission *value*.
@@ -606,6 +847,13 @@ fn permission_value(name: &str) -> &'static str {
         "LOYALTY_MANAGE" => p::LOYALTY_MANAGE,
         "LOYALTY_REDEEM" => p::LOYALTY_REDEEM,
         "LOYALTY_VIEW" => p::LOYALTY_VIEW,
+        "MEMO_STOP" => p::MEMO_STOP,
+        "MEMO_WRITE" => p::MEMO_WRITE,
+        "OPERATOR_IMPERSONATE" => p::OPERATOR_IMPERSONATE,
+        "PAYABLES_CREATE" => p::PAYABLES_CREATE,
+        "PAYABLES_SETTLE" => p::PAYABLES_SETTLE,
+        "PAYABLES_VIEW" => p::PAYABLES_VIEW,
+        "PAYABLES_WRITEOFF" => p::PAYABLES_WRITEOFF,
         "PAYMENTS_CASH" => p::PAYMENTS_CASH,
         "PRODUCTS_CREATE" => p::PRODUCTS_CREATE,
         "PRODUCTS_DELETE" => p::PRODUCTS_DELETE,
@@ -643,6 +891,7 @@ fn permission_value(name: &str) -> &'static str {
         "TABLES_CREATE" => p::TABLES_CREATE,
         "TABLES_DELETE" => p::TABLES_DELETE,
         "TABLES_EDIT" => p::TABLES_EDIT,
+        "TOPOLOGY_WRITE" => p::TOPOLOGY_WRITE,
         "TERMINALS_DELETE" => p::TERMINALS_DELETE,
         "TERMINALS_EDIT" => p::TERMINALS_EDIT,
         "TERMINALS_READ" => p::TERMINALS_READ,

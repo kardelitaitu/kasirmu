@@ -1,4 +1,14 @@
-use serde::Serialize;
+//! Weight scale commands.
+//!
+//! Phase 3.3 T2: `ScaleDeviceInfo` moved to the shared `oz_bridge::scale`
+//! module (Agent 2's Wave D extraction) and is re-exported here, same as
+//! the desktop shell. The bodies stay tablet-native this slice: the
+//! scoped twins on the bridge take a `BridgeCtx` the tablet `AppState`
+//! cannot yet build (see the T2 seam notes in `void.rs`), so the shims
+//! keep resolving sessions natively (`state.resolve_session`) and going
+//! straight to the HAL registry — byte-identical behaviour to the
+//! bridge bodies, which only differ by ctx plumbing.
+
 use tauri::{State, command};
 
 use oz_hal::WeightReading;
@@ -6,16 +16,7 @@ use oz_hal::WeightReading;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Information about a detected scale device.
-#[derive(Debug, Serialize)]
-pub struct ScaleDeviceInfo {
-    /// Vendor ID in hex (e.g. `"0x0922"`).
-    pub vendor_id: String,
-    /// Product ID in hex (e.g. `"0x8001"`).
-    pub product_id: String,
-    /// Platform device path.
-    pub device_path: String,
-}
+pub use oz_bridge::scale::ScaleDeviceInfo;
 
 /// Read the current weight from the registered weight scale.
 ///

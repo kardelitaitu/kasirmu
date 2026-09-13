@@ -21,6 +21,17 @@ pub mod keys {
     pub use platform_core::settings::keys::*;
 }
 
+/// The sealed ingest policy, re-exported so every lane can name it.
+///
+/// `platform-core` owns both the type and the accessors that enforce it
+/// (`Settings::load_exportable`, `Settings::set_with_policy`,
+/// `Settings::set_batch_with_policy`). This crate already delegates its raw
+/// key-value helpers there, so the re-export costs NO new dependency edge:
+/// `platform-core` is already in this crate's graph and every lane already
+/// reaches `oz_core::settings::keys::*`. Pointing a lane at the funnel is
+/// therefore a call-site change, never a `Cargo.toml` change.
+pub use platform_core::settings::{IngestPolicy, IngestPolicyKind};
+
 /// Typed access to the `settings` table.
 ///
 /// Raw get/set/remove/batch operations are delegated to
@@ -53,6 +64,50 @@ impl Settings {
     /// Write multiple settings inside a single transaction.
     pub fn set_batch(conn: &Connection, rows: &[(String, String)]) -> Result<(), CoreError> {
         Ok(platform_core::settings::Settings::set_batch(conn, rows)?)
+    }
+
+    /// Load only the rows a portable package may carry.
+    ///
+    /// Delegates to platform-core. `load_all` above stays unfiltered on
+    /// purpose — it is also the internal accessor behind `load_features` and
+    /// `prune_stale_features` in this module — so portable egress is expressed
+    /// by THIS method, never by narrowing `load_all`.
+    pub fn load_exportable(conn: &Connection) -> Result<Vec<(String, String)>, CoreError> {
+        Ok(platform_core::settings::Settings::load_exportable(conn)?)
+    }
+
+    /// Insert or update a setting under an explicit [`IngestPolicy`].
+    ///
+    /// Delegates to platform-core, which owns the sealed policy and the shared
+    /// deny list. Returns `true` when the row was written and `false` when the
+    /// policy refused it (warned, nothing written, batch continues); an `Err`
+    /// is a SQL failure, never a refusal. Callers must not collapse the two.
+    pub fn set_with_policy(
+        conn: &Connection,
+        key: &str,
+        value: &str,
+        policy: impl IngestPolicyKind,
+    ) -> Result<bool, CoreError> {
+        Ok(platform_core::settings::Settings::set_with_policy(
+            conn, key, value, policy,
+        )?)
+    }
+
+    /// Write multiple settings under an explicit [`IngestPolicy`], inside the
+    /// caller's own transaction.
+    ///
+    /// Delegates to platform-core. Takes `&rusqlite::Transaction` so a lane
+    /// that already owns one (the sync dispatcher, a `.ozpkg` import) does not
+    /// open a nested transaction. Refused rows are warned about and skipped and
+    /// the call still returns `Ok(())` — there is no counter by design.
+    pub fn set_batch_with_policy(
+        tx: &rusqlite::Transaction<'_>,
+        rows: &[(String, String)],
+        policy: impl IngestPolicyKind + Copy,
+    ) -> Result<(), CoreError> {
+        Ok(platform_core::settings::Settings::set_batch_with_policy(
+            tx, rows, policy,
+        )?)
     }
 
     /// Get the store display name.

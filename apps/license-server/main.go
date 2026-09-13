@@ -222,6 +222,20 @@ func main() {
 		if err := ensureAddonsField(app); err != nil {
 			return err
 		}
+		// Phase D2: feature_grants json field on subscriptions so the admin
+		// authoring endpoint and the build-site grafts have a persisted grant
+		// source on every deployment (fresh boots get it from the embedded
+		// pb_schema.json).
+		if err := ensureFeatureGrantsField(app); err != nil {
+			return err
+		}
+		// Admin identity precondition (admin registration squat guard):
+		// createTenant now refuses self-signup for the admin email on
+		// every registration path, so the admin tenants row is a hard
+		// precondition that must be provisioned out of band. Warn — but
+		// never fail boot — when it is missing or not email_verified:
+		// without this the fail-closed outcome would be invisible.
+		warnAdminTenantState(app)
 		// Wire rate-limiter persistence to SQLite (H2 audit). Idempotent
 		// and logs-and-returns on schema/hydrate failure so the server can
 		// still boot in degraded in-memory-only mode if SQLite is unavailable.
@@ -299,6 +313,8 @@ func main() {
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/tier-override", handleAdminTierOverride(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/grant-subscription", handleAdminGrantSubscription(app))
+		// Phase D2: per-feature grant authoring (admin-only, OZ_ADMIN_KEY).
+		se.Router.POST("/api/v1/admin/subscriptions/{id}/feature-grants", handleAdminSetFeatureGrants(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/devices/{deviceId}/revoke", handleAdminRevokeDevice(app))
 		se.Router.DELETE("/api/v1/admin/tenants/{id}", handleAdminDeleteTenant(app))
 		se.Router.GET("/api/v1/admin/health", handleAdminHealth(app))
@@ -498,6 +514,37 @@ func ensurePasswordHashField(app core.App) error {
 	}
 	log.Println("migrated tenants collection: added password_hash field")
 	return nil
+}
+
+// warnAdminTenantState reports (once per boot, read-only) whether the
+// deployment's admin identity has the tenants row the admin reservation
+// guard now hard-requires. createTenant refuses self-signup for the admin
+// email on every registration path, so the row can only exist if it was
+// provisioned out of band (Paddle webhook, seed, or manual creation):
+//   - missing row: the owner cannot provision the account themselves and
+//     adminAuth has nothing to map a session to — fix out of band.
+//   - row with email_verified=false: login never reads the flag, so an
+//     unverified admin row is exactly what a pre-guard self-signup squat
+//     looks like; verify inbox ownership or rotate its password before
+//     trusting admin access.
+//
+// This logs and returns; it NEVER creates or edits a row and never fails
+// boot — unlike the ensure* migrations above, there is nothing to repair
+// automatically and a missing admin row is an operator decision.
+func warnAdminTenantState(app core.App) {
+	adminEmail := strings.TrimSpace(os.Getenv("OZ_ADMIN_EMAIL"))
+	if adminEmail == "" {
+		adminEmail = defaultAdminEmail
+	}
+	// Stored emails are lowercase (normalizeEmail at every write path).
+	tenant, _ := app.FindFirstRecordByData("tenants", "email", strings.ToLower(adminEmail))
+	if tenant == nil {
+		log.Printf("WARNING: no tenants row for the admin identity %q — self-signup for it is refused, so provision it out of band (Paddle webhook or manual creation) before the owner can sign in", adminEmail)
+		return
+	}
+	if !tenant.GetBool("email_verified") {
+		log.Printf("WARNING: the admin tenants row for %q exists but is not email_verified — if this row was not provisioned deliberately, treat it as a possible pre-guard self-signup squat (verify inbox ownership via verify-otp or rotate its password)", adminEmail)
+	}
 }
 
 // ensurePasswordResetAtField adds the tenants.password_reset_at date field
@@ -997,9 +1044,17 @@ func safePrefix(s string, n int) string {
 // embedded public key. Must stay in sync with Rust SignedSubscriptionPayload
 // in crates/oz-core/src/license_verification.rs.
 type SubscriptionPayload struct {
-	TenantID        string   `json:"tenant_id"`
-	TierKey         string   `json:"tier_key"`
-	Status          string   `json:"status"`
+	TenantID string `json:"tenant_id"`
+	TierKey  string `json:"tier_key"`
+	Status   string `json:"status"`
+	// MaxLocations is the primary quota field (1g Store → Location wire
+	// rename, todo-global-saas-1.md); new clients parse this name.
+	MaxLocations int `json:"max_locations"`
+	// MaxStores is the pre-rename wire name, kept for the client rotation
+	// window. signSubscription forces it to mirror MaxLocations, so old
+	// clients — which parse only max_stores and default to 0 when it is
+	// absent — keep seeing the correct quota. PocketBase storage keeps the
+	// historical max_stores field name; only the wire is renamed.
 	MaxStores       int      `json:"max_stores"`
 	MaxPOSInstances int      `json:"max_pos_instances"`
 	AllowedTypes    []string `json:"allowed_types"`
@@ -1007,11 +1062,45 @@ type SubscriptionPayload struct {
 	ExpiresAt       string   `json:"expires_at"`
 	GraceUntil      string   `json:"grace_until"`
 	IssuedAt        string   `json:"issued_at"`
+	// IsTrial and TrialEndsAt publish trial state to the client
+	// (entitlements consolidation Phase C, todo-global-saas-2.md). Additive
+	// only — no existing field was renamed or removed, and both are omitted
+	// unless this subscription period actually IS a trial, so a payload
+	// signed before this change and a paid payload read identically: the
+	// client needs no dual-read. trial_ends_at is RFC3339 and is the trial's
+	// own end (the segmented-trial expiry), not the tier's billing expiry.
+	//
+	// Only the activation path can set them: is_trial lives on license_keys,
+	// and the subscriptions rows the webhook/renew/resume re-sign paths read
+	// have no such field (Phase C is deliberately JSON-only, no schema
+	// migration). Those paths therefore emit no trial fields, which is the
+	// correct answer — a period produced by a paid re-sign is not a trial.
+	IsTrial     bool   `json:"is_trial,omitempty"`
+	TrialEndsAt string `json:"trial_ends_at,omitempty"`
+	// Features is the Phase D wire block: an explicit per-feature server
+	// instruction keyed by the client's canonical feature key — the
+	// AvailabilityFeature wire names such as "supports_analytics", NOT a
+	// shortened "analytics". Semantics: an absent key leaves the tier's own
+	// answer in place, false withholds even where the tier would allow, and
+	// true grants beyond tier. omitempty, so a payload carrying no grants
+	// marshals byte-identically to a pre-Phase-D one.
+	//
+	// AUTHORING IS DELIBERATELY NOT THIS SLICE (owed D2): neither
+	// license_keys nor subscriptions has a field to flow this from, so no
+	// build site sets it today and no payload emitted by the current server
+	// actually carries the block. The wire field is the deliverable — a
+	// payload CAN carry it, and the client already honours it.
+	Features map[string]bool `json:"features,omitempty"`
 }
 
 // signSubscription marshals the payload to JSON, SHA-256 hashes it,
 // and signs it with the RSA-2048 private key using PKCS1v15.
 func signSubscription(sub SubscriptionPayload) (payload string, signature string, err error) {
+	// 1g dual-emit: the legacy wire name always mirrors max_locations at
+	// the single choke point every payload passes through, so a build
+	// site that forgets to set one field can never emit a divergent (or
+	// silently zero) legacy value to un-updated clients.
+	sub.MaxStores = sub.MaxLocations
 	payloadBytes, err := jsonMarshal(sub)
 	if err != nil {
 		return "", "", err

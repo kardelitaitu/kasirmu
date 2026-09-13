@@ -493,12 +493,20 @@ impl Settings {
 
     // ── Brand / White-label ─────────────────────────────────────
 
-    /// Get the primary brand colour (hex). Defaults to `"#147EFB"`.
+    /// Get the primary brand colour (hex).
+    ///
+    /// Returns `""` when the store never set an override: the UI treats
+    /// the empty string as "follow the active theme" (light #147EFB,
+    /// dark #1155CC in themes/tokens.css). The old `"#147EFB"` fallback
+    /// here silently pinned BOTH themes to the light blue, defeating
+    /// per-theme primaries on every fresh install.
     pub fn get_brand_primary_colour(conn: &Connection) -> Result<String, PlatformError> {
-        Ok(Self::get(conn, keys::BRAND_PRIMARY_COLOUR)?.unwrap_or_else(|| "#147EFB".into()))
+        Ok(Self::get(conn, keys::BRAND_PRIMARY_COLOUR)?.unwrap_or_default())
     }
 
     /// Set the primary brand colour.
+    ///
+    /// An empty string clears the override (see [`Self::get_brand_primary_colour`]).
     pub fn set_brand_primary_colour(conn: &Connection, colour: &str) -> Result<(), PlatformError> {
         Self::set(conn, keys::BRAND_PRIMARY_COLOUR, colour)
     }

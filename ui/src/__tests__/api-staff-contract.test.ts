@@ -36,7 +36,8 @@ const completeProfile = {
   emergency_contact_phone: '+14155550987',
 };
 
-/** A scoped assignment fixture (ADR #35 D5 / spec 0048). */
+/** A scoped assignment fixture (ADR #35 D5 / spec 0048) — org-wide resource
+ * axis omitted, pinning the fields' optionality for pre-ADR-47 callers. */
 const scopedAssignment: AssignmentArgs = {
   scope_mode: 'scoped',
   branches_all: false,
@@ -45,13 +46,15 @@ const scopedAssignment: AssignmentArgs = {
   workspace_keys: ['retail-pos'],
 };
 
-/** The global fallback a legacy DTO carries. */
+/** The global fallback a legacy DTO carries (ADR #47 shape). */
 const globalAssignment = {
   scope_mode: 'global',
   branches_all: true,
   branch_ids: [],
   workspaces_all: true,
   workspace_keys: [],
+  scope_type: 'organization',
+  scope_id: null,
 };
 
 /** StaffMemberDto mock with the ADR #35 D5 assignment shape. */
@@ -118,6 +121,47 @@ describe('staff.ts scoped IPC contract (ADR #35 D6 profile fields)', () => {
         role_id: 'role-staff',
         is_active: true,
         profile: { ...completeProfile, email: 'alice.new@example.com' },
+      },
+    });
+  });
+
+  it('updateStaffScoped carries the ADR #47 resource axis on the assignment', async () => {
+    // The assignment-creation slice: binding a manager to one location is a
+    // first-class wire shape — scope_type + scope_id ride the assignment.
+    mockInvoke.mockResolvedValue(staffMemberDto);
+    await updateStaffScoped('session-1', {
+      id: 'u-1',
+      username: 'alice',
+      display_name: 'Alice',
+      role_id: 'role-manager',
+      is_active: true,
+      assignment: {
+        scope_mode: 'global',
+        branches_all: true,
+        branch_ids: [],
+        workspaces_all: true,
+        workspace_keys: [],
+        scope_type: 'location',
+        scope_id: 'loc-a',
+      },
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('update_staff_scoped', {
+      sessionToken: 'session-1',
+      args: {
+        id: 'u-1',
+        username: 'alice',
+        display_name: 'Alice',
+        role_id: 'role-manager',
+        is_active: true,
+        assignment: {
+          scope_mode: 'global',
+          branches_all: true,
+          branch_ids: [],
+          workspaces_all: true,
+          workspace_keys: [],
+          scope_type: 'location',
+          scope_id: 'loc-a',
+        },
       },
     });
   });
@@ -221,6 +265,8 @@ describe('staff.ts scoped IPC contract (ADR #35 D6 profile fields)', () => {
       branch_ids: [],
       workspaces_all: true,
       workspace_keys: [],
+      scope_type: 'organization',
+      scope_id: null,
     });
   });
 });

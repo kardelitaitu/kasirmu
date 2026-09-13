@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { clearDevLog, getDevLog } from '../utils/devLog';
-import { historyEntry, validWiresForNodes } from '../features/stores/topologyHistoryIntegrity';
+import { historyEntry, validWiresForNodes } from '../features/locations/topologyHistoryIntegrity';
 
 /**
  * The history-integrity guards drop a wire when its endpoints are missing

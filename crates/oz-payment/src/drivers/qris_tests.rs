@@ -198,6 +198,30 @@ fn qris_parse_transaction_status() {
 }
 
 #[test]
+fn qris_parse_charge_response_qr_string_alias() {
+    // The live Midtrans QRIS charge response names the payload `qr_string`
+    // (https://docs.midtrans.com/reference/charge-bapi-1). The fixture above
+    // used the struct field's own name and passed while the real gateway
+    // would have deserialized to None — the alias is the fix, found wiring
+    // the cloud charge endpoint (todo-payment-agents-1, 09-13).
+    let json = r#"{
+        "status_code": "201",
+        "transaction_id": "txn_qris_003",
+        "order_id": "QRIS-live-abc",
+        "gross_amount": "15000.00",
+        "transaction_status": "pending",
+        "currency": "IDR",
+        "qr_string": "0002010212154354112093600002AGWID20103UMI5144001646346777669208ID.CO.QRIS.WWW63041C96"
+    }"#;
+    let resp: QrisChargeResponse = serde_json::from_str(json).unwrap();
+    assert!(
+        resp.qr_code_url
+            .unwrap()
+            .starts_with("0002010212154354112093600002AGWID20103UMI")
+    );
+}
+
+#[test]
 fn qris_parse_error_response() {
     let json = r#"{"status_code": "402", "status_message": "Transaction amount exceeds limit"}"#;
     let err: MidtransErrorResponse = serde_json::from_str(json).unwrap();
