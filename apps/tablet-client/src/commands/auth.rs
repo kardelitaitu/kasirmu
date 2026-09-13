@@ -11,7 +11,6 @@ next: none | perf: N/A
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::auth::LoginSession;
@@ -31,51 +30,17 @@ use crate::commands::picker_ticket;
 use crate::error::AppError;
 use crate::state::AppState;
 
-/// Arguments for the `staff_login` command.
-#[derive(Debug, Deserialize)]
-pub struct StaffLoginArgs {
-    /// Staff username (case-sensitive).
-    pub username: String,
-    /// Plain-text PIN entered by the staff member.
-    pub pin: String,
-    /// Optional device/terminal identifier for per-device abuse controls
-    /// (STAFF-07). When absent the backend derives one from the host name
-    /// (`COMPUTERNAME`/`HOSTNAME`) so distributed brute-force from a single
-    /// terminal is still bounded.
-    #[serde(default)]
-    pub device_id: Option<String>,
-}
-
-/// Result of a successful staff login.
-#[derive(Debug, Serialize)]
-pub struct StaffLoginResult {
-    /// Session info including user id, display name, and role.
-    pub session: LoginSession,
-    /// Short-lived picker ticket (audit-open-findings residual).
-    ///
-    /// Parity with the desktop client: the pre-session
-    /// `list_workspaces` / `list_workspace_screens` commands verify
-    /// this ticket and resolve the caller's REAL role from the
-    /// database — caller-supplied `role_id` / `user_id` are never
-    /// trusted for the workspace picker.
-    pub picker_ticket: String,
-}
-
-/// Arguments for the `staff_check_username` command.
-#[derive(Debug, Deserialize)]
-pub struct CheckUsernameArgs {
-    /// Staff username to look up.
-    pub username: String,
-}
-
-/// Result of a username existence check.
-#[derive(Debug, Serialize)]
-pub struct CheckUsernameResult {
-    /// Always `true`. The pre-check never reveals whether the account
-    /// exists or is active (STAFF-06); the real state is written to the
-    /// server log only, and the login endpoint reports a uniform failure.
-    pub proceed: bool,
-}
+// Phase 3.3 T5: the auth wire DTOs moved to the shared `oz_bridge::auth`
+// module and are re-exported here, same as the desktop shell. The wire
+// contract is one definition across shells — including `CreateSessionArgs`,
+// whose `picker_ticket` the tablet copy had silently dropped (UI always sent
+// it; the H-3 gate now runs here, restored field-for-field from the bridge).
+// Command bodies stay tablet-native.
+pub use oz_bridge::auth::{
+    CheckUsernameArgs, CheckUsernameResult, CreateSessionArgs, CreateSessionResult,
+    OrganizationSummary, SessionContextDto, SessionKeepaliveResult, StaffLoginArgs,
+    StaffLoginResult,
+};
 
 /// The tablet's single security-event sink — the auth paths and the
 /// staff-management paths both route here (todo-global-saas-2.md P1
@@ -357,68 +322,6 @@ pub async fn staff_login(
     })
 }
 
-/// Arguments for `create_session`.
-#[derive(Debug, Deserialize)]
-pub struct CreateSessionArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// ID of the associated store.
-    pub store_id: String,
-    /// ID of the associated instance.
-    pub instance_id: String,
-    /// Type Key.
-    pub type_key: String,
-    /// ID of the associated terminal.
-    pub terminal_id: String,
-    /// Optional Organization (legal entity) id the session should be scoped to.
-    ///
-    /// SaaS-3 L194: routing hint only — never an authentication or
-    /// authorization input. The session authority derives from the user
-    /// assignments row. create_session validates that the org is in the
-    /// device-local enumerated set (legal_entities for tenant "default") and
-    /// that the user assignment covers it (assignment_covers_resource with
-    /// ScopeType::LegalEntity) before setting the display-only org_label.
-    /// An org not on the device, or one the user cannot access, is refused
-    /// (fail-closed), mirroring the impersonation guard.
-    #[serde(default)]
-    pub org_id: Option<String>,
-}
-
-/// Result of `create_session` — returns the opaque session token.
-#[derive(Debug, Serialize)]
-pub struct CreateSessionResult {
-    /// Session Token.
-    pub session_token: String,
-    /// Context.
-    pub context: SessionContextDto,
-}
-
-/// Lightweight session context DTO for the frontend.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionContextDto {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// ID of the associated role.
-    pub role_id: String,
-    /// ID of the associated store.
-    pub store_id: String,
-    /// ID of the associated instance.
-    pub instance_id: String,
-    /// Type Key.
-    pub type_key: String,
-    /// ID of the associated terminal.
-    pub terminal_id: String,
-    /// Display-only label for the Organization (legal entity) this session is
-    /// scoped to. NEVER an authentication or authorization input — purely for
-    /// UI presentation (SaaS-3 L194). The session authority derives from the
-    /// user assignments row, not from this field.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub org_label: Option<String>,
-}
-
 /// Create a new session and return an opaque session token.
 ///
 /// ADR #4 / ADR #7: Called after login + workspace selection.
@@ -433,6 +336,40 @@ pub async fn create_session(
         return Err(AppError::Invalid(
             "store_id, instance_id, and user_id must not be empty".into(),
         ));
+    }
+
+    // H-3: Verify the picker ticket to authenticate the caller's identity —
+    // the same gate the desktop/bridge twin has always run. The ticket was
+    // minted by staff_login/bootstrap_owner and bound to the authenticated
+    // user; we derive user_id from the ticket instead of trusting the
+    // caller-supplied value. The tablet DTO silently dropped this field
+    // until Phase 3.3 T5, so this shell minted sessions with no ticket
+    // verification — restored field-for-field against the bridge gate.
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let verified_user_id = picker_ticket::verify_picker_ticket(
+        &state.picker_ticket_secret,
+        &args.picker_ticket,
+        now_ts,
+    )
+    .ok_or_else(|| {
+        tracing::warn!(
+            user_id = %args.user_id,
+            "session creation denied — invalid or expired picker ticket"
+        );
+        AppError::Invalid("Invalid or expired picker ticket".into())
+    })?;
+
+    // Ensure the caller-supplied user_id matches the ticket-bound identity.
+    if verified_user_id != args.user_id {
+        tracing::warn!(
+            user_id = %args.user_id,
+            ticket_user_id = %verified_user_id,
+            "session creation denied — user_id mismatch with picker ticket"
+        );
+        return Err(AppError::Invalid("Invalid or expired picker ticket".into()));
     }
 
     // SaaS-3 L194: optional Organization (legal entity) scoping.
@@ -630,16 +567,6 @@ pub async fn list_organizations(
         })
         .collect();
     Ok(orgs)
-}
-
-/// Summary of an Organization (legal entity) available on this device.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrganizationSummary {
-    /// Legal entity id (the legal_entities.id a session can be scoped to).
-    pub id: String,
-    /// Display name for the org selector.
-    pub name: String,
 }
 
 /// Switch the active Organization (legal entity) for an authenticated session.
@@ -1048,14 +975,6 @@ pub async fn destroy_session(
 
     tracing::info!("session destroyed");
     Ok(())
-}
-
-/// Result of `session_keepalive` — the refreshed expiry timestamp.
-#[derive(Debug, Serialize)]
-pub struct SessionKeepaliveResult {
-    /// Refreshed unix expiry (seconds). `None` when sessions have no
-    /// TTL (development mode) — the frontend can stop pinging then.
-    pub expires_at: Option<i64>,
 }
 
 /// Refresh the current session's TTL so long-lived screens (analytics,

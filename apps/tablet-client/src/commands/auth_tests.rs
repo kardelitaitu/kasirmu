@@ -85,6 +85,18 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// Sign a picker ticket valid under the AppState::for_test secret
+/// (`b"test-picker-ticket-secret"`), bound to `user_id` — the same mint
+/// staff_login performs. create_session's H-3 gate (restored in Phase 3.3
+/// T5) verifies this ticket before any session is minted.
+fn test_ticket(user_id: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    picker_ticket::sign_picker_ticket(b"test-picker-ticket-secret", user_id, now + 300)
+}
+
 #[tokio::test]
 async fn staff_login_mints_verifiable_picker_ticket() {
     // audit-open-findings (parity with the desktop client): the picker ticket
@@ -191,6 +203,7 @@ async fn create_session_rejects_forged_role_id() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-cashier".into(),
+            picker_ticket: test_ticket("user-cashier"),
             role_id: "role-owner".into(), // forged
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -225,6 +238,7 @@ async fn create_session_rejects_unknown_user() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "ghost-user".into(),
+            picker_ticket: test_ticket("ghost-user"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -255,6 +269,7 @@ async fn create_session_allows_real_owner() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -288,6 +303,7 @@ async fn create_session_denies_tier_disallowed_workspace_type() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-kds".into(),
@@ -336,6 +352,7 @@ async fn create_session_rejects_tampered_subscription_signature() {
     let result = create_session(
         CreateSessionArgs {
             user_id: "user-owner".into(),
+            picker_ticket: test_ticket("user-owner"),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-kds".into(),
@@ -701,6 +718,7 @@ async fn l194_create_session_org_wide_user_gets_label() {
     let result = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -730,6 +748,7 @@ async fn l194_create_session_org_denied_without_assignment_coverage() {
     let result = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -761,6 +780,7 @@ async fn l194_switch_organization_old_token_dead() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -821,6 +841,7 @@ async fn l194_switch_organization_records_an_org_switch_event() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -866,6 +887,7 @@ async fn l194_switch_organization_wrong_pin_keeps_old_token() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -910,6 +932,7 @@ async fn l194_switch_organization_enumerated_list_only() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -951,6 +974,7 @@ async fn l194_switch_organization_requires_assignment_coverage() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -991,6 +1015,7 @@ async fn l194_switch_organization_no_grant_carryover() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -1025,6 +1050,7 @@ async fn l194_switch_organization_rejects_tampered_db() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -1076,6 +1102,7 @@ async fn l194_switch_organization_happy_path_returns_label_and_token() {
     let login = create_session(
         CreateSessionArgs {
             user_id: uid.clone(),
+            picker_ticket: test_ticket(uid.as_str()),
             role_id: "role-owner".into(),
             store_id: "default".into(),
             instance_id: "default-restaurant-pos".into(),
@@ -1109,5 +1136,78 @@ async fn l194_switch_organization_happy_path_returns_label_and_token() {
             .read()
             .unwrap()
             .contains_key(&switched.session_token)
+    );
+}
+
+#[tokio::test]
+async fn create_session_rejects_forged_picker_ticket() {
+    // H-3 regression (Phase 3.3 T5): the tablet DTO silently dropped the
+    // picker_ticket the UI always sends, so this shell minted sessions
+    // with NO ticket verification while the desktop/bridge twin failed
+    // closed. A ticket signed for a DIFFERENT user must not mint a
+    // session for user-owner — identity binding, not just signature
+    // validity — and the denial must be uniform (no oracle).
+    let conn = migrations::fresh_db();
+    seed_owner(&conn);
+    let app = tauri::test::mock_builder()
+        .manage(AppState::for_test_with_conn(conn))
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let forged = CreateSessionArgs {
+        user_id: "user-owner".into(),
+        role_id: "role-owner".into(),
+        store_id: "default".into(),
+        instance_id: "default-restaurant-pos".into(),
+        type_key: "restaurant-pos".into(),
+        terminal_id: "terminal-1".into(),
+        // valid signature, WRONG bound identity
+        picker_ticket: test_ticket("user-somebody-else"),
+        org_id: None,
+    };
+    let result = create_session(forged, app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "a ticket bound to another user must not mint a session"
+    );
+    assert_eq!(
+        app.state::<AppState>().session_store.read().unwrap().len(),
+        0,
+        "no session token may be created on a mismatched ticket"
+    );
+
+    // And a garbage ticket is denied the same uniform way.
+    let garbage = CreateSessionArgs {
+        user_id: "user-owner".into(),
+        role_id: "role-owner".into(),
+        store_id: "default".into(),
+        instance_id: "default-restaurant-pos".into(),
+        type_key: "restaurant-pos".into(),
+        terminal_id: "terminal-1".into(),
+        picker_ticket: "not-a-ticket".into(),
+        org_id: None,
+    };
+    let result = create_session(garbage, app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::Invalid(_))),
+        "a garbage ticket must be denied"
+    );
+}
+
+#[test]
+fn create_session_args_require_the_ui_wire_picker_ticket() {
+    // The wire contract pin: the UI (ui/src/api/staff.ts) declares
+    // picker_ticket mandatory and always sends it. The DTO must accept
+    // the snake_case wire, and a payload WITHOUT the ticket must fail —
+    // this is the regression shape that let the field vanish silently.
+    let json = r#"{"user_id":"u","role_id":"r","store_id":"s","instance_id":"i","type_key":"t","terminal_id":"x","picker_ticket":"tk","org_id":null}"#;
+    let args: CreateSessionArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.picker_ticket, "tk");
+
+    let missing = r#"{"user_id":"u","role_id":"r","store_id":"s","instance_id":"i","type_key":"t","terminal_id":"x","org_id":null}"#;
+    let err = serde_json::from_str::<CreateSessionArgs>(missing).unwrap_err();
+    assert!(
+        err.to_string().contains("picker_ticket"),
+        "absent ticket must fail loudly, got: {err}"
     );
 }
