@@ -26,6 +26,12 @@ Rules:
 Usage:
     python3 scripts/verify-migration-column-types.py                # full scan
     python3 scripts/verify-migration-column-types.py --staged-only  # only staged migration files
+    python3 scripts/verify-migration-column-types.py --anything-else # REFUSED, exit 2, names the flag
+
+An argument this script does not read is refused rather than ignored. Before that, `--self-test`
+fell through to the whole-tree scan and exited 0: the caller asked for a self test, got a green,
+and nothing self-tested. A flag is a request for a surface, so a flag that has no surface cannot
+be answered with the verdict for another one.
 
 THE EMPTY CORPUS
 ================
@@ -51,7 +57,8 @@ EXIT CODES
   * 1  at least one violation or stale whitelist entry (the CI / check.sh / hook gate).
   * 2  a whole-tree scan whose migration root yielded 0 files, or a --staged-only run that
        could not read the git index -- either way the verdict had no corpus, so this
-       script refuses to print one rather than printing a hollow one.
+       script refuses to print one rather than printing a hollow one. Also 2 on a dashed
+       argument this script does not implement: a refused command line, not a failed check.
 """
 
 from __future__ import annotations
@@ -215,7 +222,44 @@ def staged_migration_paths() -> set[str] | None:
     return {p for p in proc.stdout.split("\0") if p}
 
 
+# The complete set of dashed arguments this script implements. `main` below is its only
+# reader, and it reads this one; keep the two together when a flag is added. Anything else
+# that starts with a dash is a request for a surface this gate does not have, so it is
+# refused rather than ignored -- an ignored flag used to print the whole-tree verdict.
+KNOWN_FLAGS = ("--staged-only",)
+
+
+def unknown_flag(argv: list[str]) -> str | None:
+    """The first dashed argument missing from KNOWN_FLAGS, or None when all of them are known.
+
+    Only dashed arguments are judged; a positional has never been read here and still is not.
+    """
+    for arg in argv:
+        if arg.startswith("-") and arg not in KNOWN_FLAGS:
+            return arg
+    return None
+
+
+def reject_unknown_flag(flag: str) -> int:
+    """Name the flag this gate does not implement, list the ones it does, and stop.
+
+    stdout, not stderr, for the reason `refuse()` documents: scripts/run-pre-push.py surfaces
+    only a child's stdout. No scan result prints on this path -- the command line asked for a
+    check that does not exist here, so the only honest output is the usage line.
+    """
+    print(f"verify-migration-column-types: REFUSED — unrecognised argument {flag}. This gate "
+          "implements no such flag; the whole-tree scan it would otherwise run is not the "
+          "surface that was asked for, and exiting 0 over it is a green for a check nobody ran.")
+    print("  usage : python3 scripts/verify-migration-column-types.py"
+          + "".join(f" [{f}]" for f in KNOWN_FLAGS))
+    print(f"  flags this script implements: {', '.join(KNOWN_FLAGS)}")
+    return 2
+
+
 def main(argv: list[str]) -> int:
+    flag = unknown_flag(argv)
+    if flag is not None:
+        return reject_unknown_flag(flag)
     staged_only = "--staged-only" in argv
     mode = "--staged-only" if staged_only else "whole-tree (no --staged-only)"
     corpus = sorted(MIGRATIONS.glob("*.sql"))
