@@ -1,16 +1,16 @@
 import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
-import { Localized } from '@/components/Localized';
 import { type Product } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
 import { useProducts } from '@/features/products/useProducts';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useTheme } from '@/frontend/shell/ThemeProvider';
-import { useFullscreen } from '@/hooks/useFullscreen';
 import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settings';
-import { MenuItemTile } from './components/MenuItemTile';
+import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
+import { MenuItemGrid } from './components/MenuItemGrid';
+import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
+import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
+import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
 // ── Props ──────────────────────────────────────────────────────────
@@ -35,100 +35,6 @@ function key(uid: string, name: string) {
 // against both bundles.
 export const SORT_MODES = ['manual', 'a-z', 'date', 'popularity'] as const;
 type SortMode = (typeof SORT_MODES)[number];
-
-const COLOR_PALETTE = [
-  '#10b981',
-  '#ef4444',
-  '#f97316',
-  '#eab308',
-  '#22c55e',
-  '#06b6d4',
-  '#3b82f6',
-  '#8b5cf6',
-  '#d946ef',
-  '#ec4899',
-];
-
-// ── Category icon SVGs ─────────────────────────────────────────────
-function CategoryIconFood() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
-      <line x1="7" y1="11" x2="7" y2="22" />
-      <path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3z" />
-      <line x1="21" y1="15" x2="21" y2="22" />
-    </svg>
-  );
-}
-
-function CategoryIconSnack() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M4 12h16" />
-      <path d="M4 12c0 5.5 3.6 9 8 9s8-3.5 8-9" />
-      <circle cx="9" cy="9" r="2" fill="currentColor" stroke="none" />
-      <circle cx="13" cy="8" r="2" fill="currentColor" stroke="none" />
-      <circle cx="17" cy="9" r="2" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function CategoryIconHotDrink() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M6 8h12l-1.5 12h-9L6 8z" />
-      <path d="M17 11h2a2 2 0 0 1 0 4h-2" />
-      <path d="M8 8C8.8 6.5 7.2 5.5 8 4" />
-      <path d="M13 8C13.8 6.5 12.2 5.5 13 4" />
-    </svg>
-  );
-}
-
-function CategoryIconColdDrink() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-      <path d="M5 7h14l-2 15H7L5 7z" />
-      <line x1="3" y1="7" x2="21" y2="7" />
-      <line x1="16" y1="2" x2="12" y2="22" />
-    </svg>
-  );
-}
-
-function CategoryIconDots1() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" aria-hidden="true">
-      <circle cx="8" cy="8" r="3" />
-    </svg>
-  );
-}
-function CategoryIconDots2() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" aria-hidden="true">
-      <circle cx="5" cy="8" r="2.5" />
-      <circle cx="11" cy="8" r="2.5" />
-    </svg>
-  );
-}
-function CategoryIconDots3() {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" aria-hidden="true">
-      <circle cx="3" cy="8" r="2" />
-      <circle cx="8" cy="8" r="2" />
-      <circle cx="13" cy="8" r="2" />
-    </svg>
-  );
-}
-
-function CategoryIcon({ icon }: { icon: string }) {
-  if (icon === 'food')       return <CategoryIconFood />;
-  if (icon === 'snack')      return <CategoryIconSnack />;
-  if (icon === 'hot-drink')  return <CategoryIconHotDrink />;
-  if (icon === 'cold-drink') return <CategoryIconColdDrink />;
-  if (icon === 'dots-1')     return <CategoryIconDots1 />;
-  if (icon === 'dots-2')     return <CategoryIconDots2 />;
-  if (icon === 'dots-3')     return <CategoryIconDots3 />;
-  return null;
-}
 
 function loadPinned(uid: string): Set<string> {
   try {
@@ -205,55 +111,16 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { products, categoryMeta, loading } = useProducts();
   const { goToWorkspacePicker } = useWorkspaceNav();
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const { sessionToken } = useWorkspace();
   const userId = session?.user_id ?? 'default';
-  const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const hamburgerRef = useRef<HTMLDivElement>(null);
-  const hamburgerButtonRef = useRef<HTMLButtonElement>(null);
-  const hamburgerDropdownRef = useRef<HTMLDivElement>(null);
-  const hamburgerWasOpenRef = useRef(false);
-  const hamburgerOpenedWithKeyboardRef = useRef(false);
   const contextMenuOpenRef = useRef(false);
-
-  // Move focus into the hamburger menu when it opens and return focus to the
-  // trigger when it closes. This keeps the popover keyboard-operable without
-  // disturbing the separate product context menu focus contract.
-  useEffect(() => {
-    if (menuOpen) {
-      hamburgerDropdownRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-    } else if (hamburgerWasOpenRef.current && hamburgerOpenedWithKeyboardRef.current) {
-      hamburgerButtonRef.current?.focus();
-    }
-    hamburgerWasOpenRef.current = menuOpen;
-  }, [menuOpen]);
-
-  // Close the hamburger menu on Escape before the global search shortcut can
-  // clear or blur the search field.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      hamburgerOpenedWithKeyboardRef.current = true;
-      setMenuOpen(false);
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [menuOpen]);
-
-  // Close hamburger menu on click outside
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (hamburgerRef.current && !hamburgerRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
+  // The dropdown element ref is owned here (not in MenuPreferencesMenu)
+  // because the global app-search gate — which moved into MenuSearchBar with
+  // the input it targets — must test whether focus is inside the popover.
+  // The same ref object is passed to both children.
+  const hamburgerDropdownRef = useRef<HTMLDivElement>(null);
 
   const [addedSku, setAddedSku] = useState<string | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -269,10 +136,8 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
     addedTimerRef.current = setTimeout(() => setAddedSku(null), 400);
   }, [onAddProduct, userId]);
 
-  const { toggleFullscreen } = useFullscreen();
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const [pinned, setPinned] = useState<Set<string>>(loadPinned(userId));
   const [colors, setColors] = useState<Record<string, string>>(loadColors(userId));
   const [unavailable, setUnavailable] = useState<Set<string>>(loadUnavailable(userId));
@@ -409,17 +274,12 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
   }, [pinned, colors, unavailable, userId]);
 
   // ── Context menu state ──────────────────────────────
-  const [contextMenu, setContextMenu] = useState<{
-    sku: string;
-    x: number;
-    y: number;
-    isPinned: boolean;
-    isUnavailable: boolean;
-    sourceInStock: boolean;
-    currentColor: string | undefined;
-    fromKeyboard: boolean;
-  } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // The open/closed descriptor and the trigger bookkeeping stay here: the
+  // tile (deep in the grid) reports openings through handleContextMenu, the
+  // global keyboard shortcuts must know whether an overlay is up, and the
+  // user-switch rehydration below resets it. The overlay itself — focus
+  // trap, roving menuitems, dismissal — lives in MenuItemContextMenu.
+  const [contextMenu, setContextMenu] = useState<RestaurantContextMenuState | null>(null);
   // A11Y-06: the card that opened the menu (for focus restoration) and whether
   // it was opened via keyboard (Shift+F10 / ContextMenu key) — only the
   // keyboard path should move focus into the menu and restore it on close.
@@ -436,95 +296,6 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
     contextFromKeyboardRef.current = false;
   }, []);
 
-  // A11Y-06: keyboard-opened menus move focus to the first menuitem so the
-  // menu is immediately operable without an extra Tab.
-  useEffect(() => {
-    if (!contextMenu?.fromKeyboard) return;
-    menuRef.current?.querySelector<HTMLElement>('button[role="menuitem"]')?.focus();
-  }, [contextMenu]);
-
-  // A11Y-06: ArrowUp / ArrowDown roving focus between menuitems (wraps).
-  // When no menuitem currently has focus (idx === -1), ArrowDown lands on the
-  // first item and ArrowUp wraps to the last — robust for any item count.
-  const handleContextMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const items = Array.from(
-      e.currentTarget.querySelectorAll<HTMLElement>('button[role="menuitem"]'),
-    );
-    if (items.length === 0) return;
-    const idx = items.indexOf(document.activeElement as HTMLElement);
-    e.preventDefault();
-    if (e.key === 'ArrowDown') {
-      items[idx === -1 ? 0 : (idx + 1) % items.length]?.focus();
-    } else {
-      items[idx === -1 ? items.length - 1 : (idx - 1 + items.length) % items.length]?.focus();
-    }
-  }, []);
-
-  // Close context menu on click outside or Escape (Escape restores focus).
-  useEffect(() => {
-    if (!contextMenu) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        closeContextMenu();
-      }
-    };
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopImmediatePropagation();
-        closeContextMenu();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('keydown', keyHandler);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', keyHandler);
-    };
-  }, [contextMenu, closeContextMenu]);
-
-  // Listen for global Ctrl+F → focus search input, except while an overlay
-  // owns keyboard interaction.
-  useEffect(() => {
-    const handler = () => {
-      if (menuOpen || contextMenuOpenRef.current || hamburgerDropdownRef.current?.contains(document.activeElement)) return;
-      searchInputRef.current?.focus();
-    };
-    window.addEventListener('app-search', handler);
-    return () => window.removeEventListener('app-search', handler);
-  }, [menuOpen]);
-
-  // Type anywhere → focus search + insert char, Escape → clear + blur
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (menuOpen || contextMenuOpenRef.current) return;
-        setSearchQuery('');
-        searchInputRef.current?.blur();
-        return;
-      }
-      if (menuOpen || contextMenuOpenRef.current) return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
-
-      e.preventDefault();
-      const input = searchInputRef.current;
-      if (!input) return;
-      input.focus();
-      const selStart = input.selectionStart ?? input.value.length;
-      const selEnd = input.selectionEnd ?? selStart;
-      const newVal = input.value.slice(0, selStart) + e.key + input.value.slice(selEnd);
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set;
-      nativeSetter?.call(input, newVal);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [menuOpen]);
-
   const handleContextMenu = useCallback((sku: string, e: React.MouseEvent, trigger?: HTMLElement, fromKeyboard = false, sourceInStock = true) => {
     e.preventDefault();
     contextTriggerRef.current = trigger ?? null;
@@ -534,44 +305,6 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
     const y = Number.isFinite(e.clientY) ? e.clientY : 4;
     setContextMenu({ sku, x, y, isPinned: pinned.has(sku), isUnavailable: unavailable.has(sku), sourceInStock, currentColor: colors[sku], fromKeyboard });
   }, [pinned, colors, unavailable]);
-
-  const togglePin = useCallback((sku: string) => {
-    setPinned((prev) => {
-      const next = new Set(prev);
-      if (next.has(sku)) next.delete(sku);
-      else next.add(sku);
-      return next;
-    });
-    closeContextMenu();
-  }, [closeContextMenu]);
-
-  const toggleUnavailable = useCallback((sku: string) => {
-    setUnavailable((prev) => {
-      const next = new Set(prev);
-      if (next.has(sku)) next.delete(sku);
-      else next.add(sku);
-      return next;
-    });
-    closeContextMenu();
-  }, [closeContextMenu]);
-
-  const setColor = useCallback((sku: string, color: string) => {
-    setColors((prev) => {
-      if (color === prev[sku]) return prev;
-      return { ...prev, [sku]: color };
-    });
-    closeContextMenu();
-  }, [closeContextMenu]);
-
-  const clearColor = useCallback((sku: string) => {
-    setColors((prev) => {
-      if (!(sku in prev)) return prev;
-      const next = { ...prev };
-      delete next[sku];
-      return next;
-    });
-    closeContextMenu();
-  }, [closeContextMenu]);
 
   // Restaurant and retail are separate workspaces. Category tabs must be
   // derived from restaurant products rather than the shared catalog category
@@ -606,23 +339,11 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
     return m;
   }, [categoryMeta]);
 
-  const handleHamburgerKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
-    const items = Array.from(
-      hamburgerDropdownRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
-    );
-    if (items.length === 0) return;
-    const current = items.indexOf(e.currentTarget);
-    const next = e.key === 'Home'
-      ? 0
-      : e.key === 'End'
-        ? items.length - 1
-        : e.key === 'ArrowDown'
-          ? (current + 1 + items.length) % items.length
-          : (current - 1 + items.length) % items.length;
-    e.preventDefault();
-    items[next]?.focus();
-  }, []);
+  const handleSelectSort = useCallback((mode: SortMode) => {
+    setSortMode(mode);
+    persistMenuPreference('sort', mode);
+    setMenuOpen(false);
+  }, [persistMenuPreference]);
 
   const filtered = useMemo(() => {
     let result = restaurantProducts;
@@ -647,155 +368,21 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
     return sortPinnedFirst(result, pinned);
   }, [effectiveCategory, restaurantProducts, searchQuery, pinned, sortMode, popularityCounts]);
 
-  const viewportWidth = typeof window !== 'undefined' && Number.isFinite(window.innerWidth) ? window.innerWidth : 1024;
-  const viewportHeight = typeof window !== 'undefined' && Number.isFinite(window.innerHeight) ? window.innerHeight : 768;
-
   return (
     <div className="restaurant-menu" style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}>
       {/* ── Header row: hamburger + back + search ── */}
       <div className="restaurant-header">
-          <div className="restaurant-header-left" ref={hamburgerRef}>
-          <button
-            type="button"
-            className="restaurant-hamburger-btn"
-            ref={hamburgerButtonRef}
-            onPointerDown={() => {
-              hamburgerOpenedWithKeyboardRef.current = false;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                hamburgerOpenedWithKeyboardRef.current = true;
-              }
-            }}
-            onClick={() => setMenuOpen((prev) => !prev)}
-            aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
-            aria-expanded={menuOpen}
-            aria-controls="restaurant-hamburger-menu"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-
-          {menuOpen && (
-            <div
-              ref={hamburgerDropdownRef}
-              id="restaurant-hamburger-menu"
-              className="restaurant-hamburger-dropdown"
-              role="group"
-              tabIndex={-1}
-              aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
-            >
-              <span className="restaurant-hamburger-label"><Localized id="restaurant-sort-label"><span>Sort</span></Localized></span>
-              {SORT_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className="restaurant-hamburger-item restaurant-hamburger-item--sort"
-                  onKeyDown={handleHamburgerKeyDown}
-                  onClick={() => {
-                    setSortMode(mode);
-                    persistMenuPreference('sort', mode);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {sortMode === mode && <span className="restaurant-sort-check">✓</span>}
-                  <Localized id={`restaurant-sort-${mode}`}>
-                    <span>{mode === 'manual' ? 'Manual' : mode === 'a-z' ? 'A–Z' : mode === 'date' ? 'By Date' : 'Popularity'}</span>
-                  </Localized>
-                </button>
-              ))}
-              <div className="restaurant-hamburger-divider" role="separator" />
-              <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-size-label')}>
-                <span className="restaurant-hamburger-size-label"><Localized id="restaurant-size-label"><span>Menu Size</span></Localized></span>
-                <div className="restaurant-hamburger-size-controls">
-                  <button
-                    type="button"
-                    className="restaurant-size-btn"
-                    onKeyDown={handleHamburgerKeyDown}
-                    disabled={cardSize <= 0}
-                    onClick={() => changeCardSize(-1)}
-                    aria-label={l10n.getString('restaurant-size-decrease-aria')}
-                  >
-                    &minus;
-                  </button>
-                  <span className="restaurant-size-value">{cardSize}</span>
-                  <button
-                    type="button"
-                    className="restaurant-size-btn"
-                    onKeyDown={handleHamburgerKeyDown}
-                    disabled={cardSize >= 4}
-                    onClick={() => changeCardSize(1)}
-                    aria-label={l10n.getString('restaurant-size-increase-aria')}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-              <div className="restaurant-hamburger-divider" role="separator" />
-              <div className="restaurant-hamburger-item restaurant-hamburger-size" role="group" aria-label={l10n.getString('restaurant-font-size-label')}>
-                <Localized id="restaurant-font-size-label">
-                  <span className="restaurant-hamburger-size-label">Font Size</span>
-                </Localized>
-                <div className="restaurant-hamburger-size-controls">
-                  <button
-                    type="button"
-                    className="restaurant-size-btn"
-                    onKeyDown={handleHamburgerKeyDown}
-                    disabled={fontSize <= 0}
-                    onClick={() => changeFontSize(-1)}
-                    aria-label={l10n.getString('restaurant-font-size-decrease-aria')}
-                  >
-                    &minus;
-                  </button>
-                  <span className="restaurant-size-value">{fontSize}</span>
-                  <button
-                    type="button"
-                    className="restaurant-size-btn"
-                    onKeyDown={handleHamburgerKeyDown}
-                    disabled={fontSize >= 4}
-                    onClick={() => changeFontSize(1)}
-                    aria-label={l10n.getString('restaurant-font-size-increase-aria')}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-              <div className="restaurant-hamburger-divider" role="separator" />
-              <button
-                type="button"
-                className="restaurant-hamburger-item"
-                onKeyDown={handleHamburgerKeyDown}
-                aria-label={l10n.getString(theme === 'dark' ? 'restaurant-theme-light' : 'restaurant-theme-dark')}
-                onClick={() => { toggleTheme(); setMenuOpen(false); }}
-              >
-                <Localized id={theme === 'dark' ? 'restaurant-theme-light' : 'restaurant-theme-dark'}>
-                  <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-                </Localized>
-              </button>
-              <button
-                type="button"
-                className="restaurant-hamburger-item"
-                onKeyDown={handleHamburgerKeyDown}
-                aria-label={l10n.getString('restaurant-lock-terminal')}
-                onClick={() => { logout(); setMenuOpen(false); }}
-              >
-                <Localized id="restaurant-lock-terminal"><span>Lock Terminal</span></Localized>
-              </button>
-              <button
-                type="button"
-                className="restaurant-hamburger-item"
-                onKeyDown={handleHamburgerKeyDown}
-                aria-label={l10n.getString('restaurant-toggle-fullscreen')}
-                onClick={() => { toggleFullscreen(); setMenuOpen(false); }}
-              >
-                <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
-              </button>
-            </div>
-          )}
-        </div>
+        <MenuPreferencesMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          dropdownRef={hamburgerDropdownRef}
+          sortMode={sortMode}
+          onSelectSort={handleSelectSort}
+          cardSize={cardSize}
+          onCardSizeStep={changeCardSize}
+          fontSize={fontSize}
+          onFontSizeStep={changeFontSize}
+        />
 
         <button
           type="button"
@@ -807,168 +394,45 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <div className="restaurant-search">
-        <svg className="restaurant-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          type="search"
-          className="restaurant-search-input"
-          id="restaurant-menu-search"
-          name="restaurant-menu-search"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          data-1p-ignore="true"
-          data-lpignore="true"
-          data-bwignore="true"
-          ref={searchInputRef}
-          placeholder={l10n.getString('restaurant-menu-search-placeholder')}
+        <MenuSearchBar
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label={l10n.getString('restaurant-search-aria')}
-          style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+          onChange={setSearchQuery}
+          menuOpen={menuOpen}
+          contextMenuOpenRef={contextMenuOpenRef}
+          popoverRef={hamburgerDropdownRef}
         />
-        {searchQuery && (
-          <button
-            type="button"
-            className="restaurant-search-clear"
-            onClick={() => setSearchQuery('')}
-            aria-label={l10n.getString('restaurant-search-clear-aria')}
-          >
-            &times;
-          </button>
-        )}
-      </div>
       </div>
 
       {/* ── Category pills ─────────────────────────── */}
-      <div className="restaurant-categories" role="tablist" aria-label={l10n.getString('restaurant-categories-aria')}>
-          {categoryOptions.map((cat) => {
-            const meta = catMetaMap.get(cat);
-            const isActive = effectiveCategory === cat;
-            return (
-              <button
-                key={cat}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                className={
-                  isActive
-                    ? 'restaurant-category-pill restaurant-category-pill--active'
-                    : 'restaurant-category-pill'
-                }
-                style={meta && isActive
-                  ? { '--pill-color': meta.colour } as React.CSSProperties
-                  : undefined}
-                onClick={() => setActiveCategory(cat)}
-              >
-                {meta?.icon && (
-                  <span className="restaurant-pill-icon">
-                    <CategoryIcon icon={meta.icon} />
-                  </span>
-                )}
-                {cat}
-              </button>
-            );
-          })}        </div>
+      <MenuCategoryTabBar
+        options={categoryOptions}
+        active={effectiveCategory}
+        onSelect={setActiveCategory}
+        metaMap={catMetaMap}
+      />
 
       {/* ── Product grid ───────────────────────────── */}
-      {loading ? (
-        // LOAD-05: localized status announcement for the loading region.
-        <LoadingStatus
-          className="restaurant-empty"
-          label={requiredLocalized(l10n, 'restaurant-menu-loading')}
-        />
-      ) : filtered.length === 0 ? (
-        <div className="restaurant-empty">
-          <span className="restaurant-empty-text">
-            <Localized id="restaurant-menu-empty">
-              <span>No items available</span>
-            </Localized>
-          </span>
-        </div>
-      ) : (
-        <div className="restaurant-grid" role="list" aria-label={requiredLocalized(l10n, 'restaurant-menu-items-aria')}>
-          {filtered.map((product, i) => (
-            <MenuItemTile
-              key={product.sku}
-              product={{ ...product, inStock: product.inStock && !unavailable.has(product.sku) }}
-              sourceInStock={product.inStock}
-              pinned={pinned.has(product.sku)}
-              color={colors[product.sku] ?? catMetaMap.get(product.category)?.colour}
-              onAdd={handleAddProduct}
-              onContextMenu={handleContextMenu}
-              added={product.sku === addedSku}
-              index={i}
-            />
-          ))}
-        </div>
-      )}
+      <MenuItemGrid
+        loading={loading}
+        items={filtered}
+        pinned={pinned}
+        unavailable={unavailable}
+        colors={colors}
+        catMetaMap={catMetaMap}
+        addedSku={addedSku}
+        onAdd={handleAddProduct}
+        onContextMenu={handleContextMenu}
+      />
 
       {/* ── Context menu ─────────────────────────────── */}
       {contextMenu && (
-        <div
-          ref={menuRef}
-          className="restaurant-context-menu"
-          style={{
-            left: Math.max(4, Math.min(contextMenu.x, viewportWidth - 180)),
-            top: Math.max(4, Math.min(contextMenu.y, viewportHeight - 280)),
-          }}
-          role="menu"
-          tabIndex={-1}
-          onKeyDown={handleContextMenuKeyDown}
-        >
-          <button
-            type="button"
-            className="restaurant-context-item"
-            aria-label={l10n.getString(contextMenu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin')}
-            onClick={() => togglePin(contextMenu.sku)}
-            role="menuitem"
-          >
-            <Localized id={contextMenu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin'}>
-            <span>{contextMenu.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
-          </Localized>
-          </button>
-          {contextMenu.sourceInStock && (
-            <button
-              type="button"
-              className="restaurant-context-item"
-              aria-label={l10n.getString(contextMenu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable')}
-              onClick={() => toggleUnavailable(contextMenu.sku)}
-              role="menuitem"
-            >
-              <Localized id={contextMenu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable'}>
-              <span>{contextMenu.isUnavailable ? 'Mark available' : 'Mark unavailable'}</span>
-            </Localized>
-            </button>
-          )}
-          <div className="restaurant-context-divider" role="separator" />
-          <span className="restaurant-context-label"><Localized id="restaurant-context-color-label"><span>Colorize Add</span></Localized></span>
-          <div className="restaurant-context-colors" role="group" aria-label={l10n.getString('restaurant-context-color-label')}>
-            {COLOR_PALETTE.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`restaurant-context-swatch${contextMenu.currentColor === c ? ' restaurant-context-swatch--active' : ''}`}
-                style={{ background: c }}
-                onClick={() => setColor(contextMenu.sku, c)}
-                aria-label={l10n.getString('restaurant-color-swatch-aria', { color: c }, c)}
-              />
-            ))}
-            {contextMenu.currentColor && (
-              <button
-                type="button"
-                className="restaurant-context-swatch restaurant-context-swatch--clear"
-                onClick={() => clearColor(contextMenu.sku)}
-                aria-label={l10n.getString('restaurant-clear-color-aria')}
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
+        <MenuItemContextMenu
+          menu={contextMenu}
+          setPinned={setPinned}
+          setUnavailable={setUnavailable}
+          setColors={setColors}
+          onClose={closeContextMenu}
+        />
       )}
     </div>
   );
