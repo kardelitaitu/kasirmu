@@ -691,7 +691,51 @@ pub fn run() {
                 };
                 (format!("{bind}:9180"), psk)
             };
-            let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk);
+            // ── kds-sync: discovery payload + live queue provider ──────
+            // The discovery response identifies this POS terminal to
+            // connecting KDS peers. `devices` stays empty for now —
+            // enrolment propagation over LAN is a known residual (see
+            // done-todo-kds-agents-2.md, "App wiring — 13-09-26").
+            // The queue provider answers a reconnecting peer's
+            // `{"op":"discover","want_queue":true}` from the in-memory
+            // snapshot that `commands/kds.rs` keeps fresh after every
+            // transition: it runs synchronously inside the per-peer
+            // accept task, so it only ever takes the cheap `std` read
+            // lock and never touches the async DB mutex.
+            let (kds_discovery_json, kds_queue_provider) = {
+                let state = app.state::<AppState>();
+                let restaurant_pos_id = state
+                    .terminal_id
+                    .try_lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .unwrap_or_default();
+                let discover = crate::lan_server::KdsDiscoverResponse {
+                    restaurant_pos_id,
+                    devices: Vec::new(),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                    transports: vec!["noise-psk-v1".into(), "legacy-psk-v1".into()],
+                    active_queue: None,
+                };
+                let json = serde_json::to_string(&discover).unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "kds-sync discovery payload failed to serialise"
+                    );
+                    "{}".to_string()
+                });
+                let cache = state.kds_queue_cache.clone();
+                let provider: crate::lan_server::KdsQueueProvider = std::sync::Arc::new(move || {
+                    cache
+                        .read()
+                        .map(|snapshot| snapshot.clone())
+                        .unwrap_or_default()
+                });
+                (json, provider)
+            };
+            let forwarder = crate::lan_server::LanEventForwarder::new(lan_bind_addr, lan_psk)
+                .with_discovery(kds_discovery_json)
+                .with_kds_queue(kds_queue_provider);
             let handle = forwarder.handle();
             platform_startup::spawn_daemon("LAN event forwarder", forwarder.run());
 
@@ -716,8 +760,12 @@ pub fn run() {
                             "order.course_fired",
                             Box::new(handle.course_fired_handler()),
                         );
+                        // kds-sync: forwards the four `kds.*` transitions
+                        // published by commands/kds.rs to LAN KDS peers,
+                        // station-filtered per peer subscription.
+                        bus.subscribe("kds.sync", Box::new(handle.kds_sync_handler()));
                         tracing::info!(
-                            "LAN event forwarder handlers registered for sale.completed and order.course_fired"
+                            "LAN event forwarder handlers registered for sale.completed, order.course_fired and kds.sync"
                         );
                         registered = true;
                         break;
