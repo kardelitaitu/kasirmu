@@ -185,10 +185,12 @@ describe('SessionLockScreen rendering', () => {
   // `version` command with a literal that drifted from the app (it said 0.0.9
   // while the app shipped 0.0.37), so the lock screen showed a stale version
   // in dev. It must derive from package.json, which bump-version.ps1 updates.
+  // The handler moved from tauri-api.ts into handlers/system.ts with the
+  // dev-mock extraction (T6); the guard follows its subject, not its history.
   it('dev-mock derives its version from package.json rather than a literal', () => {
-    const mockSrc = readFileSync(resolve(__dirname, '../dev-mock/tauri-api.ts'), 'utf8');
+    const mockSrc = readFileSync(resolve(__dirname, '../dev-mock/handlers/system.ts'), 'utf8');
     expect(mockSrc).toMatch(/version:\s*pkg\.version/);
-    expect(mockSrc).toMatch(/import pkg from '\.\.\/\.\.\/package\.json'/);
+    expect(mockSrc).toMatch(/import pkg from '\.\.\/\.\.\/\.\.\/package\.json'/);
     expect(mockSrc).not.toMatch(/version:\s*'\d+\.\d+\.\d+'/);
   });
 

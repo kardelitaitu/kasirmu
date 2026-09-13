@@ -21,16 +21,12 @@
 // alongside Cargo.toml/tauri.conf.json, so importing it keeps mock and app in
 // lockstep.
 import {
-  MOCK_LOGIN_ATTEMPTS_KEY,
   MOCK_TOPOLOGY_KEY,
-  MOCK_TOPOLOGY_REVISIONS_KEY,
-  MOCK_USER_PREFS_KEY,
   MOCK_WORKSPACES_KEY,
   readSlice,
   writeSlice,
 } from './core/mockDatabase';
 import {
-  MOCK_STAFF,
   MOCK_STORE,
   MOCK_WORKSPACES_SEED,
 } from './core/mockSeedData';
@@ -52,7 +48,16 @@ import { loyaltyHandlers } from './handlers/loyalty';
 import { kdsDisplayCounter, kdsHandlers, mockKdsOrders, mockKdsLineItems, saveMockKdsState } from './handlers/kds';
 import { analyticsHandlers } from './handlers/analytics';
 import { createLocationsHandlers } from './handlers/locations';
-import { MOCK_ROLE_PERMISSIONS, mockHandlerPayload, systemHandlers } from './handlers/system';
+import { mockHandlerPayload, systemHandlers } from './handlers/system';
+import { staffHandlers } from './handlers/staff';
+import {
+  type MockTopology,
+  type MockTopologyNode,
+  type MockTopologyWire,
+  mockTopologyRevisions,
+  recordMockTopologyRevision,
+  summarizeMockTopologyRevision,
+} from './handlers/topology-state';
 import { floorplanHandlers } from './handlers/floorplan';
 import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 
@@ -61,229 +66,6 @@ import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 // and re-exported here so the alias target keeps answering for all of them.
 export { convertFileSrc, invoke, isTauri };
 
-/** Display name for a preset role id (the real seeded role names). */
-function mockRoleName(role: string): string {
-  switch (role) {
-    case 'role-owner': return 'Owner';
-    case 'role-admin': return 'Admin';
-    case 'role-manager': return 'Manager';
-    case 'role-staff': return 'Staff';
-    case 'role-auditor': return 'Auditor';
-    default: return role.replace('role-', '').charAt(0).toUpperCase() + role.replace('role-', '').slice(1);
-  }
-}
-
-/**
- * A staff member row with the assignment the real backend resolves: preset
- * roles are global all/all (legacy users without an assignment row resolve
- * the same way per ADR #35 D5 / spec 0048).
- */
-function mockStaffMember(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
-  return {
-    id: 'staff-1',
-    username: 'owner',
-    display_name: 'Owner',
-    role_id: 'role-owner',
-    role_name: 'Owner',
-    is_active: true,
-    national_id_masked: '',
-    is_profile_complete: true,
-    assignment: {
-      scope_mode: 'global',
-      branches_all: true,
-      branch_ids: [],
-      workspaces_all: true,
-      workspace_keys: [],
-      scope_type: 'organization',
-      scope_id: null,
-    },
-    ...overrides,
-  };
-}
-
-/**
- * The staff rows the dev mock serves, in ONE place.
- *
- * Extracted because two commands now report the same people: list_staff_scoped
- * lists them, and list_role_holders_scoped counts and groups them per role. A
- * second literal copy would let the role screen claim one number of accounts
- * while its own expanded list named different ones -- the exact contradiction
- * the real backend was just fixed for, reproduced in the preview that exists
- * to catch it. One source, so the mock cannot show it.
- */
-function mockStaffFixtures(): Array<Record<string, unknown>> {
-  return [
-    mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
-    mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
-    mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
-    mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
-    mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor' }),
-  ];
-}
-
-/** Granted permission keys per preset, mirroring platform-core ROLE_PRESETS. */
-
-/** The five preset roles, mirroring platform-core ROLE_PRESETS (0048 2c). */
-const MOCK_ROLES = [
-  { id: 'role-owner', name: 'Owner', description: 'Full access to all features and settings.', permissions: ['*'] },
-  { id: 'role-admin', name: 'Admin', description: 'Global scope — everything except ownership transfer, billing, and irreversible org actions (staff deletion).', permissions: MOCK_ROLE_PERMISSIONS['role-admin'] ?? [] },
-  { id: 'role-manager', name: 'Manager', description: 'Can manage products, inventory, sales, staff, and settings.', permissions: MOCK_ROLE_PERMISSIONS['role-manager'] ?? [] },
-  { id: 'role-staff', name: 'Staff', description: 'Checkout-operations role — processes sales, payments, discounts, customers and loyalty at the register, opens and closes shifts, and operates assigned workspaces (including KDS). No management access.', permissions: MOCK_ROLE_PERMISSIONS['role-staff'] ?? [] },
-  { id: 'role-auditor', name: 'Auditor', description: 'Global, read-only — views operational data and the audit log; never manages and never sees sensitive profile fields.', permissions: MOCK_ROLE_PERMISSIONS['role-auditor'] ?? [] },
-] as const;
-
-// Role authoring (ADR #47 ruling 4): mutable store for authored roles, plus
-// the preset-id set the real backend refuses to author. seed_default_roles
-// upserts preset ids and overwrites their grants, so the mock refuses edits
-// to them too — a mock that accepted everything would let the dev screen be
-// built against behaviour the backend does not have.
-const MOCK_BUILTIN_ROLE_IDS = new Set<string>(MOCK_ROLES.map((r) => r.id));
-
-interface MockAuthoredRole {
-  id: string;
-  name: string;
-  description: string;
-  permissions: string[];
-  is_builtin: boolean;
-  reference_count: number;
-}
-
-const MOCK_AUTHORED_ROLES: MockAuthoredRole[] = [
-  {
-    id: 'role-night-manager',
-    name: 'Night Manager',
-    description: 'Overnight shift lead — register plus voids, no staff management.',
-    permissions: ['sales:process', 'sales:void', 'reports:view'],
-    is_builtin: false,
-    reference_count: 0,
-  },
-];
-
-const mockRoleList = () => [
-  ...MOCK_ROLES.map((r) => ({
-    ...r,
-    is_builtin: true,
-    reference_count: 1,
-    ...mockRoleCounts(r.id),
-  })),
-  ...MOCK_AUTHORED_ROLES.map((r) => ({ ...r, ...mockRoleCounts(r.id) })),
-];
-
-/**
- * The two counts a role row must carry since RoleDto split them.
- *
- * holder_count is DERIVED from mockRoleHolders, so the number on a collapsed
- * row and the list it expands to are the same computation — the preview
- * cannot exhibit the disagreement the production surface was just fixed for.
- *
- * grant_count is a flat 0 because the mock has no workspace-grant fixtures at
- * all: the "and N workspace grants" branch, and a grants-only role (blocked
- * from deletion by configuration rather than by people), are therefore NOT
- * exercisable in browser preview. Recorded rather than glossed — a mock that
- * quietly returned 1 here would be inventing rows no other mock command
- * serves, which is worse than the gap.
- */
-function mockRoleCounts(roleId: string): { holder_count: number; grant_count: number } {
-  return { holder_count: mockRoleHolders(roleId).total, grant_count: 0 };
-}
-
-/**
- * The page size the real backend clamps to (`ROLE_HOLDERS_MAX`). Named here
- * rather than inlined so the reported `cap` and the slice cannot drift apart.
- */
-const MOCK_ROLE_HOLDERS_CAP = 50;
-
-/**
- * One role's holders, in exactly the `RoleHoldersDto` wire shape.
- *
- * Mirrors the real command on the three points a preview most easily gets
- * wrong:
- *
- * - An unknown role is a REFUSAL, not an empty list. The backend answers
- *   NotFound, because "nobody holds this" and "there is no such role" are
- *   different facts and only the first licenses a delete. A mock that
- *   returned [] would let a screen be built against a typo-tolerant backend.
- * - The page is capped and the ceiling is reported, so the surface learns to
- *   read `total` for "and N more" instead of `holders.length`.
- * - Every row carries `branch_scope` / `workspace_scope` NEXT TO the counts.
- *   `all` with a count of 0 means UNRESTRICTED, not "no branches"; the
- *   fixtures all use the global/organization shape `mockStaffMember` already
- *   carries, so this and `list_staff_scoped` describe the same people.
- *
- * Holders are DERIVED from mockStaffFixtures rather than restated, which is
- * the whole reason that list was extracted.
- */
-function mockRoleHolders(roleId: string | undefined): {
-  holders: Array<Record<string, unknown>>;
-  total: number;
-  cap: number;
-} {
-  const wanted = roleId ?? '';
-  // Checked against the two role stores directly rather than against
-  // mockRoleList(), which now calls back through mockRoleCounts ->
-  // mockRoleHolders. Going through the list would recurse forever.
-  const known = [...MOCK_ROLES.map((r) => r.id), ...MOCK_AUTHORED_ROLES.map((r) => r.id)];
-  if (!known.includes(wanted)) {
-    throw new Error(`role ${wanted || '(no id given)'} does not exist`);
-  }
-  // Bracket access throughout: mockStaffMember hands back a
-  // Record<string, unknown>, and the repo's tsconfig forbids dot access on
-  // index signatures (noPropertyAccessFromIndexSignature).
-  const holders = mockStaffFixtures()
-    .filter((member) => String(member['role_id'] ?? '') === wanted)
-    .map((member) => {
-      const asg = (member['assignment'] ?? {}) as {
-        scope_mode?: string;
-        scope_type?: string;
-        scope_id?: string | null;
-        branches_all?: boolean;
-        branch_ids?: string[];
-        workspaces_all?: boolean;
-        workspace_keys?: string[];
-      };
-      return {
-        user_id: member['id'],
-        username: member['username'],
-        display_name: member['display_name'],
-        is_active: member['is_active'] !== false,
-        has_assignment: member['assignment'] != null,
-        scope_mode: asg.scope_mode ?? null,
-        scope_type: asg.scope_type ?? null,
-        scope_id: asg.scope_id ?? null,
-        branch_scope: asg.branches_all === false ? 'list' : 'all',
-        workspace_scope: asg.workspaces_all === false ? 'list' : 'all',
-        branch_count: asg.branch_ids?.length ?? 0,
-        workspace_count: asg.workspace_keys?.length ?? 0,
-      };
-    });
-  return {
-    holders: holders.slice(0, MOCK_ROLE_HOLDERS_CAP),
-    total: holders.length,
-    cap: MOCK_ROLE_HOLDERS_CAP,
-  };
-}
-
-/**
- * A representative subset of the permission registry for the role editor.
- * The real command returns every registered key; this list is deliberately
- * short, so dev-mode authoring exercises the picker shape without implying
- * these are the only keys that exist.
- */
-const MOCK_PERMISSION_KEYS = [
-  { key: 'sales:process', family: 'sales', sensitive: false, description: 'Ring up a sale at the register.' },
-  { key: 'sales:view', family: 'sales', sensitive: false, description: 'View sales records.' },
-  { key: 'sales:void', family: 'sales', sensitive: true, description: 'Void a completed sale.' },
-  { key: 'sales:refund', family: 'sales', sensitive: true, description: 'Refund a completed sale.' },
-  { key: 'products:read', family: 'products', sensitive: false, description: 'View the product catalog.' },
-  { key: 'products:create', family: 'products', sensitive: false, description: 'Add a product.' },
-  { key: 'reports:view', family: 'reports', sensitive: false, description: 'View sales reports.' },
-  { key: 'analytics:view', family: 'analytics', sensitive: false, description: 'View the analytics screen.' },
-  { key: 'staff:read', family: 'staff', sensitive: false, description: 'View staff members.' },
-  { key: 'staff:create', family: 'staff', sensitive: false, description: 'Add a staff member.' },
-  { key: 'staff:manage_roles', family: 'staff', sensitive: true, description: 'Create, edit, or delete roles and their permission sets.' },
-  { key: 'settings:read', family: 'settings', sensitive: false, description: 'View store and system settings.' },
-  { key: 'settings:edit', family: 'settings', sensitive: true, description: 'Modify store settings.' },
-];
 
 /** Mutable store-profile list backing the mock — renames/creates persist
  *  for the session exactly like the real DB (dev preview parity). */
@@ -699,14 +481,6 @@ function pushKdsOrderFromCart(lines: CartLine[], storeId: string) {
 // attempt counter (same stateful pattern as the other mocks) so a
 // reloaded preview keeps enforcing the threshold — previously a reload
 // cleared the counter and defeated the lockout entirely.
-function loadMockLoginAttempts(): Record<string, number> {
-  return readSlice(MOCK_LOGIN_ATTEMPTS_KEY, () => ({}));
-}
-function saveMockLoginAttempts(): void {
-  writeSlice(MOCK_LOGIN_ATTEMPTS_KEY, loginAttempts);
-}
-const loginAttempts: Record<string, number> = loadMockLoginAttempts();
-const LOCKOUT_THRESHOLD = 4;
 // LOCKOUT_DURATION_MS = 30_000 is defined for documentation;
 // the mock uses a simple attempt-count lockout that resets on
 // successful login to keep the dev loop fast.
@@ -721,13 +495,6 @@ const LOCKOUT_THRESHOLD = 4;
 // while discarding writes, which made the restaurant-menu hamburger
 // configuration (sort / card size / font size) revert on every reload.
 // Seed from localStorage so previews behave like a real store DB.
-function loadMockUserPrefs(): Record<string, string> {
-  return readSlice(MOCK_USER_PREFS_KEY, () => ({}));
-}
-function saveMockUserPrefs(prefs: Record<string, string>): void {
-  writeSlice(MOCK_USER_PREFS_KEY, prefs);
-}
-const mockUserPrefs: Record<string, string> = loadMockUserPrefs();
 
 // ── Topology diagram (stateful mock) ─────────────────────────────
 // The real backend persists the node/wire diagram as JSON under the
@@ -737,33 +504,6 @@ const mockUserPrefs: Record<string, string> = loadMockUserPrefs();
 // loaded in the preview) while discarding saves, which made node locations
 // revert on every reload. Seed from localStorage so previews round-trip
 // positions exactly like a real store DB.
-interface MockTopologyNode {
-  id: string;
-  type: string;
-  name: string;
-  subtitle?: string;
-  x: number;
-  y: number;
-  tier_requirement?: string;
-  telemetry_badge?: string;
-  telemetry_status?: string;
-  metadata?: Record<string, unknown>;
-}
-interface MockTopologyWire {
-  id: string;
-  from_node_id: string;
-  to_node_id: string;
-  direction: string;
-  label?: string;
-  from_port?: string;
-  to_port?: string;
-}
-interface MockTopology {
-  revision?: number;
-  resolved_issue_keys?: string[];
-  nodes: MockTopologyNode[];
-  wires: MockTopologyWire[];
-}
 
 /** First-run canvas: matches the current preview's starting topology.
  *  Cards are 240px wide/tall, so positions sit on a spread grid (rows 80/320,
@@ -798,141 +538,8 @@ const mockTopology: MockTopology = loadMockTopology();
 // §4's DEFlation rule, not just the append — otherwise `restorable: false`
 // is unreachable in the browser and the "record only — snapshot pruned"
 // state the real sweep produces can never be exercised during development.
-/** Mirrors `TOPOLOGY_REVISION_RESTORABLE_KEEP` in revisions.rs. */
-const MOCK_TOPOLOGY_REVISION_KEEP = 20;
-
-interface MockTopologyRevision {
-  /** The branch scope the row belongs to. Mirrors the real table's
-   *  `branch_id` (empty string = the unscoped legacy graph, which is its own
-   *  scope, not a catch-all). Without it the mock listed every branch's
-   *  history for any query, so a UI that ignored branch scoping would pass in
-   *  the browser and fail against the backend. */
-  branchId: string;
-  revision: number;
-  changeNote: string;
-  publishedAt: string;
-  publishedBy: string;
-  pinned: boolean;
-  nodeCount: number;
-  wireCount: number;
-  workspaceCreations: number;
-  workspaceUpdates: number;
-  workspaceArchives: number;
-  contractSchemaVersion: number;
-  /** The stored envelope; deleted when the row is deflated. */
-  diagram?: MockTopology;
-}
-
-function loadMockTopologyRevisions(): MockTopologyRevision[] {
-  return readSlice(MOCK_TOPOLOGY_REVISIONS_KEY, () => []);
-}
-
-function saveMockTopologyRevisions(rows: MockTopologyRevision[]): void {
-  writeSlice(MOCK_TOPOLOGY_REVISIONS_KEY, rows);
-}
-
-const mockTopologyRevisions: MockTopologyRevision[] = loadMockTopologyRevisions();
-
-/** Append one immutable revision, then deflate anything past the budget.
- *  Deflation drops the diagram and keeps the record — never delete the row. */
-function recordMockTopologyRevision(row: MockTopologyRevision): void {
-  mockTopologyRevisions.push(row);
-  // Ranked PER BRANCH: `cleanup_old_topology_revisions` gives each branch its
-  // own budget, so a busy branch must not prune a quiet one.
-  const unpinned = mockTopologyRevisions
-    .filter((r) => !r.pinned && r.branchId === row.branchId)
-    .sort((a, b) => b.revision - a.revision);
-  for (const stale of unpinned.slice(MOCK_TOPOLOGY_REVISION_KEEP)) {
-    delete stale.diagram;
-  }
-  saveMockTopologyRevisions(mockTopologyRevisions);
-}
-
-/** The metadata projection the list command returns — never the diagram. */
-function summarizeMockTopologyRevision(r: MockTopologyRevision) {
-  const { diagram, ...rest } = r;
-  return { ...rest, restorable: diagram !== undefined };
-}
 
 const entryHandlers: Record<string, MockHandler> = {
-  // ═══════════════════════════════════════════════════════════════
-  // AUTH / STAFF
-  // ═══════════════════════════════════════════════════════════════
-
-  // STAFF-06: uniform pre-auth response — never reveals account existence or
-  // activation state (enumeration oracle closed).
-  'staff_check_username': (_args) => ({ proceed: true }),
-
-  // Pre-auth check — the dev-mock always has seeded staff accounts.
-  'has_users': () => ({ has_users: true }),
-
-  'staff_login': (args) => {
-    const { username, pin } = args as { username: string; pin: string };
-    const key = username.toLowerCase();
-    const staff = MOCK_STAFF[key];
-
-    // Check lockout.
-    const attempts = loginAttempts[key] ?? 0;
-    if (attempts >= LOCKOUT_THRESHOLD) {
-      throw new Error('Account locked. Too many failed attempts. Try again in 30s');
-    }
-
-    if (!staff || pin !== staff.pin_hash) {
-      loginAttempts[key] = attempts + 1;
-      saveMockLoginAttempts();
-      throw new Error('Invalid credentials');
-    }
-
-    // Reset on success — persisted so a reloaded preview stays unlocked.
-    delete loginAttempts[key];
-    saveMockLoginAttempts();
-    return {
-      session: {
-        user_id: staff.user_id,
-        display_name: mockRoleName(staff.role),
-        role_name: mockRoleName(staff.role),
-        role_id: staff.role,
-        // Granted keys mirror the role presets (Owner = global wildcard;
-        // Staff = checkout-only; Auditor = read-only) so the dev preview
-        // gates on permissions like the real backend.
-        permissions: MOCK_ROLE_PERMISSIONS[staff.role] ?? [],
-      },
-      // audit-open-findings parity: the real backend mints a short-lived picker
-      // ticket at login; without it the workspace picker never loads
-      // (WorkspaceProvider bails when pickerTicket is null). The mock
-      // must return one so browser dev previews work like the client.
-      picker_ticket: `mock-picker-${staff.user_id}-${Date.now()}`,
-    };
-  },
-
-  'create_session': (args) => {
-    const a = args as { args: { user_id: string; role_id: string; store_id: string; instance_id: string; type_key: string; terminal_id: string } };
-    const { user_id, role_id, store_id, instance_id, type_key, terminal_id } = a.args ?? a;
-    return {
-      session_token: `mock-session-${Date.now()}`,
-      context: { userId: user_id, roleId: role_id, storeId: store_id, instanceId: instance_id, typeKey: type_key, terminalId: terminal_id },
-    };
-  },
-
-  'destroy_session': () => null,
-
-
-  'impersonate_user_scoped': (args) => {
-    const a = args as { sessionToken: string; targetUserId: string };
-    return {
-      session_token: `mock-impersonation-${Date.now()}`,
-      context: {
-        userId: a.targetUserId,
-        roleId: 'role-owner',
-        storeId: 'store-1',
-        instanceId: 'inst-1',
-        typeKey: 'organization',
-        terminalId: 'term-1',
-      },
-    };
-  },
-
-  'session_keepalive': () => ({ expires_at: Math.floor(Date.now() / 1000) + 86400 }),
 
   // ═══════════════════════════════════════════════════════════════
   // BOOT / SETUP
@@ -943,27 +550,10 @@ const entryHandlers: Record<string, MockHandler> = {
     store_id: 'store-1',
     instance_id: 'ws-1',
   }),
-
-  // ═══════════════════════════════════════════════════════════════
-  // SYSTEM / PING
-  // ═══════════════════════════════════════════════════════════════
-
-  'ping': () => 'pong',
   'get_local_ip': () => '192.168.1.100',
 
   'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
   'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
-  // Operational by default, matching a healthy server. `state` and `cause`
-  // ride alongside `ok` because they answer a different question: a degraded
-  // server sends ok:false AND state:'degraded'. Flip these two lines to
-  // exercise the amber pill without a broken database.
-  'test_auth_connection': () => ({
-    ok: true,
-    status: 'Connected (12ms)',
-    latencyMs: 12,
-    state: 'operational',
-    cause: null,
-  }),
   'get_device_id': () => 'mock-device-id-001',
   'activate_license': () => true,
   'renew_license': () => true,
@@ -1038,10 +628,6 @@ const entryHandlers: Record<string, MockHandler> = {
     { key: 'warehouse', name: 'Warehouse', description: 'Product and stock management', icon: 'package' },
     { key: 'admin', name: 'Admin', description: 'Settings & management', icon: 'settings' },
   ],
-  'get_user_workspace_instances_scoped': () => [],
-  'set_user_workspace_instances_scoped': () => null,
-  'ping_terminal': () => null,
-  'ping_terminal_scoped': () => null,
   'get_device_binding': () => ({ bounded: true, boundStoreId: 'store-1', boundInstanceId: 'ws-1', signatureValid: true }),
   'get_device_binding_scoped': () => ({ bounded: true, boundStoreId: 'store-1', boundInstanceId: 'ws-1', signatureValid: true }),
   'set_device_binding': () => null,
@@ -1075,10 +661,6 @@ const entryHandlers: Record<string, MockHandler> = {
   'set_receipt_settings': () => null,
 
   'can_save_topology': () => true,
-  // The editor's Apply flow now confirms the operator PIN first (round 148).
-  // The dev-mock accepts any PIN so the real Apply chain stays reachable in
-  // the editor's integration tests.
-  'verify_pin': () => true,
   'load_topology': () => ({
     revision: mockTopology.revision ?? 0,
     resolved_issue_keys: [...(mockTopology.resolved_issue_keys ?? [])],
@@ -1169,44 +751,6 @@ const entryHandlers: Record<string, MockHandler> = {
     return { revision: mockTopology.revision };
   },
 
-  // ADR #46 §4: pin/unpin. Mirrors the real command's three-way answer —
-  // a pin on an already-deflated row succeeds but is not restorable, and an
-  // unpin that leaves the row past the budget warns that the next tick prunes
-  // it. Keeping the dev-mock honest here is what lets the browser states be
-  // developed without a running desktop client.
-  'pin_topology_revision': (args) => {
-    const { revision, pinned, branchId } = (args as {
-      revision?: number; pinned?: boolean; branchId?: string;
-    }) ?? {};
-    const row = mockTopologyRevisions.find(
-      (r) => r.revision === revision && r.branchId === (branchId ?? ''),
-    );
-    if (!row || pinned === undefined) {
-      return {
-        status: 'not-found',
-        revision: revision ?? 0,
-        pinned: pinned ?? false,
-        restorable: false,
-        prunedByNextSweep: false,
-      };
-    }
-    row.pinned = pinned;
-    saveMockTopologyRevisions(mockTopologyRevisions);
-    const unpinned = mockTopologyRevisions
-      .filter((r) => !r.pinned && r.branchId === row.branchId)
-      .sort((a, b) => b.revision - a.revision);
-    const cutoff = unpinned.length > MOCK_TOPOLOGY_REVISION_KEEP
-      ? unpinned[MOCK_TOPOLOGY_REVISION_KEEP]!.revision
-      : null;
-    return {
-      status: 'updated',
-      revision: row.revision,
-      pinned: row.pinned,
-      restorable: row.diagram !== undefined,
-      prunedByNextSweep: cutoff !== null && row.pinned === false && row.revision <= cutoff,
-    };
-  },
-
   // ADR #46 §1/§8: metadata only, newest first — the diagram is fetched per
   // revision by `load_topology_revision`, mirroring the real payload bound.
   'list_topology_revisions': (args) => {
@@ -1254,21 +798,6 @@ const entryHandlers: Record<string, MockHandler> = {
   'get_setting': () => '',
   'set_setting_scoped': () => null,
 
-  'get_user_preferences': () => ({ ...mockUserPrefs }),
-  'get_user_preferences_scoped': () => ({ ...mockUserPrefs }),
-  'set_user_preferences': (args) => {
-    const { prefs } = (args as { prefs?: Array<{ key: string; value: string }> }) ?? {};
-    for (const p of prefs ?? []) mockUserPrefs[p.key] = p.value;
-    saveMockUserPrefs(mockUserPrefs);
-    return null;
-  },
-  'set_user_preferences_scoped': (args) => {
-    const { prefs } = (args as { prefs?: Array<{ key: string; value: string }> }) ?? {};
-    for (const p of prefs ?? []) mockUserPrefs[p.key] = p.value;
-    saveMockUserPrefs(mockUserPrefs);
-    return null;
-  },
-
   'get_hardware_settings': () => ({
     printerConnection: 'usb', printerDevicePath: '', printerPaperSize: '80mm',
     scannerDeviceId: '', scannerInputMode: 'usb',
@@ -1279,8 +808,6 @@ const entryHandlers: Record<string, MockHandler> = {
   'get_credit_settings': () => ({ enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 }),
   'set_credit_settings': () => null,
   'set_credit_settings_scoped': () => null,
-
-  'seed_default_roles_scoped': () => 3,
 
   // ═══════════════════════════════════════════════════════════════
   // BRANDING
@@ -1301,113 +828,6 @@ const entryHandlers: Record<string, MockHandler> = {
 
   'print_sales_receipt': () => ({ printed: true }),
   'print_sales_receipt_scoped': () => ({ printed: true }),
-
-  // ═══════════════════════════════════════════════════════════════
-  // STAFF MANAGEMENT
-  // ═══════════════════════════════════════════════════════════════
-
-  'list_staff_scoped': () => mockStaffFixtures(),
-  'list_roles_scoped': () => mockRoleList(),
-
-  // Args are flat here, not boxed: the real command takes `id` as its own
-  // named parameter (list_role_holders_scoped(session_token, id, state)) and
-  // api/staff.ts invokes { sessionToken, id }. unwrapArgs tolerates either
-  // envelope, so this keeps working if the wrapper is ever boxed.
-  'list_role_holders_scoped': (args) => {
-    const { id } = unwrapArgs<{ id?: string }>(args);
-    return mockRoleHolders(id);
-  },
-
-  'list_permission_keys_scoped': () => MOCK_PERMISSION_KEYS.map((k) => ({ ...k })),
-
-  'create_role_scoped': (args) => {
-    // mockHandlerPayload, not `args.args`: invoke() hands a handler
-    // `args?.['args'] ?? args`, so the envelope is already gone by the time this
-    // runs. Reading `.args` here returned undefined, `name` became '', and the
-    // handler then threw 'role name must not be empty' on EVERY browser-mode
-    // role create — a live-screen failure that looked like operator error.
-    const a = mockHandlerPayload<{
-      name?: string;
-      description?: string;
-      permissions?: string[];
-    }>(args);
-    const name = (a.name ?? '').trim();
-    if (!name) throw new Error('role name must not be empty');
-    const role: MockAuthoredRole = {
-      id: `role-${Date.now()}`,
-      name,
-      description: a.description ?? '',
-      permissions: [...(a.permissions ?? [])],
-      is_builtin: false,
-      reference_count: 0,
-    };
-    MOCK_AUTHORED_ROLES.push(role);
-    return { ...role };
-  },
-
-  'update_role_scoped': (args) => {
-    // Same envelope trap as create_role_scoped: without the unwrap, `id` was
-    // undefined and the update silently matched no role.
-    const a = mockHandlerPayload<{
-      id?: string;
-      name?: string;
-      description?: string;
-      permissions?: string[];
-    }>(args);
-    // Mirrors the backend refusal: a preset row is owned by the seeder.
-    if (a.id && MOCK_BUILTIN_ROLE_IDS.has(a.id)) {
-      throw new Error(`${a.id} is a built-in preset role and cannot be authored`);
-    }
-    const role = MOCK_AUTHORED_ROLES.find((r) => r.id === a.id);
-    if (!role) throw new Error(`role ${a.id ?? '?'} not found`);
-    const name = (a.name ?? '').trim();
-    if (!name) throw new Error('role name must not be empty');
-    role.name = name;
-    role.description = a.description ?? '';
-    // Replace, never merge — a grant silently carried over would be a
-    // privilege nobody asked for.
-    role.permissions = [...(a.permissions ?? [])];
-    return { ...role };
-  },
-
-  'delete_role_scoped': (raw) => {
-    const id = (raw as { id?: string })?.id ?? '';
-    if (MOCK_BUILTIN_ROLE_IDS.has(id)) {
-      throw new Error(`${id} is a built-in preset role and cannot be deleted`);
-    }
-    const idx = MOCK_AUTHORED_ROLES.findIndex((r) => r.id === id);
-    if (idx < 0) throw new Error(`role ${id} not found`);
-    const existing = MOCK_AUTHORED_ROLES[idx];
-    if (!existing) throw new Error(`role ${id} not found`);
-    if (existing.reference_count > 0) {
-      throw new Error(`role ${id} is still referenced; reassign those rows first`);
-    }
-    MOCK_AUTHORED_ROLES.splice(idx, 1);
-    return null;
-  },
-  'create_staff_scoped': (args) => {
-    const a = (args as { username?: string; display_name?: string; role_id?: string; pin?: string }) ?? {};
-    const roleId = a.role_id && MOCK_ROLE_PERMISSIONS[a.role_id] ? a.role_id : 'role-staff';
-    return mockStaffMember({
-      id: `staff-${Date.now()}`,
-      username: a.username ?? 'newstaff',
-      display_name: a.display_name ?? 'New Staff',
-      role_id: roleId,
-      role_name: mockRoleName(roleId),
-    });
-  },
-  'update_staff_scoped': (args) => {
-    const a = (args as { id?: string; username?: string; display_name?: string; role_id?: string; is_active?: boolean }) ?? {};
-    const roleId = a.role_id && MOCK_ROLE_PERMISSIONS[a.role_id] ? a.role_id : 'role-owner';
-    return mockStaffMember({
-      id: a.id ?? 'staff-1',
-      username: a.username ?? 'owner',
-      display_name: a.display_name ?? 'Owner',
-      role_id: roleId,
-      role_name: mockRoleName(roleId),
-      is_active: a.is_active ?? true,
-    });
-  },
 
   // ═══════════════════════════════════════════════════════════════
   // KDS DEVICE MANAGEMENT
@@ -1431,10 +851,6 @@ const entryHandlers: Record<string, MockHandler> = {
   'get_kds_device_scoped': () => null,
   'update_kds_device_status_scoped': () => {},
   'deactivate_kds_device_scoped': () => {},
-  'generate_kds_pairing_token_scoped': () => ({
-    token: `mock-pairing-token-${Date.now()}`,
-    expires_at: new Date(Date.now() + 300_000).toISOString(),
-  }),
   'get_low_stock_alerts': () => [
     { product_id: 'RAM-D4-16GB-KF', sku: 'RAM-D4-16GB-KF', name: 'Kingston Fury Beast 16GB DDR4 3200', current_qty: 3, threshold: 10, currency: 'IDR', price_minor: 450000, cost_minor: 390000 },
     { product_id: 'MB-B650-ROG', sku: 'MB-B650-ROG', name: 'ASUS ROG Strix B650-A Gaming WiFi', current_qty: 5, threshold: 10, currency: 'IDR', price_minor: 2850000, cost_minor: 2500000 },
@@ -1532,6 +948,7 @@ registerHandlers(kdsHandlers);
 registerHandlers(analyticsHandlers);
 registerHandlers(createLocationsHandlers({ unwrapArgs }));
 registerHandlers(systemHandlers);
+registerHandlers(staffHandlers);
 registerHandlers(floorplanHandlers);
 registerHandlers(crmHandlers);
 
@@ -1576,12 +993,6 @@ handlers['get_sale_line_margins_scoped'] = () => [];
 // Analytics dashboard cards — scoped commands with no unscoped twin.
 // Plausible fixed shapes so the analytics grid renders in browser mode
 // instead of resolving null and crashing card layouts.
-handlers['get_staff_analytics_scoped'] = () => [
-  { user_id: 'u1', display_name: 'Rina W.', shift_count: 12, closed_shift_count: 11, shift_sales_minor: 48000000, sale_count: 96, sale_total_minor: 92000000 },
-  { user_id: 'u2', display_name: 'Budi S.', shift_count: 11, closed_shift_count: 10, shift_sales_minor: 43000000, sale_count: 88, sale_total_minor: 86000000 },
-  { user_id: 'u3', display_name: 'Sari A.', shift_count: 9, closed_shift_count: 9, shift_sales_minor: 38000000, sale_count: 74, sale_total_minor: 74000000 },
-  { user_id: 'u4', display_name: 'Andi P.', shift_count: 8, closed_shift_count: 7, shift_sales_minor: 31000000, sale_count: 63, sale_total_minor: 63000000 },
-];
 handlers['get_customer_split_scoped'] = () => ({ new_count: 84, returning_count: 47 });
 handlers['get_payment_method_breakdown_scoped'] = () => [
   { payment_method: 'qris', total_minor: 98000000, sale_count: 142 },
@@ -1652,33 +1063,6 @@ handlers['get_voided_items_scoped'] = () => [
 ];
 // ── Remaining uncovered commands (14 total) ───────────────────────
 // Staff profile
-handlers['get_staff_profile_scoped'] = (args) => {
-  const { userId } = (args ?? {}) as { userId?: string };
-  return {
-    user_id: userId ?? 'owner-1',
-    username: 'owner',
-    display_name: 'Owner',
-    date_of_birth: '1990-01-15',
-    phone: '+628123456789',
-    national_id_type: 'nik',
-    national_id: null,
-    national_id_masked: '****-****-****-1234',
-    email: 'owner@example.com',
-    monthly_take_home_minor: 5000000,
-    emergency_contact_name: 'Spouse',
-    emergency_contact_phone: '+628987654321',
-    job_title: 'Owner',
-    notes: '',
-    address: null,
-    language: null,
-    avatar: null,
-    tax_id: null,
-    national_id_expires_at: null,
-    emergency_contact_relationship: 'spouse',
-    hire_date: '2026-01-01',
-    is_complete: true,
-  };
-};
 
 // KDS order item updates (non-scoped)
 // Settings writes (non-scoped + scoped)
@@ -1699,7 +1083,6 @@ handlers['pg_sync_start'] = () => true;
 handlers['pg_sync_stop'] = () => true;
 
 // Analytics daily staff breakdown
-handlers['get_staff_analytics_daily_scoped'] = () => [];
 
 // Workspace store listing (multi-store picker)
 handlers['list_workspaces_for_store_scoped'] = () => [];
