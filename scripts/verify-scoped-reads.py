@@ -73,6 +73,19 @@ Comments are stripped before matching. Without that, prose mentioning `getSale()
 site -- which is exactly the false positive this script's own first draft produced against a
 comment written by the fix that missed the real site.
 
+WHAT EVERY RUN PRINTS
+
+Two lines above the verdict, on stdout, before any FAIL and before any 'clean for': how many
+production files were walked, against which allowlist file; and how many allowlisted names
+resolved to a wrapper, per shell. Both are reports about the SITUATION, and neither is a
+verdict -- nothing in this file reads either number to decide an exit code, which is the
+difference between making a thin wrapper map legible and pretending this gate owns the
+threshold that would call one insufficient. Measured on the real tree the moment the line
+landed: 26 of 27 on the default desktop run, 150 of 181 across both shells -- so 31 allowlisted
+names have no TS wrapper to search for and never could have produced a finding. That is what
+the ninth guard could not see (it refuses only a map with ZERO rows) and what case 21 below
+pins on a synthetic fixture instead of on a tree that will drift.
+
 usage:
     python scripts/verify-scoped-reads.py                # check the tree
     python scripts/verify-scoped-reads.py --self-test    # classifier + entry-shape reader
@@ -701,14 +714,18 @@ def require_wrapper_surface(api_dir, cmd_to_wrapper, names_by_shell):
 
 
 def audit(shells, repo=REPO, allowlist=ALLOWLIST):
-    """Return (violations, shape_problems, production_files_scanned).
+    """Return (violations, shape_problems, production_files_scanned, coverage).
 
     violations is [(shell, command, file, line, snippet), ...]; shape_problems is one
     sentence per allowlist member this gate could not turn into a command name. Both have to
     be empty for the gate to pass: an entry that was neither read nor refused is how a
     policy line stops enforcing while the output still says clean. The third value is how
     many production files the verdict was drawn from, printed by main() because a zero is a
-    number a reader has to be able to see (F-2).
+    number a reader has to be able to see (F-2). coverage is one row per graded shell, (shell,
+    names read, names that resolved to at least one wrapper), also printed by main() and also
+    never read by anything that decides an exit code -- it is the second half of the same idea:
+    after the refusal on an empty map, the thin map was the remaining way to grade nothing and
+    look clean, and a ratio is the honest way to show it without owning a threshold.
 
     The allowlist argument is the seam F-1 asked for: which file to grade. It defaults to
     ALLOWLIST, so a bare run grades the checkout copy exactly as it did before the option
@@ -781,7 +798,13 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
                         line = text.split("\n")[upto].strip()
                         rel = os.path.relpath(path, repo).replace("\\", "/")
                         violations.append((shell, cmd, rel, upto + 1, line[:88]))
-    return violations, shape_problems, len(files)
+    # Coverage is counted HERE, from the same names_by_shell the loop above walked and the
+    # same map it looked up in, so the printed ratio cannot disagree with the grading that
+    # ran. It is returned, not printed: audit() has never written to stdout, and main() owns
+    # the report's order. Each row is (shell, names read, names resolving to a wrapper).
+    coverage = [(shell, len(names), sum(1 for cmd in names if cmd_to_wrapper.get(cmd)))
+                for shell, names in names_by_shell]
+    return violations, shape_problems, len(files), coverage
 
 
 # F-1, CLOSED. Until this option existed, the only way to show anybody a hazard in
@@ -863,6 +886,32 @@ def resolve_allowlist(path=None):
     if not path:
         return ALLOWLIST, "module default"
     return os.path.abspath(path), "--allowlist"
+
+
+def describe_coverage(coverage):
+    """One line: how many allowlisted names actually RESOLVED to a wrapper, and per shell.
+
+    Informational by contract, not by accident: this prints a ratio and nothing in this file
+    reads it back. No exit code branches on it, no threshold lives anywhere in the script. The
+    distinction matters because the guard above refuses an api map with ZERO rows and a map
+    with one row clears it, so a thin map has always been able to grade a genuinely missing
+    command as clean -- case 19 of the wrapper self-test is exactly that shape, a wrapper for a
+    command nobody allowlisted while the allowlisted command resolves to nothing. A threshold
+    is a number somebody else owns, so it is not invented here. What is added is the
+    legibility, on every run, printed beside the file count that made the last zero visible.
+
+    Units are per-shell-per-name, which is the unit the audit loop itself works in: a command
+    listed in both shells is looked up twice and counts twice. Resolving means the lookup found
+    at least one wrapper, NOT that any wrapper was ever called. So N == M says every allowlisted
+    name had a wrapper to search for; N < M says how many did not, and could not have produced
+    a finding whatever the tree holds.
+    """
+    total = sum(count for _shell, count, _got in coverage)
+    got = sum(hits for _shell, _count, hits in coverage)
+    per_shell = ", ".join(shell + " " + str(hits) + " of " + str(count)
+                         for shell, count, hits in coverage)
+    return ("verify-scoped-reads: allowlisted names resolving to a wrapper: "
+            + str(got) + " of " + str(total) + " (" + per_shell + ").")
 
 
 def describe_surfaces(scanned, allowlist, how):
@@ -1540,6 +1589,128 @@ def _wrapper_self_test():
         failures += 1
     return failures
 
+def _coverage_self_test():
+    """Cases 21-25: the coverage line, whose numbers are pinned on synthetic trees.
+
+    This group tests a PRINT, so the assertion is the exact string -- 'N of M' with the N and
+    M this fixture was built to produce, counted by hand from the file below and not read back
+    out of the gate. A line whose number came from the same code that prints it would prove
+    nothing about the number.
+
+    Case 21 is the shape the ninth guard could not see: a non-empty api map holding a wrapper
+    for a command nobody allowlisted, with the allowlisted commands resolving to nothing. The
+    surface guard clears on it, the run is clean, and the ONLY trace of the hole is this line
+    saying 0 of 2. Case 25 is the other half of the contract: the line carries a shortfall
+    while a real finding is reported at exit 1, so making coverage legible did not become a
+    second verdict path and did not quiet the first one.
+    """
+    print("  verify-scoped-reads self-test / how much of the allowlist resolved")
+    failures = 0
+    saved_defaults = audit.__defaults__
+
+    def build(names, wrapper_cmds, unguarded=None):
+        root = tempfile.mkdtemp(prefix="oz-scoped-cov-")
+        src = os.path.join(root, "ui", "src")
+        os.makedirs(os.path.join(src, "api"))
+        os.makedirs(os.path.join(src, "features"))
+        probe_dir = os.path.join(root, "allowlist.json")
+        with io.open(probe_dir, "w", encoding="utf-8") as fh:
+            json.dump(names, fh)
+        body = ""
+        for i, cmd in enumerate(wrapper_cmds):
+            body += ("export const wv" + str(i) + "_" + cmd + " = (t: string) => "
+                     "loggedInvoke<any>('" + cmd + "', { t });\n")
+        with io.open(os.path.join(src, "api", "probe.ts"), "w", encoding="utf-8") as fh:
+            fh.write(body)
+        if unguarded:
+            with io.open(os.path.join(src, "features", "Uses.tsx"), "w",
+                         encoding="utf-8") as fh:
+                fh.write("export const use = async (t: string) => {\n  await " + unguarded
+                         + "(t);\n};\n")
+        return root, probe_dir
+
+    def drive(root, allowlist, argv=()):
+        buf, ebuf = io.StringIO(), io.StringIO()
+        saved, saved_err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = buf, ebuf
+        try:
+            audit.__defaults__ = (root, ALLOWLIST)
+            rc = main(["--allowlist", allowlist] + list(argv))
+        except BaseException as exc:
+            rc = "bare " + type(exc).__name__ + ": " + str(exc)
+        finally:
+            sys.stdout, sys.stderr = saved, saved_err
+            audit.__defaults__ = saved_defaults
+        return rc, buf.getvalue() + ebuf.getvalue()
+
+    def covered_line(out):
+        hits = [ln for ln in out.splitlines()
+                if "resolving to a wrapper" in ln]
+        return (hits[0] if len(hits) == 1 else None)
+
+    cases = (
+        ({"desktop": ["zz_alpha", "zz_beta"], "tablet": []}, ["zz_unrelated"], None, (),
+         "case 21 the case-19 shape -- a stray wrapper for a command nobody allowlisted, and "
+         "the allowlisted two resolve to nothing",
+         "verify-scoped-reads: allowlisted names resolving to a wrapper: 0 of 2 "
+         "(desktop 0 of 2).", 0),
+        ({"desktop": ["zz_alpha", "zz_beta"], "tablet": []}, ["zz_alpha"], None, (),
+         "case 22 one of two allowlisted names has a wrapper",
+         "verify-scoped-reads: allowlisted names resolving to a wrapper: 1 of 2 "
+         "(desktop 1 of 2).", 0),
+        ({"desktop": ["zz_alpha", "zz_beta"], "tablet": []},
+         ["zz_alpha", "zz_beta"], None, (),
+         "case 23 full coverage reads as full coverage",
+         "verify-scoped-reads: allowlisted names resolving to a wrapper: 2 of 2 "
+         "(desktop 2 of 2).", 0),
+        ({"desktop": ["zz_alpha", "zz_beta"], "tablet": ["zz_gamma"]},
+         ["zz_alpha"], None, ("--shell", "desktop,tablet"),
+         "case 24 the per-shell breakdown is per shell, and the totals add up across shells",
+         "verify-scoped-reads: allowlisted names resolving to a wrapper: 1 of 3 "
+         "(desktop 1 of 2, tablet 0 of 1).", 0),
+    )
+    for names, wrappers, unguarded, argv, label, want, want_rc in cases:
+        root, al = build(names, wrappers, unguarded)
+        try:
+            rc, out = drive(root, al, argv)
+        finally:
+            import shutil
+            shutil.rmtree(root, ignore_errors=True)
+        line = covered_line(out)
+        after_surfaces = out.splitlines()[1:2] == [want] if out.splitlines() else False
+        if rc == want_rc and line == want and after_surfaces and "error:" not in out:
+            print(f"    ok   {label} -- prints exactly {want.split(': ', 1)[1]!r} above the "
+                  f"verdict and STILL exits {rc}")
+        else:
+            print(f"    FAIL {label}  rc={rc!r} want={want!r} got={line!r} "
+                  f"second-line={after_surfaces}")
+            failures += 1
+
+    # Case 25: a shortfall in the ratio while a REAL finding is on the page. Both facts have
+    # to survive together -- the line must not become a verdict, and it must not eat one.
+    root, al = build({"desktop": ["zz_alpha", "zz_missing"], "tablet": []}, ["zz_alpha"],
+                      "wv0_zz_alpha")
+    try:
+        rc, out = drive(root, al)
+    finally:
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+    line = covered_line(out)
+    if (rc == 1 and line == "verify-scoped-reads: allowlisted names resolving to a wrapper: "
+                      "1 of 2 (desktop 1 of 2)."
+            and "FAIL: 1 unguarded ambient IPC call(s)" in out
+            and out.index("resolving to a wrapper") < out.index("FAIL:")):
+        print("    ok   case 25 a coverage shortfall printed beside a real finding still exits "
+              "1 on the finding -- the ratio is above the verdict, never a second one")
+    else:
+        print(f"    FAIL case 25  rc={rc!r} line={line!r} verdict=",
+              repr("FAIL: 1 unguarded" in out))
+        failures += 1
+    if audit.__defaults__ != saved_defaults:
+        print("    FAIL the coverage self-test left audit()'s defaults rebound")
+        failures += 1
+    return failures
+
 def _corpus_self_test():
     """Case 13-16: the CORPUS, which is the empty-corpus hazard one level further out.
 
@@ -1792,6 +1963,7 @@ def self_test():
     failures += _shell_self_test()
     failures += _corpus_self_test()
     failures += _wrapper_self_test()
+    failures += _coverage_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
@@ -1813,7 +1985,7 @@ def main(argv=None):
         # is an AllowlistUnreadable, so it leaves through the handler under this one -- the
         # gate's one-line error: voice and its refusal code, no new handler.
         shells = resolve_shells(args.shell)
-        violations, shape_problems, scanned = audit(shells, allowlist=allowlist)
+        violations, shape_problems, scanned, coverage = audit(shells, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
@@ -1834,6 +2006,10 @@ def main(argv=None):
         print('error: ' + str(exc), file=sys.stderr)
         return 2
     print(describe_surfaces(scanned, allowlist, how))
+    # One line above EVERY verdict, clean or red, and it changes no code on any path: a ratio
+    # nobody gates on is the difference between a thin map being legible and a thin map being
+    # declared an error by the one file that does not own that number.
+    print(describe_coverage(coverage))
     if shape_problems:
         # Ahead of the violations, because a member this gate could not read makes every
         # number it then prints -- including a reassuring zero -- a guess about a file it
