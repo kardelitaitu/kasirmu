@@ -1148,12 +1148,17 @@ def self_test() -> int:
         raw_would_crash = True
     case("case 10  the set() this file used to call would still die on that payload",
          raw_would_crash)
+    # The case that used to sit here asserted that every member of all four sections on disk
+    # is a bare string. It is deleted, not updated. It was written as the no-op proof for
+    # routing three reads through section_names, and that proof was earned once, against the
+    # file as it was; kept, it forbids the very shape this file now documents as legal in
+    # scoped_orphans and dev_mock, so the day a lane writes a proper reason object the suite
+    # reddens for following the instructions. Without its numerals and its type check there is
+    # nothing left to assert about the file's contents from here -- the invariant that does
+    # hold, whatever entries a lane adds, is that the committed file must be readable, so that
+    # is the one that stays.
     real_payload = load_allowlist()
-    case("case 10  every section on disk is still bare names, so the routing changes no result",
-         all(isinstance(entry, str)
-             for section in ("desktop", "tablet", "scoped_orphans", "dev_mock")
-             for entry in real_payload.get(section, [])))
-    case("case 10  and the real allowlist raises no shape problem",
+    case("case 10  the committed allowlist is a shape this gate can read",
          allowlist_shape_problems(real_payload, ALLOWLIST_PATH) == [])
     with tempfile.TemporaryDirectory() as tmp2:
         saved_path = globals()["ALLOWLIST_PATH"]
@@ -1247,7 +1252,12 @@ def self_test() -> int:
     # reason an operator typed into "scoped_orphans" -- vanished on the next reseed with no
     # diagnostic at all. Each case below checks BYTES or TEXT, never an exit code: mutation B
     # in this file proved an exit-code assertion passes happily while its guard is gone.
-    ghost_tablet = "rotate_encryption_key"
+    # Synthetic on purpose. The real instance of this shape is rotate_encryption_key in the
+    # tablet section -- not a UI string, not registered in either shell, still answered by a
+    # dev-mock handler -- but naming it here would make the case read the tree: the moment a
+    # lane registers that command, it stops being unreachable, and the tree getting better
+    # would redden a test about my writer. The shape is what is pinned, not the name.
+    ghost_tablet = "ghost_carried_over_scoped"
     typed_reason = {"name": "get_active_cart_scoped", "reason": "host-only, kept on purpose"}
     writer_sample = {
         "_comment": "probe file, never the real allowlist",
@@ -1310,7 +1320,7 @@ def self_test() -> int:
     case("case 12  the unreachable check names a ghost that is neither gap nor handler",
          len(unreach_lines) == 2
          and any(ln.startswith("info[tablet-unreachable]: 2 of 2")
-                 and "rotate_encryption_key" in ln for ln in unreach_lines)
+                 and ghost_tablet in ln for ln in unreach_lines)
          and all("neither" in ln for ln in unreach_lines), )
     # Pinned to the SHELL line on purpose. The first version of this case asked whether the
     # run printed "(1 allowlisted)" anywhere, and it passed before the repair existed: the
@@ -1353,12 +1363,15 @@ def self_test() -> int:
                     if ln.startswith("info[scoped-orphans]:")]
     case("case 13  the allowlist figure says entries and reports the size of the section",
          len(scoped_lines) == 1 and "3 entries allowlisted" in scoped_lines[0], )
-    tree_figure = [
-        int(part.split()[0]) for part in scoped_lines[0].split(", ")
-        if " orphans measured in the tree" in part
-    ] if scoped_lines else []
-    case("case 13  and the tree figure carries its own label and its own, different number",
-         len(tree_figure) == 1 and tree_figure[0] != 3
+    # No numeral here. The tree figure on this line is measured from the checkout, so any
+    # number this case compares it against -- including "not equal to 3" -- is a tax on
+    # somebody else registering or unwiring a command: a claim that stays true only while the
+    # tree stands still. What survives without numbers is the actual defect claim, that the
+    # line carries two figures with two distinct labels rather than one figure under the wrong
+    # word, and that is checked in words. The numeral belongs to the fixture I own, and it is
+    # in the case above: three planted members, three entries allowlisted.
+    case("case 13  and the tree figure carries its own label, separate from the file's",
+         " orphans measured in the tree," in scoped_lines[0]
          and ghost_scoped not in scoped_lines[0], )
 
     desktop_line = [ln for ln in labelled.splitlines()
