@@ -265,3 +265,9 @@ manager-journal.md
 /.agents/gate-gap.raw.txt
 /.agents/phase21-commitmsg.txt
 /.agents/registration-gate-harness-state.md
+# Owner sign-off 2026-09-13: kept on disk, out of status. Both are provably
+# redundant (..rev_ae_bridge_commands.rs is byte-identical to
+# crates/oz-bridge/src/topology/commands.rs; orphan-mod-rs.diff's shims
+# already live in both commands/mod.rs files) but deletion stays the owner's call.
+/..rev_ae_bridge_commands.rs
+/.agents/orphan-mod-rs.diff
