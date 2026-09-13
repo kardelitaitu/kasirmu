@@ -34,6 +34,16 @@ export const edcTerminalStatus = (): Promise<EdcStatus> =>
   loggedInvoke<EdcStatus>('edc_terminal_status');
 
 /**
+ * Session-scoped status query — the pre-flight the checkout runs before
+ * asking the terminal to take money. `test_edc_connection_scoped` was
+ * once planned as a dedicated probe; it never shipped, and this command
+ * answers the same question under the same session enforcement, so the
+ * checkout reuses the wire that exists (agents-3 3.2 decision).
+ */
+export const edcTerminalStatusScoped = (sessionToken: string): Promise<EdcStatus> =>
+  loggedInvoke<EdcStatus>('edc_terminal_status_scoped', { sessionToken });
+
+/**
  * Process a card-present sale (authorize + capture).
  *
  * `amountMinor` is in the currency's minor units (e.g. cents for USD,

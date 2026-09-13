@@ -5,7 +5,7 @@ vi.mock('@/utils/logged-invoke', () => ({
   loggedInvoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
-import { edcTerminalStatus, edcSale, edcRefund, edcVoid } from '@/api/edc';
+import { edcTerminalStatus, edcTerminalStatusScoped, edcSale, edcRefund, edcVoid } from '@/api/edc';
 
 // Contract pins for the EDC card-present surface. The Rust commands
 // (apps/desktop-client/src/commands/edc.rs) REQUIRE a session_token and
@@ -22,6 +22,14 @@ describe('edc.ts API contract', () => {
     mockInvoke.mockResolvedValue({ status: 'ready' });
     await edcTerminalStatus();
     expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status');
+  });
+
+  it('edcTerminalStatusScoped sends the session token (checkout pre-flight)', async () => {
+    mockInvoke.mockResolvedValue({ status: 'ready' });
+    await edcTerminalStatusScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status_scoped', {
+      sessionToken: 'tok',
+    });
   });
 
   it('edcSale sends the session token with the amount and currency', async () => {

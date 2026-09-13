@@ -576,6 +576,16 @@ payment-qris-cancel = Batalkan pembayaran
 payment-qris-auto-charge-failed = Penagihan QRIS Otomatis gagal: { $reason }
 payment-qris-auto-no-payload = Gerbang pembayaran tidak mengembalikan muatan QR
 payment-qris-auto-cancelled = Pembayaran QRIS dibatalkan — penjualan tertunda dibatalkan
+
+# Aliran kartu EDC (agents-3 3.2)
+payment-edc-description = Tagih total pada terminal kartu yang terhubung — tempel, masukkan, atau gesek.
+payment-edc-pay = Bayar dengan terminal kartu
+payment-edc-preflight = Memeriksa terminal kartu…
+payment-edc-waiting = Silakan tempel, masukkan, atau gesek kartu…
+payment-edc-declined = Kartu ditolak
+payment-edc-not-ready = Terminal kartu belum siap ({ $status })
+payment-edc-failed = Pembayaran kartu gagal: { $reason }
+payment-edc-dismiss = Kembali ke pembayaran
 payment-toast-currency-failed = Gagal memuat data mata uang
 payment-toast-customers-failed = Gagal memuat pelanggan
 payment-toast-loyalty-failed = Gagal memuat akun loyalitas

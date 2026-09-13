@@ -58,6 +58,20 @@ const { invokeMock } = vi.hoisted(() => ({
         });
       case 'qris_auto_status_scoped':
         return Promise.resolve({ orderId: 'ORDER-A1', status: 'settlement', settled: true });
+      // EDC card-present (agents-3 3.2): a ready terminal and an approved
+      // capture. Individual tests override to reach the decline and the
+      // missing-terminal paths.
+      case 'edc_terminal_status_scoped':
+        return Promise.resolve({ status: 'ready' });
+      case 'edc_sale':
+        return Promise.resolve({
+          success: true,
+          transactionId: 'EDC-TXN-1',
+          authCode: 'A1B2',
+          cardScheme: 'Visa',
+          cardLast4: '4242',
+          message: 'approved',
+        });
       // The screen reads the sale back through get_sale_scoped when a session token exists, and
       // this file's WorkspaceContext mock always provides one, so the scoped command needs the same
       // case as its ambient twin. The comment sits ABOVE both labels: between them it makes the
@@ -849,5 +863,170 @@ describe('PaymentModal — QRIS Auto tender', () => {
     } finally {
       invokeMock.mockImplementation(original);
     }
+  });
+});
+
+// ── EDC card-present tender (agents-3 3.2) ───────────────────────────
+//
+// The ordering is the mirror of QRIS Auto: CAPTURE FIRST. The terminal
+// needs no sale_id, so a declined or failed capture completes nothing;
+// only an approved capture builds the sale, and it finalizes with the
+// never-void rule (money exists at the terminal — a local fault parks
+// the sale pending for reconciliation, it must not void a paid sale).
+describe('PaymentModal — EDC card-present tender', () => {
+  const mount = () =>
+    renderInAct(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            sessionToken="mock-token"
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+
+  const callsOf = (cmd: string) =>
+    (invokeMock.mock.calls as unknown[][]).filter((c) => c[0] === cmd);
+
+  const payloadOf = (cmd: string, n = 0): unknown =>
+    (callsOf(cmd)[n] as unknown[] | undefined)?.[1];
+
+  const clickTerminalPay = async () => {
+    await userEvent.click(await screen.findByRole('radio', { name: /card/i }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: /pay on card terminal/i }),
+    );
+  };
+
+  // Runs one test with a single command's implementation replaced.
+  const overrideInvoke = (
+    cmd: string,
+    impl: () => Promise<unknown>,
+    body: () => Promise<void>,
+  ) => {
+    const original = (invokeMock.getMockImplementation() ??
+      (() => Promise.resolve({}))) as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((c: string) => (c === cmd ? impl() : original(c)));
+    return body().finally(() => invokeMock.mockImplementation(original));
+  };
+
+  it('captures on the terminal, then completes a CARD sale with the transaction fields', async () => {
+    const view = await mount();
+    await clickTerminalPay();
+
+    // Pre-flight ran BEFORE any hardware ask, and the capture carried the
+    // amount in the currency's minor units.
+    await waitFor(() => expect(callsOf('edc_terminal_status_scoped')).toHaveLength(1));
+    expect(
+      (payloadOf('edc_terminal_status_scoped') as { sessionToken: string }).sessionToken,
+    ).toBe('mock-token');
+    await waitFor(() => expect(callsOf('edc_sale')).toHaveLength(1));
+    const sale = payloadOf('edc_sale') as {
+      sessionToken: string;
+      amountMinor: number;
+      currency: string;
+    };
+    expect(sale.amountMinor).toBe(700);
+    expect(sale.currency).toBe('USD');
+
+    // The completion is a CARD tender carrying the terminal's answer.
+    const complete = payloadOf('complete_sale_scoped') as {
+      args: {
+        paymentMethod: string;
+        paymentSplits: Array<{
+          method: string;
+          gatewayReference: string;
+          gatewayStatus: string;
+          gatewayResponse: string;
+        }>;
+      };
+    };
+    expect(complete.args.paymentMethod).toBe('CARD');
+    expect(complete.args.paymentSplits[0]?.method).toBe('CARD');
+    expect(complete.args.paymentSplits[0]?.gatewayReference).toBe('EDC-TXN-1');
+    expect(complete.args.paymentSplits[0]?.gatewayStatus).toBe('captured');
+    const parsed = JSON.parse(complete.args.paymentSplits[0]?.gatewayResponse ?? '{}') as {
+      card_last4?: string;
+      auth_code?: string;
+    };
+    expect(parsed.card_last4).toBe('4242');
+    expect(parsed.auth_code).toBe('A1B2');
+
+    await waitFor(() => expect(callsOf('finalize_sale')).toHaveLength(1));
+    // Captured money is never voided by this flow.
+    expect(callsOf('void_pending_sale')).toHaveLength(0);
+    view.unmount();
+  });
+
+  it('a declined capture returns to tender selection with the terminal reason and completes nothing', async () => {
+    const view = await mount();
+    await overrideInvoke(
+      'edc_sale',
+      () =>
+        Promise.resolve({
+          success: false,
+          transactionId: null,
+          authCode: null,
+          cardScheme: null,
+          cardLast4: null,
+          message: 'insufficient funds',
+        }),
+      async () => {
+        await clickTerminalPay();
+        await waitFor(() =>
+          expect(screen.getByRole('alert')).toHaveTextContent(/insufficient funds/i),
+        );
+        expect(callsOf('complete_sale_scoped')).toHaveLength(0);
+        expect(callsOf('void_pending_sale')).toHaveLength(0);
+        // Dismiss returns to the tender UI.
+        await userEvent.click(
+          await screen.findByRole('button', { name: /back to payment/i }),
+        );
+        expect(screen.queryByRole('alert')).toBeNull();
+      },
+    );
+    view.unmount();
+  });
+
+  it('a failed pre-flight (no terminal registered, or the tablet without edc commands) never touches hardware or the ledger', async () => {
+    const view = await mount();
+    await overrideInvoke(
+      'edc_terminal_status_scoped',
+      () => Promise.reject({ kind: 'unknown', message: 'command not found' }),
+      async () => {
+        await clickTerminalPay();
+        await waitFor(() =>
+          expect(screen.getByText(/Card payment failed/i)).toBeInTheDocument(),
+        );
+        expect(callsOf('edc_sale')).toHaveLength(0);
+        expect(callsOf('complete_sale_scoped')).toHaveLength(0);
+        expect(screen.queryByRole('status')).toBeNull();
+      },
+    );
+    view.unmount();
+  });
+
+  it('a not-ready terminal answer preflights into a reason toast, no capture', async () => {
+    const view = await mount();
+    await overrideInvoke(
+      'edc_terminal_status_scoped',
+      () => Promise.resolve({ status: 'paperError' }),
+      async () => {
+        await clickTerminalPay();
+        await waitFor(() =>
+          expect(screen.getByText(/not ready/i)).toBeInTheDocument(),
+        );
+        expect(callsOf('edc_sale')).toHaveLength(0);
+        expect(callsOf('complete_sale_scoped')).toHaveLength(0);
+      },
+    );
+    view.unmount();
   });
 });

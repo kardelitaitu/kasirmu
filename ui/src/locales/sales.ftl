@@ -91,6 +91,16 @@ payment-qris-cancel = Cancel payment
 payment-qris-auto-charge-failed = QRIS Auto charge failed: { $reason }
 payment-qris-auto-no-payload = The payment gateway returned no QR payload
 payment-qris-auto-cancelled = QRIS payment cancelled — pending sale voided
+
+# EDC card-present flow (agents-3 3.2)
+payment-edc-description = Charge the total on the connected card terminal — tap, insert or swipe.
+payment-edc-pay = Pay on card terminal
+payment-edc-preflight = Checking card terminal…
+payment-edc-waiting = Please tap, insert or swipe the card…
+payment-edc-declined = Card declined
+payment-edc-not-ready = Card terminal is not ready ({ $status })
+payment-edc-failed = Card payment failed: { $reason }
+payment-edc-dismiss = Back to payment
 payment-qris-scan = Scan with your payment app
 payment-qris-waiting = Waiting for payment...
 payment-qris-dialog-aria = QRIS QR payment

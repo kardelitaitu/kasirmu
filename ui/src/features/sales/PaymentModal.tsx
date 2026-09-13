@@ -26,6 +26,7 @@ import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
+import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -670,14 +671,15 @@ export default function PaymentModal({
     setShowQr(true);
   }, []);
 
-  // Shared QRIS front half (manual + Auto): cart -> discount -> lines ->
-  // complete. The caller's split metadata decides the settlement story:
-  // manual passes its cashier-asserted reference + 'completed', Auto
-  // completes as 'pending' FIRST so the cloud charge can bind to the real
-  // sale id (the ledger's queued finalize_sale then addresses a sale the
-  // device actually has).
-  const buildQrisSale = useCallback(
-    async (split: { gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
+  // Shared gateway-tender front half (manual QRIS, Auto QRIS, EDC card):
+  // cart -> discount -> lines -> complete. The caller's split metadata
+  // decides the settlement story: manual QRIS passes its cashier-asserted
+  // reference + 'completed', Auto completes as 'pending' FIRST so the cloud
+  // charge can bind to the real sale id (the ledger's queued finalize_sale
+  // then addresses a sale the device actually has), and EDC completes
+  // 'captured' with the terminal's transaction fields.
+  const buildGatewaySale = useCallback(
+    async (split: { method: string; gatewayReference: string; gatewayStatus: string; gatewayResponse: string }) => {
       const { cartId } = await startSaleScoped(sessionToken!, { currency: cartCurrency });
 
       if (discountPercent > 0) {
@@ -713,7 +715,7 @@ export default function PaymentModal({
       // FRONTEND-04: shared tenderSnapshot memo (see component scope).
       return completeSaleScoped(sessionToken!, {
             cartId,
-            paymentMethod: 'QRIS',
+            paymentMethod: split.method,
             tenderedMinor: null,
             // COR-7: the scan-and-wait flow is ONE checkout attempt. The QR
             // was generated under this attempt's id (attemptIdRef only
@@ -728,7 +730,7 @@ export default function PaymentModal({
             ...(serialNumberArgs && serialNumberArgs.length > 0 ? { serialNumbers: serialNumberArgs } : {}),
             paymentSplits: [
               {
-                method: 'QRIS',
+                method: split.method,
                 amountMinor: effectiveTotalInCartCurrency,
                 gatewayReference: split.gatewayReference,
                 gatewayStatus: split.gatewayStatus,
@@ -756,7 +758,7 @@ export default function PaymentModal({
   // gateway by then, so the sale must stay pending — the queued
   // finalize_sale from the settlement webhook completes it on the next
   // sync apply instead.
-  const settleQrisSale = useCallback(
+  const settleGatewaySale = useCallback(
     async (saleResult: Awaited<ReturnType<typeof completeSaleScoped>>, voidOnFinalizeFailure: boolean) => {
       try {
         // ADR #7: read the sale back from the same store completeSaleScoped just wrote it to.
@@ -863,12 +865,13 @@ export default function PaymentModal({
     setShowQr(false);
     setProcessing(true);
     try {
-      const saleResult = await buildQrisSale({
+      const saleResult = await buildGatewaySale({
+        method: 'QRIS',
         gatewayReference: qrReference,
         gatewayStatus: 'completed',
         gatewayResponse: 'QRIS payment confirmed',
       });
-      await settleQrisSale(saleResult, true);
+      await settleGatewaySale(saleResult, true);
     } catch (err) {
       addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
       const classified = classifyError(err);
@@ -876,13 +879,13 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [buildQrisSale, settleQrisSale, qrReference, classifyError, addToast]);
+  }, [buildGatewaySale, settleGatewaySale, qrReference, classifyError, addToast]);
 
   // ── QRIS Auto (dynamic Midtrans charge, agents-3) ────────────────
   // The sale completes as PENDING before the charge exists, the QR is
   // rendered from the gateway payload, and settlement is observed by the
   // display's real poll (cloud ledger via the webhook). The tail is the
-  // same settleQrisSale the manual flow uses — finalize's idempotent
+  // same settleGatewaySale the manual flow uses — finalize's idempotent
   // `WHERE status = 'pending'` means the queued finalize_sale racing in
   // over sync and this UI call cannot double-apply or double-award.
   const [autoQr, setAutoQr] = useState<{
@@ -916,7 +919,8 @@ export default function PaymentModal({
     setProcessing(true);
     let createdSaleId: string | null = null;
     try {
-      const saleResult = await buildQrisSale({
+      const saleResult = await buildGatewaySale({
+        method: 'QRIS',
         gatewayReference: `qr-auto:${attemptIdRef.current ?? 'no-attempt'}`,
         gatewayStatus: 'pending',
         gatewayResponse: 'QRIS Auto — awaiting settlement webhook',
@@ -952,7 +956,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [sessionToken, buildQrisSale, issueAutoQr, addToast]);
+  }, [sessionToken, buildGatewaySale, issueAutoQr, addToast]);
 
   const handleAutoReissue = useCallback(async () => {
     if (!autoQr || !sessionToken) return;
@@ -996,8 +1000,7 @@ export default function PaymentModal({
       );
   }, [autoQr, sessionToken, addToast]);
 
-  const handleAutoConfirmed = useCallback(async () => {
-    if (!autoQr) return;
+  const handleAutoConfirmed = useCallback(async () => {    if (!autoQr) return;
     const { saleResult } = autoQr;
     setAutoQr(null);
     setProcessing(true);
@@ -1005,7 +1008,7 @@ export default function PaymentModal({
       // voidOnFinalizeFailure = false: the gateway has the customer's
       // money; a local finalize fault keeps the sale pending for the
       // queued finalize_sale instead of voiding a PAID sale.
-      await settleQrisSale(saleResult, false);
+      await settleGatewaySale(saleResult, false);
     } catch (err) {
       addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
       const classified = classifyError(err);
@@ -1013,13 +1016,95 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [autoQr, settleQrisSale, classifyError, addToast]);
+  }, [autoQr, settleGatewaySale, classifyError, addToast]);
 
   const handleAutoPoll = useCallback(async () => {
     if (!autoQr || !sessionToken) return false;
     const s = await qrisAutoStatusScoped(sessionToken, autoQr.orderId);
     return s.settled;
   }, [autoQr, sessionToken]);
+
+  // ── EDC card-present (agents-3 3.2) ────────────────────────────────
+  // Capture-first, the mirror of QRIS-Auto's pending-first: the terminal
+  // needs no sale_id, so money is authorized+captured BEFORE any sale is
+  // built and every failed branch behind the capture leaves no orphaned
+  // pending sale to void. The inverse risk (captured, then the app dies
+  // before complete_sale) is the accepted one — it reconciles through the
+  // terminal's own journal, and the pre-flight + decline paths never touch
+  // the ledger at all. Preflight is `edc_terminal_status_scoped`: the
+  // never-shipped `test_edc_connection_scoped` (agents-2 residual) is
+  // decided INTO this call — same session enforcement, same answer. On the
+  // tablet (no edc commands registered) the pre-flight simply rejects and
+  // the flow falls back to manual card — desktop-only expressed as
+  // degradation, not platform-sniffing.
+  const [edc, setEdc] = useState<{
+    phase: 'preflight' | 'waiting' | 'declined';
+    reason?: string | undefined;
+  } | null>(null);
+
+  const handleTerminalPay = useCallback(async () => {
+    setProcessing(true);
+    try {
+      setEdc({ phase: 'preflight' });
+      const status = await edcTerminalStatusScoped(sessionToken!);
+      if (status.status !== 'ready') {
+        setEdc(null);
+        addToast({
+          message: requiredLocalized(l10nRef.current, 'payment-edc-not-ready', {
+            status: status.status,
+          }),
+          type: 'error',
+        });
+        return;
+      }
+      // The card-present wait is the terminal's, not ours: no client-side
+      // cancel (a tap can land any moment — cancelling the promise would
+      // abandon captured money), no invented progress. The overlay says
+      // tap/insert/swipe and waits.
+      setEdc({ phase: 'waiting' });
+      const result = await edcSale(
+        sessionToken!,
+        Number(effectiveTotalInCartCurrency),
+        cartCurrency,
+      );
+      if (!result.success) {
+        setEdc({ phase: 'declined', reason: result.message });
+        return;
+      }
+      const saleResult = await buildGatewaySale({
+        method: 'CARD',
+        gatewayReference: result.transactionId ?? '',
+        gatewayStatus: 'captured',
+        gatewayResponse: JSON.stringify({
+          auth_code: result.authCode,
+          card_scheme: result.cardScheme,
+          card_last4: result.cardLast4,
+          message: result.message,
+        }),
+      });
+      // voidOnFinalizeFailure = false: the terminal holds captured money;
+      // a local finalize fault keeps the sale pending for reconciliation,
+      // it must not void a PAID sale.
+      await settleGatewaySale(saleResult, false);
+      setEdc(null);
+    } catch (err) {
+      // Back to tender selection with the reason (the capture, if any, is
+      // the terminal's record; nothing local was created yet at this
+      // point except a possibly-built sale — settleGatewaySale throws only
+      // after its own surfacing, and its pending-on-failure branch applies).
+      setEdc(null);
+      addToast({
+        message: requiredLocalized(l10nRef.current, 'payment-edc-failed', {
+          reason: plainErrorMessage(err),
+        }),
+        type: 'error',
+      });
+    } finally {
+      setProcessing(false);
+    }
+  }, [sessionToken, effectiveTotalInCartCurrency, cartCurrency, buildGatewaySale, settleGatewaySale, addToast]);
+
+  const handleTerminalDismiss = useCallback(() => setEdc(null), []);
 
   const addSplit = useCallback(() => {
     setSplits((prev) => [
@@ -1386,6 +1471,54 @@ export default function PaymentModal({
           expiresInSeconds={autoQr.expiresIn}
           onReissue={handleAutoReissue}
         />
+      )}
+
+      {edc && (
+        <div
+          className="payment-edc-overlay"
+          role={edc.phase === 'declined' ? 'alert' : 'status'}
+          aria-live="polite"
+        >
+          <div className="payment-edc-panel">
+            {edc.phase === 'declined' ? (
+              <>
+                <p className="payment-edc-declined-title">
+                  <Localized id="payment-edc-declined">
+                    <span>Card declined</span>
+                  </Localized>
+                </p>
+                {/* The reason is the terminal's own message — operator data,
+                    shown verbatim, not UI copy. */}
+                {edc.reason && <p className="payment-edc-declined-reason">{edc.reason}</p>}
+                <button
+                  type="button"
+                  className="payment-edc-btn payment-edc-btn--dismiss"
+                  aria-label={l10n.getString('payment-edc-dismiss')}
+                  onClick={handleTerminalDismiss}
+                >
+                  <Localized id="payment-edc-dismiss">
+                    <span>Back to payment</span>
+                  </Localized>
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="payment-edc-spinner" aria-hidden="true" />
+                <p className="payment-edc-waiting-text">
+                  {edc.phase === 'preflight' ? (
+                    <Localized id="payment-edc-preflight">
+                      <span>Checking card terminal…</span>
+                    </Localized>
+                  ) : (
+                    <Localized id="payment-edc-waiting">
+                      <span>Please tap, insert or swipe the card…</span>
+                    </Localized>
+                  )}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {shortfallResult && (
@@ -1839,6 +1972,27 @@ export default function PaymentModal({
                         </span>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {method === 'card' && !splitMode && (
+                  <div className="payment-edc-section">
+                    <Localized id="payment-edc-description">
+                      <p className="payment-edc-description">
+                        Charge the total on the connected card terminal — tap, insert or swipe.
+                      </p>
+                    </Localized>
+                    <button
+                      type="button"
+                      className="payment-edc-btn"
+                      aria-label={l10n.getString('payment-edc-pay')}
+                      onClick={handleTerminalPay}
+                      disabled={processing || edc !== null || autoQr !== null}
+                    >
+                      <Localized id="payment-edc-pay">
+                        <span>Pay on card terminal</span>
+                      </Localized>
+                    </button>
                   </div>
                 )}
 

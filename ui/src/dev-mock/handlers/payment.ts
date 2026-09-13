@@ -110,6 +110,7 @@ export function createPaymentHandlers(deps: PaymentDeps): Record<string, MockHan
 
   // ── EDC card-present terminal ──────────────────────────────────────
   'edc_terminal_status': () => ({ status: 'ready' }),
+  'edc_terminal_status_scoped': () => ({ status: 'ready' }),
   'edc_sale': (args) => {
     const a = args as { args: { amountMinor: number; currency: string } };
     const { amountMinor, currency } = a.args ?? a;
