@@ -33,22 +33,26 @@ not a triage queue. Claim-first-measure twice. -->
 
 ## Genuinely open — the real remainder, ranked
 
-### R1 · The modal ignores the rails it owns (highest value, epic-shaped)
-`PaymentMethod` is a hardcoded union (`PaymentModal.tsx:40`); the radios
-never consult `getLocalPaymentMethods` or entitlement caps — the
-"visibleMethods = enabled ∩ entitled ∩ online-capable" derivation
-(Phase 0/5) was deliberately DEVIALED twice (QRIS-Auto, EDC) while
-waiting for exactly this pass. Settings toggles rails that checkout
-doesn't read. Includes hiding online-only methods when offline.
+### R1 · The modal ignores the rails it owns — DONE (`bffcbda97a`)
+CLOSED 2026-09-14 with one premise correction made BY MEASUREMENT during
+execution: the `payment:qris-manual/:midtrans/:edc` keys this doc's R1
+text inherited from the master model **never existed in code** — the
+real surface is the regional slice-6 rail store (`rail_code: qris`,
+`edc`, …). The checkout now reads it (`useLocalPaymentRails`): QRIS tab
+and EDC button defer to `is_enabled`, fail-open on unknown/empty, with
+5 tests. The "online-capable" third leg of the master formula is NOT
+implemented because **no online signal exists in the UI** (measured) —
+inventing one was out of order scope; it remains the one honest part of
+R1's original text still open.
 
-### R2 · Manual QRIS still renders a DEMO QR grid
-The last honest-surface debt: manual mode draws 441 hash-seeded pseudo
-cells (`QrisQrDisplay.tsx` qrCells memo) because no merchant static-QR
-string exists anywhere (measured: zero hits for merchant_qris/qris_string
-stores). Needs the config field (terminal/hardware), the settings UI, and
-feeding the real string into the existing `<QRCodeSVG>` branch — which
-Auto already proved works. The cashier-assert fix (`09eec83868`) made the
-CONFIRMATION honest; the QR itself is still theater.
+### R2 · Manual QRIS still renders a DEMO QR grid — DONE (`903b30a718`)
+CLOSED 2026-09-14: the 441-cell pseudo-QR is deleted, not hidden. The
+merchant's static EMVCo string now lives in the qris rail's parameters
+bag (`static_qr_payload` — market metadata, the credential guard already
+protects this bag), is editable in the settings card, reaches the
+manual dialog's REAL-QR branch, and the unconfigured state says so
+plainly while keeping the cashier-assert path. The 441-cell pin retired
+with the grid it pinned.
 
 ### R3 · Typed error classification (Resilience C)
 `classifyError` still string-matches English messages
@@ -83,9 +87,9 @@ a merchant account, not code.
 - credit/AR — still TBD by design; the union carries the label, no flow.
 - SnapBi, Node BFF, cloud-stored device secrets — ruled NO.
 
-## Execution proposal
-R1+R2 form one coherent work order ("the modal grows a real config
-surface") — UI-side, testable here, no cloud. R3 is a small honest
-follow-on. R4/R5/R6 stay parked with the reasons above; R5 deserves its
-own design doc before any boxes. If ordered: agents-5 = R1+R2, agents-6
-= R3, then re-audit.
+## Execution proposal — RESULT
+
+Proposed: agents-5 = R1+R2. **Executed** 2026-09-14 (`bffcbda97a` +
+`903b30a718`), both boxes ticked above with their premise corrections
+recorded where the claims were made. R3-R6 stay open as written; R5
+still requires its own design doc before any boxes.
