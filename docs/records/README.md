@@ -98,6 +98,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
+| general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
 | general | [Fluent Page Audit — Full Journal](fluent-page-audit.md) | — |
 | staff | [SQLite / Postgres Roles](sqlite-pg-roles.md) | — |
