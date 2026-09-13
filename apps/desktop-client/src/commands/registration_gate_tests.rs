@@ -873,10 +873,17 @@ fn keys_literal_value(keys_src: &str, ident: &str) -> Option<String> {
 /// the surface and reading a slice of it. `scripts/verify-ipc-parity.py` handled the
 /// wrapper from the start - the comment above its regex names `loggedInvoke` with a generic
 /// parameter - and this twin next to it had not caught up.
-fn classify_invoke_surface(text: &str, inside_allowed: bool) -> (usize, usize, Vec<usize>) {
-    let mut sites = 0usize;
-    let mut literal = 0usize;
-    let mut computed = Vec::new();
+/// One invoke-shaped call site: the 1-based line, the identifier actually called, and
+/// whether the command name arrived as a string literal.
+///
+/// The needle is case-insensitive over the whole word, so `loggedInvoke(`,
+/// `loggedInvokeGeneric(`, `mockInvoke(` and any future wrapper ending in the word
+/// invoke are all in the surface. The breadth is deliberate - a new wrapper is covered
+/// on day one rather than after the next audit - and its cost is that a local helper
+/// named `myInvoke` stays in the denominator forever. That is why the pin below reports
+/// the shape of what it counted and not only a number.
+fn scan_invoke_sites(text: &str) -> Vec<(usize, String, bool)> {
+    let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("//") || trimmed.starts_with('*') || trimmed.starts_with("/*") {
@@ -885,20 +892,75 @@ fn classify_invoke_surface(text: &str, inside_allowed: bool) -> (usize, usize, V
         // ASCII-only folding, so every byte offset stays valid against the original line
         // and a non-ASCII argument cannot move the window.
         let lower = line.to_ascii_lowercase();
-        let mut rest = lower.as_str();
-        while let Some(hit) = rest.find("invoke(") {
-            let after = hit + "invoke(".len();
-            sites += 1;
-            let first = rest[after..].trim_start().chars().next().unwrap_or('x');
-            if first == DOUBLE_QUOTE || first == SINGLE_QUOTE {
-                literal += 1;
-            } else if !inside_allowed {
-                computed.push(i + 1);
+        let bytes = line.as_bytes();
+        let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'$';
+        let mut from = 0usize;
+        while let Some(hit) = lower[from..].find("invoke(") {
+            let start = from + hit;
+            let after = start + "invoke(".len();
+            let mut word = start;
+            while word > 0 && ident(bytes[word - 1]) {
+                word -= 1;
             }
-            rest = &rest[after..];
+            let callee = line[word..start + "invoke".len()].to_string();
+            let first = lower[after..].trim_start().chars().next().unwrap_or('x');
+            out.push((
+                i + 1,
+                callee,
+                first == DOUBLE_QUOTE || first == SINGLE_QUOTE,
+            ));
+            from = after;
         }
     }
-    (sites, literal, computed)
+    out
+}
+
+/// Is this file test scaffolding rather than production source? Mirrors
+/// `scripts/verify-ipc-parity.py:91`, which drops any path with a `__tests__` component
+/// before it extracts UI command strings (measured 2026-09-13: its `UI_SCAN_DIRS` at :50
+/// is seven production roots and its walk at :88 skips `__tests__` at :91). The two
+/// gates must agree on what production source means, or this ban protects a surface the
+/// extractor never reads and the agreement is fiction.
+fn counts_as_test_scaffold(rel: &str) -> bool {
+    rel.split('/').any(|part| part == "__tests__")
+}
+
+/// Does a computed-name site in this file make it an offender? Production source only,
+/// and never a file already on the toleration list.
+///
+/// WHY THE TWO HALVES DIFFER, for whoever is tempted to collapse them: this ban exists
+/// because the parity extractor and every allowlist here match command names as SOURCE
+/// TEXT, and a name assembled at runtime is the one thing they cannot see. That hazard
+/// lives in production source - and the extractor reads production source only:
+/// `scripts/verify-ipc-parity.py:50` names seven production roots and its walk drops any
+/// `__tests__` path at :91, so a test file cannot skew parity either way. A `vi.mock`
+/// factory written as `loggedInvoke: (cmd, args) => mockInvoke(cmd, args)` is not a UI
+/// building a command name; it is a test handing one through, which is the entire point
+/// of a mock. Failing on those 58 sites would train the next reader to delete the pin.
+///
+/// The counts are still taken on both halves, so this routes findings - it never deletes
+/// numbers. A scope that silently dropped 58 sites would be an allowlist with the
+/// reasons left out.
+fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
+    !inside_allowed && !counts_as_test_scaffold(rel)
+}
+
+/// The three counts for one file, with the offender list suppressed when the file is on
+/// the toleration list. Delegates to `scan_invoke_sites` so the counts and the callee
+/// breakdown reported beside them cannot drift apart.
+fn classify_invoke_surface(text: &str, inside_allowed: bool) -> (usize, usize, Vec<usize>) {
+    let sites = scan_invoke_sites(text);
+    let literal = sites.iter().filter(|(_, _, is_lit)| *is_lit).count();
+    let computed = if inside_allowed {
+        Vec::new()
+    } else {
+        sites
+            .iter()
+            .filter(|(_, _, is_lit)| !*is_lit)
+            .map(|(line, _, _)| *line)
+            .collect()
+    };
+    (sites.len(), literal, computed)
 }
 /// No computed command names. A static allowlist is a fiction the moment a caller can
 /// build the name at runtime, so this bans invoke(variable) outright. It reads as a text
@@ -949,31 +1011,78 @@ fn drift_pin_no_computed_command_names_in_ui() {
         "__tests__/useSessionKeepalive.test.ts",
     ];
 
+    // Three counts, both halves, printed whether or not the leg is red.
     let mut offenders = Vec::new();
-    let mut literal = 0usize;
     let mut total = 0usize;
+    let mut prod_total = 0usize;
+    let mut prod_computed = 0usize;
+    let mut test_total = 0usize;
+    let mut test_computed = 0usize;
+    let mut test_callees: Vec<String> = Vec::new();
     for f in &files {
         let rel = f
             .display()
             .to_string()
             .replace(std::path::MAIN_SEPARATOR, "/");
         let inside_allowed = allowed.iter().any(|a| rel.ends_with(a));
-        let (sites, lits, computed) = classify_invoke_surface(&read(f), inside_allowed);
-        total += sites;
-        literal += lits;
-        for at in computed {
-            offenders.push(format!("{}:{}", rel, at));
+        let offend = computed_name_is_an_offender(&rel, inside_allowed);
+        let scaffold = counts_as_test_scaffold(&rel);
+        for (at, callee, is_lit) in scan_invoke_sites(&read(f)) {
+            total += 1;
+            if scaffold {
+                test_total += 1;
+                if !is_lit {
+                    test_computed += 1;
+                    test_callees.push(callee);
+                }
+            } else {
+                prod_total += 1;
+                if !is_lit {
+                    prod_computed += 1;
+                    if offend {
+                        offenders.push(format!("{}:{}", rel, at));
+                    }
+                }
+            }
         }
     }
+    let prod_literal = prod_total - prod_computed;
+    let test_literal = test_total - test_computed;
+    test_callees.sort();
+    let mut breakdown = String::new();
+    let mut i = 0usize;
+    while i < test_callees.len() {
+        let mut n = 1usize;
+        while i + n < test_callees.len() && test_callees[i + n] == test_callees[i] {
+            n += 1;
+        }
+        breakdown.push_str(&format!(
+            "  EXCLUDED, TEST-SIDE COMPUTED SITE {n} x `{}(` - a forwarder in a test, not a UI building a name\n",
+            test_callees[i]
+        ));
+        i += n;
+    }
+    println!(
+        "INVOKE SURFACE, BOTH HALVES: {total} invoke-shaped call sites in ui/src = \
+         {prod_total} production non-test ({prod_literal} literal / {prod_computed} \
+         computed, these offend) + {test_total} test scaffolding ({test_literal} literal / \
+         {test_computed} computed, these are reported, not failed).",
+    );
+    print!("{breakdown}");
     assert!(
         offenders.is_empty(),
-        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {literal} of {total} invoke-shaped call \
-         sites in ui/src - every call whose name ends in invoke counts, so `invoke(`,
-         `loggedInvoke(` and `loggedInvokeGeneric(` are all in the denominator - and these
-         {} build the name at runtime: {offenders:?}. A computed name defeats every
-         allowlist in this file, because the name being checked is no longer the name
-         being called.",
-        offenders.len(),
+        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: {total} invoke-shaped call sites in \
+         ui/src, counting every call whose name ends in invoke - so `invoke(`,
+         `loggedInvoke(` and `loggedInvokeGeneric(` are all in the denominator. \
+         PRODUCTION non-test source: {prod_total} sites, {prod_literal} literal, \
+         {prod_computed} built at runtime, and these offend: {offenders:?}. \
+         TEST SCAFFOLDING: {test_total} sites, {test_literal} literal, {test_computed} \
+         built at runtime - reported by callee above and deliberately NOT failed, because \
+         a forwarder inside a test cannot reach the extractor this ban protects \
+         (`scripts/verify-ipc-parity.py:91` skips these paths); see \
+         `computed_name_is_an_offender`. A computed name in production source defeats \
+         every allowlist in this file, because the name being checked is no longer the \
+         name being called.",
     );
 }
 
@@ -1230,6 +1339,32 @@ fn pin_classifies_a_computed_name_built_behind_the_wrapper() {
     let (sites, _, offenders) = classify_invoke_surface(computed, true);
     assert_eq!(sites, 1, "toleration must not shrink the denominator");
     assert!(offenders.is_empty());
+
+    // Part four, the scoping rule as a case that can fail. The same computed name in a
+    // production-shaped path offends; the same computed name under `__tests__` does not.
+    let prod_path = "ui/src/features/sales/SalesScreen.tsx";
+    let test_path = "ui/src/__tests__/api-customers-contract.test.ts";
+    assert!(
+        computed_name_is_an_offender(prod_path, false),
+        "a computed name in production source must fail the pin"
+    );
+    assert!(
+        !computed_name_is_an_offender(test_path, false),
+        "the same site in test scaffolding must not fail the pin"
+    );
+    // And it must still be COUNTED, or the scoping rule is an allowlist with the reasons
+    // left out: the identical fixture scores one site, zero literals, one computed line
+    // whichever half it is filed under.
+    let (t_sites, t_literal, t_computed) = classify_invoke_surface(computed, false);
+    assert_eq!(
+        (t_sites, t_literal, t_computed.as_slice()),
+        (1, 0, &[2][..])
+    );
+    assert!(!computed_name_is_an_offender(test_path, false));
+    // The callee is what the excluded population is reported by, so the reader sees the
+    // shape: `loggedInvoke` for a production funnel, `mockInvoke` for a test double.
+    let (_, callee, _) = &scan_invoke_sites(computed)[0];
+    assert_eq!(callee, "loggedInvoke");
 
     // The bare form still scores, so this is a widening and not a replacement.
     let (sites, literal, _) = classify_invoke_surface("  return invoke('list_roles');\n", false);
