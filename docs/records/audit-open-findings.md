@@ -857,6 +857,31 @@ both outside this session’s authority, recorded here rather than done.
 and emits a 62-byte line identical to a real run — index-bound, a different class).
 
 
+### Dated correction (2026-09-13, 14:47) — F-2 and its wrong-shape sibling are closed in `verify-scoped-reads.py`
+
+`4d103182c` (158/3, one file, `973 → 1125` lines) put a `require_allowlist_shape()` guard between
+reading the parsed JSON and any `.get` on it, refusing when the object it wanted — a JSON object
+keyed by the shell section, default `"desktop"`, a key name read off the live loader rather than
+guessed — is absent or wrong-typed. Measured against the **committed blob** in a temp dir:
+`{}` and `{"entries":[]}` — both of which previously exited **0** printing
+`0 production file(s) graded … clean for desktop.` having compared nothing — now exit **1**
+with a sentence naming what was wanted and what was got; `[{"a":1}]` no longer escapes as an
+uncaught `AttributeError` at `allowlist_names:303`; `not json` is unchanged. Four cells, all
+refuse, no tracebacks, no `clean` line. Re-verified by the director, not only by the lane:
+bare exit 0 still reporting `568 production file(s) graded`, `--self-test` PASS through case 8
+(~40 ok lines, was 34), `verify-agents-mirrors` exit 0.
+
+**Still open, three of them, all named, none touched:** the identical wrong-shape hazard in
+`verify-ipc-parity.py`, whose `load_allowlist()` hands raw `json.loads` output to
+`payload.get(section)` at `:547 :592 :730 :765 :794` with no top-level check — and that gate is
+the *writer* of the same shared file, so it can re-publish a shape nothing can read; a valid-
+JSON **UTF-16** file still escaping `read_allowlist` as an uncaught `UnicodeDecodeError`
+(it catches only `PermissionError` and `JSONDecodeError`, unchanged before and after this
+commit); and `--shell ''`, which exits 0 printing `clean for .` because with no section named
+there is no key to require. The last is the same class one level further in: a refusal needs a
+named section before the shape question exists.
+
+
 ## How to close these
 
 Each finding's original remediation guidance lives in git history under
