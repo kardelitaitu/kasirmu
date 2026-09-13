@@ -26,6 +26,13 @@ So this gates the two things a COMMIT can be held to, both cheap and both precis
 
 `--census` reports the whole-tree picture informationally so existing debt stays visible
 without blocking unrelated work, and `--self-test` proves both directions can actually fail.
+
+Three exit codes, and the gap between them is the whole contract: 0 means this run checked
+what it was pointed at and found nothing, 1 means it reached a verdict and the verdict is
+`FAIL: N orphan problem(s)`, and 2 means it checked nothing at all -- no ROOT to read, no
+index to diff, or a file that would not open. That last case is why a lock collision on a busy
+tree must never leave a 1 behind: the code that means "somebody's keys are orphaned" cannot
+also be the code that means "a writer held the file for one millisecond". See `_read()`.
 """
 from __future__ import annotations
 
@@ -44,8 +51,125 @@ KEY_DECL = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", re.M)
 UI_EXCLUDES = ("__tests__", "dev-mock", "/locales/")
 
 
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+#: True only for --census, the advisory mode, which names an unreadable file and carries on.
+#: The two hard-gate modes leave this False and raise instead. Set once in main().
+_REPORT_UNREADABLE = False
+
+#: Paths that existed in the glob and then would not open, in the order they failed. Only
+#: --census populates it; a hard mode raises on the first one and never reaches the list.
+UNREADABLE: list[str] = []
+
+
+class UnreadableSource(Exception):
+    """A file this gate needs would not open.
+
+    Raised by `_read()` in `--self-test` and `--staged-only` only. Those two are the modes
+    a reader trusts to have CHECKED something -- `--staged-only` is pre-commit step 7 and
+    `--self-test` blocks CI -- and an unknown corpus is not a clean one. The handler is
+    `main()`'s single `except`, so the gate keeps one voice: one `error:` sentence on stderr
+    naming the path, exit 2, no Traceback.
+
+    The name and the shape are the house law, not an invention: `verify-scoped-reads.py`
+    (`AllowlistUnreadable` / `AllowlistUndecodable`, `dd4888194`) already keeps one class and
+    one handler for "the bytes would not arrive", and `coverage_top.py` (`dfb3e10e9`) already
+    names one UNREADABLE line and carries on. `hollow_root_reason()` deliberately does NOT
+    cover this and is not widened to try: the directory exists, the bundles exist, and the
+    `open()` is what fails this instant because another session is writing the file. The
+    finding at docs/records/audit-open-findings.md (2026-09-13 19:45) is precisely that
+    `exists` cannot see it.
+
+    Not retried. This gate never writes, so it has nothing to negotiate with a writer, and the
+    pre-commit budget for all seven steps is under a second; a denial is settled by a re-run,
+    not by a sleep inside someone's commit.
+    """
+
+
+def _rel(path: Path) -> str:
+    """The ROOT-relative posix path, for a message a reader can cd to."""
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _read(path: Path, errors: str = "replace") -> str:
+    """One file's text. A read that fails is never allowed to reach an exit code.
+
+    Before this, every content read in the file was a bare `read_text`, and on a tree where
+    several sessions write `.ftl` continuously the open raises `PermissionError` for the
+    microsecond a writer holds the file. Unhandled, that left the process at exit 1 with one
+    Traceback and no `FAIL: N orphan problem(s)` line -- this file's failure code for a real
+    orphan verdict, spent on a lock collision, and read downstream as a claim about somebody's
+    keys. Measured on the real tree against `ui/src/locales/kds.ftl`; recorded 2026-09-13 at
+    19:45.
+
+    The mode decides what a failed read means, and `main()` sets that once:
+
+      * `--self-test` / `--staged-only` (`_REPORT_UNREADABLE` False) -- raise
+        `UnreadableSource`. Both feed a hard gate step, and a corpus with a hole in it is not
+        a corpus; `main()` answers with `_refusal()`, which exits 2 -- the same code a hollow
+        ROOT or an unreadable index already costs, and never the 1 a verdict costs.
+      * `--census` (`_REPORT_UNREADABLE` True, advisory, reported and never blocking) --
+        record the path, hand back the empty string, finish the run, and let `_report_unreadable()`
+        name the gap ABOVE the numbers it qualifies.
+
+    Only `OSError` is caught, and only around the open, so a missing directory stays
+    `hollow_root_reason()'s` case. A decode error cannot reach here for a bundle: the
+    default `errors="replace"` is what it always was, which makes a non-UTF-8 `.ftl` a
+    content question rather than a crash, and the one caller that keeps strict decoding
+    (`load_allowlist()`) keeps raising what it always raised. `FileNotFoundError` IS an
+    `OSError`: a bundle deleted between the glob and the read is the same race wearing a
+    different name, and it gets the same sentence.
+    """
+    try:
+        return path.read_text(encoding="utf-8", errors=errors)
+    except OSError as exc:
+        where = f"`{_rel(path)}` ({type(exc).__name__}: {exc.strerror or exc})"
+        if where not in UNREADABLE:
+            UNREADABLE.append(where)
+        if not _REPORT_UNREADABLE:
+            raise UnreadableSource(where) from None
+        return ""
+
+
+def _refusal(mode: str) -> int:
+    """Exit 2 for a hard mode whose corpus would not open -- the hollow-ROOT voice, reused.
+
+    `census()` and `self_test()` already print `error: cannot run <mode> here: <what>
+    (looked under ROOT=...); nothing was <verb>ed, so this refusal is not an orphan verdict.`
+    for a tree they cannot see. This is the same sentence for a tree they can see but cannot
+    read, because what it denies is the same: no number, and therefore no finding. One line
+    per path that failed, which in a strict mode is the one that stopped the run.
+    """
+    for line in UNREADABLE or [f"{mode} scope"]:
+        print(f"error: cannot run {mode} here: {line} -- the file would not open, so the keys it "
+              f"declares and any reference it holds are unknown to this run (looked under "
+              f"ROOT={ROOT}). Nothing was checked, so this refusal is not an orphan verdict -- a "
+              f"file that will not open is usually another session mid-write, and a busy file is "
+              f"not evidence about anybody's keys. Re-run it once the writer is done.",
+              file=sys.stderr)
+    return 2
+
+
+def _report_unreadable() -> None:
+    """Name what --census could not read, before the numbers that are short because of it.
+
+    The report is why census does not raise: a whole-tree census is a trend line, not a gate,
+    and one locked bundle out of 52 is worth a line rather than a lost report. The line says
+    which way the number is wrong -- a bundle that did not arrive contributes no declared keys
+    and no intra-bundle references, and a `.tsx` that did not arrive contributes no
+    references -- so the census can read both short and over-long because of it.
+    """
+    if not UNREADABLE:
+        return
+    print(f"UNREADABLE: {len(UNREADABLE)} file(s) in scope would not open, so the counts below "
+          f"are not the whole tree:")
+    for line in UNREADABLE:
+        print(f"  UNREADABLE: {line} -- a file that exists and would not open this instant, "
+              f"usually another session mid-write. Not an orphan finding, not a verdict on "
+              f"anybody's keys; the keys it declares are missing from the count and any "
+              f"reference it holds was not seen, so this census is short and may over-report "
+              f"candidates. Re-run when the tree is quiet.")
 
 
 def declared_keys() -> dict[str, str]:
@@ -176,9 +300,24 @@ def changes_from_diff(diff: str) -> tuple[set[str], set[str], set[str]]:
 
 
 def load_allowlist() -> dict:
+    """The allowlist, or nothing at all when it would not open.
+
+    Read through the same `_read()` as every other file here, because it has the same
+    exposure and the same two consumers: an allowlist that will not OPEN under
+    `--staged-only` must not cost an exit 1, and it is no verdict either way. In `--census`
+    the `{}` it falls back to is not a silent empty allowlist -- `_read()` has already named
+    the path, so the sheet carries the gap beside the number. `errors="strict"` keeps this
+    file decoding exactly what it always decoded; only the open is guarded. A file that IS
+    readable but is not valid JSON still raises, unchanged -- a defect in a committed file
+    is not a race with a writer, and it is not this gate's sentence to soften.
+    """
     if not ALLOWLIST_PATH.exists():
         return {}
-    return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
+    before = len(UNREADABLE)
+    text = _read(ALLOWLIST_PATH, errors="strict")
+    if len(UNREADABLE) > before:
+        return {}
+    return json.loads(text)
 
 
 def bundle_keys(suffix: str) -> set[str]:
@@ -249,6 +388,13 @@ def census() -> int:
     Refuses BEFORE counting when the locale surface cannot be found at all; see
     `hollow_root_reason()`. Exit 2, not 1 -- in this file 1 means a verdict was reached about
     someone else's keys, and a tree with no bundles in it has produced no verdict.
+
+    A surface that is there but will not OPEN is the third case, and it is not refused: this
+    mode is advisory, and one locked bundle out of fifty-two is worth a line, not a lost
+    report. `_read()` records it, `_report_unreadable()` names it above the numbers, and the
+    run still exits 0 -- which is exactly why the line says the count is short: a 0 here means
+    "the sheet printed", never "the tree is clean". The two modes that gate a commit do not
+    carry this trade; they refuse.
     """
     hollow = hollow_root_reason()
     if hollow:
@@ -262,6 +408,10 @@ def census() -> int:
     allow = set(load_allowlist().get("census", []))
     unaccounted = sorted(dead - allow)
     id_only = id_only_keys()
+    # Every read this sheet is built from has now happened, so this is the first moment the
+    # gap can be named BEFORE any number that gap makes wrong. Nothing else in this function
+    # reads a file, and nothing after it does either.
+    _report_unreadable()
     print(
         f"info[census]: {len(names)} declared en keys, {len(live)} referenced, "
         f"{len(dead)} candidates ({len(dead & allow)} allowlisted, "
@@ -367,6 +517,12 @@ def self_test() -> int:
     ran none of them. Unguarded, direction 2 indexed `real[0]` out of an empty declared-key
     list and died with an IndexError traceback at exit 1, which is what made a hollow
     invocation look like a self-test that had found a defect.
+
+    A file that exists and will not OPEN is the same trap one layer down, answered the same
+    way rather than in a new one: this mode blocks CI, so a PermissionError out of a bundle
+    another session is writing raises UnreadableSource from _read() and main() exits 2 naming
+    the path. It is not a direction that failed -- no direction ran over a complete tree -- and
+    the 1 reserved for "a direction ran and found something broken" is not spent on it.
     """
     hollow = hollow_root_reason()
     if hollow:
@@ -474,6 +630,20 @@ def self_test() -> int:
 
 
 def main() -> int:
+    """Pick the mode, set the read contract, and hold the ONE unreadable-source handler.
+
+    `_REPORT_UNREADABLE` is decided here and nowhere else, because the question -- what does
+    a file that will not open cost this run? -- is a question about the consumer's contract,
+    not about the file. `--census` is read by a human watching a trend and reports; the two
+    modes that a hook step and a CI step trust to have CHECKED something refuse. The single
+    `except` is the shape `verify-scoped-reads.py` settled on: one handler, one voice, and
+    the exit code a busy file costs (2) never collides with the exit code a real orphan
+    finding costs (1).
+
+    Exits, all of them: 0 = checked and clean (or the census printed its sheet), 1 = a verdict
+    that something is wrong with the keys, 2 = nothing was checked -- hollow ROOT, unreadable
+    index, or a file that would not open.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--staged-only", action="store_true",
                         help="check only what the staged commit adds and stops referencing")
@@ -482,11 +652,20 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true",
                         help="exercise the diff parsers and prove the checks can fail")
     args = parser.parse_args()
+    global _REPORT_UNREADABLE
     if args.self_test:
-        return self_test()
-    if args.census:
-        return census()
-    return check_staged()
+        mode, run = "--self-test", self_test
+    elif args.census:
+        mode, run = "--census", census
+        _REPORT_UNREADABLE = True
+    else:
+        mode, run = "--staged-only", check_staged
+    try:
+        return run()
+    except UnreadableSource:
+        # The path is already in UNREADABLE -- _read() recorded it before raising. What
+        # escapes here is a sentence naming it, and the 2 that says no verdict was reached.
+        return _refusal(mode)
 
 
 if __name__ == "__main__":
