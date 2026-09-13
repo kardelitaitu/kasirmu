@@ -179,7 +179,13 @@ def claimed_step_count(text: str) -> int | None:
 # and the caller only compares when a claim exists.
 SKILL_COUNT_RES = (
     re.compile(r"(?:there are|there is|now|currently|has)\s+\**(?:(\d+)|"
-               r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))\**\s*"
+               # The word branch is capturing on purpose, and the group numbering is
+               # load-bearing: skill_claimed_step_count reads m.group(2) for it, so writing this
+               # as (?:...) makes any word numeral this pattern reaches raise IndexError
+               # ("no such group") and kills the checker instead of reporting a count. Both
+               # patterns must expose group 1 = digits, group 2 = words; pinned by self-test
+               # case (6), which fails with an IndexError if this regresses.
+               r"(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))\**\s*"
                r"(?:pre-commit|steps?|gates?)", re.I),
     re.compile(r"\**(?:(\d+)|(one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
                r"twelve))\**\s+(?:core\s+)?(?:pre-commit\s+)?(?:steps?|gates?)\b", re.I),
@@ -720,6 +726,31 @@ def self_test() -> int:
                         print(f"  MISSED  {skill_rel:38s} {desc} "
                               f"(expected {'a finding' if want_hit else 'silence'}, got "
                               f"the opposite; {[p[:52] for p in probs[:2]]})")
+                        bad += 1
+
+                # (6) Only the FIRST pattern in SKILL_COUNT_RES can reach a word numeral via a
+                # prose prefix ("there are **six gates**"), and that pattern's word branch is
+                # written non-capturing while the parser below reads m.group(2). The failure is
+                # not a wrong count but an IndexError that kills the checker, and nothing here
+                # exercised it: every existing skill case is phrased so the second pattern --
+                # the one with two groups -- is what matches. Parsed straight through
+                # skill_claimed_step_count rather than through scan(), because scan() only
+                # compares a claim against the live hook count, so a coincidentally correct
+                # number would report CAUGHT while the group read still raised.
+                probe = "- There are **six gates** in this hook.\n"
+                try:
+                    got = skill_claimed_step_count(probe)
+                except IndexError as exc:
+                    print(f"  WRONG {skill_rel:38s} first-pattern word numeral raised "
+                          f"IndexError ({exc!r}) instead of parsing")
+                    bad += 1
+                else:
+                    if got == 6:
+                        print(f"  CAUGHT  {skill_rel:38s} first-pattern word numeral "
+                              f"parses to {got}")
+                    else:
+                        print(f"  MISSED  {skill_rel:38s} first-pattern word numeral "
+                              f"parsed to {got!r}, expected 6")
                         bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
