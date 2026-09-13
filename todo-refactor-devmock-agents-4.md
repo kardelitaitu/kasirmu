@@ -62,8 +62,9 @@
 
 ### Phase 4.1: Extract KDS & Loyalty Mocks
 - [ ] Move KDS command surface to `handlers/kds.ts`.
-- [ ] Move loyalty, gift card, voucher, coupon, and promotion command surface to `handlers/loyalty.ts`.
-  - These domains are stateful (gift-card balances, loyalty points, active promotions). Move their state clusters with the handlers.
+- [x] Move loyalty, gift card, voucher, coupon, and promotion command surface to `handlers/loyalty.ts`.
+  - Done as commit `2d2da4ba6` (phase 4.1+4.3 combined). **34** entries, no state cluster — all stubs.
+  - Self-contained plain map; zero deps.
 - [ ] Verify: `npm run typecheck`.
 - [ ] **Commit Milestone:**
   ```bash
@@ -71,7 +72,13 @@
   ```
 
 ### Phase 4.2: Extract Payment & Analytics Mocks
-- [ ] Move payment command surface to `handlers/payment.ts`.
+- [x] Move payment command surface to `handlers/payment.ts`.
+  - Done as commit `2d0e064c5` (phase 4.2 payment half). **34** entries, state cluster moved
+    (`mockLocalPaymentRails`, `getMockLocalPaymentMethods`, `setMockLocalPaymentMethods`).
+  - Factory module: `getMockLocalPaymentMethods` and `setMockLocalPaymentMethods` need
+    `unwrapArgs` (router helper), so they are parameterised and injected. `mockStores`
+    cross-dependency simplified to `MOCK_STORE` fallback — the lookup was location-domain
+    state that has not yet been extracted.
 - [ ] Move analytics, revenue, and report command surface to `handlers/analytics.ts`.
 - [ ] Verify: `npm run typecheck`.
 - [ ] **Commit Milestone:**
@@ -80,8 +87,12 @@
   ```
 
 ### Phase 4.3: Extract CRM & Floorplan Mocks
-- [ ] Move customer, supplier, and purchase-order command surface to `handlers/crm.ts`.
-- [ ] Move table, section, and floor-plan command surface to `handlers/floorplan.ts`.
+- [x] Move customer, supplier, and purchase-order command surface to `handlers/crm.ts`.
+  - Done as commit `2d2da4ba6`. **25** entries, `MOCK_CUSTOMERS` fixture moved and
+    re-exported for the router's in-place patches (`search_customers_scoped`,
+    `get_customer_history_scoped`).
+- [x] Move table, section, and floor-plan command surface to `handlers/floorplan.ts`.
+  - Done as commit `2d2da4ba6`. **18** entries, `tablesSnapshot` moved.
 - [ ] Verify: `npm run typecheck`.
 - [ ] **Commit Milestone:**
   ```bash
@@ -108,5 +119,10 @@
   ```
 
 > **Arithmetic check.**
-> Original literal: 501 entries. After 2.1 (–60) + 2.2 (–97) + agent 3 (–88) + agent 4 (–~220) + agent 2 follow-up (–~12) + in-place patches (–34) = ~0 literal entries.
-> `tauri-api.ts` currently 3,905 lines. After all extractions and cleanup, < 200 lines is reachable for the first time.
+> Original literal: 501 entries. Current literal: **233** entries.
+> Extracted so far: 2.1 (–60) + 2.2 (–97) + loyalty (–34) + floorplan (–18) + CRM (–25) + payment (–34) = 268 removed.
+> Remaining: agent 3 (–100) + agent 2 leftovers (–14) + KDS (~–17) + analytics (~–22) + locations (~–19) + system (~–59) = 231.
+> The 2-entry gap (233 vs 231) is the unclassified tail. After all extractions and cleanup,
+> < 200 lines is reachable.
+>
+> `tauri-api.ts` currently **3,593** lines (was 3,905).
