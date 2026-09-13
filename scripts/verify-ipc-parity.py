@@ -40,7 +40,9 @@ Three exit codes, and the gap between them is the contract, exactly as in
 scripts/verify-ftl-orphans.py: 0 is a clean verdict, 1 is a VERDICT that found something --
 `FAIL: N IPC parity violation(s)`, or a wrong ENTRY inside an allowlist this run could read --
 and 2 is a refusal that graded nothing: a shell lib missing, or a shared allowlist that did
-not arrive as an object stating every enforced section as a list, or a `--write-*` flag whose
+not arrive as an object stating every enforced section as a list -- that last question is asked
+of scripts/allowlist-schema.py, the one schema both gates share, with the required set and the
+merged sentence kept here -- or a `--write-*` flag whose
 own write did not happen (`AllowlistWriteRefused` -- the file moved under this run, the target
 would not accept the rename, the swap failed outright). A write that did not happen is a WRITE
 problem and gets the refusal code; it says nothing about anybody's command names. A crash
@@ -52,6 +54,7 @@ must never spend 1, because 1 is the number a reader (and
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import io
 import json
 import os
@@ -80,6 +83,20 @@ SHELLS = {
 }
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "ipc-parity-allowlist.json"
+
+# The question "is this parsed document an allowlist at all" is answered in
+# scripts/allowlist-schema.py since 0454b542e4, shared with scripts/verify-scoped-reads.py,
+# because the repo holding two private definitions of valid is what let one file be GRADED by
+# one gate and REFUSED by the other, both correct under their own rule. What stays HERE is the
+# policy: which sections this gate requires, and what it does with the answer. The import is by
+# path because the filename has a hyphen, which no import statement can spell -- renaming the
+# module to dodge three lines of importlib is not a trade worth making, and it is reversible by
+# construction. Lazy rather than top-level on purpose: an eager import of an absent or broken
+# validator raises at module load, out of main(), and an uncaught exception exits 1, which
+# spends the VERDICT code on a missing file -- the exact confusion AllowlistUnusable exists to
+# end. So it is loaded where it can be refused in words.
+ALLOWLIST_SCHEMA_PATH = REPO_ROOT / "scripts" / "allowlist-schema.py"
+_SCHEMA_BY_PATH: dict[str, object] = {}
 
 # loggedInvoke<Foo>('cmd', ...) / invoke('cmd', ...) — the generic
 # parameter list (if any) may not contain parens, which keeps the regex
@@ -359,12 +376,15 @@ class AllowlistUnusable(RuntimeError):
 
     Raised at the ONE place the file is opened and parsed, before any walk and before any
     writer flag, for five distinct causes -- absent, would not open, not JSON, not an object,
-    and an object that does not carry every enforced section as a list. One class, one
-    handler (`refuse_unusable_allowlist`), one voice: a short `error: ...` line on stderr and
-    exit 2, never a traceback. This is the house shape, not an invention: `AllowlistUnreadable`
-    in scripts/verify-scoped-reads.py keeps one class and one handler for "the bytes would not
-    arrive", and the four refusals landed today in scripts/verify-ftl-orphans.py (cd2b55fa3,
-    ef2058f28, 683eb1eac, 4d1a85b15) print one `error:` line and exit 2.
+    and an object that does not carry every enforced section as a list. The last two are ANSWERED
+    in scripts/allowlist-schema.py since 0454b542e4, one schema for one shared file, with this
+    gate's required set and merged sentence supplied by the caller; the first three stay this
+    file's own, because the read is not shared. Raised as this class either way:
+    one class, one handler (`refuse_unusable_allowlist`), one voice: a short `error: ...` line on
+    stderr and exit 2, never a traceback. This is the house shape, not an invention:
+    `AllowlistUnreadable` in scripts/verify-scoped-reads.py keeps one class and one handler for
+    "the bytes would not arrive", and the four refusals landed in scripts/verify-ftl-orphans.py
+    (cd2b55fa3, ef2058f28, 683eb1eac, 4d1a85b15) print one `error:` line and exit 2.
 
     Never exit 1, because 1 here is the VERDICT code -- main() ends on
     `FAIL: N IPC parity violation(s)` and returns 1 -- and `apps/tablet-client/src/commands/
@@ -397,12 +417,60 @@ def refuse_unusable_allowlist(unusable: AllowlistUnusable) -> int:
     return 2
 
 
+def allowlist_schema():
+    """The shared schema module, imported by path, or an `AllowlistUnusable` naming the path.
+
+    `spec_from_file_location` because the filename carries a hyphen, which no import statement
+    can spell. The module is not renamed for that: a rename costs the history of a file another
+    gate is being adopted from, to save six lines here, and it is reversible by construction.
+    Lazy rather than top-level because an eager import of an absent or unimportable validator
+    raises while this file is still loading -- out of main(), with no handler, and an uncaught
+    exception exits 1, the VERDICT code, spent on a missing sibling file. Loaded where it can
+    be refused in words, it costs 2 like every other thing that never arrived. The cache is
+    keyed by path so a self-test probe cannot be served a module imported for another path.
+    """
+    path = str(ALLOWLIST_SCHEMA_PATH)
+    cached = _SCHEMA_BY_PATH.get(path)
+    if isinstance(cached, BaseException):
+        raise cached
+    if cached is not None:
+        return cached
+    try:
+        spec = importlib.util.spec_from_file_location("allowlist_schema", path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"no loader for {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for needed in ("validate", "Refusal", "KNOWN_SECTIONS", "REQUIRED_FOR_WRITER"):
+            if not hasattr(module, needed):
+                raise AttributeError(f"{Path(path).name} exports no {needed}")
+    except Exception as exc:
+        # Broad on purpose. The module is an input to this gate, not its own code, so ANY
+        # failure of it -- a missing file, a SyntaxError in it, a NameError at its import --
+        # means the same thing here: there is no shared answer, so this run must not guess
+        # one. Anything narrower escapes main() as a traceback and exits 1.
+        refusal = AllowlistUnusable(
+            f"{Path(path).name} is not usable as the shared allowlist schema validator "
+            f"({type(exc).__name__}: {exc}). This gate will not guess a shape in its place, "
+            f"because two private definitions of valid is what it was sharing to end.")
+        _SCHEMA_BY_PATH[path] = refusal
+        raise refusal from None
+    _SCHEMA_BY_PATH[path] = module
+    return module
+
+
 def load_allowlist() -> dict:
     """Read AND verify the shared allowlist, or refuse. It never hands back a guess.
 
-    The floor is the schema this file itself writes: an OBJECT carrying each of
-    `KNOWN_SECTIONS` (desktop, tablet, dev_mock, scoped_orphans) as a LIST. An empty list is a
-    section the file STATES as exempting nothing and is not a refusal -- `--write-allowlist`
+    The floor is an OBJECT carrying each of `KNOWN_SECTIONS` (desktop, tablet, dev_mock,
+    scoped_orphans) as a LIST, and since 0454b542e4 that question is answered by
+    `allowlist_schema().validate()` in scripts/allowlist-schema.py -- one schema shared with
+    scripts/verify-scoped-reads.py, asked here with THIS gate's required set and joined into
+    this gate's one merged sentence. Everything about the READ stays local -- the open, the retry
+    ceiling, the encoding, the parse, and the three sentences for what can go wrong before there
+    is a document at all -- because the file that is also a writer cannot share a reader's timing
+    rules, and those three are not a question the schema was written to answer. An empty list
+    is a section the file STATES as exempting nothing and is not a refusal -- `--write-allowlist`
     emits `[]` for a shell with no gap, and a clean tree's allowlist is legitimately empty.
     What is refused is emptiness the file never asserted, which is what `payload.get(section)`
     manufactures: an absent path, a payload with no sections at all (`{}` parses fine and
@@ -442,27 +510,26 @@ def load_allowlist() -> dict:
             f"{ALLOWLIST_PATH.name} is {len(text.encode('utf-8'))} bytes that are not JSON "
             f"({type(exc).__name__}: {exc}). A torn read is possible while a writer flag is "
             f"renaming onto it, and a torn read is a retry, not a verdict.") from None
-    if not isinstance(payload, dict):
-        raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} parses to a {type(payload).__name__}, not an object with "
-            f"named sections, so every `payload.get(section)` below it resolves to nothing "
-            f"and the run would grade over an allowlist it never read.")
-    absent = [s for s in KNOWN_SECTIONS if s not in payload]
-    wrong_type = [
-        f'"{s}" is a {type(payload[s]).__name__}' for s in KNOWN_SECTIONS
-        if s in payload and not isinstance(payload[s], list)]
-    if absent or wrong_type:
-        halves = []
-        if wrong_type:
-            halves.append("section(s) that are not lists of entries: " + ", ".join(wrong_type))
-        if absent:
-            halves.append("section(s) the file never states: " + ", ".join(
-                chr(34) + s + chr(34) for s in absent) + " (a stated empty list is allowed, "
-                "a key that is simply absent is not -- `payload.get()` turns it into "
-                "exemptions nobody wrote)")
-        raise AllowlistUnusable(
-            f"{ALLOWLIST_PATH.name} is an object but not a usable allowlist: "
-            + "; ".join(halves) + ".")
+    # IS THIS A DOCUMENT? Answered by the shared schema, not here, since 0454b542e4 -- the repo
+    # held two private definitions of valid and so one file holding just {desktop, tablet} was
+    # GRADED by scripts/verify-scoped-reads.py and REFUSED by this gate, both correct under their
+    # own rule. What stays this gate's own is the POLICY and the VOICE, and the policy is the
+    # required set: KNOWN_SECTIONS, all four, NOT the REQUIRED_FOR_SHELL_READER pair the same
+    # module also exports. Passing two would be a real change of behaviour, not a tidy-up -- a
+    # {desktop, tablet}-only file would stop being an exit 2 refusal and become a full walk at
+    # exit 1, and the three writer flags would then republish over dev_mock and scoped_orphans,
+    # two sections nobody validated. That is data loss with a verdict printed on it.
+    #
+    # The voice stays merged too. validate() answers a mistyped section and an absent section as
+    # TWO Refusals, mistyped first; the reader next door raises on the first and never sees the
+    # second, while this run has always named both in one sentence. So every sentence is joined
+    # rather than reduced to primary(), which keeps the claim a refusal makes whole: an operator
+    # told to add scoped_orphans should also learn dev_mock is a string. Still one
+    # AllowlistUnusable, still one handler, still exit 2, and no count anywhere on the line.
+    refusals = allowlist_schema().validate(payload, KNOWN_SECTIONS, ALLOWLIST_PATH.name)
+    if refusals:
+        raise AllowlistUnusable(" ".join(
+            refusal.sentence for refusal in refusals))
     return payload
 
 
@@ -2253,6 +2320,101 @@ def self_test() -> int:
          shape_code == 1 and "FAIL:" in shape_printed and "error:" not in shape_printed
          and "FAIL: allowlist shape, 1 problem(s)" in shape_printed
          and b"typed_scoped" in shape_bytes and b"shape_gap_scoped" not in shape_bytes, )
+
+    # 23: the adoption of scripts/allowlist-schema.py, pinned at both edges. The shared module
+    # answers ONE question -- is this parsed document an allowlist -- and this gate keeps the two
+    # decisions that are its own: which sections it requires (all four, never the two-section
+    # reader set the same module exports) and how it says no (every reason in one sentence, since
+    # a mistyped section and a missing section are two facts and the operator needs both). Each
+    # arm runs main() against a probe, so what is asserted is the operators experience: the code,
+    # the voice, and the bytes the run left alone.
+    schema = allowlist_schema()
+
+    def planted_run(flag, planted_text):
+        """main() over a probe holding exactly these bytes: (code, printed, unchanged)."""
+        with tempfile.TemporaryDirectory() as tmp17:
+            saved_path = globals()["ALLOWLIST_PATH"]
+            saved_argv = list(sys.argv)
+            probe17 = Path(tmp17) / "ipc-parity-allowlist.json"
+            try:
+                globals()["ALLOWLIST_PATH"] = probe17
+                sys.argv = ["probe"] + ([flag] if flag else [])
+                probe17.write_text(planted_text, encoding="utf-8")
+                before17 = probe17.read_bytes()
+                out17, err17 = io.StringIO(), io.StringIO()
+                with redirect_stdout(out17), redirect_stderr(err17):
+                    code17 = main()
+                return (code17, out17.getvalue() + err17.getvalue(),
+                        probe17.read_bytes() == before17)
+            finally:
+                globals()["ALLOWLIST_PATH"] = saved_path
+                sys.argv = saved_argv
+
+    # The row the shared module records as the disagreement between the two gates: the reader
+    # next door grades this file, this gate must refuse it. Asking for two sections here would
+    # make it grade too, and then a --write-* flag would republish over two it never read.
+    two_shell = json.dumps({"desktop": [], "tablet": []})
+    two_shell_run = planted_run("--write-dev-mock-gaps", two_shell)
+    case("case 23  a document stating only desktop and tablet is still REFUSED, at 2",
+         two_shell_run[0] == 2 and two_shell_run[2] and two_shell_run[1].startswith("error:")
+         and "FAIL" not in two_shell_run[1]
+         and "dev_mock" in two_shell_run[1] and "scoped_orphans" in two_shell_run[1], )
+    case("case 23  it is refused because this gate asks the shared schema for all four",
+         len(schema.validate(json.loads(two_shell), KNOWN_SECTIONS, "a.json")) == 1
+         and schema.validate(json.loads(two_shell), schema.REQUIRED_FOR_SHELL_READER,
+                             "a.json") == []
+         and list(KNOWN_SECTIONS) == list(schema.REQUIRED_FOR_WRITER)
+         and list(KNOWN_SECTIONS) == list(schema.KNOWN_SECTIONS), )
+
+    # Merged, not first-only: a mistyped section AND two absent sections arrive as two Refusals
+    # from validate(), and both sentences must be in the one raise. primary() is the other
+    # gates accessor; adopting it here would drop a fact the operator has always been told.
+    mixed_bad = json.dumps({"desktop": "abc", "tablet": []})
+    mixed_run = planted_run(None, mixed_bad)
+    case("case 23  a mistyped section and a missing one are joined into one refusal",
+         mixed_run[0] == 2 and mixed_run[2] and mixed_run[1].startswith("error:")
+         and "FAIL" not in mixed_run[1] and mixed_run[1].count("error:") == 1
+         and len(schema.validate(json.loads(mixed_bad), KNOWN_SECTIONS, "a.json")) == 2
+         and "is a str, not a list" in mixed_run[1]
+         and "dev_mock" in mixed_run[1] and "scoped_orphans" in mixed_run[1], )
+
+    # And the refusal is the shared sentence rather than a private copy of the rule: with a
+    # stub validator answering legal for everything, this same file stops being refused and the
+    # run walks. Substitution is the only proof available that the ANSWER moved here and not
+    # just the wording, and the real module is restored in the same finally.
+    class _AnythingGoes:
+        @staticmethod
+        def validate(document, required, filename):
+            return []
+
+    stub_key = str(ALLOWLIST_SCHEMA_PATH)
+    saved_schema = _SCHEMA_BY_PATH.get(stub_key)
+    stubbed_outcome = "not-run"
+    try:
+        _SCHEMA_BY_PATH[stub_key] = _AnythingGoes()
+        stubbed_outcome = planted_run("--write-dev-mock-gaps", two_shell)[0]
+    finally:
+        if saved_schema is None:
+            _SCHEMA_BY_PATH.pop(stub_key, None)
+        else:
+            _SCHEMA_BY_PATH[stub_key] = saved_schema
+    case("case 23  and the refusal comes from the shared module, not a private copy of it",
+         stubbed_outcome in (0, 1)
+         and planted_run("--write-dev-mock-gaps", two_shell)[0] == 2, )
+
+    # The other edge, unchanged on purpose: an unknown top-level key is not a document question
+    # and must not become one. It stays an entry-level finding at the verdict code, because a
+    # section name typed with a hyphen is a decision somebody wrote down -- which is exactly
+    # what code 1 means, and folding it into the schema would have moved a count.
+    unknown_key = json.dumps({**{s: [] for s in KNOWN_SECTIONS},
+                              "dev-mock": ["get_customer_scoped"]})
+    unknown_run = planted_run(None, unknown_key)
+    case("case 23  an unknown extra key is still a finding at the verdict code 1, not a 2",
+         unknown_run[0] == 1 and "FAIL: allowlist shape" in unknown_run[1]
+         and "error:" not in unknown_run[1] and unknown_run[2]
+         and "dev-mock" in unknown_run[1] and "enforces nothing" in unknown_run[1], )
+    case("case 23  the shared schema takes no position on it, so both readings agree",
+         schema.validate(json.loads(unknown_key), KNOWN_SECTIONS, "a.json") == [], )
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
