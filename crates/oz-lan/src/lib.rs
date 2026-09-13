@@ -467,11 +467,18 @@ pub struct KdsDiscoverResponse {
 /// is pushed to the offline buffer keyed by `peer_addr` so it can be
 /// replayed on reconnection.
 ///
+/// All reads share one connection-level [`BufReader`] created before
+/// the first byte is read and moved into [`PeerTx`] at the end of the
+/// handshake, so bytes a buffered read pulls past a newline — e.g. a
+/// `discover` line pipelined into the same TCP segment as the legacy
+/// `hello` — survive into phase 1 instead of dying with a transient
+/// reader (the Phase-0 over-read defect this replaced).
+///
 /// The handshake runs inside the spawned task so a slow/malicious peer
 /// cannot block the accept loop (DoS protection).
 #[allow(clippy::too_many_arguments)]
 async fn handle_peer(
-    mut stream: TcpStream,
+    stream: TcpStream,
     peer_addr: String,
     mut rx: broadcast::Receiver<String>,
     offline_buffer: Arc<Mutex<HashMap<String, Vec<String>>>>,
@@ -485,13 +492,25 @@ async fn handle_peer(
     // (pre-kds-sync peers and Expo devices keep the legacy behavior).
     let mut subscription: Option<PeerSubscription> = None;
 
+    // One connection-level BufReader for the entire connection: created
+    // before the first byte is read, used by the phase-0 selector read,
+    // the legacy hello, the noise handshake frames, and the phase-1
+    // discovery read, then moved into `PeerTx` so nothing ever reads the
+    // raw socket underneath it. A BufReader fills its 8 KB buffer past
+    // the current newline; if that reader were transient (as the
+    // phase-0 hello reader used to be) the over-read bytes die with it,
+    // and a client that pipelines `hello\n{"op":"discover",...}\n` in
+    // one TCP segment loses the discover line forever. Two readers must
+    // never cover one stream at once.
+    let mut reader = BufReader::new(stream);
+
     // Phase 0: authentication + transport selection (only when a PSK is
     // configured — the external-bind mode). The first stream byte picks
     // the protocol: 0x01 = noise-psk-v1 (encrypted, key never crosses
     // the wire), '{' = legacy-psk-v1 cleartext JSON hello.
     let mut conn: PeerTx = if let Some(expected_psk) = &psk {
         let mut sel = [0u8; 1];
-        match tokio::time::timeout(timeout_dur, stream.read_exact(&mut sel)).await {
+        match tokio::time::timeout(timeout_dur, reader.read_exact(&mut sel)).await {
             Ok(Ok(_)) => {}
             Ok(Err(e)) => {
                 tracing::warn!(peer = %peer_addr, error = %e, "LAN handshake failed — read error");
@@ -504,15 +523,19 @@ async fn handle_peer(
         }
         match sel[0] {
             NOISE_MAGIC_BYTE => {
+                // The reader already owns this borrow of the stream: the
+                // selector read may have buffered message 1 (or more)
+                // into it, so the handshake must consume through the
+                // same reader to keep the frame sequence in wire order.
                 match tokio::time::timeout(
                     timeout_dur,
-                    noise_handshake_responder(&mut stream, expected_psk),
+                    noise_handshake_responder(&mut reader, expected_psk),
                 )
                 .await
                 {
                     Ok(Ok(state)) => {
                         tracing::debug!(peer = %peer_addr, "LAN noise-psk-v1 handshake accepted");
-                        PeerTx::Noise(stream, state)
+                        PeerTx::Noise(reader, state)
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(peer = %peer_addr, error = %e, "LAN noise-psk-v1 handshake rejected");
@@ -527,11 +550,11 @@ async fn handle_peer(
             b'{' => {
                 // Legacy-psk-v1: the selector byte was the opening brace,
                 // so rebuild the line and parse the rest of the hello.
+                // The shared reader keeps any bytes that arrived after
+                // the hello newline alive for phase 1.
                 let mut line = String::from("{");
-                let read_result = {
-                    let mut reader = BufReader::new(&mut stream);
-                    tokio::time::timeout(timeout_dur, reader.read_line(&mut line)).await
-                };
+                let read_result =
+                    tokio::time::timeout(timeout_dur, reader.read_line(&mut line)).await;
                 match read_result {
                     Ok(Ok(_)) => match serde_json::from_str::<HelloMsg>(line.trim()) {
                         // DC-1 fix: constant-time comparison (see
@@ -543,7 +566,7 @@ async fn handle_peer(
                             subscription =
                                 kds_sync::subscription_from_wire(msg.station_ids, msg.device_id);
                             tracing::debug!(peer = %peer_addr, "LAN legacy-psk-v1 handshake accepted");
-                            PeerTx::Plain(stream)
+                            PeerTx::Plain(reader)
                         }
                         _ => {
                             tracing::warn!(peer = %peer_addr, "LAN PSK handshake rejected — bad credentials");
@@ -570,7 +593,7 @@ async fn handle_peer(
             }
         }
     } else {
-        PeerTx::Plain(stream)
+        PeerTx::Plain(reader)
     };
 
     // Phase 1: Handle discovery request (if enabled). KDS devices send
@@ -581,6 +604,11 @@ async fn handle_peer(
     if let Some(ref payload) = discovery_payload {
         match &mut conn {
             PeerTx::Noise(stream, state) => {
+                // Frames are read through the same connection-level
+                // reader that consumed the selector byte and the
+                // handshake frames, so a discover frame the client
+                // wrote back-to-back with message 3 (buffered during
+                // the handshake) is read in exact order.
                 match tokio::time::timeout(timeout_dur, read_frame(stream)).await {
                     Ok(Ok(ct)) => {
                         let mut pt = vec![0u8; ct.len()];
@@ -609,7 +637,7 @@ async fn handle_peer(
                                 if let Ok(en) = state.write_message(response.as_bytes(), &mut out) {
                                     let sent = tokio::time::timeout(
                                         timeout_dur,
-                                        write_frame(stream, &out[..en]),
+                                        write_frame(stream.get_mut(), &out[..en]),
                                     )
                                     .await;
                                     if matches!(sent, Ok(Ok(()))) {
@@ -642,11 +670,14 @@ async fn handle_peer(
                 }
             }
             PeerTx::Plain(stream) => {
+                // Reads go through the phase-0 reader: a discover line
+                // that arrived in the same TCP segment as the hello is
+                // already sitting in its buffer. Writes bypass the
+                // reader via `get_mut()` — it never buffers writes, so
+                // the socket sees the response byte-identically.
                 let mut line = String::new();
-                let read_result = {
-                    let mut reader = BufReader::new(&mut *stream);
-                    tokio::time::timeout(timeout_dur, reader.read_line(&mut line)).await
-                };
+                let read_result =
+                    tokio::time::timeout(timeout_dur, stream.read_line(&mut line)).await;
                 match read_result {
                     Ok(Ok(_)) => {
                         if let Ok(d) = serde_json::from_str::<DiscoverMsg>(line.trim())
@@ -666,7 +697,7 @@ async fn handle_peer(
                                 kds_queue.as_ref(),
                             );
                             let response = format!("{response}\n");
-                            if let Err(e) = stream.write_all(response.as_bytes()).await {
+                            if let Err(e) = stream.get_mut().write_all(response.as_bytes()).await {
                                 tracing::debug!(
                                     peer = %peer_addr,
                                     error = %e,

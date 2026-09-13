@@ -609,24 +609,25 @@ async fn kds_lan_live_reconnect_snapshot_serves_seeded_queue_cache() {
 
 // ── Crate-bug demonstration (kept #[ignore]d: fails by design) ────────
 
-/// **oz-lan defect (found by this suite, NOT fixed per the work-order
-/// fence):** `handle_peer`'s Phase-0 (legacy-psk-v1 hello) reads the hello
-/// line through a *transient* `BufReader` that is dropped at the end of
-/// the read. A line-delimited protocol must never discard bytes read past
-/// the newline, but a `TcpStream` read can return several buffered lines
-/// at once — so a KDS tablet that writes its `hello` and `discover` lines
-/// in quick succession (or, as here, in one segment) has the discover
-/// line silently swallowed: no discovery response, no `active_queue`, a 5
-/// s Phase-1 stall, and the peer's subscription can only ever come from
-/// the hello fields. The same transient-`BufReader` pattern exists at
-/// Phase 1 for a second post-discover request. The crate's own tests miss
-/// it because no test sends hello *and* discover over one PSK connection.
+/// **oz-lan regression test (active):** `handle_peer`'s Phase-0
+/// (legacy-psk-v1 hello) used to read the hello line through a
+/// *transient* `BufReader` that was dropped at the end of the read. A
+/// line-delimited protocol must never discard bytes read past the
+/// newline, but a `TcpStream` read can return several buffered lines
+/// at once — so a KDS tablet that wrote its `hello` and `discover`
+/// lines in quick succession (or, as here, in one segment) had the
+/// discover line silently swallowed: no discovery response, no
+/// `active_queue`, a 5 s Phase-1 stall, and the peer's subscription
+/// could only ever come from the hello fields. The same
+/// transient-`BufReader` pattern existed at Phase 1.
 ///
-/// This test asserts the CORRECT behaviour, so it is red by construction:
-/// run with `cargo test kds_lan_live -- --ignored` to see the failure
-/// text, or read it as documentation.
+/// FIXED in `crates/oz-lan/src/lib.rs` (13-09-26): one connection-level
+/// `BufReader` now serves every read from the first byte through the
+/// phase-1 discovery request, so the buffered discover line survives
+/// the phase handoff. This test used to be `#[ignore]`d as
+/// red-by-construction documentation; it is now the active unpaced
+/// back-to-back-flush regression proof and runs with the suite.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "demonstrates the oz-lan handle_peer Phase-0 over-read defect; the assert below fails by design"]
 async fn kds_lan_live_bugdemo_discovery_lost_when_sent_with_hello() {
     let state = AppState::for_test();
     let (_hub, addr) = spawn_live_forwarder(queue_provider_for(&state)).await;

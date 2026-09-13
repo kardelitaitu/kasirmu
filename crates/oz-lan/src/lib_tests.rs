@@ -828,6 +828,65 @@ async fn psk_hello_with_station_ids_filters_scoped_events() {
 }
 
 #[tokio::test]
+async fn discover_pipelined_with_hello_is_answered() {
+    // Regression (Phase-0 over-read): a client that writes its hello and
+    // its discover line in ONE segment (`hello\ndiscover\n`) used to
+    // lose the discover line — the transient phase-0 BufReader filled
+    // its 8 KB buffer past the newline and dropped the remainder, so
+    // phase 1 blocked on a fresh socket read until its 5 s timeout and
+    // no discovery response was ever sent. The single connection-level
+    // reader must consume BOTH lines: discovery is answered from the
+    // buffer, and the hello's subscription still filters live traffic.
+    let (tx, rx) = broadcast::channel(16);
+    let (server_handle, mut client) = spawn_peer_with(
+        rx,
+        vec![],
+        Some("s3cret"),
+        Some(DISCOVERY_BASE),
+        Some(snapshot_provider()),
+    )
+    .await;
+    let burst = concat!(
+        "{\"op\":\"hello\",\"psk\":\"s3cret\",\"station_ids\":[\"grill\"],\"device_id\":\"kds-1\"}\n",
+        "{\"op\":\"discover\",\"want_queue\":true}\n",
+    );
+    tokio::io::AsyncWriteExt::write_all(&mut client, burst.as_bytes())
+        .await
+        .unwrap();
+
+    tx.send(placed_line(&["grill"])).unwrap();
+    tx.send(placed_line(&["fry"])).unwrap();
+    drop(tx);
+
+    let mut buf = Vec::new();
+    tokio::io::AsyncReadExt::read_to_end(&mut client, &mut buf)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&buf);
+    let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        lines.len(),
+        2,
+        "same-segment hello+discover must yield response + filtered event: {text}"
+    );
+    let parsed = parse_discovery(lines[0]);
+    assert_eq!(parsed.restaurant_pos_id, "pos-1");
+    assert!(
+        parsed.active_queue.is_some(),
+        "buffered want_queue discover must receive the snapshot: {text}"
+    );
+    assert!(
+        lines[1].contains("kds.order_placed") && lines[1].contains("grill"),
+        "hello-carried subscription must still stream events: {text}"
+    );
+    assert!(
+        !text.contains("fry"),
+        "grill subscriber must not receive fry: {text}"
+    );
+    server_handle.await.unwrap();
+}
+
+#[tokio::test]
 async fn legacy_discover_response_is_byte_identical() {
     // Opt-out (no want_queue) + configured provider: bytes must not move.
     let (tx, rx) = broadcast::channel(16);

@@ -7,7 +7,7 @@
 //! frames). Behaviour is byte-for-byte the original; `lib_tests.rs`
 //! exercises it through `handle_peer`.
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
 use sha2::{Digest, Sha256};
@@ -51,7 +51,15 @@ pub(crate) fn noise_static_secret(psk: &str) -> [u8; 32] {
 }
 
 /// Read one length-prefixed frame (4-byte big-endian length + payload).
-pub(crate) async fn read_frame(stream: &mut TcpStream) -> std::io::Result<Vec<u8>> {
+///
+/// Generic over any readable stream so the server side can pass the
+/// connection-level `BufReader` (bytes already buffered past a previous
+/// frame must stay visible in exact wire order); the reference client in
+/// `lib_tests.rs` passes the raw socket.
+pub(crate) async fn read_frame<R>(stream: &mut R) -> std::io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = u32::from_be_bytes(len_buf) as usize;
@@ -67,7 +75,14 @@ pub(crate) async fn read_frame(stream: &mut TcpStream) -> std::io::Result<Vec<u8
 }
 
 /// Write one length-prefixed frame (4-byte big-endian length + payload).
-pub(crate) async fn write_frame(stream: &mut TcpStream, data: &[u8]) -> std::io::Result<()> {
+///
+/// Generic like [`read_frame`]; writes pass straight through to the
+/// socket (a `BufReader` delegates writes to its inner stream), so frame
+/// bytes never sit in a read buffer.
+pub(crate) async fn write_frame<W>(stream: &mut W, data: &[u8]) -> std::io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     stream.write_all(&(data.len() as u32).to_be_bytes()).await?;
     stream.write_all(data).await
 }
@@ -95,10 +110,20 @@ fn handshake_failed(step: &str, reason: impl std::fmt::Display) -> std::io::Erro
 /// where the PSK is mixed: a peer without the correct pre-shared key
 /// fails here and is dropped, and the PSK itself never crosses the
 /// wire. Every step is bounded by `PSK_HANDSHAKE_TIMEOUT_SECS`.
-pub(crate) async fn noise_handshake_responder(
-    stream: &mut TcpStream,
+///
+/// Takes the transport generically because the server side runs it on
+/// the connection-level `BufReader` owned by `handle_peer`: the selector
+/// byte read that precedes the handshake can already have buffered
+/// message 1 (and everything after it) into that reader, so bypassing it
+/// with raw socket reads would reorder the stream. The initiator in
+/// `lib_tests.rs` passes the raw socket instead.
+pub(crate) async fn noise_handshake_responder<S>(
+    stream: &mut S,
     psk: &str,
-) -> std::io::Result<snow::TransportState> {
+) -> std::io::Result<snow::TransportState>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let dur = std::time::Duration::from_secs(crate::PSK_HANDSHAKE_TIMEOUT_SECS);
     let params: snow::params::NoiseParams = NOISE_PATTERN
         .parse()
@@ -160,9 +185,18 @@ pub(crate) async fn noise_handshake_responder(
 /// encrypted as a single Noise message; the resulting write error is
 /// treated like any delivery failure (the event is offline-buffered,
 /// itself capped at `MAX_OFFLINE_BUFFER_PER_PEER`).
+///
+/// Both variants own the connection-level `BufReader` rather than the
+/// raw socket: the reader is created once in `handle_peer` before the
+/// first byte is read and serves every read on the connection (phase-0
+/// selector/hello, phase-1 discovery), so bytes buffered past a newline
+/// survive the phase handoff instead of being dropped with a transient
+/// reader. Writes go straight to the inner socket via `get_mut()` (tokio
+/// `BufReader` does not buffer writes; `get_mut()` just makes the
+/// bypass explicit).
 pub(crate) enum PeerTx {
-    Plain(TcpStream),
-    Noise(TcpStream, snow::TransportState),
+    Plain(BufReader<TcpStream>),
+    Noise(BufReader<TcpStream>, snow::TransportState),
 }
 
 impl PeerTx {
@@ -170,7 +204,12 @@ impl PeerTx {
     /// encrypted frame for noise peers.
     pub(crate) async fn send_line(&mut self, line: &str) -> std::io::Result<()> {
         match self {
-            PeerTx::Plain(stream) => stream.write_all(format!("{line}\n").as_bytes()).await,
+            PeerTx::Plain(stream) => {
+                stream
+                    .get_mut()
+                    .write_all(format!("{line}\n").as_bytes())
+                    .await
+            }
             PeerTx::Noise(stream, state) => {
                 let mut out = vec![0u8; line.len() + 32];
                 let n = state
@@ -181,7 +220,7 @@ impl PeerTx {
                             format!("noise encrypt failed: {e}"),
                         )
                     })?;
-                write_frame(stream, &out[..n]).await
+                write_frame(stream.get_mut(), &out[..n]).await
             }
         }
     }
