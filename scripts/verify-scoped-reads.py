@@ -934,7 +934,7 @@ def require_wrapper_surface(api_dir, cmd_to_wrapper, names_by_shell):
 
 
 def audit(shells, repo=REPO, allowlist=ALLOWLIST):
-    """Return (violations, shape_problems, production_files_scanned, coverage).
+    """Return (violations, shape_problems, production_files_scanned, coverage, cleared).
 
     violations is [(shell, command, file, line, snippet), ...]; shape_problems is one
     sentence per allowlist member this gate could not turn into a command name. Both have to
@@ -945,7 +945,9 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     names read, names that resolved to at least one wrapper), also printed by main() and also
     never read by anything that decides an exit code -- it is the second half of the same idea:
     after the refusal on an empty map, the thin map was the remaining way to grade nothing and
-    look clean, and a ratio is the honest way to show it without owning a threshold.
+    look clean, and a ratio is the honest way to show it without owning a threshold. The fifth
+    value is the same idea a third time: [(shell, command, file, line), ...] for every site the
+    guard window cleared, which until now vanished into a continue.
 
     The allowlist argument is the seam F-1 asked for: which file to grade. It defaults to
     ALLOWLIST, so a bare run grades the checkout copy exactly as it did before the option
@@ -1001,6 +1003,13 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
             texts[p] = strip_comments(fh.read())
 
     violations = []
+    # Every row appended here is a site the veto at the bottom of this loop SILENTLY
+    # continued past. Before this list existed the only way to learn that a call site was
+    # found and then cleared was to break in: 0 findings meant no wrapper was ever called,
+    # or every call was guard-matched, or the classifier had widened -- three different
+    # states printed as one word. Counted in the same pass, from the same predicate, so the
+    # printed number cannot disagree with the grading that ran.
+    cleared = []
     for shell, names in names_by_shell:
         # Read through allowlist_names so an entry in the object form contributes its
         # command name here instead of reaching the lookup below as a dict.
@@ -1014,6 +1023,9 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
                         upto = text[:m.start()].count("\n")
                         window = "\n".join(text.split("\n")[max(0, upto - 8):upto + 1])
                         if _window_is_guarded(window):
+                            cleared.append(
+                                (shell, cmd, os.path.relpath(path, repo).replace(chr(92), "/"),
+                                 upto + 1))
                             continue
                         line = text.split("\n")[upto].strip()
                         rel = os.path.relpath(path, repo).replace("\\", "/")
@@ -1024,7 +1036,7 @@ def audit(shells, repo=REPO, allowlist=ALLOWLIST):
     # the report's order. Each row is (shell, names read, names resolving to a wrapper).
     coverage = [(shell, len(names), sum(1 for cmd in names if cmd_to_wrapper.get(cmd)))
                 for shell, names in names_by_shell]
-    return violations, shape_problems, len(files), coverage
+    return violations, shape_problems, len(files), coverage, cleared
 
 
 # F-1, CLOSED. Until this option existed, the only way to show anybody a hazard in
@@ -1132,6 +1144,26 @@ def describe_coverage(coverage):
                          for shell, count, hits in coverage)
     return ("verify-scoped-reads: allowlisted names resolving to a wrapper: "
             + str(got) + " of " + str(total) + " (" + per_shell + ").")
+
+
+def describe_clearance(cleared):
+    """One line: how many call sites the guard window vetoed, and per shell.
+
+    Informational by the same contract as describe_coverage(): it prints a count, nothing in
+    this file reads it back, no exit code branches on it, no threshold lives anywhere. It
+    exists because the veto is a bare continue in audit(), so a run that found forty call
+    sites and cleared every one reported 'clean' exactly like a run that found none. Units
+    are per-shell-per-site, the unit the audit loop works in: one call site graded against
+    two shells is looked up twice and counts twice. 'Cleared' means the window around a real
+    call matched a guard pattern -- NOT that a guard was proven to exist or to dominate,
+    which is the classifier's claim and the owner's question, not this line's.
+    """
+    per_shell = ", ".join(shell + " " + str(sum(1 for row in cleared if row[0] == shell))
+                         for shell in dict.fromkeys(row[0] for row in cleared)) or "none"
+    return ("verify-scoped-reads: call sites cleared by the guard window: "
+            + str(len(cleared)) + " (" + per_shell + "), across "
+            + str(len(set(row[2] for row in cleared))) + " file(s) and "
+            + str(len(set(row[1] for row in cleared))) + " command(s).")
 
 
 def describe_surfaces(scanned, allowlist, how):
@@ -1875,7 +1907,8 @@ def _wrapper_self_test():
     finally:
         import shutil
         shutil.rmtree(root, ignore_errors=True)
-    if rc == 1 and "FAIL: 1 unguarded ambient IPC call(s)" in out and "error:" not in out:
+    if rc == 1 and "FAIL: 1 call site(s) of commands the graded shell does not register" \
+            in out and "error:" not in out:
         print("    ok   case 20 a populated surface with a real violation still returns 1 and "
               "still says FAIL -- the refusal did not become the verdict path")
     else:
@@ -2119,13 +2152,13 @@ def _coverage_self_test():
     line = covered_line(out)
     if (rc == 1 and line == "verify-scoped-reads: allowlisted names resolving to a wrapper: "
                       "1 of 2 (desktop 1 of 2)."
-            and "FAIL: 1 unguarded ambient IPC call(s)" in out
+            and "FAIL: 1 call site(s) of commands the graded shell does not register" in out
             and out.index("resolving to a wrapper") < out.index("FAIL:")):
         print("    ok   case 25 a coverage shortfall printed beside a real finding still exits "
               "1 on the finding -- the ratio is above the verdict, never a second one")
     else:
         print(f"    FAIL case 25  rc={rc!r} line={line!r} verdict=",
-              repr("FAIL: 1 unguarded" in out))
+              repr("FAIL: 1 call site(s)" in out))
         failures += 1
     if audit.__defaults__ != saved_defaults:
         print("    FAIL the coverage self-test left audit()'s defaults rebound")
@@ -2575,7 +2608,7 @@ def main(argv=None):
         # is an AllowlistUnreadable, so it leaves through the handler under this one -- the
         # gate's one-line error: voice and its refusal code, no new handler.
         shells = resolve_shells(args.shell)
-        violations, shape_problems, scanned, coverage = audit(shells, allowlist=allowlist)
+        violations, shape_problems, scanned, coverage, cleared = audit(shells, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
         # in a sentence is the whole difference between a red run someone can act on and a
@@ -2600,6 +2633,7 @@ def main(argv=None):
     # nobody gates on is the difference between a thin map being legible and a thin map being
     # declared an error by the one file that does not own that number.
     print(describe_coverage(coverage))
+    print(describe_clearance(cleared))
     if shape_problems:
         # Ahead of the violations, because a member this gate could not read makes every
         # number it then prints -- including a reassuring zero -- a guess about a file it
@@ -2619,7 +2653,8 @@ def main(argv=None):
               "that shell.")
         return 1
     if violations:
-        print(f"FAIL: {len(violations)} unguarded ambient IPC call(s):")
+        print(f"FAIL: {len(violations)} call site(s) of commands the graded shell does "
+              f"not register, with no guard pattern matched in the window:")
         for shell, cmd, path, line, snippet in violations:
             print(f"  [{shell}] {cmd} is not registered in that shell")
             print(f"    {path}:{line}: {snippet}")
