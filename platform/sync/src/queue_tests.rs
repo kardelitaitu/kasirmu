@@ -1247,7 +1247,7 @@ fn remote_settings_kv(id: &str, key: &str, value: &str) -> OfflineQueueItem {
         "terminal_id": "term-remote",
         "version": 3,
     });
-    let mut item = OfflineQueueItem::new("settings.update", &payload.to_string());
+    let mut item = OfflineQueueItem::new("settings.update", payload.to_string());
     item.id = id.into();
     item.created_at = "2026-01-02T00:00:00.000Z".into();
     item
