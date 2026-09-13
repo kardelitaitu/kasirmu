@@ -311,10 +311,34 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     return registered, aliasable, per_file, alias_file
 
 
+def read_allowlist_text() -> str:
+    """The file's bytes, waiting out the microsecond a rename is mid-flight.
+
+    os.replace is atomic for the reader, not invisible: while the swap happens Windows denies
+    an open of the target, and load_allowlist has no handler for that, so the bare run in
+    dev-ci.yml, check.sh and run-pre-push.py would still die -- with PermissionError instead of
+    JSONDecodeError, which is a better sentence and still a crash. Retrying a denial that is
+    already over costs one sleep; the ceiling turns a genuine, persistent lock into an
+    AllowlistBusyError with words in it rather than a traceback from json.
+    """
+    for attempt in range(READ_ATTEMPTS):
+        try:
+            return ALLOWLIST_PATH.read_text(encoding="utf-8")
+        except PermissionError:
+            if attempt + 1 == READ_ATTEMPTS:
+                raise AllowlistBusyError(
+                    f"{ALLOWLIST_PATH.name} could not be opened after {READ_ATTEMPTS} tries; "
+                    f"another process is holding it. Readers of this path: "
+                    + ", ".join(ALLOWLIST_READER_CALL_SITES)
+                ) from None
+            time.sleep(READ_RETRY_SECONDS)
+    raise AssertionError("unreachable")  # every path above returns or raises
+
+
 def load_allowlist() -> dict:
     if not ALLOWLIST_PATH.exists():
         return {"desktop": [], "tablet": []}
-    return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
+    return json.loads(read_allowlist_text())
 
 
 class AllowlistBusyError(RuntimeError):
@@ -331,6 +355,15 @@ ALLOWLIST_READER_CALL_SITES = (".github/workflows/dev-ci.yml:590", "scripts/chec
 # Rename retries: 200 tries at 10 ms is about two seconds of patience with a reader.
 REPLACE_ATTEMPTS = 200
 REPLACE_RETRY_SECONDS = 0.01
+
+# And the mirror image, for the reader's side of the same handshake: on Windows a rename in
+# flight makes the next open fail with an access-denied that clears in microseconds. Measured
+# with a writer loop and a json.loads reader against copies of the real payload -- 8,439 reads,
+# 0 torn, 163 denied; 8,410 reads, 0 torn, 215 denied. Before the rename: 5,451 reads, 941
+# TORN (17.3 percent), 0 denied. Zero torn is the win, but a denial is still a crash if nobody
+# catches it, so the reader waits a little rather than dying in a different exception.
+READ_ATTEMPTS = 50
+READ_RETRY_SECONDS = 0.001
 
 
 def write_allowlist_payload(payload: dict) -> None:
@@ -1558,6 +1591,56 @@ def self_test() -> int:
          isinstance(list_outcome, list) and len(list_outcome) == 1
          and "list" in list_outcome[0] and "named sections" in list_outcome[0], )
 
+    # 17: the reader's half of the atomic swap. A rename is atomic but not invisible, and
+    # 163-215 denials per ~8,400 reads is what that costs on Windows, so the reader has to
+    # wait rather than die -- and when waiting is not enough, say so in a sentence.
+    real_read = Path.read_text
+    denies = {"n": 0}
+    def deny_then_allow(self, *args, **kwargs):
+        denies["n"] += 1
+        if denies["n"] <= 2:
+            raise PermissionError(13, "simulated rename in flight")
+        return real_read(self, *args, **kwargs)
+    def deny_forever(self, *args, **kwargs):
+        raise PermissionError(13, "simulated permanent lock")
+    with tempfile.TemporaryDirectory() as tmp9:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        probe9 = Path(tmp9) / "allowlist.json"
+        recovered: object = "unset"
+        refused = ""
+        try:
+            globals()["ALLOWLIST_PATH"] = probe9
+            write_allowlist_payload({"dev_mock": ["read_gap_scoped"], "desktop": [],
+                                     "tablet": [], "scoped_orphans": []})
+            globals()["os"].replace = real_replace
+            Path.read_text = deny_then_allow
+            try:
+                recovered = load_allowlist()
+            except Exception as exc:
+                # Recorded, not propagated: with the retry removed this raises, and a suite
+                # that dies on an exception reports no case name at all. Both of those
+                # mutations were run before this line existed and both showed up as an abort
+                # rather than as the failing case they are.
+                recovered = f"{type(exc).__name__}: {exc}"
+            finally:
+                Path.read_text = real_read
+            Path.read_text = deny_forever
+            try:
+                load_allowlist()
+            except Exception as exc:
+                refused = f"{type(exc).__name__}: {exc}"
+            finally:
+                Path.read_text = real_read
+        finally:
+            Path.read_text = real_read
+            globals()["ALLOWLIST_PATH"] = saved_path
+    case("case 17  a denied open is waited out and the payload still loads",
+         isinstance(recovered, dict)
+         and section_names(recovered, "dev_mock") == {"read_gap_scoped"}, )
+    case("case 17  and a lock that never clears is a sentence, not a traceback",
+         "could not be opened" in refused and "another process is holding it" in refused
+         and "PermissionError" not in refused, )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -1621,7 +1704,12 @@ def main() -> int:
     # The snapshot this run both validates and enforces. Writers are handed this object and
     # refuse to write if the file on disk has moved away from it, so the thing that reaches
     # disk is never something nobody looked at.
-    validated = load_allowlist()
+    try:
+        validated = load_allowlist()
+    except AllowlistBusyError as busy:
+        print(f"\nFAIL: allowlist unreadable, 1 problem(s):", file=sys.stderr)
+        print(f"  - {busy}", file=sys.stderr)
+        return 1
     shape_problems = allowlist_shape_problems(validated, ALLOWLIST_PATH)
     if shape_problems:
         print(
