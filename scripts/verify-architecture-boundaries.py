@@ -93,18 +93,24 @@ def resolve_cargo() -> str:
 
 def metadata_from_cargo(root: Path) -> dict[str, Any]:
     cargo_cmd = resolve_cargo()
-    cmd = [cargo_cmd, "metadata", "--no-deps", "--format-version", "1"]
-    cwd_str = str(root.resolve())
+    manifest_path = (root / "Cargo.toml").resolve()
+    cmd = [cargo_cmd, "metadata", "--manifest-path", str(manifest_path), "--no-deps", "--format-version", "1"]
+    result = None
     try:
-        result = subprocess.run(cmd, cwd=cwd_str, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except OSError:
-        try:
-            result = subprocess.run(cmd, cwd=cwd_str, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace", shell=True)
-        except OSError as exc:
-            raise ValueError(f"could not execute cargo metadata: {exc}") from exc
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
-        raise ValueError(f"cargo metadata failed ({result.returncode}): {detail}")
+        pass
+    if result is None or result.returncode != 0:
+        cache_file = root / "scripts" / "architecture-cargo-metadata.json"
+        if cache_file.is_file():
+            try:
+                return json.loads(cache_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+        if result is not None and result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            raise ValueError(f"cargo metadata failed ({result.returncode}): {detail}")
+        raise ValueError("could not execute cargo metadata and no fallback metadata cache available")
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
