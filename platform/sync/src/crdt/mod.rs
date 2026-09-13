@@ -18,9 +18,13 @@ next: Agent 2 consumes VersionVector/CausalOrder | perf: N/A
 pub mod clock_store;
 pub mod delta_mutation;
 pub mod lamport;
+pub mod push_stamp;
 pub mod version_vector;
 
-pub use clock_store::{CLOCK_KEY, ClockStore, InMemoryClockStore, SettingsClockStore};
+pub use clock_store::{
+    CLOCK_KEY, ClockStore, InMemoryClockStore, SettingsClockStore, parse_counter,
+};
 pub use delta_mutation::{DeltaError, DeltaMutation, MergeOutcome, merge_deltas};
 pub use lamport::{Counter, LamportClock};
+pub use push_stamp::{TERMINAL_FIELD, VECTOR_FIELD, is_stamped, stamp_payload};
 pub use version_vector::{CausalOrder, VersionVector};

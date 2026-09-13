@@ -286,6 +286,20 @@ fn classify_transport_error(e: &reqwest::Error, url: &str) -> String {
 pub struct SyncTransport {
     client: reqwest::Client,
     base_url: String,
+    /// Sender identity + logical counter for conflict detection. `None`
+    /// disables stamping, which is the historical behaviour — the server then
+    /// treats every item as coming from a peer that predates vector support
+    /// and skips detection for it.
+    stamp: Option<VectorStamp>,
+}
+
+/// State needed to stamp outgoing payloads with causality metadata.
+struct VectorStamp {
+    terminal_id: String,
+    /// Monotonic per push. Seeded from the persisted clock so a restart does
+    /// not rewind it: a rewound counter would make the server classify every
+    /// push as stale and detection would silently stop working.
+    counter: std::sync::atomic::AtomicU64,
 }
 
 impl SyncTransport {
@@ -318,7 +332,35 @@ impl SyncTransport {
         Ok(Self {
             client,
             base_url: server_url.trim_end_matches('/').to_owned(),
+            stamp: None,
         })
+    }
+
+    /// Highest counter stamped so far, or `None` when stamping is disabled.
+    ///
+    /// The caller must persist this after a successful push. If it does not,
+    /// the next process starts from the old value, the server sees a counter
+    /// it has already passed, classifies every push as stale, and detection
+    /// silently stops for this terminal.
+    pub fn last_stamped_counter(&self) -> Option<u64> {
+        self.stamp
+            .as_ref()
+            .map(|s| s.counter.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// Enable conflict-detection stamping on outgoing pushes.
+    ///
+    /// `initial_counter` must come from the persisted clock, not from zero:
+    /// the server compares counters per terminal, so a counter that rewinds on
+    /// restart makes every subsequent push look older than what is already
+    /// stored — it would be classified `Stale` and detection would quietly
+    /// stop for this terminal.
+    pub fn with_vector_stamping(mut self, terminal_id: &str, initial_counter: u64) -> Self {
+        self.stamp = Some(VectorStamp {
+            terminal_id: terminal_id.to_string(),
+            counter: std::sync::atomic::AtomicU64::new(initial_counter),
+        });
+        self
     }
 
     /// Convenience constructor for tests and [`crate::SyncEngine::new`].
@@ -344,10 +386,32 @@ impl SyncTransport {
         items: &[OfflineQueueItem],
     ) -> Result<Vec<PushOutcome>, SyncError> {
         let url = format!("{}/api/sync/push", self.base_url);
+
+        // Stamp only when enabled, and once per item: the counter advances per
+        // item so two items in one batch do not carry the same logical instant.
+        let stamped = match &self.stamp {
+            Some(stamp) => {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    let counter = stamp
+                        .counter
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                        .saturating_add(1);
+                    let mut copy = item.clone();
+                    copy.payload =
+                        crate::crdt::stamp_payload(&item.payload, &stamp.terminal_id, counter);
+                    out.push(copy);
+                }
+                Some(out)
+            }
+            None => None,
+        };
+        let body = stamped.as_deref().unwrap_or(items);
+
         let resp = self
             .client
             .post(&url)
-            .json(items)
+            .json(body)
             .send()
             .await
             .map_err(|e| SyncError::Transport(classify_transport_error(&e, &url)))?;
