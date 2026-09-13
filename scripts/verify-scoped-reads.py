@@ -50,6 +50,7 @@ import json
 import os
 import re
 import sys
+import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ALLOWLIST = os.path.join(REPO, "scripts", "ipc-parity-allowlist.json")
@@ -76,6 +77,60 @@ OBJECT_ALLOWED_SECTIONS = ("dev_mock", "scoped_orphans")
 # had just blessed that exact entry. Both halves live here now: read the shapes a section
 # is allowed to hold, and refuse the rest in a sentence. A member is never quietly dropped
 # either -- an allowlist entry that stops matching anything turns "clean" into a lie.
+
+# THE SAME FILE IS ALSO A RACE, and this is the other half of reading it correctly.
+# verify-ipc-parity.py is the only writer, and it publishes with os.replace -- atomic for
+# a reader, not invisible: mid-swap Windows denies the open. Measured on the writer's side
+# at 252 PermissionError denials out of 30,461 bare io.open calls of this path, and this
+# script had no handler at all, so one denial in the microsecond of someone else's reseed
+# reds a bare run in dev-ci.yml#static-gates and scripts/check.sh with a traceback that
+# names neither the file nor the race. The numbers, the ceiling and the interval are the
+# writer owner's (READ_ATTEMPTS / READ_RETRY_SECONDS there, matching values here): a
+# denial that has already passed costs one sleep, and a real, persistent lock ends in a
+# sentence naming the path and how many times it was tried.
+READ_ATTEMPTS = 50
+READ_RETRY_SECONDS = 0.001
+
+# Where this gate is run with no flags, which is where a denial used to become a red build.
+# Named once so the sentence below and the case that checks it cannot drift apart.
+READER_RUNS_BARE_AT = ("dev-ci.yml:596", "scripts/check.sh:72")
+
+
+class AllowlistUnreadable(RuntimeError):
+    """The allowlist would not open, so there is no verdict to report -- clean or dirty."""
+
+
+def _read_json(path):
+    with io.open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def read_allowlist(path=ALLOWLIST, opener=None):
+    """The parsed allowlist, waiting out the microsecond a rename is mid-flight.
+
+    `opener` is the seam that lets --self-test inject a denial instead of losing an hour
+    trying to lose a race; production callers leave it None and get the real read.
+    Raises AllowlistUnreadable -- never a bare PermissionError escaping this function --
+    so main() can print a sentence and fail, rather than traceback over a file that was
+    busy for one millisecond.
+    """
+    opener = opener or _read_json
+    for attempt in range(READ_ATTEMPTS):
+        try:
+            return opener(path)
+        except PermissionError:
+            if attempt + 1 == READ_ATTEMPTS:
+                raise AllowlistUnreadable(
+                    f"{path} would not open after {attempt + 1} tries (PermissionError); "
+                    f"another process is holding it. This gate only reads that file: "
+                    f"scripts/verify-ipc-parity.py owns the writer, and its os.replace is the "
+                    f"window being waited out. It is run bare at "
+                    f"{', '.join(READER_RUNS_BARE_AT)}, so a red here may be a busy file "
+                    f"rather than a broken tree.",
+                ) from None
+            time.sleep(READ_RETRY_SECONDS)
+    raise AssertionError("unreachable")  # every path above returns or raises
+
 
 # Wrappers are `export const name = (args): Ret => loggedInvoke<T>('cmd', {...});`. The body is an
 # arrow, so the pattern must cross `=>`; a character class that excludes `=` cannot, and matching
@@ -263,8 +318,7 @@ def audit(shells, repo=REPO):
     be empty for the gate to pass: an entry that was neither read nor refused is how a
     policy line stops enforcing while the output still says clean.
     """
-    with io.open(ALLOWLIST, encoding="utf-8") as fh:
-        allow = json.load(fh)
+    allow = read_allowlist(ALLOWLIST)
     ui_dir = os.path.join(repo, "ui", "src")
     cmd_to_wrapper = find_wrappers(os.path.join(ui_dir, "api"))
     files = production_files(ui_dir)
@@ -425,10 +479,16 @@ def _shape_self_test():
     else:
         print("    FAIL shape cases cover only one direction -- the checks are vacuous")
         failures += 1
-    # The file on disk, read for real. Every entry there today is a bare name, so this is
-    # the case that fails if a tolerant reader starts inventing a name or losing one.
-    with io.open(ALLOWLIST, encoding="utf-8") as fh:
-        real = json.load(fh)
+    # The file on disk, read for real -- through read_allowlist, the same door audit() uses,
+    # so this case cannot pass on a path the gate does not take. Every entry there today is
+    # a bare name, so this is the case that fails if a tolerant reader invents or loses one.
+    try:
+        real = read_allowlist(ALLOWLIST)
+    except AllowlistUnreadable as exc:
+        # Same rule as everywhere else: a file that would not open is a sentence, not a
+        # traceback out of the blocking self-test step.
+        print(f"    FAIL on-disk allowlist unreadable: {exc}")
+        return failures + 1
     disk_problems = []
     disk_names = disk_members = 0
     for section in ("desktop", "tablet", "dev_mock", "scoped_orphans"):
@@ -459,6 +519,79 @@ def _shape_self_test():
     return failures
 
 
+def _read_retry_self_test():
+    """Case 1 proves the retry is REACHED; case 2 proves the sentence it ends in.
+
+    A real WinError 5 window is a microsecond wide and cannot be summoned on demand, so both
+    cases inject the denial through read_allowlist's opener seam -- production callers pass
+    nothing and get the real read. Each case catches exceptions on purpose: a build that loses
+    the retry has to report FAIL and carry on with the other cases, not abort the self-test
+    with the bare PermissionError the retry exists to swallow.
+    """
+    print("  verify-scoped-reads self-test / allowlist read retry")
+    failures = 0
+
+    # Case 1. Three denials that clear must cost three sleeps and still return the payload,
+    # and the assertion is the OPEN COUNT: one open means no loop ran, and the payload by
+    # itself would pass a reader that simply got lucky between two renames.
+    seen = []
+
+    def denies_then_reads(path):
+        seen.append(path)
+        if len(seen) <= 3:
+            raise PermissionError(13, "simulated rename in flight")
+        return _read_json(path)
+
+    cleared = False
+    why = ""
+    try:
+        payload = read_allowlist(ALLOWLIST, opener=denies_then_reads)
+        cleared = (len(seen) == 4 and isinstance(payload, dict)
+                   and isinstance(payload.get("desktop"), list))
+        if not cleared:
+            why = f"  got {type(payload).__name__} after {len(seen)} open(s)"
+    except BaseException as exc:
+        why = f"  {type(exc).__name__} escaped the retry: {exc}"
+    if cleared:
+        print(f"    ok   case 1  denial cleared on open {len(seen)} -- the retry was reached")
+    else:
+        print(f"    FAIL case 1  retry not reached{why}")
+        failures += 1
+
+    # Case 2. The sentence has to carry the path, the try count and the two bare call sites,
+    # because that is the difference between 'this tree is broken' and 'a file happened to be
+    # busy while CI ran'. A denial escaping as itself is the traceback being tested for, so
+    # the except below records it as a failure rather than propagating it.
+    tries = []
+
+    def never_clears(path):
+        tries.append(path)
+        raise PermissionError(13, "simulated permanent lock")
+
+    outcome = ""
+    try:
+        read_allowlist(ALLOWLIST, opener=never_clears)
+        outcome = "NO EXCEPTION -- a permanent denial was swallowed"
+    except AllowlistUnreadable as exc:
+        outcome = str(exc)
+    except BaseException as exc:
+        outcome = f"bare {type(exc).__name__}: {exc}"
+    must_name = [os.path.basename(ALLOWLIST), str(READ_ATTEMPTS), *READER_RUNS_BARE_AT]
+    shaped = (len(tries) == READ_ATTEMPTS
+              and not outcome.startswith("bare ")
+              and not outcome.startswith("NO EXCEPTION")
+              and all(needle in outcome for needle in must_name))
+    if shaped:
+        print(f"    ok   case 2  {READ_ATTEMPTS} tries, then a sentence naming the path, the "
+              "count and both bare runs")
+        print(f"           {outcome}")
+    else:
+        print(f"    FAIL case 2  {len(tries)} try(ies), outcome: {outcome}")
+        for needle in must_name:
+            if needle not in outcome:
+                print(f"           sentence is missing: {needle}")
+        failures += 1
+    return failures
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -490,6 +623,7 @@ def self_test():
     else:
         print("    ok   classifier can report a violation (not vacuous)")
     failures += _shape_self_test()
+    failures += _read_retry_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
@@ -505,7 +639,14 @@ def main():
         return self_test()
 
     shells = [s.strip() for s in args.shell.split(",") if s.strip()]
-    violations, shape_problems = audit(shells)
+    try:
+        violations, shape_problems = audit(shells)
+    except AllowlistUnreadable as exc:
+        # A file this gate cannot open is not a clean tree and not a dirty one; saying so
+        # in a sentence is the whole difference between a red run someone can act on and a
+        # traceback that blames the wrong gate.
+        print(f"FAIL: {exc}")
+        return 1
     if shape_problems:
         # Ahead of the violations, because a member this gate could not read makes every
         # number it then prints -- including a reassuring zero -- a guess about a file it
