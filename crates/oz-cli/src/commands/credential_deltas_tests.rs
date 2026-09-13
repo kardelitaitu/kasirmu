@@ -600,7 +600,7 @@ fn the_report_keeps_ledger_and_settings_totals_apart_and_says_why() {
 /// bug. Measured before this guard existed: a mistyped --db left a real file
 /// behind and the run reported confident zeroes about it.
 #[test]
-fn a_missing_db_path_is_refused_and_NOT_created() {
+fn a_missing_db_path_is_refused_and_not_created() {
     let dir = TempDir::new("missing");
     let path = dir.file("mistyped.db");
     // Asserted, not repaired: a per-run directory starts empty by construction, so
