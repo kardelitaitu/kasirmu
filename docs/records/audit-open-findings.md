@@ -827,6 +827,36 @@ and both re-grepped here.
 
 ---
 
+### Dated correction (2026-09-13, 14:18) — the three-command-line table above is now history, not a standing defect
+
+The row that said strict unknown-argument handling was "being added right now, outcome
+deliberately not recorded" can be closed against measured exits: `7b4c2bc5a` and
+`45e2521a3` landed it, and `python3 scripts/verify-migration-column-types.py --self-test`
+and `... verify-flaky-quarantine.py --self-test` now both exit **2**, naming the flags each
+script actually implements (`--staged-only`, `--report`), while both bare invocations still
+exit 0. The money gate was already the argparse one (exit 2). **Three gates that answered one
+command line three ways now answer it one way.** Bare-run stdout was hash-compared before and
+after (`54c2e8cb…`/152 B, `6b40bfa7…`/212 B) — unchanged, so the refusal is addition and not
+noise. Both rejection cases are mutation-proven load-bearing: removing the guard returns the
+false green at exit 0 printing the ordinary `ok:`/`PASS:` line.
+
+The paragraph claiming the closures were **unpinned** is also superseded, for the money gate
+only: `805159081` (198/0) added a real `--self-test` with `tally: 3 green = 3 CAUGHT + 0 CLEAN
+/ 0 red`. Its own stdout states why `0 CLEAN` is not a weakness — a clean-tree case reddens
+under none of the three mutations, so it would have been a tautology, and the real-tree run is
+that gate’s clean half outside the flag. It also records the disjunct `scanned == 0` in the
+refusal guard as **unobservable** (an all-empty tree always leaves `starved` non-empty too),
+and prints its own limit: **nothing calls the flag.** `scripts/gates.json` already runs
+`verify-ftl-orphans.py --self-test` blocking in CI, so the wiring precedent exists; the
+remaining change is one line naming this gate beside it, in `gates.json` and `dev-ci.yml` —
+both outside this session’s authority, recorded here rather than done.
+
+**Still open after this correction:** `verify-scoped-reads.py` F-2 (a copy prints
+`0 production file(s) graded against … clean for desktop.` at exit 0) and
+`verify-ftl-orphans.py --staged-only` (`staged_diff()` has no `check=True`, swallows git 129,
+and emits a 62-byte line identical to a real run — index-bound, a different class).
+
+
 ## How to close these
 
 Each finding's original remediation guidance lives in git history under
