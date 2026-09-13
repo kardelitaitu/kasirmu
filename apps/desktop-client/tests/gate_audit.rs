@@ -182,6 +182,9 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("purchasing", 10, &["PURCHASING_MANAGE", "PURCHASING_VIEW"]),
+    // The QRIS auto-rail command gates with SALES_PROCESS (3d50b3ac5/903b30a71);
+    // row added at the round-14 review, count measured from source.
+    ("qris_auto", 1, &["SALES_PROCESS"]),
     ("receipt_format", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     ("regional", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
@@ -235,7 +238,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "TOPOLOGY_WRITE",
         ],
     ),
-    ("sync", 10, &["SYNC_MANAGE"]),
+    ("sync", 12, &["SYNC_MANAGE"]),
     (
         "tables",
         6,
@@ -372,6 +375,9 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
         ],
     ),
     ("purchasing", 10, &["PURCHASING_MANAGE", "PURCHASING_VIEW"]),
+    // Tablet mirrors the QRIS auto-rail landing with two gated calls; same
+    // key, reviewed at the round-14 census repair.
+    ("qris_auto", 2, &["SALES_PROCESS"]),
     ("receipt_format", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     ("regional", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
@@ -385,7 +391,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("setup", 0, &[]),
     (
         "staff",
-        11,
+        10,
         &[
             "STAFF_CREATE",
             "STAFF_MANAGE_ROLES",
@@ -410,7 +416,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "TOPOLOGY_WRITE",
         ],
     ),
-    ("sync", 7, &["SYNC_MANAGE"]),
+    ("sync", 9, &["SYNC_MANAGE"]),
     (
         "tables",
         12,
