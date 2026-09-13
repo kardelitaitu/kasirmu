@@ -77,6 +77,7 @@ BEGIN
                             'memos','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
+                            'sync_conflicts','sync_entity_vectors',
                             'sync_terminals','tax_rates','tenant_plans',
                             'tenant_subscription','users']
     LOOP
@@ -183,6 +184,7 @@ BEGIN
                             'memos','offline_queue','product_activity',
                             'product_bundles','product_taxes','product_variants',
                             'products','refunds','sales','sent_reports','stripe_customers',
+                            'sync_conflicts','sync_entity_vectors',
                             'sync_terminals','tax_rates','tenant_plans',
                             'tenant_subscription','users']
     LOOP
@@ -190,7 +192,7 @@ BEGIN
     END LOOP;
 END $$;
 
--- 4. Verification (informational — expect 19 rows, all `t`/`t`):
+-- 4. Verification (informational — expect 21 rows, all `t`/`t`):
 --    SELECT tablename, rowsecurity, forcerowsecurity
 --      FROM pg_tables
 --     WHERE schemaname = 'public'
@@ -198,6 +200,7 @@ END $$;
 --                         'memos','offline_queue','product_activity',
 --                         'product_bundles','product_taxes','product_variants',
 --                         'products','refunds','sales','sent_reports','stripe_customers',
+--                         'sync_conflicts','sync_entity_vectors',
 --                         'sync_terminals','tax_rates','tenant_plans',
 --                         'tenant_subscription','users')
 --     ORDER BY tablename;
