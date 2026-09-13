@@ -274,13 +274,12 @@ pub(crate) fn scan_credential_deltas(conn: &Connection) -> Result<DeltaCounts> {
         let (key, count) = row.context("counting ledger rows")?;
         // `Ok(None)` is the only skip, and it means the shared predicate says
         // this key is not a credential at all.
-        if let Some(canonical) = canonical_credential_key(&key) {
-            if let Some(entry) = totals
+        if let Some(canonical) = canonical_credential_key(&key)
+            && let Some(entry) = totals
                 .iter_mut()
                 .find(|(deny_key, _)| *deny_key == canonical)
-            {
-                entry.1 += count.max(0) as usize;
-            }
+        {
+            entry.1 += count.max(0) as usize;
         }
     }
     totals.retain(|(_, count)| *count > 0);
@@ -312,10 +311,10 @@ pub(crate) fn scan_resembling_names(conn: &Connection, table: &str) -> Result<Sc
         .with_context(|| format!("reading the {table} table"))?;
     for row in rows {
         let (stored, count) = row.with_context(|| format!("counting {table} rows"))?;
-        if let CredentialName::Resembles { base, .. } = resolve_credential_name(&stored) {
-            if let Some(entry) = totals.iter_mut().find(|(b, _)| *b == base) {
-                entry.1 += count.max(0) as usize;
-            }
+        if let CredentialName::Resembles { base, .. } = resolve_credential_name(&stored)
+            && let Some(entry) = totals.iter_mut().find(|(b, _)| *b == base)
+        {
+            entry.1 += count.max(0) as usize;
         }
     }
     totals.retain(|(_, count)| *count > 0);
