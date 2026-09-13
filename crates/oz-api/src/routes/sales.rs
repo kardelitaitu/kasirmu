@@ -131,7 +131,7 @@ fn guard_key(headers: &HeaderMap) -> Option<&str> {
 /// it would hand back a 201 for a request the client believed was protected.
 /// Never re-keys and never substitutes a different key for the client.
 fn guard_key_reject(key: Option<&str>) -> Option<String> {
-    let Some(k) = key else { return None };
+    let k = key?;
     if k.len() > IDEMPOTENCY_KEY_MAX_LEN {
         return Some("idempotency key too long".into());
     }
@@ -356,10 +356,10 @@ pub async fn create_sale(
 
     match store.create_sale(&sale) {
         Ok(()) => {
-            if key.is_none() {
-                if let Err(e) = note_unguarded_sqlite(&db, tenant_id, &sale.id) {
-                    tracing::warn!("unguarded sale receipt note failed: {e}");
-                }
+            if key.is_none()
+                && let Err(e) = note_unguarded_sqlite(&db, tenant_id, &sale.id)
+            {
+                tracing::warn!("unguarded sale receipt note failed: {e}");
             }
             (StatusCode::CREATED, Json(sale)).into_response()
         }
