@@ -53,6 +53,9 @@ import { createCatalogHandlers, MOCK_PRODUCTS } from './handlers/catalog';
 import { inventoryHandlers } from './handlers/inventory';
 import { createSalesHandlers, type CartLine } from './handlers/sales';
 import { shiftHandlers } from './handlers/shifts';
+import { loyaltyHandlers } from './handlers/loyalty';
+import { floorplanHandlers } from './handlers/floorplan';
+import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 
 // The mock's public surface is the three names the app actually imports through
 // the vite alias on `@tauri-apps/api/core`. They are defined by the dispatcher
@@ -1193,40 +1196,7 @@ function reviseMockMemo(args: unknown): MockMemo {
   return { ...found.memo };
 }
 
-/** Live floor-plan snapshot for the analytics occupancy card: 5 of 12
- *  active tables occupied (2 seated, 1 reserved, 4 free, 1 cleaning). */
-function tablesSnapshot(): Array<{
-  id: string; name: string; capacity: number; pos_x: number; pos_y: number;
-  shape: string; width: number; height: number; status: string;
-  active_sale_id: string | null; section: string; active: boolean;
-  sort_order: number;
-}> {
-  const statuses = [
-    'occupied', 'occupied', 'occupied', 'occupied', 'occupied',
-    'available', 'available', 'available', 'available',
-    'reserved', 'cleaning', 'available',
-  ];
-  return statuses.map((status, i) => ({
-    id: `table-${String(i + 1).padStart(2, '0')}`,
-    name: `Table ${i + 1}`,
-    capacity: i % 3 === 0 ? 6 : 4,
-    pos_x: 10 + (i % 4) * 22,
-    pos_y: 15 + Math.floor(i / 4) * 30,
-    shape: 'circle',
-    width: 8,
-    height: 8,
-    status,
-    active_sale_id: status === 'occupied' ? `sale-table-${i + 1}` : null,
-    section: i < 6 ? 'Indoor' : 'Patio',
-    active: true,
-    sort_order: i + 1,
-  }));
-}
 
-const MOCK_CUSTOMERS = [
-  { id: 'cust-1', name: 'John Doe', email: 'john@example.com', phone: '08123456789', notes: 'Regular customer', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: 'cust-2', name: 'Jane Smith', email: 'jane@example.com', phone: '08987654321', notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-];
 
 function loadMockWorkspaces(): typeof MOCK_WORKSPACES_SEED {
   return readSlice(MOCK_WORKSPACES_KEY, () => MOCK_WORKSPACES_SEED);
@@ -2778,22 +2748,6 @@ const entryHandlers: Record<string, MockHandler> = {
   'get_cart_deduction_location': () => ({ locationId: 'loc-1', locationName: 'Main Store' }),
   'override_cart_deduction_location_scoped': () => null,
 
-  // Currency + exchange rates → `handlers/catalog.ts` (phase 2.1).
-
-  // ═══════════════════════════════════════════════════════════════
-  // CUSTOMERS
-  // ═══════════════════════════════════════════════════════════════
-
-  'list_customers': () => MOCK_CUSTOMERS,
-  'list_customers_scoped': () => MOCK_CUSTOMERS,
-  'get_customer': (args) => {
-    const { id } = args as { id: string };
-    return MOCK_CUSTOMERS.find(c => c.id === id) ?? null;
-  },
-  'create_customer': () => ({ id: 'cust-new', name: 'New Customer', email: null, phone: null, notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
-  'update_customer': () => ({ id: 'cust-upd', name: 'Updated', email: null, phone: null, notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
-  'delete_customer': () => null,
-
   // ═══════════════════════════════════════════════════════════════
   // STAFF MANAGEMENT
   // ═══════════════════════════════════════════════════════════════
@@ -3019,55 +2973,6 @@ const entryHandlers: Record<string, MockHandler> = {
     expires_at: new Date(Date.now() + 300_000).toISOString(),
   }),
   'print_kds_chit_scoped': () => true,
-
-  // ═══════════════════════════════════════════════════════════════
-  // PROMOTIONS
-  // ═══════════════════════════════════════════════════════════════
-
-  'get_promotion': () => null,
-  'get_promotion_scoped': () => null,
-  'create_promotion': () => null,
-  'create_promotion_scoped': () => null,
-  'update_promotion': () => null,
-  'update_promotion_scoped': () => null,
-  'delete_promotion': () => null,
-  'delete_promotion_scoped': () => null,
-  'apply_promotion': () => null,
-  'apply_promotion_scoped': () => null,
-
-  // ═══════════════════════════════════════════════════════════════
-  // PURCHASING / SUPPLIERS
-  // ═══════════════════════════════════════════════════════════════
-
-  'list_suppliers': () => [
-    { id: 'supplier-1', name: 'PT Teknologi Maju', contact_person: 'Budi', phone: '021-1234567', email: 'budi@teknologi.com', address: 'Jl. Merdeka No. 1', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-    { id: 'supplier-2', name: 'CV Distribusi Utama', contact_person: 'Siti', phone: '021-7654321', email: 'siti@distribusi.com', address: 'Jl. Sudirman No. 45', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  ],
-  'list_suppliers_scoped': () => [
-    { id: 'supplier-1', name: 'PT Teknologi Maju', contact_person: 'Budi', phone: '021-1234567', email: 'budi@teknologi.com', address: 'Jl. Merdeka No. 1', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-    { id: 'supplier-2', name: 'CV Distribusi Utama', contact_person: 'Siti', phone: '021-7654321', email: 'siti@distribusi.com', address: 'Jl. Sudirman No. 45', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  ],
-  'get_supplier': () => null,
-  'create_supplier': () => null,
-  'update_supplier': () => null,
-  'get_supplier_scoped': () => null,
-  'create_supplier_scoped': () => null,
-  'update_supplier_scoped': () => null,
-  'list_purchase_orders': () => [
-    { id: 'po-1', po_number: 'PO-001', supplier_id: 'supplier-1', supplier_name: 'PT Teknologi Maju', status: 'pending', order_date: new Date().toISOString(), expected_date: new Date(Date.now() + 86400000).toISOString(), received_date: null, subtotal_minor: 5000000, tax_minor: 0, total_minor: 5000000, notes: '', created_by: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), lines: [{ id: 'po-line-1', po_id: 'po-1', sku: 'CPU-R7-7800X3D', product_name: 'AMD Ryzen 7 7800X3D 8-Core', qty: 2, unit_cost_minor: 2500000, line_total_minor: 5000000 }] },
-  ],
-  'list_purchase_orders_scoped': () => [
-    { id: 'po-1', po_number: 'PO-001', supplier_id: 'supplier-1', supplier_name: 'PT Teknologi Maju', status: 'pending', order_date: new Date().toISOString(), expected_date: new Date(Date.now() + 86400000).toISOString(), received_date: null, subtotal_minor: 5000000, tax_minor: 0, total_minor: 5000000, notes: '', created_by: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), lines: [{ id: 'po-line-1', po_id: 'po-1', sku: 'CPU-R7-7800X3D', product_name: 'AMD Ryzen 7 7800X3D 8-Core', qty: 2, unit_cost_minor: 2500000, line_total_minor: 5000000 }] },
-  ],
-  'get_purchase_order': () => null,
-  'create_purchase_order': () => null,
-  'update_po_status': () => null,
-  'receive_purchase_order': () => null,
-  'get_purchase_order_scoped': () => null,
-  'create_purchase_order_scoped': () => null,
-  'update_po_status_scoped': () => null,
-  'receive_purchase_order_scoped': () => null,
-  'receive_purchase_order_with_lines_scoped': () => null,
 
   // ═══════════════════════════════════════════════════════════════
   // REPORTS
@@ -3353,91 +3258,6 @@ const entryHandlers: Record<string, MockHandler> = {
   'list_fiscal_schemes_scoped': listMockFiscalSchemes,
 
   // ═══════════════════════════════════════════════════════════════
-  // TABLES (restaurant floor plan)
-  // ═══════════════════════════════════════════════════════════════
-
-  // Live snapshot: 5 of 12 active tables occupied → ~42% occupancy for
-  // the analytics occupancy card in browser mode.
-  'list_tables': () => tablesSnapshot(),
-  'list_tables_scoped': () => tablesSnapshot(),
-  'get_table': () => null,
-  'get_table_scoped': () => null,
-  'create_table': () => null,
-  'create_table_scoped': () => null,
-  'update_table': () => null,
-  'update_table_scoped': () => null,
-  'delete_table': () => null,
-  'delete_table_scoped': () => null,
-  'update_table_status': () => null,
-  'update_table_status_scoped': () => null,
-  'assign_table_order': () => null,
-  'assign_table_order_scoped': () => null,
-  'release_table': () => null,
-  'release_table_scoped': () => null,
-  'list_sections': () => [],
-  'list_sections_scoped': () => [],
-
-  // ═══════════════════════════════════════════════════════════════
-  // LOYALTY
-  // ═══════════════════════════════════════════════════════════════
-
-  'get_loyalty_account_scoped': () => null,
-  // One seeded account + tiers so the Loyalty screen's real table renders
-  // deterministically (the table only exists when accounts.length > 0;
-  // otherwise the empty state shows and the E2E races the loading skeleton).
-  'list_loyalty_accounts_scoped': () => [
-    {
-      account: {
-        id: 'loyalty-acc-1', customer_id: 'cust-1', points: 250, lifetime_points: 1200,
-        tier_id: 'tier-1', updated_at: new Date().toISOString(), created_at: new Date().toISOString(),
-      },
-      tier: {
-        id: 'tier-1', name: 'Gold', min_points: 100, points_per_unit: 1000,
-        earn_multiplier_millionths: 1_500_000, colour: '#f59e0b', sort_order: 1, created_at: new Date().toISOString(),
-      },
-      recent_transactions: [],
-      next_tier: null,
-      points_to_next_tier: 0,
-    },
-  ],
-  'earn_loyalty_points_scoped': () => null,
-  'redeem_loyalty_points_scoped': () => null,
-  'list_loyalty_tiers_scoped': () => [
-    {
-      id: 'tier-1', name: 'Gold', min_points: 100, points_per_unit: 1000,
-      earn_multiplier_millionths: 1_500_000, colour: '#f59e0b', sort_order: 1, created_at: new Date().toISOString(),
-    },
-    {
-      id: 'tier-2', name: 'Platinum', min_points: 500, points_per_unit: 1000,
-      earn_multiplier_millionths: 2_000_000, colour: '#8b5cf6', sort_order: 2, created_at: new Date().toISOString(),
-    },
-  ],
-  'update_loyalty_tier_scoped': () => null,
-  'get_points_value_scoped': () => 0,
-  'get_or_create_loyalty_account_scoped': () => null,
-
-  // ═══════════════════════════════════════════════════════════════
-  // GIFT CARDS
-  // ═══════════════════════════════════════════════════════════════
-
-  'issue_gift_card': () => null,
-  'get_gift_card': () => null,
-  'list_gift_cards': () => [],
-  'get_gift_card_balance': () => null,
-  'redeem_gift_card': () => null,
-  'top_up_gift_card': () => null,
-  'freeze_gift_card': () => null,
-  'unfreeze_gift_card': () => null,
-  'issue_gift_card_scoped': () => null,
-  'get_gift_card_scoped': () => null,
-  'list_gift_cards_scoped': () => [],
-  'get_gift_card_balance_scoped': () => null,
-  'redeem_gift_card_scoped': () => null,
-  'top_up_gift_card_scoped': () => null,
-  'freeze_gift_card_scoped': () => null,
-  'unfreeze_gift_card_scoped': () => null,
-
-  // ═══════════════════════════════════════════════════════════════
   // BUNDLES
   // ═══════════════════════════════════════════════════════════════
 
@@ -3693,6 +3513,9 @@ registerHandlers(createCatalogHandlers({ unwrapArgs }));
 registerHandlers(inventoryHandlers);
 registerHandlers(shiftHandlers);
 registerHandlers(createSalesHandlers({ unwrapArgs, mockHandlerPayload, pushKdsOrderFromCart }));
+registerHandlers(loyaltyHandlers);
+registerHandlers(floorplanHandlers);
+registerHandlers(crmHandlers);
 
 // ── Scoped aliases (ADR #7) ──────────────────────────────────────
 // The API layer calls the *_scoped variant for nearly every command, but most were only
