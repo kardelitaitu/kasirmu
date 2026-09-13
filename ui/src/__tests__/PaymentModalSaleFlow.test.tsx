@@ -1030,3 +1030,136 @@ describe('PaymentModal — EDC card-present tender', () => {
     view.unmount();
   });
 });
+
+// ── Local payment rails gating (agents-5 R1) ─────────────────────────
+//
+// The regional slice-6 rail store is the real per-site surface for QRIS
+// visibility (the master doc's payment:* keys never shipped). The
+// contract under test: a POPULATED rail list is authoritative (the
+// qris rail's is_enabled governs the tab); no list, an empty list, or
+// any fetch failure fails open — legacy tills and every existing test
+// keep QRIS exactly as before.
+describe('PaymentModal — local payment rails gating', () => {
+  const mount = () =>
+    renderInAct(
+      withFluent(
+        <ToastProvider>
+          <PaymentModal
+            open
+            sessionToken="mock-token"
+            lineItems={[lineItem()]}
+            total={usd(700)}
+            userId="test-user-id"
+            onComplete={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>,
+        salesFtl,
+      ),
+    );
+
+  const rail = (enabled: boolean) => ({
+    rail_code: 'qris',
+    label: 'QRIS',
+    is_enabled: enabled,
+    scope: 'location' as const,
+    parameters: '{}',
+  });
+
+  // The rails fetch fires on MOUNT, so the override must be installed
+  // before `mount()` — returning a restore that unwinds it.
+  const mountWithRails = async (rails: unknown[] | 'reject') => {
+    const original = (invokeMock.getMockImplementation() ??
+      (() => Promise.resolve({}))) as (c: string) => Promise<unknown>;
+    invokeMock.mockImplementation((c: string) => {
+      if (c === 'get_primary_location_scoped') return Promise.resolve({ id: 'loc-1' });
+      if (c === 'get_local_payment_methods_scoped') {
+        return rails === 'reject'
+          ? Promise.reject(new Error('ipc down'))
+          : Promise.resolve(rails);
+      }
+      return original(c);
+    });
+    const view = await mount();
+    return { view, restore: () => invokeMock.mockImplementation(original) };
+  };
+
+  it('a disabled qris rail removes the QRIS tab', async () => {
+    const { view, restore } = await mountWithRails([rail(false)]);
+    try {
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /qris/i })).toBeNull(),
+      );
+      // Cash stays: universal tender, never a market rail.
+      expect(screen.getByRole('radio', { name: /cash/i })).toBeInTheDocument();
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('an enabled qris rail keeps the tab', async () => {
+    const { view, restore } = await mountWithRails([rail(true)]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('a populated list WITHOUT the qris rail hides it (authoritative list)', async () => {
+    const { view, restore } = await mountWithRails([
+      { rail_code: 'va-bca', label: 'BCA VA', is_enabled: true, scope: 'location', parameters: '{}' },
+    ]);
+    try {
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /qris/i })).toBeNull(),
+      );
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('empty rails and failed fetches both fail open', async () => {
+    const empty = await mountWithRails([]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+    } finally {
+      empty.restore();
+      empty.view.unmount();
+    }
+    const failed = await mountWithRails('reject');
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+    } finally {
+      failed.restore();
+      failed.view.unmount();
+    }
+  });
+
+  it('a list without the edc rail hides the terminal button but keeps manual card', async () => {
+    const { view, restore } = await mountWithRails([rail(true)]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+      await userEvent.click(await screen.findByRole('radio', { name: /card/i }));
+      expect(
+        screen.queryByRole('button', { name: /pay on card terminal/i }),
+      ).toBeNull();
+      // The card tender itself is universal — only the hardware path gates.
+      expect(screen.getByRole('radio', { name: /card/i })).toBeChecked();
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+});

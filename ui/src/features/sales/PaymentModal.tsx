@@ -27,6 +27,7 @@ import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAcc
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
 import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
+import { railOffered, useLocalPaymentRails } from './useLocalPaymentRails';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -116,6 +117,12 @@ export default function PaymentModal({
   l10nRef.current = l10n;
   // C2.2: QRIS is a Plus+ feature — caps arrive from the subscription context.
   const { caps } = useSubscription();
+  // agents-5 R1: the regional slice-6 rail store is the real per-site
+  // surface for "does this location offer QRIS" (the master doc's
+  // payment:* keys were never implemented). Fail-open until loaded.
+  const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+  const qrisOffered = railOffered(paymentRails, 'qris');
+  const edcOffered = railOffered(paymentRails, 'edc');
   const locale = useContext(LocaleContext)?.locale ?? 'en';
   const { addToast } = useToast();
   const [method, setMethod] = useState<PaymentMethod>('cash');
@@ -265,6 +272,12 @@ export default function PaymentModal({
   const [exchangeRates, setExchangeRates] = useState<ExchangeRateDto[]>([]);
   const [selectedCurrency, setSelectedCurrency] = useState(total.currency);
   const [baseCurrency, setBaseCurrency] = useState(total.currency);
+
+  // A rail that loads (or reloads) to disabled while QRIS is the chosen
+  // tab must not strand the cashier on a hidden surface (agents-5 R1).
+  useEffect(() => {
+    if (!qrisOffered && method === 'qris') setMethod('cash');
+  }, [qrisOffered, method]);
 
   useEffect(() => {
     if (open && multiCurrency) {
@@ -1827,7 +1840,9 @@ export default function PaymentModal({
                     <legend className="payment-section-title">Payment Method</legend>
                   </Localized>
                   <div className="payment-method-options">
-                    {(['cash', 'card', 'qris', 'credit'] as const).map((m) => (
+                    {(['cash', 'card', 'qris', 'credit'] as const)
+                      .filter((m) => qrisOffered || m !== 'qris')
+                      .map((m) => (
                       <label key={m} className="payment-method-label" data-testid="quick-pay-button">
                         <input
                           type="radio"
@@ -1975,7 +1990,7 @@ export default function PaymentModal({
                   </div>
                 )}
 
-                {method === 'card' && !splitMode && (
+                {method === 'card' && !splitMode && edcOffered && (
                   <div className="payment-edc-section">
                     <Localized id="payment-edc-description">
                       <p className="payment-edc-description">
