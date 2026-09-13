@@ -25,8 +25,10 @@ const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
 // When a new shadow-using component is added, its CSS class selector
 // must be added to the ::after list in components.css AND to this set.
 //
-// Current count: 125 selectors (4 added for the 0.0.37 KDS expo / routing
-// surfaces, on top of the org selector / org switcher trio). The original
+// Current count: 124 selectors (4 added for the 0.0.37 KDS expo / routing
+// surfaces, on top of the org selector / org switcher trio; then -1 when
+// .kds-settings-popover retired with the unreachable KdsSettingsPanel in
+// todo-kds-agents-6). The original
 // "6 core + 1 utility + 35 feature-specific" split
 // stopped matching the list long ago — the inline group comments are the
 // authoritative breakdown.
@@ -117,7 +119,6 @@ const KNOWN_NOISE_SELECTORS = [
   '.kds-layout-popover',
   '.kds-ticket--green',
   '.kds-ticket-urgent-badge',
-  '.kds-settings-popover',
   '.product-mgmt-alert-drawer',
   '.promo-mgmt-table',
   '.menu-eng-tooltip',
