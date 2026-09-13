@@ -26,8 +26,17 @@ use super::*;
  */
 use std::sync::{Arc, Mutex};
 
+/// One captured event: its ordered field name/value pairs.
+type CapturedFields = Vec<(String, String)>;
+/// Everything one `Capture` has recorded, in event order. The shared cell is
+/// structural, not stylistic: `Subscriber::event` takes `&self` while pushing
+/// (so the log needs interior mutability), and `install()` clones the capture
+/// into the dispatcher (so the clone has to write to the same log the test
+/// reads back).
+type CaptureLog = Arc<Mutex<Vec<CapturedFields>>>;
+
 #[derive(Debug, Clone, Default)]
-struct Capture(Arc<Mutex<Vec<Vec<(String, String)>>>>);
+struct Capture(CaptureLog);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Fields(Vec<(String, String)>);
@@ -178,11 +187,7 @@ async fn ungated_get_backup_status_emits_exactly_one_event() {
         "one ungated call must emit exactly one event; records were {:?}",
         all.iter().map(Fields::flat).collect::<Vec<_>>()
     );
-    assert_event_shape(
-        hits[0],
-        "get_backup_status",
-        &db.parent().unwrap().to_path_buf(),
-    );
+    assert_event_shape(hits[0], "get_backup_status", db.parent().unwrap());
 }
 
 /*

@@ -835,7 +835,7 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started1.cart_id.clone(),
+            cart_id: started1.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 2,
             unit_price_minor: 350,
@@ -870,7 +870,7 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started2.cart_id.clone(),
+            cart_id: started2.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 1,
             unit_price_minor: 350,
@@ -1000,7 +1000,7 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started1.cart_id.clone(),
+            cart_id: started1.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 2,
             unit_price_minor: 350,
@@ -1027,7 +1027,7 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started2.cart_id.clone(),
+            cart_id: started2.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 1,
             unit_price_minor: 350,
@@ -1036,14 +1036,9 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
     )
     .await
     .unwrap();
-    let second = settle_replay_cart(
-        &bridge,
-        "replay-tok",
-        started2.cart_id.clone(),
-        Some("att-x"),
-    )
-    .await
-    .unwrap();
+    let second = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x"))
+        .await
+        .unwrap();
     assert_ne!(
         second.sale_id, first.sale_id,
         "fixture premise: basket 2 settled its own sale under the re-key"
@@ -1084,7 +1079,7 @@ async fn voided_sale_does_not_satisfy_a_replay() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started1.cart_id.clone(),
+            cart_id: started1.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 2,
             unit_price_minor: 350,
@@ -1170,7 +1165,7 @@ async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started1.cart_id.clone(),
+            cart_id: started1.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 2,
             unit_price_minor: 350,
@@ -1212,7 +1207,7 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started1.cart_id.clone(),
+            cart_id: started1.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 2,
             unit_price_minor: 350,
@@ -1239,7 +1234,7 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started2.cart_id.clone(),
+            cart_id: started2.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 1,
             unit_price_minor: 350,
@@ -1248,14 +1243,9 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
     )
     .await
     .unwrap();
-    let second = settle_replay_cart(
-        &bridge,
-        "replay-tok",
-        started2.cart_id.clone(),
-        Some("att-x"),
-    )
-    .await
-    .unwrap();
+    let second = settle_replay_cart(&bridge, "replay-tok", started2.cart_id, Some("att-x"))
+        .await
+        .unwrap();
     assert_ne!(
         second.sale_id, first.sale_id,
         "basket 2 must settle as its own sale, not replay basket 1's receipt"
@@ -1331,7 +1321,7 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
         &bridge.ctx(),
         "replay-tok",
         AddLineArgs {
-            cart_id: started.cart_id.clone(),
+            cart_id: started.cart_id,
             sku: Sku::new("REPLAY-COFFEE"),
             qty: 2,
             unit_price_minor: 350,

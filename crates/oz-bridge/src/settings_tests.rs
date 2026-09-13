@@ -949,7 +949,7 @@ fn every_credential_family_key_declared_in_keys_rs_is_blocked() {
         "keys.rs declares a different credential family than the deny lists cover"
     );
 
-    let mut dedup: Vec<&str> = SECRET_KEY_DENY_LIST.iter().copied().collect();
+    let mut dedup: Vec<&str> = SECRET_KEY_DENY_LIST.to_vec();
     dedup.sort_unstable();
     dedup.dedup();
     assert_eq!(

@@ -1225,7 +1225,7 @@ pub async fn set_setting(
     {
         let conn = ctx.db.lock().await;
         let store = oz_core::db::Store::new(&conn);
-        ctx.require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
+        ctx.require_permission_for_user(&store, user_id, permissions::SETTINGS_EDIT)?;
         let effective = run_set_setting(&conn, key, value, &terminal_id)?;
         if let Err(e) = enqueue_settings_updates(
             &store,

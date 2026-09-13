@@ -86,7 +86,7 @@ fn seed_split_candidate_ticket(app: &TestBridge) -> String {
             "Burger",
             Money {
                 minor_units: 500,
-                currency: usd.clone(),
+                currency: usd,
             },
             None,
             None,
@@ -99,7 +99,7 @@ fn seed_split_candidate_ticket(app: &TestBridge) -> String {
             "Cocktail",
             Money {
                 minor_units: 700,
-                currency: usd.clone(),
+                currency: usd,
             },
             None,
             None,
@@ -117,17 +117,17 @@ fn seed_split_candidate_ticket(app: &TestBridge) -> String {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let zero = Money {
             minor_units: 0,
-            currency: usd.clone(),
+            currency: usd,
         };
         let sale = Sale {
             id: "sale-split".into(),
             status: SaleStatus::Pending,
             total: Money {
                 minor_units: 1200,
-                currency: usd.clone(),
+                currency: usd,
             },
             line_count: 0,
-            currency: usd.clone(),
+            currency: usd,
             payment_method: None,
             tendered_minor: None,
             user_id: Some("user-owner".into()),

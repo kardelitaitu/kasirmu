@@ -706,7 +706,7 @@ fn prune_pre_pull_backups(scope_db: &Path, keep: usize, protect: Option<&Path>) 
 
     // Only count the protected file if it is actually on disk — otherwise a
     // copy we just deleted would reserve the budget and starve the survivor.
-    let protected_present = protect.map_or(false, |p| found.iter().any(|f| f == p));
+    let protected_present = protect.is_some_and(|p| found.iter().any(|f| f == p));
     let mut kept = usize::from(protected_present);
     let mut removed = Vec::new();
     for path in found {

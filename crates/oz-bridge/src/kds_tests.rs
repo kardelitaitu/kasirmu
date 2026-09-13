@@ -275,7 +275,7 @@ async fn scoped_list_kds_orders_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = list_kds_orders_scoped(&app.ctx(), "bad-token".into(), None).await;
+    let result = list_kds_orders_scoped(&app.ctx(), "bad-token", None).await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
@@ -284,7 +284,7 @@ async fn scoped_get_kds_queue_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_queue_scoped(&app.ctx(), "bad-token".into(), None).await;
+    let result = get_kds_queue_scoped(&app.ctx(), "bad-token", None).await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
@@ -293,7 +293,7 @@ async fn scoped_get_kds_order_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_order_scoped(&app.ctx(), "bad-token".into(), "order-1".into()).await;
+    let result = get_kds_order_scoped(&app.ctx(), "bad-token", "order-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
@@ -305,7 +305,7 @@ async fn owner_can_list_kds_orders_empty() {
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), None)
+    let orders = list_kds_orders_scoped(&app.ctx(), "tok", None)
         .await
         .unwrap();
     assert!(orders.is_empty());
@@ -320,7 +320,7 @@ async fn owner_can_list_kds_orders_with_data() {
     let order = test_kds_order("o1");
     let created = create_kds_order_in_store(&app, &order);
 
-    let orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), None)
+    let orders = list_kds_orders_scoped(&app.ctx(), "tok", None)
         .await
         .unwrap();
     assert_eq!(orders.len(), 1);
@@ -338,21 +338,21 @@ async fn list_kds_orders_filters_by_status() {
     let order2 = create_kds_order_in_store(&app, &test_kds_order("o2"));
 
     // Move order2 through the valid forward-only chain: pending -> preparing -> ready.
-    update_kds_status_scoped(&app.ctx(), "tok".into(), &order2.id, "preparing".into())
+    update_kds_status_scoped(&app.ctx(), "tok", &order2.id, "preparing")
         .await
         .unwrap();
-    update_kds_status_scoped(&app.ctx(), "tok", &order2.id, "ready".into())
+    update_kds_status_scoped(&app.ctx(), "tok", &order2.id, "ready")
         .await
         .unwrap();
 
     // Now filter by status.
-    let pending_orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), Some("pending".into()))
+    let pending_orders = list_kds_orders_scoped(&app.ctx(), "tok", Some("pending".into()))
         .await
         .unwrap();
     assert_eq!(pending_orders.len(), 1);
     assert_eq!(pending_orders[0].id, order1.id);
 
-    let ready_orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), Some("ready".into()))
+    let ready_orders = list_kds_orders_scoped(&app.ctx(), "tok", Some("ready".into()))
         .await
         .unwrap();
     assert_eq!(ready_orders.len(), 1);
@@ -379,7 +379,7 @@ async fn get_kds_order_returns_none_for_unknown() {
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_order_scoped(&app.ctx(), "tok".into(), "nonexistent".into())
+    let result = get_kds_order_scoped(&app.ctx(), "tok", "nonexistent")
         .await
         .unwrap();
     assert!(result.is_none());
@@ -394,9 +394,7 @@ async fn owner_can_get_kds_queue() {
     let order = test_kds_order("o1");
     let created = create_kds_order_in_store(&app, &order);
 
-    let queue = get_kds_queue_scoped(&app.ctx(), "tok".into(), None)
-        .await
-        .unwrap();
+    let queue = get_kds_queue_scoped(&app.ctx(), "tok", None).await.unwrap();
     assert_eq!(queue.len(), 1);
     assert_eq!(queue[0].id, created.id);
 }
@@ -407,13 +405,7 @@ async fn update_kds_status_returns_error_for_unknown_order() {
     seed_owner(&conn);
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = update_kds_status_scoped(
-        &app.ctx(),
-        "tok".into(),
-        "nonexistent".into(),
-        "ready".into(),
-    )
-    .await;
+    let result = update_kds_status_scoped(&app.ctx(), "tok", "nonexistent", "ready").await;
     assert!(result.is_err());
 }
 
@@ -435,7 +427,7 @@ async fn kds_orders_scoped_to_instance() {
     order_exp.target_instance_id = Some("kds-expediter".into());
     create_kds_order_in_store(&app, &order_exp);
 
-    let orders = list_kds_orders_scoped(&app.ctx(), "tok".into(), None)
+    let orders = list_kds_orders_scoped(&app.ctx(), "tok", None)
         .await
         .unwrap();
     assert_eq!(orders.len(), 1, "only kds-main orders should be visible");
@@ -456,7 +448,7 @@ async fn staff_can_list_kds_orders() {
     .unwrap();
     let app = scoped_state(conn, "tok", "user-staff", "role-staff", "s1", "kds-main");
 
-    let result = list_kds_orders_scoped(&app.ctx(), "tok".into(), None).await;
+    let result = list_kds_orders_scoped(&app.ctx(), "tok", None).await;
     assert!(result.is_ok(), "staff has KDS_VIEW permission");
     assert!(result.unwrap().is_empty());
 }
@@ -476,8 +468,7 @@ async fn staff_can_update_kds_status() {
     let order = test_kds_order("o1");
     let created = create_kds_order_in_store(&app, &order);
 
-    let result =
-        update_kds_status_scoped(&app.ctx(), "tok".into(), &created.id, "preparing".into()).await;
+    let result = update_kds_status_scoped(&app.ctx(), "tok", &created.id, "preparing").await;
     assert!(result.is_ok(), "staff has KDS_UPDATE permission");
 }
 
@@ -490,7 +481,7 @@ async fn register_kds_device_scoped_rejects_invalid_token() {
 
     let result = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "bad-token".into(),
+        "bad-token",
         RegisterKdsDeviceInput {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -523,7 +514,7 @@ async fn register_and_list_kds_devices_scoped() {
     // Register a device.
     let reg_result = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Kitchen Screen".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -540,7 +531,7 @@ async fn register_and_list_kds_devices_scoped() {
     );
 
     // List devices.
-    let list_result = crate::kds_device::list_kds_devices(&app.ctx(), "tok".into()).await;
+    let list_result = crate::kds_device::list_kds_devices(&app.ctx(), "tok").await;
     assert!(list_result.is_ok(), "list should succeed");
     let devices = list_result.unwrap();
     assert_eq!(devices.len(), 1, "should have 1 device");
@@ -552,13 +543,9 @@ async fn ack_kds_order_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
-    let result = crate::kds_device::ack_kds_order(
-        &app.ctx(),
-        "bad-token".into(),
-        "some-order-id".into(),
-        "kds-device-1".into(),
-    )
-    .await;
+    let result =
+        crate::kds_device::ack_kds_order(&app.ctx(), "bad-token", "some-order-id", "kds-device-1")
+            .await;
     assert!(result.is_err(), "invalid token should be rejected");
 }
 
@@ -569,9 +556,7 @@ async fn resolve_kds_targets_scoped_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "u1", "r1", "s1", "kds-main");
 
-    let result =
-        crate::kds_routing::resolve_kds_targets(&app.ctx(), "bad-token".into(), "sale-123".into())
-            .await;
+    let result = crate::kds_routing::resolve_kds_targets(&app.ctx(), "bad-token", "sale-123").await;
     assert!(result.is_err(), "invalid token should be rejected");
 }
 
@@ -599,7 +584,7 @@ async fn integration_enrollment_full_lifecycle() {
     // Step 1: Register a KDS device.
     let device = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Grill Display".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -620,7 +605,7 @@ async fn integration_enrollment_full_lifecycle() {
     );
 
     // Step 2: List devices — should show the registered device.
-    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok".into())
+    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok")
         .await
         .unwrap();
     assert_eq!(devices.len(), 1);
@@ -636,7 +621,7 @@ async fn integration_enrollment_full_lifecycle() {
     // Step 4: Device connects — update status to connected.
     crate::kds_device::update_kds_device_status(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         &device.id,
         oz_core::kds::KdsConnectionStatus::Connected,
     )
@@ -753,7 +738,7 @@ async fn integration_broadcast_device_receives_all_orders() {
     // Register a broadcast device (empty station_ids).
     let broadcast_device = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Expo Screen".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -825,7 +810,7 @@ async fn integration_inactive_device_excluded_from_routing() {
     // Register a device then deactivate it.
     let device = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Old Display".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -904,12 +889,11 @@ async fn integration_duplicate_device_name_rejected() {
     };
 
     // First registration succeeds.
-    let result1 =
-        crate::kds_device::register_kds_device(&app.ctx(), "tok".into(), input.clone()).await;
+    let result1 = crate::kds_device::register_kds_device(&app.ctx(), "tok", input.clone()).await;
     assert!(result1.is_ok(), "first registration should succeed");
 
     // Second registration with same name fails.
-    let result2 = crate::kds_device::register_kds_device(&app.ctx(), "tok".into(), input).await;
+    let result2 = crate::kds_device::register_kds_device(&app.ctx(), "tok", input).await;
     assert!(result2.is_err(), "duplicate name should be rejected");
 }
 
@@ -936,7 +920,7 @@ async fn integration_concurrent_ack_only_first_wins() {
     // Register two devices.
     let device_a = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Device A".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -950,7 +934,7 @@ async fn integration_concurrent_ack_only_first_wins() {
 
     let device_b = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Device B".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -1024,7 +1008,7 @@ async fn integration_health_monitoring_cycle() {
     // Register two devices.
     let device_good = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Good Display".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -1038,7 +1022,7 @@ async fn integration_health_monitoring_cycle() {
 
     let device_stale = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Stale Display".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -1053,7 +1037,7 @@ async fn integration_health_monitoring_cycle() {
     // Connect both, then backdate stale device's last_seen_at.
     crate::kds_device::update_kds_device_status(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         &device_good.id,
         oz_core::kds::KdsConnectionStatus::Connected,
     )
@@ -1061,7 +1045,7 @@ async fn integration_health_monitoring_cycle() {
     .unwrap();
     crate::kds_device::update_kds_device_status(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         &device_stale.id,
         oz_core::kds::KdsConnectionStatus::Connected,
     )
@@ -1149,7 +1133,7 @@ async fn integration_device_isolation_between_restaurants() {
     // Register device under resto-1.
     let device_a = crate::kds_device::register_kds_device(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         RegisterKdsDeviceInput {
             name: "Display A".into(),
             restaurant_pos_id: "resto-1".into(),
@@ -1179,7 +1163,7 @@ async fn integration_device_isolation_between_restaurants() {
     }
 
     // list_kds_devices_scoped only returns devices for the session's restaurant.
-    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok".into())
+    let devices = crate::kds_device::list_kds_devices(&app.ctx(), "tok")
         .await
         .unwrap();
     assert_eq!(devices.len(), 1, "should only see resto-1 devices");
@@ -1284,7 +1268,7 @@ async fn scoped_line_item_status_update_and_read_end_to_end() {
     seed_restaurant_product(&app);
     create_restaurant_sale_in_store(&app, "sale-lines-1");
 
-    let orders = create_kds_order_from_sale_scoped(&app.ctx(), "tok".into(), "sale-lines-1".into())
+    let orders = create_kds_order_from_sale_scoped(&app.ctx(), "tok", "sale-lines-1")
         .await
         .unwrap();
     assert_eq!(
@@ -1300,14 +1284,9 @@ async fn scoped_line_item_status_update_and_read_end_to_end() {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].item_status, "pending");
 
-    let updated = update_kds_line_item_status_scoped(
-        &app.ctx(),
-        "tok".into(),
-        &lines[0].id,
-        "preparing".into(),
-    )
-    .await
-    .unwrap();
+    let updated = update_kds_line_item_status_scoped(&app.ctx(), "tok", &lines[0].id, "preparing")
+        .await
+        .unwrap();
     assert_eq!(updated.item_status, "preparing");
     assert!(updated.started_at.is_some(), "started_at stamped");
 }
@@ -1320,13 +1299,13 @@ async fn scoped_update_kds_order_items_edits_ticket() {
     seed_restaurant_product(&app);
     create_restaurant_sale_in_store(&app, "sale-items-1");
 
-    let orders = create_kds_order_from_sale_scoped(&app.ctx(), "tok".into(), "sale-items-1".into())
+    let orders = create_kds_order_from_sale_scoped(&app.ctx(), "tok", "sale-items-1")
         .await
         .unwrap();
 
     let edited = update_kds_order_items_scoped(
         &app.ctx(),
-        "tok".into(),
+        "tok",
         oz_core::UpdateKdsOrderItemsInput {
             id: orders[0].id.clone(),
             items_summary: "Burger, Fries".into(),
@@ -1373,13 +1352,8 @@ async fn scoped_line_item_update_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = update_kds_line_item_status_scoped(
-        &app.ctx(),
-        "bad-token".into(),
-        "item-1".into(),
-        "preparing".into(),
-    )
-    .await;
+    let result =
+        update_kds_line_item_status_scoped(&app.ctx(), "bad-token", "item-1", "preparing").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
@@ -1388,7 +1362,7 @@ async fn scoped_get_order_lines_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result = get_kds_order_lines_scoped(&app.ctx(), "bad-token".into(), "order-1".into()).await;
+    let result = get_kds_order_lines_scoped(&app.ctx(), "bad-token", "order-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 
@@ -1399,7 +1373,7 @@ async fn scoped_update_order_items_rejects_invalid_token() {
 
     let result = update_kds_order_items_scoped(
         &app.ctx(),
-        "bad-token".into(),
+        "bad-token",
         oz_core::UpdateKdsOrderItemsInput {
             id: "order-1".into(),
             items_summary: String::new(),
@@ -1416,8 +1390,7 @@ async fn scoped_create_tickets_rejects_invalid_token() {
     let conn = oz_core::migrations::fresh_db();
     let app = scoped_state(conn, "tok", "user-owner", "role-owner", "s1", "kds-main");
 
-    let result =
-        create_kds_order_from_sale_scoped(&app.ctx(), "bad-token".into(), "sale-1".into()).await;
+    let result = create_kds_order_from_sale_scoped(&app.ctx(), "bad-token", "sale-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
 

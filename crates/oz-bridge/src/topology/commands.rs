@@ -523,7 +523,7 @@ pub async fn apply_topology_diff(
     // Finish any prior cross-database Apply before comparing revisions. A
     // prior process may have committed the diagram but not cleared its
     // journal, in which case recovery must finalize it first.
-    recover_pending_topology_apply(&ctx.db, &ctx.db_manager, &effective_store_id).await?;
+    recover_pending_topology_apply(ctx.db, ctx.db_manager, &effective_store_id).await?;
     {
         let global_db = ctx.db.lock().await;
         let current_revision = current_topology_revision(&global_db, &topology_key)?;
@@ -536,7 +536,7 @@ pub async fn apply_topology_diff(
                 format!(
                     "topology revision conflict: expected {base_revision}, current {current_revision}"
                 ),
-            ).into());
+            ));
         }
     }
 
@@ -586,7 +586,7 @@ pub async fn apply_topology_diff(
 
     // Snapshot all pre-existing rows that a later compensation may need to restore.
     let workspace_snapshot = snapshot_workspace_rows(
-        &ctx.db_manager,
+        ctx.db_manager,
         &effective_store_id,
         &workspace_updates,
         &workspace_archives,
@@ -608,7 +608,7 @@ pub async fn apply_topology_diff(
             format!(
                 "topology branch {requested_branch_id} does not match Branch Location {branch_profile_id}"
             ),
-        ).into());
+        ));
     }
     for creation in &workspace_creations {
         if creation.store_id != effective_store_id {
@@ -959,7 +959,7 @@ pub async fn apply_topology_diff(
         // The durable recovery journal was written before the workspace
         // transaction. Keep it until both databases have been compensated.
         if let Err(compensation_error) = compensate_workspace_diff(
-            &ctx.db_manager,
+            ctx.db_manager,
             &effective_store_id,
             &workspace_creations,
             &workspace_snapshot,

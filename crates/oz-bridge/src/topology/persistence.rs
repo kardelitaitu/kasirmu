@@ -288,8 +288,7 @@ pub fn save_topology_json_at_key_with_revision(
             None,
             None,
             format!("topology revision conflict: expected {expected}, current {current_revision}"),
-        )
-        .into());
+        ));
     }
     let revision = current_revision.saturating_add(1);
     let runtime_key = topology_runtime_setting_key(setting_key)?;
@@ -638,8 +637,7 @@ pub fn validate_semantic_ownership_in(
         None,
         None,
         format!("Branch Location references unknown store_profile_id: {profile_id}"),
-    )
-    .into())
+    ))
 }
 
 /// Pre-mutation validation gate for a topology Apply.
@@ -667,8 +665,7 @@ pub fn validate_apply_gate(
             None,
             None,
             "topology Apply requires canonical semantic node and wire fields",
-        )
-        .into());
+        ));
     }
     validate_semantic_ownership_in(registries, nodes, wires)?;
     validate_diagram_payloads(nodes, wires)
@@ -743,8 +740,7 @@ pub fn validate_warehouse_capacity(
                     "warehouse {} is at capacity ({stock}/{capacity})",
                     warehouse_id.unwrap_or("<unknown>")
                 ),
-            )
-            .into());
+            ));
         }
 
         // A capacity-aware warehouse with room must have an operational
@@ -774,8 +770,7 @@ pub fn validate_warehouse_capacity(
                         "warehouse {} has capacity but no operational stock or transfer route",
                         warehouse_id.unwrap_or("<unknown>")
                     ),
-                )
-                .into());
+                ));
             }
         }
     }

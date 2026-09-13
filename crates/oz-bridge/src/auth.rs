@@ -184,6 +184,7 @@ pub fn record_security_event(store: &Store, event: &SecurityEvent) {
 ///
 /// Returns [`BridgeError::Internal`] with the shell's exact
 /// "session store lock poisoned" text when the map's lock is poisoned.
+#[allow(clippy::too_many_arguments)] // the flat list IS the session row; see insert_session_at
 pub fn insert_session(
     ctx: &BridgeCtx<'_>,
     user_id: &str,
@@ -227,6 +228,7 @@ pub fn insert_session(
 ///
 /// Returns [`BridgeError::Internal`] with the shell's exact
 /// "session store lock poisoned" text when the map's lock is poisoned.
+#[allow(clippy::too_many_arguments)] // the flat list IS the session row: six identity columns plus the clock, plus the caller's expiry
 pub fn insert_session_at(
     ctx: &BridgeCtx<'_>,
     user_id: &str,

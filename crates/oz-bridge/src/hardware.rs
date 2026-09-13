@@ -131,7 +131,7 @@ pub async fn print_receipt(
     printer.print_receipt(&args.body).await?;
     // Emit a completion event so the front-end can show a toast.
     if let Some(sink) = &ctx.emitter {
-        let _ = sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
+        sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
     }
     Ok(PrintReceiptResult { printed_lines: n })
 }
@@ -372,7 +372,7 @@ pub async fn run_print_receipt_inner(
     printer.print_raw(&data).await?;
 
     if let Some(sink) = &ctx.emitter {
-        let _ = sink.emit(
+        sink.emit(
             "receipt:printed",
             serde_json::json!({ "lines": line_count }),
         );
@@ -464,7 +464,7 @@ pub async fn print_receipt_scoped(
     let n = lines.len();
     printer.print_receipt(&args.body).await?;
     if let Some(sink) = &ctx.emitter {
-        let _ = sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
+        sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
     }
     Ok(PrintReceiptResult { printed_lines: n })
 }
@@ -553,7 +553,7 @@ pub async fn start_scanner_scoped(
             Ok(s) => s,
             Err(e) => {
                 tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
-                let _ = sink.emit(
+                sink.emit(
                     "barcode:error",
                     serde_json::json!({ "error": e.to_string() }),
                 );
@@ -574,12 +574,12 @@ pub async fn start_scanner_scoped(
                                 "code": barcode.code,
                                 "symbology": format!("{:?}", barcode.symbology),
                             });
-                            let _ = sink.emit("barcode:scanned", payload);
+                            sink.emit("barcode:scanned", payload);
                         }
                         Ok(None) => {}
                         Err(e) => {
                             tracing::warn!(scanner = %scanner_id, error = %e, "scanner poll error");
-                            let _ = sink.emit("barcode:error", serde_json::json!({ "error": e.to_string() }));
+                            sink.emit("barcode:error", serde_json::json!({ "error": e.to_string() }));
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         }
                     }

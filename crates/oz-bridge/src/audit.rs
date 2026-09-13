@@ -438,8 +438,8 @@ fn audit_csv(entries: &[oz_core::AuditEntry]) -> String {
             &e.created_at,
             &e.user_id,
             &e.action,
-            &e.target_type.as_deref().unwrap_or(""),
-            &e.target_id.as_deref().unwrap_or(""),
+            e.target_type.as_deref().unwrap_or(""),
+            e.target_id.as_deref().unwrap_or(""),
             &e.outcome,
             &e.details,
         ]));

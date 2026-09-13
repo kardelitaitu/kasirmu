@@ -7,10 +7,10 @@
 //! harness; the exchange-rate section appended from
 //! `apps/desktop-client/src/commands/exchange_rates_tests.rs` drives the
 //! global-database rate path through the crate's headless `TestBridge`.
-//! The bridge's `currency_info` is a synchronous `&str` function (the `String`
-//! + `async` form is the desktop `#[tauri::command]` wrapper), so the three
-//! lookup cases dropped their `.await` and are plain `#[test]`s; the asserted
-//! behaviour is unchanged.
+//! The bridge's `currency_info` is a synchronous `&str` function (the
+//! `String` + `async` form is the desktop `#[tauri::command]` wrapper), so the
+//! three lookup cases dropped their `.await` and are plain `#[test]`s; the
+//! asserted behaviour is unchanged.
 
 use super::*;
 
