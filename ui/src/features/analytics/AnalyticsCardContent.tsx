@@ -17,7 +17,6 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { CanvasRenderer } from 'echarts/renderers';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { readCSSVar } from '@/utils/color';
-import type { MenuEngineeringRow } from '@/api/reports';
 import {
   alignPrevBuckets,
   alignPrevHourly,
@@ -28,44 +27,39 @@ import {
   type AovTrend,
   type BasketTrend,
   type Bucket,
-  type RankRow,
 } from './analytics-data';
 import type {
   CategoryBreakdownRow,
   CustomerSplitRow,
-  DiscountsSummaryRow,
   InventoryTrendRow,
   InventoryTurnoverRow,
-  LowStockAlert,
   PaymentMethodRow,
-  TopProductRow,
-  VoidedItemRow,
-  VoidedSummaryRow,
+  TableOccupancy,
 } from './analytics-data';
-import type { StaffAnalyticsRow, TableOccupancy } from './analytics-data';
 import type { Granularity, WorkspaceView } from './AnalyticsScreen';
-import { PAYMENT_NAMES, largestRemainderPcts, NO_BUCKETS, NO_HOURLY, NO_NUMBERS, CRITICAL_STOCK_LEVEL } from './cards/shared/constants';
+import { PAYMENT_NAMES, largestRemainderPcts, NO_BUCKETS, NO_HOURLY, NO_NUMBERS } from './cards/shared/constants';
 import { useMoney } from './cards/shared/useMoney';
 import { Visual } from './cards/shared/Visual';
 import { CardLoading, CardError, CardEmpty } from './cards/shared/CardStates';
 import { Kpi } from './cards/shared/Kpi';
 import { DeltaChip } from './cards/shared/DeltaChip';
 import { activeBuckets } from './cards/shared/buckets';
-import { RankedList } from './cards/shared/RankedList';
 import { Legend } from './cards/shared/Legend';
-import { useCardData, useCardDataCompare, rowDeltas } from './cards/shared/useCardData';
+import { useCardDataCompare } from './cards/shared/useCardData';
+import { ExportCsvButton } from './cards/shared/ExportCsvButton';
+import { DiscountsCard } from './cards/DiscountsCard';
+import { LowStockCard } from './cards/LowStockCard';
+import { RefundsCard } from './cards/RefundsCard';
+import { StaffCard } from './cards/StaffCard';
+import { TopItemsCard } from './cards/TopItemsCard';
+import { VoidsCard } from './cards/VoidsCard';
+import { WaitstaffCard } from './cards/WaitstaffCard';
 import {
   exportCategoryCsv,
   exportCustomersCsv,
-  exportDiscountsCsv,
-  exportLowStockCsv,
   exportOccupancyCsv,
   exportPaymentsCsv,
-  exportRefundsCsv,
-  exportStaffCsv,
-  exportTopItemsCsv,
   exportTrendCsv,
-  exportVoidedItemsCsv,
 } from './utils/analyticsCardCsv';
 
 echarts.use([EBar, ELine, EPie, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
@@ -147,26 +141,9 @@ function chartHeight(cardKey: string, expanded?: boolean | undefined): number {
 // (primitives now live in cards/shared/**; the export button stays exported
 //  from this file because its consumers import it from here)
 
-/** Small CSV export action — aria label describes what the card exports. */
-export function ExportCsvButton({ onClick, ariaLabel }: { onClick: () => void; ariaLabel: string }) {
-  const { l10n } = useLocalization();
-  return (
-    <button
-      type="button"
-      className="analytics-export-btn"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      title={ariaLabel}
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-      <span>{l10n.getString('analytics-export-csv')}</span>
-    </button>
-  );
-}
+/** Re-export keeps the exact path the screen and the test import from
+ *  (constraint 2); the implementation lives in cards/shared (Phase 2.2). */
+export { ExportCsvButton };
 
 // ── Per-card layouts ────────────────────────────────────────────────
 
@@ -283,35 +260,6 @@ function AovCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: st
   );
 }
 
-function StaffCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { short, fmt } = useMoney();
-  const { data: staff, prev: prevStaff, error } = useCardDataCompare<StaffAnalyticsRow[]>('staff', q, compare ?? false);
-  if (error) return <CardError error={error} />;
-  if (!staff) return <CardLoading />;
-  if (staff.length === 0) return <CardEmpty message={l10n.getString('analytics-empty-generic')} />;
-  const buildRows = (rows: StaffAnalyticsRow[]): RankRow[] => rows
-    .slice()
-    .sort((a, b) => b.sale_total_minor - a.sale_total_minor)
-    .map((r) => ({ name: r.display_name, value: r.sale_total_minor, display: short(r.sale_total_minor) }));
-  const rows = rowDeltas(buildRows(staff), prevStaff ? buildRows(prevStaff) : null);
-  const totalSales = rows.reduce((s, r) => s + r.value, 0);
-  const prevTotal = prevStaff ? prevStaff.reduce((s, r) => s + r.sale_total_minor, 0) : 0;
-  const delta = compare ? periodDelta(totalSales, prevTotal) : null;
-  return (
-    <Visual>
-      <div className="analytics-kpi-row">
-        <Kpi value={short(totalSales)} label={l10n.getString('analytics-card-staff-sales')} />
-        <div className="analytics-kpi-actions">
-          {delta !== null && <DeltaChip value={delta} compare={compare === true} />}
-          <ExportCsvButton ariaLabel={l10n.getString('analytics-export-csv-aria')} onClick={() => exportStaffCsv('staff-performance', staff, q.from, q.to, fmt, (id) => l10n.getString(id))} />
-        </div>
-      </div>
-      <RankedList rows={rows} ariaLabel={title} limit={expanded ? undefined : 5} />
-    </Visual>
-  );
-}
-
 function CustomersCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
   const { l10n } = useLocalization();
   const { count } = useMoney();
@@ -412,99 +360,6 @@ function PaymentsCard({ q, title, expanded, compare }: { q: AnalyticsQuery; titl
         <ReactEChartsCore echarts={echarts} option={option!} style={{ height: chartHeight('payments', expanded) }} notMerge />
       </div>
       <Legend items={segs.map((s, i) => ({ name: s.name, value: `${s.pct}%`, color: PALETTE[i % PALETTE.length]! }))} />
-    </Visual>
-  );
-}
-
-function DiscountsCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { data: summary, prev: prevSummary, error } = useCardDataCompare<DiscountsSummaryRow>('discounts', q, compare ?? false);
-  if (error) return <CardError error={error} />;
-  if (!summary) return <CardLoading />;
-  if (summary.codes.length === 0) return <CardEmpty message={l10n.getString('analytics-empty-generic')} />;
-  const rows: RankRow[] = summary.codes.map((c) => ({
-    name: c.label,
-    value: c.redeemed_count,
-    display: `${c.redeemed_count} ${l10n.getString('analytics-card-discounts-redeemed')}`,
-  }));
-  const discountShare = summary.share_percent;
-  const redeemed = summary.codes.reduce((s, c) => s + c.redeemed_count, 0);
-  const prevRedeemed = prevSummary ? prevSummary.codes.reduce((s, c) => s + c.redeemed_count, 0) : 0;
-  const delta = compare ? periodDelta(redeemed, prevRedeemed) : null;
-  return (
-    <Visual>
-      <div className="analytics-kpi-row">
-        <Kpi value={`${discountShare.toFixed(1)}%`} label={l10n.getString('analytics-card-discounts-share')} />
-        <div className="analytics-kpi-actions">
-          {delta !== null && <DeltaChip value={delta} compare={compare === true} />}
-          <ExportCsvButton ariaLabel={l10n.getString('analytics-export-discounts-aria')} onClick={() => exportDiscountsCsv(summary, q.from, q.to, (id) => l10n.getString(id))} />
-        </div>
-      </div>
-      <RankedList rows={rows} ariaLabel={title} limit={expanded ? undefined : 5} />
-    </Visual>
-  );
-}
-
-function RefundsCard({ q, compare }: { q: AnalyticsQuery; compare?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { fmtIn, count } = useMoney();
-  // REP-06: voided totals arrive as one row per currency.
-  const { data: rows, prev: prevRows, error } = useCardDataCompare<VoidedSummaryRow[]>('refunds', q, compare ?? false);
-  if (error) return <CardError error={error} />;
-  if (!rows) return <CardLoading />;
-  const totalCount = rows.reduce((s, r) => s + r.void_count, 0);
-  if (totalCount === 0) return <CardEmpty message={l10n.getString('analytics-empty-generic')} />;
-  const amountDisplay = rows.map((r) => fmtIn(r.void_total_minor, r.currency)).join(' · ');
-  const avgDisplay = rows
-    .map((r) => fmtIn(r.void_count > 0 ? Math.round(r.void_total_minor / r.void_count) : 0, r.currency))
-    .join(' · ');
-  const delta =
-    compare && prevRows
-      ? periodDelta(totalCount, prevRows.reduce((s, r) => s + r.void_count, 0))
-      : null;
-  return (
-    <Visual>
-      <div className="analytics-kpi-tiles">
-        <Kpi value={count(totalCount)} label={l10n.getString('analytics-card-refunds-count')} tone="bad" />
-        <Kpi value={amountDisplay} label={l10n.getString('analytics-card-refunds-amount')} tone="bad" />
-        <Kpi value={avgDisplay} label={l10n.getString('analytics-card-refunds-avg')} />
-      </div>
-      <div className="analytics-kpi-actions analytics-card-insight">
-        {delta !== null && <DeltaChip value={delta} tone="bad" compare={compare === true} />}
-        <ExportCsvButton ariaLabel={l10n.getString('analytics-export-refunds-aria')} onClick={() => exportRefundsCsv(rows, q.from, q.to, fmtIn, (id) => l10n.getString(id))} />
-      </div>
-    </Visual>
-  );
-}
-
-function TopItemsCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { short, fmt } = useMoney();
-  const { data: raw, prev: prevRaw, error } = useCardDataCompare<(TopProductRow | MenuEngineeringRow)[]>('top-items', q, compare ?? false);
-  if (error) return <CardError error={error} />;
-  if (!raw) return <CardLoading />;
-  if (raw.length === 0) return <CardEmpty message={l10n.getString('analytics-empty-generic')} />;
-  const buildRows = (list: (TopProductRow | MenuEngineeringRow)[]): RankRow[] => list.map((r) => {
-    if ('total_qty' in r) {
-      return { name: r.name, value: r.total_minor, display: `${short(r.total_minor)} · ${r.total_qty}×` };
-    }
-    return { name: r.name, value: r.total_revenue_minor, display: `${short(r.total_revenue_minor)} · ${r.total_volume}×` };
-  });
-  const rows = rowDeltas(buildRows(raw), prevRaw ? buildRows(prevRaw) : null);
-  const total = rows.reduce((s, r) => s + r.value, 0);
-  const prevTotal = prevRaw ? prevRaw.reduce((s, r) => s + ('total_qty' in r ? r.total_minor : r.total_revenue_minor), 0) : 0;
-  const topName = rows[0]?.name;
-  const delta = compare ? periodDelta(total, prevTotal) : null;
-  return (
-    <Visual>
-      <div className="analytics-kpi-row">
-        {topName && <Kpi value={topName} label={l10n.getString('analytics-card-top-product')} />}
-        <div className="analytics-kpi-actions">
-          {delta !== null && <DeltaChip value={delta} compare={compare === true} />}
-          <ExportCsvButton ariaLabel={l10n.getString('analytics-export-top-items-aria')} onClick={() => exportTopItemsCsv(raw, q.from, q.to, fmt, (id) => l10n.getString(id))} />
-        </div>
-      </div>
-      <RankedList rows={rows} ariaLabel={title} limit={expanded ? undefined : 5} />
     </Visual>
   );
 }
@@ -704,54 +559,6 @@ function InventoryCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
   );
 }
 
-function LowStockCard({ q, title, expanded }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { fmt } = useMoney();
-  // Low-stock alerts are a live inventory snapshot with no time-bounded
-  // history, so a period-over-period baseline would diff the snapshot
-  // against itself (a spurious 0.0% chip). Load through the plain
-  // single-window hook and never render a compare delta.
-  const { data: alerts, error } = useCardData<LowStockAlert[]>('low-stock', q);
-  if (error) return <CardError error={error} />;
-  if (!alerts) return <CardLoading />;
-  if (alerts.length === 0) return <CardEmpty message={l10n.getString('analytics-empty-low-stock')} />;
-  const rows = alerts.map((a) => ({
-    name: a.name,
-    stock: a.current_qty,
-    reorder: Math.max(0, a.threshold - a.current_qty),
-    cost: a.cost_minor,
-  }));
-  const restockCost = rows.reduce((s, r) => s + r.reorder * r.cost, 0);
-  const criticalCount = rows.filter((r) => r.stock <= CRITICAL_STOCK_LEVEL).length;
-  // Collapsed cards cap the alert list; expanding reveals every alert.
-  const shown = expanded ? rows : rows.slice(0, 5);
-  return (
-    <Visual>
-      <div className="analytics-kpi-tiles">
-        <Kpi value={fmt(restockCost)} label={l10n.getString('analytics-card-low-stock-restock')} tone="bad" />
-        <Kpi value={String(rows.length)} label={l10n.getString('analytics-card-low-stock-items')} />
-        <Kpi value={String(criticalCount)} label={l10n.getString('analytics-card-low-stock-critical')} tone="bad" />
-      </div>
-      <div className="analytics-kpi-actions analytics-card-insight">
-        <ExportCsvButton ariaLabel={l10n.getString('analytics-export-low-stock-aria')} onClick={() => exportLowStockCsv(alerts, q.from, q.to, fmt, (id) => l10n.getString(id))} />
-      </div>
-      <ul className="analytics-alert-list" aria-label={title}>
-        {shown.map((r, i) => {
-          const critical = r.stock <= CRITICAL_STOCK_LEVEL;
-          return (
-            <li key={`${r.name}-${i}`} className="analytics-alert-row">
-              <span className={`analytics-alert-dot${critical ? ' analytics-alert-dot--critical' : ' analytics-alert-dot--warn'}`} />
-              <span className="analytics-alert-name">{r.name}</span>
-              <span className="analytics-alert-count">{r.stock} {l10n.getString('analytics-card-low-stock-left')}</span>
-              <span className="analytics-alert-reorder">{l10n.getString('analytics-card-low-stock-order', { n: r.reorder })}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </Visual>
-  );
-}
-
 function TablesCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
   const { l10n } = useLocalization();
   const { data: raw, prev: prevRaw, error } = useCardDataCompare<Bucket[]>('tables', q, compare ?? false);
@@ -880,67 +687,6 @@ function OccupancyCard({ q, title, expanded, compare }: { q: AnalyticsQuery; tit
           <ReactEChartsCore echarts={echarts} option={option} style={{ height: chartHeight('occupancy', expanded) }} notMerge />
         </div>
       </div>
-    </Visual>
-  );
-}
-
-function WaitstaffCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { fmt, count } = useMoney();
-  const { data: staff, prev: prevStaff, error } = useCardDataCompare<StaffAnalyticsRow[]>('waitstaff', q, compare ?? false);
-  if (error) return <CardError error={error} />;
-  if (!staff) return <CardLoading />;
-  if (staff.length === 0) return <CardEmpty message={l10n.getString('analytics-empty-generic')} />;
-  // Rank waitstaff by covers served (sale_count), not revenue — the
-  // differentiator versus the shared Staff Performance card, which ranks by
-  // sales total.
-  const buildRows = (rows: StaffAnalyticsRow[]): RankRow[] => rows
-    .slice()
-    .sort((a, b) => b.sale_count - a.sale_count)
-    .map((r) => ({ name: r.display_name, value: r.sale_count, display: `${count(r.sale_count)} ${l10n.getString('analytics-card-waitstaff-covers')}` }));
-  const rows = rowDeltas(buildRows(staff), prevStaff ? buildRows(prevStaff) : null);
-  // "Total covers" is a count (orders served), not a money figure — sum the
-  // sale counts so the KPI matches its label.
-  const totalCovers = staff.reduce((s, r) => s + r.sale_count, 0);
-  const prevCovers = prevStaff ? prevStaff.reduce((s, r) => s + r.sale_count, 0) : 0;
-  const delta = compare ? periodDelta(totalCovers, prevCovers) : null;
-  return (
-    <Visual>
-      <div className="analytics-kpi-row">
-        <Kpi value={count(totalCovers)} label={l10n.getString('analytics-card-waitstaff-total')} />
-        <div className="analytics-kpi-actions">
-          {delta !== null && <DeltaChip value={delta} compare={compare === true} />}
-          <ExportCsvButton ariaLabel={l10n.getString('analytics-export-waitstaff-aria')} onClick={() => exportStaffCsv('waitstaff', staff, q.from, q.to, fmt, (id) => l10n.getString(id), 'covers')} />
-        </div>
-      </div>
-      <RankedList rows={rows} ariaLabel={title} limit={expanded ? undefined : 5} />
-    </Visual>
-  );
-}
-
-function VoidsCard({ q, title, expanded, compare }: { q: AnalyticsQuery; title: string; expanded?: boolean | undefined; compare?: boolean | undefined }) {
-  const { l10n } = useLocalization();
-  const { data: items, prev: prevItems, error } = useCardDataCompare<VoidedItemRow[]>('voids', q, compare ?? false);
-  if (error) return <CardError error={error} />;
-  if (!items) return <CardLoading />;
-  if (items.length === 0) return <CardEmpty message={l10n.getString('analytics-empty-generic')} />;
-  const rows = rowDeltas(
-    items.map((it) => ({ name: it.name, value: it.qty, display: `${it.qty}×` })),
-    prevItems ? prevItems.map((it) => ({ name: it.name, value: it.qty, display: '' })) : null,
-  );
-  const totalQty = rows.reduce((s, r) => s + r.value, 0);
-  const prevQty = prevItems ? prevItems.reduce((s, it) => s + it.qty, 0) : 0;
-  const delta = compare ? periodDelta(totalQty, prevQty) : null;
-  return (
-    <Visual>
-      <div className="analytics-kpi-tiles">
-        <Kpi value={String(totalQty)} label={l10n.getString('analytics-card-voids-count')} tone="bad" />
-      </div>
-      <div className="analytics-kpi-actions analytics-card-insight">
-        {delta !== null && <DeltaChip value={delta} tone="bad" compare={compare === true} />}
-        <ExportCsvButton ariaLabel={l10n.getString('analytics-export-voids-aria')} onClick={() => exportVoidedItemsCsv('voids', items, q.from, q.to, (id) => l10n.getString(id))} />
-      </div>
-      <RankedList rows={rows} ariaLabel={title} limit={expanded ? undefined : 5} />
     </Visual>
   );
 }
