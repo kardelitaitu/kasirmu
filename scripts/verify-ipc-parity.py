@@ -40,9 +40,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import sys
+import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -312,6 +315,36 @@ def load_allowlist() -> dict:
     return json.loads(ALLOWLIST_PATH.read_text(encoding="utf-8"))
 
 
+def write_allowlist_payload(payload: dict) -> None:
+    """The ONE way this gate writes the allowlist file: LF endings, UTF-8, no escapes.
+
+    All three writer flags used to call ALLOWLIST_PATH.write_text(...) with an encoding and
+    no newline argument, and Python text mode translates a newline into os.linesep -- on
+    Windows that re-emits the whole file as CRLF while changing not one character of its
+    text. Measured before this function existed: reseeding a copy of the real
+    scripts/ipc-parity-allowlist.json changed the file's bytes with ZERO differing text
+    lines, i.e. a pure line-ending rewrite of all 235 lines of a file another lane owns and
+    edits. The hazard is not the rewrite, it is what a rewrite makes of the next commit:
+    AGENTS.md section 3 says a pathspec commit takes the WORKING TREE copy, so any session
+    that commits this file for an unrelated reason after a writer run ships 235 lines of
+    somebody else's line-ending churn under a message describing something else, and the
+    reviewer's diff cannot tell churn from content.
+
+    LF is also what the repo asks for: .gitattributes pins "* text=auto eol=lf", and
+    git check-attr on the path answers text: auto, eol: lf, so index and working tree both
+    want LF. ensure_ascii=False belongs in the same helper for the same reason -- the file
+    holds five literal em dashes in its comment strings, and two of the three writers were
+    dumping without it, so --write-allowlist and --write-scoped-orphans each re-emitted
+    those comments as \u2014 escapes: a real text change dressed up as a reseed. One
+    helper, one shape, so a fourth writer cannot pick the wrong pair of arguments.
+    """
+    ALLOWLIST_PATH.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def allowlist_section(payload: dict, key: str) -> list[tuple[str, str]]:
     """One allowlist section as (name, reason) pairs, in the order the file holds them.
 
@@ -393,8 +426,7 @@ def write_dev_mock_gaps(gaps: list[str]) -> None:
     before = allowlist_section(payload, "dev_mock")
     payload["dev_mock"] = merge_dev_mock_entries(payload.get("dev_mock"), gaps)
     after = allowlist_section(payload, "dev_mock")
-    ALLOWLIST_PATH.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_allowlist_payload(payload)
     print(
         f"dev_mock seeded: {len(after)} entries (+{len(after) - len(before)} new, "
         f"{sum(1 for _, reason in after if reason)} carrying a reason)"
@@ -415,7 +447,7 @@ def write_allowlist(missing: dict[str, set[str]]) -> None:
     )
     for shell in SHELLS:
         payload[shell] = sorted(missing.get(shell, set()))
-    ALLOWLIST_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    write_allowlist_payload(payload)
     print(f"allowlist written: {ALLOWLIST_PATH}")
 
 
@@ -434,7 +466,7 @@ def write_scoped_orphans(orphans: set[str]) -> None:
         "the failure line says which of the two was observed, because the fix for one is "
         "deleting the entry and the fix for the other is deleting the command.",
     )
-    ALLOWLIST_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    write_allowlist_payload(payload)
     print(f"scoped_orphans seeded: {len(payload['scoped_orphans'])} entries")
 
 
@@ -758,6 +790,54 @@ def self_test() -> int:
          merge_dev_mock_entries(
              [{"name": "k_scoped", "reason": "r", "owner": "licensing"}], [])
          == [{"name": "k_scoped", "reason": "r", "owner": "licensing"}])
+
+    # 9: a writer has to leave the file as it found it. This one is measured on BYTES, in a
+    # temp directory, because the failure it closes is invisible to every assertion above:
+    # Python text mode turns a newline into os.linesep on Windows, so all three writer flags
+    # used to re-emit the whole allowlist as CRLF without changing one character of its text
+    # -- 235 lines marked modified by a session that nobody asked to edit them, on a file
+    # another lane owns, in a checkout where a pathspec commit takes the working-tree copy.
+    # ALLOWLIST_PATH is a module global, so it is rebound through globals() (assigning to the
+    # name in here would only make a local) and restored in a finally: a self-test that wrote
+    # the real allowlist would be the same hazard it exists to catch.
+    sample = {
+        "_comment": "one em — dash",
+        "dev_mock": ["a_scoped", "b_scoped"],
+        "desktop": [],
+        "tablet": [],
+        "scoped_orphans": [],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        probe = Path(tmp) / "allowlist.json"
+        try:
+            globals()["ALLOWLIST_PATH"] = probe
+            with redirect_stdout(io.StringIO()):
+                write_allowlist_payload(sample)
+                lf_only = probe.read_bytes()
+                write_dev_mock_gaps(["a_scoped"])
+                reseeded = probe.read_bytes()
+                write_dev_mock_gaps(["a_scoped", "c_scoped"])
+                grew = probe.read_bytes()
+                write_allowlist({"desktop": set(), "tablet": set()})
+                shells = probe.read_bytes()
+                write_scoped_orphans({"probe_orphan_scoped"})
+                orphans = probe.read_bytes()
+            case("case 9  a writer emits LF, never the platform line ending",
+                 b"\r" not in lf_only and lf_only.endswith(b"}\n"))
+            case("case 9  reseeding a gap list that has not moved changes zero bytes",
+                 lf_only == reseeded)
+            case("case 9  a literal em dash is not re-escaped on the way out",
+                 ("one em — dash" in grew.decode("utf-8")) and b"\\u" not in grew)
+            case("case 9  a new gap still arrives in the discoverable object shape",
+                 '"c_scoped"' in grew.decode("utf-8") and '"reason": ""' in grew.decode("utf-8"))
+            case("case 9  every writer flag shares that one write path",
+                 b"\r" not in shells and b"\r" not in orphans
+                 and "probe_orphan_scoped" in orphans.decode("utf-8"))
+        finally:
+            globals()["ALLOWLIST_PATH"] = saved_path
+    case("case 9  the self-test never touched the real allowlist path",
+         globals()["ALLOWLIST_PATH"] == saved_path)
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
