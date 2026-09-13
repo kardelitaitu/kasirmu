@@ -1,4 +1,32 @@
 
+## 2026-09-13 — Policy: remove workspace-wide cargo fmt from pre-commit (agents)
+
+**Context:**
+The pre-commit hook's fmt step was trigger-scoped but never work-scoped: it fired when `.rs` files were staged (`git diff --cached --name-only -- '*.rs'`) but then ran `cargo fmt --all` — the *whole workspace* — re-staging only the previously-staged set. In this shared checkout with multiple concurrent agents, any Rust commit reformatted every other session's in-flight `.rs` files in the working tree; whoever committed next swept formatting they did not choose into their pathspec commit. The hazard is recorded independently in three agent journals (manager-2, coder-5, done-todo-refactor-oz-pos-app-agents-2); the `--no-verify` workarounds it forced are the recurring cost. User ordered full removal of the gate (policy/config change, not a TDD fix — no Red/Green).
+
+**Changes:**
+1. `.githooks/pre-commit`: deleted the `# ── cargo fmt ──` section (24 lines) and the now-dead `$RUSTUP` locator block (18 lines) that had no other consumer. The hook now opens with line-ending normalization and has exactly 7 sections (`grep -c '^# ──'` = 7). Header comment updated to record why fmt is absent.
+2. Root `AGENTS.md`: hooksPath comment dropped "fmt"; "eight steps" → "seven"; step-1 fmt bullet deleted; steps renumbered (bundle parity 3→2, FTL dedupe 4→3, column-type 5→4, PG drift 6→5, Go 7→6, FTL orphan 8→7); "mirror of step 3" → "step 2"; §4 "Pre-commit step 7 fails on drift" → "step 5"; CI-backstop paragraph renumbered ("Steps 5 and 6" → "4 and 5", "Step 7 (Go)" → "Step 6", "Step 8's backstop" → "Step 7's"); added the 🚫 removal blockquote naming where fmt is enforced now (pre-push `scripts/run-pre-push.py`, CI `dev-ci.yml#cargo-check`, `scripts/check.sh`, `scripts/release.sh`).
+3. `.agents/AGENTS.md` mirror: same set (its condensed step list rewritten 8→7, "none of the eight run at commit time" → "none of the seven", "Steps 5 and 6"/"Step 7 (Go)" renumbered, §4 "step 7" → "step 5", stamp "10 pre-commit gates" → "7 (count corrected 2026-09-13)") + the removal note.
+4. Skills: `tdd`/`project-scaffold` "As of 0.0.37 there are eight:" → "seven" (fmt dropped from the enumeration, orphan now step 7, removal reason appended); `onboarding-guide` "runs eight steps" → "seven steps" with the fmt clause removed and removal note appended.
+5. `scripts/setup-dev.ps1` line 8: "Enable Git hooks (pre-commit fmt + lint)" → "pre-commit content gates; fmt moved to pre-push/CI on 2026-09-13". Line 155's generic quick-reference `cargo fmt` command left untouched.
+6. `docs/guides/ARCHITECTURE.md:277`: "pre-commit quality gates (`cargo fmt + clippy + i18n lint + bundle parity`)" — a stale enumeration from before the hook was rebuilt — replaced with the live gate list and where fmt/clippy actually run.
+7. `scripts/gates.json` rust-fmt entry: verified already accurate (runners: check.sh + CI dev-ci.yml#cargo-check; no pre-commit claim) — no edit.
+8. Not edited (historical records, correct as records): `docs/plans/0.0.36-backlog.md` eight-step mentions, agent journals, `docs/archived/*`, audit-stamp history inside onboarding-guide.
+
+**What it means:**
+Formatting stays enforced — check-only, outside the commit path: `cargo fmt --all -- --check` in pre-push (`scripts/run-pre-push.py:127`), CI (`dev-ci.yml#cargo-check`), `check.sh:39`, `release.sh:59`. An unformatted commit now fails loudly at pre-push/CI instead of being silently fixed at commit time. Agents must run `cargo fmt --all` themselves before pushing. Trade-off recorded: a hook-less clone with an unformatted HEAD has no commit-time guard at all — CI remains the backstop, same as every other gate in this repo.
+
+**Verification:**
+- `python3 scripts/verify-agents-mirrors.py` — green (all mirrors + skills agree with the hook's 7 sections).
+- `bash -n .githooks/pre-commit` syntax clean; `grep -c '^# ──' .githooks/pre-commit` = 7.
+- `bash scripts/test-eol-guard.sh` green (live EOL guard extraction unaffected).
+- Hook smoke-run: `bash .githooks/pre-commit` exits 0 and no longer runs fmt even with staged `.rs` files.
+- `verify-ci-docs-drift.py` + `verify-release-workflow.py --self-test` pass (hook's workflow citations unchanged).
+
+**Commit:** single pathspec commit `chore(agents): remove workspace-wide cargo fmt gate from pre-commit` — never push without a direct user order.
+
+
 ## 2026-09-13 — TDD: health-check timeout misreported the sync deadline (platform-sync)
 
 **Context & Identified Weakness:**

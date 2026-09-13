@@ -1,30 +1,10 @@
 #!/bin/bash
 
-# .githooks/pre-commit — auto-format Rust code before every commit.
+# .githooks/pre-commit — content gates that run before every commit.
+# (Rust formatting is NOT enforced here: it lives in pre-push/CI/check.sh.
+# A commit-time auto-fmt rewrote other agents' in-flight .rs files in the
+# shared working tree — see AGENTS.md Quick Setup for the rationale.)
 set -e
-
-# Locate rustup portably. The previous hardcoded WSL path
-# (/mnt/c/Users/.../.cargo/bin/rustup.exe) broke the hook under Git Bash
-# on Windows, where /mnt/c does not resolve. Prefer rustup on PATH, then
-# rustup.exe, then the standard Windows install location under /c/.
-RUSTUP=""
-if command -v rustup >/dev/null 2>&1; then
-    RUSTUP="rustup"
-elif command -v rustup.exe >/dev/null 2>&1; then
-    RUSTUP="rustup.exe"
-else
-    for d in /c/Users/*/.cargo/bin; do
-        if [ -x "$d/rustup.exe" ]; then
-            RUSTUP="$d/rustup.exe"
-            break
-        fi
-    done
-fi
-
-if [ -z "$RUSTUP" ]; then
-    echo "error: rustup not found — install Rust or add cargo's bin dir to PATH. Aborting commit." >&2
-    exit 1
-fi
 
 # Locate Python portably. Git Bash on Windows ships `python` (not
 # `python3`), while WSL/Linux have `python3` — hardcoding either breaks
@@ -39,31 +19,6 @@ fi
 if [ -z "$PYTHON" ]; then
     echo "error: python3/python not found — install Python or add it to PATH. Aborting commit." >&2
     exit 1
-fi
-
-# ── cargo fmt ──────────────────────────────────────────────────────────────
-# Run cargo fmt only when .rs files are staged in the current commit.
-# Running workspace-wide fmt unconditionally took ~2s on every non-Rust commit.
-STAGED_RS=$(git diff --cached --name-only -- '*.rs')
-if [ -n "$STAGED_RS" ]; then
-    if ! "$RUSTUP" run stable cargo fmt --all 2>/dev/null; then
-        echo "error: cargo fmt failed — aborting commit." >&2
-        exit 1
-    fi
-    # Re-stage ONLY .rs files that are part of the current commit (staged
-    # before the hook ran). Formatting fixes to .rs files outside the staged
-    # set stay in the worktree for their owner's own commit.
-    EXISTING_RS=""
-    for f in $STAGED_RS; do
-        if [ -f "$f" ]; then
-            EXISTING_RS="$EXISTING_RS $f"
-        fi
-    done
-    if [ -n "$EXISTING_RS" ]; then
-        echo "cargo fmt applied changes to:"
-        echo "$EXISTING_RS"
-        git add $EXISTING_RS
-    fi
 fi
 
 
@@ -238,7 +193,7 @@ if [ -f scripts/generate-pg-migration.py ]; then
 fi
 
 # ── Go gate: apps/license-server ──────────────────────────────────────
-# gofmt (auto-fix + re-stage, mirroring the cargo fmt step above) and
+# gofmt (auto-fix + re-stage) and
 # `go vet ./...` (hard fail) for the Go license server. Runs only when
 # the commit stages .go files under apps/license-server/. Line endings
 # are handled by the normalization step above (.gitattributes pins LF
@@ -281,7 +236,7 @@ fi
 
 
 # ── FTL orphan lint ───────────────────────────────────────────────────────
-# The mirror of bundle parity. Step 4 fails when code names a key that no bundle defines;
+# The mirror of bundle parity. That step fails when code names a key that no bundle defines;
 # nothing checked the opposite direction, so a key left behind by a removed feature stayed
 # invisible. It has happened: topology-shortcuts-* (18 keys, the feature removed per
 # popoverSurfaceCompliance.test.tsx:54) and ~23 warehouse-* keys with zero references

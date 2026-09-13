@@ -5,7 +5,7 @@
 .DESCRIPTION
     Automates the common onboarding steps:
     1. Verify prerequisites (Rust, Node.js, Git)
-    2. Enable Git hooks (pre-commit fmt + lint)
+    2. Enable Git hooks (pre-commit content gates; fmt moved to pre-push/CI on 2026-09-13)
     3. Install npm dependencies (respects the pinned install-script approvals in ui/package.json;
        see ui/README.md#install-script-approvals)
     4. Run database migration
