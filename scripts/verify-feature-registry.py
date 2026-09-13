@@ -75,6 +75,7 @@ EXIT CODES
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -524,6 +525,9 @@ HEAD_REG = {RUST_FEATURES_REL: FX_RUST_HEAD, FRONTEND_FEATURES_REL: FX_FRONT_HEA
 DISK_REG = {RUST_FEATURES_REL: FX_RUST_DISK, FRONTEND_FEATURES_REL: FX_FRONT_DISK}
 
 CASE_ONE = "HEAD grading is real, not only injectable"
+CASE_SKIP = "a case that cannot run is not a pass"
+CASE_RAISE = "a case that raises names itself"
+CASES = (CASE_ONE, CASE_SKIP, CASE_RAISE)
 
 # (printed line, what its presence proves)
 EXPECT = [
@@ -539,40 +543,128 @@ EXPECT = [
 ]
 
 
+def _child(path: Path) -> tuple[int, str]:
+    """Run a copy of this gate with --self-test; the child does not re-mutate."""
+    env = dict(os.environ, FR_SELFTEST_NESTED="1")
+    proc = subprocess.run([sys.executable, str(path), "--self-test"], env=env,
+                          capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=300)
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
+def _verdict(case: str, ok: bool, why: str) -> None:
+    print(("  CAUGHT  " if ok else "  MISSED  ") + case + " -- " + why)
+
+
+def _grade_case(tmp: Path, ran: list) -> int:
+    """CASE_ONE: build a repo, dirty it the way the shipped defect could, and grade it."""
+    repo = tmp / "repo"
+    _seed(repo, HEAD_REG)
+    usable = (_git(repo, "init", "-q")
+              and _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+              and _git(repo, "-c", "user.email=t@t", "-c", "user.name=t",
+                       "-c", "core.autocrlf=false", "commit", "-qm",
+                       "fixture: HEAD defines reports only"))
+    if not usable:
+        # The skip shape, fixed: nothing was graded, so there is no pass to report.
+        _verdict(CASE_ONE, False,
+                 "ABORTED -- git is unavailable here, so this case never reached a"
+                 " verdict and cannot certify anything")
+        ran.append(CASE_ONE)
+        return 1
+    # The very edit that used to turn this gate green: registered keys added on disk
+    # only, with the registrations already committed.
+    _seed(repo, DISK_REG)
+    proc = subprocess.run(
+        [sys.executable, "scripts/verify-feature-registry.py"], cwd=str(repo),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=300)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    ran.append(CASE_ONE)
+    missed = 0
+    for line, why in EXPECT:
+        hit = line in out
+        _verdict(CASE_ONE, hit, "printed: " + why if hit else
+                 "printed: " + why + " -- line absent from the run")
+        missed += 0 if hit else 1
+    if "verify-feature-registry: 0 issue(s)." in out:
+        _verdict(CASE_ONE, False, "the fixture was certified clean, which IS the"
+                 " shipped defect")
+        missed += 1
+    return missed
+
+
+def _harness_cases(tmp: Path, ran: list) -> int:
+    """CASE_SKIP and CASE_RAISE: mutate copies of this file and watch the harness.
+
+    An assertion about an aborted case has to be made from outside the run that
+    aborts, so each shape is forced on a child: the skip by making git look absent,
+    the raise by renaming the call a graded case depends on.
+    """
+    me = Path(__file__).read_text(encoding="utf-8")
+    # The anchors are assembled, not written out: a literal anchor also occurs in
+    # this own definition, which made the first version of the case find two copies
+    # of what it meant to mutate exactly once.
+    Q = chr(34)
+    skip_old = "    usable = (" + "_git(repo, " + Q + "init" + Q + ", " + Q + "-q" + Q + ")"
+    skip_new = "    usable = (False" + " and _git(repo, " + Q + "init" + Q + ", " + Q + "-q" + Q + ")"
+    raise_old = "    _seed(repo, " + "DISK_REG)"
+    raise_new = "    _seed_nope(repo, " + "DISK_REG)"
+    cases = [
+        (CASE_SKIP, skip_old, skip_new, "ABORTED", "SKIPPED"),
+        (CASE_RAISE, raise_old, raise_new, "ABORTED " + CASE_ONE, ""),
+    ]
+    failures = 0
+    for case, old, new, want, forbidden in cases:
+        if me.count(old) != 1:
+            _verdict(case, False, "the mutation anchor is no longer unique (count "
+                     + str(me.count(old)) + "), so the case proves nothing")
+            ran.append(case)
+            failures += 1
+            continue
+        p = tmp / ("mutant_" + case[2:8] + ".py")
+        p.write_text(me.replace(old, new, 1), encoding="utf-8")
+        rc, out = _child(p)
+        ran.append(case)
+        ok = want in out and rc != 0 and (not forbidden or forbidden not in out)
+        _verdict(case, ok, "child exit " + str(rc) + " and printed line "
+                 + ("named the lost case" if want in out else "never named it")
+                 + ("" if ok else " -- out: " + out.strip().replace(chr(10), " / ")[:220]))
+        failures += 0 if ok else 1
+    return failures
+
+
 def self_test() -> int:
-    """Grade a throwaway git repo with this gate's own bytes and check what printed."""
+    """Grade the fixture tree, and account for every case -- including the lost ones.
+
+    Two swallow shapes are closed here, each with its own case above:
+      * a case that could not run printed SKIPPED and exited 0, while the help text
+        promises every check fires -- it is now ABORTED, named, and counted;
+      * a case that raised left the process non-zero but silent about WHICH case died;
+        the handler below prints the case name it was working on.
+    """
+    nested = os.environ.get("FR_SELFTEST_NESTED") == "1"
+    planned = 1 if nested else len(CASES)
+    ran: list = []
+    failures = 0
+    case = "fixture setup"
     with tempfile.TemporaryDirectory(prefix="feature-registry-selftest-") as tmp:
-        repo = Path(tmp) / "repo"
-        _seed(repo, HEAD_REG)
-        usable = (_git(repo, "init", "-q")
-                  and _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
-                  and _git(repo, "-c", "user.email=t@t", "-c", "user.name=t",
-                           "-c", "core.autocrlf=false", "commit", "-qm",
-                           "fixture: HEAD defines reports only"))
-        if not usable:
-            print("  SKIPPED " + CASE_ONE + " -- no git in this environment")
-            print("self-test: 0 failure(s)")
-            return 0
-        # The very edit that used to turn this gate green.
-        _seed(repo, DISK_REG)
-        proc = subprocess.run(
-            [sys.executable, "scripts/verify-feature-registry.py"], cwd=str(repo),
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=120)
-        out = proc.stdout + proc.stderr
-        missed = []
-        for line, why in EXPECT:
-            if line in out:
-                print("  CAUGHT  " + CASE_ONE + " -- printed: " + why)
-            else:
-                print("  MISSED  " + CASE_ONE + " -- printed: " + why)
-                missed.append(line)
-        if "verify-feature-registry: 0 issue(s)." in out:
-            print("  MISSED  " + CASE_ONE + " -- the fixture was certified clean,"
-                  " which is the shipped defect")
-            missed.append("certified clean")
-        print("self-test: " + str(len(missed)) + " failure(s)")
-        return 1 if missed else 0
+        try:
+            case = CASE_ONE
+            failures += _grade_case(Path(tmp), ran)
+            if not nested:
+                case = "harness mutant children"
+                failures += _harness_cases(Path(tmp), ran)
+        except Exception as exc:
+            print("  ABORTED " + case + " -- " + type(exc).__name__ + ": "
+                  + str(exc)[:160])
+            failures += 1
+        if len(ran) < planned:
+            print("  ABORTED " + str(planned - len(ran)) + " of " + str(planned)
+                  + " case(s) never reached a verdict")
+            failures += 1
+    print("self-test: " + str(failures) + " failure(s)")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
