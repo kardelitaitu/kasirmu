@@ -1683,15 +1683,16 @@ def self_test() -> int:
         saved_argv = list(sys.argv)
         probe10 = Path(tmp10) / "allowlist.json"
         inert_out = ""
+        probe_payload = {
+            "_comment": "probe file, never the real allowlist",
+            "desktop": ["probe_zz_uninvoked_a"], "tablet": ["probe_zz_uninvoked_b"],
+            "dev_mock": ["probe_zz_uninvoked_c"],
+            "scoped_orphans": ["probe_zz_uninvoked_d"],
+        }
         try:
             globals()["ALLOWLIST_PATH"] = probe10
             sys.argv = ["probe"]
-            write_allowlist_payload({
-                "_comment": "probe file, never the real allowlist",
-                "desktop": ["probe_zz_uninvoked_a"], "tablet": ["probe_zz_uninvoked_b"],
-                "dev_mock": ["probe_zz_uninvoked_c"],
-                "scoped_orphans": ["probe_zz_uninvoked_d"],
-            })
+            write_allowlist_payload(probe_payload)
             out10, err10 = io.StringIO(), io.StringIO()
             with redirect_stdout(out10), redirect_stderr(err10):
                 main()
@@ -1699,18 +1700,61 @@ def self_test() -> int:
         finally:
             globals()["ALLOWLIST_PATH"] = saved_path
             sys.argv = saved_argv
-    inert_lines = [ln for ln in inert_out.splitlines() if "-uninvoked]:" in ln]
-    case("case 19  all four sections report how many accepted names match nothing they walked",
-         len(inert_lines) == 4
-         and [ln.split("]")[0][5:] for ln in inert_lines]
-         == ["desktop-uninvoked", "tablet-uninvoked", "dev_mock-uninvoked",
-             "scoped_orphans-uninvoked"], )
-    case("case 19  the figure carries both sides of its own fraction, on names I invented",
-         all("0 of 1 allowlisted names" in ln and "1 match no invoke site" in ln
-             and "enforce nothing" in ln and "Informational" in ln for ln in inert_lines), )
-    case("case 19  and it names the corpus it counted instead of borrowing another gate's word",
-         all("UI command strings this run walked" in ln
-             and "wrapper" not in ln for ln in inert_lines), )
+    # Figures are PARSED and compared to the fixture, never to a count of a constant the loop
+    # above sets. The first version asserted len(lines) == 4 next to a 4-element section tuple,
+    # which is a value compared to itself: it would have held with any line content, including
+    # no names, no populations, and the wrong sections. Everything numeric here is either 1 (my
+    # invented entry, one per section) or a floor on the tree figure, and the floor is what
+    # makes the denominator's provenance testable -- 4 names in the file cannot produce a
+    # population of hundreds, so a line that derives its middle figure from the file fails.
+    line_re = re.compile(
+        r"^info\[(?P<section>[a-z_]+)-inert\]: (?P<entries>\d+) allowlisted entries, "
+        r"(?P<pop>\d+) (?P<unit>[^,]+), (?P<universe>\d+) command names in the tree this "
+        r"run; (?P<names>\d+) of the allowlisted entries match no command name in the tree "
+        r"at all and (?P<callers>\d+) match no UI invoke site")
+    inert_lines = [ln for ln in inert_out.splitlines() if "-inert]:" in ln]
+    # Counted from the fixture, never quoted from a tree: four sections, one invented name
+    # each, so this is 4 by arithmetic on my own dict and cannot move with a checkout. It is
+    # the far side of the provenance test -- the tree denominator must be bigger than the
+    # whole fixture, which is a claim about where the number came from rather than about what
+    # the tree happens to hold. An earlier version compared it against a literal 100, and this
+    # suite went red twice tonight over floors of exactly that kind.
+    fixture_entries_total = sum(len(v) for k, v in probe_payload.items() if not k.startswith("_"))
+    parsed = [line_re.match(ln) for ln in inert_lines]
+    matched = [m for m in parsed if m is not None]
+    # This is the assertion that has to fail by NAME when the line's format changes. Without
+    # the matched/inert_lines pairing a mutated line stops parsing, every later assertion
+    # becomes all() over an empty list, and the suite reports an AttributeError traceback
+    # instead of a case -- exit 1 with no name is how three of tonight's findings nearly got
+    # away. The pairing is len(matched) == len(inert_lines) plus a non-empty check, so the
+    # later assertions are vacuous exactly when this one has already reddened.
+    case("case 19  every enforced section reports, in order, and the line parses as claimed",
+         bool(inert_lines) and len(matched) == len(inert_lines)
+         and [m.group("section") for m in matched]
+         == ["desktop", "tablet", "dev_mock", "scoped_orphans"], )
+    case("case 19  each line counts my one invented entry on both sides of its own fraction",
+         len(matched) == len(inert_lines)
+         and all(m.group("entries") == "1" and m.group("names") == "1"
+                 and m.group("callers") == "1" for m in matched), )
+    # One tree measurement, printed identically on all four lines, and larger than the entire
+    # fixture file. A line that derived its denominator from the allowlist would print 1 or 4
+    # here and cannot print anything bigger than 4, so this is the assertion that dies if the
+    # tree denominator is deleted -- and no figure in it names a tree quantity, so it stays true
+    # on a checkout where every gap in the repo has been registered. The middle population
+    # figure carries its spelled-out unit and nothing else: its value is a tree count, and a
+    # suite that reddens because another lane closed or opened a gap is a second gate, not a
+    # test of the first.
+    case("case 19  the denominator is one tree measurement, not the file's own size",
+         len(matched) == len(inert_lines)
+         and len({m.group("universe") for m in matched}) == 1
+         and int(matched[0].group("universe")) > fixture_entries_total
+         and all(len(m.group("unit").strip()) > 10 for m in matched), )
+    case("case 19  and a name that matches nothing is printed by name, in the right list",
+         all(f"by name: probe_zz_uninvoked_{tail}" in ln
+             and f"by caller: probe_zz_uninvoked_{tail}" in ln
+             for ln, tail in zip(inert_out.splitlines(), "abcd")
+             if "-inert]:" in ln)
+         and all("UI invoke site" in ln and "wrapper" not in ln for ln in inert_lines), )
 
     # 20: the busy refusal has to name every reader that can be hit, which is the only reason
     # the tuple exists. Asserted twice on purpose. The printed sentence is BUILT from the
@@ -1738,13 +1782,31 @@ def self_test() -> int:
                 os.replace = real_rep20
         finally:
             globals()["ALLOWLIST_PATH"] = saved_path
-    case("case 20  the list of bare readers names all four, including the neighbouring gate",
-         set(ALLOWLIST_READER_CALL_SITES) == {
-             ".github/workflows/dev-ci.yml:590", "scripts/check.sh:56",
-             "scripts/run-pre-push.py:107", "scripts/verify-scoped-reads.py:266"}, )
-    case("case 20  and the refusal prints every one of them to the operator",
-         len(ALLOWLIST_READER_CALL_SITES) == 4
-         and all(site in busy_text for site in ALLOWLIST_READER_CALL_SITES), )
+    # The expectation is a literal here, not a view of the tuple: the first version compared
+    # set(tuple) against a set written from the same four strings and a length guard taken from
+    # the tuple itself, so dropping an element from the list could not redden the second
+    # assertion -- the sentence under test is BUILT from that list, which makes a
+    # tuple-in-text check a value compared to itself. That is how the fourth reader stayed
+    # unlisted all night. busy_text is produced by write_allowlist_payload against a rename
+    # patched to fail, so it is the code path's output, not a string assembled here.
+    expected_readers = [
+        ".github/workflows/dev-ci.yml:590",
+        "scripts/check.sh:56",
+        "scripts/run-pre-push.py:107",
+        "scripts/verify-scoped-reads.py:266",
+    ]
+    case("case 20  the bare readers are exactly these four paths, in this order",
+         list(ALLOWLIST_READER_CALL_SITES) == expected_readers, )
+    case("case 20  and the refusal the code produces names every path in that literal list",
+         "Readers of this path:" in busy_text
+         and all(site in busy_text for site in expected_readers), )
+    # RESIDUAL GAP, named rather than left looking like coverage: neither assertion can tell me
+    # that the four strings still point at real bare reads. The line numbers were true at
+    # 2026-09-13 12:36 and scripts/verify-scoped-reads.py is being edited by another lane now,
+    # so :266 can drift out from under audit() and every assertion above stays green. Policing
+    # that would mean reading a file outside this fence from inside a self-test, which is a
+    # worse coupling than the one it closes. This case is a drift tripwire on the LIST, not a
+    # proof about the four readers.
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
@@ -1967,24 +2029,49 @@ def main() -> int:
     # in particular and reding the tree for all of them at once would train people to ignore
     # the gate, which is the outcome this whole file exists to avoid.
     #
-    # The predicate is invoke-site presence in the UI corpus this run walked, NOT wrapper
-    # presence. An audit at 12:36 reported 25 of 25 scoped names, 30 of 154 tablet, 1 of 27
-    # desktop and 1 of 16 dev_mock resolving to zero api wrappers out of 407 wrapper keys. The
-    # scoped figure agrees with what this line prints and for the same reason; the shell
-    # figures do not, because a wrapper and an invoke site are different quantities and
-    # verify-scoped-reads.py owns the wrapper notion. This line says which of the two it
-    # counted rather than borrowing the other gate's word for it.
+    #
+    # THREE POPULATIONS, because two made a stale entry arithmetically invisible. The first
+    # version of this line printed "153 of 154", numerator and denominator both taken from the
+    # file: entries that appear, over entries that exist. That fraction can describe only the
+    # file's own membership, so an entry the tree no longer supports was not merely unlabeled,
+    # it was unrepresentable -- and 26 names set against 25 entries is not a subset relation at
+    # all, which is how the printout read. So every line now carries a middle figure measured
+    # from the tree with no reference to the file's size (what this shell does not register,
+    # what no mock handler answers, what is registered with no caller) and a third figure that
+    # is the whole registered-and-invoked universe. The stale form is then expressible:
+    # entries in the file, a tree count independent of it, names matching nothing in that tree.
+    #
+    # The last figure is invoke-site presence, NOT api-wrapper presence -- an audit at 12:36
+    # reported 25 of 25 scoped, 30 of 154 tablet, 1 of 27 desktop, 1 of 16 dev_mock matching no
+    # wrapper out of 407 wrapper keys, and verify-scoped-reads.py owns that notion. The line
+    # says which corpus it counted instead of borrowing the neighbour's word for it. Nothing
+    # here is widened to make the figures agree: for scoped_orphans the honest reading is that
+    # all 25 entries match a registered name and none matches a caller, and that disagreement
+    # is the product.
+    registered_names = set().union(*(set(handlers[shell]) for shell in SHELLS))
+    tree_names = registered_names | set(ui_commands)
+    populations = {
+        "desktop": (len(missing["desktop"]), "UI command names this shell does not register"),
+        "tablet": (len(missing["tablet"]), "UI command names this shell does not register"),
+        "dev_mock": (len(mock_gaps), "UI command names no mock handler answers"),
+        "scoped_orphans": (len(all_orphans), "scoped commands registered with no caller"),
+    }
     for section in (*EXTERNALLY_READ_SECTIONS, *OBJECT_ALLOWED_SECTIONS):
-        section_names_this_run = section_names(allowlist, section)
-        uninvoked = sorted(section_names_this_run - set(ui_commands))
+        entries = section_names(allowlist, section)
+        off_tree = sorted(entries - tree_names)
+        uninvoked = sorted(entries - set(ui_commands))
+        tree_count, tree_unit = populations[section]
         print(
-            f"info[{section}-uninvoked]: {len(section_names_this_run) - len(uninvoked)} of "
-            f"{len(section_names_this_run)} allowlisted names in \"{section}\" appear among "
-            f"the {len(ui_commands)} UI command strings this run walked; {len(uninvoked)} "
-            f"match no invoke site at all and therefore enforce nothing"
-            + (f" -- {', '.join(uninvoked[:3])}"
+            f"info[{section}-inert]: {len(entries)} allowlisted entries, {tree_count} "
+            f"{tree_unit}, {len(tree_names)} command names in the tree this run; "
+            f"{len(off_tree)} of the allowlisted entries match no command name in the tree "
+            f"at all and {len(uninvoked)} match no UI invoke site -- an entry in either list "
+            f"is accepted by the file and enforced by nothing"
+            + (f"; by name: {', '.join(off_tree[:3])}"
+               + (", ..." if len(off_tree) > 3 else "") if off_tree else "")
+            + (f"; by caller: {', '.join(uninvoked[:3])}"
                + (", ..." if len(uninvoked) > 3 else "") if uninvoked else "")
-            + ". Informational."
+            + ". Informational; the middle figure does not come from this file."
         )
 
     # Router vs extracted modules, because "215 handlers registered" is the number the
