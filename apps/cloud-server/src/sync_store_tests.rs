@@ -1292,3 +1292,95 @@ async fn pg_integration_conflict_tables_enforce_tenant_isolation() {
         .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await;
 }
+
+/// The resolve path on SQLite: records the decision once, then refuses.
+///
+/// WO2 §2.3 requires the resolve endpoint to be covered. The PG end-to-end
+/// test exercises it under RLS, but SQLite — the backend every other store
+/// test runs on — had none: `resolve_conflict`'s SQLite arm was never
+/// called by any test, so the `AND status = 'open'` guard and the three
+/// audit columns were unexercised on it.
+#[tokio::test]
+async fn sqlite_resolve_conflict_records_the_decision_once() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let first = platform_sync::crdt::stamp_payload(&money_body("gc-9", 1_000), "t1", 1);
+    let second = platform_sync::crdt::stamp_payload(&money_body("gc-9", 2_000), "t2", 1);
+    store
+        .push_batch(
+            &[detection_item("rs-a", "gift_card.redeem", &first)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("rs-b", "gift_card.redeem", &second)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    let open = store.list_conflicts("tenant-a", None, None).await.unwrap();
+    assert_eq!(open.len(), 1);
+    let id = open[0].id.clone();
+    assert_eq!(open[0].status, "open");
+
+    assert!(
+        store
+            .resolve_conflict("tenant-a", &id, "keep_local", "alice")
+            .await
+            .unwrap()
+    );
+
+    let resolved = store
+        .list_conflicts("tenant-a", Some("resolved"), None)
+        .await
+        .unwrap();
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].status, "resolved");
+    assert_eq!(resolved[0].resolution.as_deref(), Some("keep_local"));
+    assert_eq!(resolved[0].resolved_by.as_deref(), Some("alice"));
+    assert!(
+        matches!(resolved[0].resolved_at.as_deref(), Some(t) if !t.is_empty()),
+        "resolved_at must be stamped, got {:?}",
+        resolved[0].resolved_at
+    );
+
+    // The open list is now empty…
+    assert!(
+        store
+            .list_conflicts("tenant-a", Some("open"), None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // …and a second resolve must not overwrite the first decision. The audit
+    // trail is the entire point of the row.
+    assert!(
+        !store
+            .resolve_conflict("tenant-a", &id, "keep_remote", "bob")
+            .await
+            .unwrap(),
+        "resolving twice must not silently overwrite the first decision"
+    );
+    assert_eq!(
+        store
+            .list_conflicts("tenant-a", Some("resolved"), None)
+            .await
+            .unwrap()[0]
+            .resolution
+            .as_deref(),
+        Some("keep_local")
+    );
+
+    // Another tenant cannot resolve it at all.
+    assert!(
+        !store
+            .resolve_conflict("tenant-b", &id, "keep_remote", "bob")
+            .await
+            .unwrap()
+    );
+}
