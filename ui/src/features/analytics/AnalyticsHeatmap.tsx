@@ -4,7 +4,7 @@ import Tooltip from '@/frontend/shell/Tooltip';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { monthCalendarGrid, DAY_LABEL_KEYS, MONTH_LABEL_KEYS, type HeatCell, type YearlyHeatmapColumn } from './analytics-data';
 import type { QueryStatus } from './useAnalyticsQuery';
-import type { Granularity } from './AnalyticsScreen';
+import type { Granularity } from './utils/dateRangePresets';
 
 interface HeatmapQueryData {
   daily: { date: string; total_minor: number; sale_count: number }[];

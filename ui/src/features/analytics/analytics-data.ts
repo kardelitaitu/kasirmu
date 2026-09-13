@@ -49,7 +49,7 @@ import type {
 } from '@/api/reports';
 import { getStaffAnalyticsScoped } from '@/api/analytics';
 import type { StaffAnalyticsRow } from '@/api/analytics';
-import type { Granularity, WorkspaceView } from './AnalyticsScreen';
+import type { Granularity, WorkspaceView } from './utils/dateRangePresets';
 
 // ── Shared layout shapes ────────────────────────────────────────────
 

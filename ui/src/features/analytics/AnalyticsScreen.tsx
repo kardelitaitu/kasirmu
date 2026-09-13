@@ -49,15 +49,6 @@ import {
 } from './utils/dateRangePresets';
 import './AnalyticsScreen.css';
 
-// `Granularity` and `WorkspaceView` are re-exported for the four modules that
-// still take them from the screen: `analytics-data.ts`, `AnalyticsCardContent.tsx`,
-// `AnalyticsHeatmap.tsx` and `useCardLayout.ts`. R37 analytics-query moved the
-// declarations to `utils/dateRangePresets.ts`; these are type-only re-exports,
-// so they erase at compile time and cannot introduce a runtime cycle with
-// `analytics-data` (which `dateRangePresets` imports values from). Drop this
-// line once those four import from `utils/dateRangePresets` directly.
-export type { Granularity, WorkspaceView };
-
 // Re-export the calendar helper so the analytics test suite can import it
 // from the screen module (the heatmap card owns its own copy of the helper
 // via analytics-data; this keeps the existing test import working).
