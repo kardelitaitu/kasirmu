@@ -19,7 +19,7 @@ import { KdsLayoutMasonry } from '@/features/kds/KdsLayoutMasonry';
 import { KdsHamburgerPanel } from '@/features/kds/KdsHamburgerPanel';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
-import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/KdsSettingsPanel';
+import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
 import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';

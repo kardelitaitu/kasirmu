@@ -4,7 +4,7 @@ import { useOptionalTheme } from '@/frontend/shell/ThemeProvider';
 import { useOptionalHardwareAccel } from '@/contexts/HardwareAccelContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
-import type { DisplayDensity, KdsSettings } from '@/features/kds/KdsSettingsPanel';
+import type { DisplayDensity, KdsSettings } from '@/features/kds/kdsSettingsModel';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { KdsRoutingRulesSection } from '@/features/kds/components/KdsRoutingRulesEditor';
 import { requiredLocalized } from '@/frontend/shared';
