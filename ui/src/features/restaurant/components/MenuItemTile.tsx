@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { requiredLocalized } from '@/frontend/shared';
+import Tooltip from '@/frontend/shell/Tooltip';
 import { Localized } from '@/components/Localized';
 import { formatMoney, type Product } from '@/types/domain';
 import { useLocalization } from '@fluent/react';
@@ -212,11 +213,16 @@ export function MenuItemTile({ product, sourceInStock, pinned, color, onAdd, onC
     >
       <div className="restaurant-card-body">
         {pinned && (
-          <span className="restaurant-card-pin-badge" title={requiredLocalized(l10n, 'restaurant-card-pin-title')}>
-            <PinIcon />
-          </span>
+          <Tooltip
+            fit="inline"
+            content={requiredLocalized(l10n, 'restaurant-card-pin-title')}
+          >
+            <span className="restaurant-card-pin-badge">
+              <PinIcon />
+            </span>
+          </Tooltip>
         )}
-        <span className="restaurant-card-name" title={product.name}>
+        <span className="restaurant-card-name">
           {product.name}
         </span>
         <span className="restaurant-card-price">{formatMoney(product.price)}</span>
