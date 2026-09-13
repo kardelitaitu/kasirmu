@@ -252,3 +252,16 @@ manager-journal.md
 .agents/manager-journal*
 .workbuddy-ai
 .vscode
+# Transient per-session agent scratch under .agents (inventory 2026-09-13).
+# Hidden from status, NOT safe to delete: every salvage/blobs/* file and
+# salvage/registration_gate_tests.rs are the only surviving copies of git
+# objects unreachable from any ref (git rev-list --objects --all misses them).
+/.agents/salvage/
+/.agents/devmock-phase*
+/.agents/tauri-api.pre-phase*.ts
+/.agents/gate-cont*.sh
+/.agents/gate-continuation.sh
+/.agents/gate-wave-12.sh
+/.agents/gate-gap.raw.txt
+/.agents/phase21-commitmsg.txt
+/.agents/registration-gate-harness-state.md
