@@ -6,6 +6,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import type { DisplayDensity, KdsSettings } from '@/features/kds/KdsSettingsPanel';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
+import { KdsRoutingRulesSection } from '@/features/kds/components/KdsRoutingRulesEditor';
 import { requiredLocalized } from '@/frontend/shared';
 
 /** Custom flex-based slider: track div + fill div + knob div. */
@@ -514,6 +515,12 @@ export function KdsHamburgerPanel({
                 </div>
               </div>
             </div>
+
+            {/* ── Routing rules — whole-set rule editor over the scoped
+                get/save_kds_routing_rules_scoped IPC (todo-kds-agents-1 UI
+                follow-up). The section owns its collapse + session wiring;
+                the panel only mounts it. ─── */}
+            <KdsRoutingRulesSection />
           </div>
         </div>
       )}

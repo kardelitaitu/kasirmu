@@ -1,0 +1,462 @@
+/* ── KdsRoutingRulesEditor — routing-rules section of the KDS settings panel ──
+   Dark-first tokens only (design language); every selector here is referenced
+   by KdsRoutingRulesEditor.tsx and registered in screenExtraction.test.ts. */
+
+/* Section chrome (heading, caption, toggle) */
+
+.kds-routing-section {
+  margin-bottom: var(--space-3_5);
+}
+
+.kds-routing-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.kds-routing-section-head h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-fg);
+}
+
+.kds-routing-section-caption {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.kds-routing-section-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: var(--space-1_5) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-fg);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-100), border-color var(--duration-100);
+}
+
+.kds-routing-section-btn:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+}
+
+.kds-routing-section-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.kds-routing-region {
+  margin-top: var(--space-2);
+}
+
+/* Editor shell */
+
+.kds-routing-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.kds-routing-status {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.kds-routing-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+/* Error banner (persistent until the next action, per the design language) */
+
+.kds-routing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+}
+
+.kds-routing-banner-text {
+  min-width: 0;
+}
+
+.kds-routing-retry {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: var(--space-0_5) var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-danger);
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.kds-routing-retry:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+/* Success feedback — green + checkmark, never colour alone */
+
+.kds-routing-saved {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-1_5) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+}
+
+.kds-routing-check {
+  font-weight: 800;
+}
+
+/* Rule table */
+
+.kds-routing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+}
+
+.kds-routing-caption {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-fg-secondary);
+  text-align: left;
+  caption-side: top;
+}
+
+.kds-routing-table th {
+  padding: var(--space-1) var(--space-1_5);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-fg-secondary);
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.kds-routing-row {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.kds-routing-row:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.kds-routing-pri {
+  width: 1%;
+  padding: var(--space-1) var(--space-1_5);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-fg-secondary);
+  white-space: nowrap;
+}
+
+.kds-routing-match {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-1) var(--space-1_5);
+}
+
+.kds-routing-station {
+  min-width: 0;
+  padding: var(--space-1) var(--space-1_5);
+}
+
+.kds-routing-active {
+  width: 1%;
+  padding: var(--space-1) var(--space-1_5);
+  text-align: center;
+}
+
+.kds-routing-actions {
+  width: 1%;
+  padding: var(--space-1) var(--space-1_5);
+  white-space: nowrap;
+}
+
+/* Inputs */
+
+.kds-routing-select {
+  width: 100%;
+  height: 30px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.kds-routing-input {
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--color-fg);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+}
+
+.kds-routing-input:focus-visible,
+.kds-routing-select:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+  border-color: var(--color-border-focus);
+}
+
+.kds-routing-input--invalid {
+  border-color: var(--color-danger);
+}
+
+/* Tag honesty hint */
+
+.kds-routing-hint {
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.kds-routing-hint--tag {
+  color: var(--color-warning);
+}
+
+/* Active switch — 2.5rem × 1.375rem track, knob 1.125rem (design language) */
+
+.kds-routing-switch {
+  position: relative;
+  display: inline-block;
+  width: 2.5rem;
+  height: 1.375rem;
+  padding: 0;
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--duration-200);
+}
+
+.kds-routing-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1.125rem;
+  height: 1.125rem;
+  background: var(--color-fg-secondary);
+  border-radius: 50%;
+  transition: transform var(--duration-200);
+}
+
+.kds-routing-switch--on {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.kds-routing-switch--on::after {
+  background: var(--color-text-on-color);
+  transform: translateX(1.125rem);
+}
+
+.kds-routing-switch:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.kds-routing-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Icon-only row controls */
+
+.kds-routing-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: var(--text-base);
+  color: var(--color-fg-secondary);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--duration-100), color var(--duration-100);
+}
+
+.kds-routing-icon-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.kds-routing-icon-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.kds-routing-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kds-routing-icon-btn--remove {
+  color: var(--color-fg-secondary);
+}
+
+.kds-routing-icon-btn--remove:hover:not(:disabled) {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* Toolbar + confirm */
+
+.kds-routing-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.kds-routing-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: var(--space-1_5) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-100), color var(--duration-100), border-color var(--duration-100);
+}
+
+.kds-routing-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kds-routing-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.kds-routing-btn--save {
+  color: var(--color-text-on-color);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.kds-routing-btn--save:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.kds-routing-btn--add {
+  color: var(--color-fg);
+  background: var(--color-bg-input);
+}
+
+.kds-routing-btn--add:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.kds-routing-btn--clear {
+  color: var(--color-danger);
+  background: transparent;
+  border-color: var(--color-danger);
+}
+
+.kds-routing-btn--clear:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+}
+
+.kds-routing-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-popover);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.kds-routing-confirm-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-fg);
+}
+
+.kds-routing-confirm-msg {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.kds-routing-confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.kds-routing-btn--danger {
+  color: var(--color-text-on-color);
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.kds-routing-btn--danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.kds-routing-btn--ghost {
+  color: var(--color-fg-secondary);
+  background: transparent;
+}
+
+.kds-routing-btn--ghost:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}

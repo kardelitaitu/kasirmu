@@ -260,6 +260,14 @@ const SCREENS: ScreenEntry[] = [
       'kds/components/StationSelectorModal.tsx',
     ],
   },
+  {
+    // Routing-rules editor (todo-kds-agents-1 UI follow-up) — mounted by
+    // KdsHamburgerPanel but styled entirely from its own sheet, so the
+    // classes are checked against THIS entry, not the KdsScreen one.
+    name: 'KdsRoutingRulesEditor',
+    tsx: 'kds/components/KdsRoutingRulesEditor.tsx',
+    css: ['kds/components/KdsRoutingRulesEditor.css'],
+  },
 
   // ── Loyalty ───────────────────────────────────────────
   {

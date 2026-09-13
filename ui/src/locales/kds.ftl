@@ -336,3 +336,52 @@ kds-station-all-aria = Show tickets from all stations
 kds-station-option-aria = Show only tickets from station { $zone }
 kds-station-close-aria = Close station selector
 kds-station-empty = No stations on the board yet
+
+# ── Routing rules editor — todo-kds-agents-1 UI follow-up ──
+# Section over get/save_kds_routing_rules_scoped. Save is a whole-set
+# replace with server-assigned ids, so the table shows draft rows and the
+# position column doubles as the priority rank (lower = higher). The `tag`
+# matcher stays in the picker because the backend STORES tag rules, but
+# they never match until tags are modeled in the catalog — every tag row
+# carries the hint below rather than the option being hidden.
+kds-routing-title = Routing rules
+kds-routing-caption = Send matching order lines to a station, overriding the product kitchen zone.
+kds-routing-expand = Configure rules
+kds-routing-collapse = Close rule editor
+kds-routing-expand-aria = Open the routing rules editor
+kds-routing-collapse-aria = Close the routing rules editor
+kds-routing-loading = Loading routing rules…
+kds-routing-load-failed = Could not load routing rules
+kds-routing-empty = No rules yet — every line routes by its product kitchen zone.
+kds-routing-table-caption = Rules in priority order — the lowest number wins.
+kds-routing-col-priority = #
+kds-routing-col-match = Match
+kds-routing-col-station = Station
+kds-routing-col-active = Active
+kds-routing-col-actions = Actions
+kds-routing-row-aria = Rule { $n }
+kds-routing-matcher-aria = What rule { $n } matches
+kds-routing-matcher-sku = SKU
+kds-routing-matcher-category = Category
+kds-routing-matcher-tag = Tag
+kds-routing-tag-hint = Tags are not modeled in the catalog yet — this rule is stored but never routes a line.
+kds-routing-value-aria = Match value for rule { $n }
+kds-routing-value-placeholder = value to match
+kds-routing-station-aria = Target station for rule { $n }
+kds-routing-station-placeholder = station
+kds-routing-active-aria = Rule { $n } active
+kds-routing-up-aria = Move rule { $n } up
+kds-routing-down-aria = Move rule { $n } down
+kds-routing-remove-aria = Remove rule { $n }
+kds-routing-add = Add rule
+kds-routing-clear-all = Clear all rules
+kds-routing-save = Save rules
+kds-routing-saving = Saving…
+kds-routing-saved = Routing rules saved
+kds-routing-cleared = All routing rules cleared
+kds-routing-save-failed = Could not save routing rules — nothing was changed
+kds-routing-error-incomplete = Every rule needs a match value and a target station before saving.
+kds-routing-confirm-title = Clear all routing rules?
+kds-routing-confirm-msg = This replaces the whole rule set with nothing: every line routes by its product kitchen zone again. It cannot be undone from here.
+kds-routing-confirm-ok = Clear all
+kds-routing-confirm-cancel = Keep rules
