@@ -43,6 +43,13 @@ as an allowlist with nothing in it, so the gate walked the whole tree, compared 
 names and exited 0, while a top-level list died in an uncaught AttributeError. Require the
 dict and the section --shell names, and refuse what is left, is now the first thing done to
 a parsed allowlist.
+
+One level in from that guard sits the shell list itself, and it needed its own refusal: the
+list drives WHICH section the guard above is allowed to ask about, so `--shell ''` named none,
+left the guard nothing to demand, walked 568 files, compared zero commands and exited 0
+printing `clean for .`. resolve_shells() refuses it before the walk -- with no shell named
+there is nothing to grade, and a caller who wants every shell passes them explicitly
+(--shell desktop,tablet) rather than leaving the value blank for this gate to guess at.
 Comments are stripped before matching. Without that, prose mentioning `getSale()` reads as a call
 site -- which is exactly the false positive this script's own first draft produced against a
 comment written by the fix that missed the real site.
@@ -148,6 +155,24 @@ class AllowlistUndecodable(AllowlistUnreadable):
     arrive, this means they arrived and are not UTF-8. Nothing widens an except clause and
     nothing here is retried -- a decode failure is a property of the bytes on disk, like a
     bad parse, and unlike a denial it cannot clear on its own.
+    """
+
+
+class NoShellsNamed(AllowlistUnreadable):
+    """--shell resolved to an empty list, so there is nothing here for this gate to grade.
+
+    A subclass on purpose, exactly as AllowlistWrongShape and AllowlistUndecodable are one:
+    main() keeps ONE handler, so the gate keeps ONE voice -- `FAIL: <sentence>`, exit 1 --
+    and no except clause widens and no second handler is invented. The name says which of
+    the refusals a reader is looking at: nothing about the file on disk went wrong here, the
+    ARGUMENT asked for no shell.
+
+    This is the empty-corpus class one level further in than the shape guard, and the shape
+    guard cannot catch it by construction: a refusal needs a named section before a shape can
+    be asked of it. Measured at tip dd4888194, `--shell ''` exited 0 printing
+    `verify-scoped-reads: clean for .` -- 568 files walked, zero command names compared, and
+    require_allowlist_shape cleared the run because an empty list handed to it falls back to
+    asking for sections that are both present.
     """
 
 
@@ -547,12 +572,52 @@ def build_argparser():
                     "register the command.")
     ap.add_argument("--self-test", action="store_true")
     ap.add_argument("--shell", default="desktop",
-                    help="comma-separated shells to audit (default: desktop)")
+                    help="comma-separated shells to audit (default: desktop); at least one "
+                         "shell has to be named -- an empty value is refused, not read as "
+                         "all shells")
     ap.add_argument("--allowlist", default=None, metavar="PATH",
                     help="grade PATH instead of the checkout copy at scripts/ipc-parity-"
                          "allowlist.json. The file is only read, never written, and the "
                          "default is unchanged.")
     return ap
+
+
+def resolve_shells(raw):
+    """The shells to grade, split off one --shell value -- or a refusal, before the walk.
+
+    WHY THIS EXISTS. The list this returns drives WHICH allowlist section is required, so an
+    empty one leaves `require_allowlist_shape` nothing to demand: it falls back to asking for
+    the sections that are present, the audit loop iterates over nothing, and the run still
+    printed a verdict. Measured at tip dd4888194 and recorded in
+    docs/records/audit-open-findings.md at 14:47: `--shell ''` exited 0 with
+    `verify-scoped-reads: clean for .` having graded nothing -- the empty-corpus class one
+    level further in than the shape guard, which cannot reach it because a refusal needs a
+    named section before a shape can be asked of it.
+
+    So the refusal sits HERE, where the argument becomes a list, not in the read and not in
+    the verdict: whether there is anything to grade is a property of the argument. An empty
+    value, a blank value, and a value of nothing but separators and blanks all land in the
+    same arm, because all three name zero shells. And an empty value is NOT read as "all
+    shells" -- guessing at what a blank argument meant is exactly how a typo becomes evidence,
+    which is the same reason the shape guard refuses rather than defaults. A caller who wants
+    every shell passes them explicitly; the sentence says so.
+
+    Raises NoShellsNamed, a subclass of the AllowlistUnreadable main() already catches, so
+    this refusal shares the gate's one voice and its exit code.
+    """
+    shells = [s.strip() for s in (raw or "").split(",") if s.strip()]
+    if not shells:
+        shown = "" if raw is None else str(raw)
+        all_of_them = ",".join(SHELL_SECTIONS)
+        raise NoShellsNamed(
+            f'--shell received "{shown}", and with no shell named there is nothing to grade: '
+            f'the shell list decides which allowlist section this run reads, and a run that '
+            f'names no section compares zero command names -- it has graded nothing, it has '
+            f'not passed. Name the shells you mean; the sections this gate reads are '
+            f'{" and ".join(SHELL_SECTIONS)}, and a caller who wants every one of them passes '
+            f'them explicitly (--shell {all_of_them}) rather than leaving the value empty, '
+            f'because guessing what a blank argument meant is how a typo becomes evidence.')
+    return shells
 
 
 def resolve_allowlist(path=None):
@@ -1088,6 +1153,87 @@ def _guard_self_test():
     return failures
 
 
+def _shell_self_test():
+    """Case 11 and 12: the --shell LIST, which is the empty-corpus hazard one level in.
+
+    The shape guard above cannot reach this one. It asks whether a named section exists, so a
+    run that names no section answers its question with the sections that happen to be there:
+    at tip dd4888194 `--shell ''` walked 568 files, compared zero command names and exited 0
+    printing `clean for .`. The refusal therefore sits in resolve_shells(), where the argument
+    becomes a list, and these cases drive the real main() so a wiring regression -- a guard
+    that exists and is never called -- shows up red here rather than green in CI.
+
+    Both cases forbid three things, not only the wrong reason: the verdict line, because a
+    refusal that graded nothing must not describe a corpus it never touched, and the surfaces
+    line, because that is the print that happens after the walk and its absence is the proof
+    the refusal came first.
+    """
+    print("  verify-scoped-reads self-test / which shells were named")
+    failures = 0
+
+    def run(argv):
+        buf = io.StringIO()
+        saved, sys.stdout = sys.stdout, buf
+        try:
+            rc = main(argv)
+        except BaseException as exc:
+            rc = f"bare {type(exc).__name__}: {exc}"
+        finally:
+            sys.stdout = saved
+        return rc, buf.getvalue()
+
+    empty_runs = [
+        ("case 11 an empty --shell value", "",
+         "the run grades no shell and still exits 0"),
+        ("case 12 a --shell value of only blanks and commas", " , , ",
+         "blank entries stripped into nothing"),
+    ]
+    for label, value, hazard in empty_runs:
+        rc, out = run(["--shell", value])
+        lines = [ln for ln in out.splitlines() if ln.strip()]
+        refused = (rc == 1 and len(lines) == 1 and lines[0].startswith("FAIL: ")
+                   and "nothing to grade" in out and "desktop" in out and "tablet" in out)
+        quiet = (not any(w in out for w in
+                         ("clean", "production file(s) graded", "Traceback")))
+        if refused and quiet:
+            print(f"    ok   {label} -- one FAIL line, refused before the walk, "
+                  f"no verdict printed")
+        else:
+            print(f"    FAIL {label}  rc={rc!r} refused={refused} quiet={quiet} "
+                  f"-- {hazard}")
+            for ln in lines[:3]:
+                print(f"           | {ln[:150]}")
+            failures += 1
+
+    # The controls, and they are the load-bearing half: a guard that refused every --shell
+    # value would be redder than the hazard it closes, and `--shell desktop` is what
+    # dev-ci.yml#static-gates and every operator type. Checked against resolve_shells and the
+    # real parser rather than by running two more full walks.
+    kept = [("desktop", ["desktop"]), (" desktop ", ["desktop"]),
+            ("desktop,tablet", ["desktop", "tablet"]),
+            ("desktop , , tablet", ["desktop", "tablet"])]
+    wrong = []
+    for raw, want in kept:
+        try:
+            got = resolve_shells(raw)
+        except AllowlistUnreadable as exc:
+            got = f"refused: {exc}"
+        if got != want:
+            wrong.append(f'--shell "{raw}" -> {got!r}, wanted {want!r}')
+    default = resolve_shells(build_argparser().parse_args([]).shell)
+    if default != ["desktop"]:
+        wrong.append(f"the no-flag default resolved to {default!r}, wanted ['desktop'] -- "
+                     "a bare run must grade what it graded before this guard existed")
+    if wrong:
+        for problem in wrong:
+            print(f"    FAIL a named shell stopped being graded  {problem}")
+        failures += 1
+    else:
+        print(f"    ok   {len(kept)} named values still resolve to their shells, and the "
+              f"no-flag default is still ['desktop']")
+    return failures
+
+
 
 def self_test():
     print("  verify-scoped-reads self-test")
@@ -1123,6 +1269,7 @@ def self_test():
     failures += _read_retry_self_test()
     failures += _aim_self_test()
     failures += _guard_self_test()
+    failures += _shell_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
@@ -1136,9 +1283,14 @@ def main(argv=None):
     if args.self_test:
         return self_test()
 
-    shells = [s.strip() for s in args.shell.split(",") if s.strip()]
     allowlist, how = resolve_allowlist(args.allowlist)
     try:
+        # Resolved INSIDE the try, ahead of audit() and so ahead of the walk: a run that
+        # names no shell has nothing to grade, and that is a property of the argument, which
+        # is why it is refused here rather than discovered in the verdict below. NoShellsNamed
+        # is an AllowlistUnreadable, so it leaves through the handler under this one -- the
+        # gate's existing one-line FAIL voice and exit 1, no new handler.
+        shells = resolve_shells(args.shell)
         violations, shape_problems, scanned = audit(shells, allowlist=allowlist)
     except AllowlistUnreadable as exc:
         # A file this gate cannot open is not a clean tree and not a dirty one; saying so
