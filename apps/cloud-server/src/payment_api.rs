@@ -22,10 +22,10 @@ use std::sync::Arc;
 
 use axum::{
     Router,
-    extract::{Extension, State},
+    extract::{Extension, Path, State},
     http::StatusCode,
     middleware,
-    routing::post,
+    routing::{get, post},
 };
 use foundation::{Currency, Money};
 use oz_api::auth::{ApiTokenClaims, auth_middleware};
@@ -42,6 +42,12 @@ use crate::rate_limit::{RateLimiterState, rate_limit_middleware};
 /// The only currency the Midtrans QRIS driver produces (PAY-3 pre-flight
 /// in the driver rejects others; the endpoint rejects before any HTTP call).
 const QRIS_CURRENCY: &[u8; 3] = b"IDR";
+
+/// QR validity window served to the UI so the countdown has ONE source of
+/// truth: the driver hardcodes the same 300 s (`QRIS_EXPIRY_SECS` in
+/// `crates/oz-payment/src/drivers/qris.rs` — Midtrans-side expiry we do not
+/// control; agents-3 repair notes the roadmap's "15 minutes" was wrong).
+const QRIS_EXPIRY_SECS: u32 = 300;
 
 /// State for the payment API router.
 #[derive(Clone)]
@@ -91,6 +97,10 @@ pub fn payment_router(state: PaymentState) -> Router {
     let rate_limiter = state.rate_limiter.clone();
     Router::new()
         .route("/api/payment/midtrans/qris", post(qris_charge_handler))
+        .route(
+            "/api/payment/midtrans/{order_id}/status",
+            get(qris_status_handler),
+        )
         .with_state(state)
         .layer(middleware::from_fn(rate_limit_middleware))
         .layer(middleware::from_fn(auth_middleware))
@@ -135,6 +145,9 @@ pub struct ChargeResponse {
     pub currency: &'static str,
     /// Echo of the sale this issuance is bound to.
     pub sale_id: String,
+    /// Seconds the QR stays valid gateway-side (countdown source; the driver
+    /// enforces the same window with its `QRIS_EXPIRY_SECS` constant).
+    pub expires_in_secs: u32,
 }
 
 async fn qris_charge_handler(
@@ -244,6 +257,56 @@ async fn qris_charge_handler(
         amount_minor,
         currency: "IDR",
         sale_id: body.sale_id,
+        expires_in_secs: QRIS_EXPIRY_SECS,
+    }))
+}
+
+/// Response body for the status poll.
+#[derive(Debug, serde::Serialize)]
+pub struct StatusResponse {
+    /// Echo of the queried order id.
+    pub order_id: String,
+    /// Verbatim ledger status: `issued`, `pending`, `settlement`, `capture`,
+    /// `expire`, `cancel`, `amount_mismatch`, ...
+    pub status: String,
+    /// True iff the ledger records `settlement`/`capture` — the poll-loop
+    /// exit condition for the UI.
+    pub settled: bool,
+}
+
+/// `GET /api/payment/midtrans/{order_id}/status` — the settlement poll the
+/// UI runs while the webhook is racing the device's sync push (agents-3
+/// 3.1a). Read-only over the ledger.
+///
+/// A query for another tenant's order answers the SAME 404 as an unknown
+/// order: the endpoint must not leak the existence of other tenants'
+/// transactions. (The ledger read is the unscoped resolver-style lookup, so
+/// this comparison is deliberately on the RESULT, not in the WHERE clause —
+/// one uniform miss shape is the point.)
+async fn qris_status_handler(
+    State(state): State<PaymentState>,
+    Extension(claims): Extension<ApiTokenClaims>,
+    Path(order_id): Path<String>,
+) -> Result<axum::Json<StatusResponse>, (StatusCode, String)> {
+    let tenant_id = claims.tenant_id.ok_or((
+        StatusCode::UNAUTHORIZED,
+        "token is not tenant-scoped".into(),
+    ))?;
+    let ledger = LedgerDb {
+        db: state.db.clone(),
+        pg: state.pg.clone(),
+    };
+    let entry = ledger
+        .lookup(&order_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?
+        .filter(|e| e.tenant_id == tenant_id);
+    let entry = entry.ok_or((StatusCode::NOT_FOUND, "no such order".into()))?;
+    let settled = entry.status == "settlement" || entry.status == "capture";
+    Ok(axum::Json(StatusResponse {
+        order_id: entry.order_id,
+        status: entry.status,
+        settled,
     }))
 }
 

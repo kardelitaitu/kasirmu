@@ -595,13 +595,31 @@ fn build_cloud_paths() -> Value {
                     }
                 },
                 "responses": {
-                    "200": { "description": "QR issued (status: qr_issued — NOT settled)", "content": { "application/json": { "schema": { "type": "object", "properties": { "order_id": { "type": "string" }, "qr_string": { "type": ["string", "null"] }, "status": { "type": "string", "const": "qr_issued" }, "amount_minor": { "type": "integer", "format": "int64" }, "currency": { "type": "string", "const": "IDR" }, "sale_id": { "type": "string" } } } } } },
+                    "200": { "description": "QR issued (status: qr_issued — NOT settled)", "content": { "application/json": { "schema": { "type": "object", "properties": { "order_id": { "type": "string" }, "qr_string": { "type": ["string", "null"] }, "status": { "type": "string", "const": "qr_issued" }, "amount_minor": { "type": "integer", "format": "int64" }, "currency": { "type": "string", "const": "IDR" }, "sale_id": { "type": "string" }, "expires_in_secs": { "type": "integer", "description": "Midtrans-side QR validity (300 s) — the UI countdown's single source of truth" } } } } } },
                     "400": { "description": "Validation failed (amount ≤ 0, missing sale_id, non-IDR currency)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "401": { "description": "Missing/invalid JWT, or token not tenant-scoped", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "429": { "description": "Per-tenant rate limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "500": { "description": "Charge succeeded at Midtrans but the ledger write failed — body names the order_id; reconcile manually", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "502": { "description": "Midtrans refused or unreachable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
                     "503": { "description": "MIDTRANS_SERVER_KEY not configured; charging disabled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
+                }
+            }
+        },
+        "/api/payment/midtrans/{order_id}/status": {
+            "get": {
+                "tags": ["Payments"],
+                "summary": "Poll a QRIS charge's settlement status from the ledger",
+                "description": "Read-only ledger lookup backing the checkout UI's polling fallback while the settlement webhook races the device's sync push. `settled` is true exactly when the ledger records `settlement`/`capture`. Tenant isolation is uniform-miss: an order belonging to another tenant answers the SAME 404 as a nonexistent one, so nothing leaks which order ids exist elsewhere.",
+                "operationId": "midtransQrisStatus",
+                "security": [{ "bearerAuth": [] }],
+                "parameters": [
+                    { "name": "order_id", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Midtrans order id returned at charge time (the ledger key)" }
+                ],
+                "responses": {
+                    "200": { "description": "Current ledger status", "content": { "application/json": { "schema": { "type": "object", "properties": { "order_id": { "type": "string" }, "status": { "type": "string" }, "settled": { "type": "boolean" } } } } } },
+                    "401": { "description": "Missing/invalid JWT or token not tenant-scoped", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "404": { "description": "No such order for this tenant (also the answer for another tenant's order — uniform miss)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+                    "429": { "description": "Per-tenant rate limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } }
                 }
             }
         },

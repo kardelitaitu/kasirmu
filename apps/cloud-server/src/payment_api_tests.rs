@@ -94,6 +94,7 @@ async fn charge_returns_qr_and_journals_issuance() {
     assert_eq!(json["status"], "qr_issued");
     assert_eq!(json["order_id"], "QRIS-FIXED-ORDER");
     assert_eq!(json["sale_id"], "sale-99");
+    assert_eq!(json["expires_in_secs"], 300);
     assert!(json["qr_string"]
         .as_str()
         .unwrap()
@@ -208,4 +209,96 @@ async fn charge_gateway_error_is_502() {
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
     // Exactly one gateway call, and nothing journaled for a failed charge.
     assert_eq!(mock.received_requests().await.unwrap().len(), 1);
+}
+
+// ── 3.1a status endpoint ─────────────────────────────────────────────
+
+fn authed_get(uri: &str, tenant_id: Option<&str>) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("Authorization", format!("Bearer {}", test_token(tenant_id)))
+        .body(Body::empty())
+        .unwrap()
+}
+
+async fn seed_order(state: &PaymentState, order_id: &str, tenant: &str) {
+    LedgerDb {
+        db: state.db.clone(),
+        pg: None,
+    }
+    .record_issue(order_id, tenant, "sale-x", 1000, "IDR")
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn status_reports_issued_then_settled() {
+    let state = state_disabled(); // status is ledger-only; no gateway needed
+    seed_order(&state, "QRIS-s1", "tenant-A").await;
+    let resp = payment_router(state.clone())
+        .oneshot(authed_get("/api/payment/midtrans/QRIS-s1/status", Some("tenant-A")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "issued");
+    assert_eq!(json["settled"], false);
+
+    LedgerDb { db: state.db.clone(), pg: None }
+        .mark_status("QRIS-s1", "tenant-A", "settlement")
+        .await
+        .unwrap();
+    let resp = payment_router(state)
+        .oneshot(authed_get("/api/payment/midtrans/QRIS-s1/status", Some("tenant-A")))
+        .await
+        .unwrap();
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "settlement");
+    assert_eq!(json["settled"], true);
+}
+
+#[tokio::test]
+async fn status_uniform_404_for_foreign_and_unknown() {
+    let state = state_disabled();
+    seed_order(&state, "QRIS-s2", "tenant-A").await;
+    // Another tenant's real order and a nonexistent id must be
+    // indistinguishable — same status AND same body. (Error bodies here
+    // are the handler tuple's plain text, not JSON — body_json is for
+    // success shapes only.)
+    let foreign = payment_router(state.clone())
+        .oneshot(authed_get("/api/payment/midtrans/QRIS-s2/status", Some("tenant-B")))
+        .await
+        .unwrap();
+    let ghost = payment_router(state)
+        .oneshot(authed_get("/api/payment/midtrans/QRIS-nope/status", Some("tenant-B")))
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), StatusCode::NOT_FOUND);
+    assert_eq!(ghost.status(), StatusCode::NOT_FOUND);
+    let fb = axum::body::to_bytes(foreign.into_body(), 1024)
+        .await
+        .unwrap();
+    let gb = axum::body::to_bytes(ghost.into_body(), 1024)
+        .await
+        .unwrap();
+    assert_eq!(fb, gb);
+    assert!(
+        !String::from_utf8_lossy(&fb).contains("QRIS-s2"),
+        "the 404 body must not hint which id it looked up"
+    );
+}
+
+#[tokio::test]
+async fn status_requires_bearer_token() {
+    let router = payment_router(state_disabled());
+    let req = Request::builder()
+        .method("GET")
+        .uri("/api/payment/midtrans/QRIS-x/status")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        router.oneshot(req).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
 }

@@ -816,7 +816,16 @@ fn every_spec_get_operation_has_read_key_entry() {
             // keeps its own too: it is a device-facing poll whose audience
             // is already terminal-scoped by the recipient join and the
             // token's claims, with no read-tier key in the registry.
-            if path.starts_with("/api/sync/") || path == "/api/v1/memos/active" {
+            // The QRIS status poll joins that family for the same reason: the
+            // caller is the checkout device itself, its authority is the
+            // tenant-scoped JWT claim (and a foreign order answers 404), and no
+            // registry key fits — minting a "payments:read" just to pass this
+            // gate would widen every terminal token for an endpoint terminals
+            // alone call.
+            if path.starts_with("/api/sync/")
+                || path == "/api/v1/memos/active"
+                || path.starts_with("/api/payment/")
+            {
                 continue;
             }
 
