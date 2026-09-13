@@ -112,7 +112,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("inventory_counts", 10, &["INVENTORY_COUNT"]),
     ("kds", 9, &["KDS_UPDATE", "KDS_VIEW"]),
     ("kds_device", 6, &["KDS_UPDATE", "KDS_VIEW"]),
-    ("kds_routing", 1, &["KDS_VIEW"]),
+    ("kds_routing", 3, &["KDS_UPDATE", "KDS_VIEW"]),
     ("legal_entities", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("license", 3, &["SETTINGS_EDIT"]),
     ("local_api", 6, &["SETTINGS_EDIT", "SETTINGS_READ"]),
