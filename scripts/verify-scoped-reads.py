@@ -133,8 +133,29 @@ def read_allowlist(path=ALLOWLIST, opener=None):
     Raises AllowlistUnreadable -- never a bare PermissionError escaping this function --
     so main() can print a sentence and fail, rather than traceback over a file that was
     busy for one millisecond.
+
+    ORDER, and why: exists, then isdir, both BEFORE the retry loop; a bad parse inside
+    it. On Windows opening a directory raises PermissionError, the same exception a busy
+    file raises (measured: --allowlist scripts printed "another process is holding it"
+    with nothing holding anything), and a nonexistent path raises FileNotFoundError, so
+    both are settled by asking the path what it is rather than by opening it -- a fact
+    about the argument, knowable without reading, and wrong to time. A denial and a bad
+    parse are facts about the READ, so they stay in the loop, and only the denial is
+    retried, because only a denial can clear on its own. The busy sentence below is
+    therefore reserved for a sharing violation on a file that exists.
     """
     opener = opener or _read_json
+    if not os.path.exists(path):
+        raise AllowlistUnreadable(
+            f"{path} does not exist, so there is no allowlist to grade. --allowlist names "
+            f"the file to read; with no flag this gate reads {ALLOWLIST} (the module "
+            f"default).") from None
+    if os.path.isdir(path):
+        raise AllowlistUnreadable(
+            f"{path} is a directory, not an allowlist file. Not retried: on Windows "
+            f"opening a directory raises PermissionError, which is the error a busy file "
+            f"raises, so retrying would blame a mistyped path on a process that is not "
+            f"running.") from None
     for attempt in range(READ_ATTEMPTS):
         try:
             return opener(path)
@@ -149,6 +170,16 @@ def read_allowlist(path=ALLOWLIST, opener=None):
                     f"rather than a broken tree.",
                 ) from None
             time.sleep(READ_RETRY_SECONDS)
+        except json.JSONDecodeError as exc:
+            # Caught by name, not as a bare Exception: this is one specific failure of the
+            # bytes, and swallowing ValueError would also swallow a decoder bug. Not
+            # retried, because a file that parses as neither is not racing anybody -- the
+            # writer publishes with os.replace, which is atomic, so a half-written
+            # allowlist is not a thing this loop can wait out.
+            raise AllowlistUnreadable(
+                f"{path} is not valid JSON: {exc}. Not retried: the writer publishes with "
+                f"os.replace, which is atomic, so a half-written file is not what this "
+                f"is.") from None
     raise AssertionError("unreachable")  # every path above returns or raises
 
 
@@ -763,6 +794,92 @@ def _aim_self_test():
 
 
 
+
+def _guard_self_test():
+    """The four ways an aimed --allowlist path can fail to be a gradeable file.
+
+    One case per input, each asserting the exact reason word, because the finding this
+    closes is a MISDIAGNOSIS: a directory used to reach the busy-file handler and print
+    that another process was holding it, sending an operator off to look for a process
+    that does not exist. The busy sentence is not wrong, it was just being used for three
+    failures that are not busy. Each case runs the real main() so the wiring, not just the
+    helper, is under test; all four short-circuit before the tree walk, so they are
+    milliseconds.
+    """
+    print("  verify-scoped-reads self-test / why a path could not be graded")
+    failures = 0
+
+    def run(argv):
+        buf = io.StringIO()
+        saved, sys.stdout = sys.stdout, buf
+        try:
+            rc = main(argv)
+        except BaseException as exc:
+            rc = f"bare {type(exc).__name__}: {exc}"
+        finally:
+            sys.stdout = saved
+        return rc, buf.getvalue()
+
+    with tempfile.TemporaryDirectory(prefix="oz-scoped-guard-") as tmp:
+        missing = os.path.join(tmp, "no-such-allowlist.json")
+        bad = os.path.join(tmp, "not-json.json")
+        with io.open(bad, "w", encoding="utf-8") as fh:
+            fh.write("{ this is not json at all")
+        # Case 4 needs a file that EXISTS, is not a directory, and still denies the open --
+        # the one shape that must keep the busy sentence. Injected through the opener seam,
+        # which is the only honest way to make a denial on a real path on demand.
+        realfile = os.path.join(tmp, "exists-but-denied.json")
+        with io.open(realfile, "w", encoding="utf-8") as fh:
+            json.dump({"desktop": []}, fh)
+
+        cases = [
+            ("case 1  a path that is not there", [missing], "does not exist",
+             ["would not open after"]),
+            ("case 2  a path that is a directory", [tmp], "is a directory",
+             ["would not open after", "another process is holding it"]),
+            ("case 3  a file that is not valid JSON", [bad], "is not valid JSON",
+             ["would not open after", "another process is holding it"]),
+        ]
+        for label, extra, reason, forbidden in cases:
+            rc, out = run(["--allowlist"] + extra)
+            named = os.path.basename(extra[0].rstrip(os.sep)) in out or extra[0] in out
+            bad_words = [w for w in forbidden if w in out]
+            if rc == 1 and reason in out and named and "Traceback" not in out and not bad_words:
+                print(f"    ok   {label} -- says {reason!r} and names the path it was given")
+            else:
+                print(f"    FAIL {label}  rc={rc!r}, says {reason!r}={reason in out}, "
+                      f"path named={named}, traceback={'Traceback' in out}, "
+                      f"wrong words={bad_words}")
+                for line in out.splitlines()[:3]:
+                    print(f"           | {line[:150]}")
+                failures += 1
+
+        # Case 4: the distinction, kept honest. A denial on a file that exists and is not a
+        # directory must still be reported as a busy file, or the preflight above has been
+        # bought by breaking the retry.
+        def always_denies(p):
+            raise PermissionError(13, "simulated sharing violation on a real file")
+
+        try:
+            read_allowlist(realfile, opener=always_denies)
+            outcome = "NO EXCEPTION"
+        except AllowlistUnreadable as exc:
+            outcome = str(exc)
+        except BaseException as exc:
+            outcome = f"bare {type(exc).__name__}: {exc}"
+        stays_busy = ("would not open after" in outcome
+                      and "another process is holding it" in outcome
+                      and "is a directory" not in outcome and "does not exist" not in outcome)
+        if stays_busy and not outcome.startswith("bare "):
+            print(f"    ok   case 4  a denial on a real file still reads as a busy file, "
+                  f"after {READ_ATTEMPTS} tries")
+        else:
+            print(f"    FAIL case 4  the busy path changed: {outcome[:160]}")
+            failures += 1
+    return failures
+
+
+
 def self_test():
     print("  verify-scoped-reads self-test")
     failures = 0
@@ -796,6 +913,7 @@ def self_test():
     failures += _shape_self_test()
     failures += _read_retry_self_test()
     failures += _aim_self_test()
+    failures += _guard_self_test()
     print(f"  self-test: {'PASS' if failures == 0 else f'FAIL ({failures})'}")
     return 0 if failures == 0 else 1
 
