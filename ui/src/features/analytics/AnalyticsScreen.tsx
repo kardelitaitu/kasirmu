@@ -36,6 +36,7 @@ import {
 import { clearAnalyticsErrors, useAnalyticsQuery } from './useAnalyticsQuery';
 import { exportHeatmapCsv } from './utils/analyticsExport';
 import { CacheMetricsPanel } from './components/CacheMetricsPanel';
+import { CommandPalette } from './components/CommandPalette';
 import { NoWorkspacePrompt } from './components/NoWorkspacePrompt';
 import { SessionRecoveryBanner } from './components/SessionRecoveryBanner';
 import { ZoomControls } from './components/ZoomControls';
@@ -1121,49 +1122,17 @@ export default function AnalyticsScreen() {
       )}
 
       {/* Command palette overlay (Ctrl/Cmd+K) */}
-      {paletteOpen && (
-        <div
-          className="analytics-palette-backdrop"
-          role="presentation"
-          tabIndex={-1}
-          onClick={(e) => { if (e.target === e.currentTarget) { setPaletteOpen(false); setPaletteQuery(''); } }}
-        >
-          <div
-            className="analytics-palette"
-            role="dialog"
-            aria-label={l10n.getString('analytics-palette-aria')}
-          >
-            <input
-              ref={paletteInputRef}
-              type="text"
-              className="analytics-palette-input"
-              value={paletteQuery}
-              onChange={(e) => setPaletteQuery(e.target.value)}
-              placeholder={l10n.getString('analytics-palette-placeholder')}
-              aria-label={l10n.getString('analytics-palette-placeholder')}
-            />
-            <ul className="analytics-palette-list" role="listbox" aria-label={l10n.getString('analytics-palette-aria')}>
-              {filteredItems.length === 0 ? (
-                <li className="analytics-palette-empty">{l10n.getString('analytics-palette-empty')}</li>
-              ) : (
-                filteredItems.map((item, i) => (
-                  <li key={`${item.kind}-${item.value}`}>
-                    <button
-                      type="button"
-                      className={`analytics-palette-item${i === paletteIndex ? ' analytics-palette-item--active' : ''}`}
-                      onMouseEnter={() => setPaletteIndex(i)}
-                      onClick={() => runPaletteItem(item)}
-                    >
-                      <span>{item.label}</span>
-                      {item.hint && <kbd className="analytics-palette-hint">{item.hint}</kbd>}
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-        </div>
-      )}
+      <CommandPalette
+        open={paletteOpen}
+        query={paletteQuery}
+        activeIndex={paletteIndex}
+        filteredItems={filteredItems}
+        inputRef={paletteInputRef}
+        onQueryChange={setPaletteQuery}
+        onIndexChange={setPaletteIndex}
+        onClose={() => { setPaletteOpen(false); setPaletteQuery(''); }}
+        onRunItem={runPaletteItem}
+      />
 
     </div>
   );
