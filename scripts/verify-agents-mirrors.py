@@ -43,7 +43,14 @@ automatically -- and a mirror that does not follow is a finding.
 WHAT IT CHECKS
 ==============
 
-  1. GATE COUNT -- a mirror claiming N steps against a hook with M sections.
+  1. GATE COUNT -- a mirror claiming N steps against a hook with M sections. The
+     hook is counted twice, in the working tree and as committed (`git show
+     HEAD:.githooks/pre-commit`), because a mirror is committed ALONGSIDE the hook and
+     the claim has to agree with the hook as committed, not as currently typed. When
+     the two counts differ, only a claim that matches the working tree and contradicts
+     the commit is a problem; anything else is another lane mid-edit, printed as a
+     notice that cannot fail the run -- a permanent cross-repo red trains people to
+     ignore the gate.
   2. FALSE CI COVERAGE CLAIM -- a mirror listing step K as "no CI backstop" /
      "local-only" when a live workflow actually runs it. This is the check that
      catches the bug class that motivated the script.
@@ -97,15 +104,57 @@ def current_version(root: Path) -> str:
     return m.group(1)
 
 
+HOOK_REL = ".githooks/pre-commit"
+GATE_SECTION_RE = re.compile(r"^# ── (.+?) ─", re.M)
+
+
+def gate_sections(text: str) -> list[tuple[int, str]]:
+    """(ordinal, section name) for each gate header in hook TEXT.
+
+    Counting lives here, on text, so the worktree copy and the committed copy can be
+    counted by the SAME function. A separate committed-counter is the thing that goes
+    false on its own: two ways to count one header format drift apart, and a checker
+    that compares a worktree count to a committed count computed differently is
+    reporting the difference between its own two parsers rather than the tree.
+    """
+    return [(i + 1, name.strip())
+            for i, name in enumerate(GATE_SECTION_RE.findall(text))]
+
+
 def hook_steps(root: Path) -> list[tuple[int, str]]:
-    """(ordinal, section name) for each gate section in .githooks/pre-commit.
+    """(ordinal, section name) for each gate section in the WORKTREE hook.
 
     The section headers are the hook's own table of contents; the mirrors describe
     them one by one, so this is the right thing to count.
     """
-    hook = read(root, ".githooks/pre-commit")
-    return [(i + 1, name.strip())
-            for i, name in enumerate(re.findall(r"^# ── (.+?) ─", hook, re.M))]
+    return gate_sections(read(root, HOOK_REL))
+
+
+def committed_hook_text(root: Path) -> str | None:
+    """The hook as COMMITTED (`git show HEAD:.githooks/pre-commit`), or None.
+
+    Why the committed copy is read at all: the mirrors are committed alongside the
+    hook, so the thing a committed mirror has to agree with is the committed hook.
+    Reading only the working copy lets a mirror be filed saying N into a tree whose
+    committed hook says M -- checker green, committed state wrong, and invisible in
+    CI, which clones a clean tree where the divergence cannot exist. It bites only
+    this repo in its actual shape: several agents committing one checkout at once.
+
+    None means "cannot compare" -- no git, no HEAD, path not committed, git missing.
+    Every caller treats None as today's behaviour, so a fixture or an exotic checkout
+    loses the extra check rather than inventing a verdict.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "show", f"HEAD:{HOOK_REL}"],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=20,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
 
 
 def live_workflows(root: Path) -> dict[str, str]:
@@ -350,11 +399,30 @@ def documented_commit_types(text: str) -> set[str]:
 
 # ── The check ───────────────────────────────────────────────────────────────
 
-def scan(root: Path) -> list[str]:
+def scan(root: Path, head_hook_text: str | None = None,
+         notices: list[str] | None = None) -> list[str]:
+    """Findings about ROOT.
+
+    head_hook_text and notices are seams for the self-test: the fixture directory is
+    not a git repo, so `git show HEAD:` cannot be made to disagree with a file on disk
+    there, and the divergence cannot be tested without controlling both sides. Left
+    alone by every real caller, which is what keeps the normal verdict path the one
+    that has always run.
+    """
     problems: list[str] = []
     version = current_version(root)
     steps = hook_steps(root)
     n_steps = len(steps)
+    head_text = committed_hook_text(root) if head_hook_text is None else head_hook_text
+    n_head = None if head_text is None else len(gate_sections(head_text))
+    diverged = n_head is not None and n_head != n_steps
+    if diverged and notices is not None:
+        notices.append(
+            f"{HOOK_REL} DIVERGES: {n_steps} gate sections in the working tree, "
+            f"{n_head} in HEAD. Mirror counts are checked against both. Only a mirror "
+            f"that matches the working tree and contradicts the commit is a problem; "
+            f"the rest are reported here, because a permanent red while another lane "
+            f"is mid-edit teaches people to ignore the gate.")
     wfs = live_workflows(root)
     all_ci_text = "\n".join(wfs.values())
     types = accepted_commit_types(root)
@@ -385,6 +453,42 @@ def scan(root: Path) -> list[str]:
         if hits:
             covered[ordinal] = hits
 
+    def verdict(rel: str, claimed: int) -> None:
+        """Route one gate-count claim to problems, to notices, or to nowhere.
+
+        Behaviourally identical to what this check did before the committed hook was
+        read at all whenever the working copy and the commit hold the same hook: same
+        condition, same message, same list, and the two extra branches are unreachable.
+        That is the point -- the addition must not be able to change a verdict on a tree
+        where nothing diverges, since that tree is every CI run there will ever be.
+        """
+        if not diverged:
+            if claimed != n_steps:
+                problems.append(
+                    f"{rel}: claims {claimed} pre-commit steps; "
+                    f".githooks/pre-commit has {n_steps} gate sections")
+        elif claimed == n_steps and claimed != n_head:
+            # THE DANGEROUS CASE: a committed claim asserting a count that only the
+            # working copy supports. It passes a worktree-only checker, it can be
+            # committed, and CI cannot reproduce it, because a clean clone has no
+            # divergence for it to hide in.
+            problems.append(
+                f"{rel}: claims {claimed} pre-commit steps, which matches the working "
+                f"tree but NOT the committed hook -- {HOOK_REL} has {n_head} gate "
+                f"sections at HEAD and {n_steps} on disk, so this is a committed claim "
+                f"about a hook that is not the one it is committed with")
+        elif notices is not None:
+            # Agrees with the commit, or with neither. In-flight while the hook itself
+            # diverges: said out loud, not failed, because a red that no lane can act on
+            # is the failure mode this repo already documents for the advisory
+            # ci-docs-drift count.
+            notices.append(
+                f"{rel}: claims {claimed} pre-commit steps, matching "
+                + (f"the committed hook ({n_head}) while the working tree holds "
+                   f"{n_steps}" if claimed == n_head else
+                   f"neither the working tree ({n_steps}) nor the commit ({n_head})")
+                + f"; reported, not failed, while {HOOK_REL} diverges")
+
     for rel in MIRRORS:
         text = read(root, rel)
         if not text:
@@ -394,10 +498,8 @@ def scan(root: Path) -> list[str]:
         claimed = claimed_step_count(text)
         if claimed is None:
             problems.append(f"{rel}: does not state how many pre-commit steps it runs")
-        elif claimed != n_steps:
-            problems.append(
-                f"{rel}: claims {claimed} pre-commit steps; "
-                f".githooks/pre-commit has {n_steps} gate sections")
+        else:
+            verdict(rel, claimed)
 
         # (2) FALSE COVERAGE CLAIM -- the motivating bug.
         for k in sorted(steps_claimed_local_only(text)):
@@ -511,10 +613,13 @@ def scan(root: Path) -> list[str]:
         rel = skill.relative_to(root).as_posix()
         text = skill.read_text(encoding="utf-8", errors="replace")
         claimed = skill_claimed_step_count(text)
-        if claimed is not None and claimed != n_steps:
-            problems.append(
-                f"{rel}: claims {claimed} pre-commit steps; "
-                f".githooks/pre-commit has {n_steps} gate sections")
+        if claimed is not None:
+            # Same routing as the mirrors, which means one visible widening rather than a
+            # silent one: while the hook diverges, a skill that matches the COMMITTED
+            # count is an in-flight condition too, and failing it would put the whole
+            # repo in red for someone else's mid-edit. With the two copies agree this
+            # call does what the inline comparison above always did.
+            verdict(rel, claimed)
 
     return problems
 
@@ -531,7 +636,18 @@ def report(root: Path) -> int:
     print(f"    live workflows            : {', '.join(wfs) or '(none)'}")
     print(f"    commit types accepted     : {sorted(accepted_commit_types(root))}")
     print()
-    problems = scan(root)
+    # Notices are the diverging-ground-truth channel: printed, never counted. A lane
+    # mid-edit on the hook must not put a permanent red across the repo -- this file
+    # already documents why an un-actionable red is worse than no red (dev-ci's advisory
+    # ci-docs-drift count is deliberately non-blocking for the same reason).
+    notices: list[str] = []
+    problems = scan(root, notices=notices)
+    if notices:
+        print("  NOTICES (reported because the ground truth itself is diverging;")
+        print("           0 of these count as problems and none of them fail the run):")
+        for nt in notices:
+            print(f"    ! {nt}")
+        print()
     if problems:
         print(f"  {len(problems)} problem(s):")
         for p in problems:
@@ -752,6 +868,71 @@ def self_test() -> int:
                         print(f"  MISSED  {skill_rel:38s} first-pattern word numeral "
                               f"parsed to {got!r}, expected 6")
                         bad += 1
+
+    # (7) Diverging ground truth. THE DANGEROUS CONFIGURATION is a mirror claiming the
+    # WORKTREE count while the COMMITTED hook carries another one -- the state a
+    # worktree-only checker certifies as green, and the state CI cannot reproduce,
+    # because a clean clone has one hook rather than two. Two sides to control, so the
+    # worktree side is written into the fixture and the committed side arrives through
+    # scan()'s head_hook_text seam; mutating one string cannot express this case.
+    committed_hook = read(src, ".githooks/pre-commit")
+    n_committed = len(gate_sections(committed_hook))
+    worktree_hook = committed_hook + "\n# ── Probe gate ─────────────────────────\n"
+    n_worktree = len(gate_sections(worktree_hook))
+    mirror_rel = MIRRORS[0]
+    if n_worktree == n_committed:
+        print("  WRONG diverging hook: the probe section did not change the committed "
+              f"count ({n_committed}) -- the fixture controls nothing")
+        bad += 1
+    else:
+        for desc, claim, want_problem in (
+            (f"mirror claims the worktree count ({n_worktree}) while HEAD has "
+             f"{n_committed} -- dangerous", n_worktree, True),
+            (f"mirror claims the committed count ({n_committed}) while the worktree "
+             f"holds {n_worktree} -- in-flight", n_committed, False),
+        ):
+            word = {v: k for k, v in WORD_NUM.items()}.get(claim, str(claim))
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                make_fixture(src, tmp)
+                io.open(tmp / ".githooks/pre-commit", "w", encoding="utf-8",
+                        newline="\n").write(worktree_hook)
+                base_text = read(tmp, mirror_rel)
+                mutated = re.sub(
+                    r"runs \*\*(?:one|two|three|four|five|six|seven|eight|nine|ten|"
+                    r"eleven|twelve|\d+) steps\*\*",
+                    f"runs **{word} steps**", base_text, count=1)
+                # Guard on the value the fixture actually states, not on the substitution
+                # having changed bytes: for the committed-count case the mirror may
+                # already carry that number, which is a valid fixture, not a dead anchor.
+                if claimed_step_count(mutated) != claim:
+                    print(f"  WRONG {mirror_rel}: case (7) cannot set the mirror to "
+                          f"{claim} steps (it parses as "
+                          f"{claimed_step_count(mutated)}) -- dead anchor")
+                    bad += 1
+                    continue
+                io.open(tmp / mirror_rel, "w", encoding="utf-8",
+                        newline="\n").write(mutated)
+                notes: list[str] = []
+                probs = scan(tmp, head_hook_text=committed_hook, notices=notes)
+                hit = [p for p in probs
+                       if mirror_rel in p and "NOT the committed hook" in p]
+                diverged_noted = any("DIVERGES" in s for s in notes)
+                if want_problem:
+                    if hit and diverged_noted:
+                        print(f"  CAUGHT  {mirror_rel:20s} {desc}")
+                    else:
+                        print(f"  MISSED  {mirror_rel:20s} {desc} -- {len(probs)} "
+                              f"problem(s), {len(notes)} notice(s), named the "
+                              f"divergence: {diverged_noted}; "
+                              f"{[p[:64] for p in probs[:2]]}")
+                        bad += 1
+                elif hit or not diverged_noted:
+                    print(f"  MISSED  {mirror_rel:20s} {desc} -- the safe case failed "
+                          f"the run (hit: {[p[:64] for p in hit]})")
+                    bad += 1
+                else:
+                    print(f"  CLEAN   {mirror_rel:20s} {desc}")
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
