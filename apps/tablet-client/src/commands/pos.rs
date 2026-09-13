@@ -28,7 +28,7 @@ use oz_core::db::Store;
 use oz_core::events::{SaleCompleted, SaleCompletedLine};
 use oz_core::location_resolver;
 use oz_core::session::SessionContext;
-use oz_core::{Cart, CartId, CartLine, Currency, Money, PaymentSplitArg, SaleStatus, Sku};
+use oz_core::{Cart, CartId, CartLine, Currency, Money, PaymentSplitArg, SaleStatus};
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;

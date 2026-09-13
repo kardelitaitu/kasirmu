@@ -1,5 +1,6 @@
 use super::*;
 use oz_core::Currency;
+use oz_core::Sku;
 use oz_core::migrations;
 use rusqlite::Connection;
 
