@@ -2416,6 +2416,32 @@ def self_test() -> int:
     case("case 23  the shared schema takes no position on it, so both readings agree",
          schema.validate(json.loads(unknown_key), KNOWN_SECTIONS, "a.json") == [], )
 
+    # And the loader itself: a shared validator that is absent, unreadable or broken is a
+    # refusal, not a crash. This is the one NEW failure mode the adoption introduces -- the gate
+    # now depends on a sibling file -- and an eager import would have raised at module load,
+    # out of main(), with no handler, which is an uncaught exception and therefore exit 1: the
+    # verdict code, spent on a missing file. So the arm is pinned on its code, its sentence, and
+    # its silence about the tree.
+    saved_schema_path = globals()["ALLOWLIST_SCHEMA_PATH"]
+    absent_outcome = "not-run"
+    try:
+        globals()["ALLOWLIST_SCHEMA_PATH"] = (
+            saved_schema_path.parent / "no-such-allowlist-schema.py")
+        absent_outcome = planted_run("--write-scoped-orphans", json.dumps(probe_clean))
+    finally:
+        globals()["ALLOWLIST_SCHEMA_PATH"] = saved_schema_path
+    case("case 23  a missing shared validator is refused at 2, by name, with no traceback",
+         absent_outcome[0] == 2 and absent_outcome[2]
+         and absent_outcome[1].startswith("error:")
+         and "no-such-allowlist-schema.py" in absent_outcome[1]
+         and "FAIL" not in absent_outcome[1] and "Traceback" not in absent_outcome[1], )
+    # Either verdict proves recovery: 0 and 1 both mean the document was ACCEPTED and the tree
+    # was walked. Pinning one exact code would hang a test about my loader off the parity state
+    # of the tree, the coupling case 13 had to take out.
+    case("case 23  and the loader recovers: the same document is accepted once more",
+         planted_run(None, json.dumps(probe_clean))[0] in (0, 1)
+         and "no-such-allowlist-schema" not in planted_run(None, json.dumps(probe_clean))[1], )
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
