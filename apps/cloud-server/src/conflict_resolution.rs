@@ -64,13 +64,6 @@ pub struct SyncConflictRow {
     pub created_at: String,
 }
 
-impl SyncConflictRow {
-    /// Whether the row is still awaiting review.
-    pub fn is_open(&self) -> bool {
-        self.status == "open"
-    }
-}
-
 /// How urgent a flagged conflict is, and the bucket the review UI filters on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -246,13 +239,21 @@ pub fn classify(candidate: &ConflictCandidate<'_>) -> Decision {
     }
 }
 
-/// The field names an object payload carries.
+/// The comparable field names an object payload carries.
 ///
 /// A non-object payload has no field set by definition.
+///
+/// Only the fields a writer actually chose are comparable, so
+/// [`is_metadata_field`] names are filtered out first.
 fn fields_of(payload: &Value) -> BTreeSet<String> {
     payload
         .as_object()
-        .map(|map| map.keys().cloned().collect())
+        .map(|map| {
+            map.keys()
+                .filter(|k| !is_metadata_field(k.as_str()))
+                .cloned()
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -274,6 +275,23 @@ pub const VECTOR_FIELD: &str = "_vector";
 
 /// Payload field carrying the sending terminal's id.
 pub const TERMINAL_FIELD: &str = "_terminal";
+
+/// Payload fields that say *which* record a mutation is about.
+///
+/// These are the join key, not an edited aspect — they are how the two
+/// sides were matched, so they appear in both by construction.
+pub const IDENTITY_FIELDS: [&str; 2] = ["entity_id", "id"];
+
+/// Whether a payload field is metadata rather than a value a writer chose.
+///
+/// The stamp fields are transport metadata and the identity fields are the
+/// join key; none of the three says anything about what a writer edited.
+/// Counting any of them would put it in every intersection and make
+/// [`fields_are_disjoint`] false for every pair, silently degrading
+/// [`MergePolicy::MergeDisjointFields`] into a flag on every push.
+fn is_metadata_field(name: &str) -> bool {
+    name == VECTOR_FIELD || name == TERMINAL_FIELD || IDENTITY_FIELDS.contains(&name)
+}
 
 /// Read the version vector a peer attached to a pushed payload.
 ///

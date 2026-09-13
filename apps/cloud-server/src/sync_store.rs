@@ -199,16 +199,8 @@ impl SyncStore {
                 continue;
             };
             let entity_id = entity_id_of(&item.payload, &item.id);
-            let terminal = extract_terminal(&item.payload).unwrap_or_else(|| "unknown".to_string());
             match self
-                .detect_conflict(
-                    tenant_id,
-                    &item.action,
-                    &entity_id,
-                    &vector,
-                    &item.payload,
-                    &terminal,
-                )
+                .detect_conflict(tenant_id, &item.action, &entity_id, &vector, &item.payload)
                 .await
             {
                 Ok(Some(Decision::Flag { severity })) => {
@@ -1469,7 +1461,6 @@ impl SyncStore {
         entity_id: &str,
         incoming: &VersionVector,
         incoming_payload: &str,
-        local_terminal_id: &str,
     ) -> Result<Option<Decision>, String> {
         let stored = self
             .load_entity_vector(tenant_id, entity_type, entity_id)
@@ -1499,12 +1490,21 @@ impl SyncStore {
 
         match decision {
             Decision::Flag { .. } => {
+                // `local_*` means "what the server already held", so the
+                // terminal is read from the STORED body, not the incoming
+                // one. Passing the incoming terminal here would attribute
+                // the stored vector to the peer currently overwriting it,
+                // and the review UI would name the wrong writer.
+                let local_terminal_id = stored_payload
+                    .as_deref()
+                    .and_then(extract_terminal)
+                    .unwrap_or_else(|| "unknown".to_string());
                 let row = build_conflict_row(
                     &uuid::Uuid::now_v7().to_string(),
                     tenant_id,
                     entity_type,
                     entity_id,
-                    local_terminal_id,
+                    &local_terminal_id,
                     stored_vector,
                     incoming,
                     stored_payload.as_deref().unwrap_or(""),
