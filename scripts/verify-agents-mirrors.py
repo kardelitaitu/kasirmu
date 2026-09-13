@@ -51,6 +51,13 @@ WHAT IT CHECKS
      the commit is a problem; anything else is another lane mid-edit, printed as a
      notice that cannot fail the run -- a permanent cross-repo red trains people to
      ignore the gate.
+  1b. ENUMERATION MEMBERSHIP -- a mirror that lists the steps by name is checked
+      against the hook's section NAMES, not only their count: seven wrong names still
+      read as "seven steps", which is how a file can state the right number and
+      describe the wrong hook. Both directions are findings -- dropping a gate the hook
+      runs, and naming a gate the hook does not run. A numbered list that never claimed
+      to enumerate the steps, or one marked as history by the same HISTORICAL_MARKERS
+      notion the skill parser uses, is left alone.
   2. FALSE CI COVERAGE CLAIM -- a mirror listing step K as "no CI backstop" /
      "local-only" when a live workflow actually runs it. This is the check that
      catches the bug class that motivated the script.
@@ -155,6 +162,98 @@ def committed_hook_text(root: Path) -> str | None:
     if proc.returncode != 0:
         return None
     return proc.stdout
+
+
+# ── Step NAMES, not just the count ───────────────────────────────────────────
+#
+# The numeral check can be satisfied by a mirror that lists the wrong steps: root
+# AGENTS.md said "seven steps" and enumerated seven names while a different paragraph
+# still said eight, and its own audit stamp concedes the gap -- "an enumeration inside
+# prose is unenforced by construction". Counting names is the same seven either way; the
+# set of names is not. This polices the SET, in both directions: a mirror that drops a
+# gate the hook runs is as wrong as one that invents a gate the hook does not run.
+
+ENUM_ITEM_RE = re.compile(r"^(\d+)\.\s+(.*)$")
+BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+MIN_ENUM_ITEMS = 3
+NAME_STOPWORDS = {"the", "a", "an", "of", "for", "and", "its", "to", "in"}
+
+
+def gate_section_lines(text: str) -> list[int]:
+    """1-based line of each gate header, positionally matching gate_sections().
+
+    Needed so a finding can name the place the expected step comes from
+    (.githooks/pre-commit:331) instead of asserting a set difference in the abstract.
+    """
+    return [text[:m.start()].count("\n") + 1 for m in GATE_SECTION_RE.finditer(text)]
+
+
+def step_name_words(name: str) -> set[str]:
+    words = re.findall(r"[a-z0-9][a-z0-9./_-]*",
+                       name.lower().replace("`", "").strip())
+    return {w for w in words if w not in NAME_STOPWORDS}
+
+
+def step_names_match(a: str, b: str) -> bool:
+    """Do a mirror's step label and a hook header name the same gate?
+
+    Deliberately loose, because mirrors shorten: the hook header is
+    "Go gate: apps/license-server" and the mirrors say "Go gate". Exact-string
+    comparison would report the honest abbreviation as a missing step, which trains
+    people to ignore the gate. Loose in one direction only: a label matches when its
+    words are a subset of the header's or a superset, so a name can be shortened or
+    annotated but not replaced -- "i18n lint" matches nothing, because no header it is
+    a subset of exists.
+    """
+    wa, wb = step_name_words(a), step_name_words(b)
+    if not wa or not wb:
+        return False
+    return wa == wb or wa <= wb or wb <= wa
+
+
+def step_enumerations(text: str, hook_names: list[str]) -> list[list]:
+    """Numbered lists in TEXT that claim to enumerate the hook's steps.
+
+    Each returned run is [(item number, name, line), ...]. Three exclusions, each a
+    claim about what the file did NOT promise, checked against the same notion of
+    "historical" the skill parser already uses (HISTORICAL_MARKERS) rather than a
+    second rule invented here:
+
+    * fewer than MIN_ENUM_ITEMS consecutive numbered bold items -- two names is a
+      sentence about two things, not an enumeration;
+    * ANY item of the run carrying a HISTORICAL_MARKERS entry -- an audit stamp that
+      records "the hook ran six gates (cargo fmt, i18n lint, ...)" is preserved
+      evidence, and falsifying it is worse than the stale claim it carries;
+    * a run with 0 names matching the hook -- a numbered list about something else
+      never claimed to enumerate the steps, so it has no opinion about their names.
+    """
+    runs: list[list] = []
+    cur: list = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = ENUM_ITEM_RE.match(line)
+        b = BOLD_RE.search(m.group(2)) if m else None
+        if b:
+            cur.append((int(m.group(1)), b.group(1).replace("`", "").strip(), i + 1,
+                        line.lower()))
+        else:
+            if cur:
+                runs.append(cur)
+            cur = []
+    if cur:
+        runs.append(cur)
+    out: list[list] = []
+    for run in runs:
+        if len(run) < MIN_ENUM_ITEMS:
+            continue
+        if any(any(marker in body for marker in HISTORICAL_MARKERS)
+               for _, _, _, body in run):
+            continue
+        if not any(step_names_match(nm, hn)
+                   for _, nm, _, _ in run for hn in hook_names):
+            continue
+        out.append([(n, nm, ln) for n, nm, ln, _ in run])
+    return out
 
 
 def live_workflows(root: Path) -> dict[str, str]:
@@ -426,6 +525,11 @@ def scan(root: Path, head_hook_text: str | None = None,
     wfs = live_workflows(root)
     all_ci_text = "\n".join(wfs.values())
     types = accepted_commit_types(root)
+    # (ordinal, name, line) for every gate the hook actually runs: the line is carried so a
+    # finding can cite where the expected name comes from.
+    hook_step_index = [(o, nm, ln) for (o, nm), ln in
+                       zip(steps, gate_section_lines(read(root, HOOK_REL)))]
+    hook_step_names = [nm for _, nm, _ in hook_step_index]
 
     # Which ordinals are genuinely covered by a live workflow? Determined by
     # matching each step's own tooling against the workflow text, so "which
@@ -500,6 +604,27 @@ def scan(root: Path, head_hook_text: str | None = None,
             problems.append(f"{rel}: does not state how many pre-commit steps it runs")
         else:
             verdict(rel, claimed)
+
+        # (1b) MEMBERSHIP of the enumeration. Only for a file that presents a numbered
+        # enumeration of the steps; step_enumerations() states the three exclusions that
+        # decide "presents" (too short, historical by the existing marker notion, or about
+        # something else entirely), so a file that never claimed to enumerate is not
+        # shouted at.
+        for run in step_enumerations(text, hook_step_names):
+            missing = [(o, nm, hl) for o, nm, hl in hook_step_index
+                       if not any(step_names_match(nm, inm) for _, inm, _ in run)]
+            extra = [(n, nm, ln) for n, nm, ln in run
+                     if not any(step_names_match(nm, hnm) for _, hnm, _ in hook_step_index)]
+            if not missing and not extra:
+                continue
+            bits = [f'omits step {o} "{nm}" ({HOOK_REL}:{hl})'
+                    for o, nm, hl in missing]
+            bits += [f'lists "{nm}" as item {n} ({rel}:{ln}), which is not a gate '
+                     f'the hook runs' for n, nm, ln in extra]
+            problems.append(
+                f"{rel}: numbered enumeration of the steps from {rel}:{run[0][2]} "
+                f"disagrees with the hook on NAMES rather than count: "
+                + "; ".join(bits))
 
         # (2) FALSE COVERAGE CLAIM -- the motivating bug.
         for k in sorted(steps_claimed_local_only(text)):
@@ -933,6 +1058,56 @@ def self_test() -> int:
                     bad += 1
                 else:
                     print(f"  CLEAN   {mirror_rel:20s} {desc}")
+
+    # (8) Enumeration MEMBERSHIP while the numeral stays correct. A numeral-only checker
+    # passes a mirror listing seven wrong names, which is the gap the root AGENTS.md stamp
+    # concedes in its own words ("an enumeration inside prose is unenforced by
+    # construction"). The probe name is "i18n lint", a gate the superseded onboarding-guide
+    # audit stamp records: real history, so this case asserts BOTH sides of the same word --
+    # it must fail as a live claim and keep passing as a preserved record.
+    hist_probe = ("\n## Probe\n\n"
+                  "1. **cargo fmt** — previously a pre-commit gate\n"
+                  "2. **i18n lint** — previously a pre-commit gate\n"
+                  "3. **bundle parity** — previously a pre-commit gate\n")
+    for desc, mutate8, want_problem in (
+        ("live enumeration names a gate the hook does not run",
+         lambda t: t.replace("**`Go gate`**", "**i18n lint**", 1), True),
+        ("the same names inside a historically-marked enumeration",
+         lambda t: t + hist_probe, False),
+    ):
+        rel8 = MIRRORS[0]
+        base8 = read(src, rel8)
+        mutated8 = mutate8(base8)
+        if mutated8 == base8:
+            print(f"  WRONG {rel8}: case (8) anchored on nothing -- {desc}")
+            bad += 1
+            continue
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            make_fixture(src, tmp)
+            io.open(tmp / rel8, "w", encoding="utf-8",
+                    newline="\n").write(mutated8)
+            probs = scan(tmp)
+            hit = [p for p in probs
+                   if rel8 in p and "disagrees with the hook on NAMES" in p]
+            named = [p for p in hit if "i18n lint" in p]
+            numeral_silent = not any(rel8 in p and "pre-commit steps; " in p
+                                      for p in probs)
+            if want_problem:
+                if hit and named and numeral_silent:
+                    print(f"  CAUGHT  {rel8:20s} {desc} (count check stayed silent, so "
+                          "only the name test could fire)")
+                else:
+                    print(f"  MISSED  {rel8:20s} {desc} -- {len(hit)} name finding(s), "
+                          f"{len(named)} naming the invented gate, numeral silent: "
+                          f"{numeral_silent}; {[p[:62] for p in probs[:2]]}")
+                    bad += 1
+            elif hit:
+                print(f"  MISSED  {rel8:20s} {desc} -- preserved history was punished: "
+                      f"{[p[:78] for p in hit]}")
+                bad += 1
+            else:
+                print(f"  CLEAN   {rel8:20s} {desc}")
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
