@@ -35,9 +35,9 @@
  *
  * THE FLUENT HAZARD THE SHAPE HAS TO RESPECT - read before you change it. Two
  * gates pattern-match on source text and both are real blockers: pre-commit step
- * 3 runs scripts/verify-bundle-parity.py with --include-getstring and
+ * 2 runs scripts/verify-bundle-parity.py with --include-getstring and
  * --include-dynamic-literals (does a reference name a key no bundle defines?),
- * and step 8 runs scripts/verify-ftl-orphans.py --staged-only, whose stated job
+ * and step 7 runs scripts/verify-ftl-orphans.py --staged-only, whose stated job
  * includes "a reference you delete must not strand a key". So the single source
  * is a plain object of STRING LITERALS inside the features tree, never a
  * computed or template-built name: the orphan gate searches the whole non-test
