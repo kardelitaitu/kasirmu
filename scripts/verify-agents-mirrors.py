@@ -1388,6 +1388,42 @@ def _self_test_cases() -> int:
             else:
                 print(f"  CLEAN   {MIRRORS[0]:20s} {desc}")
 
+    # (12) THE ALWAYS-ON LINE ITSELF. Cases 1-11 all assert on the list scan() returns, so
+    # the two informational lines report() prints could be deleted and every one of them
+    # would stay green -- a claim on screen with no check behind it, which is the same class
+    # this file keeps finding in other people's docs. This one asserts on the gate's OWN
+    # stdout: exactly one count line per policed mirror, the numeral it carries equal to the
+    # number scan computed, the unit adjacent to it, and no file outside the policed set
+    # named anywhere in the output.
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        make_fixture(src, tmp)
+        counts12: dict[str, int] = {}
+        scan(tmp, enum_counts=counts12)
+        out12 = io.StringIO()
+        with contextlib.redirect_stdout(out12):
+            rc12 = report(tmp)
+        text12 = out12.getvalue()
+        lines12 = [l for l in text12.splitlines()
+                   if "enumeration policed" in l or "enumerations policed" in l]
+        unpadded = [rel for rel in MIRRORS
+                    if not any(f"step claims, {rel:<22}:" in l
+                               and f"{counts12.get(rel, -1)} enumeration" in l
+                               for l in lines12)]
+        outsiders = [p for p in ("onboarding-guide", "SKILL.md", "audit-open-findings",
+                                 "parity-unanswerable") if p in text12]
+        if len(lines12) == len(MIRRORS) and not unpadded and not outsiders and rc12 == 0:
+            print(f"  CAUGHT  {MIRRORS[0]:20s} gate stdout carries the count line for "
+                  f"every policed mirror ({len(lines12)} lines, numerals "
+                  f"{[counts12.get(r) for r in MIRRORS]}) and names nothing outside the "
+                  "policed set")
+        else:
+            print(f"  MISSED  {MIRRORS[0]:20s} the always-on print is not pinned: "
+                  f"{len(lines12)} line(s) for {len(MIRRORS)} mirrors, unpinned="
+                  f"{unpadded}, outsiders={outsiders}, report rc={rc12}; "
+                  f"lines={[l.strip()[:52] for l in lines12[:2]]}")
+            bad += 1
+
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0
 
