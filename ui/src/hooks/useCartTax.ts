@@ -85,13 +85,34 @@ export interface CartTaxCacheState {
   cacheFresh: boolean;
 }
 
-const UNKNOWN_STATE: CartTaxCacheState = {
-  severity: 'unknown',
-  taxMinor: 0,
-  hasExclusive: null,
-  estimated: false,
-  cacheFresh: false,
-};
+/**
+ * The zero reading: nothing to show, and the zero is NOT claimed. Built
+ * FRESH PER CALL on purpose. This used to be a module-level
+ * `UNKNOWN_STATE` object, and it was not only that hook's seed — the two
+ * unknown-classifying paths below handed it out as LIVE STATE, so every
+ * consumer that classified as unknown held the SAME reference:
+ * `CartTaxCacheState` is not readonly (:71), so a non-copying updater in one
+ * POS screen, `setState(s => { s.taxMinor = x; return s; })`, would have
+ * written through into the other screen's live state and into the module
+ * value itself. Nothing mutates those fields today either, but nothing
+ * type-checks it, and the sibling idle-state slice
+ * (features/pos/components/CartTaxWatcher.tsx, `createIdleTaxState`) turned
+ * that assumption into two failing tests. Same shape there and here: a
+ * factory, no shared exemplar left to alias.
+ *
+ * Deliberately NOT exported: this hook is its only consumer (the watcher's
+ * factory is exported because two screens seed from it), and an unused
+ * exported constant is exactly the thing a later reader hands to `useState`.
+ */
+function createUnknownState(): CartTaxCacheState {
+  return {
+    severity: 'unknown',
+    taxMinor: 0,
+    hasExclusive: null,
+    estimated: false,
+    cacheFresh: false,
+  };
+}
 
 /**
  * Compute the cart's tax with a failure-window fallback, per the F2
@@ -105,7 +126,11 @@ export function useCartTax(
   lines: CartLineTaxInput[],
   currency: string,
 ): CartTaxCacheState {
-  const [state, setState] = useState<CartTaxCacheState>(UNKNOWN_STATE);
+  // Factory passed BY REFERENCE as React's lazy initializer: this mount gets
+  // its own zero object, and none is allocated on the renders after the
+  // first. (At the setState sites below it must be CALLED instead — there
+  // React would read an un-called function as a functional updater.)
+  const [state, setState] = useState<CartTaxCacheState>(createUnknownState);
   // The signature (a string) is the dependency, not the lines array:
   // callers map fresh arrays every render, and a content-keyed dep is
   // what keeps one cart from re-computing per render.
@@ -113,7 +138,17 @@ export function useCartTax(
 
   useEffect(() => {
     if (!sessionToken) {
-      setState(UNKNOWN_STATE);
+      // CALLED, not passed: setState reads a bare function as a functional
+      // updater, which would hand the previous state to the factory.
+      // MEASURED COST, A/B against the pre-fix module at HEAD: handing out
+      // the shared object let React's Object.is bail-out skip this
+      // re-render, so a null-token mount took 1 render and now takes 2 —
+      // with IDENTICAL values (unknown / 0 / null / false / false), so
+      // nothing a screen reads moves. Accepted, because closing the
+      // aliasing is the point; the alternative is a setState(prev => ...)
+      // equality guard, i.e. the hook re-deriving what its own severity
+      // means at every write.
+      setState(createUnknownState());
       return;
     }
     let cancelled = false;
@@ -133,8 +168,10 @@ export function useCartTax(
         if (cancelled) return;
         const cached = cartTaxCache.get(sessionToken);
         if (!cached) {
-          // Zero shown, zero NOT claimed.
-          setState(UNKNOWN_STATE);
+          // Zero shown, zero NOT claimed. Fresh object, so two screens
+          // failing on an empty cache do not end up on one shared state
+          // (same +1-render trade-off as the null-token branch above).
+          setState(createUnknownState());
         } else if (cached.signature === signature) {
           // Same cart the cached answer was computed for: proceed.
           setState({
