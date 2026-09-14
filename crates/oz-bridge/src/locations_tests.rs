@@ -14,63 +14,10 @@
 use super::*;
 use oz_core::db::Store;
 
-use crate::testing::seeded_row_loads;
-use oz_core::subscription::TenantSubscription;
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 /// The release leg for a scoped command this file drives through the
-/// subscription gate: `create_location_profile_scoped` reaches the tenant row
-/// via `sub.verify_signature()?` - the propagating shape of `terminals.rs:432`,
-/// of the two scoped workspace listings, of the inventory mutations and of the
-/// auth session - so in release the command RETURNS AN ERROR before the quota
-/// gate is ever consulted. No id, no written row, no projection of caps:
-/// the `FAIL_CLOSED_*` template is deliberately absent from this file because
-/// both fixtures below also count WRITTEN rows, and release WRITES them
-/// (`audit_security.rs:389` skips only a row whose `loaded` is true).
-///
-/// Existence is pinned FIRST, because `seeded_row_loads() == false` collapses
-/// five distinct causes (`testing.rs:210-216`: no default row, a load `Err` on
-/// a mis-shaped table, a public-key failure, the intended base64 reject on the
-/// BOOTSTRAP_FREE sentinel, a genuine RSA mismatch) and only the fourth is this
-/// fixture vocabulary.
-async fn assert_refused_by_the_seeded_row<T>(
-    tb: &TestBridge,
-    settled: Result<T, BridgeError>,
-    stamped_tier: &str,
-) {
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-    let row = TenantSubscription::load(&db, "default")
-        .expect("the tenant_subscription read must succeed")
-        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
-    assert_eq!(
-        row.tier.tier_key(),
-        stamped_tier,
-        "the tier this fixture inherits must be on the row the release arm reads"
-    );
-    assert_eq!(
-        row.verify_signature().is_ok(),
-        seeded_row_loads(),
-        "the row this fixture writes against must be the row the fork predicate is about"
-    );
-    drop(db);
-    let err = match settled {
-        Err(err) => err,
-        Ok(_) => panic!(
-            "this leg runs only where the seeded row does not verify, so the command must have been refused"
-        ),
-    };
-    assert!(
-        matches!(
-            err,
-            BridgeError::Core {
-                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
-                ..
-            }
-        ),
-        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
-    );
-}
-
+//-- The release leg for these locations lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 use oz_core::migrations;
 use oz_core::session::SessionContext;
 use serde_json::json;

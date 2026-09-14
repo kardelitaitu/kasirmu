@@ -19,65 +19,11 @@ use crate::products;
 use crate::settings;
 use crate::shifts;
 use crate::sync;
-use crate::testing::seeded_row_loads;
 use crate::testing::{TestBridge, temp_conn};
-use oz_core::subscription::TenantSubscription;
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 /// The release leg for a session-minting command in this file.
-///
-/// `create_session` reaches the tenant row through `sub.verify_signature()?`
-/// (`auth.rs:617` - the same gate `auth_tests.rs` went through), so in release
-/// the mint RETURNS AN ERROR: no session token, no ticket, no id for anything
-/// downstream to name. There is no fail-closed projection to assert and
-/// `FAIL_CLOSED_*` appears nowhere in this file.
-///
-/// Existence is pinned FIRST, because `seeded_row_loads() == false` collapses
-/// five distinct causes (`testing.rs:210-216`: no default row, a load `Err` on
-/// a mis-shaped table, a public-key failure, the intended base64 reject on the
-/// BOOTSTRAP_FREE sentinel, a genuine RSA mismatch) and only the fourth is this
-/// fixture vocabulary. Both `test_bridge` and every fixture here hand
-/// `temp_conn()` to `with_conn`, and this file contains no re-tier and no
-/// store-db write, so the pin reads the same identity row the predicate is
-/// about - the locations two-table trap cannot fire on any of these four.
-async fn assert_refused_by_the_seeded_row<T>(
-    tb: &TestBridge,
-    settled: Result<T, BridgeError>,
-    stamped_tier: &str,
-) {
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-    let row = TenantSubscription::load(&db, "default")
-        .expect("the tenant_subscription read must succeed")
-        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
-    assert_eq!(
-        row.tier.tier_key(),
-        stamped_tier,
-        "the tier this fixture inherits must be on the row the release arm reads"
-    );
-    assert_eq!(
-        row.verify_signature().is_ok(),
-        seeded_row_loads(),
-        "the row this fixture mints a session against must be the row the fork predicate is about"
-    );
-    drop(db);
-    let err = match settled {
-        Err(err) => err,
-        Ok(_) => panic!(
-            "this leg runs only where the seeded row does not verify, so the session must have been refused"
-        ),
-    };
-    assert!(
-        matches!(
-            err,
-            BridgeError::Core {
-                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
-                ..
-            }
-        ),
-        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
-    );
-}
-
+//-- The release leg for these session-mints lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 use oz_core::db::Store;
 use oz_core::session::SessionContext;
 
