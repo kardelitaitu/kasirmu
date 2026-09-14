@@ -1582,6 +1582,17 @@ describe("literal tail vs block relation", () => {
     // **153** after style(ui): drop the fallbacks on tokens no theme can leave undefined
     // in two shared sheets swept 65 more (49 in components/FastPINOverlay.css across 11
     // names, 16 in frontend/themes/reset.css across 13; 218 - 65 = 153, and the assertion
+    // below failing at exactly 153 was the measurement). style(ui): drop the last three
+    // fallbacks whose tokens no theme can leave undefined then took it to 150 (one site each in
+    // components/ImpersonationBanner.css, PermissionDenied.css and QrisQrDisplay.css), which is
+    // where the floor now sits EXACTLY: 150 >= 150 passes with zero headroom, so the next
+    // sweep of this class cannot land without a deliberate decision about this line -- that is
+    // the tree stating the boundary, not a comment asking politely. The floor VALUE is not
+    // moved by that commit; it was lowered once, at 218 -> 153, and stopped.
+    // The 9 root-only sites still in the tree (features/analytics/AnalyticsScreen.css:69,
+    // features/kds/KdsScreen.css:730/1728/1738, features/sales/ReceiptPreview.css:30/227,
+    // features/workspaces/WorkspaceHome.css:498/1398/1401) are deliberately NOT swept: 150
+    // minus any of them is a red, and a floor lowered twice in one night is a ratchet.
     // below failing at exactly 153 was the measurement). The floor is calibration, not
     // law -- it exists to prove this case has an input, so it must stay far above zero and
     // it moves down as debt is paid and never up past what the tree holds. 150 is chosen

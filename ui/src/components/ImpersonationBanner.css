@@ -20,7 +20,7 @@
   flex: 0 0 auto;
   padding: 0.25rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--color-pos-on-primary) 70%, transparent);
-  border-radius: var(--radius-md, 6px);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-pos-on-primary);
   font: inherit;

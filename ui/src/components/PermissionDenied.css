@@ -50,7 +50,7 @@
 .permission-denied-key {
   margin: 0;
   font-size: var(--text-xs);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   color: var(--color-fg-tertiary);
 }
 
