@@ -295,6 +295,11 @@ const SCREENS: ScreenEntry[] = [
     name: 'KdsScreen',
     tsx: 'kds/KdsScreen.tsx',
     css: ['kds/KdsScreen.css', 'kds/KdsCompletedView.css', 'kds/components/ModifierBadge.css'],
+    // Cited, not muted: .sr-only is defined in frontend/themes/components.css:1492
+    // and that sheet is imported by both entry points (main.tsx:7, main.tablet.tsx:20),
+    // so the class is provided to this screen. Case 1 resolves it here; cases 2 and 3
+    // never grade the theme sheet through this entry.
+    parentCss: ['../frontend/themes/components.css'],
     dynamicClassPrefixes: [
       // Static array of complete names in KdsLayoutMasonry.tsx:70.
       'kds-column--',
@@ -346,9 +351,6 @@ const SCREENS: ScreenEntry[] = [
       'active-',
       // `kds--${settings.density}` conditional density class.
       'compact',
-      // Global screen-reader-only utility (frontend/themes/components.css),
-      // outside this screen's scanned stylesheet list.
-      'sr-only',
       // Ternary COMPARISON values inside ModifierBadge.tsx's className
       // template (`tone === 'removal' ? ' kds-modifier-badge--removal' : …`).
       // The parser fishes every quoted string out of a className template,
