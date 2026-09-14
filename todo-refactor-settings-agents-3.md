@@ -229,7 +229,7 @@ Ruled at HEAD `017e71bf7` on 2026-09-14 from figures re-taken in this checkout, 
 ## Append-only record (2026-09-15) - this plan reconciled with the tree; nothing above was renumbered
 
 > Appended at the END on purpose. This file cites itself by `:NNN` throughout (`:187`, `:212`, `:216`,
-> `:218` among them), and the only in-place edit below line 224 is the checkbox character on `:84`, which
+> `:218` among them), and the only edit anywhere ABOVE the append is the checkbox character on `:84`, which
 > moves no line number. Every pointer in this plan still resolves where it pointed on 2026-09-14. One
 > box changed state in the checklist region: `:84`, and it was ticked. That is the whole edit. No `.tsx`, no test,
 > no other plan was touched by this pass, and no test/typecheck run was executed here - the tester lane
