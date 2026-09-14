@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'r
 import { useToast } from '@/frontend/shared/Toast';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { openUpgradePricing } from '@/utils/upgrade';
 import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
@@ -30,6 +29,7 @@ import { useAutoQr } from './payment/useAutoQr';
 import { useGatewayQr } from './payment/useGatewayQr';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
+import QrisTenderPanel from './payment/QrisTenderPanel';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -1734,51 +1734,16 @@ export default function PaymentModal({
                   </div>
                 )}
 
-                {method === 'qris' &&
-                  (caps && !caps.supportsQris ? (
-                    // C2.2: QRIS setup gate (Free→Plus trigger) — show the
-                    // upgrade prompt instead of the QR generation UI.
-                    <div className="payment-qris-upgrade" role="note">
-                      <p>{l10n.getString('payment-qris-upgrade-required')}</p>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => openUpgradePricing(locale, 'plus')}
-                      >
-                        {l10n.getString('payment-qris-upgrade-cta')}
-                      </Button>
-                    </div>
-                  ) : (
-                  <div className="payment-qris-section">
-                    <Localized id="payment-qris-description">
-                      <p className="payment-qris-description">
-                        Generate a QRIS QR code for the customer to scan with their payment app.
-                      </p>
-                    </Localized>
-                    <button
-                      type="button"
-                      className="payment-qris-btn"
-                      aria-label={l10n.getString('payment-qris-pay')}
-                      onClick={handleQrPay}
-                      disabled={processing || autoQr !== null}
-                    >
-                      <Localized id="payment-qris-pay">
-                        <span>Pay with QR</span>
-                      </Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className="payment-qris-btn payment-qris-btn--dynamic"
-                      aria-label={l10n.getString('payment-qris-dynamic-pay')}
-                      onClick={handleDynamicQrPay}
-                      disabled={processing || autoQr !== null}
-                    >
-                      <Localized id="payment-qris-dynamic-pay">
-                        <span>Pay with dynamic QR</span>
-                      </Localized>
-                    </button>
-                  </div>
-                  ))}
+                {method === 'qris' && (
+                  <QrisTenderPanel
+                    qrisAllowed={!caps || caps.supportsQris}
+                    locale={locale}
+                    processing={processing}
+                    autoQrPending={autoQr !== null}
+                    onQrPay={handleQrPay}
+                    onDynamicQrPay={handleDynamicQrPay}
+                  />
+                )}
               </>
             )}
 
