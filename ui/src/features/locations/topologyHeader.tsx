@@ -48,7 +48,7 @@ export function TopologyHeader({
       {!canSave && (
         <div className="topology-readonly-note" role="status">
           <Localized id="topology-readonly-note">
-            <span>View-only — only managers and owners can save topology changes.</span>
+            <span>View-only — saving topology changes requires the topology:write permission.</span>
           </Localized>
         </div>
       )}
