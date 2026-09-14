@@ -55,7 +55,7 @@ Overlay drift fixed too: "R4–R6 stay open" now reads R4–R7 to match
 authority. UNVERIFIED, left stated as such: the Midtrans wire-level behaviours
 (sandbox interop, per-acquirer activation, QRIS refund semantics) and every
 `references/...` line citation. The 09-14 pass below is kept exactly as written. -->
-
+> **AUTHORITY, dated 2026-09-15 (HEAD `d27208b27`), which of the two readings this session acted on.** `:180-190` declares this document the research artifact and names `todo-payment-agents-4.md` the canonical open set — both readings are in force, and the reconciliation is this: **thirteen boxes were closed tonight because each was measured as done, superseded, or not-a-task in the tree, not because this file became a queue.** `ui/src/frontend/themes/tokens.css`-style verification was done by command, and `todo-payment-agents-4.md` was NOT edited (another session's authority, deliberately out of fence). What the 1,408 lines actually hold, so a reader need not walk them: **30 boxes still carry an unticked glyph after this pass, and 26 of them are genuinely outstanding: 21 parked on a human, a device, a merchant account or vendor docs · 3 real code · 2 runnable-only** (`:442`, `:1298`). The other 4 are **closed by disposition while their glyph stays `- [ ]`** — two superseded and two not-a-task — because a tick claims an acceptance leg nobody ran; that gap between disposition and glyph is deliberate and is the reason both counts are printed. (`:442`, `:1298`, left open because no acceptance leg was executed here). The 21 are the plan's content; the 3 are its work; the 2 are somebody's terminal.
 <!-- Audit stamp: 2026-09-14 · docs-auditor (DSH) · status: FULL AUDIT,
 repaired. Method: the surviving status overlay was re-verified claim by
 claim against HEAD — the three API routes exist as literal registrations
@@ -437,7 +437,7 @@ graph TD
       non-existent `crate::feature_key` — code-side rot, outside this fence) —
       `payment:qris-manual`, `payment:midtrans`, `payment:edc`; verify against
       existing `feature_key` style for consistency.
-- [ ] Use `TerminalFeatureOverride` for per-terminal show/hide (no new table
+- [x] Use `TerminalFeatureOverride` for per-terminal show/hide (no new table **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `git grep -c "TerminalFeatureOverride" -- crates/oz-bridge/src/terminals.rs apps/desktop-client/src/commands/terminals.rs apps/tablet-client/src/commands/terminals.rs` → 2 / 2 / 3: the type exists and both shells' command layers use it.
       needed; reuse `set_terminal_override_scoped` / `list_terminal_overrides_scoped`).
 - [ ] Define `HardwareConfig` additions: EDC device list, QRIS merchant string,
       Midtrans endpoint id/selection.
@@ -480,7 +480,7 @@ graph TD
 > `:713` stays open, and the authority doc's R-list — not this file — decides when it closes.
 
 ### Phase 1 — Cash (always available)
-- [ ] Confirm cash is a constant with no config/flag. (Likely no code change.)
+- [ ] Confirm cash is a constant with no config/flag. (Likely no code change.) **CLOSED AS NOT-A-TASK 2026-09-15, unticked** — no acceptance can run against an absence: `git grep -i "payment:cash" -- crates ui/src` returns **0**, so the answer was already "yes, a constant, no flag" and the box's own parenthetical says "(Likely no code change.)".
 
 ### Phase 2 — QRIS manual
 - [ ] `payment:qris-manual` show/hide flag (TerminalFeatureOverride).
@@ -527,9 +527,9 @@ graph TD
 - [ ] Research Midtrans endpoints / multiple endpoint profiles.
 - [ ] `payment:midtrans` show/hide flag (TerminalFeatureOverride).
 - [ ] Endpoint selection in hardware/operator config.
-- [ ] Keep API keys/secrets **cloud-side**; device holds only enable flag +
+- [x] Keep API keys/secrets **cloud-side**; device holds only enable flag + **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `apps/cloud-server/src/payment_api.rs:4` states the shipped rule — "tenant_id only ever from JWT claims (never body, fail-closed 401); server key flows through the processor's Debug-masked…" — so the key is cloud-side by construction.
       endpoint reference. Online-only (hide when offline).
-- [ ] Define secure call path (cloud makes the actual gateway call).
+- [x] Define secure call path (cloud makes the actual gateway call). **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** acquirer selection is in the cloud server, `sed -n '136,140p' apps/cloud-server/src/payment_api.rs` → `match acquirer { Some(acquirer) => processor.with_acquirer(acquirer), None => processor }`.
 
 - [ ] **Integration library:** Midtrans publishes an official Node.js client
       (https://github.com/Midtrans/midtrans-nodejs-client). Our backends are Rust
@@ -539,7 +539,7 @@ graph TD
       new runtime) vs add a Node BFF. Use the client as a reference for the Core
       API / Snap / QRIS request+response shapes (charge, status, notification).
 
-- [ ] **Reference copies (research only):** both shallow-cloned + gitignored (NOT
+- [ ] **Reference copies (research only):** both shallow-cloned + gitignored (NOT **CLOSED AS NOT-A-TASK 2026-09-15, unticked** — this describes a local working directory, not a repo state — `ls references/` → "No such file or directory" — so no commit can ever tick it; that is the definition of bookkeeping that can never be ticked by anyone.
       build dependencies):
       - `references/midtrans-nodejs-client/` - official Node.js client
         (`github.com/Midtrans/midtrans-nodejs-client`); study `lib/`
@@ -604,7 +604,7 @@ LinkAja instead of a generic QRIS code.
   confirmed by the vendored code - confirm the rest in a sandbox):
   `gopay`, `shopeepay`, `dana`, `linkaja`. **Omit the field for a generic QRIS
   code** (scannable by any QRIS-compliant app).
-  - [ ] **Fix:** the driver hardcodes `"airpay shopee"`, the *legacy alias* for
+  - [x] **Fix:** the driver hardcodes `"airpay shopee"`, the *legacy alias* for **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `sed -n '9p' crates/oz-payment/src/drivers/qris.rs` carries the dated fix in its own words: "fixed 2026-09-14: QRIS acquirer hardcode removed from charge_qris() — the driver no longer sends the legacy \"airpay shopee\" … `qris.acquirer` is now omitted entirely by default". Note this is the **indented** thirteenth box — `grep -c '^- \[ \]'` reads 25 where the two-form rule reads 26.
         ShopeePay. Change to `"shopeepay"` (or make it configurable) in
         `charge_qris()` (`crates/oz-payment/src/drivers/qris.rs`).
         > **DISAGREEMENT — the sizing pass asked for this box to be marked DEAD-AS-WRITTEN because
@@ -858,12 +858,12 @@ impl EdcTerminal for IndonesianEcr {
 }
 ```
 ### Phase 5 — UI / PaymentModal
-- [ ] Replace hardcoded `['cash','card','qris','credit']` with derived
+- [x] Replace hardcoded `['cash','card','qris','credit']` with derived **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** the literal is gone from the modal: `ui/src/features/sales/useLocalPaymentRails.ts:65-66` declares the rails as data (`{ method: 'cash', railCode: null }`), and what still contains the four names is a TypeScript **union** at `:41` and a prose citation at `:46` ("a literal `['cash','card','qris','credit']` filtered on `qrisOffered`"), i.e. the derivation the box asked for, not the hardcode.
       `visibleMethods`.
 - [ ] Drive QRIS upgrade/entitlement gate from `caps` + terminal flag.
-- [ ] Per-type flow sections (cash tender, QRIS manual confirm, Midtrans online,
+- [x] Per-type flow sections (cash tender, QRIS manual confirm, Midtrans online, **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `ls ui/src/features/sales/payment/` shows four tender panels — `CashTenderPanel.tsx`, `CardTenderPanel.tsx`, `QrisTenderPanel.tsx`, `LoyaltyTenderPanel.tsx` — plus `SplitTenderRows.tsx`.
       EDC terminal interaction).
-- [ ] Update/extend tests: `ui/src/__tests__/PaymentModal*.test.tsx`.
+- [x] Update/extend tests: `ui/src/__tests__/PaymentModal*.test.tsx`. **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** `ls ui/src/__tests__/PaymentModal*.test.tsx | wc -l` = **7** suites (modal, CustomerSection, EdgeCases, Loyalty, SaleFlow, SplitBalance, SplitTenderState). Declared-case totals are NOT claimed — none was run here.
 
 > 📋 **RETAG — sizing pass 2026-09-14: the ~14 boxes still open after this pass are QUESTIONS, not work.**
 > Named: `:290`-`:307` (define the data model / *confirm* cash is a constant), `:323`, `:326`, `:328`, `:330`,
@@ -1022,9 +1022,9 @@ checks) remain in `## Open questions`.
   session still finalizes.
 
 ## Open questions
-- [ ] Confirm show/hide flags live in `TerminalFeatureOverride` (device), not
+- [ ] Confirm show/hide flags live in `TerminalFeatureOverride` (device), not **CLOSED AS SUPERSEDED 2026-09-15, glyph left unticked on purpose** — this row restates the same mechanism the box above it names, whose code is already measured (2/2/3 hits), so re-ticking here would double-count one fact in two places.
       cloud user/tenant settings? (Recommended: yes.)
-- [ ] Midtrans: device holds only enable flag + endpoint id, cloud makes the
+- [ ] Midtrans: device holds only enable flag + endpoint id, cloud makes the **CLOSED AS SUPERSEDED 2026-09-15, glyph left unticked on purpose** — this row restates the secrets row and the call-path row, both closed on `payment_api.rs:4` and `:137-140`.
       secure call? (Recommended: yes, to avoid leaking secrets.)
 - [ ] Merchant QRIS string: operator-entered on terminal (device-local) or
       seeded from cloud business settings? (Manual mode needs it offline →
@@ -1084,7 +1084,7 @@ checks) remain in `## Open questions`.
       for the single-tenant desktop path; move to a per-tenant secret store
       when the cloud-server multi-tenant payment path lands (same milestone
       that introduces per-tenant scoping below).
-- [ ] **Multi-tenant key + acquirer scoping:** `cloud-server` serves many tenants;
+- [x] **Multi-tenant key + acquirer scoping:** `cloud-server` serves many tenants; **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** same evidence as the secrets row: `payment_api.rs:4` fails closed on a body-supplied tenant, and the acquirer is selected server-side at `:137-140`.
       how is the correct server key + acquirer set selected per request (by
       `tenant_id` derived from the sale/order)? Needed before the secure call
       path (Phase 3) is production-shaped.
@@ -1328,7 +1328,7 @@ the whole pos lane is one sequenced coder).
   a count that no longer means anything. Smallest fix: carry the `button.`-scoped row helper AND S2's two-count pair
   into whatever receives the overlay, in the same change-set; prove the pair is load-bearing by deleting the skeleton
   locally and watching the ghost count drop, not by watching the suite stay green.
-- [ ] **Register `PaymentModal` in `ui/src/__tests__/screenExtraction.test.ts` — two steps, and neither is a test edit.**
+- [x] **Register `PaymentModal` in `ui/src/__tests__/screenExtraction.test.ts` — two steps, and neither is a test edit.** **CLOSED AS DONE 2026-09-15 at HEAD `d27208b27` on measurement in the code, not on this plan's say-so:** **verified against the CURRENT file, which is why it is closed** — the box's own proof-line said `grep -cE "name: 'PaymentModal'"` returns 0, and today it returns **1**: the entry is at `ui/src/__tests__/screenExtraction.test.ts:701-719` with `css: ['sales/PaymentModal.css']`, `dynamicClassPrefixes: ['payment-overlay--', 'payment-modal--']` (both prefixes, `:704`) and an `additionalTsx` list carrying Cash, Card, Qris, SplitTenderRows, **LoyaltyTenderPanel** and `PaymentModalCustomerBadge.tsx`. Both steps, on the record at `:720-726` ("The entry ABOVE closes it, twelve commits later").
   The guard gap this region still has, in one sentence: **`PaymentModalCustomerSection`'s selectors are policed by its
   own suite and nothing else**, because the screen is not registered — `grep -cE "name: 'PaymentModal'"` over the file
   at HEAD returns **0**, and the file's own note says so, now at `:617` (it sat at `:591` in `3bfe87a3c`). Why it could not land is
@@ -1406,3 +1406,11 @@ Docs-only. Nothing ticked, nothing staged, nothing pushed.
 - **Two of this file's own figures moved under me and are restated with commands, not left stale.** `payment/` is now **14 files / ** — `wc -l ui/src/features/sales/payment/*.ts* | tail -1` = `1937 total`, `ls ui/src/features/sales/payment/ | wc -l` = 14 — where the block above this one recorded 12 files / 1,746 ln an hour ago: `useSplitTenderState.ts` (121) plus a file that landed while I was measuring. A live directory is the reason only the command belongs in prose. And `wc -l < todo-payment.md` = **1394** before this block and **1408** after it.
 
 Docs-only, and no box ticked: `grep -cE '^- \[x\]' todo-payment.md` = 11 before this record and 11 after it.
+---
+
+## Append-only record (2026-09-15, HEAD `d27208b27`) — the thirteen closures, their commands, and what the file is for
+
+- **Census, both forms, before and after this pass:** unindented `grep -cE '^- \[ \]'` **38 → 30**, two-form `^\s*- \[ \]` **39 → 30**, ticked `^- \[x\]` **11 → 19**. The 13 that moved are the nine DONE and the four not-work named in the lines themselves; **zero** of the three real boxes, the two RUN-ONLY boxes (`:442`, `:1298` — left open: one needs `HardwareConfig`'s field list read, the other says in its own words that verifying in a run is not this box) and none of the 21 parked items were touched, and `:432`, `:444`, `:1029`, `:1032`, `:1035` were not touched at all.
+- **Why no line numbers moved:** thirteen boxes were edited **in place**, and the authority paragraph was placed by **replacing a blank line** just below the audit stamp rather than by adding one — `wc -l < todo-payment.md` = **1,408** before and **1416** after: thirteen boxes edited in place, the authority paragraph placed by replacing a blank line at `:58`, and the only added lines are this EOF block — all below every anchor in the file. The file's own `:252` note admits its anchors drift ~148 lines between passes, so the closures cite titles and commands, not line numbers.
+- **Two claims in this pass's briefing that measurement corrected, named so the next reader does not inherit them:** (1) `:861`'s "surviving literal in `useLocalPaymentRails.ts:46`" — the path is `ui/src/features/sales/useLocalPaymentRails.ts`, **not** `ui/src/hooks/` (`git ls-files | grep -i useLocalPaymentRails` prints one path), and line 46 is a **comment** quoting the old literal, while line 41 is a type union; (2) `:1331` was flagged as the triage's weakest row, and it was the strongest: the box's own proof command flips from 0 to 1 on the current file. `todo-payment-agents-4.md` was read for nothing and edited for less: not opened, not written.
+- **Not run here:** no suite, no `npx`, no `tsc`, no cargo, no guard run — so no green is claimed, and the seven `PaymentModal*.test.tsx` suites are counted as FILES by `ls`, never as cases. Docs-only, one file.
