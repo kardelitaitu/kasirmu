@@ -312,11 +312,10 @@ function MemosScreenContent() {
           </p>
         )}
         <form
-          className="memos-form"
           onSubmit={(e) => void (revising ? handleRevise(e) : handleCreate(e))}
         >
           <div className="memos-form-grid">
-            <div className="memos-field memos-field--full">
+            <div className="memos-field--full">
               {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
               <label className="memos-label" htmlFor="memos-title-input">
                 <Localized id="memos-label-title"><span>Title</span></Localized>
@@ -332,7 +331,7 @@ function MemosScreenContent() {
                 autoComplete="off"
               />
             </div>
-            <div className="memos-field">
+            <div>
               <span className="memos-label" id="memos-scope-label">
                 <Localized id="memos-label-scope"><span>Audience</span></Localized>
               </span>
@@ -358,7 +357,7 @@ function MemosScreenContent() {
                 </p>
               </Localized>
             </div>
-            <div className="memos-field">
+            <div>
               {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
               <label className="memos-label" htmlFor="memos-duration">
                 <Localized id="memos-label-duration"><span>Duration</span></Localized>
@@ -377,7 +376,7 @@ function MemosScreenContent() {
                 ))}
               </select>
             </div>
-            <div className="memos-field memos-field--full">
+            <div className="memos-field--full">
               {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
               <label className="memos-label" htmlFor="memos-body">
                 <Localized id="memos-label-body"><span>Message</span></Localized>
