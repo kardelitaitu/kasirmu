@@ -659,6 +659,13 @@ const SCREENS: ScreenEntry[] = [
       'sales/payment/QrisTenderPanel.tsx',
       'sales/payment/SplitTenderRows.tsx',
       'sales/payment/LoyaltyTenderPanel.tsx',
+      // payment-customer-* markup left PaymentModal.tsx in 2b456338b. The
+      // receiving file imports no sheet of its own — its own :40 comment names
+      // ../PaymentModal.css, which the modal imports once for the whole
+      // surface — so without this line the guard calls all six rules dead:
+      // todo-refactor-kds-agents-merged.md:115 firing on a live extraction,
+      // measured here as 1 failed | 211 passed before the line was added.
+      'sales/components/PaymentModalCustomerBadge.tsx',
     ],
   },
   // PaymentModal WAS deliberately NOT registered, and this note is what
@@ -700,7 +707,8 @@ const SCREENS: ScreenEntry[] = [
   //      read as dead CSS.
   // Both steps are now done, and neither was taken inside a test file:
   // step 1 by the two sales commits named above, step 2 by this entry,
-  // which lists all FIVE panels in additionalTsx — including
+  // which lists all five panels in additionalTsx plus the extracted
+  // customer badge (2b456338b) — including
   // payment/LoyaltyTenderPanel.tsx, whose twelve payment-loyalty-*
   // rules finding 2 named. The prefix pair the pass predicted is exactly
   // what the entry carries: 'payment-overlay--' and 'payment-modal--',
