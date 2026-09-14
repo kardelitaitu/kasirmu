@@ -1,5 +1,48 @@
 # Payment Types — Plan & TODO
 
+<!-- Audit stamp: 2026-09-14 · DSH · status: REPAIRED (2nd pass, HEAD ec2edf258) ·
+corrections applied: 24 · re-audited against a HEAD that post-dates the pass
+below, with every fact re-measured on disk in this checkout (line counts use the
+read-tool totalLines method, which equals wc -l here: PaymentModal.tsx = 2,436).
+Box census moved from 43 unchecked / 4 checked to 39 / 8: exactly four boxes were
+re-ticked, each on an implementation verified in the code rather than on another
+doc's say-so — `register_card_terminals`, the `qr_string` wire field, the merchant
+static-QR payload home (ticked with its prescribed location corrected: it shipped
+in the rail store, not in hardware config), and Phase 4's "Map to checkout" (the
+EDC tender does reach `completeSale`, but as `CARD` with the transactionId in
+`gatewayReference`, not as `EDC` with the auth_code). No other box was touched; the
+remaining 39 open boxes were each checked against the tree and are still open.
+Most consequential error found: **two items recorded as still awaiting evidence
+had already shipped**, and **one decision recorded as made is implemented the
+other way round**. (1) Phase 4's "Implement
+`platform_startup::hardware::register_card_terminals`" was ticked — the function
+exists at `platform/startup/src/hardware.rs:213` and is called from both clients
+(`apps/desktop-client/src/lib.rs:201`, `apps/tablet-client/src/lib.rs:146`) — with
+two named deviations (chosen by `connection_type`+`transport`, not a `protocol`
+factory; first registrable row aliased to `DEFAULT_TERMINAL_ID`, which that file's
+own comment calls "interim, not design"). (2) The `qr_string` vs `qr_code_url`
+"blocking item pending sandbox confirmation" is closed in code — the driver
+already accepts `qr_string` via `#[serde(default, alias = "qr_string")]`
+(`crates/oz-payment/src/drivers/qris.rs:136-137`). (3) `## Decisions (resolved)`
+said the webhook would re-fetch `/{id}/status` now and verify a signature later;
+the shipped arm (`apps/cloud-server/src/webhooks.rs:876-902`) does the opposite —
+SHA512 verified in constant time, no re-fetch, dedupe on the
+`midtrans_transactions` ledger instead of `processed_webhooks`. Found by reading
+the handler body rather than trusting the ruling. Second class: proposals written
+in present tense — `IndonesianEcr`/`MandiriEcr` and the `edc_sale(terminal_id,
+Money)` snippet match no file or signature in the tree (real:
+`apps/desktop-client/src/commands/edc.rs:43-48`), `POST /api/payment/edc` is not a
+route anywhere (EDC is local Tauri IPC), the `payment:*` feature keys were never
+created (the rail store is what gates the tabs), and the `offlineOk` leg of the
+visibility formula does not exist. Third: `references/midtrans-*` is a
+`.gitignore` entry (`:213-214`) with no directory behind it, so its line-level
+citations are unverifiable in-repo and are relabelled rather than deleted.
+Overlay drift fixed too: "R4–R6 stay open" now reads R4–R7 to match
+`todo-payment-agents-4.md:138`, and agents-4 is named as the epic's single status
+authority. UNVERIFIED, left stated as such: the Midtrans wire-level behaviours
+(sandbox interop, per-acquirer activation, QRIS refund semantics) and every
+`references/...` line citation. The 09-14 pass below is kept exactly as written. -->
+
 <!-- Audit stamp: 2026-09-14 · docs-auditor (DSH) · status: FULL AUDIT,
 repaired. Method: the surviving status overlay was re-verified claim by
 claim against HEAD — the three API routes exist as literal registrations
@@ -61,10 +104,15 @@ them row by row. -->
 > ranked R1–R6 there. **Status after agents-5 (same day): R1 (rails
 > consumed — `bffcbda97a`), R2 (real static QR, demo grid deleted —
 > `903b30a718`) and R3 (typed errors, string-match `classifyError` deleted
-> — `3d50b3ac5a`) are CLOSED; R4–R6 stay open** — and a follow-up audit
-> added **R7: no real EDC hardware driver exists** (the shipped wired/
-> wireless/protocol drivers are fail-closed stubs; only the dev mock
-> answers). Where the body below still asserts a superseded present tense
+> — `3d50b3ac5a`) are CLOSED; R4–R7 stay open.** `todo-payment-agents-4.md` is
+> the **single status authority** for this epic — where this overlay and that
+> inventory disagree, the inventory wins. R7 (**no real EDC hardware driver
+> exists**) is restated here, not added: the shipped wired and wireless drivers
+> and all three protocol codecs fail closed with `HalError::Unsupported`
+> (`drivers/edc/wired.rs:12-14`, `wireless.rs:12-14`, the codec stubs at
+> `protocol/{pax,ingenico,verifone}.rs:21`), so only the mock terminal
+> (`drivers/mock.rs:555`, armed by `set_success()`) completes a sale. The EDC
+> leg is wired end to end and hollow at the hardware. Where the body below still asserts a superseded present tense
 > (the `payment:*` keys, the hardcoded method list, "stubs", "hidden when
 > offline", the string-match classifier), the inventory's absorbed table
 > is the row-by-row mapping; boxes stay physically untouched by design.
@@ -84,11 +132,17 @@ user") while entitlements remain cloud-driven.
 | # | Type | Availability | Config location | Online/Offline | Notes |
 |---|------|--------------|-----------------|----------------|-------|
 | 1 | **cash** | Always on | (none) | Offline | Constant; no flag needed. |
-| 2 | **qris_manual** | Show/hide per terminal | Device (hardware config + flag) | Offline-capable (print QR) | Customer scans a *printed* QR; cashier waits for bank SMS/email/notification or manually checks the mobile bank app, then confirms in POS. No live callback. |
+| 2 | **qris_manual** | Show/hide per terminal | Device (rail store `parameters.static_qr_payload` + rail `is_enabled` — **not** hardware config) | Offline-capable (print QR) | Customer scans a *printed* QR; cashier waits for bank SMS/email/notification or manually checks the mobile bank app, then confirms in POS. No live callback. |
 | 3 | **midtrans** | Show/hide per terminal | Device flag + cloud secrets | **Online only** | Multiple endpoints — research later. Sensitive API keys must stay server-side. |
 | 4 | **edc** (credit/debit card) | Show/hide per terminal | Device (HAL `HardwareConfig`) | LAN (local network) | One or more LAN EDC terminals configured from terminal settings. HAL drivers currently stubs (reconciled design in Phase 4 — EDC). |
 
 ## Architecture decision — where config lives
+
+> Not an ADR. Numbered decision records live in `docs/decisions/` (there is no
+> `docs/adr/`); the nearest payment ADR there is
+> `docs/decisions/2026-08-18-adr39-midtrans-subscription-payments.md`, which is a
+> different subject (subscription payments). This section is a plan-doc decision,
+> and the 2026-09-14 rail-store correction below it is the live truth.
 
 **Reframe:** "Rust or Tauri?" — in this repo Tauri *is* Rust (`apps/desktop-client`
 is the Tauri v2 Rust side). The real axis is **device-local vs cloud**.
@@ -127,7 +181,7 @@ is the Tauri v2 Rust side). The real axis is **device-local vs cloud**.
 
 | Concern | Lives in | Notes |
 |---|---|---|
-| Which methods visible on THIS terminal (show/hide) | `TerminalFeatureOverride` (device SQLite) | keys `payment:qris-manual`, `payment:midtrans`, `payment:edc` |
+| Which methods visible on THIS terminal (show/hide) | `TerminalFeatureOverride` (device SQLite) | planned keys `payment:qris-manual`, `payment:midtrans`, `payment:edc` — **never created** (0 code refs); what actually shipped is the per-location rail store, keyed by `rail_code` (`ui/src/features/sales/useLocalPaymentRails.ts:4-12`) |
 | Hardware-bound config (EDC LAN list, merchant QRIS string, Midtrans endpoint choice) | `HardwareConfig` / `apply_config` (HAL) | applied at startup; offline-capable |
 | Entitlements (method allowed on plan?) | cloud subscription `caps` | existing QRIS Plus+ gate stays |
 | Gateway secrets (Midtrans keys) | cloud-server | device holds only enable flag + endpoint ref |
@@ -139,8 +193,15 @@ visibleMethods = ALL_METHODS
   .filter(m => planEntitled(m))         // subscription caps
   .filter(m => offlineOk(m) || online)  // midtrans dropped when offline
 ```
-Today `PaymentModal` hardcodes `['cash','card','qris','credit']` and gates QRIS
-via `caps.supportsQris` — that list must become this derived set.
+Today `PaymentModal` still hardcodes `['cash','card','qris','credit']`
+(`PaymentModal.tsx:1845`) and gates QRIS via `caps.supportsQris` (`:2017`) — that
+list must become this derived set. Re-measured 2026-09-14: the first two legs are
+PARTLY real and the third does not exist. `bffcbda97a` made the QRIS radio defer
+to `qrisOffered` (`:124`, `:1846`) and the EDC button to `edcOffered` (`:125`,
+`:1995`) — but both read the **rail store** (`useLocalPaymentRails.ts`), not
+`TerminalFeatureOverride`, so no `payment:*` key is consulted anywhere. And the
+`offlineOk` leg is unbuilt: the words `online` / `offline` appear nowhere in
+`PaymentModal.tsx` (searched `online`, `offline`, `navigator`).
 
 ## Payment flow (per-method)
 
@@ -178,7 +239,7 @@ graph TD
     QrisAutoListen -->|Timeout| QrisAutoRetry["Show Expired or Refresh"]
 
     TabEdc --> EdcSelect{"Select Registered Device"}
-    EdcSelect -->|Dropdown from device config: BCA Mandiri BRI| EdcSend["POST /api/payment/edc over LAN"]
+    EdcSelect -->|Dropdown from edc_terminals config| EdcSend["invoke edc_sale (local Tauri IPC, not HTTP)"]
     EdcSend --> EdcWait["Block UI: Waiting for Customer to Tap Card"]
     EdcWait -->|Ok SaleResponse| SubmitEdc(["Submit Complete Order"])
     EdcWait -->|Err Timeout or Declined| EdcErr["Show Error Modal"]
@@ -190,7 +251,9 @@ graph TD
   `terminalEnabled(m)` (device `TerminalFeatureOverride`, "saved to hardware,
   not user") **and** `planEntitled(m)` (cloud subscription `caps`). The filter is
   three-way: `enabled AND entitled AND online-capable` - online-only methods
-  (QRIS Auto / Midtrans) are hidden when offline.
+  (QRIS Auto / Midtrans) are hidden when offline. **(design, not fact today: no
+  offline branch exists in `PaymentModal.tsx` — measured 2026-09-14; a failed
+  charge surfaces as an error instead.)**
 - **QRIS Manual** = static merchant QR from device hardware config; cashier
   confirms visually (no live callback).
 - **QRIS Auto = Midtrans** (online only; secrets stay cloud-side; UI polls a
@@ -210,7 +273,10 @@ graph TD
 ## Phased TODO
 
 ### Phase 0 — Data model & config schema
-- [ ] Define payment-method feature keys in `crate::feature_key` namespace
+- [ ] Define payment-method feature keys in the `feature_key` style — note it
+      is a **function** (`crates/oz-core/src/features.rs:422`, `pub fn
+      feature_key(f: Feature) -> &'static str`), not a module/namespace, so the
+      original wording pointed at a path that does not exist
       (`payment:qris-manual`, `payment:midtrans`, `payment:edc`); verify against
       existing `feature_key` style for consistency.
 - [ ] Use `TerminalFeatureOverride` for per-terminal show/hide (no new table
@@ -226,7 +292,12 @@ graph TD
 
 ### Phase 2 — QRIS manual
 - [ ] `payment:qris-manual` show/hide flag (TerminalFeatureOverride).
-- [ ] Store merchant QRIS string in hardware config (needed offline at print).
+- [x] ~~Store merchant QRIS string in hardware config~~ — **shipped elsewhere**:
+      the payload lives in the rail store's credential-free `parameters` bag as
+      `static_qr_payload` and the checkout reads it through
+      `staticQrisPayload()` (`ui/src/features/sales/useLocalPaymentRails.ts`,
+      `903b30a718`). Offline-capable either way; the hardware-config home did not
+      happen.
 - [ ] Print static QR encoding merchant string + amount (offline).
 - [ ] Manual "payment received" confirmation path in `PaymentModal`
       (no live bank callback; cashier confirms).
@@ -269,8 +340,14 @@ graph TD
         (asymmetric clientId/clientSecret/private-key + OAuth token). Our Rust
         driver uses the classic `POST /charge {payment_type:"qris"}`, which is
         still supported and simpler. The QR response field is `qr_string` (the
-        raw QRIS string to render into a QR image), NOT `qr_code_url` - the
-        driver's current field name still needs a sandbox confirmation.
+        raw QRIS string to render into a QR image), NOT `qr_code_url` -
+        **resolved in code, not in a sandbox** (re-measured 2026-09-14): the
+        driver now accepts both spellings via
+        `#[serde(default, alias = "qr_string")]`
+        (`crates/oz-payment/src/drivers/qris.rs:136-137`), whose own doc comment
+        records that without the alias the field silently deserialized to `None`
+        against the real gateway — that is the confirmation this line asked for.
+        The Rust struct field is still *named* `qr_code_url` (cosmetic only).
       - **Webhook caveat:** the official PHP `Notification` class does NOT verify
         a signature - it re-fetches `Transaction::status(transaction_id)` and
         trusts that (the Node `transaction.notification()` does the same). That
@@ -280,8 +357,14 @@ graph TD
         serverKey)). The route home is `apps/cloud-server/src/webhooks.rs`
         (`/api/webhooks/` — one literal route per gateway: stripe, square,
         and since agents-1 midtrans, `webhooks.rs:71-73` — + HMAC verifiers +
-        `processed_webhooks`
-        idempotency), which already handles Stripe/Square.
+        `processed_webhooks` idempotency), which already handles Stripe/Square.
+        **The Midtrans arm does not follow that pattern** (re-measured
+        2026-09-14): it verifies `signature_key` = SHA512 in constant time and
+        does **not** re-fetch the status endpoint (`webhooks.rs:876-902`), and it
+        dedupes on the `midtrans_transactions` ledger status rather than on
+        `processed_webhooks` (`webhooks.rs:950-960`). Verification lives in
+        cloud-server; `crates/oz-payment/src/webhook.rs` is still the fail-closed
+        stub its own header says it is.
 
 
 #### Targeted QRIS / `acquirer` (study)
@@ -449,30 +532,62 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       `tokio::net::TcpStream` (not blocking `std::net::TcpStream`), with (re)connect
       per call / health check. LAN EDC -> `register_wireless_terminal(target, info)`
       (target = IP:port); wired serial/USB -> `register_wired_terminal(port, baud, info)`.
-- [ ] **Protocol codecs** (`IndonesianEcr`, `MandiriEcr`, ...) live under
-      `crates/oz-hal/src/drivers/edc/` next to the stubbed
-      `protocol/{ingenico,pax,verifone}.rs`. LRC framing / payload build / parse
+- [ ] **Protocol codecs** — the names `IndonesianEcr` / `MandiriEcr` used below
+      are **phantom**: `git grep` finds 0 hits in `crates/`, `apps/`, `platform/`,
+      `ui/`, and `drivers/edc/indonesian_ecr.rs` does not exist. What exists under
+      `crates/oz-hal/src/drivers/edc/` is `wired.rs` / `wireless.rs` plus
+      `protocol/{ingenico,pax,verifone}.rs` — all fail-closed stubs (R7). LRC framing / payload build / parse
       belong in the codec; the registry only routes by id. Bank-specific structs
       implement the single `EdcTerminal` trait.
-- [ ] **Bootstrap from `HardwareConfig`.** Implement
-      `platform_startup::hardware::register_card_terminals` to read the `edc_terminals`
-      config table and register each row via the registry, picking the concrete
-      driver by a `protocol` field (factory). Surface boot failures via the HAL
-      `BootstrapReport` / logging instead of silently skipping — a misconfigured
-      terminal then fails closed at sale with `HalErrorKind::NotFound`.
+- [x] **Bootstrap from `HardwareConfig`.** `platform_startup::hardware::
+      register_card_terminals` **exists** (`platform/startup/src/hardware.rs:213`,
+      called from `apps/desktop-client/src/lib.rs:201` and
+      `apps/tablet-client/src/lib.rs:146`): it reads the `edc_terminals` rows,
+      registers each under its own id, returns a `BootstrapReport`, and pushes
+      unpairable rows into `report.rejected` instead of skipping them silently.
+      **Two deviations from the design above**: the concrete driver is chosen by
+      `connection_type` + `transport` (`terminal_connection(row)`), not by a
+      `protocol` factory field; and because `edc_terminals` has no `is_default`
+      column, the first *registrable* row is additionally aliased to
+      `DEFAULT_TERMINAL_ID` — the file's own comment calls that "interim, not
+      design" (`hardware.rs:204-212`). What still does not exist is a driver that
+      answers: every registered row is a stub (R7).
 - [ ] **Reconcile with the `payment:edc` flag.** The `TerminalFeatureOverride` flag
       = "EDC tab visible on this POS terminal"; the `edc_terminals` config = "which
       bank devices exist". Both device-local. The flag gates the tab; the config
       supplies the device list.
+      **Re-measured 2026-09-14: only half of this pair exists.** The device list
+      shipped (`edc_terminals` -> `register_card_terminals` -> the registry), the flag
+      did not: no `payment:edc` key exists anywhere. The EDC button is gated by the
+      **rail store** instead — `edcOffered = railOffered(rails, 'edc')`
+      (`PaymentModal.tsx:125`, used at `:1995`; `bffcbda97a`). `47ade2148` records
+      rails gating for `payment:edc` as *declined with reasons*, so what is open here
+      is whether a per-**terminal** gate is still wanted on top of the
+      per-**location** rail — not whether a flag was forgotten.
 - [ ] **Capture for later void/refund.** Store `terminal_id` + `auth_code` on the
       sale so void/refund (and the terminal's own `print_receipt`) route back to the
       same device/batch.
-- [ ] **Map to checkout.** Feed `completeSaleScoped` a `paymentSplit` with
-      `method: "EDC"` (or per-bank), `amountMinor`, and
-      `gatewayReference: auth_code` (+ terminal id). See Phase 5 UI wiring.
+- [x] **Map to checkout.** ~~Feed `completeSaleScoped` a `paymentSplit` with
+      `method: "EDC"` (or per-bank), `amountMinor`, and `gatewayReference:
+      auth_code` (+ terminal id).~~ **Shipped, with three differences from this
+      sketch** (`26ffd89c1c`; `PaymentModal.tsx:1089-1097`): the method string is
+      **'CARD'**, not EDC; `gatewayReference` carries the **transactionId**, not the
+      `auth_code` (auth_code / card_scheme / card_last4 / message are serialised into
+      `gatewayResponse` as JSON); and no `terminal_id` reaches the split because the
+      command never takes one. It is a single-tender `buildGatewaySale` +
+      `settleGatewaySale` rather than a split row, and it deliberately sets
+      `voidOnFinalizeFailure = false` — a local finalize fault must not void money the
+      terminal already captured. See Phase 5 UI wiring.
 
 ```rust
-// apps/desktop-client/src/commands/edc.rs (reconciled; driver currently stubbed)
+// PROPOSAL — not the shipped shape. The real command takes no terminal_id and no
+// Money: apps/desktop-client/src/commands/edc.rs:43-48 is
+//   pub async fn edc_sale(session_token: String, state: State<'_, AppState>,
+//                         amount_minor: i64, currency: String)
+//   -> Result<EdcResultDto, AppError>
+// and delegates to crates/oz-bridge/src/edc.rs:127, which resolves
+// DEFAULT_TERMINAL_ID (oz-bridge/src/edc.rs:27) — the terminal_id argument this
+// snippet sketches is the still-open follow-up, not current code.
 pub async fn edc_sale(
     state: State<AppState>,
     terminal_id: Option<String>,
@@ -482,7 +597,7 @@ pub async fn edc_sale(
     let term = state.registry.terminal(&id).await
         .ok_or_else(|| AppError::not_found("no edc terminal configured"))?;
     let res = term.sale(amount).await?; // EdcPaymentResult
-    Ok(res.into())                      // EdcResultDto: From<EdcPaymentResult>
+    Ok(res.into())                      // EdcResultDto: From<EdcPaymentResult> (real: oz-bridge/src/edc.rs:58)
 }
 
 // crates/oz-hal/src/drivers/edc/indonesian_ecr.rs
@@ -533,10 +648,10 @@ abstraction should contain the failure and offer a fallback path.
 | Failure | Current behaviour | Why it breaks the POS |
 |---|---|---|
 | Midtrans down at QR issue | `sale()` returns `Network`/`Timeout` | no fallback; basket stuck on error screen |
-| `sale()` synchronous poll | QRIS `sale()` (`qris.rs:561`) returns `SCAN_QR|...` and `capture()` polls ~60s while the QR is valid 300s (PAY-6) | blocks the server request up to 60s; a customer who pays at 90s never settles in-call |
+| `sale()` synchronous poll | QRIS `sale()` (`qris.rs:566`; the SCAN_QR literal is built at `:585-587`) returns a `SCAN_QR\|...` string and `capture()` polls ~60s while the QR is valid 300s (PAY-6) | blocks the server request up to 60s; a customer who pays at 90s never settles in-call |
 | Webhook lost / late pay | nothing reconciles `pending` sales | sale stuck `pending` forever |
 | Midtrans slow (not down) | every call waits up to COR-31 30s | no circuit breaker => cashier waits on every sale |
-| UI error handling | `PaymentModal.classifyError` string-matches English messages for retryable vs terminal | brittle; backend typed-error intent is discarded |
+| UI error handling | ~~string-matches English messages~~ **no longer true**: `classifyError` is now a 4-line adapter delegating the retry verdict to the shared typed boundary classifier `classifyRetry` (`PaymentModal.tsx:225-231`, `ui/src/utils/app-error.ts:120`) — `3d50b3ac5a` | was brittle; now the shared classifier owns it. The remaining gap is the **backend** half: `PaymentError` still has no `classify()`/`ErrorClass` at all (`crates/oz-payment/src/error.rs`, 0 hits repo-wide) |
 
 ### Recommended resilient abstraction
 - **A. Async settlement (kill the sync trap).** `authorize()` for QRIS returns
@@ -552,11 +667,15 @@ abstraction should contain the failure and offer a fallback path.
   is device-local (merchant's static QR, no secrets) so it works even when
   Midtrans is unreachable. This is the concrete "should not break" guarantee.
   (Plug-in: `registry.rs` `method -> Vec<processor>` + real `build_from_config`.)
-- **C. Classified errors, single source of truth.** Add
+- **C. Classified errors, single source of truth.** **Half done — the two halves
+  are not the same commit.** UI half CLOSED (`3d50b3ac5a`): the modal's English
+  substring scan is gone and delegates to `classifyRetry`
+  (`PaymentModal.tsx:225-231`). Backend half STILL OPEN: add
   `PaymentError::classify() -> ErrorClass { Transient, Terminal, Deferred }`
   (`Transient` = Network/Timeout; `Terminal` = the rest; `Deferred` = QR
-  issued, awaiting settlement). Delete the UI's string-match `classifyError`
-  and use this. (Plug-in: `error.rs`, `PaymentModal.tsx`.)
+  issued, awaiting settlement) — `error.rs` today declares 8 variants and no
+  `classify()`, and `ErrorClass` appears nowhere in the repo.
+  (Plug-in: `error.rs`.)
 - **D. Resilience decorator.** A `ResilientProcessor` wrapping
   `Arc<dyn PaymentProcessor>` adds: bounded timeout (COR-31 already),
   **retry-with-full-jitter-backoff on `Transient`** (reuse oz-core helper), and
@@ -607,10 +726,17 @@ checks) remain in `## Open questions`.
 - **Secrets cloud-side.** The device holds only the enable flag + endpoint id;
   the server key never leaves `cloud-server`. Consistent with the
   `TerminalFeatureOverride` (device) vs cloud entitlement split.
-- **Webhook = re-fetch.** Follow the vendor pattern: on notification, re-query
-  `GET /{id}/status` and trust that (do not trust the body alone). Build
-  `POST /api/webhooks/midtrans` in `cloud-server` mirroring the Stripe/Square
-  handlers; keep the driver's status poll as a fallback. Signature verification
+- **Webhook = re-fetch.** *(Ruled 2026-09-07 as a decision; the code that shipped
+  on 09-13 chose the other half first — record kept, reality corrected.)* Follow
+  the vendor pattern: on notification, re-query `GET /{id}/status` and trust that
+  (do not trust the body alone). **What `POST /api/webhooks/midtrans` actually
+  does today** (`webhooks.rs:860-985): verifies `signature_key` =
+  SHA512(order_id + transaction_status_code + gross_amount + server key) in
+  constant time, resolves the sale through the `midtrans_transactions` ledger,
+  **never re-fetches** `/{id}/status`, and gates `amount_mismatch` fail-closed.
+  The "signature later" half is therefore the half that exists; the "re-fetch now"
+  half does not. Mirroring the Stripe/Square handlers held for the router shape
+  only, not for the dedupe table. Signature verification
   (`SHA512(order_id + status_code + gross_amount + serverKey)`) is optional
   defense-in-depth.
 - **Default acquirer = generic.** Omit `qris.acquirer` so any QRIS wallet can
@@ -620,7 +746,11 @@ checks) remain in `## Open questions`.
   questions).
 - **QR field = `qr_string`.** Plan to render the raw `qr_string` returned by the
   charge; the driver's current `qr_code_url` is wrong (pending sandbox
-  confirmation, step 1 of the plan).
+  confirmation, step 1 of the plan). **RESOLVED IN CODE, not in a sandbox**:
+  `#[serde(default, alias = "qr_string")]` at
+  `crates/oz-payment/src/drivers/qris.rs:136-137` makes the charge response read
+  the live field name; only the Rust struct's own field name still says
+  `qr_code_url`.
 - **Settlement finalize via webhook**, like Square, so a closed/firewalled
   session still finalizes.
 
@@ -649,12 +779,14 @@ checks) remain in `## Open questions`.
 > verification, not by choice (qr_string vs qr_code_url, acquirer
 > interoperability, refund behavior, per-merchant acquirer activation).
 
-- [ ] **QR response field (`qr_string` vs `qr_code_url`):** the driver currently
-      reads `qr_code_url`, but Midtrans QRIS charge returns `qr_string` (the raw
-      QRIS string to render into a QR image). Neither vendored client ships a
-      classic Core-API QRIS sample to confirm. **Blocking item for actually
-      displaying a scannable QR.** (Recommended: switch to `qr_string`; verify
-      against the sandbox.)
+- [x] **QR response field (`qr_string` vs `qr_code_url`) — CLOSED IN CODE
+      2026-09-13, no sandbox needed.** The driver reads `qr_string` via
+      `#[serde(default, alias = "qr_string")]`
+      (`crates/oz-payment/src/drivers/qris.rs:136-137`); its doc comment records
+      that against the real gateway the field silently deserialized to `None`
+      before the alias, which is the confirmation this item asked for. The
+      struct's own field name is still `qr_code_url` (cosmetic). What actually
+      renders the QR today is the cloud charge path, not this stub-era field.
 - [x] **Webhook verification strategy — RULED 2026-09-07: (a) re-fetch, (b)
       later.** Follow the vendor pattern and re-fetch `Transaction::status`
       on every webhook now; add `signature_key = SHA512(order_id + status_code +
@@ -662,6 +794,16 @@ checks) remain in `## Open questions`.
       Notification URL registration in the Midtrans dashboard: use the
       dashboard's own setting; the re-fetch makes the delivery channel
       untrusted by construction.
+      **RULE KEPT, ORDER INVERTED (re-measured 2026-09-14 against the shipped
+      handler).** What exists is (b) alone: `webhooks.rs:876-902` rejects any
+      `signature_type` other than sha512 and verifies `signature_key` = SHA512
+      in constant time, answering 401 on failure; there is **no re-fetch of the
+      status endpoint anywhere in that handler**, and dedupe rides the
+      `midtrans_transactions` ledger status (`webhooks.rs:950-960`) rather than
+      `processed_webhooks`. The tick stands — the question is decided and its
+      intent (never trust the notification body alone) is met by the signature.
+      The live question is now "add a re-fetch as a second factor?", not
+      "which one first".
 - [ ] **Acquirer availability / merchant activation:** a merchant must be
       activated per-acquirer in the Midtrans dashboard, so `dana`/`linkaja`/etc.
       are not freely choosable. How do we model the per-merchant *available*
@@ -692,8 +834,13 @@ checks) remain in `## Open questions`.
       (`amount: null` = full, minor units = partial).
 
 ## References
-- `ui/src/features/sales/PaymentModal.tsx` (modal; 2,436 lines at 2026-09-14,
-  grown from the study's ~2,030 by three feature rounds' real wiring)
+- `ui/src/features/sales/PaymentModal.tsx` (modal; 2,436 lines at 2026-09-14 —
+  method: read-tool `totalLines`, which equals `wc -l` here; re-confirmed by the
+  2nd-pass audit. Grown from the study's ~2,030 by real wiring.
+  `2026-09-14 (2nd pass): the `references/` paths below are a `.gitignore` entry
+  (`:213-214`) with **no directory behind it** — 0 tracked files, none on disk —
+  so every `references/...:45` line citation in this doc is unverifiable here and
+  is kept as dated research text, not as a live pointer.)
 - `ui/src/features/sales/PaymentModal.css`
 - `ui/src/__tests__/PaymentModal.test.tsx`, `PaymentModalEdgeCases.test.tsx`,
   `PaymentModalSaleFlow.test.tsx`
@@ -710,4 +857,4 @@ checks) remain in `## Open questions`.
 - Midtrans official PHP client: https://github.com/Midtrans/midtrans-php
 - Midtrans PHP client - local vendored copy: `references/midtrans-php/` (gitignored research reference; not a dependency). Cross-verified the auth (HTTP Basic `base64(serverKey + ":")`) and base URLs against this client - see Phase 3 reference-copy bullet.
 
-> last audited 14-09-26 by docs-auditor
+> last audited 14-09-26 by docs-auditor · re-audited same day (2nd pass, HEAD `ec2edf258`) by DSH — see the audit stamp at the top
