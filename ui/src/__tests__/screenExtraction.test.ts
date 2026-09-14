@@ -50,22 +50,24 @@
 //
 // CASE ARITHMETIC, so the total is never read as code health. Keep the
 // FORM, never a substitution of it:
-//     cases = (3 x entries) + (4 extractor self-tests) + (1 coverage case)
+//     cases = (3 x entries) + (4 extractor self-tests) + (2 coverage-block cases)
 // Substitute the LIVE entry count, because the total is a property of
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 77/236/32 as of this edit: (3 x 77) + 4 + 1 = 236,
+// 902e07678, and 77/237/32 as of this edit: (3 x 77) + 4 + 2 = 237,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
 // moves when the LIST moves and never when the tree's CSS health changes:
 // a registration adds three green cases whether or not anything got
 // better. Read the entry count for coverage and the failures for health.
-// Coverage case +1 is the sole exception, and it is fixed: it is ONE case
-// over the whole tree, so an unregistered stylesheet makes it RED, never
-// MORE CASES — the total stops being a health signal in exactly one
-// direction and starts carrying a named failure in the other.
+// Coverage-block cases are the exception to the 3x, and they are fixed in
+// number: the block is TWO cases over the whole tree — one for an
+// uncited stylesheet, one for a parentCss citation that does not earn
+// itself — so a violation makes one of them RED, never MORE CASES. The
+// total stops being a health signal in exactly one direction and starts
+// carrying a named failure in the other.
 //
 // For each REGISTERED entry we assert:
 //   1. Every className used in its TSX has a CSS rule defined  (HARD)
@@ -111,7 +113,36 @@ interface ScreenEntry {
    * and the dead-class check keep walking `css` ALONE. Why, at the two maps
    * in the runner below.
    *
-   * Paths are relative to src/features/, same as `css`.
+   * Paths are relative to src/features/, same as `css` — with ONE widened
+   * exception, and it is narrow on purpose: a sheet that lives OUTSIDE
+   * src/features but is loaded GLOBALLY may be named as
+   * `../frontend/themes/<sheet>.css`, and nothing else may ever appear
+   * there. So `parentCss` has exactly two legal shapes — a sheet this
+   * family of entries inherits inside src/features (e.g.
+   * `settings/SettingsPage.css`, cited by the four settings cards), or a
+   * theme sheet both shells import. `../frontend/themes/components.css`
+   * is the live case for the second shape: it defines `.sr-only` at :1492
+   * and `.skeleton` at :1296, and is imported by BOTH entry points
+   * (main.tsx:7 desktop, main.tablet.tsx:20 tablet), so those utilities
+   * really are provided at the element the class sits on.
+   *
+   * Before that exception, the only way to keep a global utility from
+   * failing case 1 was to mute it in `knownDynamicFragments` — which
+   * asserts the name is COMPOSED AT RUNTIME. For `sr-only` that is false,
+   * and the false claim then travels into case 3: a muted name is never
+   * reported dead anywhere. Citing the sheet that defines it says what is
+   * true instead, and says it in a field the guard can check.
+   *
+   * Why only case 1 may reach out: cases 2 and 3 still walk `css` ALONE
+   * (the two maps in the runner below), so a theme sheet is never graded
+   * for duplicate or dead rules through the entry that cites it — grading
+   * 219 globally shared classes once per citing entry is how a shared
+   * sheet becomes unsatisfiable, which is the same reason a parent's own
+   * honesty belongs to its owner and not to its children.
+   *
+   * The exception is policed, not trusted: the guard reads no import edge
+   * at all, so the prefix rule and the "the cited sheet must actually
+   * define what it is cited for" rule both live in the coverage block.
    */
   parentCss?: string[];
   /**
@@ -1214,7 +1245,14 @@ describe.each(SCREENS)(
     // Track unique files to avoid counting the same path twice
     // when the same class appears in the same file via compound selectors.
     const cssPaths = css.map((c) => path.join(FEATURES_DIR, c));
-    const parentPaths = (parentCss ?? []).map((c) => path.join(FEATURES_DIR, c));
+    // `css` resolves inside src/features, always. A `parentCss` path may
+    // escape it only under ../frontend/themes/ — see the field's
+    // docstring — and the coverage block refuses anything else, so this
+    // branch cannot be reached by a sibling feature sheet posing as a
+    // parent. Anything else stays joined as before.
+    const parentPaths = (parentCss ?? []).map((c) =>
+      c.startsWith('../frontend/themes/') ? path.resolve(FEATURES_DIR, c) : path.join(FEATURES_DIR, c),
+    );
 
     const index = (target: Map<string, string[]>, cssPath: string) => {
       for (const cls of extractClassSelectors(fs.readFileSync(cssPath, 'utf8'))) {
@@ -1387,6 +1425,89 @@ describe('stylesheet coverage', () => {
     expect(
       offenders,
       `uncited: ${offenders.length} (baseline ${BASELINE_UNCITED.length}) — sheet(s) no entry cites via css or parentCss and no line of BASELINE_UNCITED names: ${offenders.join(', ')}`,
+    ).toEqual([]);
+
+    // Second structural check in this same case: WHERE a parent may live.
+    // `css` is always inside src/features; `parentCss` may escape it only
+    // under the one theme prefix the field's docstring allows. This cannot
+    // be derived from imports because the guard reads no import edge at all
+    // — it opens the paths the entry itself names — so an escaping path is
+    // either a theme sheet or unverifiable prose. `../sales/PaymentModal.css`
+    // would resolve, would satisfy case 1, and would still be a lie about
+    // who owns the name: a sibling's sheet is not this screen's parent.
+    const escaping = SCREENS.flatMap((entry) =>
+      (entry.parentCss ?? [])
+        .filter((p) => p.split('/').includes('..') && !p.startsWith('../frontend/themes/'))
+        .map((p) => `${entry.name}: ${p}`),
+    ).sort();
+    expect(
+      escaping,
+      `parentCss: ${escaping.length} citation(s) leave src/features without naming a theme sheet — the only prefix allowed is ../frontend/themes/: ${escaping.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('every parentCss citation names a sheet that defines what it is cited for', () => {
+    // A citation is a claim about provenance, so it has to be checkable
+    // rather than declarative: the named sheet must exist, and every name
+    // the entry leans on it for must actually be defined in it. "Leans on
+    // it for" = used by this entry's markup, NOT defined by the entry's own
+    // css, and not already excused by that entry's own declared exemptions
+    // (a muted or prefixed name is not being attributed to the parent).
+    const findings: string[] = [];
+    for (const entry of SCREENS) {
+      const parents = entry.parentCss ?? [];
+      if (parents.length === 0) continue;
+
+      const parentDefined = new Set<string>();
+      for (const p of parents) {
+        const file = p.startsWith('../frontend/themes/')
+          ? path.resolve(FEATURES_DIR, p)
+          : path.join(FEATURES_DIR, p);
+        if (!fs.existsSync(file)) {
+          findings.push(`${entry.name}: parentCss names a sheet that does not exist: ${p}`);
+          continue;
+        }
+        for (const cls of extractClassSelectors(fs.readFileSync(file, 'utf8'))) {
+          parentDefined.add(cls);
+        }
+      }
+
+      let source = fs.readFileSync(path.join(FEATURES_DIR, entry.tsx), 'utf8');
+      for (const extraTsx of entry.additionalTsx ?? []) {
+        source += fs.readFileSync(path.join(FEATURES_DIR, extraTsx), 'utf8');
+      }
+      const ownDefined = new Set<string>();
+      for (const c of entry.css) {
+        for (const cls of extractClassSelectors(fs.readFileSync(path.join(FEATURES_DIR, c), 'utf8'))) {
+          ownDefined.add(cls);
+        }
+      }
+      const fragments = new Set(entry.knownDynamicFragments ?? []);
+      const external = new Set(entry.externalClasses ?? []);
+      const prefixes = entry.dynamicClassPrefixes ?? [];
+      const leaners = [...extractUsedClassNames(source)].filter(
+        (u) =>
+          !ownDefined.has(u) &&
+          !fragments.has(u) &&
+          !external.has(u) &&
+          !prefixes.some((pre) => u.startsWith(pre)),
+      );
+
+      const unbacked = leaners.filter((u) => !parentDefined.has(u)).sort();
+      if (unbacked.length > 0) {
+        findings.push(
+          `${entry.name}: cited parent sheet(s) (${parents.join(', ')}) do not define: ${unbacked.join(', ')}`,
+        );
+      }
+      if (leaners.length === 0) {
+        findings.push(
+          `${entry.name}: parentCss citation ${parents.join(', ')} is vacuous — nothing this entry uses needs it, so it teaches nothing and hides a stale cite`,
+        );
+      }
+    }
+    expect(
+      findings,
+      `parentCss citation(s) not earning their place: ${findings.length} — ${findings.join(' | ')}`,
     ).toEqual([]);
   });
 });
