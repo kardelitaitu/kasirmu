@@ -52,12 +52,27 @@
 > The file stays `todo-`: the Phase 2.0 acceptance boxes (`:50-51`) have never been run by anyone in this checkout.
 
 ### Phase 2.0: Baseline Audit
-- [ ] Run `npm run test -- SettingsPage` in `ui/`.
-- [ ] Run `npm run typecheck` in `ui/`.
+- [x] Run `npm run test -- SettingsPage` in `ui/`.
+- [x] Run `npm run typecheck` in `ui/`.
   > **Unverified by this audit** — no shell was available, so neither command was run and no pass/fail
   > is claimed. The suites the first line collects do exist: `ui/src/__tests__/SettingsPage.test.tsx`,
   > `ui/src/__tests__/a11y/SettingsPage.a11y.test.tsx`, `ui/src/__tests__/SettingsNavTree`-adjacent
   > mounts, and `ui/src/features/settings/__tests__/` (FeatureToggleScreen, LicenseSettings).
+
+> **Ticked 2026-09-14 by a later pass (HEAD `e455e9d13`) — because commands RAN, and each with its exit code.** What ran for
+> the first box was **not** `npm run test -- SettingsPage`. It was, from `ui/`, over the merged tree:
+> `npx vitest run src/__tests__/SettingsPage.test.tsx src/__tests__/SettingsContext.test.tsx src/__tests__/SettingsDeepLink.test.tsx src/__tests__/a11y/SettingsPage.a11y.test.tsx`
+> → **62 green of 63 collected, exit 0**. The tick is recorded against those four named files, not against whatever the
+> box's own `-- SettingsPage` filter collects; the a11y suite lives at `ui/src/__tests__/a11y/SettingsPage.a11y.test.tsx`,
+> not beside the page. The one non-green case was not characterised in the run note — skipped, or filtered out — and nobody
+> should infer it was a failure: re-run with `--reporter=verbose` before repeating the 62/63. For the second box:
+> `npm run typecheck` from `ui/` → **exit 0, zero errors**. Both runs were made on the merged tree by the requesting pass;
+> this editing session did **not** re-run either command, because another lane had `ui/src/features/kds/__tests__/` open for
+> writing at the same minute and a re-run would have graded their in-flight files and produced a red belonging to nobody.
+> The "no shell was available" caveat above is that earlier pass's record and stands as written. It, and the header claim at
+> as-measured `:52` / as-now `:52` ("the Phase 2.0 acceptance boxes (`:50-51`) have never been run by anyone in this
+> checkout"), are superseded by this run for these two boxes and for nothing else in this file — and `:50-51` is itself a
+> stale anchor now: those two boxes sit at `:55`/`:56`, the header block having grown since that line was written.
 
 ### Phase 2.1: Extract Hardware & Receipt Settings Panels
 - [x] Extract `<ReceiptSettingsPanel />` out of `SettingsPage.tsx` (header, footer, logo toggle, preview).
@@ -88,9 +103,16 @@
   calling this absent: `printer`, `hardware`, `terminal`, `drawer`, `scanner`, `display`, `edc`, `scale`,
   `escpos` — in `SettingsNavTree.tsx` and `SettingsPage.tsx` (all 0), and in `features/settings/` as a whole
   (non-zero, which is why the finding is "not on this page", not "not in the app").
-- [ ] Verify: `npm run typecheck`.
+- [x] Verify: `npm run typecheck`.
   **Not run, and not ticked: this session had no shell**, so no gate result is asserted either way. The
   file it would exercise is the 921-line `SettingsPage.tsx` described above.
+  **Ticked 2026-09-14: the SAME run as the Phase 2.0 box, cited twice — not a second measurement.** `npm run typecheck`
+  from `ui/` -> exit 0, zero errors, same day, one invocation. Phase 2.0's box (`Run npm run typecheck in ui/`),
+  (as-measured `:56` / as-now `:56`) and this box (as-measured `:91` / as-now `:106`) ask for the identical command, and
+  the plan duplicating itself is worth saying once out loud: keeping both ticks honest means both point at the one recorded
+  run, which is what they now do. No fresh run was performed to fill this line, and none should be invented later to
+  justify it.
+
 - [x] **Commit Milestone:** — the shape this item aimed at was committed by the settings rebuild, not
   by Agent 2. `ui/src/__tests__/SettingsPage.test.tsx:6` names nav-tree commit `3c76e6c97`; **that SHA and
   every other commit claim here were not verified by this session (no git access)**. Re-stated in the
@@ -122,7 +144,26 @@
   `screens/TaxConfigurationScreen.tsx` (32 lines) is the same placeholder ("Content moves here from
   `features/tax/TaxConfigurationScreen.tsx`", `:4`) while the real UI is still the standalone
   `ui/src/features/tax/TaxConfigurationScreen.tsx` (1,027 lines, route `tax-config`).
-- [ ] Verify `SettingsPage.tsx` line count drops from 844 to < 250 lines. — **RETIRED 2026-09-14 and RESTATED: the gate is `<= 450`.** Both halves of the old line were wrong at the root, not stale.
+- [x] Verify `SettingsPage.tsx` line count drops from 844 to < 250 lines. — **RETIRED 2026-09-14 and RESTATED: the gate is `<= 450`.** Both halves of the old line were wrong at the root, not stale.
+  **Ticked 2026-09-14 by a later pass (HEAD `e455e9d13`) — the RESTATED gate is MET; the ORIGINAL is not.** The gate as it
+  now reads, `<= 450`, measures **449** by `wc -l < ui/src/features/settings/SettingsPage.tsx` → `449`. **`< 250` has NOT
+  been achieved and is still false by ~200 lines** (449 against the 249 the struck wording demanded); this tick is not
+  evidence for it and must never be read as "the page got under 250". The ladder, each rung read from that commit's own blob
+  (`git show <sha>:ui/src/features/settings/SettingsPage.tsx | wc -l`): `43beb342d` 921 → `717017bb1` 820 (save) →
+  `d95d4daed` 780 (hash) → `81c67e2f1` 676 (footer) → `6843bde02` **539** (topbar + save bar) → `8feb4da8e` **498** (screen
+  registry) → `33c6ebe6e` **449** (load/error chrome). The four-node ladder in the dispatch (921 → 539 → 498 → 449, "one
+  commit each") names the three final steps correctly but omits 820/780/676, so it understates the four commits it took to
+  reach 539; all seven rungs are re-runnable in one line each.
+
+  **ARITHMETIC RULE — guard registrations in `ui/src/__tests__/screenExtraction.test.ts` are DISPATCH SCOPE, NOT PAGE LINES,
+  and must never be summed into a page floor.** The "20 lines per slice" figure nearly used here to retire the `<= 450` gate
+  decomposed as **14 page + 6 guard**: the 6 are `additionalTsx` entries a slice must register (the Settings block at
+  as-measured `:315-319` of that test, grown since by the `SettingsFooter`, `SettingsTopbar` and `SettingsLoadChrome`
+  registrations the footer, topbar and chrome slices each added). The gate opens exactly one file —
+  `ui/src/features/settings/SettingsPage.tsx`. A guard registration is a line in a test file the gate never reads, so
+  counting it as harvested page lines makes the floor look reachable by editing somebody else's file, which is how a
+  reachable gate gets retired on a false arithmetic claim.
+
   - **THE BASELINE WAS NEVER THIS FILE'S — read this first, it is the most useful sentence in the document.** The gate
     starts from 844, and `wc -l ui/src/features/settings/SettingsNavTree.tsx` = **844**: the acceptance line has been
     measuring this page against a DIFFERENT file's size from the day it was written. `SettingsPage.tsx` measured
@@ -194,6 +235,23 @@
   and the CSS-reachability guard **in the same commit**. A KDS slice this week proved what happens otherwise: deleting
   such a registration is load-bearing, and the guard then named ten unreachable classes. Do not split that registration
   into a follow-up commit, and do not schedule slice 3 against a page whose footer markup anchors are already drifting.
+- **Two boxes stay open BY CHOICE, and that is not pending work (2026-09-14):**
+  `Extract <PrinterSettingsPanel /> …` (as-measured `:70` / as-now `:85`) and
+  `Extract <GeneralSettingsPanel /> and <TaxSettingsPanel />` (as-measured `:110` / as-now `:132`) were deliberately NOT
+  ticked by the pass that ticked the four acceptance boxes. **Retired is not done**: a retired-with-proof line records where
+  the body actually lives, not that this plan extracted it, and the proof still holds — the `sections/*` files are imported
+  by 11 files under `ui/src/__tests__/` and by two guard lists (`ui/src/__tests__/screenExtraction.test.ts`,
+  `ui/src/__tests__/nativeTooltipCompliance.test.ts:190`) and by nothing under `features/` (the four
+  `features/settings/screens/*.tsx` that name `settings/sections/` do so only inside their `//!` header comments, measured,
+  not imported). They are neither mounted by this page nor unmounted dead code, so ticking either box would assert an
+  extraction that never happened.
+- **Standing caution, and it covers every figure in this file now:** a number here is a measurement of ONE revision, with
+  its SHA named in the line that quotes it. This tree moved ~15 times today and this file was edited during those waves —
+  the pass that opened at `e455e9d13` inserted 58 lines under four boxes above this point, so every anchor after
+  Phase 2.0 shifted while the document was being read. Quote the command, not the count; give a cited line number twice
+  (as-measured and as-now) or cite by heading or box text instead. The page's own line-number caution immediately below
+  makes this same argument about `SettingsPage.tsx`; it now applies to this plan document too.
+
 - **Line-number caution, worth more than it looks:** `.agents/unscoped-caller-map.md` used to cite
   `SettingsPage.tsx:479` as a `set_setting_scoped` caller — that entry is at the map's `:81` today (the map has drifted
   by two as well), and on the current 820-line page `:479` is a lone `}`. This is not one line of drift but a **file
