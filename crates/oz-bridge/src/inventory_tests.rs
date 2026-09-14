@@ -19,61 +19,7 @@
 use super::*;
 
 use crate::testing::TestBridge;
-use crate::testing::seeded_row_loads;
-use oz_core::subscription::TenantSubscription;
-
-/// The release leg for a mutation this file drives through the subscription
-/// gate: `create_inventory_location` reaches the tenant row via
-/// `sub.verify_signature()?`, exactly the propagating shape of
-/// `terminals.rs:432` and of the two scoped workspace listings, so in release
-/// the command RETURNS AN ERROR - no id, no row, no projection of caps to
-/// assert. The `FAIL_CLOSED_*` template is deliberately absent from this file:
-/// these fixtures count and mutate written rows, and in release a written row
-/// is precisely what does not exist here.
-///
-/// Existence is pinned FIRST, because `seeded_row_loads() == false` collapses
-/// five distinct causes (`crates/oz-bridge/src/testing.rs:210-216`: no default
-/// row, a load `Err` on a mis-shaped table, a public-key failure, the intended
-/// base64 reject on the BOOTSTRAP_FREE sentinel, a genuine RSA mismatch) and
-/// only the fourth is this fixture vocabulary.
-async fn assert_refused_by_the_seeded_row<T>(
-    tb: &TestBridge,
-    settled: Result<T, BridgeError>,
-    stamped_tier: &str,
-) {
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-    let row = TenantSubscription::load(&db, "default")
-        .expect("the tenant_subscription read must succeed")
-        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
-    assert_eq!(
-        row.tier.tier_key(),
-        stamped_tier,
-        "the tier this fixture inherits must be on the row the release arm reads"
-    );
-    assert_eq!(
-        row.verify_signature().is_ok(),
-        seeded_row_loads(),
-        "the row this fixture mutates against must be the row the fork predicate is about"
-    );
-    drop(db);
-    let err = match settled {
-        Err(err) => err,
-        Ok(_) => panic!(
-            "this leg runs only where the seeded row does not verify, so the command must have been refused"
-        ),
-    };
-    assert!(
-        matches!(
-            err,
-            BridgeError::Core {
-                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
-                ..
-            }
-        ),
-        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
-    );
-}
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
