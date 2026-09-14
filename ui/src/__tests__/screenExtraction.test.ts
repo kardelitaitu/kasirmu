@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, 83/255/27 after 319a18e41, 83/255/26 after 338c15c01, and 84/258/25 as of this edit: (3 x 84) + 4 + 2 = 258,
+// 902e07678, 83/255/27 after 319a18e41, 83/255/26 after 338c15c01, and 84/258/25 after 1adf4ba6c, and 85/261/24 as of this edit: (3 x 85) + 4 + 2 = 261,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -568,6 +568,30 @@ const SCREENS: ScreenEntry[] = [
     // renders <SettingsSelect> at :747 and :918 without using a single ssel-* class.
     // A sibling that merely shares a surface is not what that field claims.
     parentCss: ['../frontend/themes/components.css'],
+  },
+
+  {
+    name: 'DiagnosticsSection',
+    tsx: 'settings/sections/DiagnosticsSection.tsx',
+    css: ['settings/sections/DiagnosticsSection.css'],
+    // Shape #1: this component's markup leans on the settings scaffold it renders
+    // inside, and every leaner is backed. It uses 12 names, its own sheet defines 7,
+    // and the 5 remaining -- settings-section-title (:90), settings-form (:94),
+    // settings-hint (:95, :111) -- are defined at SettingsPage.css:514, :521 and :765
+    // respectively, with settings-field and settings-field--horizontal both at :410.
+    // No other sheet in src/ defines any of the five, so the cite is what check (iii)
+    // asks for: a complete backing, not a partial one, and no name dropped into
+    // externalClasses to dodge it (that field is filtered OUT of the leaner set, so a
+    // name parked there is proved by nothing). Dead-rule check walks the sheet alone:
+    // all 7 of its rules are referenced here, so 0 findings. The sibling row
+    // settings/LicenseSettings.css stays in BASELINE_UNCITED on purpose -- it has 5
+    // leaners too but only 3 are backed (settings-error is at :835) while
+    // settings-license-row--warning (LicenseSettings.tsx:526) and server-status are
+    // defined nowhere in src/, and 4 of its own rules (settings-license-value--tier-
+    // free/pro/premium/enterprise) have no reference in that tsx. Citing it would read
+    // as backed and registering it would go red twice over; that is define-work, not a
+    // citation.
+    parentCss: ['settings/SettingsPage.css'],
   },
 
   // ── Locations (moved from stores/ in the Store→Location rename) ──
@@ -1513,7 +1537,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 25 entries is a named path, not a prefix, not a
+// every one of its 24 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line, and NOTHING here is a
 // place to put a new one: not a rename, not a sheet that "will be
@@ -1551,7 +1575,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 25 since, one line per sheet a landed entry cited, and
+// it has shrunk to 24 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1575,7 +1599,6 @@ const BASELINE_UNCITED: string[] = [
   'settings/SettingsNavTree.css',
   'settings/SettingsScopeTag.css',
   'settings/WorkspaceSettingsModal.module.css',
-  'settings/sections/DiagnosticsSection.css',
   'setup/components/LiveSetupPreview.css',
   'staff/RoleAuthoringScreen.css',
   'warehouse/WarehouseConsole.css',
