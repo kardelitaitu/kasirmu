@@ -253,7 +253,10 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'auth/StaffLoginScreen.tsx',
     css: ['auth/StaffLoginScreen.css'],
     dynamicClassPrefixes: ['staff-login-logo', 'staff-login-card'],
-    knownDynamicFragments: ['skeleton'],
+    // Cited, not muted: .skeleton is defined in frontend/themes/components.css:1296,
+    // a sheet both entry points import (main.tsx:7, main.tablet.tsx:20). The mute
+    // claimed a runtime-composed name; the cite says what is true.
+    parentCss: ['../frontend/themes/components.css'],
     // These classes are defined in StaffLoginScreen.css but are used by the
     // StatusBar component (imported and rendered inside StaffLoginScreen).
     externalClasses: [
