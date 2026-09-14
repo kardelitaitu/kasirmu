@@ -140,7 +140,7 @@ pieces of work — which is why each of the three ticks cites this same block.
 lane's to close**, because each names a path with no file behind it. Measured, not inferred:
 - **`:60`** *Extract keyboard shortcuts into `hooks/useBumpBar.ts`* — the keyboard work shipped **under a
   different name and in a different directory**: `ui/src/features/kds/useKdsShortcuts.ts` (129 ln) sits
-  at the feature **root**, is imported at `KdsScreen.tsx:11` and called at `:324`. `hooks/useBumpBar.ts`
+  at the feature **root**, is imported at `KdsScreen.tsx:11` and called at `:324`. <!-- 2026-09-15: still true as a import/call pair, stale as a LOCATION -- the file moved to `hooks/useKdsKeyboardShortcuts.ts` at `c965baddb`, so the import is now `:11` of the hooks path. `hooks/useBumpBar.ts` remains absent; this bullet's own target name is what shipped. --> `hooks/useBumpBar.ts`
   does not exist, and neither does the merged plan's spelling `hooks/useKdsKeyboardShortcuts.ts`
   (`ls ui/src/features/kds/hooks/` → `useActionCooldown.ts`, `useKdsPreferences.ts`,
   `useNewTicketSound.ts`, `useTicketSla.ts`). Ticking would certify a path that is not there; leaving
@@ -169,7 +169,7 @@ they were, and a green suite is not evidence about a path that does not exist.
    exactly `useActionCooldown.ts`, `useKdsPreferences.ts`, `useNewTicketSound.ts`, `useTicketSla.ts`.
    The shipped file is **`ui/src/features/kds/useKdsShortcuts.ts`, 129 ln, at the feature root — not
    under `hooks/`**. The only occurrence of the string `useKdsKeyboardShortcuts` anywhere in `ui/src` is
-   a prose comment at `components/KdsHeaderLeft.tsx:21`. `merged` is outside this fence and is being
+   a prose comment at `components/KdsHeaderLeft.tsx:21`. <!-- 2026-09-15: false now in two ways -- the string is a FILE NAME at ui/src/features/kds/hooks/useKdsKeyboardShortcuts.ts (129 ln, `c965baddb`), and it occurs more than once in ui/src. The measurement below this line stands as written. --> `merged` is outside this fence and is being
    written by another lane right now, so it is reported here, not edited.
 
 > Recorded 2026-09-15 by the test/acceptance lane (time-boxed to the four commands named in the brief).

@@ -113,7 +113,7 @@
   > modal. Not started — the grid is already delegated to `KdsLayoutMasonry` (`:666`) and the
   > completed view to `KdsCompletedView` (`:686`), but the header is not.
 - [ ] Verify `KdsScreen.tsx` line count drops from 1,193 to < 350 lines.
-  > **Unmet:** still 1,193 (measured at HEAD and already 1,193 at `1af143f23`). The screen has
+  > **Unmet:** still 1,193 (measured at HEAD and already 1,193 at `1af143f23`). The screen has <!-- 2026-09-15 re-measure, replacement beside the original per 57bca12f8's form: wc -l ui/src/features/kds/KdsScreen.tsx = **634**, not 1,193 -- the file's own "Corrections (2026-09-15)" item 1 already logged the 1,193 -> 680 drift and is itself now 46 lines stale. The box stays open on its literal `< 350`; see :159-165 below. -->
   > not shrunk at all since this roadmap was written.
 - [ ] **Commit Milestone:**
   ```bash
@@ -160,7 +160,7 @@ each of the three ticks cites this same block, so the sharing is on the record r
   twice over; the box's own literal is not met and is unreachable.** Measured:
   `wc -l ui/src/features/kds/KdsScreen.tsx` = **680**, so **`<= 760`** (merged plan's wave-1 line) is
   **MET** and **`<= 700`** (its named later wave) is **MET** — 680 clears both. The literal
-  **`< 350`** this box still carries is **NOT met** and was restated as unreachable by the merged plan
+  **`< 350`** this box still carries is **NOT met** and was restated as unreachable by the merged plan <!-- 2026-09-15: re-measured, same conclusion, different number -- 634 ln, not 680. Both gates above stay MET, `< 350` stays NOT met, still no tick either way. -->
   (`merged:74`, `merged:175`). Which of the three numbers governs the box is the owner's decision; no
   tick either way.
 - **`:73` (`KdsTicketLineItem`) and `:80` (`KdsTimerBadge`) are PARKED** on rulings the merged plan
@@ -186,7 +186,7 @@ each of the three ticks cites this same block, so the sharing is on the record r
    file is **`ui/src/features/kds/useKdsShortcuts.ts`, 129 ln, at the feature root, not under `hooks/`**
    (imported `KdsScreen.tsx:11`, called `:324`). The string `useKdsKeyboardShortcuts` survives in
    `ui/src` only as a comment at `components/KdsHeaderLeft.tsx:21`. `merged` is outside this fence and
-   another lane is writing it, so this is reported, not edited.
+   another lane is writing it, so this is reported, not edited. <!-- REPAIRED 2026-09-15 -- the target now exists: ui/src/features/kds/hooks/useKdsKeyboardShortcuts.ts, 129 ln, moved from the feature root by c965baddb (git show -M --summary: rename ... (100%)), and merged:151 is ticked by 171362036. hooks/ holds FIVE files, not four. This paragraph stands as the record of what was measured on 2026-09-15 earlier in the day, at the old path. -->
 
 > Recorded 2026-09-15 by the test/acceptance lane. Only this file and `todo-refactor-kds-agents-1.md`
 > were edited; no test or source file was touched.
