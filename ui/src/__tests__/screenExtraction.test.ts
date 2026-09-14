@@ -224,7 +224,13 @@ const SCREENS: ScreenEntry[] = [
     name: 'ProductLookupScreen',
     tsx: 'products/ProductLookupScreen.tsx',
     css: ['products/ProductLookupScreen.css'],
-    externalClasses: ['product-card', 'product-card--added', 'product-card--disabled'],
+    // product-card--added and --disabled are not a foreign sheet's rules: this entry
+    // composes them itself at features/products/ProductLookupScreen.tsx:496-497, where
+    // cardClass gains ' product-card--disabled' when the product is out of stock and
+    // ' product-card--added' when it was just added. One prefix states the composition
+    // rule where two mutes stated two guesses about somebody else's sheet.
+    dynamicClassPrefixes: ['product-card--'],
+    externalClasses: ['product-card'],
   },
   {
     name: 'ProductManagementScreen',
@@ -528,6 +534,14 @@ const SCREENS: ScreenEntry[] = [
       'topology',
       'free',
     ],
+    // All three are composed at runtime by files THIS entry already walks -- SettingsPage
+    // registers settings/components/SettingsTopbar.tsx and settings/sections/SyncSection.tsx
+    // as additionalTsx -- yet they still never enter the used set, because each arrives as
+    // the conditional tail of a template literal (SettingsTopbar.tsx:187 settings-save-dot
+    // + --hidden, :193 settings-btn-revert + --hidden, SyncSection.tsx:333 settings-sync-dot
+    // + --ok / --err by syncResult) and the extractor strips interpolations. So the claim
+    // is composition inside this feature, not ownership by a foreign sheet: one prefix per
+    // family, in the shape the badge modifiers took at 7e893bc2c.
     externalClasses: [
       'card',
       'tooltip-content',
@@ -548,10 +562,7 @@ const SCREENS: ScreenEntry[] = [
       // Visibility-hidden modifier classes for revert button & save-dot.
       // These are constructed via template-literal class toggling in
       // SettingsPage.tsx, so the static parser can't extract them.
-      'settings-btn-revert--hidden',
-      'settings-save-dot--hidden',
       // Sync status classes used in SettingsPage.tsx
-      'settings-sync-dot--err',
     ],
     // These three modifiers are not another component's classes -- this entry's own
     // code composes them. features/settings/sections/SyncSection.tsx:296 renders one
@@ -568,7 +579,12 @@ const SCREENS: ScreenEntry[] = [
     // case 3 sees three defined rules with no reference and needs SOME shield; any
     // shield states the wrong thing, and this is the one that can be checked by
     // deleting it.
-    dynamicClassPrefixes: ['settings-sync-expiry-badge--'],
+    dynamicClassPrefixes: [
+      'settings-sync-expiry-badge--',
+      'settings-save-dot--',
+      'settings-btn-revert--',
+      'settings-sync-dot--',
+    ],
   },
   {
     name: 'DataManagementScreen',
