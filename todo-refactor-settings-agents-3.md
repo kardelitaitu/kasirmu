@@ -410,10 +410,27 @@ so the two forms agree; the ALL-bullets count is a different quantity and is lis
 read as a box total):
 `grep -cE '^[[:space:]]*- \[ \]'` 7 -> 5 - `grep -cE '^- \[ \]'` 7 -> 5 -
 `grep -cE '^[[:space:]]*- \[[xX]\]'` 4 -> 6 - `grep -cE '^- \[[xX]\]'` 4 -> 6 -
-`grep -cE '^[[:space:]]*-[ ]'` (ALL bullets) 60 -> 64 (the +4 are this record's own top-level bullets).
+`grep -cE '^[[:space:]]*-[ ]'` (ALL bullets) 60 -> 65 (the +5 are this record's own top-level bullets).
 After this ruling the open boxes are exactly `:111` (dropped by ruling), `:130` (no UI at any layer),
 `:144` (needs a definition of "clean"), `:147` (needs the decision above) and `:153` (conditioned on
 `:111` plus `:130`). Three of those five are not code this lane can write: `:130` and `:153` wait on a
 product answer, `:111` on its own IPC command. `:144` and `:147` are one design decision, filed above,
 and that decision is now the only thing standing between this plan and a closable Phase 3.2.
-- **SUPERSEDED LINE INSIDE THE FIRST RECORD, flagged not edited.** The 2026-09-15 first-pass record ends  at `:316` with "`:93`, `:105` and `:153` are now waiting on a naming/wording ruling, not on code." Two  of those three have since been ruled and ticked by THIS record, so read that sentence as the state of  play at the moment it was written - it is a dated observation, not the current tally. `:153` is the  only one still waiting on a ruling, and it waits on a different kind of answer now: `:130` has no UI  to extract and `:111` is dropped, so the milestone it marks cannot be reached by naming anything.
+- **LINE-COUNT DRIFT AFTER THIS RULING, so the figures above are read with a date.** The 259 ln
+  cited for `ExportSection.tsx` and the 469 ln cited for the screen were measured at HEAD
+  `f7872bd9a`. Another settings lane has since landed `562177534` "refactor(settings): remove
+  the child write authority the ExportSection comment already disclaims" (+223/-1 on that
+  panel, 1 line on the import panel), which narrows the export patch prop to
+  `ExportFieldPatch = Partial<Pick<ExportState, ...>>` - a type tightening inside the panel,
+  not a state move. Measured after it: `ExportSection.tsx` 278 ln, `ImportSection.tsx` 269
+  ln, screen 469 ln, and the screen still owns 8 `useState` / 2 `useEffect` / 12 
+  `useCallback`. So both ticks stand (neither depends on a line count) and the OPEN QUESTION
+  above is unchanged in substance: the state machines are still in the screen.
+
+- **SUPERSEDED LINE INSIDE THE FIRST RECORD, flagged not edited.** The 2026-09-15 first-pass
+  record ends at `:316` with "`:93`, `:105` and `:153` are now waiting on a naming/wording
+  ruling, not on code." Two of those three have since been ruled and ticked by THIS record,
+  so read that sentence as the state of play at the moment it was written - it is a dated
+  observation, not the current tally. `:153` is the only one still waiting on a ruling, and
+  it waits on a different kind of answer now: `:130` has no UI to extract and `:111` is
+  dropped, so the milestone it marks cannot be reached by naming anything.
