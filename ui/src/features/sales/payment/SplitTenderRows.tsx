@@ -46,17 +46,17 @@ import { Localized, useLocalization } from '@fluent/react';
 import { formatMoney, type Money } from '@/types/domain';
 
 /**
- * Mirror of the shell's local PaymentMethod union (PaymentModal.tsx:41) and of
- * its SplitRow (PaymentModal.tsx:71), in the same "structural twin" role
- * ./useTenderMath.ts:45 already plays for the split math. Duplicated rather
- * than imported because both originals are module-local to the page that
- * imports THIS file, and a type-only cycle is the alternative. The union is the
- * shell's full set, NOT the narrower 'cash' | 'card' | 'other' a row can hold,
- * so the shell's updateSplit stays assignable to onUpdateSplit with no cast.
+ * Mirror of the shell's local PaymentMethod union (PaymentModal.tsx:45) and of the SplitRow that
+ * ./useSplitTenderState.ts:63 exports — the same "structural twin" role ./useTenderMath.ts:45 plays.
+ * The union stays a twin because it is module-local to the page importing THIS file, where a
+ * type-only cycle is the alternative; SplitRow IS exported now, having moved with the state that
+ * owns it, and this file still mirrors it on purpose so the row component never depends on the
+ * hook that allocates the ids. The union is the shell's full set, NOT the narrower 'cash' |
+ * 'card' | 'other' a row can hold, so the hook's updateSplit stays assignable to onUpdateSplit.
  */
 type SplitRowMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
 
-/** Structural twin of the shell's SplitRow: the same four fields, same order. */
+/** Structural twin of useSplitTenderState's SplitRow (:63): same four fields, same order. */
 export interface SplitTenderRow {
   id: number;
   method: SplitRowMethod;
@@ -64,7 +64,7 @@ export interface SplitTenderRow {
   amountMinor: string;
 }
 
-/** What a row edit may patch — the shell's Partial<SplitRow>. */
+/** What a row edit may patch — the hook's Partial<SplitRow>. */
 export type SplitTenderPatch = Partial<SplitTenderRow>;
 
 export interface SplitTenderRowsProps {

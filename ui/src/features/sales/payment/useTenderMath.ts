@@ -42,7 +42,7 @@ import { useCallback, useMemo } from 'react';
 import { minorUnitExponent, parseMinorUnits, type CartLine, type Money } from '@/types/domain';
 import type { PreviewPromotedTotalResult } from '@/api/sales';
 
-/** Structural twin of the shell's SplitRow - only the three fields the split math reads. */
+/** Structural twin of useSplitTenderState's SplitRow (:63) - only the three fields the math reads. */
 interface SplitTenderRow {
   method: string;
   otherLabel: string;
