@@ -1,3 +1,8 @@
+// DEAD (2026-09-15 · HEAD f0ad9b170e): the route is closed and unreachable by construction — there is
+// NO `about` key among the 14 in SETTINGS_SCREENS (screens/registry.ts:27-42), so renderSection
+// (SettingsPage.tsx:63-66) cannot select it and no nav item or hash deep link can name it. Nothing in
+// production imports it; its tests grade UI no user can reach. No successor exists yet.
+// Comment only — the code below is deliberately untouched.
 import { Localized } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';

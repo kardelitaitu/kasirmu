@@ -1,3 +1,9 @@
+// DEAD (2026-09-15 · HEAD f0ad9b170e): the `receipt` route is closed. No entry in SETTINGS_SCREENS
+// (screens/registry.ts:27-42) and no NAV_ITEMS/KEPT_SECTIONS key names it, so renderSection
+// (SettingsPage.tsx:63-66) can never mount this file and no deep link can reach it. Nothing in
+// production imports it; its tests grade UI no user can reach.
+// Successor: ../screens/ReceiptFormatSettingsCard.tsx, mounted inside BusinessDefaultsScreen.
+// Comment only — the code below is deliberately untouched.
 import { Localized } from '@fluent/react';
 import type { ReactLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/frontend/shared';
