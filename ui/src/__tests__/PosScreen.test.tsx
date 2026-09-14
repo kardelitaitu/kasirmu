@@ -218,6 +218,13 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     sessionToken: null,
     swapSessionToken: vi.fn(),
   }),
+  // f27338da6's terminal-identity read reaches this module through PaymentModal.tsx:289-290
+  // (workspaceScope?.typeKey === 'restaurant-pos'), and a local vi.mock factory REPLACES the
+  // whole module, so the safe default src/test-setup.ts:182 installs never reaches it. Mirrored
+  // from that default instead of returning null: typeKey is read off the object, and this is the
+  // retail terminal, so the identity branch stays reachable-and-false rather than relying on the
+  // optional chain to make an absent scope look false.
+  useWorkspaceScope: () => ({ storeId: 'default', instanceId: 'default', typeKey: 'default' }),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
