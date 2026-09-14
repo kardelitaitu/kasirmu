@@ -1297,3 +1297,50 @@ provisioning profile import unchanged. Runbook updated.
 Same fix family as the Android keystore.properties repair (b9fa82ee) —
 both workflows were configuring signing via mechanisms the Tauri CLI
 does not support.
+
+# Owner decisions pending (2026-09-15)
+
+Seven decisions a docs session parked rather than took. Each is three lines: the decision, what is measured, and a recommendation that is a recommendation. Nothing here is decided, ticked, or changed; every number has its command, and a premise I could not re-derive is named at the bottom instead of repeated.
+
+## 1. Which ink owns the fill-foreground pair, and whether the light theme gets finished
+- **Decision:** whether to adopt `#12141a` as the single fill-foreground and retire `#1C2B45`, and whether to finish the light-theme residuals the retail and void work moved off 1.00:1 but could not close.
+- **Measured** in `ui/src/frontend/themes/tokens.css`: dark `--color-success` `#6FE884` (`:113`) with `--color-success-fg` `#12141a` (`:116`) — `#12141a` on `#6FE884` computes **11.88:1**, so the pair is sound once separated; light is the open half — `--color-success` `#2E9E3E` (`:422`) with `--color-success-fg` `#ffffff` (`:425`) computes **3.46:1**, and `--color-danger` `#FC3D39` (`:438`) with `--color-danger-fg` `#1C2B45` (`:443`) computes **3.96:1**, both under 4.5:1 for body text. Same command for any pair: the WCAG relative-luminance formula over the two hexes read by `grep -n "color-success\|color-danger" ui/src/frontend/themes/tokens.css`.
+- **Recommendation:** decide the light-theme pairing rather than the dark one — the dark half already reads as repaired — and treat the two figures above as the acceptance test for it, not the census counts below.
+
+## 2. `ui/src/features/design/DesignSystem.css` — orphaned sheet, and the repair that is not one line
+- **Decision:** whether the design route should load its page sheet at all, and if so in what cascade position.
+- **Measured:** the file exists and nothing imports it — `git grep -n "DesignSystem.css" -- ui/src` returns only test path lists (`ui/src/__tests__/screenExtraction.test.ts:1514`, `focusVisibleCompliance.test.ts:230`, `touchTargetSizing.test.tsx:215`) and two comments in `TooltipPreview.css`, so the route renders without its sheet. Its orphan status is in the repo's own words: `1e0053dad style(design): drop four byte-identical .btn variant duplicates from the orphaned page sheet` (−39 lines, one file), leaving `.btn` and `.sr-only` as the surviving conflicts.
+- **Recommendation:** do not "just import it". Importing attaches the sheet's `.btn` font-size **after** the theme sheets, and a dev-nav click would override every sized variant with no route back — the census for that blast radius is `git grep -oE "btn--(sm|lg)" -- ui/src | wc -l` = **14** occurrences over 6 files, 3 of them tests, with the heaviest production concentration in `ui/src/features/retail/RetailPosScreen.css`; decide the cascade position first, then the import.
+
+## 3. `brand-tokens.css` — in the contrast baseline as a documented state, not as debt
+- **Decision:** whether it stays listed in the baseline the contrast work walks.
+- **Measured:** 10 lines (`wc -l < ui/src/features/design/brand-tokens.css`), generated — `scripts/sync-branding.ps1:364` sets `$brandCssTarget = "ui/src/features/design/brand-tokens.css"` — defining **zero** class selectors, imported by nothing in `ui/src` except the guard's path list at `screenExtraction.test.ts:1517`, and already ruled by `docs/decisions/2026-07-15-whitelabel-branding-system.md:391`: "**Brand CSS is reference-only**: The generated `brand-tokens.css` is not actually imported at runtime".
+- **Recommendation:** keep it as a documented state. Converting it into debt would re-litigate an ADR that already answered it.
+
+## 4. The one CSS module — the guard has no shape for it
+- **Decision:** whether `*.module.css` enters the sheet checks, gets a first-class rule, or stays formally excluded.
+- **Measured:** `git ls-files "ui/src/**/*.module.css"` prints exactly one path, `ui/src/features/settings/WorkspaceSettingsModal.module.css`, whose names are consumed as `styles['backdrop']`-style lookups with no literal class string anywhere, so a name-census cannot see a use; `ui/src/__tests__/animationCompliance.test.ts:15` already steps around it — `} else if (entry.name.endsWith('.css') && !entry.name.endsWith('.module.css')) {`.
+- **Recommendation:** make it an explicit, documented exemption with a reason in the guard, rather than a silent exclusion that reads as coverage.
+
+## 5. Is a USB scale meant to be sellable at all?
+- **Decision:** a product question with a UI consequence: the flag is a manager toggle in the Hardware group and the chip mounts on both shells under `RetailPosScreen`, while the driver does not exist.
+- **Measured:** `crates/oz-hal/src/drivers/scale.rs` is a stub whose own module doc records the honesty fix — it "reported NotFound, the same kind an unplugged device" would give a cable-check message for "a feature never written" — and now returns `Unsupported`; `crates/oz-bridge/src/scale.rs:33-36` returns `Result<Option<WeightReading>, BridgeError>`, i.e. a missing scale has an `Ok(None)` route available rather than an error one. The consequence for styling: the state classes the markup names are mostly unreachable, and `--idle` is the only one a device can produce today.
+- **Recommendation:** answer sellable-or-not before anyone writes more scale states; if not sellable, the toggle should not be offered in Hardware, and the sheet's other state rules are dead weight rather than a defect.
+
+## 6. Factory reset: a feature with a destructive command behind it, not a refactor
+- **Decision:** whether a confirmation UI is wanted at all.
+- **Measured:** the ask is `todo-refactor-settings-agents-3.md:130` — "Extract `<FactoryResetConfirmationModal />` (double PIN check + confirmation keyword input)" — and `git grep -il "FactoryReset" -- ui crates apps platform modules` returns **zero files**: there is nothing to extract, so the box describes writing a feature. It sits next to a factory-reset-shaped destructive action, which is why the wording is a modal and not a click.
+- **Recommendation:** rule in or out as product work. Until then the box should not be counted as remaining refactor effort, and it must not be "extracted" into an empty component.
+
+## 7. Does audit retention belong in Settings?
+- **Decision:** whether a retention panel is a real surface or a control with nothing to edit.
+- **Measured:** retention is derived, not chosen — `crates/oz-core/src/db/audit.rs:257` says the window "comes from `SubscriptionTier::audit_retention_days`" and `:291` calls `match tier.audit_retention_days()`; the sweep lives beside it (`sweep_audit_retention`), with a migration (`crates/oz-core/migrations/20260920_audit_retention.sql`).
+- **Recommendation:** if it stays a tier property, the honest plan entry is "surface the tier's value read-only or delete the box" — a slider here would promise an edit the backend refuses.
+
+## Premises in the briefing that did not survive the tree (named, not repeated)
+- **Six numbers I could not re-derive anywhere in the repo, so they are not on this page:** "69 of 132 candidates", "59 accent-on-accent rules at 3.65:1", "the eight `--color-pos-on-primary` pairs failing all palettes" (the token exists and is `#ffffff` in all three theme blocks — `:284`, `:473`, `:596` — but the eight-pair census is not recorded in any doc: `grep -rn "pos-on-primary" --include="*.md" .` finds no census), "23 neutral muted-text pairs", "the `:root-duplicates-dark` double count at 106 of 132", and the "three-parser granularity" figures 766/362/125, 948/394 and 957/358/126 — no markdown in the tree carries them (`grep -rnoE "69 of 132|106 of 132|3\.65" --include="*.md" .` returns nothing), so a count with no command and no record is a number to be re-run, not a fact to be trusted. The two ratios I could compute myself did reproduce: 3.46 and 3.96, above.
+- **Two were wrong:** `Cargo.toml:199-204` does not state a `debug-assertions` invariant — read it and it is `[profile.release]` with `opt-level = 3`, `lto = "thin"`, `codegen-units = 8`, `strip = "symbols"`, `overflow-checks = true`, so there is no unenforced invariant of that kind to park; and "58 production sites" for the sized button variants overstates what `git grep` finds by more than three times.
+
+## Verification
+- Commands, all read-only and all run 2026-09-15 at HEAD `fdd06eade`: `wc -l < ui/src/frontend/themes/tokens.css` · `grep -n "color-success\|color-danger\|pos-on-primary" ui/src/frontend/themes/tokens.css` · `git grep -n "DesignSystem.css" -- ui/src` · `git show --stat 1e0053dad` · `git grep -oE "btn--(sm|lg)" -- ui/src | wc -l` · `wc -l < ui/src/features/design/brand-tokens.css` · `grep -n "brand-tokens" scripts/sync-branding.ps1` · `git ls-files "ui/src/**/*.module.css"` · `git grep -il "FactoryReset" -- ui crates apps platform modules` · `git grep -n "audit_retention_days" -- crates/oz-core/src`.
+- **No suite, no `npx`, no `tsc`, no cargo, no guard run**, and no value changed: this page is the parking lot, not the decision. TBL-11 is not re-opened — it settled STRUCTURE ONLY in this file at `:875` and stays there.
