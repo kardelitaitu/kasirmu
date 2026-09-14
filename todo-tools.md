@@ -8,6 +8,18 @@ hidden from the home grid (lines 526–528); this section is how owners/managers
 The redesign treats Settings as a dedicated configuration page and the remaining
 entries as dedicated operational/admin pages.
 
+> **What this file is (stamped 2026-09-14, and the reason it is written here):** an
+> AUDIT RECORD with a todo tail — not a work order. It carries no Goal / Role /
+> Target-Files block, no owned-path fence and no commit convention, so no
+> orchestration pass claims it and nothing re-adjudicates its boxes. That is
+> precisely how the tail got dishonest: five of its nine open boxes were DONE ON
+> DISK, and three of those five had carried a `RESOLVED 2026-09-07` /
+> `STALE 2026-09-07` note for seven days with the checkbox still empty — a note in
+> prose is invisible to anyone who triages by
+> `- [ ]`. The other two shipped with no note at all and are ticked below on the code
+> alone. The remedy applied here is dated verification lines and honest ticks,
+> NOT a restyle into an `agents-N` plan — this file's value is the audit above it.
+
 ## Current implementation inventory (before redesign)
 
 | Tool | Route | Min role (home gate) | Extra gate at route level | Notes |
@@ -253,15 +265,23 @@ access: {
 }
 ```
 
-## Health (verified 2026-09-05)
+## Health (verified 2026-09-05 · counts re-derived 2026-09-14)
 
-- ✅ All 14 routes resolve to lazily-registered pages in each feature's `register.tsx` — no dead tiles.
-- ✅ `WorkspaceHome.test.tsx` — 42/42 passing.
+- ✅ All tool routes resolve to lazily-registered pages in each feature's `register.tsx` — no dead tiles.
+  **Count moved: 14 → 17** (re-derived 2026-09-14: `ui/src/features/workspaces/tools.tsx:65` declares
+  `export const TOOLS: ToolItem[]` and the file holds 18 `route:` matches, one of which is the
+  `ToolItem` field declaration at `:40` → 17 tool entries today). The no-dead-tiles half of the claim
+  is not re-derived by hand here — it is pinned by the parity union, which was green when re-run
+  2026-09-14: `WorkspaceHomeTools.test.tsx` + `WorkspaceHomeTools.navParity.test.tsx` +
+  `pageRegistry.test.ts` → 3 files / 39 tests passed.
+- ✅ `WorkspaceHome.test.tsx` — **48/48 passing** (re-measured 2026-09-14:
+  `cd ui && npx vitest run src/__tests__/WorkspaceHome.test.tsx` → `Tests 48 passed (48)`).
+  The 42/42 recorded on 09-05 was true then and is six cases stale, not a miscount.
 - ✅ `minRole` values agree with each route's `requiredRole` today (spot-checked owner-gated pair).
 
 ## Todos
 
-- [ ] **Align auth-server behavior with the strict expiry decision.** Product
+- [x] **Align auth-server behavior with the strict expiry decision.** Product
       policy is now: a Tool is not clickable after `expiresAt`; the current
       server/local implementation still publishes and honors a grace period,
       and the pricing page advertises tier-specific grace days. Reconcile the
@@ -273,7 +293,18 @@ access: {
       payload-trusting license verdict (same commit). The `active` field on
       `/status` stays raw-status by design: the client refines dates via
       `lifecycle_state()`, which is authoritative.
-- [ ] **Expose authoritative subscription state to the UI.** Extend or replace
+      — **TICKED 2026-09-14 on re-verified code, not on the note above:**
+      `apps/license-server/expiry.go:27-50` now computes the window per tier —
+      `offlineGraceDays(tier)` is declared at `:34` (premium 30 / enterprise 60 /
+      free 7, plus-pro and unknown keys falling through to 14) and is the only
+      thing `calculateGraceUntil` adds at `:50`, so no signing path still carries
+      the flat 14-day ADR #5 window. The unknown-tier default is pinned:
+      `apps/license-server/main_test.go:236-237`
+      (`offlineGraceDays("mystery") != 14`). One wording correction to the note
+      above: the code comment at `expiry.go:45-46` calls 14 "the shortest window"
+      and it is not — Free's 7 is shorter. Recorded, not edited (out of this
+      file's fence).
+- [x] **Expose authoritative subscription state to the UI.** Extend or replace
       the local-only `SubscriptionContext` flow so the Tools gate can distinguish
       active, expired, canceled/paused, loading, and unavailable states. Do not
       retain the current `caps === null` fail-open behavior for clickability.
@@ -282,6 +313,15 @@ access: {
       (active/grace/expired/canceled/paused/unavailable) with fail-closed
       semantics, plus the `useAdminGate()` hook; this slice consumed it
       (`ab410844`) rather than re-implementing it.
+      — **TICKED 2026-09-14: the fail-open the box forbids is gone.**
+      `ui/src/contexts/SubscriptionContext.tsx:14` publishes
+      `SubscriptionUiState = SubscriptionLifecycleState | 'loading'`; the §B
+      fail-closed contract is stated at `:44-46` ("the command layer never errors
+      … it returns Free entitlements with `state: 'unavailable'`, so gates lock")
+      and the transport-failure catch at `:63-65` sets `setState('unavailable')`.
+      `useAdminGate()` at `:100-104` resolves an absent state to `'unavailable'`
+      and returns `locked: resolved !== 'active'` — absent data locks, it does not
+      open. `caps === null` no longer drives clickability.
 - [x] **Replace unused `cap` configuration with declarative access policy.** Each
       top-level page should configure `minimumRole` and `minimumTier`; role
       hierarchy is inherited upward (`manager` includes admin/owner), and a
@@ -308,13 +348,27 @@ access: {
       loading state is covered by the §B contract itself (SubscriptionContext
       gates + this slice's `loading`-stays-open rule for role-only tools).
       The debug-bootstrap caveat is documented in the journal below.
-- [ ] **Implement Memo lifecycle.** Start with one terminal per Memo,
+- [x] **Implement Memo lifecycle.** Start with one terminal per Memo,
       manager-scoped authorship, read-only terminal access, immutable published
       revisions, delivery/acknowledgement states, seven-day default expiry, and
       policy-defined retention. Add location-wide broadcast later.
       — **STALE 2026-09-07: delivered by the Phase 2 memo stream** (rulings and
       journal in `todo-global-saas-2.md`; multi-location targeting widened
       further in `4df091d3`). The home Memo card rides `ab410844`.
+      — **TICKED 2026-09-14 on the shipped surface:** `crates/oz-bridge/src/memo.rs`
+      (command bodies), `ui/src/api/memos.ts` (typed wrappers) and
+      `ui/src/__tests__/api-memos-contract.test.ts` all exist. The five memo
+      commands are registered on desktop only **by ruling, not by omission** —
+      `scripts/ipc-parity-allowlist.json:2` (the `_comment`) states it: "The three
+      memo-authoring entries (create_memo_scoped, list_authored_memos_scoped,
+      publish_memo_scoped) are a deliberate product choice, not a gap: authoring is
+      desktop-only … stop_memo_scoped and revise_memo_scoped join them for the same
+      reason (the 2026-09-07 A2/scope rulings)." **Anchor correction to the brief
+      that pointed here:** the entries themselves are not at `:2` — that line is the
+      comment. They sit in the `"tablet"` array (which opens at `:32`, after
+      `"desktop"` at `:3`) at `:50` `create_memo_scoped`, `:64` `revise_memo_scoped`,
+      `:65` `stop_memo_scoped`, `:113` `list_authored_memos_scoped`,
+      `:152` `publish_memo_scoped`.
 - [x] **Add an information-architecture and gate parity test.** Verify every
       top-level page has a registered route, its role policy agrees with the
       route policy, and its tier policy (Analytics/Reports Pro+, Audit Log
@@ -337,30 +391,99 @@ access: {
       FeatureVerdict contract the gate layer reads; the resolver side is
       pinned by verdict_names_quota_at_the_cap_and_clears_one_below
       (apps/desktop-client/src/commands/subscription_tests.rs).
-- [ ] **Align the existing Topology Editor with the new home policy.** The
+- [x] **Align the existing Topology Editor with the new home policy.** The
       editor already supports branch-scoped graphs, location/workspace/warehouse/
       hardware nodes, typed semantic wires, address-like branch properties,
       rename, Apply, templates, and branch comparison. Wire it to the new
       `Topology Editor` home card and enforce admin/owner-only access at the
       backend Apply/rename/template-write boundaries.
-- [ ] **Add SaaS authorization scope.** Extend the future page/action policy
-      beyond role and tier with permission and scope (organization, location,
-      workspace, or terminal), so a location-scoped manager cannot manage every
-      tenant location.
+      — **RETAGGED DONE 2026-09-14.** The write boundaries are enforced in
+      `crates/oz-bridge/src/topology/commands.rs`: `require_permission_for_user`
+      is called with `permissions::TOPOLOGY_WRITE` at `:42-45`, again at `:79`
+      (branch-scoped read/write pair), at `:252-255` — whose doc comment at `:236`
+      says "Gated on `TOPOLOGY_WRITE`, deliberately unlike its two read siblings"
+      — and inside `apply_topology_diff` (declared `:389`) at `:479`, so Apply and
+      the rename/template writes cannot be reached without the permission. The
+      read-only revision history is deliberately NOT gated on it: `:268`
+      ("Gated on `AUDIT_VIEW`, not `TOPOLOGY_WRITE`"), `:283`, `:307`.
+      **RESIDUAL, and it is not small: the box asked for a ROLE and the shipped
+      answer is a PERMISSION KEY.** `TOPOLOGY_WRITE` is enforced — that part is
+      verified. Whether the seeded role presets grant `TOPOLOGY_WRITE` to
+      admin/owner ONLY was not measured in this pass, so "admin/owner-only" is
+      verified as *enforced* and NOT as *co-extensive with the role this box
+      named*. If a preset below admin carries the key, the shipped gate is wider
+      than the policy the box stated; that is the one open question left here, and
+      it belongs to whoever owns the role presets, not to the editor.
+- [ ] **Add SaaS authorization scope — NARROWED 2026-09-14: organisation +
+      terminal scope remain.** The box as written asked for four scope axes
+      (organization, location, workspace, terminal) on top of role and tier.
+      **Two have shipped**, so the box no longer describes the work: branch and
+      workspace scope are evaluated on the write path by
+      `crates/oz-core/src/db/staff.rs:225-245` — `require_permission_scoped`,
+      whose `:225-228` doc comment is "the scope-aware gate (ADR #35 D5 / spec
+      0048): … plus the assignment's branch/workspace scope is evaluated for
+      scoped assignments", and whose refusal at `:243-245` is literally
+      `"branch/workspace out of scope for user {user_id}"` — and the same axis
+      reaches the availability resolver as a first-class fact:
+      `crates/oz-core/src/entitlements.rs:232-236` (caller supplies "role, scope,
+      the per-feature server grant"), `:247` `scope_granted: Option<bool>`, `:262`
+      where the facts are assembled; `crates/oz-core/src/availability.rs:395`
+      turns it into `let scope_denies = facts.scope_granted == Some(false)`.
+      **What remains is organisation-wide and terminal-level scope**, and this box
+      is deliberately left UNCHECKED because the two surviving axes are exactly
+      the ones that make "a location-scoped manager cannot manage every tenant
+      location" non-trivial.
 - [x] **Define settings scope.** Mark each Settings section as organization-,
       location-, terminal-, or workspace-scoped before implementation.
       — **DONE 2026-09-07** (the map is the "Settings scope map" section below;
       the UI already renders §H scope tags per section — this ratifies them
       and defines write-path/enforcement semantics per level).
-- [ ] **Add a Locations-to-Topology entry point.** Keep Locations status-only,
+- [x] **Add a Locations-to-Topology entry point.** Keep Locations status-only,
       but let users open the relevant topology editor from a location detail.
+      — **DONE 2026-09-14 (re-verified), and DELIVERED UNDER ANOTHER PLAN —
+      `todo-global-saas-2.md`, not this one.** The code says so itself:
+      `ui/src/features/locations/MultiStoreDashboardScreen.tsx:135` opens the block
+      `// ── Locations → Topology entry points (todo-global-saas-2 §"Locations
+      and Topology navigation")`, and the stated contract is the box's own
+      requirement — "The dashboard stays status-oriented: these actions only ROUTE."
+      `:149-150` `handleConfigureTopology` routes to
+      `#/settings/topology?branch=<locationId>`; `:158-159` `handleAddLocation`
+      routes to `#/settings/topology?create=1`; both set the admin workspace, and
+      the affordance is rendered twice — the card action at `:287-289` and the
+      detail-drawer copy at `:376` (the brief listed `:288-289`; the second site is
+      what this pass adds). Writing "done" without the attribution would let a
+      reader conclude this plan funded work it never scheduled.
+
+### Needs a product ruling
+
+The three boxes below cannot be closed by a worker: they are waiting on a human
+decision, not on code. They stay UNCHECKED and are grouped here so the next
+triage does not re-derive them a fourth time. The first is load-bearing.
+
 - [ ] **Decide how custom roles map to the hierarchy.** Unknown role names
       currently resolve to level 0 and see no Tools section.
+      — **PREMISE STILL EXACTLY TRUE, re-verified 2026-09-14:**
+      `ui/src/features/workspaces/WorkspaceHome.tsx:363` reads
+      `const roleLevel = ROLE_HIERARCHY[roleName] ?? 0;`, against the
+      `ROLE_HIERARCHY` table at `:97-108` — closed, ten keys: five presets in two
+      spellings each (`owner`/`role-owner` … `auditor`/`role-auditor`) — and `:414`
+      gates the whole section on
+      `canSeeTools = roleLevel >= (ROLE_HIERARCHY['manager'] ?? 0)`. So an unknown
+      custom role is not ranked LOW, it is invisible — no Tools section, and no
+      message explaining why. A silent lockout, and the honest label for it is
+      UNRESOLVED, not STALE. What is needed is a ruling (what rank does a created
+      role hold? does it carry the preset it was cloned from? is `0` the intended
+      deny-by-default?) before any of it is code.
 - [ ] **Optional: keyboard shortcuts for tools.** Workspace cards have "Press 1–9"
       hints; tool cards don't. Asymmetry only — low priority.
+      — **UNFUNDED 2026-09-14**, and marked optional in this file since it was
+      written. Nobody has asked for it since, and nothing was measured: the claim is
+      a visual asymmetry, and the box itself is the whole evidence for it.
 - [ ] **Optional: no favourites/pins/last-used for tools.** Workspace cards support
       pinning + last-used sorting; tools render in a fixed order. Consider whether
       managers need their frequent tools promoted.
+      — **UNFUNDED 2026-09-14**, same status as the box above: a product
+      question with no ruling, therefore no work order.
 
 ## Mechanics reference (current implementation)
 
