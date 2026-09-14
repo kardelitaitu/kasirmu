@@ -17,7 +17,6 @@
     "features/kds/KdsHamburgerPanel.tsx": 3,
     "features/locations/topologyValidationWidget.tsx": 3,
     "features/products/ProductLookupScreen.tsx": 3,
-    "features/sales/WeightScaleWidget.tsx": 3,
     "features/workspaces/WorkspaceHome.tsx": 3,
     "features/inventory/StockAlertPanel.tsx": 2,
     "features/memo/MemosScreen.tsx": 2,

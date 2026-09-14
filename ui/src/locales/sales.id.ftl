@@ -890,14 +890,6 @@ scale-weigh-add-aria = Timbang & tambah { $name }
 scale-weigh-added = Ditambahkan { $weight }g dari { $name }
 scale-target-set = { $name } dipilih untuk ditimbang
 scale-clear-aria = Hapus target timbangan
-weight-scale-aria = Timbangan
-weight-scale-stable = Stabil
-weight-scale-unstable = Tidak stabil
-weight-scale-error = Kesalahan timbangan
-weight-scale-idle = —
-weight-scale-weigh-aria = Timbang
-weight-scale-weighing = Menimbang…
-weight-scale-weigh = Timbang
 
 # ── Gift Cards ─────────────────────────────────────────────────────
 gift-cards-loading = Memuat...

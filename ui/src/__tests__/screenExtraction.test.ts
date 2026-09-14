@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 83/255/27 as of this edit: (3 x 83) + 4 + 2 = 255,
+// 902e07678, 83/255/27 after 319a18e41, and 83/255/26 as of this edit: (3 x 83) + 4 + 2 = 255,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1496,7 +1496,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 27 entries is a named path, not a prefix, not a
+// every one of its 26 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line, and NOTHING here is a
 // place to put a new one: not a rename, not a sheet that "will be
@@ -1534,7 +1534,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 27 since, one line per sheet a landed entry cited, and
+// it has shrunk to 26 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1553,7 +1553,6 @@ const BASELINE_UNCITED: string[] = [
   'marketplace/AddonsMarketplace.css',
   'memo/MemoBanner.css',
   'retail/RetailPosScreen.css',
-  'sales/WeightScaleWidget.css',
   'sales/widgets/widgets.css',
   'settings/LicenseSettings.css',
   'settings/SettingsNavTree.css',
