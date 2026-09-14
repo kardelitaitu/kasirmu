@@ -217,7 +217,7 @@ Both on Linux, both WITH system deps and WITH dist stubs — the `cargo-check` j
 
 **`:142` is UNTOUCHED by this measurement.** No `--release` was run in any of the six, and no debug crate-scope `cargo check` can observe a release-profile failure set. `:142` stays open for its own reasons (76 release failures; the parked arm at `license.rs:670-683`), and `:169` stays open because its full-project verification has not been run.
 
-**THE NINE RUNNERS `:167` names**, re-measured before writing (`git ls-files | xargs grep -ln -- '--exclude oz-pos' | grep -v '\.bak$' | grep -v '\.md$'` → exactly nine paths), with the risk each carries:
+**THE NINE RUNNERS THIS BOX COVERS** (enumerated at `:135`; `:167` itself names seven of them and omits `setup-dev.ps1:134` and the two `setup-cache` files), re-measured before writing (`git ls-files | xargs grep -ln -- '--exclude oz-pos' | grep -v '\.bak$' | grep -v '\.md$'` → exactly nine paths), with the risk each carries:
 
 | runner site | what it is | risk if the exclude is stripped |
 |---|---|---|
