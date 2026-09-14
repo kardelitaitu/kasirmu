@@ -6,16 +6,16 @@
  * or clear that choice. No state, no effect, no memo, no fetch and no IPC moved
  * in, and none created here - useLocalization is the only hook this file reads,
  * the same way ./CardTenderPanel reads it for its own aria-label. The roster
- * fetch (listCustomersScoped at PaymentModal.tsx:367), the four atoms behind the
- * search (showCustomerSearch :141, customerSearchQuery :175, customerRoster :180,
- * loadingCustomers :181) and the overlay that renders from them all stay in the
+ * fetch (listCustomersScoped at PaymentModal.tsx:371), the four atoms behind the
+ * search (showCustomerSearch :135, customerSearchQuery :169, customerRoster :174,
+ * loadingCustomers :175) and the overlay that renders from them all stay in the
  * shell: the overlay is a SIBLING of this row in the DOM, not a child of it, so
  * taking the atoms would strand the overlay without a filter.
  *
  * THREE PROPS, and the count is the seam. `customer` is a read-only value, not a
  * getter; `onOpenSearch` and `onRemove` are the shell's own handlers passed back
  * in. Deliberately absent: any callback that carries a CustomerDto OUT. The
- * selection is written only by the shell's notifyCustomerChange (:153), which
+ * selection is written only by the shell's notifyCustomerChange (:147), which
  * owns both `selectedCustomer` and the `onCustomerChange` report to the host, so
  * a badge that could set the customer itself would re-parent the atom - and a
  * re-parented atom is exactly what S6 in PaymentModalCustomerSection.test.tsx

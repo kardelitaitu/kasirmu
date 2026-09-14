@@ -38,9 +38,9 @@
  *
  * Class names are unchanged and are still styled by ../PaymentModal.css, which
  * the page imports once for the whole modal — the same arrangement the three
- * tender panels rely on. The JSX below is the page's lines 1647–1765 verbatim,
- * at the page's own indentation; only the nine call sites named in the props
- * differ.
+ * tender panels rely on. The JSX below is the block the page rendered inline —
+ * the `#payment-split-toggle-cb` checkbox and the `.payment-split-section` it
+ * opens — verbatim; only the nine call sites named in the props differ.
  */
 import { Localized, useLocalization } from '@fluent/react';
 import { formatMoney, type Money } from '@/types/domain';

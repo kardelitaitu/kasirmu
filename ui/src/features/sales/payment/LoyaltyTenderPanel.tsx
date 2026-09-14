@@ -33,16 +33,16 @@
  * down, so this file calls no hook - and, unlike the first cut of this panel,
  * it can refuse itself. That refusal is the point. The panel used to render
  * whenever it was mounted at all, leaving the shell's mount gate - today
- * PaymentModal.tsx:1698, `{loyaltyLicensed && loyaltyAccount && (` - as the ONLY
+ * PaymentModal.tsx:1629, `{loyaltyLicensed && loyaltyAccount && (` - as the ONLY
  * thing standing between an unlicensed tenant and a Points row, so a second
  * caller inherited no protection from it. `loyaltyLicensed` is the modal's
  * `isEnabled(FEATURES.LOYALTY_PROGRAM)` read, declared once at
- * PaymentModal.tsx:279 and shared by that gate, the loyalty fetch that now checks
+ * PaymentModal.tsx:283 and shared by that gate, the loyalty fetch that now checks
  * it before calling the bridge, and the prop below. The modal keeps its own gate
  * (it also performs the narrowing that lets `points` arrive as a plain number).
  *
  * WHAT THAT DOES AND DOES NOT GUARANTEE, precisely. There is exactly ONE
- * production caller today, the JSX at PaymentModal.tsx:1699, and it passes
+ * production caller today, the JSX at PaymentModal.tsx:1630, and it passes
  * `loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}` - a literal restatement
  * of its own enclosing condition - so on today's paths the `!loyaltyOffered`
  * return below is UNREACHABLE from the modal. It stays because it is the default

@@ -52,7 +52,7 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
 /**
- * Structural twin of the shell's PaymentMethod (PaymentModal.tsx:44), in the
+ * Structural twin of the shell's PaymentMethod (PaymentModal.tsx:45), in the
  * same role the row twins already play in ./SplitTenderRows.tsx and
  * ./useTenderMath.ts: the extracted file names the union it stores without
  * importing the component that still owns the display switch over it.
