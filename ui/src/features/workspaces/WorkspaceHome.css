@@ -239,11 +239,6 @@
 
 .workspace-home-header {}
 
-.workspace-home-user {
-  font-size: var(--text-sm);
-  color: var(--color-fg-tertiary);
-}
-
 /* ── Grid ────────────────────────────────────────────────────────── */
 
 .workspace-grid {

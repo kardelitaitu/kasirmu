@@ -315,21 +315,6 @@
   opacity: 1;
 }
 
-/* Colour dot between icon and label */
-.restaurant-pill-dot {
-  display: inline-block;
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  flex-shrink: 0;
-  opacity: 0.5;
-  transition: opacity var(--duration-150) var(--ease-out);
-}
-
-.restaurant-category-pill--active .restaurant-pill-dot {
-  opacity: 1;
-}
-
 /* ── Product grid ───────────────────────────────── */
 .restaurant-grid {
   display: grid;

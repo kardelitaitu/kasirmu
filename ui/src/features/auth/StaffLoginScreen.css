@@ -599,13 +599,6 @@
   pointer-events: none;
 }
 
-.staff-login-connection-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  pointer-events: auto;
-}
-
 /* ── Connection status pills (matches ConnectionStatus.css) ───── */
 
 .connection-status {

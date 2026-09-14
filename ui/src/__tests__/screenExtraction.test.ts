@@ -295,7 +295,6 @@ const SCREENS: ScreenEntry[] = [
     // These classes are defined in StaffLoginScreen.css but are used by the
     // StatusBar component (imported and rendered inside StaffLoginScreen).
     externalClasses: [
-      'staff-login-connection-group',
       'connection-status',
       'status-indicator',
       'checking',
@@ -732,7 +731,6 @@ const SCREENS: ScreenEntry[] = [
     ],
     dynamicClassPrefixes: ['ws-color-', 'role-badge--'],
     externalClasses: [
-      'workspace-home-user',
       'workspace-card--active',
       'workspace-card-ripple',
     ],
@@ -1065,7 +1063,7 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'restaurant/RestaurantMenu.tsx',
     css: ['restaurant/RestaurantMenu.css'],
     dynamicClassPrefixes: ['restaurant-hamburger-item--', 'restaurant-card--'],
-    externalClasses: ['restaurant-card', 'restaurant-pill-dot'],
+    externalClasses: ['restaurant-card'],
     // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
     additionalTsx: [
@@ -1773,22 +1771,19 @@ function allSheetIndex(): Map<string, Set<string>> {
 // workspace-home-user (workspaces/WorkspaceHome.css) were each tested for a composition
 // site and have none, so they are either live-and-unspeakable or dead rules, and both
 // answers are a stylesheet question rather than an exemption this file may grant.
+// 2026-09-15 ANSWERED -- all three were proven dead and deleted, each as ONE change (rule +
+// entry value + open-question member together, because the staleness check below grades both
+// lists in both directions). The list is now empty and the 4-member ledger above is the whole
+// exemption surface. Dead proofs, five shapes each, all failing to exist outside the rule: JSX
+// className, imperative/classList (the shape that saved workspace-card-ripple and restaurant-card
+// here), template stem (a prefix cannot cover a shorter base, which is why the bare
+// workspace-home-user died while -profile/-avatar/-avatar-inner/-info/-name/-role live at
+// WorkspaceHome.tsx:239-247), string selector in any sheet or test, and ui/e2e locator (0 hits
+// for all three). Relatives that look like references are Fluent message IDs, not classes:
+// staff.ftl:146-150 and shared.ftl:344. restaurant-pill-dot had a second rule naming it, the
+// compound .restaurant-category-pill--active .restaurant-pill-dot, which went in the same edit:
+// a descendant selector for a class nothing can carry is the same dead rule, not a live site.
 const EXTERNAL_CLASS_OPEN_QUESTIONS: { entry: string; value: string; question: string }[] = [
-  {
-    entry: 'StaffLoginScreen',
-    value: 'staff-login-connection-group',
-    question: 'is the rule at auth/StaffLoginScreen.css dead? no production file anywhere references the name or even its stem, so the mute may be the only thing keeping a dead rule unreported',
-  },
-  {
-    entry: 'WorkspaceHome',
-    value: 'workspace-home-user',
-    question: 'is the bare base rule at workspaces/WorkspaceHome.css dead? its single-dash children are live (-profile :239, -avatar :240, -info :245, -name :246, -role composed at :247) but the base has no site, and a prefix cannot cover a base shorter than its children',
-  },
-  {
-    entry: 'RestaurantMenu',
-    value: 'restaurant-pill-dot',
-    question: 'is the rule at restaurant/RestaurantMenu.css dead? restaurant-pill-icon is live at MenuItemTile.tsx:132, no interpolated tail for -dot was found',
-  },
 ];
 
 const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] = [
