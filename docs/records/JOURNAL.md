@@ -10631,3 +10631,59 @@ ranked boxes are all blocked on external facts, not on code: R4 wants a
 second real terminal, R5 wants a design doc first, R6 wants sandbox
 credentials. Branch 0.0.37 is 15+ commits ahead of origin. Nothing was
 pushed - standing rule.
+
+## 2026-09-14 — licensing plan doc + this journal: the BOOTSTRAP_FREE sentinel is a production seed, and the reachability claim about it was wrong
+
+Two docs corrected, no code touched: `todo-refactor-oz-pos-app-agents-3.md`
+(three dated appends at the release-test findings, `:146` / `:155` / the new
+`inventory.rs` classification) and this file, append-only, below. Nothing was
+renamed or moved — a `todo-` token is load-bearing for the dead-reference
+checker's exemption (`.agents/skills/docs-auditor/scripts/check-dead-refs.py`
+`is_historical_doc()`), and AGENTS.md §4 requires the plan's own acceptance
+command to have been RUN before a `done-` prefix is earned.
+
+**What this journal asserted at `:796-800` is half true.** It read: *"in release
+builds the call site must not reach the fallback in production (a real
+subscription row is written by license activation)"*. True POST-activation —
+activation rewrites the row (`oz-bridge/src/license.rs:175` →
+`oz-core/src/license_verification.rs:625` `INSERT OR REPLACE`). False as a
+statement about the fallback's Free behaviour: `bootstrap_free()`
+(`oz-core/src/subscription.rs:628-641`) carries `signature: String::new()`,
+which release also rejects, and the fallback is not even the main arm — the
+sentinel is the row the MIGRATION seeds (`20260813_init.sql:1512-1514`, PG
+twin `:2100-2101`, that PG file generated and never hand-edited). So on a
+never-activated release install both arms land on an ERROR, not a Free verdict.
+
+**The reachability framing that made this sound like a login outage is
+retracted, and the correct scope is tablet-only.** Login is `staff_login`
+(`oz-bridge/src/auth.rs:319`) and it calls no `verify_signature`; the check is
+in `create_session` (`auth.rs:611-621`) on workspace entry. Desktop gates ahead
+of that (`ui/src/frontend/shell/AppShell.tsx:401` before `:434`), so the outage
+reading is falsified. It is live on the TABLET shell only:
+`ui/src/frontend/shell/tablet/TabletAppShell.tsx:64-84` reads just
+`getSetupStatus()` with no licence gate at all, `apps/tablet-client/src/lib.rs`
+registers zero license commands, four tablet commands take no token
+(`history.rs:63`, `products.rs:295`, `pos.rs:784`, `offline.rs:162`), and the
+tablet `createSession` rejection is swallowed into a `console.warn` at
+`ui/src/contexts/WorkspaceContext.tsx:520-531`. Reachable today only via a
+hand-built release APK — `android.yml`/`ios.yml` are `.bak`.
+
+**Two fail-opens are what keep the desktop path merely theoretical rather than
+impossible:** `AppShell.tsx:167-176` treats `status.completed` as "existing
+install → `setHasActiveLicense(true)`", but `completed` is the SETUP-WIZARD
+dismissal (`oz-bridge/src/setup.rs:144`, key `SHOW_SETUP_WIZARD`), not
+activation; and `:188-197` fail-opens the same way on any startup error. Both
+are stated here as reachable-by-accident, not as bugs.
+
+**And the count that seeded all of this was a stale comment.** The "other 13
+subscription-trusting call sites" at `oz-bridge/src/workspaces.rs:228-231` —
+the sentence a 27-site enumeration was cloned from — is out of date with the
+tree: re-counted this pass there are **27 `verify_signature()?` sites (16 in
+`crates/oz-bridge/src`, 11 in `apps/tablet-client/src`)**, of which **21 take
+and resolve a session token** and are therefore unreachable BY CONSTRUCTION
+while the sentinel stands, since minting the token is the very `create_session`
+that rejects first. Consequence, and the point of the entry: **76 release-test
+failures are not 76 customer-visible bugs.** The one claim that survives
+untouched is that this release path has never been EXECUTED — and it still has
+not been. Docs-only pass; no test, build, or gate was run against code, so
+every number above is a read of a file, not a run.
