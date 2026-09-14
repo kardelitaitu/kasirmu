@@ -27,6 +27,7 @@ import { MONTH_LABEL_KEYS } from '@/features/analytics/analytics-data';
 import { DAY_KEYS } from '@/features/reports/SalesReportScreen';
 import { SORT_MODES } from '@/features/restaurant/RestaurantMenu';
 import { DATA_TYPES } from '@/features/settings/dataManagementModel';
+import { INVENTORY_TRANSACTION_TYPE_KEYS } from '@/features/inventory/transactionTypeLabel';
 
 /** Assert every id resolves to non-empty, non-self text in both bundles. */
 function expectResolved(ids: string[], label: string) {
@@ -118,17 +119,29 @@ describe('dynamic Fluent id families', () => {
     );
   });
 
-  it('inventory transaction types: every mapped id resolves', () => {
-    // The one family that was BROKEN: `inv-log-type-${tx.type}` produced
-    // inv-log-type-purchase-order-receive, present in neither bundle, so the
-    // cell showed the slug "purchase order receive" while the dropdown on the
-    // same screen correctly read "PO Diterima". Now routed through
-    // INVENTORY_TRANSACTION_TYPE_KEYS — see transactionTypeLabel.test.ts.
-    expectResolved(
-      ['sale', 'void', 'refund', 'transfer', 'po-receive', 'stock-count', 'manual-adjustment']
-        .map((t) => `inv-log-type-${t}`),
-      'inv log type',
-    );
+  it('inventory transaction types: every id the mapping emits resolves', () => {
+    // HISTORY, kept on purpose: this is the family that was actually BROKEN.
+    // `inv-log-type-${tx.type}` composed inv-log-type-purchase-order-receive,
+    // which existed in neither bundle, so the log cell showed the humanized slug
+    // "purchase order receive" while the dropdown on the SAME screen correctly
+    // read "PO Diterima". Routing through INVENTORY_TRANSACTION_TYPE_KEYS fixed
+    // it — see transactionTypeLabel.test.ts.
+    //
+    // The domain is now the mapping itself: a Record<InventoryTransaction['type'],
+    // string> whose VALUES are the ids, so nothing is composed here (the old case
+    // rebuilt them as `inv-log-type-${slug}` from a hand list that happened to
+    // agree). Restating meant this test checked only the bundles: point a value at
+    // a fresh id and the old assertions stayed green because they never asked the
+    // const what it uses. Measured, the module exposes ONE per-type family —
+    // inventory.ftl holds exactly seven inv-log-type-* keys and no -desc or
+    // subtitle twin (its other inv-log-* keys are col/error/filter/title surfaces)
+    // — so unlike data-mgmt there is no second half to cover.
+    const ids = Object.values(INVENTORY_TRANSACTION_TYPE_KEYS);
+    expect(ids.length).toBe(7);
+    // Uniqueness is coverage the hand list could not have: two union members
+    // mapped to the same id render one label for two transaction types.
+    expect(new Set(ids).size).toBe(ids.length);
+    expectResolved(ids, 'inv log type');
   });
 
   it('restaurant sort modes: every interpolated id resolves', () => {
