@@ -299,11 +299,25 @@ const composedTotal = composed.length;
 // '{' (comment-only) is legitimately silent and is excluded by the braces > 0 test.
 const blindSheets = tallies.filter((t) => t.braces > 0 && t.blocksRecorded === 0);
 
-/** A side is gradable only when it resolves to a bare #hex through this theme. */
+/** var(--x) or var(--x, <literal>) -> the name, plus the tail when there is one. */
+const VAR_RE = /^var\((--[\w-]+)\s*(?:,([\s\S]*))?\)$/;
+
+/**
+ * A side is gradable when it resolves to a bare #hex through this theme.
+ *
+ * A fallback-bearing read resolves THROUGH its token and the literal is
+ * ignored. Before this change only a bare var(--x) matched, so a side written
+ * var(--x, #fff) returned null and its whole pair left grading in EVERY theme
+ * -- 40 pairs of 958 were hidden by a tail no theme can reach, not by an
+ * unusual colour. Ignoring the literal is the honest reading: it paints only
+ * where the theme has no value for the name, and the case below ASSERTS that
+ * no such site exists for a tokens.css name instead of quietly grading
+ * through a value that might be the only thing keeping text legible.
+ */
 function resolveHex(value: string, tokens: Record<string, string>): string | null {
   let v = value.replace(/\s*!important\b/i, '').trim();
   for (let hops = 0; hops < 6; hops++) {
-    const m = /^var\((--[\w-]+)\)$/.exec(v);
+    const m = VAR_RE.exec(v);
     if (!m) break;
     const next = tokens[m[1]!];
     if (next === undefined) return null;
@@ -312,6 +326,35 @@ function resolveHex(value: string, tokens: Record<string, string>): string | nul
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v) ? v.toLowerCase() : null;
 }
 
+/** The token universe: every name tokens.css declares in any of the three blocks. */
+const TOKEN_UNIVERSE = new Set<string>(themeTokens.flatMap((t) => Object.keys(t.tokens)));
+
+/**
+ * Tailed reads of a tokens.css name that some theme does not define. There the
+ * literal is not decoration, it is what would paint -- so this file refuses to
+ * grade through it and the list is asserted empty instead.
+ */
+const loadBearingTails: string[] = [];
+let tailedSidesOutsideTokens = 0;
+for (const pair of composed) {
+  for (const side of [pair.color, pair.bg]) {
+    const m = VAR_RE.exec(side.value.replace(/\s*!important\b/i, '').trim());
+    if (!m || m[2] === undefined) continue;
+    const name = m[1]!;
+    if (!TOKEN_UNIVERSE.has(name)) {
+      tailedSidesOutsideTokens++;
+      continue;
+    }
+    for (const t of themeTokens) {
+      if (t.tokens[name] === undefined) {
+        loadBearingTails.push(
+          pair.file + ':' + side.line + '  ' + pair.selector + '  var(' + name +
+            ', <literal>) is undefined in theme ' + t.label + ' -- the literal paints',
+        );
+      }
+    }
+  }
+}
 interface Violation {
   file: string; line: number; selector: string; theme: string;
   colorToken: string; bgToken: string; hex: string;
@@ -396,6 +439,23 @@ describe('Composed rules: text and background resolving to one colour', () => {
     }
   });
 
+  it('no literal fallback is load-bearing in any theme', () => {
+    // Coverage bookkeeping: the class this case watches has to exist, or the
+    // assertion below grades an empty list and reads clean for no reason.
+    expect(
+      tailedSidesOutsideTokens,
+      'no tailed read of a name outside tokens.css was captured -- the component-scoped '
+      + 'fallback idiom is what proves the capture works, so a zero here is a parser note',
+    ).toBeGreaterThan(0);
+    expect(
+      loadBearingTails.length,
+      'A fallback is LIVE in the named theme, so it is not dead text and this walker will '
+      + 'not grade through it. The block law says every tokens.css name is defined in :root '
+      + 'or in both theme blocks; if this fires, that law broke and a theme is painting from '
+      + 'a literal no reviewer can see:', 
+    ).toBe(0);
+    console.log('tailed reads outside tokens.css (component-scoped, not gradable here): ' + tailedSidesOutsideTokens);
+  });
   it('no rule sets color and background to the same resolved colour ('
     + gradable + ' pairs graded of ' + composedTotal + ' composed across ' + violations.length + ' violation)', () => {
     expect(
