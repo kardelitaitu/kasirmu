@@ -49,7 +49,7 @@
 > **Current target (2026-09-14): `SettingsPage.tsx` <= 450 lines**, restated from the arithmetically impossible `< 250`.
 > Why: the old gate's own baseline (844) is a DIFFERENT file's line count, while the page measured 921 at the start of
 > The measurement is in the sizing box under Phase 2.2; what is queueable is in `## 🟢 Live state of this plan` below.
-> The file stays `todo-`: the Phase 2.0 acceptance boxes (`:50-51`) have never been run by anyone in this checkout.
+> The file stays `todo-`, but **not for the reason this line gave until now.** Both Phase 2.0 run-boxes — the two `- [x]` lines under `### Phase 2.0: Baseline Audit`, which this header cited as `:50-51` while they sit at `:55`/`:56` — **were executed in this checkout on 2026-09-15 (06:23–06:26 +0700) and both passed**: `npx vitest run src/__tests__/SettingsPage.test.tsx src/__tests__/SettingsContext.test.tsx src/__tests__/SettingsDeepLink.test.tsx src/__tests__/a11y/SettingsPage.a11y.test.tsx` from `ui/` printed `Test Files 4 passed (4)` / `Tests 63 passed (63)` / `Duration 16.71s`, **exit 0** — 63 of 63, which also retires the 62-of-63 ambiguity recorded at `:65`, since nothing was skipped or filtered in this run — and `npx tsc --noEmit -p tsconfig.json`, the command `npm run typecheck` wraps, printed **no diagnostics, exit 0**. Both were launched against the tree at `04cd68267` and finished while the tip moved through `a672e8494` to `784d3fcae`, so they measure that interval and not one SHA. **The two ticks are therefore earned and were kept.** What keeps the file `todo-` is its own audit stamp at `:3` — `status: SUPERSEDED (the goal was met, but not by this plan)` — not an unexecuted acceptance box. **The defect this line repairs is the most expensive shape in the set: a ticked box sitting under a header that says nobody ever ran it reads as done to every later reader, and no mechanical checker can see the contradiction — `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` exits 0 over this very file.** The earlier pass’s "no shell was available" caveat at `:57`-`:60` stands as written, exactly as `:72` says it should; for the pattern rather than the incident, the same wording survives in `todo-refactor-settings-agents-3.md` (`git grep -l "no shell was available" -- "*.md"` → both files), and one correctly-unticked sibling sits at `:107` of this file — proof the shape is not always a lie, only unauditable.
 
 ### Phase 2.0: Baseline Audit
 - [x] Run `npm run test -- SettingsPage` in `ui/`.
@@ -611,4 +611,5 @@ and 1,415 unreachable section lines (`205+156+257+567+176`) sit on opposite side
 > reachability answers 2026-09-15 · DSH · re-measured at f7872bd9a4 with static commands only; no
 > ui/** file touched, no test runner invoked, both open questions left as written with the answers
 > appended beside them rather than over them.
+
 
