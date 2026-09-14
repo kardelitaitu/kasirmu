@@ -1320,3 +1320,261 @@ describe("foreign-scheme token freeze", () => {
     expect(harvested.size).toBe(FOREIGN_SCHEME_BASELINE.length);
   });
 });
+
+/* ── Block relation: when is a literal tail reachable? ─────────────────
+ *
+ * ef6b4d5bf deleted 126 literal tails on the hand-checked premise that each
+ * name is declared in all three blocks of tokens.css, so no theme could ever
+ * reach the tail. This is that premise, made machine-checkable, with two
+ * clauses because the premise hides two different claims:
+ *
+ *  1. UNREACHABILITY (a law, no baseline): a `var(--x, <literal>)` tail can
+ *     render only in a theme where --x has no value. :root is inherited by
+ *     both themes, and light+dark together cover both themes, so a token
+ *     declared in :root, or in both theme blocks, has a provably dead tail.
+ *     A token declared in ONE theme block and not in :root has a tail that is
+ *     live in the other theme -- that is the shape this case refuses, and it
+ *     is exactly what no diff can show: the file that changes is not the file
+ *     that decides. Measured at HEAD: 334 tailed references to a tokens.css
+ *     name, of which 0 are live, so the gate lands green.
+ *  2. VALUE IDENTITY (a freeze, shrink-only): three blocks agreeing on the
+ *     value is a different claim from three blocks having a value, and it is
+ *     NOT free -- 156 tailed sites sit on names whose declarations do not
+ *     read identically across the blocks they appear in (:root duplicates
+ *     dark in this theme and light differs, so most colour tokens vary by
+ *     design). Those are not visual bugs, so a hard assertion here would
+ *     fire 156 times on correct code and the next lane would mute it. They
+ *     are frozen instead: no NEW tail may land on a value-varying token, and
+ *     every site a sweep clears deletes a line -- which is also the worklist
+ *     ef6b4d5bf left behind (46 such tails stood in its own 29 sheets).
+ *
+ * EQUALITY AS IMPLEMENTED: byte-identical declaration text after collapsing
+ * runs of whitespace and trimming, first declaration of a name per block --
+ * `#fff` vs `white`, or a reordered rgba(), read as differing. That is
+ * deliberate: a tail is being judged against a value a reader must be able
+ * to compare, and the two spellings are the drift this gate exists to see.
+ *
+ * ONE CAVEAT the next lane must not rediscover: three of the names this sweep
+ * cleared are ALSO written at runtime by ui/src/utils/color.ts:133-135
+ * (--color-accent, --color-accent-hover, --color-primary). Any per-theme
+ * CONTRAST claim about those three has to be graded against color.ts, not
+ * against tokens.css -- the block table below is not the whole story for them.
+ */
+
+interface ThemeBlockTables {
+  root: Map<string, string>;
+  light: Map<string, string>;
+  dark: Map<string, string>;
+}
+
+/**
+ * tokens.css split by top-level block instead of flattened into a set. This is
+ * the ONLY reader that keeps block membership; customPropNamesIn stays the union
+ * it always was, so TOKEN_DEFINED and ALL_DECLARED -- and therefore both
+ * baselines that consume them -- read byte-identical sets after this addition.
+ */
+function themeBlockTables(cssText: string): ThemeBlockTables {
+  const tables: ThemeBlockTables = { root: new Map(), light: new Map(), dark: new Map() };
+  const src = blankComments(cssText);
+  let i = 0;
+  for (;;) {
+    const open = src.indexOf("{", i);
+    if (open < 0) break;
+    let depth = 1;
+    let end = open + 1;
+    while (end < src.length && depth > 0) {
+      if (src[end] === "{") depth++;
+      else if (src[end] === "}") depth--;
+      end++;
+    }
+    const sel = src.slice(src.lastIndexOf("}", open) + 1, open).replace(/\s+/g, "");
+    const which =
+      sel === ":root" ? "root" : sel.includes("light") ? "light" : sel.includes("dark") ? "dark" : null;
+    if (which) {
+      for (const m of src.slice(open + 1, end - 1).matchAll(/(?:^|[;{\s])(--[A-Za-z0-9_-]+)\s*:\s*([^;]+)/g)) {
+        const value = (m[2] as string).replace(/\s+/g, " ").trim();
+        if (!tables[which].has(m[1] as string)) tables[which].set(m[1] as string, value);
+      }
+    }
+    i = end;
+  }
+  return tables;
+}
+
+const TOKEN_BLOCKS = themeBlockTables(readFileSync(TOKENS_CSS, "utf-8"));
+
+/** Tokens.css membership + value relation for one name. */
+function tailRelation(name: string): { inTokens: boolean; liveTail: boolean; agrees: boolean } {
+  const inRoot = TOKEN_BLOCKS.root.has(name);
+  const inLight = TOKEN_BLOCKS.light.has(name);
+  const inDark = TOKEN_BLOCKS.dark.has(name);
+  if (!inRoot && !inLight && !inDark) return { inTokens: false, liveTail: false, agrees: false };
+  // A tail renders only where the token has no value: not :root, and not both themes.
+  const liveTail = !(inRoot || (inLight && inDark));
+  const values = [inRoot && TOKEN_BLOCKS.root.get(name), inLight && TOKEN_BLOCKS.light.get(name), inDark && TOKEN_BLOCKS.dark.get(name)].
+    filter((v): v is string => typeof v === "string");
+  const agrees = values.length === 1 ? true : values.length === 3 && new Set(values).size === 1;
+  return { inTokens: true, liveTail, agrees };
+}
+
+const TAILED_TOKEN_REFS = ALL_VAR_REFS.filter((r) => r.hasFallback && tailRelation(r.token).inTokens);
+
+/**
+ * Grandfathered: tailed references to a tokens.css name whose declarations do
+ * not agree byte-for-byte, keyed (name @ sheet) with its site count. Measured
+ * at HEAD -- 98 pairs / 156 sites. Shrink-only in BOTH directions, like the
+ * two baselines above it.
+ */
+const DISAGREEING_TAIL_BASELINE: Array<[string, string, number]> = [
+  ["--color-accent", "ui/src/features/sales/CartPanelCourseBar.css", 5],
+  ["--color-accent", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-accent-hover", "ui/src/features/restaurant/RestaurantMenu.css", 1],
+  ["--color-accent-hover", "ui/src/features/sales/CartPanel.brand.css", 1],
+  ["--color-accent-secondary", "ui/src/features/sales/EodReportScreen.css", 1],
+  ["--color-accent-secondary", "ui/src/features/sales/widgets/widgets.css", 1],
+  ["--color-accent-subtle", "ui/src/features/design/DevToolbar.css", 4],
+  ["--color-accent-subtle-fg", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
+  ["--color-bg", "ui/src/features/sales/PromotionsModal.css", 1],
+  ["--color-bg", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-bg-elevated", "ui/src/features/sales/PromotionsModal.css", 1],
+  ["--color-bg-hover", "ui/src/components/ConnectionStatus.css", 1],
+  ["--color-bg-hover", "ui/src/features/auth/SessionLockScreen.css", 1],
+  ["--color-bg-hover", "ui/src/features/auth/StaffLoginScreen.css", 2],
+  ["--color-bg-hover", "ui/src/features/sales/EodReportScreen.css", 3],
+  ["--color-bg-hover", "ui/src/features/sales/widgets/widgets.css", 1],
+  ["--color-bg-input", "ui/src/frontend/themes/reset.css", 2],
+  ["--color-bg-overlay", "ui/src/features/settings/WorkspaceSettingsModal.module.css", 2],
+  ["--color-bg-secondary", "ui/src/features/offline/OfflineQueueScreen.css", 2],
+  ["--color-bg-secondary", "ui/src/features/settings/SettingsPage.css", 2],
+  ["--color-bg-subtle", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["--color-bg-surface", "ui/src/features/design/DevToolbar.css", 1],
+  ["--color-bg-surface", "ui/src/features/sales/RefundModal.css", 2],
+  ["--color-bg-surface", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-border", "ui/src/features/design/DevToolbar.css", 5],
+  ["--color-border", "ui/src/features/offline/OfflineQueueScreen.css", 2],
+  ["--color-border", "ui/src/features/settings/DataManagementScreen.css", 4],
+  ["--color-border", "ui/src/features/settings/FeatureToggleScreen.css", 1],
+  ["--color-border", "ui/src/features/settings/SettingsPage.css", 2],
+  ["--color-border", "ui/src/frontend/themes/reset.css", 2],
+  ["--color-border-hover", "ui/src/features/design/DevToolbar.css", 1],
+  ["--color-border-strong", "ui/src/features/sales/RefundModal.css", 1],
+  ["--color-border-subtle", "ui/src/features/sales/ReceiptPreview.css", 1],
+  ["--color-danger", "ui/src/features/sales/CartPanelLineItem.css", 3],
+  ["--color-danger", "ui/src/features/sales/PromotionsModal.css", 1],
+  ["--color-danger", "ui/src/features/sales/RefundModal.css", 3],
+  ["--color-danger", "ui/src/frontend/shared/SettingsPopup.css", 2],
+  ["--color-danger", "ui/src/frontend/shell/UpdateBanner.css", 7],
+  ["--color-danger", "ui/src/frontend/themes/components.css", 1],
+  ["--color-danger-bg", "ui/src/components/FastPINOverlay.css", 1],
+  ["--color-danger-bg", "ui/src/features/inventory/StockCountDetail.css", 1],
+  ["--color-danger-bg", "ui/src/features/products/ProductManagementScreen.css", 1],
+  ["--color-danger-bg", "ui/src/features/sales/CartPanelLineItem.css", 1],
+  ["--color-danger-bg", "ui/src/features/settings/AppearanceSettings.css", 1],
+  ["--color-danger-bg", "ui/src/features/settings/FeatureToggleScreen.css", 1],
+  ["--color-danger-bg", "ui/src/features/settings/SettingsPage.css", 2],
+  ["--color-danger-bg", "ui/src/frontend/shared/SettingsPopup.css", 1],
+  ["--color-danger-bg", "ui/src/frontend/themes/components.css", 1],
+  ["--color-danger-border", "ui/src/features/tax/TaxConfigurationScreen.css", 1],
+  ["--color-danger-dim", "ui/src/features/settings/AppearanceSettings.css", 1],
+  ["--color-danger-dim", "ui/src/features/settings/SettingsPage.css", 1],
+  ["--color-danger-hover", "ui/src/features/sales/CartPanelLineItem.css", 1],
+  ["--color-danger-hover", "ui/src/features/sales/SalesHistoryScreen.css", 1],
+  ["--color-danger-subtle", "ui/src/frontend/shell/UpdateBanner.css", 1],
+  ["--color-fg", "ui/src/features/sales/RefundModal.css", 1],
+  ["--color-fg", "ui/src/features/sales/SalesHistoryScreen.css", 1],
+  ["--color-fg", "ui/src/frontend/themes/reset.css", 5],
+  ["--color-fg-inverse", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-fg-muted", "ui/src/features/sales/PromotionsModal.css", 4],
+  ["--color-info", "ui/src/frontend/themes/components.css", 1],
+  ["--color-info-bg", "ui/src/frontend/themes/components.css", 1],
+  ["--color-link", "ui/src/features/sales/EodReportScreen.css", 2],
+  ["--color-link", "ui/src/features/sales/VoidOrdersScreen.css", 1],
+  ["--color-link", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-link-hover", "ui/src/frontend/themes/reset.css", 1],
+  ["--color-success", "ui/src/features/sales/RefundModal.css", 1],
+  ["--color-success-bg", "ui/src/features/settings/SettingsPage.css", 1],
+  ["--color-success-dim", "ui/src/features/offline/OfflineQueueScreen.css", 1],
+  ["--color-success-dim", "ui/src/features/settings/SettingsPage.css", 1],
+  ["--color-text", "ui/src/features/inventory/ShiftBar.css", 1],
+  ["--color-warning", "ui/src/features/sales/CartPanelFooterTotals.css", 1],
+  ["--color-warning", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["--color-warning", "ui/src/features/tax/TaxConfigurationScreen.css", 2],
+  ["--color-warning", "ui/src/frontend/shell/UpdateBanner.css", 5],
+  ["--color-warning", "ui/src/frontend/themes/components.css", 1],
+  ["--color-warning-bg", "ui/src/features/inventory/LocationPicker.css", 1],
+  ["--color-warning-bg", "ui/src/features/offline/OfflineQueueScreen.css", 1],
+  ["--color-warning-bg", "ui/src/features/sales/CartPanel.css", 1],
+  ["--color-warning-bg", "ui/src/features/settings/SettingsPage.css", 2],
+  ["--color-warning-bg", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["--color-warning-bg", "ui/src/features/tax/TaxConfigurationScreen.css", 1],
+  ["--color-warning-bg", "ui/src/frontend/themes/components.css", 1],
+  ["--color-warning-border", "ui/src/features/sales/CartPanel.css", 2],
+  ["--color-warning-border", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["--color-warning-border", "ui/src/features/tax/TaxConfigurationScreen.css", 1],
+  ["--color-warning-dim", "ui/src/features/offline/OfflineQueueScreen.css", 1],
+  ["--color-warning-dim", "ui/src/features/settings/SettingsPage.css", 1],
+  ["--color-warning-fg", "ui/src/features/inventory/LocationPicker.css", 1],
+  ["--color-warning-fg", "ui/src/features/sales/CartPanel.css", 1],
+  ["--color-warning-pos", "ui/src/features/inventory/StockAlertPanel.css", 2],
+  ["--color-warning-subtle", "ui/src/frontend/shell/UpdateBanner.css", 1],
+  ["--modal-backdrop-blur", "ui/src/components/FastPINOverlay.css", 2],
+  ["--modal-backdrop-blur", "ui/src/components/QrisQrDisplay.css", 2],
+  ["--modal-backdrop-blur", "ui/src/features/kds/KdsScreen.css", 2],
+  ["--modal-backdrop-blur", "ui/src/features/memo/MemoBanner.css", 2],
+  ["--modal-backdrop-blur", "ui/src/frontend/themes/components.css", 2],
+  ["--neutral-300", "ui/src/frontend/themes/reset.css", 1],
+  ["--neutral-400", "ui/src/frontend/themes/reset.css", 1],
+];
+
+describe("literal tail vs block relation", () => {
+  it("reads a real population, and knows a live tail when it sees one", () => {
+    expect(TOKEN_BLOCKS.root.size, "tokens.css :root parsed empty -- the block reader is broken").toBeGreaterThanOrEqual(200);
+    expect(TOKEN_BLOCKS.light.size).toBeGreaterThanOrEqual(100);
+    expect(TOKEN_BLOCKS.dark.size).toBeGreaterThanOrEqual(40);
+    expect(TAILED_TOKEN_REFS.length, "no tailed reference to a tokens.css name parsed").toBeGreaterThanOrEqual(300);
+    // The classifier must be capable of the red it reports green for today.
+    const live = TAILED_TOKEN_REFS.filter((r) => tailRelation(r.token).liveTail);
+    const disagreeing = new Set(TAILED_TOKEN_REFS.filter((r) => !tailRelation(r.token).agrees).map((r) => r.token));
+    expect(disagreeing.size, "no tokens.css name in this population varies by value -- the identity clause would be vacuous").toBeGreaterThanOrEqual(20);
+    expect(live.length, "unexpected live tails today -- the first assertion below would be graded against them, not against zero").toBe(0);
+  });
+
+  it("no literal tail sits on a token a theme can leave undefined", () => {
+    const offenders = TAILED_TOKEN_REFS.filter((r) => tailRelation(r.token).liveTail).
+      map((r) => r.file + ":" + r.line + "  var(" + r.token + ", <literal>) -- declared in one theme block only");
+    expect(
+      offenders,
+      "A fallback here is a LIVE value in the theme that does not define the "
+        +
+        "token, so it was never dead text and deleting it (or adding it) changes pixels. "
+        +
+        "Declare the token in :root, or in both [data-theme=] blocks -- do not "
+        +
+        "relax this list:\n  " + offenders.join("\n  "),
+    ).toEqual([]);
+  });
+
+  it("no new literal tail lands on a token whose blocks disagree (frozen population)", () => {
+    const harvested = new Map<string, number>();
+    for (const r of TAILED_TOKEN_REFS) {
+      const rel = tailRelation(r.token);
+      if (rel.agrees) continue;
+      const key = r.token + " @ " + r.file;
+      harvested.set(key, (harvested.get(key) ?? 0) + 1);
+    }
+    const baseline = new Map(DISAGREEING_TAIL_BASELINE.map(([t, f, n]) => [t + " @ " + f, n]));
+    const grown = [...harvested].filter(([k, n]) => baseline.has(k) && baseline.get(k) !== n).
+      map(([k, n]) => k + " " + baseline.get(k) + " -> " + n);
+    const spread = [...harvested.keys()].filter((k) => !baseline.has(k)).sort();
+    const stale = [...baseline.keys()].filter((k) => !harvested.has(k)).sort();
+    expect(spread, "New tail on a value-varying token: the literal can never render, so "
+        +
+        "delete it instead of listing it here:\n  " + spread.join("\n  ")).toEqual([]);
+    expect(grown, "A frozen tail count moved -- a site was fixed (shrink the list) or added "
+        +
+        "somewhere new (that is spread with an old name):\n  " + grown.join("\n  ")).toEqual([]);
+    expect(stale, "Paid-down tails still on the list; delete them so the freeze stays a worklist:\n  "
+        + stale.join("\n  ")).toEqual([]);
+    expect(harvested.size).toBe(DISAGREEING_TAIL_BASELINE.length);
+  });
+});
