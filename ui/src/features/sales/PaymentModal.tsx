@@ -29,6 +29,7 @@ import { useAutoQr } from './payment/useAutoQr';
 import { useGatewayQr } from './payment/useGatewayQr';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
+import { useSplitTenderState } from './payment/useSplitTenderState';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
@@ -70,13 +71,6 @@ const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
   open_bill: 'payment-open-bill',
   credit: 'payment-method-credit',
 };
-
-interface SplitRow {
-  id: number;
-  method: PaymentMethod;
-  otherLabel: string;
-  amountMinor: string;
-}
 
 // PaymentModalProps moved to ./payment/types (slice S1 of the contract-first
 // extraction campaign: one shared module for the frozen top-level contract plus the
@@ -262,12 +256,22 @@ export default function PaymentModal({
 
   const [paymentError, setPaymentError] = useState<{ message: string; retryable: boolean } | null>(null);
 
-  const [splitMode, setSplitMode] = useState(false);
-  const [splits, setSplits] = useState<SplitRow[]>([
-    { id: 1, method: 'cash', otherLabel: '', amountMinor: '' },
-    { id: 2, method: 'card', otherLabel: '', amountMinor: '' },
-  ]);
-  const nextSplitId = useRef(3);
+  // W5-c: the split-mode flag, the rows, the id counter behind + Add Split and
+  // the three row callbacks moved verbatim to ./payment/useSplitTenderState -
+  // zero parameters, and the same hook order (two useState then one useRef in
+  // the same slots). The open-reset below still re-seeds the rows through
+  // setSplits; autoSplitEvenly stayed HERE because its inputs
+  // (effectiveTotalInCartCurrency, cartCurrency) are returned by the two hooks
+  // called below, one of which consumes these very rows as an input.
+  const {
+    splitMode,
+    setSplitMode,
+    splits,
+    setSplits,
+    addSplit,
+    removeSplit,
+    updateSplit,
+  } = useSplitTenderState();
 
   const { isEnabled } = useFeatures();
   const multiCurrency = isEnabled(FEATURES.MULTI_CURRENCY);
@@ -853,24 +857,6 @@ export default function PaymentModal({
 
   const handleTerminalDismiss = useCallback(() => setEdc(null), []);
 
-  const addSplit = useCallback(() => {
-    setSplits((prev) => [
-      ...prev,
-      { id: nextSplitId.current++, method: 'cash', otherLabel: '', amountMinor: '' },
-    ]);
-  }, []);
-
-  const removeSplit = useCallback((id: number) => {
-    setSplits((prev) => {
-      if (prev.length <= 1) return prev;
-      return prev.filter((s) => s.id !== id);
-    });
-  }, []);
-
-  const updateSplit = useCallback((id: number, patch: Partial<SplitRow>) => {
-    setSplits((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }, []);
-
   const autoSplitEvenly = useCallback(() => {
     const count = splits.length;
     if (count === 0) return;
@@ -892,7 +878,12 @@ export default function PaymentModal({
           : fmt(baseMinor),
       })),
     );
-  }, [splits.length, effectiveTotalInCartCurrency, cartCurrency]);
+  // setSplits is now an import from ./payment/useSplitTenderState rather than a
+  // useState dispatcher declared in this file, so the rule can no longer prove it
+  // stable and asks for it. It is stable - it IS the dispatcher, returned through
+  // the hook - so listing it cannot re-fire this callback on any render; the value
+  // and the identity of the array are unchanged in behaviour.
+  }, [splits.length, effectiveTotalInCartCurrency, cartCurrency, setSplits]);
 
   const canComplete = useMemo(() => {
     if (splitMode) return splitComplete;
