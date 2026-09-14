@@ -20,7 +20,10 @@
 //! subscription row ACTUALLY does in the profile running the test (its doc
 //! carries the no-seam proof — read it before "fixing" a red licence fixture),
 //! and the `FAIL_CLOSED_*` consts name what the product projects when it does
-//! not load.
+//! not load. Both answers are scoped to the `tenant_subscription` / caps read:
+//! they do NOT describe `get_license_status`, which forks a third way — the scope
+//! limit and the five causes hidden behind `seeded_row_loads() == false` are in
+//! that helper's doc, and so is the release-side blind spot no CI exercises.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -109,9 +112,14 @@ pub fn temp_conn() -> Connection {
 /// `crates/oz-core/oz-license.key` is absent from disk — so nothing a test
 /// writes can produce the RSA-2048 PKCS1v15/SHA-256 signature the embedded key
 /// accepts. Nor is there a seam to inject one: no parameter, no trait, no
-/// thread-local, no injected verifier, and both callers
-/// (`subscription.rs:475-477` and `license.rs:594`) reach it directly. A
-/// verification seam would be an owner decision about production code, not a
+/// thread-local, no injected verifier, and all FOUR call sites reach it
+/// directly: `subscription.rs:476` (`TenantSubscription::verify_signature`),
+/// `license.rs:594` (the stored settings pair), and
+/// `license_verification.rs:484` and `:527` — the two server-response
+/// verifications on activate and refresh. Four, not two: a lane that greps four
+/// callers against a block that names two concludes this proof is STALE and
+/// re-opens the very seam the paragraph exists to close.
+/// A verification seam would be an owner decision about production code, not a
 /// fixture fix, and it is not this file's to make.
 ///
 /// Consequence: a seeded subscription row is exactly ONE of two kinds, and no
@@ -129,22 +137,75 @@ pub fn temp_conn() -> Connection {
 /// by forking the fixture on this helper, or by asserting the fail-closed
 /// projection below. Never by blanking, shortening or "resigning" a signature —
 /// that turns a loud fail-closed outcome into a silently Free run, and it
-/// destroys the pinned counter-example at `auth_tests.rs:391-409`, whose forged
-/// row must stay `Err` in BOTH profiles precisely because "this signature does
-/// not verify" is a result, not a state to be erased. Making release accept the
+/// destroys the pinned counter-example at `auth_tests.rs:391-430` — the forged
+/// `UPDATE` is at `:401-409`, but the case is only a proof because of the
+/// `expect_err` at `:428` and the match that follows it, so cite the whole case
+/// (`:391-430`), never the UPDATE alone. Its forged row must stay `Err` in BOTH
+/// profiles precisely because "this signature does not verify" is a result, not
+/// a state to be erased. Making release accept the
 /// sentinel, or setting debug-assertions in the release profile, would instead
 /// move a licence bypass into the SHIPPED binary — a strictly worse trade, and
 /// again not a fixture decision.
 ///
-/// The settings pair `get_license_status` reads (`license.payload` /
-/// `license.signature`, `license.rs:590-594`) feeds the same two arguments into
-/// the same function, so this answer holds for both seed shapes; what differs
-/// downstream is only the projection, which is what the `FAIL_CLOSED_*` consts
-/// pin.
+/// # Scope limit — this answers about the SUBSCRIPTION READ only
+///
+/// It does NOT extend to the settings pair `get_license_status` reads. That pair
+/// (`license.payload` / `license.signature`, `license.rs:590-591`) is a different
+/// seed shape on a different table, and `temp_conn()` seeds NEITHER key:
+/// `oz_core::migrations::fresh_db` applies `20260813_init.sql`, which inserts the
+/// `tenant_subscription` default row (`:1513`) and no `license.payload` or
+/// `license.signature` settings row at all. On a fresh harness connection
+/// `get_license_status` therefore takes its "no stored pair" branch.
+///
+/// Read `seeded_row_loads()` and the `FAIL_CLOSED_*` consts as claims about the
+/// `tenant_subscription` / caps read ONLY. A `get_license_status` fixture must NOT
+/// fork on them, because that command forks on its own, three ways, and not one
+/// of the three projects the fail-closed pair:
+///
+/// - `license.rs:594-601` — a STORED pair that will not verify yields
+///   `InvalidSignature` with `tier: None` (and `payload: None`), in BOTH profiles;
+/// - `license.rs:698-708` — no stored pair yields `Missing` with `tier: None` in
+///   release, while `license.rs:685-697` yields `is_active: true` / `Valid` /
+///   `tier: Some("free")` in DEBUG — opposite projections of the same absent row,
+///   neither of them the `Unavailable` + Free pair the consts pin;
+/// - `license.rs:659-668` — a third fork: an EXPIRED payload that verified reads
+///   `Valid` / `is_active: true` in debug and `Expired` in release.
+///
+/// Check those ranges before reusing this answer there. Asserting `FAIL_CLOSED_TIER`
+/// against `get_license_status` on a fresh connection is wrong-GREEN in debug (the
+/// debug arm happens to answer `Some("free")`) and wrong-red in release (`None`) —
+/// a fixture that can only ever pass in one profile while claiming to describe both.
 ///
 /// If a verification seam is ever genuinely added to the product, this helper's
 /// answer changes on its own — and `seeded_row_loads_agrees_with_the_profile`
 /// goes red, which is the point: it is the tripwire, not the truth.
+///
+/// # What `false` does NOT mean — five causes behind one bool
+///
+/// In release, `seeded_row_loads() == false` is NOT "the sentinel was rejected".
+/// The `let Ok(Some(sub)) = ... else { return false }` above collapses FIVE
+/// different causes into the same answer:
+///
+/// 1. no `default` row in `tenant_subscription` (`Ok(None)` → `false`);
+/// 2. `TenantSubscription::load` returning `Err` — a missing or mis-shaped table
+///    is indistinguishable from an empty one here (`subscription.rs:438-473`);
+/// 3. `load_public_key()` failing before the signature is ever looked at
+///    (`license_verification.rs:396` → `:424-430`);
+/// 4. the base64 decode rejecting the 14 sentinel bytes — the ONE cause this
+///    fixture vocabulary is actually about (`:398-404`);
+/// 5. a genuine RSA mismatch against the embedded key (`:406-418`).
+///
+/// The product's own fail-closed loaders collapse the same five identically
+/// (`Ok(None)`, `Err` and a verification `Err` all yield `Entitlements::fail_closed`,
+/// `entitlements.rs:279-300`), so nothing below this helper can tell them apart
+/// either — and a lane whose migration lost the seed row would go green asserting
+/// "fail closed" for an ABSENT row, in a profile where nothing was ever rejected.
+///
+/// So this is the contract's RULE, not a warning, and both fixture lanes already
+/// obey it (`1760a080d`, `b891f2db7`): **every release-side arm of a forked
+/// fixture must ALSO assert the row exists** — load it, `expect` the row, check the
+/// stamp the fixture wrote — before it asserts the fail-closed projection. Assert
+/// the fork and the row together, or the fork proves nothing.
 #[must_use]
 pub fn seeded_row_loads() -> bool {
     let conn = temp_conn();
@@ -477,6 +538,28 @@ mod tests {
     /// real verification seam is ever added, the helper stops matching
     /// `cfg!(debug_assertions)` and THIS test is what says the fork shape moved
     /// underneath 73 call sites.
+    ///
+    /// # Its blind spot, in writing
+    ///
+    /// The oracle here is `cfg!(debug_assertions)` — the SAME predicate the product
+    /// forks on (`license_verification.rs:391`, `license.rs:687`/`:698`). So this
+    /// tripwire can only catch the helper disagreeing with the profile; it cannot
+    /// catch the profile itself moving. The smallest production change that flips it
+    /// SILENTLY IN BOTH PROFILES is one line in the root manifest:
+    /// `[profile.release] debug-assertions = true` (`Cargo.toml:199-204` does not set
+    /// it today). That compiles the sentinel arm into the SHIPPED binary — release
+    /// accepts `BOOTSTRAP_FREE` — while `seeded_row_loads() == cfg!(debug_assertions)`
+    /// stays `true == true` on both sides and this test stays green.
+    ///
+    /// And no CI catches it: `dev-ci.yml:244` (`cargo nextest run --workspace
+    /// --all-features`) is the ONLY Rust test run in the file, and there is no
+    /// `--release` test invocation anywhere in it, in `scripts/check.sh`, in
+    /// `scripts/release.sh` or in `scripts/run-pre-push.py`. Nothing in this repo
+    /// executes the release side of the fork automatically — the release-leg
+    /// assertions that make this vocabulary honest run only when a human types
+    /// `cargo test -p <crate> --release`. A lane that reads a green CI as proof the
+    /// release arm still holds is reading the wrong box: this file's own blind spot,
+    /// stated so no future reader has to rediscover it.
     #[test]
     fn seeded_row_loads_agrees_with_the_profile() {
         assert_eq!(
