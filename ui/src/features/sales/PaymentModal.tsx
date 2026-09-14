@@ -33,6 +33,7 @@ import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
 import SplitTenderRows from './payment/SplitTenderRows';
+import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
 import { minorUnitsToInputString } from './payment/moneyFormat';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
@@ -1699,79 +1700,24 @@ export default function PaymentModal({
             </div>
 
             {isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount && (
-              <div className="payment-loyalty-section">
-                <div className="payment-loyalty-balance">
-                  <span className="payment-loyalty-label">
-                    {requiredLocalized(l10n, 'payment-loyalty-points-label')}: {loyaltyAccount.account.points}
-                  </span>
-                  <span className="payment-loyalty-value">
-                    {pointsWorthMinor !== null
-                      ? `(${formatMoney({ minor_units: pointsWorthMinor, currency: total.currency } as Money)})`
-                      : '…'}
-                  </span>
-                </div>
-                {loyaltyAccount.account.points > 0 && !redeemPoints && (
-                  <Localized id="payment-loyalty-use-points">
-                    <button
-                      type="button"
-                      className="payment-loyalty-redeem-btn"
-                      onClick={() => {
-                        setRedeemPoints(true);
-                        setPointsToRedeem(loyaltyAccount.account.points);
-                      }}
-                    >
-                      <span>Use Points</span>
-                    </button>
-                  </Localized>
-                )}
-                {redeemPoints && (
-                  <div className="payment-loyalty-active">
-                    <div className="payment-loyalty-input-row">
-                      <Localized id="payment-loyalty-points-label"><span className="payment-loyalty-input-label">Points</span></Localized>
-                      <input
-                        type="number"
-                        className="payment-loyalty-input"
-                        value={pointsToRedeem}
-                        onChange={(e) => {
-                          // Whole number only — ignore fractional in-progress input
-                          // instead of silently truncating it via parseInt.
-                          const v = Number(e.target.value);
-                          if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                            setPointsToRedeem(e.target.value === '' ? 0 : v);
-                          }
-                        }}
-                        min={0}
-                        max={loyaltyAccount.account.points}
-                        aria-label={l10n.getString('payment-loyalty-points-aria')}
-                      />
-                      <span className="payment-loyalty-input-hint">
-                        / {loyaltyAccount.account.points}
-                      </span>
-                    </div>
-                    <span className="payment-loyalty-discount-label">
-                      <Localized id="payment-loyalty-discount-label" vars={{ amount: formatMoney({
-                        minor_units: Number(loyaltyDiscount),
-                        currency: total.currency,
-                      } as Money) }}>
-                        <span>{'Discount: -{ $amount }'}</span>
-                      </Localized>
-                    </span>
-                    <Localized id="payment-cancel">
-                      <button
-                        type="button"
-                        className="payment-loyalty-cancel-btn"
-                        onClick={() => {
-                          setRedeemPoints(false);
-                          setPointsToRedeem(0);
-                          setLoyaltyDiscount(0n);
-                        }}
-                      >
-                        <span>Cancel</span>
-                      </button>
-                    </Localized>
-                  </div>
-                )}
-              </div>
+              <LoyaltyTenderPanel
+                points={loyaltyAccount.account.points}
+                pointsWorthMinor={pointsWorthMinor}
+                currency={total.currency}
+                redeemPoints={redeemPoints}
+                pointsToRedeem={pointsToRedeem}
+                loyaltyDiscount={loyaltyDiscount}
+                onRedeemStart={() => {
+                  setRedeemPoints(true);
+                  setPointsToRedeem(loyaltyAccount.account.points);
+                }}
+                onPointsChange={setPointsToRedeem}
+                onRedeemCancel={() => {
+                  setRedeemPoints(false);
+                  setPointsToRedeem(0);
+                  setLoyaltyDiscount(0n);
+                }}
+              />
             )}
 
             {paymentError && (
