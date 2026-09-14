@@ -197,7 +197,20 @@ def is_historical_doc(path, text):
     # A changelog is a ledger of what shipped, including under names that later moved.
     # So is a root-level plan file (todo-global-saas-N.md): it enumerates the tree it
     # intended to change, and the code cites it as the contract for that work.
-    if "CHANGELOG" in name.upper() or name.startswith(("todo-", "plan-", "prd-")):
+    #
+    # Substring, NOT startswith: a finished plan is renamed IN PLACE by prefixing a
+    # status word (done-todo-x, parked-todo-x), and any prefix placed before "todo-"
+    # voided the exemption -- the checker then re-reads a doc as a live claim about
+    # the tree and reports 28 findings for files that are historical BECAUSE they are
+    # done. A gate that cries wolf is a gate that gets skipped, so the wolf wins:
+    # over-exempting a live doc can only hide findings, while under-exempting a
+    # historical one invents them, and invented ones are what trained people to
+    # ignore this tool. Cost of the looseness, accepted: notes-todo-x.md is exempt
+    # too, and so is a genuinely live plan whose name happens to contain one of
+    # these words anywhere (new-plan-todo-ish.md). Do not tighten this back to
+    # startswith without re-deciding that trade-off. See HIST_DIR_PREFIXES above,
+    # which is the same call about whole directories, not names.
+    if "CHANGELOG" in name.upper() or any(k in name for k in ("todo-", "plan-", "prd-")):
         return True
     if DATE_NAME.match(name):
         return True
