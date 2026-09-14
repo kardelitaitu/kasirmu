@@ -13,11 +13,11 @@
   border-radius: 50%;
 }
 .gateway-badge__dot.online {
-  background: var(--color-success, #22c55e);
-  box-shadow: 0 0 4px var(--color-success, #22c55e);
+  background: var(--color-success);
+  box-shadow: 0 0 4px var(--color-success);
 }
 .gateway-badge__dot.offline {
-  background: var(--color-danger, #ef4444);
+  background: var(--color-danger);
 }
 .gateway-badge__name {
   color: var(--color-fg-secondary);

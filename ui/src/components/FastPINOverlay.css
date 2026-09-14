@@ -267,7 +267,7 @@
 }
 
 .fastpin-submit-btn:hover:not(:disabled) {
-  background: var(--color-accent-hover, #1d4ed8);
+  background: var(--color-accent-hover);
 }
 
 .fastpin-submit-btn:focus-visible {
@@ -329,8 +329,8 @@
 }
 
 .fastpin-pin-dot--filled {
-  background: var(--color-accent, #2563eb);
-  border-color: var(--color-accent, #2563eb);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 /* ── PIN pad ──────────────────────────────────────────── */
@@ -370,7 +370,7 @@
 
 .fastpin-pad-key:hover:not(:disabled) {
   background: var(--color-bg-surface);
-  border-color: var(--color-accent, #2563eb);
+  border-color: var(--color-accent);
 }
 
 .fastpin-pad-key:active:not(:disabled) {
@@ -434,9 +434,9 @@
   gap: var(--space-2, 8px);
   padding: var(--space-2, 8px) var(--space-3, 12px);
   background: var(--color-danger-bg, rgba(239, 68, 68, 0.1));
-  border: 1px solid var(--color-danger, #ef4444);
+  border: 1px solid var(--color-danger);
   border-radius: var(--radius-md, 8px);
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
   font-size: var(--text-sm);
   width: 100%;
 }

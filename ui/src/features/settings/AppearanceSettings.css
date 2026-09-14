@@ -207,7 +207,7 @@
   border: 1px solid var(--color-danger-dim, rgba(239, 68, 68, 0.3));
   border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -218,11 +218,11 @@
 
 .appearance-reset-all-btn:hover {
   background: var(--color-danger-bg, rgba(239, 68, 68, 0.08));
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
 }
 
 .appearance-reset-all-btn:focus-visible {
-  box-shadow: inset 0 0 0 0.125rem var(--color-danger, #ef4444);
+  box-shadow: inset 0 0 0 0.125rem var(--color-danger);
 }
 
 .appearance-reset-all-btn:disabled {
@@ -232,7 +232,7 @@
 
 .appearance-reset-all-btn:disabled:hover {
   background: transparent;
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
 }
 
 /* ── Responsive ───────────────────────────────────────── */

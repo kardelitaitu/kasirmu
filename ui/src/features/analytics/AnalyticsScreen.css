@@ -155,7 +155,7 @@
 }
 
 .analytics-workspace-select-input:focus {
-  outline: 2px solid var(--color-primary, #4f46e5);
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 
@@ -183,7 +183,7 @@
 }
 
 .analytics-granularity-btn--active {
-  background: var(--color-primary, #4f46e5);
+  background: var(--color-primary);
   color: var(--analytics-bg);
 }
 
@@ -225,7 +225,7 @@
 }
 
 .analytics-custom-input:focus {
-  outline: 2px solid var(--color-primary, #4f46e5);
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 
@@ -290,7 +290,7 @@
 /* Collapse toggle active state */
 .analytics-action-btn--active {
   background: var(--analytics-bg-accent);
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
 }
 
 /* Zoom slider popover — opens from the zoom badge */
@@ -311,7 +311,7 @@
 
 .analytics-zoom-slider {
   width: 140px;
-  accent-color: var(--color-primary, #4f46e5);
+  accent-color: var(--color-primary);
 }
 
 .analytics-zoom-popover-value {
@@ -552,7 +552,7 @@
 
 .analytics-card-action--active {
   background: var(--analytics-bg-accent);
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
 }
 
 /* Per-card action buttons (info / expand / options) */
@@ -676,7 +676,7 @@
 }
 
 .analytics-card--drop-target {
-  outline: 2px solid var(--color-primary, #4f46e5);
+  outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }
 
@@ -860,7 +860,7 @@
 .analytics-scroll-progress {
   flex-shrink: 0;
   height: 3px;
-  background: var(--color-primary, #4f46e5);
+  background: var(--color-primary);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1159,7 +1159,7 @@
   height: 16px;
   border-radius: 4px;
   background: var(--analytics-bg-accent);
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
   font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
@@ -1187,7 +1187,7 @@
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--color-primary, #4f46e5);
+  background: var(--color-primary);
 }
 
 .analytics-rank-value {
@@ -1314,7 +1314,7 @@
 .analytics-occupancy-value {
   font-size: var(--text-3xl);
   font-weight: 800;
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
   line-height: 1;
 }
 
@@ -1335,7 +1335,7 @@
   display: block;
   height: 100%;
   border-radius: 5px;
-  background: linear-gradient(90deg, #818cf8, var(--color-primary, #4f46e5));
+  background: linear-gradient(90deg, #818cf8, var(--color-primary));
   transition: width 0.4s ease;
 }
 
@@ -1659,7 +1659,7 @@
 
 .analytics-palette-item--active {
   background: var(--analytics-bg-accent);
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
 }
 
 .analytics-palette-hint {
@@ -1682,7 +1682,7 @@
 /* ── Accessibility polish ──────────────────────────────────────── */
 
 :where(.analytics) :focus-visible {
-  outline: 2px solid var(--color-primary, #4f46e5);
+  outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
 

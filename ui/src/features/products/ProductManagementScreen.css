@@ -98,7 +98,7 @@
 /* Restaurant badge uses specific pink/magenta shades for visual distinction from other types */
 .product-mgmt-type--restaurant {
   background: var(--color-danger-bg, rgba(239, 68, 68, 0.1));
-  color: var(--color-danger-700, #b91c1c);
+  color: var(--color-danger-700);
 }
 .product-mgmt-type--both {
   background: var(--color-success-bg);

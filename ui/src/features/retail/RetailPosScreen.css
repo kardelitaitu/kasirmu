@@ -3390,7 +3390,7 @@
 }
 
 .retail-edit-image-error {
-  color: var(--color-danger, #c0392b);
+  color: var(--color-danger);
   font-size: var(--text-xs);
 }
 
@@ -3438,11 +3438,11 @@
 }
 
 .retail-edit-image-btn--danger {
-  color: var(--color-danger, #c0392b);
+  color: var(--color-danger);
 }
 
 .retail-edit-image-btn--danger:hover:not(:disabled) {
-  border-color: var(--color-danger, #c0392b);
+  border-color: var(--color-danger);
 }
 
 .retail-edit-image-alternatives {

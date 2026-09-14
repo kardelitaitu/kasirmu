@@ -100,7 +100,7 @@
 }
 
 .offline-queue-plan-row--free {
-  border-color: var(--color-warning-border, #ffc107);
+  border-color: var(--color-warning-border);
   background: var(--color-warning-dim, rgba(255, 193, 7, 0.08));
 }
 
@@ -129,7 +129,7 @@
 }
 
 .offline-queue-plan-badge--free {
-  background: var(--color-warning, #ffc107);
+  background: var(--color-warning);
   color: var(--color-accent-fg);
 }
 

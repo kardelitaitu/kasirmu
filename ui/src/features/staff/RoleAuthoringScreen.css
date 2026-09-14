@@ -14,13 +14,13 @@
 
 .role-authoring-subtitle {
   margin: 0;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
 }
 
 .role-authoring-error {
   margin: var(--space-3, 0.75rem) 0 0;
-  color: var(--color-danger, #b3261e);
+  color: var(--color-danger);
   font-size: var(--text-base);
 }
 
@@ -35,7 +35,7 @@
 
 .role-list-item {
   padding: var(--space-3, 0.75rem);
-  border: 1px solid var(--color-border, #ddd);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md, 6px);
 }
 
@@ -52,7 +52,7 @@
 .role-list-desc,
 .role-list-grants {
   margin: var(--space-1, 0.25rem) 0 0;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -64,7 +64,7 @@
 }
 
 .role-in-use {
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -82,16 +82,16 @@
 
 .role-input {
   padding: var(--space-2, 0.5rem);
-  border: 1px solid var(--color-border, #ddd);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm, 4px);
-  background: var(--color-bg-surface, #fff);
+  background: var(--color-bg-surface);
   color: inherit;
 }
 
 .role-perm-picker {
   margin: var(--space-4, 1rem) 0 0;
   padding: var(--space-3, 0.75rem);
-  border: 1px solid var(--color-border, #ddd);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md, 6px);
   max-height: 24rem;
   overflow-y: auto;
@@ -107,7 +107,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
 }
 
 .role-perm-row {
@@ -123,7 +123,7 @@
 
 .role-perm-desc {
   flex: 1;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -150,7 +150,7 @@
   padding: 0;
   font: inherit;
   font-size: var(--text-sm);
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -163,21 +163,21 @@
 .role-holders-loading,
 .role-holders-none,
 .role-holders-more {
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .role-holders-panel {
   margin-top: var(--space-2, 0.5rem);
   padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-  border-left: 2px solid var(--color-border, #e5e7eb);
+  border-left: 2px solid var(--color-border);
   background: var(--color-surface-alt, #f9fafb);
 }
 
 .role-holders-error {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--color-danger, #b91c1c);
+  color: var(--color-danger);
 }
 
 .role-holders-list {
@@ -204,7 +204,7 @@
 
 .role-holder-user,
 .role-holder-scope {
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: 400;
 }

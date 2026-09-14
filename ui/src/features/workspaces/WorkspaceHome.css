@@ -280,7 +280,7 @@
      side, so the interior scales proportionally at any resolution. */
   padding: 10%;
   background: var(--color-bg-elevated);
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   cursor: pointer;
@@ -564,7 +564,7 @@
   opacity: 1;
   border-color: var(--ws-accent, var(--color-accent));
   background: var(--ws-accent-bg, var(--color-bg-elevated));
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   box-shadow:
     var(--shadow-glow, var(--shadow-2xl)),
     inset 0 0 0 0.0625rem var(--ws-accent, var(--color-accent)),
@@ -576,7 +576,7 @@
 .workspace-card--active:hover {
   border-color: var(--ws-accent, var(--color-accent));
   background: var(--ws-accent-bg, var(--color-bg-elevated));
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   transform: perspective(800px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg)) translateY(-0.25rem);
 }
 
@@ -770,7 +770,7 @@
   align-items: center;
   padding: 10%;
   background: var(--color-bg-elevated);
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-glow, var(--shadow-2xl)), var(--shadow-sm);
@@ -1059,7 +1059,7 @@
 .role-badge--manager { color: var(--color-info); }
 .role-badge--staff  { color: var(--color-fg-secondary); }
 .role-badge--auditor { color: var(--color-success); }
-.role-badge--custom { color: var(--color-purple, #9333ea); }
+.role-badge--custom { color: var(--color-purple); }
 .role-badge--default { color: var(--color-fg-tertiary); }
 
 /* ═══════════════════════════════════════════════════════════════════

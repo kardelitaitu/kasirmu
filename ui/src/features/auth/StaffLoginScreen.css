@@ -576,8 +576,8 @@
 
 /* U3: Username accepted checkmark state */
 .staff-login-submit-btn--accepted {
-  background: var(--color-success, #22c55e);
-  border-color: var(--color-success, #22c55e);
+  background: var(--color-success);
+  border-color: var(--color-success);
 }
 
 /* ── Footer right segment ──────────────────────────────────────── */

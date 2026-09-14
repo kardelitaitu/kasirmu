@@ -747,7 +747,7 @@
 }
 
 .settings-saved-checkmark svg {
-  color: var(--color-success, #16a34a);
+  color: var(--color-success);
   animation: settings-checkmark-draw 0.4s var(--ease-out) both;
 }
 
@@ -875,11 +875,11 @@
 }
 
 .settings-sync-dot--ok {
-  background: var(--color-success, #10b981);
+  background: var(--color-success);
 }
 
 .settings-sync-dot--err {
-  background: var(--color-danger, #ef4444);
+  background: var(--color-danger);
 }
 
 .settings-sync-pending-badge {
@@ -908,7 +908,7 @@
 }
 
 .settings-sync-plan-row--free {
-  border-color: var(--color-warning-border, #ffc107);
+  border-color: var(--color-warning-border);
   background: var(--color-warning-dim, rgba(255, 193, 7, 0.08));
 }
 
@@ -937,7 +937,7 @@
 }
 
 .settings-sync-plan-badge--free {
-  background: var(--color-warning, #ffc107);
+  background: var(--color-warning);
   color: var(--color-accent-fg);
 }
 
@@ -1009,17 +1009,17 @@
 
 .settings-sync-expiry-badge--good {
   background: var(--color-success-bg, rgba(16, 185, 129, 0.1));
-  color: var(--color-success, #10b981);
+  color: var(--color-success);
 }
 
 .settings-sync-expiry-badge--warn {
   background: var(--color-warning-bg, rgba(245, 158, 11, 0.1));
-  color: var(--color-warning, #f59e0b);
+  color: var(--color-warning);
 }
 
 .settings-sync-expiry-badge--critical {
   background: var(--color-danger-bg, rgba(239, 68, 68, 0.1));
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
 }
 
 .settings-hint--error {
