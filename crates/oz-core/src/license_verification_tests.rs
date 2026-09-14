@@ -98,11 +98,11 @@ fn verify_rejects_garbage_signatures() {
 }
 
 // NOTE: the sentinel short-circuit lives behind `#[cfg(debug_assertions)]` at
-// license_verification.rs:391-392. In a release build execution falls through
+// license_verification.rs:391-392 (true when this note was written at 38bfcdd41; the guard is at :397 and the comparison at :398 at HEAD 4a4c5fc9e, six lines lower because 9927adec1 grew the comment above it from 3 lines to 9 — marked, not silently repointed, and re-grepped here rather than copied). In a release build execution falls through
 // to `base64::STANDARD.decode("BOOTSTRAP_FREE")`, which fails with
 // `InvalidByte(9, 95)`: offset 9 is the first underscore of the sentinel and 95
 // is that underscore's byte value. The decode error is wrapped at
-// license_verification.rs:399-403 as
+// license_verification.rs:399-403 (likewise true at 38bfcdd41; the same six-line shift puts that block at :405-409 at HEAD 4a4c5fc9e) as
 // `CoreError::InvalidSubscriptionSignature`, carrying the text
 // "failed to decode base64 signature: InvalidByte(9, 95)".
 //
