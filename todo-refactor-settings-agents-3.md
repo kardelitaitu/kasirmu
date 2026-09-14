@@ -304,8 +304,8 @@ components, 604 ln" count at `:218` - that figure was true before these two slic
 All six are mounted by a live screen; none is dead code, and none lives in `sections/` (`:220`).
 
 **BOX COUNTS, both grep forms, before -> after this record** (the forms agree because every box in this
-file is at column 0, so the two forms cannot disagree here - an indented box is the only way they
-would, and this plan has none. The ALL-bullets form is a different quantity and the easy one to misread
+file is at column 0, so the two forms cannot disagree here - only an indented box would separate
+them, and this plan has none. Both totals are reported anyway because they answer different questions. The ALL-bullets form is a different quantity and the easy one to misread
 as a box total:
 `grep -cE '^[[:space:]]*- \[ \]'` 8 -> 7 · `grep -cE '^- \[ \]'` 8 -> 7 ·
 `grep -cE '^[[:space:]]*- \[[xX]\]'` 3 -> 4 · `grep -cE '^- \[[xX]\]'` 3 -> 4 ·
