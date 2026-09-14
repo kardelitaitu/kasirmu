@@ -3,10 +3,21 @@
 // Conventions mirror KdsScreen.test.tsx: the @/api/kds module is mocked at
 // the boundary via vi.hoisted fakes, useTicketSla/useSound are stubbed, and
 // async mount effects render through renderWithFluent.
+//
+// FIRST TO FAIL PER SEEDED MUTATION (measured, 19 cases): ExpoScreen/10 ALONE
+// (1 failed / 18 passed) — the `.then` guard at ExpoScreen.ts:195-196 replaced
+// by an unconditional `unlisten = fn`, i.e. the late-settle cancel path deleted.
+// /10 is the ONLY assertion of that branch in this file. It is the subscription
+// arm only: the setInterval(EXPO_POLL_MS) backstop at :201-204, the
+// visibilitychange listener at :206-209 and the clearInterval/remove pair at
+// :214-215 are NOT covered by this case — one seam per idiom, because mixing a
+// microtask-timing assertion with a timer assertion is how a pin turns flaky.
+// (The other two sites of this guard shape: useKdsRealtime.ts:95, pinned by that
+// file's late/2, and useUnsavedChangesGuard.ts:81, pinned by that file's /9.)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, act } from '@testing-library/react';
-import { renderWithFluent } from '@/__tests__/test-utils/render';
+import { renderWithFluent, renderWithFluentSync } from '@/__tests__/test-utils/render';
 import ExpoScreen, {
   groupByStation,
   readyToServe,
@@ -66,6 +77,47 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspaceScope: () => null,
 }));
 
+// ── Seam: the Tauri event plugin (the subscription arm only) ─────────
+// ExpoScreen subscribes through @/api/tauri's `listen` re-export. test-setup.ts:69
+// already stubs @tauri-apps/api/event as `listen: () => Promise.resolve(() => {})`,
+// so the .then at ExpoScreen.ts:194 DOES run here today — but into a SHARED,
+// uncountable no-op, and always before an unmount, because every existing case
+// awaits its render. That is why :195 is unasserted, and why this file needs its
+// own seam: not to make the promise resolve, but to make the release OBSERVABLE.
+// One counted unlisten per call, so "released exactly once" is a statement about
+// the subscription THIS mount created. importOriginal leaves every other export
+// (invoke / getCurrentWindow / getVersion) exactly as the global mocks have it.
+
+interface FakeListen {
+  event: string;
+  unlisten: () => void;
+  /** How many times this subscription's unlisten has been called. */
+  calls: () => number;
+}
+
+const tauri = vi.hoisted(() => {
+  const subs: Array<{ event: string; unlisten: () => void; calls: () => number }> = [];
+  const listen = (event: string, _handler: (payload: unknown) => void): Promise<() => void> => {
+    let n = 0;
+    const unlisten = (): void => {
+      n += 1;
+    };
+    subs.push({ event, unlisten, calls: () => n });
+    return Promise.resolve(unlisten);
+  };
+  return { subs, listen };
+});
+
+vi.mock('@/api/tauri', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  listen: tauri.listen,
+}));
+
+/** The kds:orders-changed subscriptions made so far — the seam this case pins. */
+function expoSubs(): FakeListen[] {
+  return tauri.subs.filter((s) => s.event === 'kds:orders-changed');
+}
+
 function makeOrder(overrides: Partial<KdsOrder>): KdsOrder {
   return {
     id: 'order-x',
@@ -99,6 +151,9 @@ beforeEach(() => {
   mockUpdateLineItem.mockReset().mockResolvedValue(undefined);
   mockSpeak.mockReset();
   mockLines.mockReset().mockResolvedValue([]);
+  // Per-test subscriptions: every case renders the screen, so without this the
+  // counts below would accumulate across the file.
+  tauri.subs.length = 0;
 });
 
 // ── 1. Pure helpers ─────────────────────────────────────────────────
@@ -333,5 +388,42 @@ describe('ExpoScreen', () => {
     // Per-user persistence (the modal closed after selection).
     expect(localStorage.getItem('oz-kds-expo-station-user-1')).toBe('grill');
     expect(screen.queryByTestId('kds-station-dialog')).toBeNull();
+  });
+
+  // ── the late-settle branch: listen resolves after the screen is gone ──
+  it('calls the returned unlisten itself when the subscription settles after the screen unmounted', async () => {
+    // ExpoScreen.ts:195 `if (cancelled) fn();` — the third copy of this guard
+    // (the others: useKdsRealtime.ts:95, pinned by that file's late/2, and
+    // useUnsavedChangesGuard.ts:81, pinned by /9 of its own file). It is NOT
+    // reachable through this file's usual `renderExpo()`: that helper awaits
+    // (renderInAct), which crosses a microtask boundary, so the .then has
+    // always landed and taken the else at :196 long before an unmount. Here the
+    // SYNC variant renders and unmounts with no await between them, so the
+    // cleanup runs while `unlisten` is still undefined (:213 is a no-op) with
+    // :212 having set cancelled = true. After the flush, :195 is the only code
+    // left that can release fn — drop the guard and the expo board keeps a live
+    // 'kds:orders-changed' handler pointing at an unmounted screen.
+    //
+    // ONE SEAM ONLY, deliberately: the setInterval(EXPO_POLL_MS) arm at :201
+    // and the visibilitychange arm at :206-209 are NOT asserted here, and
+    // nothing in this case is a statement about them or about clearInterval.
+    const { unmount } = renderWithFluentSync(<ExpoScreen />, sharedFtl, kdsFtl);
+    const subs = expoSubs();
+
+    // The subscription exists — it is only its RELEASE that is still pending.
+    expect(subs).toHaveLength(1);
+    expect(subs[0]!.calls()).toBe(0);
+
+    unmount();
+
+    // Still unreleased: the cleanup had no unlisten to call yet.
+    expect(subs[0]!.calls()).toBe(0);
+
+    // Deliver the in-flight resolution, now that the mount is gone.
+    await act(async () => {});
+
+    // The guard ran, exactly once, and no second subscription appeared.
+    expect(subs[0]!.calls()).toBe(1);
+    expect(expoSubs()).toHaveLength(1);
   });
 });
