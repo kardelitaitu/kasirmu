@@ -174,3 +174,59 @@ Verify that the memory killer is permanently solved and all test suites pass.
   ```bash
   git commit -m "ci(desktop): re-enable oz-pos-app in full nextest matrix post-refactor"
   ```
+
+---
+
+## Measurement (2026-09-14, HEAD 4f9d670e8)
+
+> **Dated record for the open pair `:167` (strip the excludes from nine runners) and `:173` (the `ci(desktop)` commit that follows), beside `:142` and `:169`. Appended by a docs pass: no existing line was edited, nothing was renamed, NOTHING here is ticked — the verdict is that `:167` cannot be ticked yet.** Six crate-scope `cargo check` runs, no `--workspace`, no clippy, no `--release`. Every figure carries the command that produces it.
+
+**HEADLINE — the box is aimed at the wrong target: Dev CI already runs what these runners skip.**
+
+- `.github/workflows/dev-ci.yml:197` → `cargo check --workspace --all-targets --all-features` — **no `--exclude`** (step `Cargo check workspace`, job `cargo-check:` at `:165`).
+- `.github/workflows/dev-ci.yml:244` → `cargo nextest run --workspace --all-features` — **no `--exclude`** (step `Run Nextest`, job `cargo-nextest:` at `:200`).
+
+Both on Linux, both WITH system deps and WITH dist stubs — the `cargo-check` job installs system deps at `:179-185` and stubs the dists at `:187-190`; the `cargo-nextest` job carries its own copies at `:227-233` and `:235-238`. So both app crates are already compiled AND tested, un-excluded, on every PR and every `push` to `main`, in exactly the configuration the local runners skip. **The excludes are a local-machine and release-path artifact, not a code-health shield** — so `:167` is a release-pipeline and onboarding change, not a correctness change, and its green would say nothing about whether the code is sound.
+
+**Corollary this measurement produced:** `scripts/check.sh:44` runs `cargo clippy --workspace --all-targets -- -D warnings` **un-excluded**, and `check.sh:110`'s no-nextest fallback (`cargo test --workspace --all-features -- --test-threads $cpu_count`) is un-excluded too. Its PowerShell twin matches: `check.ps1:97-98` clippy un-excluded, `check.ps1:124-125` fallback un-excluded, excludes only at `:116-117`. **`check.sh` / `check.ps1` already build both crates today; the excludes live only in the nextest and coverage steps.**
+
+**THE SIX RUNS** (from the repo root, debug):
+
+| # | command | exit | wall |
+|---|---|---|---|
+| 1 | `cargo check -p oz-pos-app` | 0 | 43.59 s |
+| 2 | `cargo check -p oz-pos-app --all-targets` | 0 | 42.19 s |
+| 3 | `cargo check -p oz-pos-tablet` | 0 | 54.34 s |
+| 4 | `cargo check -p oz-pos-tablet --all-targets` | 0 | 1 m 08 s |
+| 5 | `cargo check -p oz-pos-app --all-targets --all-features` | 0 | 41.45 s |
+| 6 | `cargo check -p oz-pos-tablet --all-targets --all-features` | **101** | — |
+
+**Run 6 anatomy: 67 copies of ONE cause.** Every line is `error: proc macro panicked` → `The frontendDist configuration is set to ../../ui/dist-tablet but this path doesn't exist`. Distribution, re-derivable: `grep -rn 'tauri::generate_context!' apps/tablet-client/src | wc -l` = **67** = 1 site in `apps/tablet-client/src/lib.rs` (`.run(tauri::generate_context!())` at `:785`) + **66** amplified copies across the 22 `apps/tablet-client/src/commands/*_tests.rs` files whose builders call `tauri::generate_context!()`. The trigger is `--all-features` — runs 3 and 4, same crate without it, exit 0.
+
+**Zero `error[E...]` codes in all six logs**, six for six. Therefore the **“142 `E0599` from the tauri-free refactor”** figure this programme inherited **DOES NOT REPRODUCE today**, and **“170 errors” was never measured at all**. Provenance: that figure has no home in the tracked markdown — `git ls-files '*.md' | xargs grep -ln 'E0599'` names only `docs/records/JOURNAL.md` (`:6522`, `:6603`, `:10124`, none about this box) — so it arrived from briefing prose, not from a log. Do not carry either number forward as a count.
+
+**CLASSIFICATION — the point of this entry: CODE 0 diagnostics / ENVIRONMENT 67, one directory.** `ui/dist-tablet` did not exist when run 6 was taken. Restorable two documented ways: `cd ui && npm run build:tablet` (`ui/package.json:13` = `tsc -b && vite build --config vite.tablet.config.ts`; `ui/vite.tablet.config.ts:23` = `outDir: 'dist-tablet'`), or a dev-ci-style stub (`mkdir -p ui/dist-tablet && touch ui/dist-tablet/index.html`, which is literally what `dev-ci.yml:187-190` does). **Desktop is clean under the SAME `--all-features --all-targets` (run 5, exit 0) because `ui/dist` exists on this machine and `ui/dist-tablet` did not** — `find ui/dist -type f | wc -l` = **197** at record time. Two crates, one flag, one missing directory: 67 red lines, none of them a code diagnostic.
+
+> **WRITE-TIME RE-CHECK (this pass; HEAD `8229bd2b9`, four commits after `4f9d670e8`, +307/-30 across six `ui/src` files, zero Rust changes).** The premise “`ui/dist-tablet` does not exist” was true when run 6 was taken and **is false on this machine now**: `find ui/dist-tablet -type f | wc -l` = **209**, dir mtime `Sep 15 00:12`. Re-running the exact failing command → **EXIT 0 in 41.97 s**, `proc macro panicked` × **0**, `error[E...]` × **0**. Same crate, same flags, zero code edits, one restored directory → green. That flip is the proof of the classification above, **and it is also why the green must not be read as a licence to tick `:167`**: it says the failure was the path, and nothing about the three blockers below.
+
+**THREE THINGS THAT MUST LAND BEFORE `:167` / `:173` ARE ACTIONABLE** — blockers, not opinions:
+
+1. **`.github/workflows/release.yml` STEP ORDER.** The test step `- name: Run tests (desktop targets)` sits at `:147-149` (`if: matrix.tauri`; `cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet --profile ci`) and runs **BEFORE** `Install system deps (Linux)` `:151-158`, **BEFORE** `Install macOS deps` `:160-163`, and **BEFORE** `Install UI dependencies` `:169-171` (`cd ui && npm ci --no-audit --no-fund --ignore-scripts`). **`release.yml` has NO dist-stub step at all**, unlike `dev-ci.yml:187-190`: `grep -n 'dist\|mkdir' .github/workflows/release.yml` returns exactly one hit, `:391 mkdir -p release-assets`, which is not a `ui/dist`. So on a clean tag runner, at `:149`, there are no system libs, no `node_modules`, and no `ui/dist*`: **stripping the excludes there fails on all three OSes for environment reasons even with perfect code** — the run-6 mechanism, generalized. Landing `:167` requires reordering or adding workflow steps, a `.github/**` change that cannot be made from this file.
+2. **A decision on `scripts/release.sh:62`** — the one site where the exclude is load-bearing for **LINT**. Stripping it puts, for the first time, roughly **139 desktop + 653 tablet test fns** under `clippy --workspace --all-targets --all-features … -- -D warnings` (`grep -rho --include='*.rs' -e '#\[test\]' -e '#\[tokio::test\]' apps/desktop-client/src | wc -l` = 139; same over `apps/tablet-client/src` = 653). And `scripts/release.sh:47` refuses a dirty tree (`git diff-index --quiet HEAD --` → `exit 1`), so the change **cannot be test-driven casually in a shared multi-agent checkout**. It needs an owner's call, not an edit.
+3. **This plan's own standing instruction at `:143`**: do NOT drop `--exclude oz-pos-app --exclude oz-pos-tablet` from any release-path runner (`scripts/release.sh:62,65` and `.github/workflows/release.yml:149` are precisely those) on the strength of a green **debug** run. These six commands are exactly that — debug, crate-scope, no `--release`. The instruction stands until something in the release profile has been executed.
+
+**`:142` is UNTOUCHED by this measurement.** No `--release` was run in any of the six, and no debug crate-scope `cargo check` can observe a release-profile failure set. `:142` stays open for its own reasons (76 release failures; the parked arm at `license.rs:670-683`), and `:169` stays open because its full-project verification has not been run.
+
+**THE NINE RUNNERS `:167` names**, re-measured before writing (`git ls-files | xargs grep -ln -- '--exclude oz-pos' | grep -v '\.bak$' | grep -v '\.md$'` → exactly nine paths), with the risk each carries:
+
+| runner site | what it is | risk if the exclude is stripped |
+|---|---|---|
+| `scripts/check.sh:106` | the nextest test step | **highest shared-gate risk** — every lane runs `check.sh`; red on this machine |
+| `scripts/check.ps1:116-117` | its nextest twin — **TWO edit sites**: the `-RetryCommand` string (`:116`) AND the `-ScriptBlock` body (`:117`) | must move in lockstep with `:106` or the local matrix re-splits per shell |
+| `scripts/coverage.sh:70-71` + `scripts/coverage.ps1:60-61` | `cargo llvm-cov` invocations | red here; and even when green they **RE-BASE every published coverage number and the ratchet inputs** |
+| `scripts/release.sh:62` (clippy) + `:65` (nextest `--profile ci`) | release gate, hard `exit 1` on failure | **release-blocking** — see blocker 2 |
+| `scripts/setup-dev.ps1:134` | `cargo check --workspace --all-features --exclude …` inside onboarding | **onboarding path**: a fresh clone with no `ui/dist-tablet` fails SETUP, before any gate ever runs |
+| `scripts/setup-cache.sh:49-50` + `scripts/setup-cache.ps1:70-71` | `echo` / `Write-Host` text only | **EXECUTES NOTHING — zero risk.** Note these two name only `--exclude oz-pos-app` (`grep -c -- '--exclude oz-pos-tablet'` = 0 in both), so “strip both” overstates what is on those lines |
+| `.github/workflows/release.yml:149` | nextest on the `v*` tag | see blocker 1 — fails on all three OSes for environment reasons |
+
+**VERDICT: `:167` stays open; `:173` must not be committed.** This measurement retires one inherited false figure (the “142 `E0599`” / “170 errors” pair does not reproduce and was never sourced), and it confirms the excludes are not hiding code diagnostics — but it does not clear the release path, the new lint surface, or this plan's own `:143` prohibition, and it does not fix `release.yml`'s step order. When `:167` lands it lands as a nine-path change with a workflow reorder in front of it.
