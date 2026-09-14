@@ -263,6 +263,7 @@ const SCREENS: ScreenEntry[] = [
       'kds/components/KdsZoneChips.tsx',
       'kds/components/KdsHeaderRight.tsx',
       'kds/components/KdsHeaderTabs.tsx',
+      'kds/components/KdsMainContent.tsx',
     ],
   },
   {

@@ -13,18 +13,17 @@ import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
-import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
+import { requiredLocalized } from '@/frontend/shared';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { KdsLayoutMasonry } from '@/features/kds/KdsLayoutMasonry';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
-import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { KdsHeaderLeft } from '@/features/kds/components/KdsHeaderLeft';
 import { KdsHeaderRight } from '@/features/kds/components/KdsHeaderRight';
 import { KdsHeaderTabs } from '@/features/kds/components/KdsHeaderTabs';
 import { KdsNoticeBanners } from '@/features/kds/components/KdsNoticeBanners';
 import { KdsZoneChips } from '@/features/kds/components/KdsZoneChips';
+import { KdsMainContent } from '@/features/kds/components/KdsMainContent';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
 import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal';
@@ -386,70 +385,6 @@ export default function KdsScreen() {
     ? completedFilter !== 'all'
     : (filterMode === 'prepared' || (filterCats !== null && filterCats.size > 0));
 
-  // ── Initial loading skeleton ──────────────────────────────────
-  const renderContent = () => {
-    if (initialLoading) {
-      // LOAD-05: the skeleton columns are decorative; the localized
-      // status line (role=status) is what screen readers announce.
-      return (
-        <LoadingStatus className="kds-loading-container" label={requiredLocalized(l10n, 'kds-loading')}>
-            <div className="kds-loading-columns">
-              {['pending', 'preparing', 'ready'].map((status) => (
-                <div key={status} className="kds-loading-column">
-                  <div className="kds-loading-header" />
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="kds-loading-card">
-                      <div className="kds-loading-line kds-loading-line--short" />
-                      <div className="kds-loading-line kds-loading-line--long" />
-                      <div className="kds-loading-line kds-loading-line--medium" />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </LoadingStatus>
-        );
-    }
-
-    return (
-      <div className="kds-main-viewport" {...swipeProps}>
-        <div className={`kds-main-track active-${activeTab}`}>
-          <div
-            className="kds-main-pane kds-main-pane--open"
-            aria-hidden={activeTab !== 'open'}
-          >
-            <div className={`kds-content-wrap${settings.density <= 2 ? ' kds--compact' : ''}`} {...pullRefreshProps}>
-              <KdsLayoutMasonry
-                orders={filteredOrders}
-                filtered={boardFiltered}
-                onAdvance={advanceStatus}
-                showOrderId={prefs.showOrderId}
-                showTableNumber={prefs.showTableNumber}
-                selectedOrderId={selectedOrderId}
-                sessionToken={sessionToken}
-                onSaveItems={handleSaveItems}
-                onAdvanceItem={advanceItemStatus}
-                onAddItems={setPickerOrderId}
-                newOrderIds={newOrderIds}
-                slaThresholds={slaThresholds}
-              />
-            </div>
-          </div>
-          <div
-            className="kds-main-pane kds-main-pane--completed"
-            aria-hidden={activeTab !== 'completed'}
-          >
-            <KdsCompletedView
-              onReopen={() => setActiveTab('open')}
-              completedFilter={completedFilter}
-              active={activeTab === 'completed'}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <KdsCardColorsProvider>
     <Profiler id="KdsScreen" onRender={(...args) => {
@@ -584,7 +519,26 @@ export default function KdsScreen() {
       )}
 
       {/* ── Main content: loading skeleton, history panel, or layout ── */}
-      {renderContent()}
+      <KdsMainContent
+        initialLoading={initialLoading}
+        activeTab={activeTab}
+        settings={settings}
+        prefs={prefs}
+        pullRefreshProps={pullRefreshProps}
+        swipeProps={swipeProps}
+        filteredOrders={filteredOrders}
+        boardFiltered={boardFiltered}
+        onAdvance={advanceStatus}
+        onAdvanceItem={advanceItemStatus}
+        onSaveItems={handleSaveItems}
+        onAddItems={setPickerOrderId}
+        onReopen={() => setActiveTab('open')}
+        selectedOrderId={selectedOrderId}
+        sessionToken={sessionToken}
+        newOrderIds={newOrderIds}
+        slaThresholds={slaThresholds}
+        completedFilter={completedFilter}
+      />
 
       {/* 3f: Product picker modal for adding items mid-preparation */}
       <KdsProductPickerModal
