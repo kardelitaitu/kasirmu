@@ -2,10 +2,6 @@ import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } fro
 
 import { Localized, useLocalization } from '@fluent/react';
 import {
-  setReceiptSettingsScoped,
-  setStoreSettingsScoped,
-  setUserPreferencesScoped,
-  setSettingScoped,
   type ReceiptSettingsDto,
   type StoreSettingsDto,
 } from '@/api/settings';
@@ -15,15 +11,10 @@ import { roleAtLeast } from '@/utils/role';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { SettingsProvider, useSettings } from '@/contexts/SettingsContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import {
-  updateSyncSettingsScoped,
-  type SyncSettingsDto,
-} from '@/api/offline';
+import { type SyncSettingsDto } from '@/api/offline';
 
-import {
-  setBrandPrimaryColour,
-  setBrandStoreName as setBrandStoreNameApi,
-} from '@/api/branding';
+// The brand writes moved out with the save orchestration (./hooks/useSettingsSave);
+// only the BrandContext refresh handle is still read here.
 import { useBrand } from '@/contexts/BrandContext';
 import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
 import { Button } from '@/components/Button';
@@ -36,6 +27,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
+import { useSettingsSave } from './hooks/useSettingsSave';
 // ── Lazy-loaded flat-IA screens (blank scaffolds from the screens commit;
 //    selective migration fills each one in) ──
 const GeneralScreen = lazy(() => import('./screens/GeneralScreen').then((m) => ({ default: m.GeneralScreen })));
@@ -403,132 +395,39 @@ function SettingsPageContent() {
     }
   }, [activeSection]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    setSaved(false);
-    // Use allSettled so a single failing save doesn't silently block
-    // the others — the user gets a warning about partial failures.
-    // Sync store.currency with defaultCurrency so both parallel writes
-    // below target the same value (prevents a race where setStoreSettings
-    // overwrites the user's currency selection with the initial value).
-    const syncedStore = { ...store, currency: defaultCurrency };
-
-    // Every save is named, and each later decision looks its result up BY NAME.
-    //
-    // This block previously read `results[0]` through `results[6]` -- seven positional
-    // indices into the array literal. Adding a setting is the natural edit to make here,
-    // and it shifts every index after it with nothing to notice: `changedKeys` would then
-    // tell SettingsContext that the WRONG keys were updated (so other components refetch
-    // the wrong data and the real change stays stale), and the sync DTO block below would
-    // gate on an unrelated call's success. Named lookup makes an insertion harmless.
-    //
-    // Promises are created in the same order as before, so concurrency and side-effect
-    // sequencing are unchanged.
-    const saveTasks: Array<readonly [string, Promise<unknown>]> = [
-      ['receipt', setReceiptSettingsScoped(sessionToken ?? '', receipt)],
-      ['store', setStoreSettingsScoped(sessionToken ?? '', syncedStore)],
-      ['currency', setCtxCurrency(defaultCurrency)],
-      // Scoped write matches the scoped read in SettingsContext: the
-      // unscoped variant writes the global DB while every consumer reads
-      // the store-scoped user_preferences table, so unscoped writes would
-      // silently vanish on the next reload.
-      [
-        'prefs',
-        sessionToken
-          ? setUserPreferencesScoped(sessionToken, [
-              { key: 'cardsize', value: String(displayCardSize) },
-              { key: 'fontsize', value: String(displayFontSize) },
-              { key: 'font-smoothing', value: displayFontSmoothing },
-            ])
-          : Promise.resolve(),
-      ],
-      [
-        'sync',
-        updateSyncSettingsScoped(sessionToken ?? '', {
-          serverUrl: syncServerUrl || null,
-          ...(syncApiKey ? { apiKey: syncApiKey } : {}),
-          enabled: sync.enabled,
-        }),
-      ],
-      ['brandColour', setBrandPrimaryColour(sessionToken ?? '', brandColour)],
-      ['brandName', setBrandStoreNameApi(sessionToken ?? '', brandStoreName)],
-    ];
-
-    const settled = await Promise.allSettled(saveTasks.map(([, task]) => task));
-    const saveResult = (name: string): boolean =>
-      settled[saveTasks.findIndex(([k]) => k === name)]?.status === 'fulfilled';
-
-    const failed = settled.filter((r) => r.status === 'rejected').length;
-
-    // At least one save succeeded — show confirmation and refresh.
-    if (failed < saveTasks.length) {
-      setIsDirty(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      // Sync the React store state to match what was persisted (currency).
-      setStore(syncedStore);
-      // Persist the sync DTO in React state so the UI immediately
-      // reflects the just-saved values (server URL, API key presence,
-      // enabled flag). Without this the loaded snapshot stays stale
-      // until the next page reload, causing placeholder regressions
-      // like "Enter API key" after saving a new key or a blank server
-      // URL field after saving a URL.
-      if (saveResult('sync')) {
-        if (syncApiKey) {
-          // Mirror the token to the shared IPC channel so the
-          // Retail Options screen (useCloudSync) can load it.
-          setSettingScoped(sessionToken, 'sync.auth_token', syncApiKey)
-            .catch(() => { /* best-effort */ });
-          setSyncApiKey('');
-        }
-        setSync((prev) => ({
-          ...prev,
-          serverUrl: syncServerUrl || null,
-          hasApiKey: syncApiKey ? true : prev.hasApiKey,
-          enabled: sync.enabled,
-        }));
-      }
-      refreshBrandSettings();
-
-      // Update the snapshot so Revert goes to the *saved* state.
-      // Use syncedStore so store.currency matches what was actually persisted.
-      initialSnapshotRef.current = {
-        receipt,
-        store: syncedStore,
-        defaultCurrency,
-        sync,
-        syncServerUrl,
-        displayCardSize,
-        displayFontSize,
-        displayFontSmoothing,
-        brandColour,
-        brandStoreName,
-      };
-    }
-
-    if (failed === saveTasks.length) {
-      addToast({ message: l10n.getString('settings-save-error'), type: 'error' });
-    } else if (failed > 0) {
-      addToast({ message: l10n.getString('settings-save-partial'), type: 'error' });
-    }
-
-    // Notify SettingsContext so other components reflect the changes. Keyed by name for
-    // the reason given at saveTasks: a positional list here would silently attribute the
-    // wrong keys to the wrong save the moment one is inserted.
-    const changedKeys: string[] = [];
-    if (saveResult('receipt')) changedKeys.push('receipt.footer', 'receipt.showCurrency', 'receipt.showTax', 'receipt.paperWidth', 'receipt.showTableNumber', 'receipt.decimalSeparator');
-    if (saveResult('store')) changedKeys.push('store.name', 'store.address', 'store.taxId', 'store.branch', 'store.currency');
-    if (saveResult('currency')) changedKeys.push('currency.default');
-    if (saveResult('prefs')) changedKeys.push('prefs.cardsize', 'prefs.fontsize', 'prefs.font-smoothing');
-    if (saveResult('sync')) changedKeys.push('sync.serverUrl', 'sync.apiKey', 'sync.enabled');
-    if (saveResult('brandColour')) changedKeys.push('brand.primary_colour');
-    if (saveResult('brandName')) changedKeys.push('brand.store_name');
-    if (changedKeys.length > 0) {
-      settingsCtx.markSettingsUpdated(changedKeys);
-    }
-
-    setSaving(false);
-  };
+  // ── Save orchestration ───────────────────────────────────────────
+  // The whole fan-out moved verbatim to ./hooks/useSettingsSave (settings
+  // lane slice 1). The page KEEPS the state it writes — saving / saved /
+  // isDirty / store / sync / syncApiKey and the Revert snapshot are all read
+  // by the dirty dot, Revert, the close guard and the section screens — so
+  // the hook receives them. Its header records that trade-off and why the
+  // by-name result lookup must not be turned back into an index.
+  const handleSave = useSettingsSave({
+    sessionToken,
+    receipt,
+    store,
+    defaultCurrency,
+    sync,
+    syncServerUrl,
+    syncApiKey,
+    displayCardSize,
+    displayFontSize,
+    displayFontSmoothing,
+    brandColour,
+    brandStoreName,
+    setSaving,
+    setSaved,
+    setIsDirty,
+    setStore,
+    setSync,
+    setSyncApiKey,
+    setCtxCurrency,
+    markSettingsUpdated: settingsCtx.markSettingsUpdated,
+    refreshBrandSettings,
+    addToast,
+    l10n,
+    savedSnapshotRef: initialSnapshotRef,
+  });
 
   // ── Sidebar search filtering moved to SettingsNavTree.tsx ─────
   // (The page-level Cloud Sync diagnostics poll went with the old sync
