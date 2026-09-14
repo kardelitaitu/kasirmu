@@ -11053,3 +11053,64 @@ which is exactly why an absence is recorded here, in the first person, before it
   Docs-only; nothing pushed.
 
 **Commit:** single pathspec commit `docs(records): the release profile has no test leg and it held 65 failures`.
+
+## 2026-09-15 — Trade: the release-profile fixture campaign cleared every mechanical red and spent five security claims to do it
+
+**Context:** Four days of sessions and roughly twenty boxes tonight, against `crates/oz-bridge`. The campaign
+started where the previous entry left it — **65 red / 1,244 passed of 1,309** in `--release`, **1,310 / 0** in
+debug — and forty-one of those sixty-five shared a single cause: a debug-only subscription promotion of the seeded
+tenant row, so a release build propagates an `InvalidSubscriptionSignature` refusal (offset 9, invalid symbol 95,
+the `_` in `BOOTSTRAP_FREE`) where the test expected a domain gate to decide. Converting a fixture meant forking it
+on the runtime seed-row predicate. Every mechanical red is now gone.
+
+- **Where it stands, and what is quoted versus measured.** The crate is reported at **1,307 passed / 2 failed / 0
+  ignored** in release against a debug leg of **1,310 / 0 / 0 held across six consecutive runs**. Those four figures
+  are **as printed by the lanes**: no test runner was executed in this pass — none is permitted — and no tracked log in
+  the repo carries them. The start-of-campaign 65/1,244/1,309 and the debug 1,310 ARE a recorded run, at this page's
+  own `## 2026-09-15 — Absence` entry above. One collision to avoid reading as a confirmation: this page already
+  prints "1307" at the 2026-09-14 licensing entry, where it is a different arithmetic coincidence
+  (`1231 + 76 = 1307 = 1308 − 1`), not tonight's release total. What this pass DID measure statically: the two named
+  reds exist at `crates/oz-bridge/src/auth_tests.rs:898`
+  (`staff_login_on_free_records_only_because_a_debug_build_promotes_it`) and
+  `crates/oz-bridge/src/staff_security_events_tests.rs:245`
+  (`a_rejected_create_records_no_security_event`) — `git grep -n <name> -- crates/oz-bridge`, both single hits; and the
+  fork predicate itself, `git grep -o "seeded_row_loads" -- crates/oz-bridge | wc -l` = **146 uses across 13 files**
+  (top: `subscription_tests.rs` 30, `auth_tests.rs` 17, `audit_security_events_tests.rs` 16, `audit_tests.rs` 12,
+  `pos_tests.rs` 11, `testing.rs` 9). Note the unit: a use of the predicate is not a fixture, so 146 does not confirm
+  the briefed "53 fixtures across 10 legs" and is not offered as doing so. `crates/oz-bridge/src/testing.rs` is
+  confirmed present. Three files in that crate — `testing.rs`, `staff_tests.rs`, `staff_security_events_tests.rs` —
+  are ` M` right now while a lane extracts a shared helper, so no per-file count here is a standing property of the tree.
+- **The trade, per test rather than per vibe.** Forking on the seed-row predicate makes the REFUSAL arm explicit and
+  leaves the PERMITTED arm debug-only, so the shipping profile no longer exercises five specific properties:
+  ticket rotation end to end; the ADR-47 grant-containment claim that staff identity is global while business data is
+  per-store — in the test named for it; the ADR-48 impersonation and restore-revocation claims; the licence TTL
+  claims; and now the staff write-side audit trail, which is all eight assertions of the create-event fixture including
+  that the actor id is not the subject id and that a PIN never reaches the table. What survives is narrower and should
+  be stated with the loss: the update-path event and the PIN-change behaviour are still exercised in release, because
+  that command does not cross the create gate.
+- **The two reds that remain are deliberate, not residue.
+
+  `staff_login_on_free_records_only_because_a_debug_build_promotes_it` asserts a debug-profile admission — its own
+  name is the finding — and `a_rejected_create_records_no_security_event` would go green if it were forked while its
+  subject stopped being exercised, leaving the final comparison to hold for the wrong reason. The sentence a lane wrote
+  into that file is the thesis of this whole campaign, and it is quoted here rather than cited because it is not in the
+  tree at filing: "a green that asserts nothing is worse than a red with a reason". Its closest tracked cousin is
+  `.agents/naked-read-sync-conflicts.md:41`, "A pin that cannot fail is worse than a red", which is the same argument
+  about a registration floor.
+- **The one fix that would bring the five properties back**, and it is not a docs edit: a test-support seam that
+  produces a genuinely valid signature instead of a promoted forgery — real key material in the fixture, so neither arm
+  has to be profile-conditional. **This is an owner decision, and as of this entry it is NOT on the owner page:**
+  `docs/plans/notes.md` runs items 1–11 today and item 8 is "The selector-class conflict: three names that only a test
+  can see", not this. `git grep -rln "promoted forgery" -- docs .agents *.md` returns nothing. Recording it here is the
+  substitute for recording it there until the page's owner accepts a twelfth item.
+- **Method notes, because these cost real hours and are portable.** (1) Assert counts must come from a char-exact
+  statement walk; a bare `grep -c assert` has misled four lanes this week, and it under-reads on `assert!(` split
+  across lines as much as it over-reads on comments. (2) A helper that counts WRITTEN rows must never be handed a
+  predicate that skips only LOADED rows — the two sets differ exactly where a fixture is inert. (3) `FAIL_CLOSED`
+  codes belong on the right-hand side of an assert, never in a `let`, or the compiler is glad to help a test pass
+  vacuously. (4) A module named for a file path is not the module path once a `#[path = …]` attribute is involved —
+  resolve the attribute before blaming the wrong file. (5) A pathspec commit assembled from `git status` will sweep
+  another session's files into your message; it happened once tonight and was reported rather than hidden — name paths
+  you inspected, per root `AGENTS.md` §3.
+
+**Commit:** single pathspec commit `docs(journal): close the release-profile fixture campaign and record what it traded away`.
