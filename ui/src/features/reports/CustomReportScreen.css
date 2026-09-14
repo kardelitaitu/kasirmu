@@ -167,9 +167,45 @@
 .custom-report-result-card { margin-top: var(--space-4); }
 .custom-report-result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
 .custom-report-section-title { font-size: var(--text-lg); font-weight: 600; color: var(--color-fg-primary); }
+/* Row-cap notice (markup :390, a <p role="status" aria-live="polite">). Colour
+   only: it is a caution, not an error, so it takes --color-warning the way
+   SessionLockScreen.css:278 and TransactionLogScreen.css:139 do, and it refuses
+   padding and background because .custom-report-error (:163) is this sheet's own
+   one-line status and carries none of its own inset — the result-header above it
+   (:168) already owns the gap with its margin-bottom. */
+.custom-report-truncated { color: var(--color-warning); }
 .custom-report-table-wrap { overflow-x: auto; }
 .custom-report-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .custom-report-table th,
 .custom-report-table td { padding: var(--space-2) var(--space-3); text-align: left; border-bottom: 1px solid var(--color-border); }
 .custom-report-table th { font-weight: 600; color: var(--color-fg-secondary); background: var(--color-bg-popover); position: sticky; top: 0; }
 .custom-report-table tbody tr:hover { background: var(--color-bg-hover); }
+
+/* Pagination row (markup :415, role="navigation", three children: Previous /
+   counter / Next). Same three properties SalesHistoryScreen.css:486-489 uses for
+   the identical row: display:flex is what makes it a row, align-items:center is
+   load-bearing because the shared <Button> is a 36px-tall box and the counter is
+   bare text (this sheet sets min-height:36px on its own controls at :16,:50), and
+   gap is required rather than decorative because flex removes the whitespace
+   between items, so without it the two buttons and the text would touch.
+   REFUSED: justify-content:center (the sheet left-aligns everything — see
+   text-align:left on th/td at :173 — and a centred row under a left-aligned table
+   reads as a different alignment decision, not as symmetry) and padding/margin
+   (the Card and the table-wrap above already own the inset; the sibling's
+   padding: var(--space-4) 0 is that sheet's choice, and repeating it here buys a
+   second gap where one exists). */
+.custom-report-pagination {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+/* The "page N" counter (markup :424). Colour only — tertiary foreground is what
+   this sheet already uses for de-emphasised text (:155 .custom-report-col-no-results,
+   :164 .custom-report-no-data) and what .sales-history-page-info at
+   SalesHistoryScreen.css:481-485 chose for the same counter.
+   REFUSED on purpose: the sibling's font-size: var(--text-sm) (no type scale on a
+   line that reads out how much of a monetary report you are looking at, and the
+   default is already legible) and the sibling's margin-left: var(--space-2)
+   (the row above already spaces its children with gap, so a margin would be
+   double-ownership of one gap). */
+.custom-report-page-info { color: var(--color-fg-tertiary); }
