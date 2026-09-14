@@ -1048,6 +1048,50 @@ describe('WorkspaceHome', () => {
   // ── Keyboard shortcuts (number keys) ────────────────────────
 
   describe('keyboard shortcuts', () => {
+    // The digit handler accepts exactly one key character and maps it with
+    // `parseInt(e.key, 10) - 1` (WorkspaceHome.tsx:549/:552), so the reachable
+    // cards are indices 0-8. A tenth card whose overlay says "Press 10 to open"
+    // is advertising a key no single keydown can deliver: `e.key` for that
+    // sequence is '1' then '0', neither of which selects card 10. The label is
+    // the lie, so the label is what gets capped -- see the fix's comment at the
+    // MAX_DIGIT_SHORTCUT declaration.
+    // Only non-admin types: sortedWorkspaces drops `admin` at WorkspaceHome.tsx:329,
+    // so an admin duplicate would silently shrink the rendered list (measured: 8 hints
+    // on the first attempt, which is the filter working, not the defect).
+    const openableTypes = sampleWorkspaces.filter((w) => w.type_key !== 'admin');
+    const tenWorkspaces = Array.from({ length: 10 }, (_, i) => ({
+      ...openableTypes[i % openableTypes.length],
+      instance_id: `bulk-${i}`,
+      name: `WS${i + 1}`,
+    }));
+
+    it('advertises a digit shortcut only for the cards that digit can reach', async () => {
+      mockWorkspaceValue.mockReturnValue({
+        availableWorkspaces: tenWorkspaces,
+        loading: false,
+        error: null,
+        retry: vi.fn(),
+        setActiveWorkspace: mockSetActiveWorkspace,
+        activeWorkspace: null,
+        workspaceScreens: [],
+        lastWorkspace: null,
+      });
+
+      await renderWithFluent(<WorkspaceHome />);
+      await waitFor(() => {
+        expect(screen.getAllByText('WS1').length).toBeGreaterThanOrEqual(1);
+      });
+
+      const hints = screen.getAllByText(/^Press \d+ to open$/);
+      expect(hints.length, 'every one of the 10 cards should not carry a digit hint').toBe(9);
+      expect(
+        screen.queryByText('Press 10 to open'),
+        'the 10th card advertises a key the handler cannot receive',
+      ).toBeNull();
+      // ...and the ninth card, the last reachable one, still does.
+      expect(screen.queryByText('Press 9 to open')).not.toBeNull();
+    });
+
     it('selects workspace when number key is pressed', async () => {
       mockWorkspaceValue.mockReturnValue({
         availableWorkspaces: sampleWorkspaces,

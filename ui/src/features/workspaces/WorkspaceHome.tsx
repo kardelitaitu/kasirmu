@@ -69,6 +69,19 @@ function saveLastUsed(lastUsed: Record<string, number>) {
 
 // ── Workspace sort order ──────────────────────────────────────────
 
+/**
+ * How many cards a single digit keypress can reach. The handler accepts exactly
+ * `1`-`9` and maps them with `parseInt(e.key, 10) - 1`, so indices 0-8 are
+ * addressable and index 9 is not: a tenth card would have to be named by the
+ * two-character sequence "10", which arrives as two keydowns (`1` then `0`) and
+ * selects nothing. The cap is therefore the design, not an oversight -- what was
+ * wrong is the overlay label that advertised a key no handler can receive. Gate
+ * the label on this; do not renumber the cards, which would only move the lie to
+ * the last slot. Pinned by WorkspaceHome.test.tsx "advertises a digit shortcut
+ * only for the cards that digit can reach".
+ */
+const MAX_DIGIT_SHORTCUT = 9;
+
 const WS_ORDER: Record<string, number> = {
   'restaurant-pos': 1,
   'store-pos': 2,
@@ -839,6 +852,11 @@ export default function WorkspaceHome() {
                           </div>
                         </div>
                         <div className="workspace-card-overlay" aria-hidden="true">
+                          {/* Capped at MAX_DIGIT_SHORTCUT: a card past the ninth is real, but
+                              no single keypress can name it -- the handler maps one key
+                              character with parseInt(e.key, 10) - 1. The label is the part
+                              that was wrong, so the label stops advertising it. */}
+                          {idx < MAX_DIGIT_SHORTCUT && (
                           <span className="workspace-card-overlay-hint">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="12" height="12">
                               <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -849,6 +867,7 @@ export default function WorkspaceHome() {
                               <span>Press {idx + 1} to open</span>
                             </Localized>
                           </span>
+                          )}
                         </div>
                       </button>
                     );
