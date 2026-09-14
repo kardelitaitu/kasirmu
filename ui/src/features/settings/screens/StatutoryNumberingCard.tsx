@@ -342,20 +342,20 @@ export function StatutoryNumberingCard() {
         )}
       </div>
 
-      <section className="fiscalnum-overview" aria-labelledby="fiscalnum-overview-title">
+      <section aria-labelledby="fiscalnum-overview-title">
         <Localized id="settings-fiscalnum-overview-title">
-          <h3 id="fiscalnum-overview-title" className="fiscalnum-overview-title">
+          <h3 id="fiscalnum-overview-title">
             All configured series
           </h3>
         </Localized>
         {allSeries.length === 0 ? (
-          <p className="fiscalnum-overview-empty">
+          <p>
             <Localized id="settings-fiscalnum-overview-empty">
               No series configured yet — save one above to see it here.
             </Localized>
           </p>
         ) : (
-          <table className="fiscalnum-overview-table">
+          <table>
             <thead>
               <tr>
                 <th scope="col">
