@@ -413,6 +413,34 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     });
   });
 
+  // (vi) ── the one verdict no other case in this file can observe ──────────
+  // Measured, not assumed: deleting the grace classification at AppShell.tsx:235
+  // (a `gracePeriod` read then falls through to `isActive` and is classified
+  // `active`) passes every other case in this file, because LICENCE_GRACE also
+  // carries `isActive: true` and, like active, it neither blocks nor badges.
+  // The gate's OUTCOME is identical for the two states, so the only observable
+  // difference left is the warning the grace verdict raises at :255-256.
+  // Without asserting that, "grace is tracked as its own state" is a comment
+  // about the type, not a tested claim about the shell.
+  it('grace period is classified GRACE, not folded into active — the warning is raised', async () => {
+    mockGetLicenseStatus.mockResolvedValue(LICENCE_GRACE);
+    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockHasUsers.mockResolvedValue(USERS_PRESENT);
+
+    await boot();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+    });
+    // Non-blocking, exactly like `active` — that half the case above covers.
+    expect(screen.queryByTestId('license-activation-screen')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boot-status-badges')).not.toBeInTheDocument();
+    // This half is only true of `grace`: the verdict is reported, not swallowed.
+    await waitFor(() => {
+      expect(screen.getByText('License is in grace period.')).toBeInTheDocument();
+    });
+  });
+
 });
 
 // ── Session-token failure: the DURABLE surface ───────────────────────────────
