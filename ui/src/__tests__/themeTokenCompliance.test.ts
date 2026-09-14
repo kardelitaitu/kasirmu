@@ -588,7 +588,7 @@ interface FontStack {
   line: number;
 }
 
-const FONT_TOKEN_DECL_RE = /(^|[\s;{])(--font-[a-z0-9-]+)\s*:\s*([^;]*);/gi;
+const FONT_TOKEN_DECL_RE = /(^|[\s;{])(--[a-zA-Z0-9_-]*(?:font|family)[a-zA-Z0-9_-]*)\s*:\s*([^;]*);/gi;
 
 function fontStacksFromCss(file: string, text: string): FontStack[] {
   const stripped = blankComments(text);
@@ -598,7 +598,8 @@ function fontStacksFromCss(file: string, text: string): FontStack[] {
   while (m) {
     const name = m[2] ?? '';
     const value = (m[3] ?? '').replace(/\s+/g, ' ').trim();
-    const scalar = /^[-\d.\s]+$/.test(value)
+    const scalar = /^[-+]?[\d.\s]+$/.test(value)
+      || /^[-+]?\d*\.?\d+(?:px|rem|em|%|pt|pc|in|cm|mm|ex|ch|vh|vw|vmin|vmax|ms|s)$/i.test(value)
       || /^(?:normal|bold|bolder|lighter|italic|oblique|inherit|initial|unset|auto|none)$/i.test(value);
     if (value && !scalar) {
       const lead = m[1] ?? '';
@@ -677,6 +678,97 @@ const CSS_SOURCES = collectCssFiles(UI_SRC).map((f) => ({ file: f, text: readFil
 
 function describeHits(hits: FontRefHit[]): string {
   return hits.map((h) => '  ' + h.file + ':' + h.line + '  ' + h.snippet).join('\n');
+}
+
+/* Rule 4 -- value SHAPE for any custom property whose NAME says font.
+ *
+ * Rule 2 asks a stack to END in a generic keyword; it cannot see a value that
+ * is malformed as a whole. A family stack is a comma-separated LIST, so each
+ * name is quoted only when it needs it. Wrap the list in one pair of quotes
+ * and CSS sees a single family named "Inter, sans-serif" -- which no engine
+ * has -- so the declaration resolves to the browser default font and even the
+ * sans-serif entry is gone. That is exactly what scripts/sync-branding.ps1
+ * emitted for every whitelabel tenant until this change, and the name pattern
+ * had to widen from --font-* to catch it: --brand-font-family never matched
+ * --font-[a-z0-9-]+ because the property name does not start with it.
+ *
+ * Quoting is NOT banned by this rule: 'Inter', system-ui and
+ * "DM Sans", "Inter", sans-serif are both valid lists and both pass. Only
+ * a value that is ONE quoted string holding a comma fails, plus any property
+ * that pulls such a value in through var() -- the indirect route is the one
+ * that finally reaches a browser.
+ */
+
+const FAMILYISH_NAME_RE = /(?:font|family)/i;
+
+const ANY_CUSTOM_DECL_RE = /(^|[\s;{])(--[a-zA-Z0-9_-]+)\s*:\s*([^;]*);/g;
+
+interface CustomPropDef {
+  name: string;
+  value: string;
+  file: string;
+  line: number;
+}
+
+function customPropsFromCss(file: string, text: string): CustomPropDef[] {
+  const stripped = blankComments(text);
+  const out: CustomPropDef[] = [];
+  ANY_CUSTOM_DECL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null = ANY_CUSTOM_DECL_RE.exec(stripped);
+  while (m) {
+    const lead = m[1] ?? '';
+    const value = (m[3] ?? '').replace(/\s+/g, ' ').trim();
+    if (value) {
+      out.push({ name: m[2] ?? '', value, file: shortFile(file), line: lineOf(stripped, m.index + lead.length) });
+    }
+    m = ANY_CUSTOM_DECL_RE.exec(stripped);
+  }
+  return out;
+}
+
+/** True when the whole value is one quoted string whose inside contains a comma. */
+function isWrappedCommaList(value: string): boolean {
+  const v = value.trim();
+  const q = v[0];
+  if (q !== "'" && q !== '"') return false;
+  const close = v.indexOf(q, 1);
+  if (close < 0) return false;
+  // Anything after the closing quote means it is a list, not one string.
+  if (v.slice(close + 1).trim().length > 0) return false;
+  return v.slice(1, close).includes(',');
+}
+
+interface FamilyShapeViolation extends CustomPropDef {
+  kind: 'wrapped list' | 'var() chain';
+  origin: string;
+}
+
+function wrappedFamilyLists(defs: CustomPropDef[]): FamilyShapeViolation[] {
+  const direct = defs.filter(
+    (d) => FAMILYISH_NAME_RE.test(d.name) && isWrappedCommaList(d.value),
+  );
+  const out: FamilyShapeViolation[] = direct.map((d) => ({ ...d, kind: 'wrapped list' as const, origin: d.name }));
+  const badNames = new Set(direct.map((d) => d.name));
+  const seen = new Set<string>();
+  for (const d of defs) {
+    const re = /var\(\s*(--[a-zA-Z0-9_-]+)/g;
+    let m: RegExpExecArray | null = re.exec(d.value);
+    while (m) {
+      const ref = m[1] ?? '';
+      m = re.exec(d.value);
+      if (!badNames.has(ref)) continue;
+      const key = d.file + ':' + d.line + ':' + d.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ...d, kind: 'var() chain' as const, origin: ref });
+    }
+  }
+  return out.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
+}
+
+function describeFamilyViolations(bad: FamilyShapeViolation[]): string {
+  return bad.map((b) => '  ' + b.file + ':' + b.line + '  ' + b.name + ': ' + b.value
+    + '   [' + b.kind + ' -> ' + b.origin + ']').join('\n');
 }
 
 function describeStacks(stacks: FontStack[]): string {
@@ -775,5 +867,42 @@ describe('font-reference portability', () => {
     ].join('\n');
     const hits = absoluteFontFaceUrls('probe.css', probe);
     expect(hits.map((h) => h.line)).toEqual([5, 7]);
+  });
+  it('rule 4: no font-named property is one quoted comma-list, nor chained by var()', () => {
+    const defs = CSS_SOURCES.flatMap(({ file, text }) => customPropsFromCss(file, text));
+    const bad = wrappedFamilyLists(defs);
+    // Floor, same reason as rule 2: a parse that found nothing must not read
+    // as compliance.
+    expect(defs.length).toBeGreaterThanOrEqual(10);
+    expect(
+      bad.length,
+      'A font-family value is wrapped in a single pair of quotes, so CSS reads '
+        + 'it as ONE family name that does not exist and the declaration falls '
+        + 'back to the browser default font. Quote each family separately, or '
+        + 'not at all:\n'
+        + describeFamilyViolations(bad),
+    ).toBe(0);
+  });
+
+  it('rule 4 probe: wrapped list and its var() chain fail; real stacks pass', () => {
+    const probe = [
+      ':root {',
+      "  --brand-font-family: 'Inter, sans-serif';",
+      '  --brand-font-family-alt: "DM Sans", "Inter", sans-serif;',
+      "  --font-mixed: 'Inter', system-ui;",
+      "  --brand-company: 'OZ POS Inc.';",
+      '  --kds-font-md: 15px;',
+      '  --font-weight-normal: 400;',
+      '}',
+      '.splash { --fallback-stack: var(--brand-font-family); }',
+      '.real { --good-stack: var(--brand-font-family-alt); }',
+    ].join('\n');
+    const defs = customPropsFromCss('probe.css', probe);
+    expect(defs.length).toBe(8);
+    const bad = wrappedFamilyLists(defs);
+    expect(bad.map((b) => b.name + ':' + b.line + ':' + b.kind)).toEqual([
+      '--brand-font-family:2:wrapped list',
+      '--fallback-stack:9:var() chain',
+    ]);
   });
 });
