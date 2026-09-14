@@ -126,6 +126,21 @@
 
 ---
 
+## 📦 Shipped in this campaign (2026-09-14)
+
+| commit | what landed | measured proof |
+|---|---|---|
+| `3cb313277` `refactor(payment): move the frozen PaymentModalProps contract into payment/types` | the interface lifted out of the shell, **verbatim** — 18 props, 6 required, 12 optional — and re-exported so the old import path still resolves | `ui/src/features/sales/payment/types.ts` = **56** ln, `PaymentModalProps` at `:19`; `PaymentModal.tsx:38` imports it, `:55` `export type { PaymentModalProps };`. ⚠️ **The caveat recorded in the blast-radius note stands: nothing imports the type, so the "freeze" has NO import witness** — the only real guard is `npm run typecheck` at `PosScreen.tsx:800` and `RetailPosScreen.tsx:1425`. |
+| `ca5d58957` `fix(sales): render quick tender amounts through formatMoney with no float math` | the three `10 ** exp` float sites and the hardcoded `toLocaleString('id-ID')` label are **gone** | `grep -c '\*\* exp\|toLocaleString' ui/src/features/sales/PaymentModal.tsx` = **0** (was 1 for the locale, at `:1958`). **Two** sites whose output feeds an editable `<input>` deliberately do **NOT** use `formatMoney`: digit placement is done with integers/strings instead, because feeding `formatMoney`'s output into `parseMinorUnits` returns `null` and would **silently zero a tender**. `PaymentModal.test.tsx:662` was retargeted from the float-era string to a property matcher over either separator. **Left alone on purpose:** the exchange **rate** at `:1774` (`rate_millionths`, not `Money`) and the integer floor division at `:1137-1138` (`BigInt` arithmetic, not float). |
+
+**No checkbox under 3.1–3.4 is ticked by these two commits, and that is deliberate:** neither the contract move nor the money fix is a line item in this plan — 3.1/3.2/3.3/3.4's own boxes are extraction steps, and all of them are still open. The fence list above changes only in that `payment/types.ts` now exists (1 of 8).
+
+**Phase status after these two:** 3.1 / 3.2 — `useAutoQr` is **IN FLIGHT** as the first cut (`a1078a05`), and it is a narrowed slice, not the state machine 3.1 names. 3.3 — the parked-span cost recorded above (~**167 of 353** ln deferred to `todo-payment.md`'s `:1840-2060`) **stands unchanged**; nothing in it has been released. 3.4 — **not started**; `wc -l ui/src/features/sales/PaymentModal.tsx` still reads four digits.
+
+**Two follow-ups deliberately NOT folded into `ca5d58957`, recorded as OPEN:**
+1. **`new Date().toLocaleDateString('en-US', …)` × 3** — `PaymentModal.tsx:775`, `:1293`, `:1595` (`grep -n toLocaleDateString ui/src/features/sales/PaymentModal.tsx`). Same hardcoded-locale law, different surface: these are **receipt payload dates**, not displayed `Money`, so they are not part of the money fix and must not be silently swept into it.
+2. **`disabled={!subtotal}` at `components/CartFooterTotals.tsx:147` is DEAD BY TYPE** — `subtotal` is declared non-nullable `Money` at `:11` (an object), so `!subtotal` can never be true and the guard never fires. A real fix compares `subtotal.minor_units === 0` inside the component. Filed here, unfixed: `CartFooterTotals.tsx` is Agent 2's fence, not this one's.
+
 ## 🧭 Notes for whoever picks this up (added by the 2026-09-14 audit)
 
 1. **All four phases are untouched.** `ui/src/features/sales/payment/` does not exist; no checkbox under 3.1–3.4 can be ticked honestly. → **2026-09-14, later the same day: partly FALSE and superseded (the sentence stands as written).** `payment/` exists with one file, `types.ts` (56 ln), and 1 of the fence's 8 paths is now on disk. "Untouched" is still true of every *behavioural* checkbox: no state machine, no split hook, no panel, no footer, and `PaymentModal.tsx` is still a monolith.
