@@ -80,6 +80,56 @@ describe('extractClassSelectors', () => {
     expect(result.has('b')).toBe(true);
     expect(result.has('c')).toBe(true);
   });
+
+  // The four shapes a class token can legally be followed by that the
+  // original `[.,\s{]` lookahead did not admit. Each of these names existed in
+  // a shipped stylesheet and was invisible to the definition side until the
+  // terminator set was widened; 126 of them across 137 stylesheets, 121 inside
+  // themes/components.css.
+  it('extracts a class followed by a pseudo-element compound selector', () => {
+    const css = '.toggle-thumb::after { content: ""; left: 0; }';
+    const result = extractClassSelectors(css);
+    expect(result.has('toggle-thumb')).toBe(true);
+    // The pseudo-element own name is still not a class - it has no leading dot.
+    expect(result.has('after')).toBe(false);
+    expect(result.size).toBe(1);
+  });
+
+  it('extracts a class followed by a functional pseudo like :has()', () => {
+    const css = '.retail-shift-modal:has(.pin-input) { display: grid; }';
+    const result = extractClassSelectors(css);
+    expect(result.has('retail-shift-modal')).toBe(true);
+    expect(result.has('pin-input')).toBe(true);
+    expect(result.size).toBe(2);
+  });
+
+  it('extracts a class inside a paren-delimited selector such as :global()', () => {
+    const css = ':global(.dark) .app-shell { color: red; }';
+    const result = extractClassSelectors(css);
+    expect(result.has('dark')).toBe(true);
+    expect(result.has('app-shell')).toBe(true);
+  });
+
+  it('extracts a class followed immediately by an attribute selector', () => {
+    const css = '.machine-id-chip--ready[aria-current="true"] { opacity: 1; }';
+    const result = extractClassSelectors(css);
+    expect(result.has('machine-id-chip--ready')).toBe(true);
+    expect(result.size).toBe(1);
+  });
+
+  it('does NOT mint a name from a colon that is not a pseudo, nor from a value', () => {
+    // The negative half of the widening: the `:` branch requires a letter or a
+    // second colon right after it, so a declaration colon followed by a quoted
+    // value cannot create a class. The dot-tokens in the values are the
+    // pre-existing digit exclusion's job, not string stripping - quoted strings
+    // are deliberately left in place because stripping them erases the
+    // :global(.dark) population along with them.
+    const css = '.only { content: "theme.dark"; transition: all .2s ease; line-height: 1.5; }';
+    const result = extractClassSelectors(css);
+    expect(result.has('dark')).toBe(false);
+    expect(result.has('only')).toBe(true);
+    expect(result.size).toBe(1);
+  });
 });
 
 // ── extractUsedClassNames ───────────────────────────────────────────

@@ -31,12 +31,30 @@ export function extractClassSelectors(css: string): Set<string> {
   // do not produce false-positive class names (e.g. `w3`).
   const noUrls = noKeyframes.replace(/url\([^)]*\)/g, '');
 
-  // Match every `.class-name` token that precedes `{`, `,`, `.`,
-  // or whitespace. The `.` in the lookahead handles compound
-  // selectors like `.class1.class2`.
-  // CSS values like `0.3s` or `1.25rem` also match this regex (because
-  // `\w` includes digits), so we exclude names starting with a digit.
-  const selectorRe = /\.([\w-]+)(?=[.,\s{])/g;
+  // Match every `.class-name` token that sits in SELECTOR position, which is
+  // to say: the character that terminates the name is one that can legally
+  // follow a simple selector. That set is the block brace `{`, the selector
+  // list comma `,`, whitespace (descendant or combinator), a further compound
+  // part `.`, an attribute bracket `[`, the `)` that closes a functional
+  // selector like `:global(.dark)`, and a `:` that opens a pseudo-class or
+  // pseudo-element. The pseudo branch is deliberately narrower than a bare
+  // `:`: it requires a letter or a second colon immediately after, so a
+  // declaration colon (`content: "theme.dark"`) cannot mint a name, while
+  // `.toggle-thumb::after` and `.retail-shift-modal:has(...)` do.
+  //
+  // Before this, the terminator set was `[.,\s{]` and a name followed by a
+  // compound selector was silently dropped - 126 names across the tree, 121 of
+  // them in themes/components.css. The dropping was one-directional: nothing
+  // was ever OVER-reported, so the defect reads as a clean sheet rather than a
+  // wrong finding, which is the worst kind.
+  //
+  // NOTE on preprocessing, because a previous scan got this wrong: quoted
+  // strings are deliberately NOT stripped above. Stripping them removes most of
+  // this very population (`:global(.dark)` lives in a quoted module context in
+  // some sheets) and a scan that stripped them reported 9 names where the tree
+  // holds 126. The digit-name exclusion below is what keeps values like `0.3s`
+  // and `1.25rem` out, not string stripping.
+  const selectorRe = /\.([\w-]+)(?=[.,\s{)\]]|\[|:(?=[A-Za-z:]))/g;
   let match: RegExpExecArray | null;
   while ((match = selectorRe.exec(noUrls)) !== null) {
     const name = match[1]!;
