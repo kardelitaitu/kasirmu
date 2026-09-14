@@ -1,5 +1,7 @@
 # Orchestrator Agent 1: KDS Ticket State Machine & Input Peripherals
 
+> **SUPERSEDED 2026-09-14 by `todo-refactor-kds-agents-merged.md`, which carries every open box from this file plus the re-measured gate (`<= 700`, not `< 350`) and the three fence collisions this file could not see. Kept in place, not deleted and NOT renamed `done-`: the work it plans is unfinished, and a `done-` prefix on a superseded plan would be a false claim, not a tidy root.**
+
 <!-- Audit stamp: 2026-09-14 · DSH · status: INACCURATE -> CORRECTED · corrections applied: 13 · all three fenced extraction targets were prescribed at paths that do not exist (there is no `utils/` dir under `features/kds/` at all, and the audio work they planned already landed in `hooks/useNewTicketSound.ts`), and the `bumpOrder`/`recallOrder`/`holdTicket` API trio is invented — 0 hits across `ui/src`, while `ui/src/api/kds.ts` really exposes `updateKdsStatusScoped` and friends; found by globbing `ui/src/features/kds/**`, grepping each named symbol, and re-measuring with `wc -l`. -->
 
 **Document:** `todo-refactor-kds-agents-1.md`  

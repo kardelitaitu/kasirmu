@@ -1,5 +1,7 @@
 # Orchestrator Agent 2: Order Ticket Cards & Station Timers
 
+> **SUPERSEDED 2026-09-14 by `todo-refactor-kds-agents-merged.md`, which carries every open box from this file plus the re-measured gate (`<= 700`, not `< 350`) and the three fence collisions this file could not see. Kept in place, not deleted and NOT renamed `done-`: the work it plans is unfinished, and a `done-` prefix on a superseded plan would be a false claim, not a tidy root.**
+
 <!-- Audit stamp: 2026-09-14 · DSH · status: INACCURATE -> CORRECTED · corrections applied: 12 · the fence listed `components/KdsTicketCard.tsx` as NEW when it has existed since `ae6d19ae7` (2026-07-09, five weeks before this roadmap was written) and is today the largest file in the feature at 574 lines, so Phase 2.1's headline extraction was already long done — while the timer/threshold work this doc assigns to a future `KdsTimerBadge.tsx` already lives in `hooks/useTicketSla.ts`, a path the fence never mentions; found by globbing `ui/src/features/kds/**` and dating each file with `git log --diff-filter=A`. -->
 
 **Document:** `todo-refactor-kds-agents-2.md`  
