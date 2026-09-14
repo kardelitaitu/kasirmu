@@ -51,6 +51,20 @@ function collectCssFiles(dir: string): string[] {
   return files;
 }
 
+/* ── Blank out comments WITHOUT moving anything ─────────────────── */
+/**
+ * Comments must not reach the selector or body text, but deleting them moves
+ * every later byte and so turns a line number into a fiction: the arithmetic
+ * below counts newlines, and a multi-line comment swallows one newline per line
+ * it has. Replacing each comment with spaces of the same length keeps the masked
+ * text the same LENGTH as the file, so a position in it IS a position in the
+ * file. The address a finding reports is a file address by construction, not
+ * because a per-comment offset was added back correctly.
+ */
+function maskComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
+}
+
 /* ── Extract CSS rules (selector + body + line) ─────────────────── */
 interface CssRule {
   selector: string;
@@ -59,7 +73,8 @@ interface CssRule {
 }
 
 function extractRules(css: string): CssRule[] {
-  const clean = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  // Masked, never deleted (see maskComments): rule.line is a file address.
+  const clean = maskComments(css);
   const rules: CssRule[] = [];
   let i = 0;
   while (i < clean.length) {
@@ -168,5 +183,64 @@ describe('popup surfaces have visible backgrounds', () => {
 
   it(`every popup container has an opaque background (${cssFiles.length} CSS files scanned)`, () => {
     expect(failures, `\n${failures.join('\n\n')}`).toEqual([]);
+  });
+
+  /* ── Address oracle: a reported line must be the file's own line ── */
+  function newlinesInsideComments(css: string): number {
+    let n = 0;
+    let i = 0;
+    for (;;) {
+      const open = css.indexOf('/*', i);
+      if (open === -1) break;
+      const close = css.indexOf('*/', open + 2);
+      if (close === -1) break;
+      for (let j = open; j < close; j++) if (css[j] === '\n') n++;
+      i = close + 2;
+    }
+    return n;
+  }
+
+  it('reports the file line a finding actually lives on, for every rule of every sheet', () => {
+    // The mechanism, on a fixture: a rule sitting behind a multi-line comment
+    // must be addressed by the file's own line count. `.toast` opens on line 4
+    // lands them on 1 and 5 — inside an unrelated rule's body.
+    const fixture = [
+      '/* one',
+      '   two',
+      '   three */',
+      '.toast {',
+      '  /* four',
+      '     five */',
+      '  color: var(--color-fg);',
+      '}',
+      '.popup {',
+      '  background: var(--color-bg-surface);',
+      '}',
+    ].join('\n');
+    expect(extractRules(fixture).map((r) => `${r.selector}:${r.line}`)).toEqual(['.toast:4', '.popup:9']);
+
+    // The claim, on the tree — every rule any finding could report, in every
+    // sheet, not only where a measurement happened to look.
+    const misaddressed: string[] = [];
+    let checked = 0;
+    let behindComments = 0;
+    for (const filePath of cssFiles) {
+      const content = readFileSync(filePath, 'utf-8');
+      const fileLines = content.split('\n');
+      if (newlinesInsideComments(content) > 0) behindComments++;
+      const relPath = relative(UI_SRC, filePath);
+      for (const rule of extractRules(content)) {
+        checked++;
+        const at = fileLines[rule.line - 1];
+        if (at === undefined || !at.includes('{')) {
+          misaddressed.push(relPath + ':' + rule.line + ' — ' + rule.selector.split('\n')[0] + ' (holds ' + JSON.stringify((at ?? '<past end of file>').trim().slice(0, 48)) + ')');
+        }
+      }
+    }
+    // A sweep over nothing, or over sheets whose comments never span a line, is
+    // vacuous without the fix — both floors are part of the point.
+    expect(checked, 'the address sweep examined no rules').toBeGreaterThan(1000);
+    expect(behindComments, 'the sweep covered no sheet whose comments span lines').toBeGreaterThan(0);
+    expect(misaddressed, '\n' + misaddressed.length + ' rule(s) report a line that is not the line their block opens on:\n' + misaddressed.slice(0, 15).join('\n')).toEqual([]);
   });
 });
