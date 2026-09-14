@@ -21,7 +21,7 @@ next: none | perf: single pass over registered migrations; the splitter runs onl
 //!   registered migration and **fails closed** when an already-applied
 //!   definition changed (historical migrations must never be edited in
 //!   place). A changed definition is first re-applied — see
-//!   [`reapply_script`], which tolerates the statements whose effect is
+//!   `reapply_script`, which tolerates the statements whose effect is
 //!   provably already present so that a comment-only edit cannot brick
 //!   startup. Rows applied before checksum tracking existed are backfilled
 //!   once on the first run after upgrade.
