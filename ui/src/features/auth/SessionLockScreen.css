@@ -318,6 +318,21 @@
   flex-direction: column;
   gap: clamp(var(--space-2), 1.5vw, var(--space-3));
   width: min(100%, 300px);
+}
+
+/* No focus ring on the pad CONTAINER. It is focused programmatically on
+   mount (`pinWrapRef.current?.focus()`), and Chromium does match
+   :focus-visible for that focus — measured in a real Chromium, not inferred.
+   The operator's position cue is each key's own :focus-visible outline
+   below; what has been typed is already shown by the filled PIN dots.
+   Scoped to :focus-visible rather than sitting in the base rule on purpose:
+   reset.css's bare `:focus-visible` has specificity (0,1,0) — the same as
+   `.session-lock-pad` — so an unscoped `outline: none` won only by being
+   injected later in the sheet order, and any load-order change would paint
+   a 2px blue box around the whole 300px keypad again. Specificity is
+   stable; order is not. Mirrors `.staff-login-pin-wrap:focus-visible`
+   (StaffLoginScreen.css), per the keypad-parity contract above. */
+.session-lock-pad:focus-visible {
   outline: none;
 }
 

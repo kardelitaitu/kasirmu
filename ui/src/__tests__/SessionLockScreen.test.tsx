@@ -589,3 +589,60 @@ describe('SessionLockScreen visual contract', () => {
     expect(document.querySelector('.session-lock-card')?.getAttribute('style')).toBeNull();
   });
 });
+
+// ── CSS integrity: the pad container must suppress focus-visible by SPECIFICITY ──
+//
+// Mirror of the `.staff-login-pin-wrap:focus-visible` guards in
+// StaffLoginScreen.test.tsx, because the lock card is a structural clone of the
+// login PIN step and the same defect was live here in the other form: the
+// suppression used to sit in the bare `.session-lock-pad` rule. Both that rule
+// and themes/reset.css's `:focus-visible { outline: 2px solid … }` are
+// specificity (0,1,0), so the base-rule form won ONLY by being injected after
+// reset.css. Measured in Chromium against the four real sheets: with the sheet
+// order flipped, the old rule computed `solid 2px rgb(20,126,251)` and painted a
+// blue box around the whole 300px keypad; the scoped
+// `.session-lock-pad:focus-visible` (0,2,0) computes `none` in both orders.
+// JSDOM (css:false) cannot reflect any of this, hence the source read.
+
+describe('SessionLockScreen CSS integrity', () => {
+  const css = readFileSync(
+    resolve(__dirname, '..', 'features', 'auth', 'SessionLockScreen.css'),
+    'utf8',
+  );
+
+  it('has a non-empty .session-lock-pad:focus-visible rule that suppresses the outline', () => {
+    const ruleMatch = css.match(/\.session-lock-pad:focus-visible\s*\{([^}]*)\}/);
+    expect(
+      ruleMatch,
+      '.session-lock-pad:focus-visible rule must exist in SessionLockScreen.css — ' +
+        'the pad is focused programmatically on mount, so an unscoped suppression ' +
+        'lets the browser default blue outline appear on the keypad wrapper',
+    ).not.toBeNull();
+
+    const ruleBody = ruleMatch![1]!.trim();
+    expect(ruleBody, '.session-lock-pad:focus-visible rule body must not be empty').not.toHaveLength(0);
+    expect(ruleBody).toContain('outline: none');
+  });
+
+  it('keeps `outline` out of the bare .session-lock-pad rule (order-dependent suppression)', () => {
+    const baseMatch = css.match(/\.session-lock-pad\s*\{([^}]*)\}/);
+    expect(baseMatch, '.session-lock-pad base rule must exist').not.toBeNull();
+    expect(
+      baseMatch![1]!,
+      '`outline: none` in the bare .session-lock-pad rule ties reset.css\'s `:focus-visible` ' +
+        'on specificity (0,1,0) and survives only on stylesheet order — scope it to ' +
+        ':focus-visible so the suppression is structural',
+    ).not.toMatch(/outline\s*:/);
+  });
+
+  it('keeps a visible focus outline on the keypad keys themselves', () => {
+    const keyMatch = css.match(/\.session-lock-pad-key:focus-visible\s*\{([^}]*)\}/);
+    expect(
+      keyMatch,
+      '.session-lock-pad-key:focus-visible must keep its own outline — suppressing the ' +
+        'container ring must not cost the keyboard user their only position cue on the pad',
+    ).not.toBeNull();
+    expect(keyMatch![1]!.trim()).toContain('outline: 2px');
+    expect(keyMatch![1]!.trim()).not.toContain('outline: none');
+  });
+});
