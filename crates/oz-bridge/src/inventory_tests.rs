@@ -17,7 +17,64 @@
 //! `require_inventory_permission` did.
 
 use super::*;
+
 use crate::testing::TestBridge;
+use crate::testing::seeded_row_loads;
+use oz_core::subscription::TenantSubscription;
+
+/// The release leg for a mutation this file drives through the subscription
+/// gate: `create_inventory_location` reaches the tenant row via
+/// `sub.verify_signature()?`, exactly the propagating shape of
+/// `terminals.rs:432` and of the two scoped workspace listings, so in release
+/// the command RETURNS AN ERROR - no id, no row, no projection of caps to
+/// assert. The `FAIL_CLOSED_*` template is deliberately absent from this file:
+/// these fixtures count and mutate written rows, and in release a written row
+/// is precisely what does not exist here.
+///
+/// Existence is pinned FIRST, because `seeded_row_loads() == false` collapses
+/// five distinct causes (`crates/oz-bridge/src/testing.rs:210-216`: no default
+/// row, a load `Err` on a mis-shaped table, a public-key failure, the intended
+/// base64 reject on the BOOTSTRAP_FREE sentinel, a genuine RSA mismatch) and
+/// only the fourth is this fixture vocabulary.
+async fn assert_refused_by_the_seeded_row<T>(
+    tb: &TestBridge,
+    settled: Result<T, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = tb.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture mutates against must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the command must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use oz_core::db::Store;
@@ -169,15 +226,22 @@ async fn owner_can_create_and_deactivate_locations() {
         "store-owner",
     );
 
-    let id = create_inventory_location(
+    let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
         "Backroom".into(),
         "warehouse".into(),
         "Secondary storage".into(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: the create is refused at the signature, so there is no id and
+    // the deactivation below has nothing to deactivate - it stays debug-only
+    // rather than being re-cut into a second assertion of the same cause.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, created, "free").await;
+        return;
+    }
+    let id = created.unwrap();
     assert!(!id.is_empty());
 
     let deactivated = deactivate_inventory_location(&bridge.ctx(), "owner-token", id).await;
@@ -268,15 +332,21 @@ async fn owner_can_update_location_name_and_type() {
         "store-owner",
     );
 
-    let id = create_inventory_location(
+    let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
         "Original".into(),
         "warehouse".into(),
         String::new(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: refused before any row is written, so the rename round-trip
+    // below (update -> list -> find) has no referent to follow.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, created, "free").await;
+        return;
+    }
+    let id = created.unwrap();
 
     update_inventory_location(
         &bridge.ctx(),
@@ -319,15 +389,24 @@ async fn cashier_cannot_update_location() {
         "role-owner",
         "store-owner",
     );
-    let id = create_inventory_location(
+    let created = create_inventory_location(
         &owner_bridge.ctx(),
         "owner-token",
         "Target".into(),
         "warehouse".into(),
         String::new(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: the OWNER SETUP is what the signature kills here, and without
+    // it there is no target row - so the cashier-denial claim below is left
+    // uncovered in the shipping profile rather than propped up on a refused
+    // id. Its sibling `cashier_can_list_locations_but_cannot_create_them`
+    // still exercises the PermissionDenied arm in both profiles.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&owner_bridge, created, "free").await;
+        return;
+    }
+    let id = created.unwrap();
 
     let result = update_inventory_location(
         &bridge.ctx(),
@@ -388,15 +467,21 @@ async fn owner_can_start_and_end_inventory_shift() {
     );
 
     // Create a location first.
-    let loc_id = create_inventory_location(
+    let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
         "Warehouse".into(),
         "warehouse".into(),
         String::new(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: no location id, so the whole shift lifecycle that hangs off it
+    // (start -> active -> end -> none) is debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, created, "free").await;
+        return;
+    }
+    let loc_id = created.unwrap();
 
     // Start shift.
     let shift = start_inventory_shift(&bridge.ctx(), "owner-token", loc_id, "Morning count".into())
