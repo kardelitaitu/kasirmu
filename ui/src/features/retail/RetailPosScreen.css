@@ -3378,6 +3378,51 @@
   /* ProductThumb renders a fixed-size tile; nothing extra needed here. */
 }
 
+/* Both rules are a MOVE, not a design: every declaration below was the inline style
+   object on the element that names it, at RetailProductGrid.tsx:398 (the name) and
+   :399 (the price), in the virtualised ProductTileCell. Until now the two class names
+   were defined in zero stylesheets (grep -rn 'retail-tile-name|retail-tile-price'
+   --include=*.css over ui/src -> 0 hits) and the markup styled itself; the inline styles
+   also meant the cascade beat any sheet rule, so the sheet half of this commit alone
+   would have changed nothing. The parent button's own inline block at :395 - gap 4,
+   padding 8, width/height, border, background - is deliberately untouched and out of
+   this box, which is why no gap or margin appears here.
+
+   Values: fontSize and color were already token references in the markup and port as-is
+   (--text-xs is tokens.css:153, 0.625rem; --color-fg-secondary is tokens.css:70/:381/
+   :525, so it resolves in :root, light AND dark). The bare 600 became
+   var(--font-weight-semibold) - tokens.css:167 defines that step as exactly 600, so it
+   is the same weight, and the token is :root-only by design, one value per theme, like
+   every step on the weight ladder (normal 400, medium 500, semibold 600, bold 700 at
+   :165-168). The bare 1.2 stayed 1.2 and the token it refuses is named: --leading-tight
+   is 1.25 (tokens.css:170), not 1.2, so taking it would widen every line box of a
+   two-line product name by 4% and move where the clamp cuts the name on the busiest
+   surface in the app. That is a render change, and this commit is not allowed to make
+   one. The literal is also not unprecedented: 11 declarations of exactly
+   'line-height: 1.2' already sit in feature sheets. No hex, no rgba, no new step. */
+.retail-tile-name {
+  font-size: var(--text-xs);                                /* RetailProductGrid.tsx:398 */
+  font-weight: var(--font-weight-semibold);                 /* RetailProductGrid.tsx:398 (600) */
+  line-height: 1.2;                                         /* RetailProductGrid.tsx:398 */
+  overflow: hidden;                                         /* RetailProductGrid.tsx:398 */
+  text-overflow: ellipsis;                                  /* RetailProductGrid.tsx:398 */
+  display: -webkit-box;                                     /* RetailProductGrid.tsx:398 */
+  -webkit-line-clamp: 2;                                    /* RetailProductGrid.tsx:398 */
+  -webkit-box-orient: vertical;                             /* RetailProductGrid.tsx:398 */
+}
+
+/* Two declarations, both from RetailProductGrid.tsx:399. This is the one judgement in
+   the commit that a reviewer should look at: the price renders an AMOUNT and the rule for
+   this box was that an amount does not get a font-size from me. It already had one, in
+   the markup, from the author who put it there - deleting it is not a neutral act either,
+   because the element would then inherit the tile's size and the price would visibly grow.
+   So it moves unchanged rather than being removed or re-sized. If the owner decides a
+   price must not carry its own size, the declaration to delete is the next line. */
+.retail-tile-price {
+  font-size: var(--text-xs);                                /* RetailProductGrid.tsx:399 */
+  color: var(--color-fg-secondary);                         /* RetailProductGrid.tsx:399 */
+}
+
 /* ── Product image editor (spec 0046b §3.2–3.3) ─────────────────── */
 .retail-edit-images {
   border: 1px solid var(--color-border-subtle);
