@@ -59,14 +59,19 @@ vi.mock('@/api/license', () => ({
   getHardwareFingerprint: vi.fn(),
 }));
 
+// The boot path reaches exactly ONE staff function: `hasUsers`
+// (ui/src/frontend/shell/AppShell.tsx:24, called at :201 and :215 — nothing
+// else from `@/api/staff` is imported by anything this file renders). An earlier
+// revision of this file also defined `listStaff`, `getStaff`, `createStaff`,
+// `updateStaff` and `deleteStaff` — NONE of which `@/api/staff` exports (the
+// live surface is `listStaffScoped` / `getStaffProfileScoped` /
+// `createStaffScoped` / `updateStaffScoped` / `deleteRoleScoped`), so they
+// answered calls the code under test can never make, and `bootstrapOwner`
+// belongs to CreatePinScreen, which this file stubs outright. A phantom surface
+// is the worst shape a mock can take: it looks like coverage while the real
+// call runs unmocked, so the surface here is exactly the one call made.
 vi.mock('@/api/staff', () => ({
   hasUsers: () => mockHasUsers(),
-  listStaff: vi.fn(() => Promise.resolve([])),
-  getStaff: vi.fn(),
-  createStaff: vi.fn(),
-  updateStaff: vi.fn(),
-  deleteStaff: vi.fn(),
-  bootstrapOwner: vi.fn(),
 }));
 
 vi.mock('@/api/settings', () => ({
@@ -407,4 +412,5 @@ describe('AppShell boot gate — unknown is not a licence', () => {
       expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
     });
   });
+
 });
