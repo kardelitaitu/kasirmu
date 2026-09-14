@@ -593,6 +593,27 @@ const SCREENS: ScreenEntry[] = [
     css: ['sales/PriceOverrideModal.css'],
     dynamicClassPrefixes: ['price-override-pin-dot--'],
   },
+  {
+    // Item modifier modal — a self-contained stylesheet closure, the same
+    // shape as KdsRoutingRulesEditor and PriceOverrideModal above: its sheet
+    // (sales/components/ItemModifierModal.css) holds 45 rules / 36 distinct
+    // class names and the ONLY consumer of any of them is this one .tsx,
+    // which imports its own sheet at :7. Verified by walking every .tsx
+    // under src/features: no other file names a class the sheet defines.
+    // It is mounted by retail/RetailPosScreen.tsx (import :16, render :1770),
+    // NOT by sales/PosScreen.tsx, whose own markup contains zero modifier-
+    // literals — which is why this is its own unit and not a line inside the
+    // PosScreen entry. No parentCss: all 31 className sites are modifier-*.
+    // No dynamicClassPrefixes either: the six state names are complete quoted
+    // literals at :293,:321 and :322, so the parser reaches them unaided.
+    // It could not be registered until 0265b84b8 gave modifier-price-label
+    // (:300) and modifier-price-value (:309) their base rules — an earlier
+    // trial of this exact entry went red on case 1 with those two names and
+    // was reverted rather than muted; see the PosScreen bullet below.
+    name: 'ItemModifierModal',
+    tsx: 'sales/components/ItemModifierModal.tsx',
+    css: ['sales/components/ItemModifierModal.css'],
+  },
   // PaymentModal is deliberately NOT registered yet, and this is the
   // note that keeps that gap from being silent. Its companion sheet
   // (sales/PaymentModal.css, 1,165 lines) and its 1,912-line TSX are
@@ -665,10 +686,20 @@ const SCREENS: ScreenEntry[] = [
   //   - sales/PosScreen.tsx — REACHABLE, but its markup already lives in
   //     eight sales/components/*.tsx and its classes in six CartPanel*.
   //     css sheets it imports at :46-52. Registered as a single-screen
-  //     entry it reports 55 dead + 1 undefined; given all eight
-  //     components and all six sheets it still reports 34 undefined
-  //     `modifier-*` classes owned by components/ItemModifierModal.css.
-  //     That is a scoping pass, not a registration.
+  //     entry it reports 55 dead + 1 undefined. The rest of what this
+  //     bullet used to claim was FALSE and is corrected here, because the
+  //     error was believed for three hours and cost a briefing: the trial
+  //     then appended components/ItemModifierModal.tsx to PosScreen's
+  //     additionalTsx and read "34 undefined modifier-* classes in
+  //     PosScreen". That was a scoping error, not a finding — the modal's
+  //     markup has its own sheet, it is mounted by retail/RetailPosScreen
+  //     (:16,:1770) and never by PosScreen, and PosScreen.tsx contains zero
+  //     modifier- literals (grep -c = 0). Pulling that subtree in charged
+  //     PosScreen with classes it does not own. PosScreen's own undefined
+  //     count is therefore NOT 34; it is unmeasured, and a re-measurement
+  //     with a clean denominator (its 7 sheets at :46-52 against its own
+  //     tree plus the eight components that really share them) is a SEPARATE
+  //     task from this file's registrations.
   //   - inventory/TransactionLogScreen.tsx — NOT REACHABLE: the only
   //     importers are in __tests__ (inventory/register.tsx mounts
   //     InventoryAdjustmentScreen and StockCountsFlow, never this; no
@@ -1185,7 +1216,6 @@ const BASELINE_UNCITED: string[] = [
   'sales/ReceiptPreview.css',
   'sales/StockShortfallDialog.css',
   'sales/WeightScaleWidget.css',
-  'sales/components/ItemModifierModal.css',
   'sales/widgets/widgets.css',
   'settings/LicenseSettings.css',
   'settings/SettingsNavTree.css',
