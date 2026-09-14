@@ -440,36 +440,46 @@ access: {
       named*. If a preset below admin carries the key, the shipped gate is wider
       than the policy the box stated; that is the one open question left here, and
       it belongs to whoever owns the role presets, not to the editor.
-- [ ] **Add SaaS authorization scope — NARROWED 2026-09-14: organisation +
-      terminal scope remain.** The box as written asked for four scope axes
-      (organization, location, workspace, terminal) on top of role and tier.
-      **Two have shipped**, so the box no longer describes the work: branch and
-      workspace scope are evaluated on the write path by
-      `crates/oz-core/src/db/staff.rs:225-245` — `require_permission_scoped`,
-      whose `:225-228` doc comment is "the scope-aware gate (ADR #35 D5 / spec
-      0048): … plus the assignment's branch/workspace scope is evaluated for
-      scoped assignments", and whose refusal at `:243-245` is literally
-      `"branch/workspace out of scope for user {user_id}"` — and the same axis
-      reaches the availability resolver as a first-class fact:
-      `crates/oz-core/src/entitlements.rs:232-236` (caller supplies "role, scope,
-      the per-feature server grant"), `:247` `scope_granted: Option<bool>`, `:262`
-      where the facts are assembled; `crates/oz-core/src/availability.rs:395`
-      turns it into `let scope_denies = facts.scope_granted == Some(false)`.
-      **What remains is organisation-wide and terminal-level scope**, and this box
-      is deliberately left UNCHECKED because the two surviving axes are exactly
-      the ones that make "a location-scoped manager cannot manage every tenant
-      location" non-trivial.
-      — **STILL OPEN AT RETIREMENT, 2026-09-14, and left unticked on purpose: this is the one
-      box that leaves this file as work.** Every anchor above was re-verified true at HEAD
-      `30d6e035f` (`require_permission_scoped` at `staff.rs:229`, doc comment `:225-228`, refusal
-      `:243-245`; `entitlements.rs:234-235`, `:247`, `:262`; `availability.rs:395`) — so the
-      *narrowing* is accurate and only the narrowing. What is missing is unchanged: nothing
-      evaluates an **organisation-wide** or **terminal-level** scope, so the two axes that would
-      make tenant-vs-location boundaries real are the two that do not exist. This is an
-      implementation order, not a documentation gap, and it is **not** closed here — retiring a
-      file must not retire its work. It needs its own `todo-` order, owned by whoever holds
-      `crates/oz-core` scope work (ADR #35 D5 / spec 0048), and this file is the evidence base it
-      should start from rather than a substitute for it.
+- [ ] **Add SaaS authorization scope — PARKED 2026-09-15 as an owner ruling, and the
+      sentence this row carried before this line is FALSE: re-read it before taking the
+      box.** Re-measured at HEAD `04cd68267`. **The organisation axis shipped**, so there
+      is no scope to add there and no field to invent: `enum ScopeType { Organization,
+      LegalEntity, Location }` is `crates/oz-core/src/db/assignments.rs:127-137`, its SQL is
+      `crates/oz-core/migrations/20260916_role_assignment_scopes.sql:23-25` (`ALTER TABLE
+      assignments ADD COLUMN scope_type TEXT NOT NULL DEFAULT 'organization' CHECK
+      (scope_type IN ('organization','legal_entity','location'))`), registered at
+      `crates/oz-core/src/migrations.rs:193-194`, and the enforcement point is
+      `crates/oz-core/src/db/staff.rs:274-296` `require_permission_for_resource`, refusing at
+      `:290-292` with "resource {scope_id} out of scope for user {user_id}" — reached from
+      `apps/desktop-client/src/commands/authz.rs:164`, `crates/oz-bridge/src/ctx.rs:353` and
+      `crates/oz-bridge/src/regional.rs:96`. The claim to keep is the small one: branch and
+      workspace scope are evaluated by `staff.rs:229-249` `require_permission_scoped` ->
+      `assignments.rs:198 matches_scope`, and the same axis reaches the availability resolver at
+      `crates/oz-core/src/entitlements.rs:247` `scope_granted: Option<bool>` (`:262` assembles
+      it) and `crates/oz-core/src/availability.rs:395` `let scope_denies = facts.scope_granted
+      == Some(false)` — all four anchors re-verified true at this HEAD, not carried.
+      **Terminal-level scope is the surviving half, and the tree refuses it on purpose:**
+      `assignments.rs:124-125` says "Workspaces and terminals are deliberately NOT scope types
+      — they sit below locations and inherit (ruling 1A)", and `Organization` is documented at
+      `:128-129` as covering "every legal entity, location, workspace, and terminal". One
+      implementation of that inheritance, `assignments.rs:313-325` `resource_covered_by`, backs
+      both the gate and the diagnostic so a verdict cannot drift from enforcement (`:304-307`).
+      **THE RULING, three arms, each with the line that makes it different.** (a) **Accept the
+      design**: a terminal is reachable exactly when its location is, this box closes as
+      by-design, and the "two axes remain" sentence should be deleted rather than coded.
+      (b) **Reverse ruling 1A** and make workspace/terminal scope types — the cost is named, not
+      guessed: `assignments.rs:142-148` `parse` + `:152-156` `as_str`, the CHECK at
+      `20260916_role_assignment_scopes.sql:25` **and** its generated PG twin (pre-commit step 5,
+      `scripts/generate-pg-migration.py`), a new arm in `resource_covered_by` `:313-325`, and an
+      explicit contradiction of the file's own `:124-125`. (c) **Keep the vocabulary coarse and
+      gate the device where device-local gating already lives** — the per-terminal rail pattern,
+      `apps/desktop-client/src/commands/local_payment.rs:41` get (tablet twin
+      `apps/tablet-client/src/commands/local_payment.rs:29`, both re-verified). (a) and (c) ask
+      nothing of a coder; only (b) is an implementation, and because it reverses a ruling the
+      code states out loud, it is an owner decision, not a task. **This belongs on
+      `docs/plans/notes.md` as a question — reported here, not filed there, because that page is
+      another lane's fence and is being written now.** Left UNCHECKED on purpose: the row was
+      not completed, its premise was found false, and a rewrite is not a completion.
 - [x] **Define settings scope.** Mark each Settings section as organization-,
       location-, terminal-, or workspace-scoped before implementation.
       — **DONE 2026-09-07** (the map is the "Settings scope map" section below;
