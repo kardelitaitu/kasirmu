@@ -26,12 +26,29 @@
  * shell's handlers, called out and passed back in as props. Nothing in this file
  * decides whether the sale may settle.
  *
- * The feature/account gate stayed in the shell too: the page still renders this
- * panel under isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount, verbatim,
- * and the narrowing that expression performs is what lets points arrive as a
- * plain number. No prop here is nullable, and the panel has no say in whether it
- * is shown at all - useFeatures is a hook and is not called again below, the same
- * single-rail-read rule QrisTenderPanel and CardTenderPanel follow.
+ * The feature/account gate is passed IN as `loyaltyOffered`, which is the shape
+ * ./CardTenderPanel takes for its own gate (`terminalOffered` :42, `if
+ * (!terminalOffered) return null` :64) and ./QrisTenderPanel for `qrisAllowed`:
+ * the shell reads useFeatures() once for the whole modal and hands the verdict
+ * down, so this file calls no hook - and, unlike the first cut of this panel,
+ * it can refuse itself. That refusal is the point. The panel used to render
+ * whenever it was mounted at all, leaving
+ * `isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount` at
+ * PaymentModal.tsx:1710 as the ONLY thing standing between an unlicensed tenant
+ * and a Points row; any second caller - and there will be second callers, this
+ * modal is 1,866 lines and is being carved up - inherited no protection from it.
+ * `loyaltyOffered` is required, with no default, so a caller that has not
+ * decided cannot mount the subtree by omission: TypeScript fails it. The modal
+ * keeps its own gate verbatim (it also performs the narrowing that lets `points`
+ * arrive as a plain number) - two guards, one fact, checked where the fact is
+ * known and again where it is rendered.
+ *
+ * Nullable props: `pointsWorthMinor` is `number | null` (null while the
+ * balance's valuation is pending, rendered as the ellipsis at :116) and that is
+ * the ONLY nullable value here; every other prop is required and non-null.
+ * Nullability was deliberately not extended to carry the gate: `points: number
+ * | null` would express only "no account", never "unlicensed", so it would be a
+ * guard that looks defensive and is not."
  *
  * Money stays i64 minor units / Money end to end. Both figures this file renders
  * still go through the SAME production call they used in the page -
@@ -72,6 +89,13 @@ import { requiredLocalized } from '@/frontend/shared';
 import { formatMoney, type Money } from '@/types/domain';
 
 export interface LoyaltyTenderPanelProps {
+  /**
+   * The shell's `isEnabled(FEATURES.LOYALTY_PROGRAM) && !!loyaltyAccount`.
+   * False, or a caller that never asks the question, renders NOTHING - the
+   * panel gates itself so a second call site cannot mount a loyalty UI on an
+   * unlicensed tenant. Required, no default: see the header.
+   */
+  loyaltyOffered: boolean;
   /** loyaltyAccount.account.points: the balance shown, the input max, the hint. */
   points: number;
   /** pointsWorthMinor - value of the BALANCE, null while its valuation pending. */
@@ -94,6 +118,7 @@ export interface LoyaltyTenderPanelProps {
 
 /** The loyalty balance row, the Use Points affordance and the active redeem row. */
 export default function LoyaltyTenderPanel({
+  loyaltyOffered,
   points,
   pointsWorthMinor,
   currency,
@@ -105,6 +130,8 @@ export default function LoyaltyTenderPanel({
   onRedeemCancel,
 }: LoyaltyTenderPanelProps) {
   const { l10n } = useLocalization();
+
+  if (!loyaltyOffered) return null;
 
   return (
               <div className="payment-loyalty-section">

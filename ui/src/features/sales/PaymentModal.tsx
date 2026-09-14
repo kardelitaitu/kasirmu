@@ -1709,6 +1709,7 @@ export default function PaymentModal({
 
             {isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount && (
               <LoyaltyTenderPanel
+                loyaltyOffered={isEnabled(FEATURES.LOYALTY_PROGRAM) && !!loyaltyAccount}
                 points={loyaltyAccount.account.points}
                 pointsWorthMinor={pointsWorthMinor}
                 currency={total.currency}

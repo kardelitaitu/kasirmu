@@ -42,6 +42,7 @@ import { withFluent } from '@/locales/test-utils';
 import { ToastProvider } from '@/frontend/shared/Toast';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
+import LoyaltyTenderPanel from '@/features/sales/payment/LoyaltyTenderPanel';
 import { formatMoney, type CartLine, type LineId, type Money, type Sku } from '@/types/domain';
 import type { LoyaltyAccountWithDetails } from '@/api/loyalty';
 
@@ -200,12 +201,20 @@ async function redeem(pointsToType?: string) {
 }
 
 describe('PaymentModal loyalty / points-redeem block (characterization)', () => {
+  // COMPOSITE pin - and it is NOT sufficient on its own. It asserts the SHELL's
+  // render condition, which says nothing about what the panel would do if
+  // something else mounted it. L14 is the caller-independent half of the same
+  // rule; keep both.
   it('L1 renders no loyalty section at all when LOYALTY_PROGRAM is off', async () => {
     flags.loyalty = false;
     await open();
     await waitFor(() => expect(mockGetLoyaltyAccount).toHaveBeenCalled());
     expect(section()).toBeNull();
     expect(qs('.payment-loyalty-redeem-btn')).toBeNull();
+    // The account resolves AFTER the modal is on screen; a late resolve must not
+    // bring the subtree in either - the gate is a render condition, not a
+    // one-shot taken at open().
+    await waitFor(() => expect(qs('.payment-loyalty-label')).toBeNull());
   });
 
   it('L2 renders no loyalty section, and asks no loyalty IPC, with no customer attached', async () => {
@@ -349,6 +358,62 @@ describe('PaymentModal loyalty / points-redeem block (characterization)', () => 
     fireEvent.click(qs<HTMLElement>('.payment-loyalty-cancel-btn')!);
     await waitFor(() => expect(totalAmount()!.textContent).toBe(money(10000)));
     expect(settle()).toBeDisabled();
+  });
+
+  // ── The gate, measured at the CHILD rather than at the modal ───────────
+  //
+  // L1 cannot catch a second caller: it pins PaymentModal's render condition,
+  // and a new call site has no PaymentModal in it. These two mount
+  // payment/LoyaltyTenderPanel directly - no modal, no useFeatures mock anywhere
+  // in the path - so what they measure is the panel's own refusal. Identical
+  // props both ways except loyaltyOffered, which is the reviewer's concrete
+  // input (points 0, pointsWorthMinor null, currency IDR, redeemPoints false,
+  // pointsToRedeem 0, loyaltyDiscount 0n): a Points section, or nothing.
+  function child(loyaltyOffered: boolean) {
+    return (
+      <LoyaltyTenderPanel
+        loyaltyOffered={loyaltyOffered}
+        points={0}
+        pointsWorthMinor={null}
+        currency="IDR"
+        redeemPoints={false}
+        pointsToRedeem={0}
+        loyaltyDiscount={0n}
+        onRedeemStart={vi.fn()}
+        onPointsChange={vi.fn()}
+        onRedeemCancel={vi.fn()}
+      />
+    );
+  }
+
+  it('L14 mounted directly with loyaltyOffered false, the panel renders no loyalty UI at all', async () => {
+    await renderInAct(withFluent(child(false), salesFtl));
+
+    expect(section(), 'an unlicensed tenant must get no Points section').toBeNull();
+    // Not just the wrapper: every class in the subtree, because a partial render
+    // is still a loyalty UI. The two always-rendered class-only hooks
+    // (.payment-loyalty-label / -value, plus -balance and the affordance) are
+    // named here rather than counted, so a re-parented div cannot slip past.
+    for (const cls of ['.payment-loyalty-balance', '.payment-loyalty-label',
+      '.payment-loyalty-value', '.payment-loyalty-redeem-btn']) {
+      expect(qs(cls), cls + ' must not exist unlicensed').toBeNull();
+    }
+    expect(document.body.textContent, 'no points text of any kind').not.toContain('Points');
+  });
+
+  it('L15 the same props with loyaltyOffered DO render, so L14 measures the gate', async () => {
+    await renderInAct(withFluent(child(true), salesFtl));
+
+    expect(section()).not.toBeNull();
+    // .ftl :165 payment-loyalty-points-label = Points, and points 0 reads
+    // 'Points: 0'. The panel is mounted and rendering, so L14's null cannot be
+    // satisfied by a child that simply always returns null.
+    expect(qs<HTMLElement>('.payment-loyalty-label')!.textContent).toBe('Points: 0');
+    // pointsWorthMinor null is the pending read-out, never a raw minor integer.
+    expect(qs<HTMLElement>('.payment-loyalty-value')!.textContent).not.toMatch(/\d/);
+    // points 0 hides Use Points on its OWN rule (the balance row's points > 0),
+    // not via the gate - do not read this line as the gate working.
+    expect(qs('.payment-loyalty-redeem-btn')).toBeNull();
   });
 });
 
