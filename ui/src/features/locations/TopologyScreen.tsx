@@ -17,6 +17,7 @@ import { isTopologyInstance } from './topologyContract';
 import TopologyRevisionBrowser from './TopologyRevisionBrowser';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasGrantedPermission } from '@/platform/ui/page-registry';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
@@ -107,15 +108,31 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   const handleTopologyLoadSuccess = useCallback(() => {
     setTopologyUnavailable(false);
   }, []);
-  // Determine save permission client-side from the session's role/permissions.
-  // Owner ("*") and admin/manager roles all have staff:update. This avoids
-  // a flaky IPC round-trip that fails when the session token hasn't resolved
-  // yet or the backend check hits a transient error.
+  // Determine save permission client-side, on the SAME key the write commands
+  // authorize with: `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE)
+  // — every topology mutation gate checks it (`oz-bridge` topology
+  // commands.rs:45 capability probe, :79 authorize_topology_write, :255
+  // pin_topology_revision, :479 apply path). This block used to test
+  // `staff:update`, a key the Manager preset carries (rbac_presets.rs:75) and
+  // the topology commands do NOT accept — so a manager got an enabled Apply
+  // the kernel always refused (the reachable path: `#/settings/topology` is
+  // gated by role, `settings/register.tsx:10` requiredRole 'manager', and
+  // MultiStoreDashboardScreen offers exactly that deep link).
+  //
+  // `hasGrantedPermission` mirrors the backend matcher (exact / `*` /
+  // `<domain>:*`), which is what keeps Owner — whose preset grants only
+  // `["*"]` (rbac_presets.rs:46) — enabled. A raw
+  // `perms.includes('topology:write')` would lock Owner out of their own
+  // screen, which is why the helper is mandatory here.
+  //
+  // Still deliberately no IPC: the earlier note cited "a flaky IPC round-trip
+  // that fails when the session token hasn't resolved yet or the backend check
+  // hits a transient error". That motivation is unchanged (and `tablet` registers
+  // zero topology commands, so a probe would answer nothing on that shell at
+  // all). The backend stays authoritative — each command re-checks.
   const canSaveTopology = useMemo(() => {
     if (!session) return false;
-    const perms = session.permissions ?? [];
-    if (perms.includes('*')) return true;
-    return perms.includes('staff:update');
+    return hasGrantedPermission(session.permissions, 'topology:write');
   }, [session]);
   // ADR #46 §8: the same client-side rule as canSaveTopology, but for the
   // READ gate. The commands themselves check `audit:view` server-side; this

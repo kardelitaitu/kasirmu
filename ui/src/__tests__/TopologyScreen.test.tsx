@@ -10,6 +10,7 @@ import { render, waitFor, act, screen, fireEvent, within } from '@testing-librar
 import TopologyScreen from '@/features/locations/TopologyScreen';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import type { SubscriptionCapabilities } from '@/api/subscription';
+import type { TopologyHeaderProps } from '@/features/locations/topologyHeader';
 
 // ── Mocks ──────────────────────────────────────────────────────────
 
@@ -78,18 +79,35 @@ vi.mock('@/contexts/SubscriptionContext', () => ({
   useAdminGate: () => ({ locked: false, state: 'active' }),
 }));
 
-// The editor's Apply gate mirrors the backend `staff:update` permission via
-// the session role. Switchable per test so the view-only behavior can be
-// pinned. The screen derives canSave from session.permissions (staff:update
-// or the `*` wildcard), not from a role-name boolean.
+// The screen derives canSave from session.permissions — the `topology:write`
+// key the topology write commands authorize with, honoured exactly, as `*`, or
+// as `topology:*`. Not from a role-name boolean. `mockIsManager` keeps this
+// file's legacy two-session behaviour; `mockSessionPermissions` (null = unset)
+// lets a test pin an EXACT grant set, which is how the manager regression is
+// pinned below: Manager holds `staff:update` but not `topology:write`.
 let mockIsManager: boolean = true;
+let mockSessionPermissions: string[] | null = null;
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    isManager: mockIsManager,
-    session: mockIsManager
-      ? { user_id: 'u-1', display_name: 'Owner', role_name: 'Owner', role_id: 'r-owner', permissions: ['*'] }
-      : { user_id: 'u-2', display_name: 'Cashier', role_name: 'Cashier', role_id: 'r-cashier', permissions: [] },
-  }),
+  useAuth: () => {
+    if (mockSessionPermissions !== null) {
+      return {
+        isManager: true,
+        session: {
+          user_id: 'u-pin',
+          display_name: 'Pinned Role',
+          role_name: 'Pinned Role',
+          role_id: 'r-pin',
+          permissions: mockSessionPermissions,
+        },
+      };
+    }
+    return {
+      isManager: mockIsManager,
+      session: mockIsManager
+        ? { user_id: 'u-1', display_name: 'Owner', role_name: 'Owner', role_id: 'r-owner', permissions: ['*'] }
+        : { user_id: 'u-2', display_name: 'Cashier', role_name: 'Cashier', role_id: 'r-cashier', permissions: [] },
+    };
+  },
 }));
 
 const mockAddToast = vi.fn();
@@ -154,29 +172,51 @@ let capturedEditorProps: {
   /** The tier the header badge renders from — asserted by the badge tests. */
   currentTier?: string;
 } = {};
-vi.mock('@/features/locations/NodeTopologyEditor', () => ({
-  default: (props: {
-    onSave?: (n: unknown[], w: unknown[]) => Promise<Record<string, string> | void>;
-    workspaceInstances?: unknown[];
-    branchToolbar?: unknown;
-    branchLocations?: unknown[];
-    branchId?: string;
-    onRenameBranch?: (id: string, name: string) => Promise<boolean>;
-    onRenameWorkspace?: (id: string, name: string) => Promise<boolean>;
-    onDirtyChange?: (dirty: boolean) => void;
-    onLoadError?: (error: unknown) => void;
-    onLoadSuccess?: () => void;
-    compareOverlay?: unknown;
-    compareFocus?: boolean;
-    canSave?: boolean;
-  }) => {
-    capturedEditorProps = props;
-    // The branch (graph) selector toolbar is rendered via the editor's
-    // branchToolbar slot — mount it so the mocked SettingsSelect inside
-    // still registers capturedBranchOnChange for branch-switch tests.
-    return props.branchToolbar ?? null;
-  },
-}));
+let mockRenderRealHeader = false;
+vi.mock('@/features/locations/NodeTopologyEditor', async () => {
+  const mod = await vi.importActual<Record<string, unknown>>('@/features/locations/topologyHeader');
+  const TopologyHeader = mod['TopologyHeader'] as (props: TopologyHeaderProps) => React.ReactElement;
+  return {
+    default: (props: {
+      onSave?: (n: unknown[], w: unknown[]) => Promise<Record<string, string> | void>;
+      workspaceInstances?: unknown[];
+      branchToolbar?: unknown;
+      branchLocations?: unknown[];
+      branchId?: string;
+      onRenameBranch?: (id: string, name: string) => Promise<boolean>;
+      onRenameWorkspace?: (id: string, name: string) => Promise<boolean>;
+      onDirtyChange?: (dirty: boolean) => void;
+      onLoadError?: (error: unknown) => void;
+      onLoadSuccess?: () => void;
+      compareOverlay?: unknown;
+      compareFocus?: boolean;
+      canSave?: boolean;
+      currentTier?: string;
+    }) => {
+      capturedEditorProps = props;
+      // Permission tests opt into mounting the editor's REAL header, so the
+      // assertion lands on the rendered Apply <button disabled> rather than on
+      // a captured prop — the control the user can click is the deliverable.
+      if (mockRenderRealHeader) {
+        return (
+          <TopologyHeader
+            l10n={{ getString: (id: string) => id } as unknown as TopologyHeaderProps['l10n']}
+            branchToolbar={(props.branchToolbar as TopologyHeaderProps['branchToolbar']) ?? null}
+            canSave={!!props.canSave}
+            onSaveAvailable={!!props.onSave}
+            currentTier={props.currentTier ?? 'plus'}
+            saving={false}
+            onApply={() => undefined}
+          />
+        );
+      }
+      // The branch (graph) selector toolbar is rendered via the editor's
+      // branchToolbar slot — mount it so the mocked SettingsSelect inside
+      // still registers capturedBranchOnChange for branch-switch tests.
+      return (props.branchToolbar as React.ReactElement | null) ?? null;
+    },
+  };
+});
 
 // Capture each selector's onChange so tests can simulate picking a branch
 // (SettingsSelect is a custom combobox, not a native select). Handles are
@@ -311,6 +351,8 @@ describe('TopologyScreen', () => {
     vi.resetAllMocks();
     mockLicenseTier = 'plus';
     mockIsManager = true;
+    mockSessionPermissions = null;
+    mockRenderRealHeader = false;
     mockCanSaveTopology.mockImplementation(() => Promise.resolve(mockIsManager));
     capturedEditorProps = {};
     capturedBranchOnChange = null;
@@ -1430,6 +1472,70 @@ describe('TopologyScreen', () => {
     mockIsManager = false;
     await renderReady();
     expect(capturedEditorProps.canSave).toBe(false);
+  });
+
+  // ── The key the kernel actually checks (regression) ──────────────
+  //
+  // `topology:write` (platform/core/src/rbac.rs TOPOLOGY_WRITE) is what every
+  // topology write command authorizes with — `crates/oz-bridge/src/topology/
+  // commands.rs:45, :79, :255, :479`. Among the built-in presets ONLY Admin
+  // carries it (rbac_presets.rs:253), plus Owner implicitly via `permissions:
+  // &["*"]` (rbac_presets.rs:46). Manager holds `staff:update`
+  // (rbac_presets.rs:75) but NOT topology:write, and the kernel refuses a
+  // manager topology write (apps/desktop-client/.../topology_command_tests.rs:
+  // 1399-1415 asserts exactly that). The gate used to test `staff:update`, so a
+  // manager reached `#/settings/topology` — the route gate is role-based,
+  // ui/src/features/settings/register.tsx:10 requiredRole 'manager' — and got
+  // an enabled Apply that could only ever fail. These cases render the REAL
+  // header, so the assertion is on the rendered button, not a prop.
+  const applyButton = async () => {
+    await renderReady();
+    const btn = screen.getByRole('button', { name: 'Apply Topology' });
+    await waitFor(() => expect(btn).toBeInTheDocument());
+    return btn;
+  };
+
+  it('disables Apply for a MANAGER grant set (staff:update, no topology:write)', async () => {
+    mockRenderRealHeader = true;
+    mockSessionPermissions = [
+      'sales:process',
+      'products:update',
+      'staff:read',
+      'staff:create',
+      'staff:update',
+      'settings:read',
+      'audit:view',
+    ];
+    const btn = await applyButton();
+    expect(btn).toBeDisabled();
+    expect(capturedEditorProps.canSave).toBe(false);
+  });
+
+  it('enables Apply for an OWNER grant set (wildcard `*` only)', async () => {
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['*'];
+    const btn = await applyButton();
+    expect(btn).toBeEnabled();
+    expect(capturedEditorProps.canSave).toBe(true);
+  });
+
+  it('enables Apply for an ADMIN grant set (explicit topology:write)', async () => {
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['staff:update', 'topology:write'];
+    const btn = await applyButton();
+    expect(btn).toBeEnabled();
+    expect(capturedEditorProps.canSave).toBe(true);
+  });
+
+  it('enables Apply for a CUSTOM role holding the `topology:*` domain wildcard', async () => {
+    // Guards the choice of helper over a raw `Array.includes`: a role granted
+    // `topology:*` IS authorized by the backend matcher, and a raw includes of
+    // the literal key would deny it (and deny Owner's `*`, above).
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['staff:update', 'topology:*'];
+    const btn = await applyButton();
+    expect(btn).toBeEnabled();
+    expect(capturedEditorProps.canSave).toBe(true);
   });
 
   it('blocks renames for non-manager roles with a permission toast', async () => {
