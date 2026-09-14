@@ -607,6 +607,40 @@
   color: var(--color-accent);
 }
 
+/* The weigh action is the THIRD button in the same tile-overlay row -
+   .retail-table-add-btn, then .retail-table-edit-btn, then this one
+   (RetailProductGrid.tsx:351-360, gated by scaleEnabled, holding one glyph). It is
+   the same object as its neighbour, so it gets that neighbour's rule WHOLE: all 12
+   declarations copied verbatim from .retail-table-edit-btn (this sheet :588-603) plus
+   both of its :hover declarations (:605-608). Nothing is invented - every value is a
+   copy, no hex, no rgba, and no font-size (the glyph inherits, so nothing on a
+   price-bearing surface is retuned). Colour tokens confirmed in all three theme
+   blocks of tokens.css: --color-border-hover :82/:393/:537, --color-border-strong
+   :84/:395/:539, --color-fg-primary and --color-accent 3x each; --radius-sm and the
+   --duration-150/--ease-out timing pair are :root-only tokens, one value for every
+   theme by design. */
+.retail-product-weigh-btn {
+  padding: 0;                                   /* from :589 */
+  width: 1.75rem;                               /* from :590 */
+  height: 1.5rem;                               /* from :591 */
+  display: inline-flex;                         /* from :592 */
+  align-items: center;                          /* from :593 */
+  justify-content: center;                      /* from :594 */
+  background: var(--color-border-hover);        /* from :595 */
+  color: var(--color-fg-primary);               /* from :596 */
+  border: 1px solid var(--color-border-strong); /* from :597 */
+  border-radius: var(--radius-sm);              /* from :598 */
+  cursor: pointer;                              /* from :599 */
+  transition:                                   /* from :600-602 */
+    background-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
+}
+
+.retail-product-weigh-btn:hover {
+  background: var(--color-border-strong);       /* from :606 */
+  color: var(--color-accent);                   /* from :607 */
+}
+
 .retail-table-add-btn:hover:not(:disabled) {
   background: var(--color-accent);
   color: var(--color-accent-fg);
@@ -1486,6 +1520,45 @@
 
 .retail-load-error-text {
   flex: 1;
+}
+
+/* Retry inside the caution banner (RetailCartPanel.tsx:388) does the same job as
+   .retail-load-error-retry - re-run a failed computation from a status strip - so it
+   takes that rule whole: 11 declarations from :1491-1503, both :hover declarations
+   from :1505-1507, both :focus-visible declarations from :1509-1512. Ten of the
+   fifteen are verbatim copies. Four are the SAME declarations re-pointed from the
+   danger family to the warning family, because the banner this button sits in is a
+   CAUTION strip (taxSeverity is any non-'ok' value - warn/unknown, never 'error',
+   per RetailCartPanel.tsx:96 and :385) and its own background came from
+   --color-warning-bg; a filled red button on an amber field would read as two
+   severities at once. The pairing rule (border + background from one token, text
+   from that family's -fg) is itself copied from :1496-1498. --color-warning is
+   tokens.css :121/:430/:569 and --color-warning-fg :124/:433/:572, i.e. both present
+   in all three theme blocks; --radius-sm, --space-0_5, --space-2, --text-xs,
+   --font-weight-bold, --duration-150 and --ease-out are :root-only by design.
+   font-size stays var(--text-xs) as in the twin and lands on the button's word
+   label only (a <Localized id="retry"> child) - never on the estimate amount. */
+.retail-tax-estimate-retry {
+  padding: var(--space-0_5) var(--space-2);     /* from :1492 */
+  font-size: var(--text-xs);                    /* from :1493 */
+  font-weight: var(--font-weight-bold);         /* from :1494 */
+  font-family: inherit;                         /* from :1495 */
+  border: 1px solid var(--color-warning);       /* shape from :1496, family -> warning */
+  background: var(--color-warning);             /* shape from :1497, family -> warning */
+  color: var(--color-warning-fg);               /* shape from :1498, family -> warning */
+  border-radius: var(--radius-sm);              /* from :1499 */
+  cursor: pointer;                              /* from :1500 */
+  white-space: nowrap;                          /* from :1501 */
+  transition: filter var(--duration-150) var(--ease-out); /* from :1502 */
+}
+
+.retail-tax-estimate-retry:hover {
+  filter: brightness(1.15);                     /* from :1506 */
+}
+
+.retail-tax-estimate-retry:focus-visible {
+  outline: 2px solid var(--color-warning);      /* shape from :1510, family -> warning */
+  outline-offset: 2px;                          /* from :1511 */
 }
 
 .retail-load-error-retry {
