@@ -172,9 +172,12 @@ export default function PaymentModal({
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-  const [customerSearchResults, setCustomerSearchResults] = useState<CustomerDto[]>([]);
+  // The roster exactly as the last list read returned it. The rows the overlay
+  // renders are DERIVED from this plus customerSearchQuery (see the memo below):
+  // there is deliberately no second stored list, because a stored list is a value
+  // a filter can be skipped over without anything noticing. S5 pins that pair.
+  const [customerRoster, setCustomerRoster] = useState<CustomerDto[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
-  const allCustomersRef = useRef<CustomerDto[]>([]);
   const [leaving, setLeaving] = useState(false);
   const leaveCb = useRef<(() => void) | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -320,7 +323,7 @@ export default function PaymentModal({
       setReceiptArgs(null);
       setSelectedCurrency(total.currency);
       setCustomerSearchQuery('');
-      setCustomerSearchResults([]);
+      setCustomerRoster([]); // the derived rows are empty with it — no second list to clear
       setSplits([
         { id: 1, method: 'cash', otherLabel: '', amountMinor: '' },
         { id: 2, method: 'card', otherLabel: '', amountMinor: '' },
@@ -349,38 +352,43 @@ export default function PaymentModal({
     if (!sessionToken) {
       // Customer data is store-scoped. Never fall back to the legacy global
       // command when this modal is rendered outside an authenticated scope.
-      allCustomersRef.current = [];
-      setCustomerSearchResults([]);
+      setCustomerRoster([]);
       setLoadingCustomers(false);
       return;
     }
     setLoadingCustomers(true);
     listCustomersScoped(sessionToken)
+      // Writes the ROSTER only. The list the overlay shows is derived from it
+      // below, so this can no longer publish an unfiltered result over a filter
+      // that is still in the input.
       .then((customers) => {
-        allCustomersRef.current = customers;
-        setCustomerSearchResults(customers);
+        setCustomerRoster(customers);
       })
-      .catch(() => { addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-customers-failed'), type: 'error' }); setCustomerSearchResults([]); })
+      .catch(() => { addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-customers-failed'), type: 'error' }); setCustomerRoster([]); })
       .finally(() => setLoadingCustomers(false));
   }, [showCustomerSearch, sessionToken, addToast]); // l10n via ref — stable dep chain
 
-  useEffect(() => {
-    if (!showCustomerSearch) return;
-    const customers = allCustomersRef.current;
+  // The rows the overlay renders are a DERIVED value, not a second stored list.
+  // The predicate below is the old filter effect's, unchanged, now over the roster
+  // state and the query as its two real inputs. As an effect writing
+  // customerSearchResults it could not be trusted to re-run: on a close and
+  // re-open the fetch resolves the roster again while neither of the effect's two
+  // deps (showCustomerSearch, customerSearchQuery) has changed, so the input kept
+  // the surviving filter and the list showed everybody. Deriving makes that pair
+  // unrepresentable — rows are always f(roster, query).
+  const customerSearchResults = useMemo(() => {
+    const customers = customerRoster;
     const q = customerSearchQuery.trim().toLowerCase();
     if (!q) {
-      setCustomerSearchResults(customers);
-    } else {
-      setCustomerSearchResults(
-        customers.filter(
-          (c) =>
-            c.name.toLowerCase().includes(q) ||
-            (c.phone && c.phone.includes(q)) ||
-            (c.email && c.email.toLowerCase().includes(q)),
-        ),
-      );
+      return customers;
     }
-  }, [showCustomerSearch, customerSearchQuery]);
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)),
+    );
+  }, [customerRoster, customerSearchQuery]);
 
   // W5-b: the ten-memo tender/split derivation cluster moved verbatim to
   // ./payment/useTenderMath - nine plain-data inputs, no dep array changed.

@@ -434,12 +434,18 @@ describe('PaymentModal customer section + search overlay (characterization)', ()
     // :1109 the inner trap all only flip the flag). Only a SELECTION (:1800) or a
     // fresh modal open (:322) resets it.
     expect(searchInput()!.value).toBe('ad');
-    // FINDING 2: and the list it now shows is the FULL roster, not the 2 rows the
-    // surviving query selects. The fetch's .then (:361) writes results unfiltered
-    // and the filter effect (:367) does not re-run, because neither of its two
-    // deps changed. So the input says 'ad' and the list says otherwise, until the
-    // next keystroke. Pinned deliberately: an extractor that "fixes" this while
-    // moving the panel changes these two lines, and this is where they will notice.
+    // FINDING 2 WAS A DEFECT, and this commit fixes it, so the pin below is
+    // INVERTED rather than preserved. The rows used to be a second stored list:
+    // the fetch's .then wrote the FULL roster into customerSearchResults while the
+    // filter effect did not re-run, because neither of its two deps had changed -
+    // input 'ad', list four rows, until the next keystroke. The rendered rows are
+    // now derived from (roster, query), so that pair is unrepresentable: the list
+    // has to match the filter the input still carries.
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(rowNames()).toEqual(['Ada', 'Adelaide']);
+    expect(searchInput()!.value, 'input and list must agree after the re-open').toBe('ad');
+    // Finding 1 stands: nothing on any close path clears the query, and a
+    // surviving filter is the behaviour - this is the case that says so.
   });
 
   it('S6 COUPLING: selecting a found customer moves the badge, the loyalty read and the sale payload', async () => {
