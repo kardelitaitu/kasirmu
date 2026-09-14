@@ -68,7 +68,7 @@ export const settingsHandlers: Record<string, MockHandler> = {
   'set_receipt_settings': () => null,
 
   'set_receipt_settings_scoped': () => null,
-  'get_setting': () => '',
+  'get_setting': () => null,
   'set_setting_scoped': () => null,
 
   'get_hardware_settings': () => ({

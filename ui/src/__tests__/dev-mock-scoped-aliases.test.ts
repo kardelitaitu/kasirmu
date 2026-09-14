@@ -23,13 +23,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { invoke } from '@/dev-mock/tauri-api';
 import { handlers } from '@/dev-mock/core/mockDispatcher';
 
-// The four that were observed unhandled on the current tree.
-const OBSERVED = [
+// The four that were observed unhandled on the current tree, split by what their
+// BASE handler answers. The rule guarantees only that a handler is found, so names
+// whose base legitimately returns null cannot be graded on data.
+const OBSERVED_WITH_DATA = [
   'get_hardware_settings_scoped',
   'list_displays_scoped',
   'offline_queue_status_summary_scoped',
-  'get_setting_scoped',
 ];
+
+// Base is `get_setting` (registered nowhere else; the rule mirrors it). The mock now
+// answers null for every key, which is what production sends for an unset one —
+// crates/oz-bridge/src/settings.rs:438-446, typed `string | null` in the client at
+// ui/src/api/settings.ts:208-213 and :263. Asserting data here would grade that
+// stub, not the alias rule — same reasoning as UNLISTED_CONTROL and FORMERLY_CURATED.
+const OBSERVED_MAY_BE_NULL = ['get_setting_scoped'];
 
 // A pair outside the curated SCOPED_ALIASES list whose base IS registered, so passing
 // it proves the fix is a rule rather than more hand-added entries. If a future change
@@ -76,12 +84,19 @@ async function resolvesToData(cmd: string) {
 }
 
 describe('dev-mock scoped command aliasing', () => {
-  it.each(OBSERVED)('%s is answered from its unscoped twin, not null', async (cmd) => {
+  it.each(OBSERVED_WITH_DATA)('%s is answered from its unscoped twin, not null', async (cmd) => {
     const { value, unhandled } = await resolvesToData(cmd);
     // The warn is the load-bearing assertion: a handler that legitimately returns null
     // would pass `value !== null` by accident of nothing else.
     expect(unhandled).toBe(false);
     expect(value).not.toBeNull();
+  });
+
+  it.each(OBSERVED_MAY_BE_NULL)('%s is answered from its unscoped twin; the value may be null', async (cmd) => {
+    // Alias rule only: a handler was found for the scoped name. This base answers null
+    // on purpose, so requiring data here would test the stub, not the rule.
+    const { unhandled } = await resolvesToData(cmd);
+    expect(unhandled).toBe(false);
   });
 
   it('aliases any scoped name whose base is registered, not just a curated list', async () => {
