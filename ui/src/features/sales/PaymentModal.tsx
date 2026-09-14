@@ -36,7 +36,7 @@ import CardTenderPanel from './payment/CardTenderPanel';
 import SplitTenderRows from './payment/SplitTenderRows';
 import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
 import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
-import { minorUnitsToInputString } from './payment/moneyFormat';
+import { distributeEvenly } from './payment/splitDistribution';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
@@ -858,25 +858,21 @@ export default function PaymentModal({
   const handleTerminalDismiss = useCallback(() => setEdc(null), []);
 
   const autoSplitEvenly = useCallback(() => {
-    const count = splits.length;
-    if (count === 0) return;
-    const exp = minorUnitExponent(cartCurrency);
-    // Integer floor division in minor units: every row gets baseMinor, and the
-    // exact remainder lands on the last row — avoids float `toFixed` rounding
-    // that used to over-split non-divisible totals (e.g. 4,450,001 by 2 became
-    // 2,225,001 + 2,225,002 = 4,450,003).
-    const baseMinor = Math.floor(effectiveTotalInCartCurrency / count);
-    const remainderMinor = effectiveTotalInCartCurrency % count;
-    // Minor → the decimal literal the split row's input holds. Integer digit
-    // placement, never a float division by the scale — no float money here.
-    const fmt = (minor: number) => minorUnitsToInputString(minor, exp);
+    // W5-d: the arithmetic itself moved verbatim to ./payment/splitDistribution -
+    // same Math.floor base, same exact remainder on the LAST row only, same
+    // exponent-explicit digit placement, and the same count === 0 outcome (no row
+    // is written). What is left here is the two reads the boundary forces into the
+    // shell (the total the money hook returns, the currency the multi-currency
+    // hook returns, the row count the split hook owns) and the write.
+    const literals = distributeEvenly(
+      effectiveTotalInCartCurrency,
+      splits.length,
+      minorUnitExponent(cartCurrency),
+    );
+    // PATCH, never rebuild: method and otherLabel survive the rewrite, so an
+    // `other` row labelled "voucher" keeps both after Split Evenly.
     setSplits((prev) =>
-      prev.map((s, i) => ({
-        ...s,
-        amountMinor: i === prev.length - 1
-          ? fmt(baseMinor + remainderMinor)
-          : fmt(baseMinor),
-      })),
+      prev.map((s, i) => ({ ...s, amountMinor: literals[i] ?? s.amountMinor })),
     );
   // setSplits is now an import from ./payment/useSplitTenderState rather than a
   // useState dispatcher declared in this file, so the rule can no longer prove it
