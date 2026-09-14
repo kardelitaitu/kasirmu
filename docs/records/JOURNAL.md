@@ -10946,3 +10946,110 @@ not.
 - `python3 scripts/verify-agents-mirrors.py` → exit 0 before and after this append. Docs-only; nothing pushed.
 
 **Commit:** single pathspec commit `docs(records): the contrast gate grades token pairs and never reads the rules that compose them`.
+
+## 2026-09-15 — Absence: NO test runner in this repo executes the release profile, and it held 65 failing tests
+
+**Context:**
+The previous entry recorded a gate that was narrow. This one records a gate that is ABSENT, which is a different disease:
+`cargo test -p oz-bridge --release --no-fail-fast` ran for the FIRST TIME EVER tonight on this crate, in this repo — and
+came back **65 red / 1,244 passed of 1,309**. The same crate in debug is **1,310 passed / 0 failed**. Sixty-five real
+failures existed in the profile that ships and nothing in the tree could see them, because nothing in the tree RUNS that
+profile. The finding is about the ABSENCE, and no plan file owns a test leg — so it goes into the live region here.
+
+**Fact 1 — the absence, measured in four places, and the arithmetic of the two totals is itself a finding.**
+The ONLY files under `scripts/` and `.github/workflows/` containing `--release` are
+`scripts/build-exe-release.ps1`, `scripts/check-updater-compat.mjs` and the inert
+`.github/workflows/ios.yml.bak`, and every hit is a BUILD (`cargo build --release` at
+`scripts/build-exe-release.ps1:81-82`, `scripts/check-updater-compat.mjs:134` and `:142`). The four places that
+would carry a release TEST leg carry none: `.github/workflows/dev-ci.yml` has no `--release` anywhere and its Rust
+test step is `cargo nextest run --workspace --all-features` at `:244`; `scripts/check.sh` has none (nextest at
+`:106`, doctests at `:107`, the fallback at `:110` — all debug); `scripts/release.sh` has none (its single test
+step, `cargo nextest run --workspace --all-features ... --profile ci` at `:65`); `scripts/run-pre-push.py` has none.
+So the profile that ships is the profile nothing tests, and `cargo-check` is no substitute: it runs
+`cargo fmt --all -- --check` (`dev-ci.yml:195`) then `cargo check --workspace --all-targets --all-features`
+(`:197`), which TYPES the release cfg-arms and EXECUTES none of them — and no live workflow runs clippy at all
+(`grep -c clippy` → 0 in `dev-ci.yml` and in `release.yml`).
+The 1,309-vs-1,310 gap is not noise: exactly ONE test is compiled OUT of the release binary —
+`#[cfg(debug_assertions)]` on `sync_probe_falls_back_to_cloud_url_when_unconfigured` at
+`crates/oz-bridge/src/sync_tests.rs:35`. A release build silently shrinking its own test population is precisely the
+shape this campaign forbids in fixtures, sitting in a test file nobody was running.
+
+**Fact 2 — 40 of the 65 were one literal string, and that string is the sentinel arriving where no sentinel arm exists.**
+It read `InvalidSubscriptionSignature / failed to decode base64 signature: Invalid symbol 95, offset 9`. Checked rather
+than trusted: 95 IS the character code of `_` and 9 IS that character's offset inside `BOOTSTRAP_FREE`, so the
+decoder is choking on the dev sentinel byte for byte. The arm that would have accepted it is gated
+`#[cfg(debug_assertions)]` at `crates/oz-core/src/license_verification.rs:391` with the compare at `:392` — which is
+why the same fixtures are green in debug, red in release, and why the count stayed INVISIBLE rather than merely unloved:
+in debug this crate reports 1,310 / 0 and looks spotless.
+
+**Fact 3 — the mechanism that fixed them, and the proof it is the right one.**
+The shared helper is the discriminator. `grep -c seeded_row_loads` → **12** in
+`crates/oz-bridge/src/audit_tests.rs` and **16** in `crates/oz-bridge/src/audit_security_events_tests.rs` — the two
+files contributing **ZERO** release reds — against **0 at HEAD** in every one of the nine files that DID go red
+(the tenth, `subscription_tests.rs`, reads 30 there because its conversion is committed). The converted fixtures
+are green in release; the 65 are a population that never adopted the helper. So the repair is not
+new logic, it is adoption, and the campaign holds two rules about how:
+1. The fork is a RUNTIME `if seeded_row_loads()`, never a `#[cfg]` arm — both arms compile in both profiles, so
+   attribute-gating one side of a runtime fork is not a smaller change, it is a broken one.
+2. Every release arm asserts the seeded row EXISTS before it asserts anything about the projection, because
+   `seeded_row_loads()` (`crates/oz-bridge/src/testing.rs:210-216`) collapses FIVE distinct causes into one bool — no
+   default row, a load `Err`, `load_public_key()` failing, the intended base64 reject on the sentinel's own text, a
+   genuine RSA mismatch — and a fail-closed fact asserted about an ABSENT row proves nothing. Accordingly
+   `FAIL_CLOSED_*` (`testing.rs:226`, `:235`) appear only as the right-hand side of an `assert_eq!` and NEVER as a
+   condition; the rule is written into the converted files themselves at `audit_tests.rs:185` and
+   `audit_security_events_tests.rs:102` ("Assert form ONLY, never `if FAIL_CLOSED_GATES_LOCKED { .. }`").
+And no fixture may simply mint a signature: `verify_license_signature` (definition at
+`crates/oz-core/src/license_verification.rs:387`) has FOUR call sites — `crates/oz-core/src/subscription.rs:476`,
+`crates/oz-bridge/src/license.rs:594`, `crates/oz-core/src/license_verification.rs:484` and `:527` — and NOT ONE of
+them belongs to a test. There is no seam, so the only honest fork is on which row the seed produced.
+
+**The scoreboard as this entry is filed.**
+65 → **44** after `f456f1298` forked `crates/oz-bridge/src/subscription_tests.rs` (+500/−120; the file went 881 → 1,261
+lines). Its own filtered release run went 13 passed / 21 failed → 34 / 0, and the crate's DEBUG total is unchanged at
+1,310 / 0, so nothing was traded away to buy the release greens. Remaining population: pos 7, auth 14, workspaces 5,
+inventory 4, staff 4, locations 2, staff_security_events 2, terminals 2, security_scoped_integration 4 — which sums to the
+44. TWO OF THEM MUST NOT receive the template, and that is the part a checklist would flatten:
+`crates/oz-bridge/src/staff_security_events_tests.rs` is ruled OUT because release WRITES its audit row, so the skip-arm
+a conversion would install can never fire (noted as found: the lane's shorthand for this was a `loaded:false` marker, and
+`grep -n loaded` over that file and over `crates/oz-bridge/src/testing.rs` returns no hits — the argument is the
+WRITE-side one, not a marker in either file). And `crates/oz-bridge/src/auth_tests.rs:816-839` needs its fork DELETED and
+its name corrected rather than converted: `staff_login_on_free_records_only_because_a_debug_build_promotes_it` at
+`:817` already asserts against `usize::from(cfg!(debug_assertions))` at `:836`, which is a runtime-attribute hybrid,
+not a fork on the seeded row.
+
+**The honest limit, written because a journal that records only wins is marketing.**
+This campaign SHRINKS the red count; it does NOT add a release leg. So 65 → 44 repairs a POPULATION and changes nothing
+about what CI can see: the NEXT `--release`-sensitive test lands unfixed and uncounted, exactly as these 65 did, and the
+only reason they were found at all is that somebody typed a flag by hand. The missing piece has a name — one
+release-profile test step, somewhere in `.github/workflows/dev-ci.yml` or `scripts/check.sh`. This entry deliberately does
+NOT propose, write or enable one: adding or changing a CI step is an owner decision and a workflow edit, both out of this
+fence, and `scripts/gates.json` plus `scripts/verify-agents-mirrors.py` police what the mirrors may CLAIM about CI —
+which is exactly why an absence is recorded here, in the first person, before it becomes a mirror sentence.
+
+**Verification:**
+- LANE-RUN, not re-executed by this docs pass (no `cargo`, `npx`, `npm` or `docker` was invoked here): the release
+  65 / 1,244 of 1,309, the debug 1,310 / 0, the 13/21 → 34/0 filter result and the per-file 7/14/5/4/4/2/2/2/4. Their
+  arithmetic is consistent and was checked: 65 + 1,244 = 1,309, and 1,309 + 1 = 1,310 — the +1 being the one debug-only
+  test at `sync_tests.rs:35`.
+- Re-measured against the tree this pass: the `--release` file set under `scripts/` and `.github/workflows/` (builds
+  only, and the one workflow hit is a `.bak`); the four no-release-leg places at `dev-ci.yml:244`, `check.sh:106`,
+  `:107`, `:110`, `release.sh:65` and `run-pre-push.py`; `dev-ci.yml:195`/`:197`;
+  `grep -c seeded_row_loads` = 12 and 16 in the two green files, 30 in the converted `subscription_tests.rs`, and 0 in
+  each of the nine red files AS COMMITTED (one of them, `pos_tests.rs`, is mid-conversion on disk — see the next bullet);
+  `testing.rs:210-216`; the sentinel arm at `license_verification.rs:391-392`; the four
+  `verify_license_signature` sites; `git show --numstat f456f1298` = 500/120 on one file; and `_` = char code 95
+  at offset 9 of `BOOTSTRAP_FREE`.
+- Two briefed figures did NOT reproduce, recorded as found. (a) Asserts in `subscription_tests.rs` read **158 → 203**
+  (`git show <blob> | grep -oE "assert(_eq|_ne|_matches)?!" | wc -l`), not 158 → 257. The ZERO-deleted half of that claim
+  DOES hold: `git diff -w f456f1298~1 f456f1298` removes 11 lines, 7 of them containing "assert", and all 7 of those
+  exact strings still appear in the post-commit blob with the same counts — the only two genuinely vanished lines are one
+  call expression and one comment. (b) The file declares 30 test functions before AND after the fork
+  (`grep -cE "^#\\[(test|tokio::test)"`), so the filter's 34 counted 4 tests living outside this file; the ratio
+  13/21 → 34/0 is the run's, and this entry does not rename it.
+- Live as of filing: `git status --porcelain -- crates/oz-bridge` lists ` M crates/oz-bridge/src/pos_tests.rs`, whose
+  on-disk copy already carries 11 `seeded_row_loads` uses against 0 at HEAD — the pos 7 is being converted right now by
+  its own lane. No figure in this entry is offered as a standing property of the tree.
+- `python3 scripts/verify-agents-mirrors.py` → exit 0 before and after this append ("all 2 mirrors agree with the repo").
+  Docs-only; nothing pushed.
+
+**Commit:** single pathspec commit `docs(records): the release profile has no test leg and it held 65 failures`.
