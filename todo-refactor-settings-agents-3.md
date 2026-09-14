@@ -434,3 +434,144 @@ and that decision is now the only thing standing between this plan and a closabl
   observation, not the current tally. `:153` is the only one still waiting on a ruling, and
   it waits on a different kind of answer now: `:130` has no UI to extract and `:111` is
   dropped, so the milestone it marks cannot be reached by naming anything.
+
+---
+
+## Append-only record (2026-09-15, third pass) - the settings CSS debt, recorded as findings instead of folklore
+
+> NO BOX CHANGED STATE IN THIS BLOCK. It is a measurement log for work done in `ui/` by other lanes tonight,
+> so every `ui/` figure below is cited to the commit it was measured at, never to the working tree - three
+> lanes were writing `PaymentModal.css`, `ReceiptFormatSettingsCard.css` and `screenExtraction.test.ts` while
+> this was assembled, and a tree number quoted as a committed number is how a plan starts lying. The block
+> sits at EOF for the reason the second pass documented: any insertion above `:224` rotates this file own
+> `:NNN` self-citations. Read it together with the second pass (`:93`, `:105`, the `:147` tension) above it.
+
+### 1. Ten class names removed at `9836cf960`, and the arithmetic that made removal the only clean answer
+
+- `9836cf960` "style(settings): drop ten class names no stylesheet in the repo defines" - numstat
+  **+10/-10 across exactly two files, zero `.css`**: `ReceiptFormatSettingsCard.tsx` 6/6 and
+  `StatutoryNumberingCard.tsx` 4/4. Six in the receipt card (line numbers as they stood at the parent
+  `9836cf960^`): `:288 rcptfmt-content-editor`, `:289 rcptfmt-required-label`,
+  `:292 rcptfmt-required-picker`, `:294 rcptfmt-required-item`, `:360 rcptfmt-content-note`,
+  `:392 rcptfmt-layout-source`. Four in the statutory card: `:345 fiscalnum-overview`,
+  `:347 fiscalnum-overview-title`, `:352 fiscalnum-overview-empty`, `:358 fiscalnum-overview-table`.
+- For each of the ten, measured at `9836cf960`: **0 definitions in any stylesheet, 0 references in
+  `ui/src/__tests__`, 0 references in `ui/e2e`** (per-name loop over `git grep -c ".<name>" 9836cf960 --
+  '*.css'` plus the same for the bare name in the two test scopes), across a tree holding **142 tracked
+  stylesheets** (`git ls-files '*.css' | wc -l`).
+- **The verdict was DELETE, not style, and it was a decision rather than a default.** Inventing
+  `.fiscalnum-overview-table` would have put a visible change - borders, spacing, a table that had none -
+  inside a commit whose subject says `style(settings)` and whose diff contains no CSS. A cleanup commit
+  cannot also be a design change, so the real debt is that these elements were never styled at all, and
+  this record is where that debt lives now instead of in a deleted string.
+
+### 2. The one that would have shipped a regression, and the rule it earns
+
+- `fiscalnum-overview-title` was **simultaneously a className AND a live `id=` / `aria-labelledby=` pair on
+  the same two lines**. At `9836cf960^`: `:345 <section className="fiscalnum-overview"
+  aria-labelledby="fiscalnum-overview-title">` and `:347 <h3 id="fiscalnum-overview-title"
+  className="fiscalnum-overview-title">`. The token that made the class look dead is the same token that
+  names the section for assistive tech. Removing the string wholesale - the shape a `grep says unused` pass
+  produces - would have destroyed the accessible name of that section while passing every test in the file,
+  because those tests assert on rendered text, not on the relation.
+- What landed instead removes only the class token: at `9836cf960` the two lines read
+  `<section aria-labelledby="fiscalnum-overview-title">` (`:345`) and `<h3 id="fiscalnum-overview-title">`
+  (`:347`), so the `id` / `aria-labelledby` pair survives intact and the tree loses nothing but a dead name.
+- **RULE for every future "this class is unused" verdict in `ui/src/features/settings/`: check the
+  non-class attributes on the same element before deleting the token.** In this repo a class name is also a
+  plausible ARIA identifier, and the two roles can sit on one line.
+- The sibling trap, checked rather than assumed: `rcptfmt-required-item` was NOT shadowed by
+  `.rcptfmt-required` + `.rcptfmt-required li`. The bare class `rcptfmt-required` appears in **no** markup
+  anywhere in the tree at that SHA - its only two hits were the CSS selectors themselves - and the element
+  carrying `-item` is a `<span>` inside `<div className="rcptfmt-required-picker">`, never an `<li>`, so
+  the `li` descendant could not reach it. Recorded because "a descendant selector makes the child class
+  redundant" is exactly the inference that reads as obvious and is usually wrong.
+
+### 3. The mirrored defect: two ORPHANED rules, and what the auditing lane has since done
+
+- The mirror of item 1. `ReceiptFormatSettingsCard.css:45` defined `.rcptfmt-required` and `:54` defined
+  `.rcptfmt-required li`, and after `9836cf960` **nothing referenced either one** - defined, referenced by
+  nobody. One half of that pair existed only to make the other half look load-bearing.
+- **STATUS, and it moved after the brief was written: the audit is no longer pending on this sheet.**
+  `c4a19e747` "style(settings): drop the receipt-format rules that no markup references" (+0/-17, one file)
+  deleted exactly those two rules, taking the sheet from **135 ln at `9836cf960` to 118 ln at HEAD
+  `9ee54a39c`**. Same verdict as item 1, same direction: deletion. Any reader still holding "the 135-line
+  sheet being audited" is holding the `9836cf960` size.
+- Three sibling sheets still carry the open question, all three **unchanged between `9836cf960` and HEAD
+  `9ee54a39c`**: `StatutoryNumberingCard.css` 72 ln, `RegionalSettingsCard.css` 96 ln,
+  `LocalPaymentSettingsCard.css` 153 ln. Nobody has walked them for undefined-in-CSS names or
+  unreferenced-in-markup rules yet. Tonight the fourth sheet produced one defect of each kind, which is the
+  base rate to expect: this is not a clean directory.
+
+### 4. Why the four Cards still cannot be registered, and the one-way fix that settled it
+
+- The blocker is one class, shared by design: `settings-section-title` is used by **all four** Cards
+  (`RegionalSettingsCard.tsx:198`, `LocalPaymentSettingsCard.tsx:165`, and the other two likewise) but is
+  defined **only** at `SettingsPage.css:514` - a sheet the extraction guard already cites from two entries.
+  Each Card therefore fails case 1 (used-must-exist) through no fault of its own stylesheet.
+- Two tempting wrong answers, recorded so nobody pays for them twice. Naming `SettingsPage.css` in all four
+  entries makes the dead-class case unsatisfiable by construction, because a shared sheet is full of classes
+  belonging to someone else. And adding `settings-section-title` to `knownDynamicFragments` is a mute
+  wearing another name: it makes the check pass by deleting the question.
+- A design dossier settled it: an **optional `parentCss` field, resolved ONE-WAY** - case 1
+  (used-must-exist) reads own CSS **union** `parentCss`, while cases 2 and 3 keep walking **own CSS only**,
+  because grading the dead-class check over a union is precisely what would make a shared sheet unfailable.
+  As drafted this minute in the **uncommitted working copy** of `ui/src/__tests__/screenExtraction.test.ts`
+  (`parentCss?: string[]`, the case-1-union comment and the `parentPaths` resolution are all in the tree and
+  all absent from HEAD - `git grep -c parentCss HEAD -- ui/src/__tests__/screenExtraction.test.ts` prints 0),
+  which is why this bullet deliberately cites no line numbers. Re-verify against the commit that lands it
+  rather than trusting this sentence.
+- The citation counts that justify the design, corrected by measurement: `SettingsPage.css` is named by
+  **2 guard entries** and `screens-placeholder.css` by **13**. A raw `grep -o` over HEAD returns 3 and 14,
+  because the extras are prose comments - so say "entries" or "occurrences", never just the number, which
+  is how this pair got mis-stated once already tonight. The decisive fact: **all 13 placeholder screens use
+  all three classes that sheet defines** (`settings-screen-placeholder`, `-title`, `-note`; measured per
+  file at `9836cf960`), so those **13 case-3 bodies are provably empty** - which is exactly why case 3 can
+  afford to walk own CSS only, and why a union there would be all cost and no coverage.
+
+### 5. Three claims to kill before they spread, two of them from the brief that commissioned this block
+
+- **There is no `ui/src/features/settings/cards/` directory.** `ls` on that path: No such file or
+  directory. All four Cards live in `ui/src/features/settings/screens/`, and that directory holds **13**
+  `*Screen.tsx` files, not 14 - measured at `9836cf960`, where the 23 entries are 13 screens + 4 Card
+  `.tsx` + 4 Card `.css` + `screens-placeholder.css` + `registry.ts`. A reader who trusts the wrong
+  directory name greps nothing and concludes the Cards were deleted.
+- **The pairing of `BusinessDefaultsScreen` with `screens-placeholder.css` is CORRECT for its own 34-line
+  file** and was never the gap: it uses `.settings-screen-placeholder` at `:20`, `-title` at `:21`,
+  `-note` at `:28`, and mounts the four Cards at `:24`-`:27`. The wrapper is honest about its own classes;
+  what it cannot certify is what the Cards use. That is item 4, not a mis-registration here.
+- Third, and it bites anyone quoting a size: **`StatutoryNumberingCard.tsx` never became 278 lines.** It is
+  401 ln at `9836cf960`, 401 at `562177534`, and 401 in the tree now. `562177534` touched
+  `settings/components/ExportSection.tsx` (259 -> **278** ln) and one line of `ImportSection.tsx`; the 278
+  belongs to the export panel. Card sizes **as of `9836cf960`**, for citation: ReceiptFormatSettingsCard
+  488, StatutoryNumbering 401, RegionalSettings 315, LocalPaymentSettings 282.
+
+### 6. The sequence, sized, in the order that unblocks itself
+
+1. **`parentCss` lands first.** Everything below is graded by the extraction guard, and today the guard
+   cannot name a shared sheet at all.
+2. **Register the four Cards** as `css: [own sheet]` plus `parentCss: ['settings/SettingsPage.css']` - one
+   entry each, three cases each, **187 -> 199 cases**. The 187 is the tester lane count of the current file
+   and was not re-run here; +4 entries x 3 cases is the arithmetic, and 199 is what the next run should
+   report.
+3. **Register `sales/components/ItemModifierModal` as its OWN entry**, not as extra markup on a POS entry.
+   It is self-contained, and its mount site is `retail/RetailPosScreen.tsx:1770` (imported at `:16`). The
+   pairing people assume does not exist: `sales/PosScreen.tsx` contains **zero** `modifier-` literals
+   (`git grep -c 'modifier-' 9836cf960 -- ui/src/features/sales/PosScreen.tsx` exits 1). Hanging it off the
+   PosScreen entry would grade a class family against a file that never uses it.
+4. **Register `MemosScreen` last**, once its two deleted names are the only case-1 findings left. Those two
+   names are already gone - `69324986e` "style(settings): drop the two memo class names no stylesheet ever
+   defined" (+4/-5, `ui/src/features/memo/MemosScreen.tsx`). What must NOT be enumerated is the four
+   runtime-composed states `memos-badge--draft|published|stopped|muted`, defined at
+   `MemosScreen.css:289`/`:294`/`:299`/`:304` under the base `:279`: they are built by template at render
+   time, so **one `dynamicClassPrefixes` entry `'memos-badge--'` clears all four**, which is what the
+   comment at `screenExtraction.test.ts:625`-`:626` already says. Four literal names there would be a
+   prefix pretending to be a list.
+
+**BOX COUNTS for this pass: NOTHING MOVED.** No checkbox was opened, closed or edited anywhere in this
+block, in either grep form: `- [ ]` stays **5** and `- [x]` stays **6**, before and after. Bullet lines in
+this file go 65 -> 82 with this block (+17 dash bullets, plus 4 numbered items in item 6), all of them
+prose. No line of this block begins with a checkbox, and the block holds none - the counts above are
+the whole-file totals it leaves untouched. Phase 3.2 is still 5 open / 6 ticked exactly as
+the second pass left it, and the open set is still `:111`, `:130`, `:144`, `:147`, `:153`.
+
