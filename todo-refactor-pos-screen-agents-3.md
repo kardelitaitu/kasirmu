@@ -164,3 +164,19 @@
 > ⚠️ **2026-09-14 · anchor drift is live in this file.** `wc -l ui/src/features/sales/PaymentModal.tsx` = **2,436** was the day's first reading; three reads minutes later returned **2,404** and **2,435** while slice S1 landed, and every `:NNNN` above is anchored below the moved `PaymentModalProps` interface — the shift so far is a uniform **−32** for lines under `:56` (`processing` `:134`→`:102`, `id-ID` locale `:1958`→`:1926`, `<PaymentModal` in `PosScreen.tsx` `:800`→`:794`). Re-derive each anchor with `grep -n` against the file you are about to cut, and re-check `ls ui/src/features/sales/payment/` before assuming a planned file is absent.
 >
 > last audited 2026-09-14 by DSH (docs-auditor)
+
+---
+
+## Correction (2026-09-14) - measured against HEAD 828247454
+
+Nothing above is rewritten; the originals stand as dated records. All figures re-measured with read/grep against the working tree (they also hold at `bb484066b` — the two commits after `828247454` touched `AppShell.tsx`, `WorkspaceContext.tsx` and two test files, none of them measured here).
+
+- **(a) "TARGET DIRECTORY STILL ABSENT" (`:90`, `:103`) IS FALSE, AND TWO PANEL BOXES ARE DONE.** `ui/src/features/sales/payment/` holds **9 landed files** — `CashTenderPanel.tsx` (152 ln), `QrisTenderPanel.tsx` (101), `types.ts` (56), `useAutoQr.ts` (242), `useGatewayQr.ts` (112), `useMultiCurrency.ts` (200), `useTenderMath.ts` (206), `moneyFormat.ts` (31), `completedSale.ts` (108) — all wired in at `ui/src/features/sales/PaymentModal.tsx:28-36`. So **the CashTenderPanel box (`:115`) and the QRIS panel box (`:117`) are DONE**: both files exist, both are imported, both are off the target directory's floor. Tick them or supersede them in a dated line; re-cutting them would duplicate live modules.
+
+- **(b) THE BASELINE IS STALE TWICE OVER.** The newest figure this file prints is **2,321** (`:12`, superseding the 2,436 of record). Measured now: `wc -l ui/src/features/sales/PaymentModal.tsx` = **1,999** — a further **-322** lines the plan has not seen. Consequence for the `:55` ceiling: `<450` is a **77% reduction** from where the file actually stands (450 / 1,999), not the ~82% a reader computes from the printed 2,436. Quote 1,999; the remaining harvest is smaller than this file's arithmetic, and so is the risk.
+
+- **(c) EVERY JSX ANCHOR IN THE PANEL PHASE HAS DRIFTED, ONE PAST EOF.** Re-measured against the file on disk: `{method === 'cash' && (` at **:1581** (plan says `:1925` at `:115`), `{method === 'card' && !splitMode && edcOffered && (` at **:1593** (plan `:1995` at `:116`), `{method === 'qris' && (` at **:1614** (plan `:2016` at `:117`) — all high by ~340-400 lines. The loyalty anchor at `:118` reads **`:2225`**, which is **past the end of the file** (1,999 lines): a coder cannot open it, and a "no match" there is the anchor being stale, not the markup being absent. Cut against `grep -n "method === '" ui/src/features/sales/PaymentModal.tsx` output, never against this file's numbers.
+
+- **(d) WHAT IS STILL REAL, i.e. 0 hits tree-wide and genuinely open:** `CardTenderPanel` -> 0 · `LoyaltyTenderPanel` -> 0 · `usePaymentStateMachine` (`:90`) -> 0 · `useSplitTenders` (`:103`) -> 0 (each `git grep -l <name> -- ui | wc -l`). The state-machine and split-tender hooks are the substance of this plan and neither has started; only the panel work in (a) has moved.
+
+- **(e) FENCE RULE — THE WHOLE POS LANE IS ONE CODER.** Every remaining slice on this list edits the same file, `ui/src/features/sales/PaymentModal.tsx`: `usePaymentStateMachine`, `useSplitTenders`, `CardTenderPanel`, `LoyaltyTenderPanel`. A pathspec commit records the *working-tree* copy (AGENTS.md §3), so two agents in this lane do not conflict loudly — one silently commits the other's half-finished extraction under their own subject. Do not split this lane by slice; split it by hand, one worker, sequenced.

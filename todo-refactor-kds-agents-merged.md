@@ -223,3 +223,25 @@ Dispositions: **OPEN** (real work), **ALREADY SHIPPED**, **DECISION NOT WORK**, 
 5. **Run `npm run typecheck` as the PROP ENUMERATOR, not as a final form.** Today's evidence, in the mover's own numbers: a worker's hand-rolled identifier scan **under-reported `KdsHeaderLeft`'s props by five** and **guessed one prop's type wrong**; `npm run typecheck` from `ui/` caught all of it, because `noUnusedLocals` / `noUnusedParameters` make an unused or mistyped prop an error rather than a shrug. So write the component with the props you think the markup needs, then let the compiler's complaints **be** the prop list, and only then run it once more for the green. Scanning identifiers by eye is how a 16-prop interface gets recorded as 11 — and 11 is what the plan would have inherited.
 
 > last audited 2026-09-14 by DSH (docs-auditor) · merged from agents-1 + agents-2 + todo-kds.md · the three sources stay in place, undeleted and NOT renamed `done-`: the work they plan is unfinished.
+
+---
+
+## Correction (2026-09-14) - measured against HEAD 828247454
+
+Nothing above is rewritten; the originals stand as dated records. All figures re-measured with read/grep against the working tree (they also hold at `bb484066b` — the two commits after `828247454` touched `AppShell.tsx`, `WorkspaceContext.tsx` and two test files, none of them measured here).
+
+- **(a) 13 OF THE 19 OPEN BOXES DESCRIBE LANDED WORK** (`grep -cF -- '- [ ]' todo-refactor-kds-agents-merged.md` = 19). They are still open because the file was never re-measured after the extractions shipped. Named, with the commit that landed each:
+  - keyboard shortcuts (`:151`) — landed as `ui/src/features/kds/useKdsShortcuts.ts` (129 ln) in `6c2bdf1bf`, **NOT** this file's target name `useKdsKeyboardShortcuts.ts`, which exists nowhere; the box is titled "RENAMED" and was never closed.
+  - ticket fetching + the `kds:orders-changed` listener (`:159`-`:160`) — landed as `useKdsRealtime.ts` (127 ln) in `9fe87671b`.
+  - the tab-indicator pair — landed as `useKdsTabIndicator.ts` (105 ln) in `17977fc02`.
+  - the roving-tabindex trio — landed as `useKdsFilterNav.ts` (162 ln) in `3ad157d05`.
+  - the zone-chip tablist — landed as `components/KdsZoneChips.tsx` (91 ln) in `b63b48469`.
+  Corroboration for all of it: `grep -n addEventListener ui/src/features/kds/KdsScreen.tsx` -> **0**. There is no listener left in the screen for those boxes to extract.
+
+- **(b) THE SIZE GATE IS ALREADY MET, WITHOUT THE HARVEST.** `wc -l ui/src/features/kds/KdsScreen.tsx` = **729** — not the 1,000 this file states at `:42`, `:57` and `:75`. So the wave-1 acceptance `<= 760` (note 1, `:219`) passes **today**, and so does the later `<= 700` goalpost by 29 lines. A reader who takes "at 1,000" as current will schedule slices that the gate no longer requires; the harvest list is now ambition, not acceptance.
+
+- **(c) THE REGION TABLE IS STALE BY ~250 LINES.** Measured against the file on disk: `kds-header` opens at **:469**, the tabs block runs **:490**-**:518**, `kds-header-right` starts at **:519**. The table at `:31`, `:33` and `:34` cites **:718**, **:739-767** and **:768-815** — every start is high by 249-250, the same drift twice over. So **any cut must RE-DERIVE its spans first**, exactly as this file's own note 3 (`:221`) warns; note 3 counted the drift at two slices, and the table has since drifted a third time, past the very numbers it was re-derived to fix. Re-derive with `grep -n 'className="kds-header\|kds-tabs\|kds-header-right' ui/src/features/kds/KdsScreen.tsx` in the same minute as the cut.
+
+- **(d) THE "registered in additionalTsx" COLUMN IS TRUE — AND SPECIFIC TO KDS. DO NOT GENERALISE IT.** It resolves: `ui/src/__tests__/screenExtraction.test.ts:263` lists `'kds/components/KdsZoneChips.tsx'` inside the KdsScreen entry, and the comment at `:259`-`:262` states why it may do so — the extracted components **reuse the listed `kds/KdsScreen.css`** ("They are still styled by kds/KdsScreen.css, which this entry already lists ... drop it and the guard reads all three as dead CSS"). That licence comes from the shared sheet, not from the act of extraction. In another area, an extracted component with no entry of its own and no inherited sheet reads as dead CSS, so copying the kds pattern into a different screen is not a precedent — it is a different situation.
+
+- **(e) NOT RENAMEABLE AS IT STANDS.** `grep -cF -- '- [x]'` = 6 against 19 open, and the open set mixes landed work (item a), a gate already met (item b), and items still genuinely open (`:145` back-button, `:173` `KdsHeaderToolbar`, `:179` the carried `todo-kds.md` question). Ticking (a) and (b) is bookkeeping; the plan's acceptance — "`npm run typecheck`" plus the milestone commits for slices nobody has cut — has still not been run for the remaining work.

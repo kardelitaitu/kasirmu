@@ -101,3 +101,24 @@ Goal: state honestly what is broken, fix the part that is a real defect at **zer
 ## Housekeeping
 
 TRACKED — added by cc1dbfd45, updated by 9775b8b0f. The sentence that used to sit here ("Untracked. To version it, run the §3 new-file chain: git add -- todo-font-system.md && ...") was a TRAP: git add on a TRACKED file with pending edits is exactly what AGENTS.md §3 forbids in a shared checkout, and an agent obeying it would have left this file staged for whoever committed next. Correct form here is a one-line pathspec commit with NO add step: git commit -m "docs(agents): ..." -- todo-font-system.md, then git show --name-status to prove the file list is yours. (corrected 2026-09-14; re-derive with git ls-files --error-unmatch todo-font-system.md, which resolves) Never git add as a separate step, never -a / amend / stash / reset / push. **Never git clean -xdf** — this checkout holds uncommitted work that cannot be reproduced.
+
+---
+
+## Correction (2026-09-14) - measured against HEAD 828247454
+
+Nothing above is rewritten; the originals stand as dated records. Two measurements a coder needs before touching this plan, both re-taken with read/grep against the working tree (they also hold at `bb484066b` — the two commits after `828247454` touched `AppShell.tsx`, `WorkspaceContext.tsx` and two test files, none of them measured here).
+
+- **(a) NOTHING IN THIS PLAN IS IMPLEMENTABLE BEFORE THE RULING AT `:62`.** All five open boxes (`:62`-`:66`) are conditional on the owner's re-ruling — "do we want the app to *look like* the design token claims, or to *be* honest that it renders in system-ui?" — and the four boxes after it are downstream "if bundling" work, so none of the five can be started, ticked, or committed today. Measured, not inferred:
+  - `grep -c fontsource ui/package.json` -> **0**: neither `@fontsource-variable/inter` nor `@fontsource-variable/jetbrains-mono` is a dependency.
+  - `ls ui/src/frontend/themes/` -> **components.css · reset.css · responsive.css · tokens.css**. The `fonts.css` that `:63` wants to create does not exist.
+  - `:64`'s "byte-identical safety net" is already byte-identical: `sed -n '146,149p' ui/src/frontend/themes/tokens.css` returns the two `--font-*` declarations (opening at `:146` and `:148`) exactly as this file quotes them. There is nothing to preserve by editing, and editing that range is the one thing `:64` forbids.
+
+- **(b) THIS PLAN'S ACCEPTANCE COMMAND IS FALSE AS WRITTEN, AND THAT ALONE DISQUALIFIES A RENAME.** `:44` states the confirmation as `cd ui && npx vitest run src/__tests__/fontTokenCompliance.test.ts`. **That file does not exist anywhere and never did:** `find ui/src -iname '*font*'` -> **0 hits**; `git grep -n fontTokenCompliance -- ui` -> 0. It is not merely missing — `:38`, this plan's own Phase 1 box, **forbids creating it** ("Add to the existing `ui/src/__tests__/themeTokenCompliance.test.ts`, do NOT create a new file ... a new fontTokenCompliance.test.ts would duplicate a live gate"). So the written acceptance names a file the plan rules out, and running it proves nothing: vitest matches zero test files. **The command that actually runs is:**
+
+  ```bash
+  cd ui && npx vitest run src/__tests__/themeTokenCompliance.test.ts
+  ```
+
+  **A plan whose acceptance cannot execute is not renameable** — per AGENTS.md §4, `done-todo-*` is earned only when *that file's own* acceptance command was RUN and PASSED, and an unrunnable command can never pass. Whatever of Phase 1 + 2 landed, this file stays `todo-`; the reason belongs in a dated line like this one, never in the filename.
+
+- **THE RULING IS PARKED ON THIS FILE: `todo-font-system.md`.** The `:62` decision has no other home to be answered in — no ADR, no `docs/decisions/` row, no sibling plan. Whoever owns the design tokens rules here; until then Phase 3 is not blocked on code, it is blocked on a ruling, and the acceptance above stays unexecutable either way.
