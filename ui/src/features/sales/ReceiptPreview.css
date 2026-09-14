@@ -29,7 +29,7 @@
   padding: var(--space-4) var(--space-3);
   font-family: var(--font-mono, 'Courier New', Courier, monospace);
   font-size: var(--text-xs);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
   color: var(--color-fg);
   box-shadow: var(--shadow-md);
   overflow: hidden;

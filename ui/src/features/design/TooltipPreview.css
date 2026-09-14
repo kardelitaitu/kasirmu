@@ -67,7 +67,7 @@
   color: var(--color-fg-tertiary);
   margin-bottom: var(--space-5);
   margin-top: var(--space-0_5);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 /* ── Demo row — horizontal layout for tooltip triggers ──────── */

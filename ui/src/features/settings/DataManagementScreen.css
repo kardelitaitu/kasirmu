@@ -101,7 +101,7 @@
 .data-mgmt-section-desc {
   font-size: var(--text-sm);
   color: var(--color-fg-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
   margin: 0;
 }
 

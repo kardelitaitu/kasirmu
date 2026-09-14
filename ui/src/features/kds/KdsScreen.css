@@ -2217,7 +2217,7 @@
   box-shadow: var(--kds-shadow-modal);
 }
 .kds-modal-title { font-size: var(--text-base); font-weight: var(--font-weight-bold); color: var(--kds-text); margin-bottom: 8px; }
-.kds-modal-msg { font-size: var(--text-sm); color: var(--kds-text); opacity: 0.7; line-height: 1.5; margin-bottom: var(--space-4); }
+.kds-modal-msg { font-size: var(--text-sm); color: var(--kds-text); opacity: 0.7; line-height: var(--leading-normal); margin-bottom: var(--space-4); }
 .kds-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .kds-modal-actions .kds-btn { min-height: 28px; }
 .kds-modal-actions .kds-btn.danger { --btn-bg: var(--color-danger); --btn-hover: var(--color-danger-hover); --btn-active: var(--color-danger-700); }

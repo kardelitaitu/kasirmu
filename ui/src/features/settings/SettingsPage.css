@@ -55,7 +55,7 @@
 .settings-locked-card p {
   margin: 0;
   font-size: var(--text-sm);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 /* ── Loading skeleton ─────────────────────────────────────── */
