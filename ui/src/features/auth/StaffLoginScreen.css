@@ -269,6 +269,9 @@
     outline var(--duration-150) var(--ease-out);
 }
 
+/* The username text field keeps its focus ring. The ring-free decision on this
+   screen covers the PIN keypad only (.staff-login-pad-key and
+   .staff-login-pin-wrap), not text entry. */
 .staff-login-input:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;

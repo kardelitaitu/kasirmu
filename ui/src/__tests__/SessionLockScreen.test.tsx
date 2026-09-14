@@ -590,7 +590,13 @@ describe('SessionLockScreen visual contract', () => {
   });
 });
 
-// ── CSS integrity: the pad container must suppress focus-visible by SPECIFICITY ──
+// ── CSS integrity: the keypad suppresses focus-visible by SPECIFICITY, not by order ──
+//
+// Scope, so the next reader does not generalise this: the ring-free decision
+// covers the PIN keypad only -- container and keys, on both PIN screens. Text
+// fields are NOT in it and keep the global :focus-visible ring (the surviving
+// example is `.staff-login-input:focus-visible`, guarded in
+// StaffLoginScreen.test.tsx).
 //
 // Mirror of the `.staff-login-pin-wrap:focus-visible` guards in
 // StaffLoginScreen.test.tsx, because the lock card is a structural clone of the
@@ -635,14 +641,19 @@ describe('SessionLockScreen CSS integrity', () => {
     ).not.toMatch(/outline\s*:/);
   });
 
-  it('keeps a visible focus outline on the keypad keys themselves', () => {
+  it('has no focus outline on the keypad keys — the PIN pad is ring-free by decision', () => {
     const keyMatch = css.match(/\.session-lock-pad-key:focus-visible\s*\{([^}]*)\}/);
     expect(
       keyMatch,
-      '.session-lock-pad-key:focus-visible must keep its own outline — suppressing the ' +
-        'container ring must not cost the keyboard user their only position cue on the pad',
+      '.session-lock-pad-key:focus-visible must exist and suppress the outline: both PIN ' +
+        'screens are keypad-ring-free by decision, so an unscoped or deleted rule here ' +
+        'lets reset.css\'s :focus-visible paint a blue box on every tabbable digit. ' +
+        'Reinstating a keyboard cue is a design decision to make openly, not a silent fix.',
     ).not.toBeNull();
-    expect(keyMatch![1]!.trim()).toContain('outline: 2px');
-    expect(keyMatch![1]!.trim()).not.toContain('outline: none');
+
+    const keyBody = keyMatch![1]!.trim();
+    expect(keyBody, '.session-lock-pad-key:focus-visible rule body must not be empty').not.toHaveLength(0);
+    expect(keyBody).toContain('outline: none');
+    expect(keyBody).not.toMatch(/outline:\s*2px/);
   });
 });
