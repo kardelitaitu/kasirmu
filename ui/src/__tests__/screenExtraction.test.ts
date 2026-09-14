@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, 83/255/27 after 319a18e41, and 83/255/26 as of this edit: (3 x 83) + 4 + 2 = 255,
+// 902e07678, 83/255/27 after 319a18e41, 83/255/26 after 338c15c01, and 84/258/25 as of this edit: (3 x 84) + 4 + 2 = 258,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -551,6 +551,23 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'shifts/ShiftManagementScreen.tsx',
     css: ['shifts/ShiftManagementScreen.css'],
     dynamicClassPrefixes: ['shift-mgmt-status-badge--', 'shift-mgmt-close-info'],
+  },
+
+  {
+    name: 'SettingsSelect',
+    tsx: 'settings/SettingsSelect.tsx',
+    css: ['settings/SettingsSelect.css'],
+    // Cited, not muted: this component's markup uses .sr-only, which is defined in
+    // frontend/themes/components.css:1492, a sheet both entry points import (main.tsx:7
+    // desktop, main.tablet.tsx:20 tablet). It is not composed at runtime, so a
+    // knownDynamicFragments entry here would assert something false and then hide the
+    // name from case 3 forever. No additionalTsx either: all nine ssel-* names have
+    // exactly one consumer, this component -- measured with the guard's own extractors,
+    // dead-against-own 0, dead-against-features/settings 0, dead tree-wide 0 -- and
+    // locations/TopologyScreen.tsx, the only other file that names the component at :28,
+    // renders <SettingsSelect> at :747 and :918 without using a single ssel-* class.
+    // A sibling that merely shares a surface is not what that field claims.
+    parentCss: ['../frontend/themes/components.css'],
   },
 
   // ── Locations (moved from stores/ in the Store→Location rename) ──
@@ -1496,7 +1513,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 26 entries is a named path, not a prefix, not a
+// every one of its 25 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line, and NOTHING here is a
 // place to put a new one: not a rename, not a sheet that "will be
@@ -1534,7 +1551,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 26 since, one line per sheet a landed entry cited, and
+// it has shrunk to 25 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1557,7 +1574,6 @@ const BASELINE_UNCITED: string[] = [
   'settings/LicenseSettings.css',
   'settings/SettingsNavTree.css',
   'settings/SettingsScopeTag.css',
-  'settings/SettingsSelect.css',
   'settings/WorkspaceSettingsModal.module.css',
   'settings/sections/DiagnosticsSection.css',
   'setup/components/LiveSetupPreview.css',
