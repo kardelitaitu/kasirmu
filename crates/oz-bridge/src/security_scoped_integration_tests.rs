@@ -19,7 +19,64 @@ use crate::products;
 use crate::settings;
 use crate::shifts;
 use crate::sync;
+use crate::testing::seeded_row_loads;
 use crate::testing::{TestBridge, temp_conn};
+use oz_core::subscription::TenantSubscription;
+
+/// The release leg for a session-minting command in this file.
+///
+/// `create_session` reaches the tenant row through `sub.verify_signature()?`
+/// (`auth.rs:617` - the same gate `auth_tests.rs` went through), so in release
+/// the mint RETURNS AN ERROR: no session token, no ticket, no id for anything
+/// downstream to name. There is no fail-closed projection to assert and
+/// `FAIL_CLOSED_*` appears nowhere in this file.
+///
+/// Existence is pinned FIRST, because `seeded_row_loads() == false` collapses
+/// five distinct causes (`testing.rs:210-216`: no default row, a load `Err` on
+/// a mis-shaped table, a public-key failure, the intended base64 reject on the
+/// BOOTSTRAP_FREE sentinel, a genuine RSA mismatch) and only the fourth is this
+/// fixture vocabulary. Both `test_bridge` and every fixture here hand
+/// `temp_conn()` to `with_conn`, and this file contains no re-tier and no
+/// store-db write, so the pin reads the same identity row the predicate is
+/// about - the locations two-table trap cannot fire on any of these four.
+async fn assert_refused_by_the_seeded_row<T>(
+    tb: &TestBridge,
+    settled: Result<T, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = tb.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture mints a session against must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the session must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
 
 use oz_core::db::Store;
 use oz_core::session::SessionContext;
@@ -220,7 +277,7 @@ async fn refresh_picker_ticket_end_to_end() {
     let ctx = tb.ctx();
 
     // Step 1: Create session via picker ticket (simulates login → workspace pick)
-    let login_result = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -233,8 +290,15 @@ async fn refresh_picker_ticket_end_to_end() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login_result = settled.unwrap();
 
     // Step 2: Refresh the picker ticket (bridge-side: sync, no `.await`)
     let refresh = refresh_picker_ticket(&ctx, &login_result.session_token).unwrap();
@@ -286,7 +350,7 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
     let ctx = tb.ctx();
 
     // Operator session (owner holds operator:impersonate via the `*` preset).
-    let login = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -299,8 +363,15 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let result = impersonate_user_scoped(&ctx, &login.session_token, "user-target").await;
     assert!(result.is_ok(), "in-scope impersonation must succeed");
@@ -333,7 +404,7 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
     let tb = test_bridge(conn);
     let ctx = tb.ctx();
 
-    let login = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -346,8 +417,15 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let imp = impersonate_user_scoped(&ctx, &login.session_token, "user-target")
         .await
@@ -376,7 +454,7 @@ async fn impersonate_user_scoped_enforces_ttl() {
     let tb = test_bridge(conn);
     let ctx = tb.ctx();
 
-    let login = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -389,8 +467,15 @@ async fn impersonate_user_scoped_enforces_ttl() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let imp = impersonate_user_scoped(&ctx, &login.session_token, "user-target")
         .await
