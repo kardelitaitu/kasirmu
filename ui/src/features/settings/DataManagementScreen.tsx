@@ -10,12 +10,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 /** Duration (ms) for the row flash animation. */
 const FLASH_DURATION = 1_400;
 import { Localized, useLocalization } from '@fluent/react';
-import { Card } from '@/components/Card';
-import { Button } from '@/components/Button';
-import { Spinner } from '@/components/Spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/frontend/shared/Toast';
-import { requiredLocalized } from '@/frontend/shared';
 import {
   getBackupStatus,
   getBackupStatusScoped,
@@ -33,7 +29,8 @@ import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
 import { DATA_TYPES, INITIAL_EXPORT, INITIAL_IMPORT, type BackupInfo, type DataType, type ExportState, type ImportState } from './dataManagementModel';
-import { checkIcon, eyeIcon, eyeOffIcon, tabIcon } from './dataManagementIcons';
+import { tabIcon } from './dataManagementIcons';
+import { ExportSection } from './components/ExportSection';
 import { BackupSection } from './components/BackupSection';
 import { ImportSection } from './components/ImportSection';
 
@@ -431,205 +428,17 @@ function DataManagementScreenContent() {
 
       {/* ── Export tab ─────────────────────────────── */}
       {activeTab === 'export' && (
-        <div key="export" className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-export-wizard-aria')}>
-          {exportState.step === 'select' && (
-            <Card shadow="sm">
-              <div className="data-mgmt-section">
-                <Localized id="data-mgmt-export-title">
-                  <h2 className="data-mgmt-section-title">Select data to export</h2>
-                </Localized>
-
-                <div className="data-mgmt-types" role="group" aria-label={l10n.getString('data-mgmt-export-types-aria')}>
-                  <label
-                    className="data-mgmt-type-checkbox data-mgmt-type-checkbox--all"
-                    htmlFor="type-select-all"
-                  >
-                    <input
-                      id="type-select-all"
-                      type="checkbox"
-                      aria-label={l10n.getString('data-mgmt-export-select-all')}
-                      checked={exportState.selectedTypes.size === DATA_TYPES.length}
-                      onChange={toggleAll}
-                    />
-                    <Localized id="data-mgmt-export-select-all">
-                      <span className="data-mgmt-type-label">Select all / none</span>
-                    </Localized>
-                  </label>
-
-                  {DATA_TYPES.map((dt) => (
-                    <label
-                      key={dt.key}
-                      className="data-mgmt-type-checkbox"
-                      htmlFor={`type-${dt.key}`}
-                    >
-                      <input
-                        id={`type-${dt.key}`}
-                        type="checkbox"
-                        aria-label={l10n.getString(`data-mgmt-type-${dt.key}`)}
-                        checked={exportState.selectedTypes.has(dt.key)}
-                        onChange={() => toggleType(dt.key)}
-                      />
-                      <div className="data-mgmt-type-info">
-                        <Localized id={`data-mgmt-type-${dt.key}`}>
-                          <span className="data-mgmt-type-label">{requiredLocalized(l10n, dt.labelId)}</span>
-                        </Localized>
-                        <Localized id={`data-mgmt-type-${dt.key}-desc`}>
-                          <span className="data-mgmt-type-desc">{requiredLocalized(l10n, dt.descriptionId)}</span>
-                        </Localized>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="data-mgmt-date-range">
-                  <div className="data-mgmt-field">
-                    <Localized id="data-mgmt-export-date-from">
-                      <label className="data-mgmt-label" htmlFor="export-date-from">From</label>
-                    </Localized>
-                    <input
-                      id="export-date-from"
-                      className="data-mgmt-input"
-                      type="date"
-                      value={exportState.dateFrom}
-                      onChange={(e) => setExportState((prev) => ({ ...prev, dateFrom: e.target.value }))}
-                    />
-                  </div>
-                  <div className="data-mgmt-field">
-                    <Localized id="data-mgmt-export-date-to">
-                      <label className="data-mgmt-label" htmlFor="export-date-to">To</label>
-                    </Localized>
-                    <input
-                      id="export-date-to"
-                      className="data-mgmt-input"
-                      type="date"
-                      value={exportState.dateTo}
-                      onChange={(e) => setExportState((prev) => ({ ...prev, dateTo: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="data-mgmt-actions">
-                  <Button variant="primary" onClick={startExport}>
-                    <Localized id="data-mgmt-export-next">Next: Encryption</Localized>
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {exportState.step === 'encrypt' && (
-            <Card shadow="sm">
-              <div className="data-mgmt-section">
-                <Localized id="data-mgmt-encrypt-title">
-                  <h2 className="data-mgmt-section-title">Set encryption password</h2>
-                </Localized>
-                <Localized id="data-mgmt-encrypt-desc">
-                  <p className="data-mgmt-section-desc">
-                    The export file will be encrypted with AES-256-GCM. Choose a strong
-                    password — you will need it to import the data later.
-                  </p>
-                </Localized>
-
-                <div className="data-mgmt-form">
-                  <div className="data-mgmt-field data-mgmt-field--horizontal">
-                    <Localized id="data-mgmt-encrypt-password">
-                      <label className="data-mgmt-label" htmlFor="export-password">Password</label>
-                    </Localized>
-                    <div className="data-mgmt-password-wrapper">
-                      <input
-                        id="export-password"
-                        className="data-mgmt-input"
-                        type={showExportPw ? 'text' : 'password'}
-                        autoComplete="off"
-                        placeholder={l10n.getString('data-mgmt-encrypt-password-placeholder')}
-                        value={exportState.password}
-                        onChange={(e) => setExportState((prev) => ({ ...prev, password: e.target.value }))}
-                      />
-                      <button
-                        type="button"
-                        className="data-mgmt-password-toggle"
-                        onClick={() => setShowExportPw((p) => !p)}
-                        aria-label={l10n.getString(showExportPw ? 'data-mgmt-password-hide-aria' : 'data-mgmt-password-show-aria')}
-                      >
-                        {showExportPw ? eyeOffIcon() : eyeIcon()}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="data-mgmt-field data-mgmt-field--horizontal">
-                    <Localized id="data-mgmt-encrypt-confirm">
-                      <label className="data-mgmt-label" htmlFor="export-password-confirm">Confirm password</label>
-                    </Localized>
-                    <div className="data-mgmt-password-wrapper">
-                      <input
-                        id="export-password-confirm"
-                        className="data-mgmt-input data-mgmt-input--no-toggle"
-                        type={showExportPw ? 'text' : 'password'}
-                        autoComplete="off"
-                        placeholder={l10n.getString('data-mgmt-encrypt-confirm-placeholder')}
-                        value={exportState.passwordConfirm}
-                        onChange={(e) => setExportState((prev) => ({ ...prev, passwordConfirm: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="data-mgmt-actions">
-                  <Button variant="ghost" onClick={() => setExportState((prev) => ({ ...prev, step: 'select' }))}>
-                    <Localized id="data-mgmt-encrypt-back">Back</Localized>
-                  </Button>
-                  <Button variant="primary" onClick={confirmExport}>
-                    <Localized id="data-mgmt-encrypt-export">Export</Localized>
-                  </Button>
-                </div>
-
-                {exportState.error && (
-                  <div className="data-mgmt-error" role="alert">{exportState.error}</div>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {(exportState.step === 'exporting' || exportState.step === 'done') && (
-            <Card shadow="sm">
-              <div className="data-mgmt-section">
-                {exportState.step === 'exporting' ? (
-                  <Localized id="data-mgmt-export-exporting">
-                    <h2 className="data-mgmt-section-title">Exporting…</h2>
-                  </Localized>
-                ) : (
-                  <Localized id="data-mgmt-export-complete">
-                    <h2 className="data-mgmt-section-title">Export complete</h2>
-                  </Localized>
-                )}
-
-                <div className="data-mgmt-progress">
-                  {exportState.step === 'exporting' ? (
-                    <Spinner size="md" />
-                  ) : (
-                    <span className="data-mgmt-progress-done" aria-label={l10n.getString('data-mgmt-export-complete-aria')}>{checkIcon()}</span>
-                  )}
-                </div>
-
-                {exportState.step === 'done' && (
-                  <>
-                    <p className="data-mgmt-done-text">
-                      <Localized id="data-mgmt-export-done-text">Data exported to:</Localized> <code>{exportState.outputFile}</code>
-                    </p>
-                    <p className="data-mgmt-done-text">
-                      <Localized id="data-mgmt-export-selected-types">Selected types:</Localized>{' '}
-                      {Array.from(exportState.selectedTypes).join(', ')}
-                    </p>
-                    <div className="data-mgmt-actions">
-                      <Button variant="primary" onClick={resetExport}>
-                        <Localized id="data-mgmt-export-new-export">New export</Localized>
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </Card>
-          )}
-        </div>
+        <ExportSection
+          exportState={exportState}
+          showExportPw={showExportPw}
+          onToggleAll={toggleAll}
+          onToggleType={toggleType}
+          onStartExport={startExport}
+          onConfirmExport={confirmExport}
+          onResetExport={resetExport}
+          onFieldChange={(patch) => setExportState((prev) => ({ ...prev, ...patch }))}
+          onTogglePassword={() => setShowExportPw((p) => !p)}
+        />
       )}
 
       {/* ── Import tab ─────────────────────────────── */}
