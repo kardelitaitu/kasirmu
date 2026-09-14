@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 81 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 82 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 81/249/28 as of this edit: (3 x 81) + 4 + 2 = 249,
+// 902e07678, and 82/252/27 as of this edit: (3 x 82) + 4 + 2 = 252,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1267,6 +1267,45 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'reports/CustomReportScreen.tsx',
     css: ['reports/CustomReportScreen.css'],
   },
+  {
+    // Promotion-picker modal. Mount evidence is a JSX site, not a route: it imports
+    // its own sheet at :9 and is rendered by sales/PosScreen.tsx:42 (import) at
+    // :677. It claims NO page of its own — the route 'promotions' bound at
+    // promotions/register.tsx:8/:10 belongs to PromotionManagementScreen, and the two
+    // cards naming that route (setup/components/LiveSetupPreview.tsx:84,
+    // workspaces/tools.tsx:161) are that screen's, so nothing here says a registered
+    // page exists for the modal.
+    //
+    // Its seventh name is a decision, not a coverage win: promo-picker-item is a real
+    // single-token class on the li at :151, and 8db5d0900 gave it an EMPTY rule on the
+    // argument that .promo-picker-list owns the list-style/margin/padding/gap and the
+    // row's box is drawn by .promo-picker-item-btn — the author refused the available
+    // min-width: 0 because shrinking the li does not wrap the span that overflows. The
+    // class is declared and styled-by-inheritance; case 3 keeps it honest.
+    //
+    // knownDynamicFragments carries exactly ONE string, MEASURED not inherited: walk A
+    // without it came back red, `PromotionsModal: className(s) used but not defined:
+    // eligible`, so extractUsedClassNames does put that token in this entry's used set.
+    // It is a comparison right-hand side inside an interpolation at :154
+    // (`promo-picker-item-btn${kind === 'eligible' ? …}`), never a class on an element
+    // — the same value appears again at :155 as `disabled={kind !== 'eligible'}`, which
+    // is not a className at all. dynamicClassPrefixes would be the wrong field here:
+    // there is no composed name, only a harvested literal.
+    // Falsifiable in both directions, so the exemption can be contradicted: if the
+    // interpolation harvest at screenExtraction.utils.ts:170-176 is narrowed to skip
+    // comparison operands, `eligible` leaves the used set and this line becomes vacuous
+    // — deleting it must then keep the run green. If instead someone puts eligible ON an
+    // element, removing this line makes case 1 red again and a real rule is owed.
+    name: 'PromotionsModal',
+    tsx: 'sales/PromotionsModal.tsx',
+    css: ['sales/PromotionsModal.css'],
+    knownDynamicFragments: ['eligible'],
+    // NO parentCss: the nine names components.css re-defines (sr-only, spinner, card,
+    // btn, badge, status-indicator, kds-workspace, shift-status-active,
+    // settings-footer-shortcut) occur 0 times as a rule in this sheet (measured by
+    // grep -cE over the seven-name alternation), and case 1 is clean against the own
+    // sheet alone, so a theme cite here would be both vacuous and unresolvable.
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1418,7 +1457,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 28 entries is a named path, not a prefix, not a
+// every one of its 27 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1431,7 +1470,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 28 since, one line per sheet a landed entry cited, and
+// it has shrunk to 27 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1450,7 +1489,6 @@ const BASELINE_UNCITED: string[] = [
   'marketplace/AddonsMarketplace.css',
   'memo/MemoBanner.css',
   'retail/RetailPosScreen.css',
-  'sales/PromotionsModal.css',
   'sales/WeightScaleWidget.css',
   'sales/widgets/widgets.css',
   'settings/LicenseSettings.css',
