@@ -9,7 +9,7 @@ import {
   CartPanel,
   type CartPanelProps,
 } from '@/features/sales/components/CartPanel';
-import { IDLE_TAX_STATE } from '@/features/sales/components/CartTaxWatcher';
+import { IDLE_TAX_STATE } from '@/features/pos/components/CartTaxWatcher';
 import type { AnimatedUndoStack } from '@/hooks/useAnimatedUndoStack';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
 import { type CartLine, type LineId, type Money, type Sku } from '@/types/domain';

@@ -23,7 +23,7 @@ import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
-import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
+import { CartTaxWatcher, IDLE_TAX_STATE } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
 import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';

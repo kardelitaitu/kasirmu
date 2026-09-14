@@ -5,7 +5,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import {
   CartTaxWatcher,
   IDLE_TAX_STATE,
-} from '@/features/sales/components/CartTaxWatcher';
+} from '@/features/pos/components/CartTaxWatcher';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 

@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { withFluent } from '@/locales/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { CartFooterTotals } from '@/features/sales/components/CartFooterTotals';
-import { IDLE_TAX_STATE } from '@/features/sales/components/CartTaxWatcher';
+import { IDLE_TAX_STATE } from '@/features/pos/components/CartTaxWatcher';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { Promotion } from '@/api/promotions';
 import { formatMoney, type CartLine, type LineId, type Money, type Sku } from '@/types/domain';
