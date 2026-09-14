@@ -611,5 +611,3 @@ and 1,415 unreachable section lines (`205+156+257+567+176`) sit on opposite side
 > reachability answers 2026-09-15 · DSH · re-measured at f7872bd9a4 with static commands only; no
 > ui/** file touched, no test runner invoked, both open questions left as written with the answers
 > appended beside them rather than over them.
-
-
