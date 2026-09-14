@@ -144,6 +144,137 @@ it counts box syntax appearing in prose and code fences as well. -->
 > cashier's explicit assertion — the 8-second demo auto-confirm no longer
 > exists.
 
+## Triage (2026-09-14, HEAD 8229bd2b9)
+
+> **What this block is.** A classification pass over this file's open boxes, run against
+> HEAD `8229bd2b9`. It **ticks nothing and changes no box**: the open-box count and the
+> ticked-box count are identical before and after it lands. It exists because this file's
+> headline is wrong as a work estimate by roughly **18x**.
+>
+> **Measured here** (every figure re-run at HEAD `8229bd2b9`, not copied):
+> `grep -c '^- \[ \]'` = **35** open · `grep -c '^- \[x\]'` = **11** ticked · any-depth
+> `grep -cE '^[[:space:]]*- \[ \]'` = **36** open (the 36th is the indented airpay-fix box at
+> `:459`, which is why the bare anchor under-reads by one — this file already says so at
+> `:92`) · `wc -l` = **1,001** lines. The 36 / 11 pair agrees with the stamp at `:91` and
+> with `todo-open-debt-program.md:227`. **36 open boxes ≠ 36 boxes of work.**
+>
+> **The rule used** — ask of each open box: *what would close it?*
+> `REAL-WORK` = code is missing and a coder can write it · `RUN-ONLY` = code shipped, only
+> an acceptance command is unrun · `PARKED` = needs a human ruling first, so code written
+> tonight would guess · `SUPERSEDED` = another plan or doc owns it now · `ALREADY-DONE` =
+> shipped, and the box was simply never ticked.
+>
+> | Class | Count | | Class | Count |
+> |---|---|---|---|---|
+> | REAL-WORK | **2** | | SUPERSEDED | **4** |
+> | RUN-ONLY | **0** | | ALREADY-DONE | **14** |
+> | PARKED | **16** | | **open total** | **36** → **remainder: 2** |
+>
+> **Why RUN-ONLY is 0: this plan states no acceptance command at all.** At HEAD
+> `8229bd2b9`, `grep -niE 'acceptance|cargo test|npm run check|verify-ipc-parity'
+> todo-payment.md` returned **0 lines**; re-run today, its only hits are in this
+> block itself. There is nothing here to run. The epic's gates live in
+> `todo-open-debt-program.md:219`: `cargo test -p oz-payment` · `cargo test -p oz-hal` ·
+> `cd ui && npm run check:all` · `python scripts/verify-ipc-parity.py`. Run them from there.
+>
+> **AUTHORITY — these boxes are not a triage queue.** Re-read at HEAD `8229bd2b9`;
+> `todo-payment-agents-4.md:53-61` declares itself, verbatim:
+>
+> > "*This document is the **single status authority** for the payment epic, and the per-item
+> > verdicts in this section — the R1–R7 headings with their own CLOSED/OPEN lines — are
+> > **CANONICAL**. … (`todo-payment.md` is the research artifact, not a status surface; its
+> > own open-set line is being aligned to "R4–R7" by its owner.)*"
+>
+> So the canonical open set is that file's **R4–R7**; the boxes below are the research record
+> behind it. A lane that opens this file and starts executing boxes is working a queue nobody
+> owns.
+>
+> **The PARKED chain: 7 links, 1 decision.** `:884` → `:301` → `:338` / `:380` → `:381` →
+> `:939` → `:926` → `:947` / `:951`. That is not seven pieces of work — it is one unanswered
+> ruling with six dependents. **Two rulings actually gate it, and both are HELD BY THE OWNER,
+> not by a coder:**
+>
+> - **`:884` — feature-key vs this file's own table.** The box asks whether `payment:*` keys
+>   belong in `crate::feature_key` *or* "a separate payment-method config table", while
+>   `:301` already commands the `feature_key` style and the Responsibility-split table at
+>   `:206`-`:210` already rules that show/hide lives **device-side** in
+>   `TerminalFeatureOverride`. The doc contradicts itself, and only the owner can decide
+>   which of its own statements wins.
+> - **`:887` — credit is already a tab.** The box asks whether `credit` is "orthogonal to
+>   tender selection", but `credit` is one of the four tabs the checkout renders today
+>   (`ui/src/features/sales/useLocalPaymentRails.ts:41` defines `TenderMethod` with
+>   `'credit'`; `:68` carries `{ method: 'credit', railCode: null }` under that file's own
+>   note "*`credit` carries NO gate*"). Answering "orthogonal" means removing a live tab from
+>   the register — a product ruling, not a diff.
+>
+> Nothing downstream of those two is writable by a lane tonight.
+>
+> **7 boxes need a device or a merchant account, not a keyboard:** `:379` (research Midtrans
+> endpoint profiles), `:926` (per-acquirer activation happens in the Midtrans dashboard),
+> `:947` (generic-QRIS interop — needs a real wallet to scan), `:951` (QRIS refund — needs a
+> live sandbox transaction), and the EDC set `:604` / `:625` / `:630` (a physical terminal,
+> or the vendor protocol docs a codec would be written from — the shipped codecs are
+> fail-closed `HalError::Unsupported` stubs, R7 in the authority doc). **No test in this repo
+> can close any of these.**
+>
+> **2 boxes are REAL-WORK, each with its blocker named:**
+>
+> - **`:665` — persist `terminal_id` + `auth_code` on the sale**, so void/refund route back to
+>   the same device and batch. Blocker, measured: `auth_code` appears in **18 files**
+>   (`git grep -l auth_code` — the HAL trait and mock, the `oz-payment` drivers,
+>   `oz-bridge/src/edc.rs`, the desktop EDC command and its tests, `PaymentModal.tsx`) and in
+>   **no `crates/oz-core` file and no migration**: `git grep -n auth_code --
+>   'crates/oz-core/**'` exits 1 with zero hits, and the same grep scoped to
+>   `crates/oz-core/migrations/` exits 1 too. The value reaches the UI and is never stored —
+>   so **card void/refund cannot route**. Closing it needs a migration **plus its generated
+>   PG twin** (`python scripts/generate-pg-migration.py`; pre-commit step 5 and
+>   `dev-ci.yml#static-gates` both fail on drift).
+> - **`:382` — only the "hide when offline" leg is unwired.** The secrets half shipped (the
+>   server key is cloud-only env — see the Status block above). The offline half does not
+>   exist: `git grep -nE 'useGatewayStatus|isOnline|online' --
+>   ui/src/features/sales/PaymentModal.tsx` returns **0 hits**. Its sibling at `:315`
+>   (`visibleMethods = enabled ∩ entitled ∩ online-capable`) does now have a real symbol
+>   behind it — see the dated correction line appended to the sizing note below — with the
+>   `online-capable` term unimplemented, which is exactly what makes `:382` the rare box
+>   here that a lane can close.
+>
+> **One un-boxed tail the census found — recorded as a dated line, deliberately NOT a new
+> box** (a new box would move the counts above, and the counts are the deliverable).
+> `6a32cc9dd` (2026-09-14, *"fix(payment): omit qris acquirer on charge instead of
+> hardcoding airpay shopee"*) added `QrisPaymentProcessor::with_acquirer()`
+> (`crates/oz-payment/src/drivers/qris.rs:275`), but the only production construction site —
+> `apps/cloud-server/src/payment_api.rs:83` — still calls plain
+> `QrisPaymentProcessor::new(key, state.midtrans_sandbox)` and never `.with_acquirer(…)`. Its
+> only callers are tests (`crates/oz-payment/tests/qris_integration.rs:587`, `:632`), so a
+> per-merchant acquirer is reachable **only from tests** today. That plumbing is in flight
+> separately; no work funds from this line.
+>
+> **⚠️ CROSS-REFERENCE ROT — grep by TITLE, never by line number.** The sizing note at
+> `:317`-`:332` cites 14 in-document line anchors for boxes (the census said 13), and **none
+> of the 14 resolves to a box any more** — they land on a heading, on prose, or on another's
+> continuation line. Measured against a `grep -n '^- \[ \]'` dump at HEAD `8229bd2b9`:
+>
+> | Cited as | Actually is | Drift |
+> |---|---|---|
+> | Phase 0 `:290` `:298` `:300` `:302` `:304` | `:301` `:309` `:311` `:313` `:315` | **+11** |
+> | Phase 5 `:634` `:636` | `:713` `:715` | **+79** |
+> | Open questions `:780` `:782` `:784` | `:877` `:879` `:881` | **+97** |
+> | Evidence `:829` `:842` `:850` `:854` (cited from the RETAG note at `:723`) | `:926` `:939` `:947` `:951` | **+97** |
+>
+> **These anchors are unreliable. Find a box by grepping its title text.** The 14 are
+> deliberately **not** hand-corrected here: a hand-fix of 14 numbers that every future append
+> drifts again is worse than one sentence saying they are stale. The same rot runs through the
+> RETAG note at `:720`-`:724` (`:290`-`:307`, `:323`, `:326`, `:328`, `:330`, `:787`, `:790`
+> are all off by the amounts above; its `:338` happens to still land on a box, which is luck,
+> not maintenance).
+>
+> **The `:NNN` numbers above are HEAD-`8229bd2b9` numbers** — what the census saw, before this
+> block existed. This block adds 131 lines starting at `:147`, and the sizing note's dated
+> correction adds 17 more after `:332`, so in the file as committed a `:NNN` in the range
+> `:147`-`:332` now reads **N+131**, and one at or after `:333` reads **N+148**. That is the
+> lesson, not an exception: **grep by title**, and re-locate any number — including one
+> written in this block — before acting on it.
+
 ## Goal
 
 Model the supported payment types as **config-driven, terminal-scoped** methods
@@ -330,6 +461,23 @@ graph TD
 > `['cash','card','qris','credit']` list" is not free work sitting there waiting for a spare hour** — the symbol
 > it would replace INTO has no definition, no owner and no file, so the change cannot be written before Phase 0
 > lands. Record it as BLOCKED, and cost it that way.
+>
+> ⚠️ **CORRECTION (2026-09-14, HEAD `8229bd2b9`) to the claim at `:322` above — a new line;
+> the `:322` sentence it corrects stands verbatim, per this file's convention.** "**no
+> `visibleMethods` symbol in any source file**" is FALSE as of `994c0e364` (2026-09-14,
+> *"refactor(sales): derive the tender tab list from the rails with visibleMethods"*,
+> +125/-4 over 3 files). Re-measured: `git grep -n visibleMethods -- ui/src` → **7 hits in
+> 3 files** — the definition `ui/src/features/sales/useLocalPaymentRails.ts:76` (`export
+> function visibleMethods(rails: LocalPaymentRail[] | null): TenderMethod[]`) and its note
+> at `:47`; `PaymentModal.tsx` import `:20`, comments `:59` and `:119`, render site `:1534`;
+> plus one test comment, `PaymentModalSaleFlow.test.tsx:1262`, which cites this doc's `:315`
+> by name. So the derivation this note says is missing HAS a home now; only its
+> `online-capable` term is unimplemented (`:382`). The hardcoded tab literal is gone from
+> the tender strip — the only `['cash', 'card']` left in the modal (`PaymentModal.tsx:1681`)
+> is the split-row method radio, not the tab list. **Do not read the claim above as
+> evidence that the derivation does not exist.** And do not tick `:713` from this line
+> either: `:713` stays open, and the authority doc's R-list — not this file — decides when
+> it closes.
 
 ### Phase 1 — Cash (always available)
 - [ ] Confirm cash is a constant with no config/flag. (Likely no code change.)
