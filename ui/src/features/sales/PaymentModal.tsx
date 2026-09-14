@@ -34,6 +34,7 @@ import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
 import SplitTenderRows from './payment/SplitTenderRows';
 import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
+import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
 import { minorUnitsToInputString } from './payment/moneyFormat';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
@@ -1666,46 +1667,11 @@ export default function PaymentModal({
               onAutoSplitEvenly={autoSplitEvenly}
             />
 
-            <div className="payment-customer-section">
-              {selectedCustomer ? (
-                <div className="payment-customer-badge">
-                  <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
-                    <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
-                  </svg>
-                  <span className="payment-customer-name">{selectedCustomer.name}</span>
-                  <Localized id="payment-customer-change">
-                    <button
-                      type="button"
-                      className="payment-customer-change"
-                      onClick={() => setShowCustomerSearch(true)}
-                    >
-                      <span>Change</span>
-                    </button>
-                  </Localized>
-                  <button
-                    type="button"
-                    className="payment-customer-remove"
-                    onClick={() => notifyCustomerChange(null)}
-                    aria-label={l10n.getString('payment-customer-remove-aria', null, 'Remove customer')}
-                  >
-                    &times;
-                  </button>
-                </div>
-              ) : (
-                <Localized id="payment-customer-select">
-                  <button
-                    type="button"
-                    className="payment-customer-select-btn"
-                    onClick={() => setShowCustomerSearch(true)}
-                  >
-                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
-                      <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
-                    </svg>
-                    <span>Select Customer</span>
-                  </button>
-                </Localized>
-              )}
-            </div>
+            <PaymentModalCustomerBadge
+              customer={selectedCustomer}
+              onOpenSearch={() => setShowCustomerSearch(true)}
+              onRemove={() => notifyCustomerChange(null)}
+            />
 
             {isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount && (
               <LoyaltyTenderPanel
