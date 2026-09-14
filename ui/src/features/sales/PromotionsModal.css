@@ -76,6 +76,28 @@
   gap: var(--space-2);
 }
 
+/* The list item itself (markup PromotionsModal.tsx:151). Nothing is declared, and the
+   emptiness is the finding rather than a shortcut: the parent ul at :70-77 already owns
+   everything an li can take — list-style: none at :71 (list-style-type is an INHERITED
+   property, so the marker is suppressed here without repeating the declaration),
+   margin: 0 and padding: 0 at :72-73, and the row spacing at :76
+   (gap: var(--space-2)) — so a margin on this element would double-space the picker.
+   What a row looks like lives on its only child, .promo-picker-item-btn at :79: width
+   100% and padding at :84-85, the 1px edge at :88, the radius at :89, and all four
+   states (:95 hover, :100 :focus-visible, :104 --disabled, :120 --selected). A divider
+   or border-top here would read as a second edge beside :88, and padding here would
+   stack on :85.
+   REFUSED as a gesture: min-width: 0. The li is a flex item of :74-75, so a long promo
+   name is the one real risk, but this sheet has no overflow guard to copy (only
+   .promo-picker-modal's overflow-y: auto at :21, whose overflow-x then computes to auto
+   and scrolls instead of breaking), and shrinking the li does not wrap the span — that
+   belongs on .promo-picker-item-name at :137, which is a markup-owner call, not this one.
+   REFUSED as the usual excuse: this is not a Playwright hook. grep -rn promo-picker-item
+   over ui/e2e and ui/src/__tests__ returns zero hits, so the rule exists to state that
+   the element is intentional and unstyled-by-decision, in the shape
+   features/kds/KdsScreen.css:1807-1808 uses for its own two placeholder rules. */
+.promo-picker-item { }
+
 .promo-picker-item-btn {
   display: flex;
   flex-direction: column;
