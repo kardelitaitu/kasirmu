@@ -1069,14 +1069,11 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
   "--danger-700", // 1 NO FALLBACK
   "--danger-text", // 1 - settings/screens/StatutoryNumberingCard.css
-  "--duration-250", // 10 NO FALLBACK - every transition carrying it is dropped
   "--info-500", // 1 NO FALLBACK
   "--mouse-x", // 2 - only a TEST sets these, so nothing exists at runtime
   "--mouse-y", // 2
   "--rotate-x", // 1 - workspaces/WorkspaceHome.css
   "--rotate-y", // 1
-  "--space-0-5", // 1 NO FALLBACK - the scale spells it --space-0_5
-  "--space-0_25", // 1 NO FALLBACK - the scale has no 0.25 step
   "--status-danger", // 3
   "--status-success", // 3
   "--success-500", // 2 NO FALLBACK
@@ -1085,7 +1082,6 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--text-primary", // 10
   "--text-secondary", // 8
   "--text-tertiary", // 7
-  "--z-popover", // 1 NO FALLBACK - settings/SettingsNavTree.css
 ];
 
 describe("var() token existence", () => {

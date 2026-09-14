@@ -287,10 +287,10 @@
   overflow: hidden;
   box-shadow: var(--shadow-glow, var(--shadow-2xl)), var(--shadow-sm);
   transition:
-    box-shadow var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
-    border-color var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
-    background var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1);
+    background var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, opacity;
   transform: perspective(800px) rotateX(0deg) rotateY(0deg) translateY(0px);
 }
@@ -318,9 +318,9 @@
 .workspace-card:hover,
 .workspace-card:focus-visible {
   transition:
-    box-shadow var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
-    border-color var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
-    background var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
+    background var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow:
     var(--shadow-glow, var(--shadow-2xl)),
     inset 0 0 0 0.0625rem var(--ws-accent, transparent),
@@ -391,7 +391,7 @@
   justify-content: center;
   color: var(--ws-accent, var(--color-accent));
   transform-origin: center;
-  transition: transform var(--duration-250) var(--ease-out);
+  transition: transform var(--duration-300) var(--ease-out);
 }
 
 .workspace-card-title {
@@ -631,7 +631,7 @@
   opacity: 0;
   transform: translate(-0.25rem, -0.25rem) scale(0.85);
   transition:
-    opacity var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     color var(--duration-150) var(--ease-out);
   cursor: pointer;
@@ -688,7 +688,7 @@
   opacity: 0;
   transform: translate(0.25rem, calc(-100% - 0.25rem));
   transition:
-    opacity var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   z-index: 1;

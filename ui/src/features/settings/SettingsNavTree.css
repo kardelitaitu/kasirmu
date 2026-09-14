@@ -451,7 +451,7 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: var(--z-popover);
+  z-index: var(--z-dropdown);
   min-width: 13rem;
   padding: var(--space-3);
   background: var(--color-bg-popover);
