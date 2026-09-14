@@ -276,6 +276,41 @@
   color: var(--color-fg-secondary);
 }
 
+/* The base pair every footer row names and nothing styled: .tsx :361/:366,
+   :372/:377 and :383/:388 put a label and a value on all three rows, but only
+   the TOTAL row's -label/:285 and -value/:291 and the value's --surcharge
+   variant /:298 were ever written, so the two base classes resolved to no rule
+   anywhere in ui/src and both halves lived on inheritance from the row.
+   Declaration-for-declaration this pair repeats .modifier-option-name /:239-:242
+   and the layout half of .modifier-option-price /:244-:249 - the sheet's own
+   shape for a name figure paired against a label - and deliberately adds no
+   type or colour of its own: .modifier-price-row above already carries
+   --text-sm and --color-fg-secondary /:275-:276, so restating them would give
+   the base weight it never had and start a fight with the total row.
+   Source order is the whole argument for the placement. All four selectors are
+   single-class, (0,1,0) each, so nothing but order decides: sitting BEFORE
+   /:285, /:291 and /:298 (pre-insertion numbers) leaves each of them winning
+   every property it declares - Total keeps --text-base/semibold/--color-fg and
+   --text-lg/bold/tabular-nums, the surcharge keeps --color-accent, on a
+   selected row exactly as before. What no later rule declares is flex/nowrap,
+   so those two reach all three rows alike, which is the point: no amount can
+   wrap or clip differently between rows. A base written AFTER /:298 would have
+   still won on those properties by order, and a base carrying type would have
+   levelled the three rows to one voice. */
+.modifier-price-label {
+  flex: 1;
+  min-width: 0;
+}
+
+/* white-space: nowrap is /:247's existing answer to a money string breaking
+   across lines; flex-shrink: 0 makes the label give way instead of the figure.
+   No font-variant-numeric here on purpose - tabular-nums is how /:291 marks the
+   total out from these two rows. */
+.modifier-price-value {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .modifier-price-total {
   padding-top: var(--space-2);
   border-top: 1px solid var(--color-border-subtle);
