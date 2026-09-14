@@ -16,7 +16,6 @@ import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
 import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods } from './useLocalPaymentRails';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -27,6 +26,7 @@ import ReceiptPreview from '@/features/sales/ReceiptPreview';
 import type { PrintSalesReceiptArgs } from '@/api/sales';
 import { useAutoQr } from './payment/useAutoQr';
 import { useGatewayQr } from './payment/useGatewayQr';
+import { useEdcTenderPhase } from './payment/useEdcTenderPhase';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import { useSplitTenderState } from './payment/useSplitTenderState';
@@ -788,74 +788,23 @@ export default function PaymentModal({
   // tablet (no edc commands registered) the pre-flight simply rejects and
   // the flow falls back to manual card — desktop-only expressed as
   // degradation, not platform-sniffing.
-  const [edc, setEdc] = useState<{
-    phase: 'preflight' | 'waiting' | 'declined';
-    reason?: string | undefined;
-  } | null>(null);
-
-  const handleTerminalPay = useCallback(async () => {
-    setProcessing(true);
-    try {
-      setEdc({ phase: 'preflight' });
-      const status = await edcTerminalStatusScoped(sessionToken!);
-      if (status.status !== 'ready') {
-        setEdc(null);
-        addToast({
-          message: requiredLocalized(l10nRef.current, 'payment-edc-not-ready', {
-            status: status.status,
-          }),
-          type: 'error',
-        });
-        return;
-      }
-      // The card-present wait is the terminal's, not ours: no client-side
-      // cancel (a tap can land any moment — cancelling the promise would
-      // abandon captured money), no invented progress. The overlay says
-      // tap/insert/swipe and waits.
-      setEdc({ phase: 'waiting' });
-      const result = await edcSale(
-        sessionToken!,
-        Number(effectiveTotalInCartCurrency),
-        cartCurrency,
-      );
-      if (!result.success) {
-        setEdc({ phase: 'declined', reason: result.message });
-        return;
-      }
-      const saleResult = await buildGatewaySale({
-        method: 'CARD',
-        gatewayReference: result.transactionId ?? '',
-        gatewayStatus: 'captured',
-        gatewayResponse: JSON.stringify({
-          auth_code: result.authCode,
-          card_scheme: result.cardScheme,
-          card_last4: result.cardLast4,
-          message: result.message,
-        }),
-      });
-      // voidOnFinalizeFailure = false: the terminal holds captured money;
-      // a local finalize fault keeps the sale pending for reconciliation,
-      // it must not void a PAID sale.
-      await settleGatewaySale(saleResult, false);
-      setEdc(null);
-    } catch (err) {
-      // Back to tender selection with the reason (the capture, if any, is
-      // the terminal's record; nothing local was created yet at this
-      // point except a possibly-built sale — settleGatewaySale throws only
-      // after its own surfacing, and its pending-on-failure branch applies).
-      setEdc(null);
-      addToast({
-        message: requiredLocalized(l10nRef.current, 'payment-edc-failed', {
-          reason: plainErrorMessage(err),
-        }),
-        type: 'error',
-      });
-    } finally {
-      setProcessing(false);
-    }
-  }, [sessionToken, effectiveTotalInCartCurrency, cartCurrency, buildGatewaySale, settleGatewaySale, addToast]);
-
-  const handleTerminalDismiss = useCallback(() => setEdc(null), []);
+  // B1: the edc phase atom, its preflight/waiting/declined writer and the
+  // dismiss handler moved verbatim to ./payment/useEdcTenderPhase - the seam is
+  // acyclic because every writer and every reader of this atom sits BELOW both
+  // money hooks, so no value has to cross the boundary that held autoSplitEvenly
+  // in place. The overlay JSX and the terminalPending read still consume `edc`
+  // from here, and the gateway front/tail stay shell-owned and are passed down
+  // exactly as useGatewayQr and useAutoQr receive them.
+  const { edc, handleTerminalPay, handleTerminalDismiss } = useEdcTenderPhase({
+    sessionToken,
+    effectiveTotalInCartCurrency,
+    cartCurrency,
+    buildGatewaySale,
+    settleGatewaySale,
+    l10nRef,
+    addToast,
+    setProcessing,
+  });
 
   const autoSplitEvenly = useCallback(() => {
     // W5-d: the arithmetic itself moved verbatim to ./payment/splitDistribution -
