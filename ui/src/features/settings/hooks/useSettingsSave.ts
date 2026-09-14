@@ -12,58 +12,19 @@
  * - a much larger claim than this slice. So the handler moved and the state
  * stayed behind, passed down.
  *
+ * WHAT LIVES WHERE: the decision - read-back diff, merged payload, which tasks
+ * fire, the three-way outcome - is in ./saveDiff, which is pure (no React, no
+ * IPC, no await) and therefore table-testable without renderHook. This file
+ * keeps everything with an ORDER or a SIDE EFFECT in it: the five read-backs
+ * and their allSettled, the per-name mapping from a firing task to its IPC
+ * call, the setter mirrors, the per-task snapshot refresh, the setTimeout that
+ * clears the saved flash, and the toast / notify steps. The rule those two
+ * files share - a task fires iff THE PAGE EDITED the field AND the merged
+ * payload differs from the read-back - is stated in full at saveDiff's header;
+ * read it before simplifying either half.
+ *
  * The by-name result lookup below is a FIX, not a style preference: read the
  * comment at saveTasks before ever simplifying it back to results[i].
- *
- * --- SAFETY: read-back / diff / merge, i.e. why Save cannot lose data --------
- *
- * Every task used to send the WHOLE draft DTO. The backend writes those DTOs
- * field-by-field unconditionally: run_set_receipt_settings re-stamps ten flat
- * keys (crates/oz-bridge/src/settings.rs:997-1007, tax_rounding_mode included),
- * run_set_store_settings stamps all six in one transaction (:1021-1026), and
- * update_sync_settings_data (crates/oz-bridge/src/sync.rs:64-82) does
- * server_url.as_deref().unwrap_or("") and writes it UNCONDITIONALLY, so a null
- * there CLEARS a configured URL. Only api_key is guarded with if let Some(..),
- * which is why an absent key preserves the stored one while an absent URL does
- * not. So any field the draft happened not to carry was written anyway, with
- * the draft's (possibly stale) value.
- *
- * That was reachable, not theoretical. switchOrganization
- * (contexts/WorkspaceContext.tsx:353-364) swaps sessionToken IN PLACE after a
- * PIN re-auth - no login screen, no unmount. SettingsContext refetches and
- * republishes store/currency, the page's currency effect follows, but the DRAFT
- * keeps the previous org's name/address/taxId/branch, because hydrate is
- * one-shot (SettingsPage.tsx, gated on !loading && !initialized, on purpose: a
- * later refetch must not eat the user's edits). One Ctrl+S then stamped the NEW
- * tenant's store row with the OLD tenant's identity. A partial load was the
- * second path: a failed sync read left syncServerUrl === '', and an untouched
- * Save cleared a configured URL.
- *
- * The fix, entirely inside this file: before composing a task, READ BACK what
- * the server holds for that family and send only the read-back merged with the
- * fields THE PAGE ACTUALLY CHANGED (draft vs savedSnapshotRef, the Revert
- * target - the page's own record of what the user edited). A task fires only
- * when that merged payload differs from the read-back, so:
- *   * an unchanged field is written back as the server's own value, or not
- *     written at all (the task is skipped) - never as a stale draft;
- *   * a stale whole-DTO draft cannot overwrite a new tenant's row, because the
- *     page changed none of its fields, so the merged payload equals the
- *     read-back and nothing fires;
- *   * savedSnapshotRef.current === null (pre-hydrate) means WRITE NOTHING:
- *     there is one reachable render where the save bar exists before hydrate.
- *
- * Consequences callers of this file must know:
- *   * Skipped is a third outcome, not a failure - see SettingsSaveOutcome. The
- *     task list may therefore be empty, and the handler short-circuits quietly
- *     instead of reporting a save that did nothing.
- *   * The snapshot is refreshed PER TASK, from what is provably on the server
- *     now - never wholesale from the draft, which is how a partial failure used
- *     to commit every draft value as saved.
- *
- * The durable fix is a partial-write command server-side (send only the keys
- * you changed). Until then the read-back costs ~5 extra IPC reads per Save;
- * that is the price of not losing a tenant's identity, and it stays bounded by
- * this file.
  */
 import type { Dispatch, SetStateAction } from 'react';
 import type { useToast } from '@/frontend/shared/Toast';
@@ -89,39 +50,27 @@ import {
   setBrandPrimaryColour,
   setBrandStoreName as setBrandStoreNameApi,
 } from '@/api/branding';
+import {
+  classifyOutcome,
+  normUrl,
+  planSaveTasks,
+  PREF_KEYS,
+  readFailedTasks,
+  type Flat,
+  type SaveTaskName,
+  type SettingsSaveOutcome,
+  type SettingsSaveSnapshot,
+} from './saveDiff';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
 /** The bundle handle - only getString is used, for the two save toasts. */
 type GetString = { getString: (id: string) => string };
 
-/**
- * Per-task outcome. skipped is deliberately NOT a failure: it means the payload
- * this page could produce equals what the server already holds (or the page
- * changed nothing in that family), so there was nothing to write. It is a
- * distinct state because the by-name lookup used to read an omitted task as
- * false = failed, and because "Save wrote nothing" must not be encoded as
- * "Save failed".
- */
-export type SettingsSaveOutcome = 'fulfilled' | 'rejected' | 'skipped';
-
-/**
- * The Revert target. Field-for-field the page's own SettingsSnapshot, restated
- * here because that interface is local to SettingsPage.tsx and this slice
- * neither widens it nor exports it.
- */
-export interface SettingsSaveSnapshot {
-  receipt: ReceiptSettingsDto;
-  store: StoreSettingsDto;
-  defaultCurrency: string;
-  sync: SyncSettingsDto;
-  syncServerUrl: string;
-  displayCardSize: number;
-  displayFontSize: number;
-  displayFontSmoothing: string;
-  brandColour: string;
-  brandStoreName: string;
-}
+// Per-task outcome and the Revert-target shape moved to ./saveDiff (they
+// describe the decision, not the orchestration); re-exported so the page and
+// the suites keep importing them from this module.
+export type { SettingsSaveOutcome, SettingsSaveSnapshot } from './saveDiff';
 
 export interface UseSettingsSaveParams {
   /** ADR #7 token (nullable, as useWorkspace reports it); several writes
@@ -157,38 +106,18 @@ export interface UseSettingsSaveParams {
   savedSnapshotRef: { current: SettingsSaveSnapshot | null };
 }
 
-/** Loose view of a DTO, for generic key-wise diffing / merging. */
-type Flat = Record<string, unknown>;
-
-/** Keys whose draft value differs from base. Only keys the draft carries. */
-function changedKeys(draft: Flat, base: Flat): string[] {
-  return Object.keys(draft).filter((k) => draft[k] !== base[k]);
-}
-
-/** base plus only the listed draft keys - the merged payload. */
-function mergeChanged(base: Flat, draft: Flat, keys: string[]): Flat {
-  const out: Flat = { ...base };
-  for (const k of keys) out[k] = draft[k];
-  return out;
-}
-
 /** A read that could not even be attempted (no session) - same shape as a
- *  rejected allSettled entry, so every family falls into readFailed. */
+ *  rejected allSettled entry, so every family falls into read-failed. */
 function noSession<T>(): PromiseSettledResult<T> {
   return { status: 'rejected', reason: new Error('no session token') };
 }
 
-/** '' and whitespace are the same server state as null; keep them from reading
- *  as an edit (the sync URL is written unconditionally server-side). */
-function normUrl(v: string | null | undefined): string | null {
-  return v && v.trim() ? v : null;
-}
-
 /**
- * Builds and runs the whole save: one named task per setting family, each gated
- * on a read-back diff (see the file header), settled together so a single
- * failure cannot silently block the rest, then the confirmation / snapshot /
- * notify / toast steps that follow from the results.
+ * Builds and runs the whole save: the five read-backs, then ./saveDiff's plan
+ * (one named task per setting family, each gated on "the page edited it AND the
+ * merge differs from the read-back"), then the sends settled together so a
+ * single failure cannot silently block the rest, then the confirmation /
+ * snapshot / notify / toast steps that follow from the results.
  * Returns the handler - a plain async function, as it was in the page (no
  * useCallback, so a fresh identity per render exactly like before; the keyboard
  * shortcut keeps reading it through its own ref).
@@ -227,13 +156,6 @@ export function useSettingsSave({
 
     const token = sessionToken ?? '';
 
-    // Sync store.currency with defaultCurrency so the store diff and the
-    // currency diff are computed on ONE fused value: the store write stamps the
-    // currency column (settings.rs:1024) and the currency task writes that same
-    // column, so a currency-only edit must count as a store change too -
-    // otherwise the two writers split and one re-stamps the old code.
-    const syncedStore: StoreSettingsDto = { ...store, currency: defaultCurrency };
-
     // --- 1. READ BACK ---------------------------------------------------------
     // One pass over the five sources the seven tasks write. A family whose
     // read-back fails cannot be diffed, so it cannot be written either: it is
@@ -263,165 +185,59 @@ export function useSettingsSave({
     const serverSync = unwrap(reads[3]);
     const serverBrand = unwrap(reads[4]);
 
-    /** One planned task. payload null + run null = skipped. */
-    type Planned = {
-      name: string;
-      payload: Flat | null;
-      readFailed: boolean;
-      run: ((payload: Flat) => Promise<unknown>) | null;
-    };
-    const planned: Planned[] = [];
-
-    // --- 2. PLAN: diff against the server, merge only the page's edits --------
-    const addDtoTask = <T extends object>(opts: {
-      name: string;
-      server: T | null;
-      draft: Flat;
-      saved: Flat;
-      run: (payload: T) => Promise<unknown>;
-    }) => {
-      if (!opts.server) {
-        planned.push({ name: opts.name, payload: null, readFailed: true, run: null });
-        return;
-      }
-      const pageEdits = changedKeys(opts.draft, opts.saved);
-      const payload = mergeChanged(opts.server as Flat, opts.draft, pageEdits);
-      const fires = changedKeys(payload, opts.server as Flat).length > 0;
-      planned.push({
-        name: opts.name,
-        payload: fires ? payload : null,
-        readFailed: false,
-        run: fires ? (p) => opts.run(p as unknown as T) : null,
-      });
-    };
-
-    addDtoTask({
-      name: 'receipt',
-      server: serverReceipt,
-      draft: { ...receipt } as Flat,
-      saved: { ...snapshot.receipt } as Flat,
-      run: (p) => setReceiptSettingsScoped(token, p),
+    // --- 2. PLAN --------------------------------------------------------------
+    // The whole diff / merge / fire decision, in data, with no IPC: see
+    // ./saveDiff, whose header states the two-clause rule and why "differs from
+    // the server" alone is the WRONG gate. The store task fuses
+    // store.currency with defaultCurrency inside it, because a currency-only
+    // change IS a store change.
+    const planned = planSaveTasks({
+      draft: {
+        receipt,
+        store,
+        defaultCurrency,
+        sync,
+        syncServerUrl,
+        syncApiKey,
+        displayCardSize,
+        displayFontSize,
+        displayFontSmoothing,
+        brandColour,
+        brandStoreName,
+      },
+      saved: snapshot,
+      server: {
+        receipt: serverReceipt,
+        store: serverStore,
+        prefs: serverPrefs,
+        sync: serverSync,
+        brand: serverBrand,
+      },
     });
 
-    addDtoTask({
-      name: 'store',
-      server: serverStore,
-      // FUSED value, never store alone (see the sync above): a currency-only
-      // change IS a store change. A key the page does not carry (logo) is not
-      // in the draft, so it stays at the server's value.
-      draft: { ...syncedStore } as Flat,
-      saved: { ...snapshot.store, currency: snapshot.defaultCurrency } as Flat,
-      run: (p) => setStoreSettingsScoped(token, p),
-    });
-
-    // Currency: the same column as store.currency, written through the context.
-    // Single-value write, so "merged payload" is the server's code unless the
-    // page edited it - which is why a currency that merely drifted (an org
-    // switch, a partial load) can never be pushed into the tenant's row.
-    if (!serverStore) {
-      planned.push({ name: 'currency', payload: null, readFailed: true, run: null });
-    } else {
-      const currencyEdited = defaultCurrency !== snapshot.defaultCurrency;
-      const currencyDiffers = defaultCurrency !== (serverStore.currency ?? null);
-      const fires = currencyEdited && currencyDiffers;
-      planned.push({
-        name: 'currency',
-        payload: fires ? { currency: defaultCurrency } : null,
-        readFailed: false,
-        run: fires ? () => setCtxCurrency(defaultCurrency) : null,
-      });
-    }
-
-    // Preferences: three string keys on the server, numbers in the draft.
-    const prefKeys = ['cardsize', 'fontsize', 'font-smoothing'] as const;
-    if (!serverPrefs) {
-      planned.push({ name: 'prefs', payload: null, readFailed: true, run: null });
-    } else {
-      const draftPrefs: Flat = {
-        cardsize: String(displayCardSize),
-        fontsize: String(displayFontSize),
-        'font-smoothing': displayFontSmoothing,
-      };
-      const savedPrefs: Flat = {
-        cardsize: String(snapshot.displayCardSize),
-        fontsize: String(snapshot.displayFontSize),
-        'font-smoothing': snapshot.displayFontSmoothing,
-      };
-      const mergedPrefs: Flat = {};
-      for (const k of prefKeys) {
-        const serverVal = serverPrefs[k];
-        mergedPrefs[k] = draftPrefs[k] !== savedPrefs[k]
-          ? draftPrefs[k]
-          : (serverVal ?? draftPrefs[k]);
-      }
-      const fires = prefKeys.some((k) => mergedPrefs[k] !== serverPrefs[k]);
-      planned.push({
-        name: 'prefs',
-        payload: fires ? mergedPrefs : null,
-        readFailed: false,
-        run: fires
-          ? (p) => setUserPreferencesScoped(token, prefKeys.map((k) => ({ key: k, value: String(p[k]) })))
-          : null,
-      });
-    }
-
-    // Sync: serverUrl is written UNCONDITIONALLY server-side, so the merged
-    // payload has to carry the server's own URL unless the page edited the
-    // field - that is what stops a partial load (empty draft URL) from clearing
-    // a configured one. apiKey is still only sent when the user typed one.
-    if (!serverSync) {
-      planned.push({ name: 'sync', payload: null, readFailed: true, run: null });
-    } else {
-      const draftUrl = normUrl(syncServerUrl);
-      const savedUrl = normUrl(snapshot.syncServerUrl);
-      const serverUrl = normUrl(serverSync.serverUrl);
-      const typedKey = syncApiKey !== '';
-      const payload: UpdateSyncSettingsArgs = {
-        serverUrl: draftUrl !== savedUrl ? draftUrl : serverUrl,
-        enabled: sync.enabled !== snapshot.sync.enabled ? sync.enabled : serverSync.enabled,
-      };
-      if (typedKey) payload.apiKey = syncApiKey;
-      const fires =
-        typedKey || payload.serverUrl !== serverUrl || payload.enabled !== serverSync.enabled;
-      planned.push({
-        name: 'sync',
-        payload: fires ? ({ ...payload } as Flat) : null,
-        readFailed: false,
-        run: fires ? (p) => updateSyncSettingsScoped(token, p as unknown as UpdateSyncSettingsArgs) : null,
-      });
-    }
-
-    // Brand: two independent single-column writes; each one merges to the
-    // server's value unless the page edited it.
-    if (!serverBrand) {
-      planned.push({ name: 'brandColour', payload: null, readFailed: true, run: null });
-      planned.push({ name: 'brandName', payload: null, readFailed: true, run: null });
-    } else {
-      const colourFires =
-        brandColour !== snapshot.brandColour && brandColour !== serverBrand.primary_colour;
-      const nameFires =
-        brandStoreName !== snapshot.brandStoreName && brandStoreName !== serverBrand.store_name;
-      planned.push({
-        name: 'brandColour',
-        payload: colourFires ? { value: brandColour } : null,
-        readFailed: false,
-        run: colourFires ? () => setBrandPrimaryColour(token, brandColour) : null,
-      });
-      planned.push({
-        name: 'brandName',
-        payload: nameFires ? { value: brandStoreName } : null,
-        readFailed: false,
-        run: nameFires ? () => setBrandStoreNameApi(token, brandStoreName) : null,
-      });
-    }
+    // A firing task's call, by name. Kept here (not in saveDiff) because these
+    // ARE the IPC writes, and their order is the read-back order above.
+    const runners: Record<SaveTaskName, (payload: Flat) => Promise<unknown>> = {
+      receipt: (p) => setReceiptSettingsScoped(token, p as unknown as ReceiptSettingsDto),
+      store: (p) => setStoreSettingsScoped(token, p as unknown as StoreSettingsDto),
+      currency: () => setCtxCurrency(defaultCurrency),
+      prefs: (p) =>
+        setUserPreferencesScoped(
+          token,
+          PREF_KEYS.map((k) => ({ key: k, value: String(p[k]) })),
+        ),
+      sync: (p) => updateSyncSettingsScoped(token, p as unknown as UpdateSyncSettingsArgs),
+      brandColour: () => setBrandPrimaryColour(token, brandColour),
+      brandName: () => setBrandStoreNameApi(token, brandStoreName),
+    };
 
     // --- 3. ZERO-TASK SHORT-CIRCUIT -------------------------------------------
     // Everything this page could send already matches the server. The old gate
     // (failed < saveTasks.length) read 0 < 0 as false and ended as a silent
     // do-nothing; and it must not be confused with a 1-of-1 failure, which is
     // why read-back failures are NOT folded into this branch.
-    const toSend = planned.filter((t) => t.run !== null);
-    const readFailures = planned.filter((t) => t.readFailed);
+    const toSend = planned.filter((t) => t.fires);
+    const readFailures = readFailedTasks(planned);
     if (toSend.length === 0 && readFailures.length === 0) {
       // Nothing is dirty any more - the draft and the server agree on every
       // field Save could write - but report nothing: no saved flash, no toast.
@@ -441,19 +257,16 @@ export function useSettingsSave({
     // components refetch the wrong data and the real change stays stale), and the sync
     // DTO block below would gate on an unrelated call's success. Named lookup makes an
     // insertion harmless.
-    const saveTasks: Array<readonly [string, Promise<unknown>]> = toSend.map(
-      (t) => [t.name, t.run!(t.payload as Flat)] as const,
+    const saveTasks: Array<readonly [SaveTaskName, Promise<unknown>]> = toSend.map(
+      (t) => [t.name, runners[t.name](t.payload as Flat)] as const,
     );
 
     const settled = await Promise.allSettled(saveTasks.map(([, task]) => task));
     /** Three-way, by name: an omitted task is 'skipped', not false. */
-    const saveOutcome = (name: string): SettingsSaveOutcome => {
-      const idx = saveTasks.findIndex(([k]) => k === name);
-      if (idx < 0) return 'skipped';
-      return settled[idx] && settled[idx].status === 'fulfilled' ? 'fulfilled' : 'rejected';
-    };
-    const saveResult = (name: string): boolean => saveOutcome(name) === 'fulfilled';
-    const plannedPayload = (name: string): Flat | null =>
+    const saveOutcome = (name: SaveTaskName): SettingsSaveOutcome =>
+      classifyOutcome(name, saveTasks, settled);
+    const saveResult = (name: SaveTaskName): boolean => saveOutcome(name) === 'fulfilled';
+    const plannedPayload = (name: SaveTaskName): Flat | null =>
       planned.find((t) => t.name === name)?.payload ?? null;
 
     const failed = settled.filter((r) => r.status === 'rejected').length + readFailures.length;
