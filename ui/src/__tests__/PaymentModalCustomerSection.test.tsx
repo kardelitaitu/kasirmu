@@ -5,17 +5,28 @@
  * Anchors re-derived against THIS checkout by measurement, not copied from the
  * census (whose numbers were stale the moment it wrote them):
  *
- *   file length            1858 lines (census said 1,912)
- *   badge region           .payment-customer-section      :1661-:1700  (40)
- *   search overlay         {showCustomerSearch && (...)}  :1750-:1823  (74)
+ *   file length            1866 lines (1,858 when first written; census said 1,912)
+ *   badge region           .payment-customer-section      :1669-:1708  (40)
+ *   search overlay         {showCustomerSearch && (...)}  :1758-:1831  (74)
  *   its three useState     customerSearchQuery    :174
- *                          customerSearchResults  :175
- *                          loadingCustomers       :176
- *   its two useEffect      list fetch (scoped IPC):347-:365
- *                          client-side filter     :367-:383
+ *                          customerRoster         :179   <- replaced the old
+ *                          loadingCustomers       :180      customerSearchResults
+ *                                                                ATOM; there is no
+ *                          second stored list any more (92e752666)
+ *   the filter is a MEMO   customerSearchResults = useMemo over
+ *                          [customerRoster, customerSearchQuery]  :379-:391
+ *                          (it WAS a useEffect; the effect is gone, see below)
+ *   its one list effect    listCustomers fetch (scoped IPC) :350-:369
  *   deps it shares         showCustomerSearch :140   selectedCustomer :139
- *                          allCustomersRef    :177   notifyCustomerChange :152
- *                          useFocusTrap inner :1109  outer-trap guard  :1105
+ *                          notifyCustomerChange :152   (allCustomersRef :177 is DELETED)
+ *                          useFocusTrap inner   :1117  outer-trap guard :1113
+ *
+ * HOW TO READ THESE ANCHORS - one rule for the whole file: every pointer names its
+ * SYMBOL first and the line second, because a bare line number into PaymentModal.tsx
+ * goes stale within the hour while an extraction lane works in it. 92e752666 alone
+ * moved these by eight and deleted two of them. A line without a symbol beside it is
+ * not a pointer, it is a timestamp. Re-derive with grep -n before acting, and read a
+ * no-match as the anchor aging, not as the code being absent.
  *
  * WHAT ALREADY COVERED THIS REGION BEFORE THIS FILE EXISTED - the blanket
  * blind verdict is only half true. PaymentModalEdgeCases.test.tsx renders it in
@@ -41,8 +52,8 @@
  * appeared; nothing before this file asserted the customer reached checkout.
  *
  * FINDING (why one S2 assertion looks fussy): the loading skeleton reuses the
- * ITEM class - payment-customer-search-item at :1782 for the ghost rows and
- * :1796 for the real buttons - so an unqualified query counts three phantom rows
+ * ITEM class - payment-customer-search-item at :1790 for the ghost rows and
+ * :1804 for the real buttons - so an unqualified query counts three phantom rows
  * while the fetch is in flight. S2 pins both counts so nobody simplifies the
  * query and silently merges the two states. NO class or data-testid was added to
  * production markup for this file; everything is reached through selectors and
@@ -392,7 +403,7 @@ describe('PaymentModal customer section + search overlay (characterization)', ()
     expect(qs<HTMLElement>('.payment-customer-search-empty')!.textContent).toBe('No customers found');
     expect(qsa('.payment-customer-search-list-skeleton')).toHaveLength(0);
 
-    // Whitespace counts as no query at all (:370-:372) and the roster returns.
+    // Whitespace counts as no query at all (the memo q-trim :381-:383) and the roster returns.
     typeQuery('   ');
     await waitFor(() => expect(rows()).toHaveLength(4));
 
@@ -405,7 +416,7 @@ describe('PaymentModal customer section + search overlay (characterization)', ()
     await render({ onClose });
     await openSearchViaButton();
 
-    // :1109 - the inner trap focuses the first reachable element, the input.
+    // :1117 useFocusTrap(customerSearchPanelRef, showCustomerSearch) focuses the first reachable element, the input.
     await waitFor(() => expect(document.activeElement).toBe(searchInput()));
     expect(searchInput()!.getAttribute('aria-label')).toBe('Search customers');                      // .ftl :180
     expect(searchInput()!.getAttribute('placeholder')).toBe('Search by name, phone, or email...');    // .ftl :181
@@ -416,7 +427,7 @@ describe('PaymentModal customer section + search overlay (characterization)', ()
     typeQuery('ad');
     await waitFor(() => expect(rows()).toHaveLength(2));
 
-    // :1105 - the OUTER trap is still mounted, and its !showCustomerSearch term is
+    // :1113 - the OUTER trap (useFocusTrap on panelRef) is still mounted, and its !showCustomerSearch term is
     // the only thing keeping this keypress from cancelling the whole payment.
     fireEvent.keyDown(panel()!, { key: 'Escape' });
     await waitFor(() => expect(overlay()).toBeNull());
@@ -426,13 +437,13 @@ describe('PaymentModal customer section + search overlay (characterization)', ()
     expect(badge(), 'no customer was selected, so no badge').toBeNull();
     expect(totalAmount()!.textContent).toBe(money(10000));
 
-    // Reopening re-fetches the roster (:348 keys on showCustomerSearch).
+    // Reopening re-fetches the roster (the fetch effect dep :369 keys on showCustomerSearch).
     await openSearchViaButton();
     expect(mockList).toHaveBeenCalledTimes(2);
     // FINDING 1: the typed query SURVIVES an Escape close - nothing on the close
-    // path clears it (:1757 the overlay keydown, :1816 the Cancel button and
-    // :1109 the inner trap all only flip the flag). Only a SELECTION (:1800) or a
-    // fresh modal open (:322) resets it.
+    // path clears it (:1765 the overlay keydown, :1823 the Cancel button and
+    // :1117 the inner trap all only flip the flag). Only a SELECTION (:1808) or a
+    // fresh modal open (:325) resets it.
     expect(searchInput()!.value).toBe('ad');
     // FINDING 2 WAS A DEFECT, and this commit fixes it, so the pin below is
     // INVERTED rather than preserved. The rows used to be a second stored list:
