@@ -3,6 +3,7 @@
   "description": "Grandfathered native browser `title=` tooltips (per-file counts) in ui/src, excluding __tests__. Enforced by ui/src/__tests__/nativeTooltipCompliance.test.ts as a ratchet: a file may never exceed its count, and the entry must be lowered when the code is cleaned. New UI must use the React <Tooltip> component from ui/src/frontend/shell/Tooltip.tsx instead (fit=\"inline\" for toolbar buttons/badges so the wrapper does not stretch them). `title` alongside `pattern` is exempt — that is HTML5 constraint-validation messaging, not a hover affordance. Do not add files to this list.",
   "generated": "2026-09-07",
   "total": 80,
+  "carry_forward_note": "2026-09-14 · features/kds/components/KdsHeaderLeft.tsx (1) is a CARRIED entry, not a new file on this list: the back-button title= at KdsHeaderLeft.tsx:78 is the same attribute that lived at KdsScreen.tsx:724 until 7d0dc4d60 extracted the header-left column, so the count moved with the markup and KdsScreen.tsx was lowered 1 → 0 in the same edit — the repo total stays 80 and no tooltip was introduced. Same shape as the three analytics carries (411e6dccf added ZoomControls 4 + CacheMetricsPanel 3 while AnalyticsScreen went 15 → 8; 86e4dc567 added AnalyticsCardFrame 3, 8 → 5; a070d2ab7 added AnalyticsToolbar 4, 5 → 1). HOW TO DELETE THIS ENTRY: convert the button to the shell <Tooltip fit=\"inline\"> from ui/src/frontend/shell/Tooltip.tsx the way 80d20e038 converted MenuItemTile's pin badge, then drop the KdsHeaderLeft line and lower total 80 → 79.",
   "counts": {
     "features/analytics/AnalyticsScreen.tsx": 1,
     "features/analytics/components/AnalyticsToolbar.tsx": 4,
@@ -28,7 +29,8 @@
     "features/analytics/cards/shared/ExportCsvButton.tsx": 1,
     "features/auth/StaffLoginScreen.tsx": 1,
     "features/design/DevToolbar.tsx": 0,
-    "features/kds/KdsScreen.tsx": 1,
+    "features/kds/KdsScreen.tsx": 0,
+    "features/kds/components/KdsHeaderLeft.tsx": 1,
     "features/kiosk/KioskScreen.tsx": 1,
     "features/locations/topologyAlignBar.tsx": 1,
     "features/locations/topologyToolRack.tsx": 1,
