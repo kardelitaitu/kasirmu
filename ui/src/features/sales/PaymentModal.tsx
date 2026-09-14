@@ -35,6 +35,7 @@ import StockShortfallDialog from '@/features/sales/StockShortfallDialog';
 import ReceiptPreview from '@/features/sales/ReceiptPreview';
 import type { PrintSalesReceiptArgs } from '@/api/sales';
 import { useAutoQr } from './payment/useAutoQr';
+import { useGatewayQr } from './payment/useGatewayQr';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -231,8 +232,6 @@ export default function PaymentModal({
     setLeaving(false);
   }, [leaving]);
 
-  const [showQr, setShowQr] = useState(false);
-  const [qrReference, setQrReference] = useState('');
   // P7-1: Swipe right on payment modal → go back to cart
   const paymentSwipe = useSwipe({
     onSwipeRight: () => {
@@ -381,6 +380,12 @@ export default function PaymentModal({
     // onCustomerChange is intentionally omitted: it is routed through
     // notifyCustomerChangeRef, so depending on it here would re-run this
     // reset (and wipe the tendered amount) on every parent re-render.
+    // setShowQr / setQrReference stay off this list: the array is evaluated
+    // during render and the hook call that creates them is BELOW this effect, so
+    // listing them is a use-before-declaration error — and a no-op, since a
+    // useState dispatcher never changes identity. The reset still fires only on
+    // open / charge-currency / controlled-customer changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, total.currency, selectedCustomerProp]);
 
   useEffect(() => {
@@ -668,12 +673,6 @@ export default function PaymentModal({
     });
   }, [splits, splitTotals, parseSplitMinor, effectiveTotalInCartCurrency]);
 
-  const handleQrPay = useCallback(() => {
-    const ref = `QR-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    setQrReference(ref);
-    setShowQr(true);
-  }, []);
-
   // Shared gateway-tender front half (manual QRIS, Auto QRIS, EDC card):
   // cart -> discount -> lines -> complete. The caller's split metadata
   // decides the settlement story: manual QRIS passes its cashier-asserted
@@ -864,25 +863,28 @@ export default function PaymentModal({
      loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency],
   );
 
-  const handleQrConfirmed = useCallback(async () => {
-    setShowQr(false);
-    setProcessing(true);
-    try {
-      const saleResult = await buildGatewaySale({
-        method: 'QRIS',
-        gatewayReference: qrReference,
-        gatewayStatus: 'completed',
-        gatewayResponse: 'QRIS payment confirmed',
-      });
-      await settleGatewaySale(saleResult, true);
-    } catch (err) {
-      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
-      const classified = classifyError(err);
-      setPaymentError(classified);
-    } finally {
-      setProcessing(false);
-    }
-  }, [buildGatewaySale, settleGatewaySale, qrReference, classifyError, addToast]);
+  // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
+  // State + both ends of the dialog moved verbatim to ./payment/useGatewayQr
+  // (slice W3-c), called from where handleQrConfirmed was — BELOW the shared
+  // gateway front/tail halves it receives, since those stay defined once here
+  // for all three gateway tenders (see ./payment/useGatewayQr for why).
+  // showQr/qrReference moved down with the handlers; their dispatchers come
+  // back up so the open-reset effect and the dialog's onClose keep their text.
+  const {
+    showQr,
+    qrReference,
+    handleQrPay,
+    handleQrConfirmed,
+    setShowQr,
+    setQrReference,
+  } = useGatewayQr({
+    buildGatewaySale,
+    settleGatewaySale,
+    classifyError,
+    setProcessing,
+    setPaymentError,
+    addToast,
+  });
 
   // ── QRIS Auto (dynamic Midtrans charge, agents-3) ────────────────
   // State + handlers moved verbatim to ./payment/useAutoQr (slice W3-a). The
