@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 82 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 83 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 82/252/27 as of this edit: (3 x 82) + 4 + 2 = 252,
+// 902e07678, and 83/255/27 as of this edit: (3 x 83) + 4 + 2 = 255,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1305,6 +1305,42 @@ const SCREENS: ScreenEntry[] = [
     // settings-footer-shortcut) occur 0 times as a rule in this sheet (measured by
     // grep -cE over the seven-name alternation), and case 1 is clean against the own
     // sheet alone, so a theme cite here would be both vacuous and unresolvable.
+  },
+  {
+    // Scale readout chip. MOUNTED and deep in a live path, but NOT a routed page:
+    // retail/RetailProductGrid.tsx:9 imports it and renders it at :603-604 under
+    // isScaleEnabled, which is retail/RetailPosScreen.tsx:1552's
+    // isEnabled(FEATURES.USB_SCALE) — a flag a manager can light in a shipped build
+    // from the Hardware group of settings/FeatureToggleScreen.tsx. There is no route
+    // to claim here: features/retail has no register.tsx at all, and RetailPosScreen
+    // reaches both shells through frontend/shell/AppShell.tsx and
+    // frontend/shell/tablet/TabletAppShell.tsx. The sheet is imported by its own
+    // component at :2, which is what makes it loadable at all.
+    //
+    // CITED BECAUSE THE MARKUP IS LIVE, NOT BECAUSE THE FEATURE WORKS — the styled
+    // surface is real and the data is not: crates/oz-hal/src/drivers/scale.rs:57 says
+    // HidWeightScale::read_weight reports Unsupported deliberately (it used to say
+    // NotFound, which told an operator to check a cable on a driver that was never
+    // written), registry.rs:4 records that no caller invokes register_scale() — the
+    // three textual hits are that sentence, the pub fn at :116 and a comment in this
+    // sheet — and bootstrap.rs:4 states the wiring is blocked on the driver. So
+    // read_scale_weight_scoped resolves a missing scale to Ok(None): the chip re-polls
+    // every 2000 ms (ScaleIndicator.tsx:40) and parks in scale-indicator--idle, which
+    // is the only one of its four state classes (--idle / --stable / --unstable /
+    // --error) a shipped build can currently reach. 19 rules over 17 names, so a few
+    // rules style states no device can produce today; that is a driver gap, and this
+    // entry neither hides it nor certifies the feature.
+    //
+    // NO parentCss: grep over the nine names frontend/themes/components.css re-defines
+    // (sr-only, spinner, card, btn, badge, status-indicator, kds-workspace,
+    // shift-status-active, settings-footer-shortcut) returns 0 rules here, and case 1
+    // resolves all 17 names against this sheet alone — no exemption of any kind added.
+    // ScaleIndicator.test.tsx queries .scale-indicator--idle/--error/--stable/--unstable
+    // and -clear-btn, but jsdom applies no CSS, so that suite is not evidence about this
+    // sheet and this entry does not lean on it.
+    name: 'ScaleIndicator',
+    tsx: 'retail/ScaleIndicator.tsx',
+    css: ['retail/ScaleIndicator.css'],
   },
 ];
 
