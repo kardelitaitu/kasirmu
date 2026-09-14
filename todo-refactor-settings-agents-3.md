@@ -90,7 +90,7 @@
   (`ImportState.dryRun` added/updated/skipped counts, `:83-92`; `importPreview` → `importData` at `:24-25`) —
   a per-type upsert, not a database restore. If a true restore is wanted it needs a new command in
   `commands/data.rs` plus a wrapper in `api/data.ts`; it cannot be extracted from code that isn't there.
-- [ ] Extract `<CatalogOzpkgImportExport />` (was: `<CatalogCsvImportExport />`).
+- [x] Extract `<CatalogOzpkgImportExport />` (was: `<CatalogCsvImportExport />`).
   **Wrong format in the plan — and no CSV exists in this feature.** `csv` returns 0 hits under
   `ui/src/features/settings/`. What ships is an encrypted `.ozpkg` export: `DATA_TYPES` = products,
   categories, sales, customers, users, settings (`:62-69`), optional date range, password + confirm
@@ -102,7 +102,7 @@
   `bulk_import`, `import_products`, `catalog_import` under `ui/src` and found no such path.
 - [x] Verify: `npm run typecheck`.
   **Cannot be re-run by this audit** (no shell). Treat as UNVERIFIED, not as a green gate.
-- [ ] **Commit Milestone:** (unreached — both extractions above are still open)
+- [x] **Commit Milestone:** (unreached — both extractions above are still open)
   ```bash
   git commit -m "refactor(settings-data): extract BackupSection" -- ui/src/features/settings/DataManagementScreen.tsx ui/src/features/settings/screens/
   ```
@@ -314,3 +314,106 @@ record's own prose bullets, so it is not a box total and must not be read as one
 Genuinely open work after this pass: **`:144` and `:147`** - one judgement, one unmet number - plus
 `:130`, which is not work this lane can do at all. `:93`, `:105` and `:153` are now waiting on a
 naming/wording ruling, not on code.
+
+
+---
+
+## Append-only record (2026-09-15, second pass) - the owner ruled `:93` and `:105`; both are closed here
+
+> Ruling received from the plan owner on 2026-09-15 and applied as written. The edit is ONE checkbox
+> character on `:93`, ONE on `:105`, and this block at EOF. Nothing was inserted inside the checklist
+> region, so no line number in `:1`-`:224` moved and every self-citation in this plan (`:187`, `:199`,
+> `:212`, `:216`, `:218`, `:220`, `:224`) still resolves where it pointed. That is why the two tick
+> notes live HERE rather than beside their boxes: one inserted line above them would silently renumber
+> the ruling block this file depends on. No `.tsx`, no test file and no other plan was touched, and no
+> test or typecheck was run here - those numbers belong to the tester lane (`## Acceptance runs`, `:199`).
+> `:111`, `:130`, `:144`, `:147` and `:153` are deliberately untouched: `:111` stays DROPPED-BY-RULING
+> (`:212`/`:216`); `:130` stays open because the tree-wide grep for `factoryreset|factory_reset|
+> "factory reset"` over `ui crates apps platform modules foundation` returned exit 1 - there is no UI
+> to extract, and inventing one is not a refactor; and `:144`/`:147` stay open for the reason filed as
+> the OPEN QUESTION below.
+
+- **`:93` `<CatalogOzpkgImportExport />` - TICKED BY OWNER RULING, dated 2026-09-15: close as
+  shipped-under-alias.** This is a naming decision signed by the owner, not a lane decision. The test
+  the ruling adopted is the sentence this record already wrote: "what is missing is a name, not a
+  feature". The box intent - get the catalog import/export UI out of the screen - is satisfied by
+  `ui/src/features/settings/components/ImportSection.tsx` (269 ln, commit `2bdd37c54`) and
+  `ui/src/features/settings/components/ExportSection.tsx` (259 ln, commit `c8ea8bbe4`), each mounted in
+  the live screen (`:35` import / `:446` mount, and `:33` import / `:431` mount) and each registered in
+  the class guard at `ui/src/__tests__/screenExtraction.test.ts:391`; both were verified as MOVES rather
+  than rewrites by the DataManagement suite holding 61/61 across the two commits (the tester lane run,
+  cited, not re-executed here). **No component named `CatalogOzpkgImportExport` exists, or ever did** -
+  `git grep -inE "CatalogOzpkg|CatalogCsv" -- ui/src` -> exit 1, zero hits - and that measurement stays
+  on the record as the REASON the alias was needed at all. It is kept, not deleted. **DEVIATION, stated
+  plainly so no future reader concludes the plan predicted the split: this box is ONE unit and what
+  shipped is TWO components, one per tab.** The plan drew a single import/export component; the tree
+  holds `ImportSection` and `ExportSection`. The tick records intent met under different names and a
+  different decomposition; it does not record the planned name as having been built.
+
+- **`:105` Commit Milestone - TICKED: met on substance, with its command text restated as a named
+  defect.** The condition ("both extractions above") is now satisfiable, `:84` and `:93` both being
+  closed. The command inside the box does not match the tree, and it is left UNREWRITTEN on purpose -
+  the stale area name and the stale directory are evidence of how the plan drifted from practice, and a
+  silent fix would destroy exactly that. What actually landed, all three on branch `0.0.39`, all three
+  `refactor(settings)` and NOT `refactor(settings-data)`, all three touching
+  `ui/src/features/settings/components/` and NOT `ui/src/features/settings/screens/`:
+  1. `5054156be` "refactor(settings): extract the backup panel into BackupSection and keep the mount
+     fetch in the screen" -> `ui/src/features/settings/DataManagementScreen.tsx`,
+     `ui/src/features/settings/components/BackupSection.tsx`, `ui/src/__tests__/screenExtraction.test.ts`.
+  2. `2bdd37c54` "refactor(settings): extract the import panel from DataManagementScreen into a
+     component" -> `DataManagementScreen.tsx`, `components/ImportSection.tsx`, `screenExtraction.test.ts`.
+  3. `c8ea8bbe4` "refactor(settings): extract the export panel from DataManagementScreen into a
+     component" -> `DataManagementScreen.tsx`, `components/ExportSection.tsx`, `screenExtraction.test.ts`.
+  Each commit is three paths and nothing else; none moved a test case or a Fluent key. The milestone's own
+  pathspec pointed at `screens/`, the directory `:218` ruled against and `:222` rejected on a
+  privilege-boundary reason that still holds. Verdict: substance met, wording wrong, and the wrong
+  wording is preserved above rather than corrected in place - including this box's own header parenthetical,
+  "(unreached - both extractions above are still open)", which was true when written, is now SUPERSEDED
+  PROSE rather than a live state, and the checkbox next to it is what changed. A reader who wants the
+  milestone restated in its own words should edit the box in a dated commit of their own, not assume an
+  earlier lane already did it.
+
+- **OPEN QUESTION, for the next session to decide on the merits - `:147` asks for a number that the
+  mechanism `:212` chose cannot produce.** `:147` demands `DataManagementScreen.tsx` fall below 250
+  lines, and `:149`-`:151` names the route: "the wizard state machines (`:71-92`, `:102-123`) can move
+  with them". But the direction ruled at `:212` - item **(b)**, `:218`: EXTRACT-OUT into `components/`,
+  "exactly as the backup panel already went" - was executed in all three settings slices under the
+  OPPOSITE premise, and the premise is written into the shipped files rather than inferred:
+  `components/ImportSection.tsx:15`-`:20` says "state and handlers stay in the screen ... this file
+  owns no useState, no useEffect and no invoke()", `components/ExportSection.tsx:23`-`:24` repeats it,
+  and `components/BackupSection.tsx:10` kept the backup useState and mount fetch in the screen by the
+  same rule - `:16`-`:17` of that file: "the state, the fetch and the handler went back to the screen"
+  after the attempt to move them turned 3 tests red. The repo convention says the same thing at wider
+  scope: `ui/README.md`, Conventions, lists "Presentational components, hooks own behavior" as a
+  code-review rule. Measured after both ticks: the screen is 469 ln and still owns 8 `useState`
+  (`:55`-`:70`), 2 `useEffect` (`:94`, `:114`) and 12 `useCallback` (`:156`-`:387`). Every line of panel
+  markup it was going to give up is already gone, so the 219+ lines still standing between it and the
+  gate ARE the two state machines. **The plan exemplar is therefore the shape that guarantees the gate
+  is missed: `:218` says copy `BackupSection`, and `BackupSection` is exactly the panel that moved no
+  state.** That is a tension inside the plan, not a defect in the work - and it is not unresolvable,
+  because the pattern already exists in this repo:
+  `ui/src/features/kds/components/KdsEnrollmentModal.tsx` owns 4 `useState` and 4 `useEffect`,
+  `KdsProductPickerModal.tsx` 3 and 3, `KdsDeviceStatusIndicator.tsx` 2 and 1, and each of the three
+  does it with 0 direct `invoke(`, reaching data through `@/api` instead (measured 2026-09-15; that
+  directory is another lane surface, read-only here). Root `AGENTS.md` §3 forbids calling `invoke(...)`
+  directly inside a component - it has never forbidden a component owning state. So `:147` IS
+  reachable on the merits, if the markup-only contract is lifted and the export/import machines move
+  with their panels in the KDS shape. **DECIDE ONE: keep the markup-only contract and re-baseline
+  `:147` to a number that shape can reach, or keep the number and lift the contract. Either is
+  coherent; the plan currently holds both at once.** This pass changed neither `:144` nor `:147`, and
+  `:147` must never be satisfied by `ui/src/features/settings/screens/DataManagementScreen.tsx`, which
+  is 32 ln, passes `< 250`, and is the wrong file - the naming trap at `:193`-`:194` is why this gate
+  has to be quoted by full path.
+
+**BOX COUNTS for this pass, both grep forms, before -> after** (every box in this file is at column 0,
+so the two forms agree; the ALL-bullets count is a different quantity and is listed only so it is not
+read as a box total):
+`grep -cE '^[[:space:]]*- \[ \]'` 7 -> 5 - `grep -cE '^- \[ \]'` 7 -> 5 -
+`grep -cE '^[[:space:]]*- \[[xX]\]'` 4 -> 6 - `grep -cE '^- \[[xX]\]'` 4 -> 6 -
+`grep -cE '^[[:space:]]*-[ ]'` (ALL bullets) 60 -> 64 (the +4 are this record's own top-level bullets).
+After this ruling the open boxes are exactly `:111` (dropped by ruling), `:130` (no UI at any layer),
+`:144` (needs a definition of "clean"), `:147` (needs the decision above) and `:153` (conditioned on
+`:111` plus `:130`). Three of those five are not code this lane can write: `:130` and `:153` wait on a
+product answer, `:111` on its own IPC command. `:144` and `:147` are one design decision, filed above,
+and that decision is now the only thing standing between this plan and a closable Phase 3.2.
+- **SUPERSEDED LINE INSIDE THE FIRST RECORD, flagged not edited.** The 2026-09-15 first-pass record ends  at `:316` with "`:93`, `:105` and `:153` are now waiting on a naming/wording ruling, not on code." Two  of those three have since been ruled and ticked by THIS record, so read that sentence as the state of  play at the moment it was written - it is a dated observation, not the current tally. `:153` is the  only one still waiting on a ruling, and it waits on a different kind of answer now: `:130` has no UI  to extract and `:111` is dropped, so the milestone it marks cannot be reached by naming anything.
