@@ -1246,33 +1246,6 @@
   }
 }
 
-.kds-ticket-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.kds-ticket-item-count-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 var(--space-2);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-bold);
-  color: var(--kds-text);
-  background: var(--kds-bg-tabs);
-  border-radius: var(--kds-r-sm);
-}
-
-.kds-ticket-id-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .kds-ticket-number {
   font-size: var(--text-xl);
   font-weight: var(--font-weight-bold);
@@ -1315,13 +1288,6 @@
   color: var(--kds-red);
   background: color-mix(in srgb, var(--kds-red) 12%, var(--kds-bg-surface));
   font-weight: var(--font-weight-bold);
-}
-
-.kds-ticket-actions {
-  display: flex;
-  gap: var(--space-2);
-  align-self: flex-start;
-  margin-top: var(--space-2);
 }
 
 .kds-ticket-edit-btn,
@@ -1481,13 +1447,6 @@
 }
 
 /* ── 2a: Course-grouped line items ───────────────────────────────── */
-.kds-ticket-line-items {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
-}
-
 .kds-ticket-course-group {
   display: flex;
   flex-direction: column;
@@ -1498,25 +1457,6 @@
   padding-top: var(--space-3);
   margin-top: var(--space-2);
   border-top: 1px solid var(--kds-border);
-}
-
-.kds-ticket-course-header {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--kds-text);
-  padding: var(--space-1_5) var(--space-3);
-  background: var(--kds-bg-tabs);
-  border-left: 3px solid var(--kds-accent);
-  border-radius: var(--kds-r-xs);
-  align-self: flex-start;
-  margin-bottom: var(--space-2);
-  user-select: none;
-  line-height: 1.4;
 }
 
 .kds-ticket-item-row {
@@ -1543,12 +1483,6 @@
   outline-offset: -1px;
 }
 
-.kds-ticket-item-status-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
 .kds-ticket-item-status-dot {
   display: inline-block;
   width: 12px;
@@ -1567,35 +1501,6 @@
   color: var(--color-fg-tertiary);
   margin-left: auto;
   white-space: nowrap;
-}
-
-.kds-ticket-item-name {
-  font-size: var(--text-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--kds-accent);
-  line-height: 1.4;
-  letter-spacing: 0.01em;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.kds-ticket-item-qty {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 var(--space-2);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-bold);
-  color: var(--kds-fg-inverse);
-  background: var(--kds-accent);
-  border-radius: var(--kds-r-sm);
-  vertical-align: middle;
-  line-height: 1;
-  flex-shrink: 0;
 }
 
 .kds-ticket-modifiers {
@@ -2225,18 +2130,6 @@
 .kds-loading-line--long { width: 85%; }
 
 /* ── Action cooldown visual feedback ─────────────────────────── */
-.kds-ticket--cooldown {
-  opacity: 0.85;
-  pointer-events: none;
-  transition: opacity var(--duration-100);
-}
-
-.kds-ticket-item-row--cooldown {
-  opacity: 0.85;
-  pointer-events: none;
-  transition: opacity var(--duration-100);
-}
-
 /* ── Workspace wrapper (used by AppShell when KDS is standalone) ──── */
 .kds-workspace {
   display: flex;
