@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 79 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 80 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 79/243/30 as of this edit: (3 x 79) + 4 + 2 = 243,
+// 902e07678, and 80/246/29 as of this edit: (3 x 80) + 4 + 2 = 246,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1233,6 +1233,21 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'auth/CreatePinScreen.tsx',
     css: ['auth/CreatePinScreen.css'],
   },
+  {
+    // Second auth gate screen, strong mount and the same shape as CreatePinScreen:
+    // AppShell.tsx:26 imports it and renders it at :758, before any route exists,
+    // and features/index.ts:42 files it with the auth gates. It imports its own
+    // sheet at :13 and resolves against it UNAAIDED — walk A came back 0 undefined
+    // and 0 dead with no parentCss, no prefix and no fragment, so none was added:
+    // the citation case would refuse a theme cite here as vacuous exactly as it
+    // refused two tonight already. Its own claim re-derived rather than accepted:
+    // 17 distinct class names spread over 30 selector rules (grep the leading
+    // \.. tokens, sort -u), so "17 of 17" was true of this sheet and the run
+    // agrees with it — 0 undefined, 0 dead.
+    name: 'LicenseActivationScreen',
+    tsx: 'auth/LicenseActivationScreen.tsx',
+    css: ['auth/LicenseActivationScreen.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1384,7 +1399,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 30 entries is a named path, not a prefix, not a
+// every one of its 29 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1397,11 +1412,10 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 30 since, one line per sheet a landed entry cited, and
+// it has shrunk to 29 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
-  'auth/LicenseActivationScreen.css',
   'auth/SessionLockScreen.css',
   'design/DesignSystem.css',
   'design/DevToolbar.css',
