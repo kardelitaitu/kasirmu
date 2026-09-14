@@ -166,3 +166,69 @@ The inherited figure — the comment `// 115 such gaps exist on the current tree
 **The rule for the next reader of this plan, and the reason this addendum adds no box tick:** `dev-mock-scoped-aliases.test.ts` asserts `expect(unhandled).toBe(false)` — that a scoped name does not fall through to the warn. That is **registration identity**. It never asserts that a scoped call honoured its arguments, and 73 of the names such a claim would cover are answered by the argument-discarding fallback. Nobody may tick a scoped-fidelity claim off that test: "the alias test is green" and "the scoped mock behaves like the scoped bridge command" are different propositions, and only the first is checked.
 
 *Disposition of the four open boxes, recorded once, 2026-09-14:* `:136`, `:138` and `:142` stay open because the router consolidation and its commit belong to Agent 4's phase 4.5 on another agent's fence; `:140` stays open because `npm run test` and `npm run check:all` have still been run by nobody in this tree; and this addendum changes none of that and proposes no rename in either direction.
+
+---
+
+## Acceptance leg, run and reported: 2026-09-15, branch 0.0.39, HEAD `362fe13cd`
+
+Line numbers in this section are stamped to `362fe13cd` and move with every commit; the rows
+are identified by TITLE, not by number. Titles cited: `Run full UI tests: `npm run test` and
+`npm run check:all`` (the row this section settles), and the three rows the file already says
+belong to another phase -- `Reduce `ui/src/dev-mock/tauri-api.ts` to registering the domain
+handler maps into `mockDispatcher``, `Verify `tauri-api.ts` line count drops from 4,904 to
+< 200 lines`, and `**Commit Milestone:**`.
+
+**The acceptance row is NOT ticked, because the run it asks for came back red and the second
+command in it was never attempted.** What ran, and what it printed:
+
+1. `cd ui && npx tsc --noEmit -p tsconfig.json` -- the command `npm run typecheck` is
+   (`ui/package.json:19`, `"typecheck": "tsc --noEmit"`). **Exit 0, no output, 2 m 20 s.**
+   The typecheck leg of this plan is clean at this HEAD. That is not one of the row's two
+   commands, so it does not move the row.
+2. `cd ui && npx vitest run` -- the command `npm run test` is (`ui/package.json:22`,
+   `"test": "vitest run"`). **The full UI suite is RED:**
+   `Test Files  1 failed | 579 passed (580)` / `Tests  4 failed | 9942 passed | 25 skipped (9971)`
+   / `Duration  82.35s`. All four failures are in one file and one describe block, verbatim:
+   `FAIL  src/__tests__/PosScreen.test.tsx > PosScreen – bundle scanning toast > shows a success toast when a bundle barcode is scanned`,
+   `… > includes the expanded items in the cart when a bundle is scanned`,
+   `… > adds product directly when lookupByBarcode returns a DTO (no bundle path)`,
+   `… > gives product barcode priority when the same code matches both a product and a bundle`.
+   The rendered stack the run attaches to them bottoms out in
+   `❯ PaymentModal src/features/sales/PaymentModal.tsx:289:26` at
+   `const workspaceScope = useWorkspaceScope();`, which reads as a provider missing in that
+   test setup rather than as anything devmock touched.
+   Nothing was fixed: this box's fence is this file, and every `ui/src` lane is elsewhere. The
+   9,971 is a property of this run, per the README rule that no static command re-derives a
+   Vitest case total.
+3. `npm run check:all` -- **not run**, out of this box (it starts Docker and E2E), which is the
+   leg the 09-14 note at `:141` already recorded as never having been run by anybody in this
+   tree. That sentence stands and is now dated twice rather than once.
+
+So the row's own two commands are: first one run and RED, second one still never run. The
+file stays `todo-` by the naming rule in `AGENTS.md` section 4 (`done-todo-` is earned only when
+the file's own acceptance command was RUN and PASSED), and `:141`'s claim that nobody has run
+either command is now superseded in one direction only: somebody has run the first one, and it
+failed.
+
+**One harness artifact, recorded so nobody routes it as a red in this tree.** The first attempt
+at step 2 was started from the repo root, because a PowerShell command built its working
+directory with `Join-Path $env:PWD 'ui'` and `$env:PWD` is null there (the call failed with
+`Join-Path: Cannot bind argument to parameter `Path` because it is null` and left the cwd
+alone). `npx` then resolved a vitest from the npm cache outside `ui/node_modules` and walked
+`website/` as well, printing `Test Files  569 failed | 47 passed (616)` /
+`Tests  138 failed | 556 passed (694)` with `Cannot find package 'jsdom'` on every worker.
+Those two lines describe a broken runner, not this repository: the same 569-file collapse is
+what a missing environment dependency looks like, and the only measurement of value in that run
+is the one it destroyed. Re-run from inside `ui` with the project-local binary produced the
+figures in step 2. A run whose file count exceeds `find ui/src/__tests__ -type f | wc -l` is not
+the UI suite.
+
+**Pointer hygiene for the three other-phase rows, added without ticking or deleting anything.**
+The file cites its owner at `:123-125` as `done-todo-refactor-devmock-agents-4.md`, deliberately
+by bare name with no path, "because its location in this checkout is in flux". It is no longer
+in flux and the path resolves: `git ls-files | grep -i refactor-devmock-agents-4` ->
+`.agents/archived/done-todo-refactor-devmock-agents-4.md`. The three rows above stay open here
+for the reason the file already gives at `:137`, `:139` and in the 09-14 disposition at the foot
+of this file -- router consolidation is Agent 4's phase 4.5, one job, one owner, another
+fence -- and no line number into that archived plan is quoted here because this box never opened
+it.
