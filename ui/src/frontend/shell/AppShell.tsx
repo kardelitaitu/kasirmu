@@ -16,6 +16,7 @@ import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible } from '@/platform/ui/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import PermissionDenied from '@/components/PermissionDenied';
+import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import type { WizardState } from '@/features/setup/SetupWizard';
@@ -116,7 +117,7 @@ export default function AppShell() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>('products');
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
-  const { activeWorkspace, sessionToken, terminalId } = useWorkspace();
+  const { activeWorkspace, sessionToken, terminalId, sessionError, retrySessionToken } = useWorkspace();
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { isKdsKiosk } = useTerminalProfile(sessionToken ?? undefined);
   const { addToast } = useToast();
@@ -417,11 +418,25 @@ export default function AppShell() {
   // inactive/unknown — or one whose has_users never answered — shows that
   // fact instead of hiding it in a one-shot toast.
   const bootBadges = (
-    <BootStatusBadges
-      licenseState={licenseState}
-      licenseMessage={licenseMessage}
-      usersUnknown={hasAnyUsers === null && !session}
-    />
+    <>
+      {/* Durable session-token failure surface: the toast raised at the
+          moment of failure expires, and an operator left with no session
+          token then sees nothing explaining it. Read as `sessionError ?`,
+          not as a guaranteed field: it is optional on the context type,
+          so absent must mean no banner rather than a crash. */}
+      {sessionError ? (
+        <ErrorState
+          title={requiredLocalized(l10n, 'workspace-session-token-error')}
+          message={sessionError}
+          {...(retrySessionToken ? { onRetry: retrySessionToken } : {})}
+        />
+      ) : null}
+      <BootStatusBadges
+        licenseState={licenseState}
+        licenseMessage={licenseMessage}
+        usersUnknown={hasAnyUsers === null && !session}
+      />
+    </>
   );
 
   // ── F11 toggles fullscreen across all workpaces ───────────────

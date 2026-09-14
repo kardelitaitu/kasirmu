@@ -78,7 +78,7 @@ export interface WorkspaceContextValue {
    * be a console.warn only, which left sessionToken null with nothing on screen
    * to explain why (clock rollback, denied workspace type, expired subscription,
    * invalid signature) while every token-taking command downstream failed or
-   * no-opped. The workspace picker renders this next to `retrySessionToken`;
+   * no-opped. AppShell's `bootBadges` element renders this with `retrySessionToken`;
    * the toast is the immediate surface and this is the durable one.
    * Optional so existing test mocks need not override it; the real provider
    * always sets it.
@@ -418,9 +418,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   // A rejected create_session has to reach the operator, not just the console.
-  // The toast is the immediate surface; `sessionError` is the durable one the
-  // workspace picker can render next to `retrySessionToken`. The console.warn
-  // stays for anyone reading devtools.
+  // The toast is the immediate surface; `sessionError` is the durable one, read
+  // by the desktop shell's `bootBadges` element. The tablet shell has no
+  // bootBadges slot, so it renders neither — and stays silent after the toast.
   const reportSessionTokenFailure = useCallback((err: unknown) => {
     const message = requiredLocalized(
       l10nRef.current,

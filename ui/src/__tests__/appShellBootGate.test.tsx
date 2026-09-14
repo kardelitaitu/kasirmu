@@ -35,7 +35,7 @@
 // a call that failed.
 
 import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -413,4 +413,109 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     });
   });
 
+});
+
+// ── Session-token failure: the DURABLE surface ───────────────────────────────
+//
+// A rejected create_session raises one toast and then goes quiet: the toast
+// expires, sessionToken stays null, and every token-taking command downstream
+// fails or no-ops with nothing on screen to say why. `sessionError` is the
+// context field that outlives the toast (WorkspaceContext.tsx:86) and
+// `retrySessionToken` the action that re-plays the attempt (:92). These cases
+// pin that AppShell renders them — inside the ONE `bootBadges` element, so all
+// twelve of its post-login render sites, the !activeWorkspace picker branch
+// included, inherit the banner from a single insertion.
+//
+// The copy is asserted as the RESOLVED en text of the EXISTING
+// `workspace-session-token-error` key (shared.ftl:351) and of
+// `error-state-retry` (shared.ftl:35) — `withFluent` auto-prepends shared.ftl,
+// so a key missing from the loaded bundle fails here rather than passing on a
+// raw string. No new Fluent key is introduced by this feature.
+//
+// Case (c) is the load-bearing guard: the global stub at test-setup.ts:148-163
+// — and every other mock of this context across the suite — has NO sessionError
+// key at all, so the read must tolerate undefined. A non-optional read would
+// break 140 call sites in 119 files that have nothing to do with this change.
+
+describe('AppShell — durable session-token failure banner', () => {
+  /** Resolved en-US copy of `workspace-session-token-error` (shared.ftl:351). */
+  const SESSION_ERROR_TITLE = 'Could not start the session for this workspace. Check the details and try again.';
+
+  beforeEach(() => {
+    vi.stubEnv('DEV', false);
+    clearPages();
+    window.location.hash = '';
+    authSession(true);
+    mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
+    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockHasUsers.mockResolvedValue(USERS_PRESENT);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it('sessionError set → role=alert carries the localized copy and Retry re-runs the attempt', async () => {
+    const retrySessionToken = vi.fn();
+    mockWorkspace.mockReturnValue({
+      activeWorkspace: null,
+      setActiveWorkspace: vi.fn(),
+      availableWorkspaces: [],
+      workspaceScreens: [],
+      loading: false,
+      sessionError: 'create_session rejected: clock rollback',
+      retrySessionToken,
+    });
+
+    await boot();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+    });
+    const alert = screen.getByRole('alert');
+    // Title = the key resolved from the loaded bundle; message = the durable
+    // reason that outlived the one-shot toast.
+    expect(within(alert).getByText(SESSION_ERROR_TITLE)).toBeInTheDocument();
+    expect(within(alert).getByText('create_session rejected: clock rollback')).toBeInTheDocument();
+
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    expect(retrySessionToken).toHaveBeenCalledTimes(1);
+    // Durable, not one-shot: nothing here clears sessionError, so the banner
+    // is still up after the retry is requested.
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('sessionError null → no banner', async () => {
+    mockWorkspace.mockReturnValue({
+      activeWorkspace: null,
+      setActiveWorkspace: vi.fn(),
+      availableWorkspaces: [],
+      workspaceScreens: [],
+      loading: false,
+      sessionError: null,
+      retrySessionToken: vi.fn(),
+    });
+
+    await boot();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(SESSION_ERROR_TITLE)).not.toBeInTheDocument();
+  });
+
+  it('sessionError ABSENT (the global-stub shape) → no banner and no crash', async () => {
+    // Exactly the keys test-setup.ts:148-163 hands every test that does not
+    // override the context: neither sessionError nor retrySessionToken.
+    workspaceHome();
+
+    await boot();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-home')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
