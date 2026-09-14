@@ -1,12 +1,29 @@
 /**
  * Unit tests for KDS yellow/red SLA threshold clamping logic.
  *
- * Rules (from KdsScreen.tsx):
+ * Rules (were inline in KdsScreen.tsx; now exported from kdsThresholdMinutes.ts):
  *   Yellow fixed range: 3–30
  *   Red fixed range:    4–60
  *   Invariant:          yellow < red (always)
  *   onChangeYellowThreshold(v) → yellow = clamp(v, 3, min(30, red-1)), red unchanged
  *   onChangeRedThreshold(v)   → red = clamp(v, 4, 60); yellow = min(yellow, red-1)
+ *
+ * LOAD-BEARING AS OF THIS COMMIT — it used to fail the way
+ * KdsStatusAdvance.test.ts:4-8 records: the clamping was re-implemented here
+ * as local clampYellow() / applyRedChange() functions, so editing or deleting
+ * the production expressions left all 5 cases green. This suite was testing a
+ * copy. Both local functions are gone and every assertion now calls the
+ * exported production helpers, so a bound changed in kdsThresholdMinutes.ts
+ * fails this file by construction.
+ *
+ * Scope: MINUTES only — the settings-slider clamp. The seconds clamp that
+ * decides when a ticket turns yellow/red on the board is
+ * hooks/useTicketSla.ts:clampSlaThresholds, already covered by
+ * KdsSlaThresholdClamp.test.ts. The two ceilings disagree (30/60 min here vs
+ * 840/900 s = 14/15 min there). That is an open product ruling about which
+ * clamp wins, deliberately NOT asserted in either direction here: pinning it
+ * as-is would ship a red suite, and pinning it as-desired would invent
+ * behaviour.
  */
 
 // Added in this commit: the file shipped in be6f8cce with NO imports at all, using
@@ -16,16 +33,11 @@
 // itself still ran the file, because its runner injects those names, which is why the
 // breakage was invisible to `npm run test` and only the type check caught it.
 import { describe, expect, it } from 'vitest';
-
-/** Simulate the clamping logic from KdsScreen.tsx. */
-function clampYellow(v: number, red: number) {
-  return Math.max(3, Math.min(v, red - 1, 30));
-}
-
-function applyRedChange(newRed: number, yellow: number) {
-  const red = Math.max(4, Math.min(newRed, 60));
-  return { red, yellow: Math.min(yellow, red - 1) };
-}
+import {
+  clampYellowThreshold,
+  clampRedThreshold,
+  clampYellowFollowingRed,
+} from '@/features/kds/kdsThresholdMinutes';
 
 describe('KDS threshold clamping — 4 core scenarios', () => {
   /**
@@ -38,23 +50,23 @@ describe('KDS threshold clamping — 4 core scenarios', () => {
     const red = 10;
 
     // 5 → 8: passes through (8 < min(30, 9) = 9)
-    yellow = clampYellow(8, red);
+    yellow = clampYellowThreshold(8, red);
     expect(yellow).toBe(8);
 
     // 8 → 9: hits red-1 cap
-    yellow = clampYellow(9, red);
+    yellow = clampYellowThreshold(9, red);
     expect(yellow).toBe(9);
 
     // 9 → 15: clamped to 9
-    yellow = clampYellow(15, red);
+    yellow = clampYellowThreshold(15, red);
     expect(yellow).toBe(9);
 
     // 9 → 30: still clamped to 9
-    yellow = clampYellow(30, red);
+    yellow = clampYellowThreshold(30, red);
     expect(yellow).toBe(9);
 
     // 9 → 3: drops to floor
-    yellow = clampYellow(3, red);
+    yellow = clampYellowThreshold(3, red);
     expect(yellow).toBe(3);
 
     // Red unchanged throughout
@@ -65,10 +77,10 @@ describe('KDS threshold clamping — 4 core scenarios', () => {
     let yellow = 3;
     const red = 60;
 
-    yellow = clampYellow(30, red); // min(30, 59, 30) = 30
+    yellow = clampYellowThreshold(30, red); // min(30, 59, 30) = 30
     expect(yellow).toBe(30);
 
-    yellow = clampYellow(15, red);
+    yellow = clampYellowThreshold(15, red);
     expect(yellow).toBe(15);
   });
 
@@ -81,17 +93,17 @@ describe('KDS threshold clamping — 4 core scenarios', () => {
     let yellow = 25;
     const red = 40;
 
-    yellow = clampYellow(15, red);
+    yellow = clampYellowThreshold(15, red);
     expect(yellow).toBe(15);
 
-    yellow = clampYellow(5, red);
+    yellow = clampYellowThreshold(5, red);
     expect(yellow).toBe(5);
 
-    yellow = clampYellow(3, red);
+    yellow = clampYellowThreshold(3, red);
     expect(yellow).toBe(3);
 
     // Can't go below 3
-    yellow = clampYellow(1, red);
+    yellow = clampYellowThreshold(1, red);
     expect(yellow).toBe(3);
 
     expect(red).toBe(40);
@@ -107,21 +119,19 @@ describe('KDS threshold clamping — 4 core scenarios', () => {
     let red = 30;
 
     // Red 30 → 45: yellow stays 20 (min(20, 44) = 20)
-    const r45 = applyRedChange(45, yellow);
-    red = r45.red;
-    yellow = r45.yellow;
+    red = clampRedThreshold(45);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(45);
     expect(yellow).toBe(20);
 
     // Red 45 → 60: yellow stays 20 (min(20, 59) = 20)
-    const r60 = applyRedChange(60, yellow);
-    red = r60.red;
-    yellow = r60.yellow;
+    red = clampRedThreshold(60);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(60);
     expect(yellow).toBe(20);
 
     // Now fill the room: yellow 20 → 30
-    yellow = clampYellow(30, red);
+    yellow = clampYellowThreshold(30, red);
     expect(yellow).toBe(30);
   });
 
@@ -135,44 +145,38 @@ describe('KDS threshold clamping — 4 core scenarios', () => {
     let red = 50;
 
     // Red 50 → 40: yellow stays 25 (min(25, 39) = 25)
-    const r40 = applyRedChange(40, yellow);
-    red = r40.red;
-    yellow = r40.yellow;
+    red = clampRedThreshold(40);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(40);
     expect(yellow).toBe(25);
 
     // Red 40 → 30: yellow stays 25 (min(25, 29) = 25)
-    const r30 = applyRedChange(30, yellow);
-    red = r30.red;
-    yellow = r30.yellow;
+    red = clampRedThreshold(30);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(30);
     expect(yellow).toBe(25);
 
     // Red 30 → 25: yellow clamps to 24 (min(25, 24) = 24)
-    const r25 = applyRedChange(25, yellow);
-    red = r25.red;
-    yellow = r25.yellow;
+    red = clampRedThreshold(25);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(25);
     expect(yellow).toBe(24);
 
     // Red 25 → 10: yellow clamps to 9 (min(24, 9) = 9)
-    const r10 = applyRedChange(10, yellow);
-    red = r10.red;
-    yellow = r10.yellow;
+    red = clampRedThreshold(10);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(10);
     expect(yellow).toBe(9);
 
     // Red 10 → 5: yellow clamps to 4 (min(9, 4) = 4)
-    const r5 = applyRedChange(5, yellow);
-    red = r5.red;
-    yellow = r5.yellow;
+    red = clampRedThreshold(5);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(5);
     expect(yellow).toBe(4);
 
     // Red 5 → 4: yellow clamps to 3 (min(4, 3) = 3)
-    const r4 = applyRedChange(4, yellow);
-    red = r4.red;
-    yellow = r4.yellow;
+    red = clampRedThreshold(4);
+    yellow = clampYellowFollowingRed(yellow, red);
     expect(red).toBe(4);
     expect(yellow).toBe(3);
   });

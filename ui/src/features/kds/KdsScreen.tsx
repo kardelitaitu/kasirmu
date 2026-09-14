@@ -20,6 +20,7 @@ import { KdsHamburgerPanel } from '@/features/kds/KdsHamburgerPanel';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
+import { clampYellowThreshold, clampRedThreshold, clampYellowFollowingRed } from '@/features/kds/kdsThresholdMinutes';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
 import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';
@@ -912,14 +913,12 @@ export default function KdsScreen() {
               onChangeSound={(v) => setSettings((s) => ({ ...s, soundEnabled: v }))}
               onChangeYellowThreshold={(v) => setSettings((s) => ({
                 ...s,
-                // Fixed range 3–30, but also ensure yellow < red
-                yellowThresholdMin: Math.max(3, Math.min(v, s.redThresholdMin - 1, 30)),
+                yellowThresholdMin: clampYellowThreshold(v, s.redThresholdMin),
               }))}
               onChangeRedThreshold={(v) => setSettings((s) => ({
                 ...s,
-                // Fixed range 4–60, then force yellow below new red
-                redThresholdMin: Math.max(4, Math.min(v, 60)),
-                yellowThresholdMin: Math.min(s.yellowThresholdMin, Math.max(4, Math.min(v, 60)) - 1),
+                redThresholdMin: clampRedThreshold(v),
+                yellowThresholdMin: clampYellowFollowingRed(s.yellowThresholdMin, clampRedThreshold(v)),
               }))}
               onChangeAutoAcknowledge={(v) => setAutoAcknowledge(v)}
               onChangeDensity={(v) => setSettings((s) => ({ ...s, density: v }))}
