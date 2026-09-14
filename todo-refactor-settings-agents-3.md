@@ -1,12 +1,21 @@
 # Orchestrator Agent 3: Database Management & Factory Reset Workflows
 
+<!-- Audit stamp: 2026-09-14 · DSH · status: NOT STARTED (baseline corrected; two of four sub-panels have no UI, one capability was first mis-called absent and is real) · corrections applied: 14 · the consequential error was in the FIRST cut of this audit, not in the doc: "audit log retention scrubbing" was written up as a feature that does not exist, and a vocabulary search disproved it — `Store::sweep_audit_retention` (crates/oz-core/src/db/audit.rs:286) is a live hourly sweep wired in BOTH shells; what is missing is only its UI, so the doc's claim was kept and narrowed instead of deleted; line counts are read-tool `totalLines` (`wc -l` reads 1 higher on these trailing-newline files). -->
+
 **Document:** `todo-refactor-settings-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Data Lifecycle & Backup Architect)  
-**Goal:** Decompose `ui/src/features/settings/DataManagementScreen.tsx` (915 lines) into modular sub-panels: SQLite database backup/restore, CSV catalog import/export, audit log retention scrubbing, and factory reset PIN confirmation modal.
+**Goal:** Decompose `ui/src/features/settings/DataManagementScreen.tsx` into modular sub-panels: SQLite database backup/restore, CSV catalog import/export, audit log retention scrubbing, and factory reset PIN confirmation modal.
 
-**Target File:** `ui/src/features/settings/DataManagementScreen.tsx` (Baseline: 915 lines)  
+> **Status (2026-09-14): not started.** No extraction from this plan has landed — the file is still a
+> single 1,016-line component, and none of the four planned `data/` components exists anywhere under
+> `ui/src` (0 hits each). The goal line also needs narrowing: of the four named sub-panels, **one exists**
+> (backup — with no restore path), **one exists in a different format** (the export wizard writes
+> `.ozpkg`, not CSV), **one has a live backend and no UI** (audit-log retention), and **one could not be
+> located at any layer** (factory reset). Searched vocabularies and evidence are recorded per item below.
+
+**Target File:** `ui/src/features/settings/DataManagementScreen.tsx` (stated baseline: 915 lines · **measured 2026-09-14: 1,016 lines** — it grew)  
 **Sibling Documents:**
-- [`todo-refactor-settings-agents-1.md`](./todo-refactor-settings-agents-1.md) (Agent 1 — Settings Backend IPC Modularization)
+- `done-todo-refactor-settings-agents-1.md` (Agent 1 — Settings Backend IPC Modularization; completed and archived, so cited by name with no path prefix)
 - [`todo-refactor-settings-agents-2.md`](./todo-refactor-settings-agents-2.md) (Agent 2 — Master-Detail Settings Screen Deconstruction)
 
 ---
@@ -14,16 +23,42 @@
 ## 🔒 Coordination & Path Fencing Rules
 
 1. **Commit Subject Convention:** `refactor(settings-data): ...`
+   > Repo rule (root `AGENTS.md` §3): the ONLY permitted commit form is one line with an explicit
+   > pathspec — `git commit -m "refactor(settings-data): <subject>" -- path/one path/two`. Bare
+   > `git commit -m` is forbidden in this concurrent checkout; the milestone commands below are rewritten in that form.
 2. **Owned Path Fence (Exclusive to Agent 3):**
-   - `ui/src/features/settings/DataManagementScreen.tsx`
-   - `ui/src/features/settings/data/` (NEW directory)
-     - `BackupRestoreSection.tsx`
-     - `CatalogCsvImportExport.tsx`
-     - `AuditRetentionSection.tsx`
-     - `FactoryResetConfirmationModal.tsx`
+   - `ui/src/features/settings/DataManagementScreen.tsx` — exists, 1,016 lines; `export default function
+     DataManagementScreen` at `:156` (admin gate) over `DataManagementScreenContent` at `:162`; plus
+     `DataManagementScreen.css`.
+   - `ui/src/features/settings/data/` (NEW directory) — **never created**. The tree's real convention for
+     this feature directory is `sections/` (7 files) + `screens/` (17 `.tsx` files); `workspace-cards/` is the
+     third. New sub-panels should follow that convention rather than invent a fourth directory.
+     - `BackupRestoreSection.tsx` → no counterpart; the backup tab is inline at `:964-1013`
+     - `CatalogCsvImportExport.tsx` → no counterpart; the `.ozpkg` wizards are inline at `:541-741` (export) and `:744-961` (import)
+     - `AuditRetentionSection.tsx` → no UI counterpart; the backend it would surface **does** exist (see Phase 3.2)
+     - `FactoryResetConfirmationModal.tsx` → no counterpart at any layer; the feature could not be located (see Phase 3.2)
 3. **Forbidden Paths (Owned by Siblings):**
-   - DO NOT edit `SettingsPage.tsx` (Owned by Agent 2).
+   - DO NOT edit `SettingsPage.tsx` (Owned by Agent 2). Note it mounts the *placeholder* twin of this
+     screen: `SettingsPage.tsx:48` lazy-imports `./screens/DataManagementScreen` and renders it for nav key
+     `data-management` at `:660-661`. That 32-line placeholder (`ui/src/features/settings/screens/DataManagementScreen.tsx`,
+     header `:4`: "Content moves here from `features/settings/DataManagementScreen.tsx` (Plus+ gated)") is a
+     **different file from the one this plan decomposes** — same basename, different directory, and the
+     settings nav currently shows the placeholder while the working screen is reached by its own route
+     (`ui/src/features/settings/register.tsx:31`, route `data-management`, role `owner`).
    - DO NOT edit backend `commands/settings.rs` (Owned by Agent 1).
+     > Precision, per the root `AGENTS.md` "Settings disambiguation" rule: there are two such files —
+     > `apps/desktop-client/src/commands/settings.rs` (379 lines) and `apps/tablet-client/src/commands/settings.rs`
+     > (949 lines) — and **neither is this screen's backend**. This screen's IPC is
+     > `apps/desktop-client/src/commands/data.rs` (139 lines: `get_backup_status`, `get_backup_status_scoped`,
+     > `create_backup`, `create_backup_scoped`, `export_data`, `import_preview`, `import_data` — `:33-130`),
+     > registered at `apps/desktop-client/src/lib.rs:892-893` and typed in `ui/src/api/data.ts` (142 lines; 7
+     > `loggedInvoke` call sites at `:85-139`, commands `get_backup_status`, `get_backup_status_scoped`,
+     > `create_backup`, `create_backup_scoped`, `export_data`, `import_preview`, `import_data`). A grep for
+     > `create_backup|export_data|import_data` under `apps/tablet-client/src` returns **0** — the data-management
+     > command surface is desktop-only today, while the retention sweep daemon below runs in BOTH shells.
+     > Also not to be confused with this screen: `ui/src/api/settings.ts` (314 lines), `ui/src/contexts/SettingsContext.tsx`
+     > (552 lines), `crates/oz-core/src/settings.rs` (897), `crates/oz-core/src/db/settings.rs` (286), and
+     > `modules/settings/` (202-line `lib.rs`; a kernel lifecycle stub, not this UI).
 
 ---
 
@@ -32,22 +67,110 @@
 ### Phase 3.0: Baseline Audit
 - [ ] Run `npm run test -- DataManagement` in `ui/`.
 - [ ] Run `npm run typecheck` in `ui/`.
+  > **Unverified by this audit — no shell was available to this session**, so neither command was run and
+  > no pass/fail is claimed. The suites the first line would collect do exist:
+  > `ui/src/__tests__/DataManagementScreen.test.tsx`, `DataManagementBackup.test.tsx`,
+  > `DataManagementExport.test.tsx`, `DataManagementImport.test.tsx`, and the IPC contract test
+  > `ui/src/__tests__/api-data-contract.test.ts` (whose `:44` names this screen as the caller that must not
+  > pass an empty `sessionToken`).
+- Scope correction: the screen has exactly **three tabs** — export, import, backup (`activeTab` at `:173`;
+  panels at `:541`, `:744`, `:964`) — matching its own module header at `:1-7`. The plan's four sub-panels do
+  not map 1:1 onto that structure.
 
-### Phase 3.1: Extract Backup & CSV Import/Export Sections
-- [ ] Extract `<BackupRestoreSection />` into `data/BackupRestoreSection.tsx`.
-- [ ] Extract `<CatalogCsvImportExport />` into `data/CatalogCsvImportExport.tsx`.
+### Phase 3.1: Extract Backup & `.ozpkg` Import/Export Sections
+- [ ] Extract `<BackupSection />` (was: `<BackupRestoreSection />`).
+  **Renamed, not done.** Nothing has been extracted; the backup panel is inline at `:964-1013` — "Database
+  backup" card, last-backup + size rows, `Create backup now` → `handleBackup` →
+  `createBackupScoped(sessionToken)` / `createBackup()` at `:275-276`. **"restore" is 0 hits in this file**
+  (66 for `backup`), so "backup/restore" overstates it: `getBackupStatus` + `createBackup` exist, no
+  `restoreBackup` does. The nearest thing to a restore is the `.ozpkg` **import** wizard's dry-run merge
+  (`ImportState.dryRun` added/updated/skipped counts, `:83-92`; `importPreview` → `importData` at `:24-25`) —
+  a per-type upsert, not a database restore. If a true restore is wanted it needs a new command in
+  `commands/data.rs` plus a wrapper in `api/data.ts`; it cannot be extracted from code that isn't there.
+- [ ] Extract `<CatalogOzpkgImportExport />` (was: `<CatalogCsvImportExport />`).
+  **Wrong format in the plan — and no CSV exists in this feature.** `csv` returns 0 hits under
+  `ui/src/features/settings/`. What ships is an encrypted `.ozpkg` export: `DATA_TYPES` = products,
+  categories, sales, customers, users, settings (`:62-69`), optional date range, password + confirm
+  (`ExportState`, `:71-81`), path chosen via `pickExportPath`, payload via `export_data` (`:347`).
+  Repo-wide, CSV *does* exist — but in other lanes: `crates/oz-reporting` is "Analytics and CSV export
+  engine" (Cargo.toml:8) and audit CSV export is `ui/src/api/audit.ts:123-134` /
+  `ui/src/features/audit/AuditLogScreen.tsx:239-286`. Neither is a catalog import. A spreadsheet-shaped
+  catalog import would be a new feature, not an extraction; searched `csv`, `spreadsheet`, `xlsx`,
+  `bulk_import`, `import_products`, `catalog_import` under `ui/src` and found no such path.
 - [ ] Verify: `npm run typecheck`.
-- [ ] **Commit Milestone:**
+  **Cannot be re-run by this audit** (no shell). Treat as UNVERIFIED, not as a green gate.
+- [ ] **Commit Milestone:** (unreached — both extractions above are still open)
   ```bash
-  git commit -m "refactor(settings-data): extract BackupRestoreSection and CatalogCsvImportExport"
+  git commit -m "refactor(settings-data): extract BackupSection" -- ui/src/features/settings/DataManagementScreen.tsx ui/src/features/settings/screens/
   ```
 
 ### Phase 3.2: Extract Factory Reset Modal & Screen Reduction
-- [ ] Extract `<FactoryResetConfirmationModal />` (double PIN check + confirmation keyword input).
 - [ ] Extract `<AuditRetentionSection />`.
+  **The mechanism is real; only the UI is missing — do not delete this item.** The capability was first
+  mis-reported to this audit as non-existent on the strength of one absent keyword (`retention` = 0 hits in
+  this file); a vocabulary search disproved that. What exists:
+  `SubscriptionTier::audit_retention_days()` (`crates/oz-core/src/subscription.rs:243-251` — Plus 90 /
+  Pro 180 / Premium 365 / Enterprise 1,095 days; Free and OneTime = no entitlement, and `None` here means
+  "nothing retained", the deliberate inversion of `sales_history_days`, `:239-241`), surfaced through
+  `Entitlements::audit_retention_days()` (`crates/oz-core/src/entitlements.rs:190`), enforced by
+  `Store::sweep_audit_retention()` (`crates/oz-core/src/db/audit.rs:286`, doc `:252-265` — one transaction
+  bracketed by the `audit.retention_sweep_active` marker, `:250`, the carve-out the `20260920_audit_retention`
+  trigger allows), run by an hourly daemon in **both** shells (`apps/desktop-client/src/lib.rs:617`, `:642`;
+  `apps/tablet-client/src/lib.rs:250-292`). Policy prose: `docs/security/data-residency-and-retention.md:66-118`.
+  On the UI side this screen has **nothing**: 0 hits for `retention`/`audit` in
+  `ui/src/features/settings/DataManagementScreen.tsx`; the only settings-adjacent display is the read-only
+  "Sales history retention" diagnostics row (`sections/DiagnosticsSection.tsx:23`, key
+  `sales_history_days`; `ui/src/locales/settings.ftl:1048`) — a different axis (sales history, not audit log)
+  and display-only. So this is **build-the-panel work reading the existing entitlement/sweep state**, not
+  an extraction from this file. Note the sweep is automatic: a UI here can show the window and next sweep,
+  and any manual "scrub now" needs a new command.
+- [ ] Extract `<FactoryResetConfirmationModal />` (double PIN check + confirmation keyword input).
+  **Could not be located at any layer. Searched:** `FactoryReset`, `factory reset`, `factory-reset`,
+  `factory_reset`, `reset_to_factory`, `hard reset`, `reset_database`, `database_reset`, `clear_all_data`,
+  `wipe_all`, `wipe_data`, `erase_data`, `purge_data` — across `ui/src`, `crates/`, `apps/`, `platform/`,
+  `modules/`. Zero product hits; the only matches are this doc family's own title, an unrelated
+  TCP-lingering comment (`crates/oz-hal/tests/tcp_reconnect.rs:62`) and mock/object "factory" words in
+  `ui/src/dev-mock/`. The confirmation UX this modal would copy *does* exist nearby — a generic
+  `ConfirmDialog` import at `:16` driven by `showImportConfirm` (`:176`) for the import step — and PINs
+  exist as a concept only for staff auth (`ui/src/features/auth/StaffLoginScreen.tsx`,
+  `SessionLockScreen`; `verify_pin` per `apps/desktop-client/src/commands/auth.rs`). This screen's access
+  control is a subscription gate, not a PIN: `useAdminGate()` → `<AdminLockedFeature />` (`:156-160`).
+  **Recommendation: keep the item as spec work, do not delete it** — a destructive factory reset needs a
+  backend command and a migration-safe policy before any UI can be extracted or written. Whether this was
+  ever implemented and removed is **not determinable from the tree** (see the open question at the bottom).
 - [ ] Reduce `DataManagementScreen.tsx` to a clean section coordinator.
+  Not started: still one 1,016-line component with three inline tab panels and inline SVG icon helpers
+  (`:45-60`, `:127`).
 - [ ] Verify `DataManagementScreen.tsx` line count drops from 915 to < 250 lines.
-- [ ] **Commit Milestone:**
+  **Not met — the file grew past its own baseline to 1,016 lines (`wc -l`: 1,017).** Re-baseline against
+  1,016. The honest first cut is three panels (`OzpkgExportWizard`, `OzpkgImportWizard`, `BackupSection`),
+  which is also what the placeholder `screens/DataManagementScreen.tsx` is waiting for; the wizard state
+  machines (`:71-92`, `:102-123`) can move with them, so a < 250 coordinator is reachable without
+  inventing the two features above.
+- [ ] **Commit Milestone:** (unreached)
   ```bash
-  git commit -m "refactor(settings-data): extract FactoryResetConfirmationModal and reduce DataManagementScreen"
+  git commit -m "refactor(settings-data): extract ozpkg wizards into section components" -- ui/src/features/settings/DataManagementScreen.tsx ui/src/features/settings/screens/
   ```
+
+---
+
+## 📌 Corrections of record (2026-09-14)
+
+| Claim in the original plan | Measured reality | Evidence |
+|---|---|---|
+| Baseline 915 lines | 1,016 lines (grew) | read-tool `totalLines`; `wc -l` = 1,017 |
+| "backup/restore" | backup only — `restore` = 0 hits in the file (66 for `backup`) | `:964-1013`, `:275-276` |
+| "CSV catalog import/export" | `.ozpkg` export/import by data type; `csv` = 0 hits in the feature | `:62-69`, `:347`, `ui/src/api/data.ts` |
+| "audit log retention scrubbing" | **backend exists, UI does not** (see Phase 3.2) | `db/audit.rs:286`, `subscription.rs:243`, `desktop lib.rs:617,642`, `tablet lib.rs:284` |
+| "factory reset PIN modal" | not located at any layer; searched 14 terms | Phase 3.2 search list |
+| `data/` directory fence | never created; convention is `sections/` + `screens/` | empty glob |
+| `DataManagementScreen.tsx` names one file | names two (1,016-line screen + 32-line placeholder twin) | `SettingsPage.tsx:48,660-661` vs `register.tsx:31` |
+| Backend is `commands/settings.rs` | backend is `commands/data.rs`, desktop-only | `commands/data.rs:33-130`, `lib.rs:892-893`, tablet grep = 0 |
+| Sibling `todo-refactor-settings-agents-1.md` | completed and archived as `done-todo-refactor-settings-agents-1.md` | cited by name, no path |
+| 4 sub-panels ↔ screen structure | screen has 3 tabs: export / import / backup | `:173`, `:541`, `:744`, `:964` |
+
+**Open question for the owner, not an assertion:** factory reset may be planned work that never landed
+rather than something removed — this audit has **no git access**, so no commit, rename or deletion can be
+confirmed or denied for any claim above. What is asserted is only the tree as measured on 2026-09-14.
+
+> last audited 2026-09-14 by DSH (docs subagent); every path, count and symbol re-measured with read/grep against C:/dev/ozpos. No git command was available to this session, so no commit-level claim is made.
