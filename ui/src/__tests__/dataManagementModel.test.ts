@@ -30,16 +30,24 @@ describe('dataManagementModel', () => {
     ]);
   });
 
-  it('gives every row a unique key and a non-empty label and description', () => {
-    // Keys feed a Set<DataType>, so a duplicate would silently shrink the default
-    // selection. label/description are rendered straight into the DOM at
-    // DataManagementScreen.tsx:582 / :585, so an empty one renders a blank row.
+  it('names a distinct, convention-shaped Fluent id for both strings of every row', () => {
+    // This case used to assert label/description were NON-EMPTY, because the model
+    // held display text rendered raw into the DOM. The text is gone: the model now
+    // carries ids only and settings.ftl / settings.id.ftl are the sole source for
+    // what an operator reads. The invariant that replaces emptiness is the NAME —
+    // dynamicFluentFamilies.test.ts enumerates data-mgmt-type-<key> independently,
+    // so if this table drifted from that shape the family test would check keys the
+    // screen never asks for and the checklist would render raw ids. Keys still feed
+    // a Set<DataType>, so uniqueness is asserted for the same reason as before.
     const keys = DATA_TYPES.map((t) => t.key);
     expect(new Set(keys).size).toBe(keys.length);
     for (const row of DATA_TYPES) {
-      expect(row.label.trim().length).toBeGreaterThan(0);
-      expect(row.description.trim().length).toBeGreaterThan(0);
+      expect(row.labelId).toBe(`data-mgmt-type-${row.key}`);
+      expect(row.descriptionId).toBe(`data-mgmt-type-${row.key}-desc`);
+      expect(row.labelId).not.toBe(row.descriptionId);
     }
+    const ids = DATA_TYPES.flatMap((t) => [t.labelId, t.descriptionId]);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('starts both wizards with every type selected and nothing else set', () => {

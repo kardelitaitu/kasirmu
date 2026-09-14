@@ -15,6 +15,7 @@ import { Button } from '@/components/Button';
 import { Spinner } from '@/components/Spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/frontend/shared/Toast';
+import { requiredLocalized } from '@/frontend/shared';
 import {
   getBackupStatus,
   getBackupStatusScoped,
@@ -469,10 +470,10 @@ function DataManagementScreenContent() {
                       />
                       <div className="data-mgmt-type-info">
                         <Localized id={`data-mgmt-type-${dt.key}`}>
-                          <span className="data-mgmt-type-label">{dt.label}</span>
+                          <span className="data-mgmt-type-label">{requiredLocalized(l10n, dt.labelId)}</span>
                         </Localized>
                         <Localized id={`data-mgmt-type-${dt.key}-desc`}>
-                          <span className="data-mgmt-type-desc">{dt.description}</span>
+                          <span className="data-mgmt-type-desc">{requiredLocalized(l10n, dt.descriptionId)}</span>
                         </Localized>
                       </div>
                     </label>

@@ -13,12 +13,17 @@
  * ICON_PROPS/tabIcon/folderIcon/checkIcon (:127-146) return JSX, and JSX cannot
  * live in a .ts file. They need a .tsx sibling, which is outside this slice.
  *
- * Measured before moving: DATA_TYPES label/description are English literals
- * rendered straight into the DOM (DataManagementScreen.tsx:582 / :585), NOT
- * Fluent ids — neither string occurs in any .ftl bundle. So the table carries no
- * bundle surface and the parity gate has nothing to see here. Those 12
- * hardcoded strings are a pre-existing localisation gap in an otherwise
- * localised screen; recorded, not fixed, since copy is not extraction work.
+ * SUPERSEDED paragraph, kept honest: when this table moved (slice 1) it held 12
+ * English literals rendered raw by the screen, and measurement said the parity gate
+ * had nothing to see — true, because nothing here named a key. A later pass found
+ * WHY that was odd: all 12 keys already exist, reviewed and translated in BOTH
+ * bundles (settings.ftl :583-594, settings.id.ftl :487-498 — Produk, Kategori,
+ * Penjualan, Pelanggan, Pengguna, Pengaturan plus six Indonesian descriptions), and
+ * dynamicFluentFamilies.test.ts already enumerates the family as if the screen
+ * resolved it. So the code was ignoring shipped copy. The table now carries
+ * labelId/descriptionId and NO display text: the .ftl files are the only source for
+ * these strings, there is no labelFallback left to drift out of sync with them, and
+ * no English was duplicated or invented — the id side needed no edits at all.
  */
 export type DataType =
   | 'products'
@@ -28,13 +33,13 @@ export type DataType =
   | 'users'
   | 'settings';
 
-export const DATA_TYPES: { key: DataType; label: string; description: string }[] = [
-  { key: 'products', label: 'Products', description: 'SKU, name, price, barcode, stock' },
-  { key: 'categories', label: 'Categories', description: 'Category id, name, colour' },
-  { key: 'sales', label: 'Sales', description: 'Sale header, line items, payments' },
-  { key: 'customers', label: 'Customers', description: 'Name, email, phone, loyalty points' },
-  { key: 'users', label: 'Users', description: 'Usernames, display names, roles (no passwords)' },
-  { key: 'settings', label: 'Settings', description: 'Store config, receipts, feature flags' },
+export const DATA_TYPES: { key: DataType; labelId: string; descriptionId: string }[] = [
+  { key: 'products', labelId: 'data-mgmt-type-products', descriptionId: 'data-mgmt-type-products-desc' },
+  { key: 'categories', labelId: 'data-mgmt-type-categories', descriptionId: 'data-mgmt-type-categories-desc' },
+  { key: 'sales', labelId: 'data-mgmt-type-sales', descriptionId: 'data-mgmt-type-sales-desc' },
+  { key: 'customers', labelId: 'data-mgmt-type-customers', descriptionId: 'data-mgmt-type-customers-desc' },
+  { key: 'users', labelId: 'data-mgmt-type-users', descriptionId: 'data-mgmt-type-users-desc' },
+  { key: 'settings', labelId: 'data-mgmt-type-settings', descriptionId: 'data-mgmt-type-settings-desc' },
 ];
 
 export interface ExportState {
