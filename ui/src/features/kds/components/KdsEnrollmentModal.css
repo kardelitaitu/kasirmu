@@ -192,12 +192,6 @@
   padding: var(--space-8) var(--space-5);
 }
 
-.kds-enrollment-success-icon {
-  width: var(--space-12);
-  height: var(--space-12);
-  color: var(--color-success);
-}
-
 /* QR code wrapper */
 .kds-enrollment-qr-wrapper {
   display: flex;
