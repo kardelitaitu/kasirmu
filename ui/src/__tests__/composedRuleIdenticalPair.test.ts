@@ -7,7 +7,9 @@
  * some theme. The text is then literally invisible — ratio 1.00:1, not 3.68:1,
  * not arguable as "large text". An identical pair is an identical pair.
  *
- * WHAT IT READS: every .css file under ui/src/features, recursively, walked rule
+ * WHAT IT READS: every .css file under ui/src, recursively (widened 2026-09-15 from
+ * ui/src/features alone, which silently excluded src/components/** and src/frontend/**),
+ * walked rule
  * including rules nested inside @media, resolved through the theme blocks of
  * ui/src/frontend/themes/tokens.css — :root (the default dark),
  * [data-theme='light'] and [data-theme='dark'] — each theme block cascaded ON
@@ -44,7 +46,8 @@
  * convention — which is why a failure here cannot be argued with, and why this
  * slice is fundable while the sub-4.5:1 population is not.
  *
- * MEASURED HERE, not quoted from the census: 105 feature stylesheets, 948 blocks
+ * MEASURED HERE, not quoted from the census (features-only scope, as of 268af4a6e —
+ * see the runtime case for the widened walk's own printed numbers): 105 feature stylesheets, 948 blocks
  * that carry both a color: and a background-side declaration, 394 of them
  * gradable through at least one theme, and 0 identical pairs as of 268af4a6e.
  * The census's 766 and this 948 disagree because they count different things:
@@ -75,7 +78,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-const FEATURES_DIR = path.resolve(process.cwd(), 'src', 'features');
+/* Walk root: every stylesheet under src, not just the feature sheets. The shared
+   sheets under src/components/** and src/frontend/** were outside this walk by
+   construction, so a color+background pair in them was never composed at all. */
+const WALK_ROOT = path.resolve(process.cwd(), 'src');
+/** The old scope, kept only to measure what the widening added. */
+const FEATURES_DIR = path.resolve(WALK_ROOT, 'features');
+const WALK_LABEL = path.relative(process.cwd(), WALK_ROOT).split(path.sep).join('/');
 const TOKENS_PATH = path.resolve(process.cwd(), 'src', 'frontend', 'themes', 'tokens.css'); 
 
 /** The same three themes the existing gate names, each cascaded over :root. */
@@ -174,7 +183,7 @@ export interface SheetTally {
 /** Every color:+background: pairing that shares ONE declaration block. */
 function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number; tally: SheetTally } {
   const css = stripCommentsKeepLines(readFileSync(cssPath, 'utf8'));
-  const rel = path.relative(FEATURES_DIR, cssPath).split(path.sep).join('/');
+  const rel = path.relative(WALK_ROOT, cssPath).split(path.sep).join('/');
   const pairs: Pair[] = [];
   let total = 0;
   let line = 1;
@@ -286,7 +295,10 @@ function cssFiles(dir: string): string[] {
   return out.sort();
 }
 
-const sheets = cssFiles(FEATURES_DIR);
+const sheets = cssFiles(WALK_ROOT);
+/** The widening's own floor: how many sheets sit OUTSIDE the old features-only scope. */
+const sheetsInFeatures = sheets.filter((f) => f.startsWith(FEATURES_DIR + path.sep)).length;
+const sheetsOutsideFeatures = sheets.length - sheetsInFeatures;
 const composed: Pair[] = [];
 const tallies: SheetTally[] = [];
 for (const f of sheets) {
@@ -406,6 +418,23 @@ describe('Composed rules: text and background resolving to one colour', () => {
     expect(gradable, 'only ' + gradable + ' gradable pairs of ' + composedTotal).toBeGreaterThan(10);
   });
 
+  /* SCOPE FLOOR. A population assertion cannot see the walk root: this suite passed for
+     months over src/features alone while every shared sheet sat outside it, and nothing it
+     asserted could say so. This case can - the walk must reach sheets outside features. */
+  it('the walk reaches stylesheets outside src/features, not only the feature sheets', () => {
+    expect(
+      sheetsOutsideFeatures,
+      'the walk found ' + sheets.length + ' sheets and ALL of them sit under src/features - the '
+      + 'shared sheets under src/components and src/frontend are outside this gate again',
+    ).toBeGreaterThan(0);
+    expect(
+      sheetsInFeatures,
+      'the walk lost the feature sheets it has always graded: ' + sheetsInFeatures,
+    ).toBeGreaterThan(0);
+    console.log('walk scope: ' + sheets.length + ' sheets = ' + sheetsInFeatures + ' under src/features + '
+      + sheetsOutsideFeatures + ' shared sheets the features-only walk never opened');
+  });
+
   /* PER-FILE FLOOR. The assertion above is tree-wide, so ONE blacked-out sheet passes it
      while the run prints a healthy total: three stray ')' in WarehouseConsole.css pushed the
      paren counter negative and that file stopped contributing, and 104 other sheets kept the
@@ -456,7 +485,7 @@ describe('Composed rules: text and background resolving to one colour', () => {
     ).toBe(0);
     console.log('tailed reads outside tokens.css (component-scoped, not gradable here): ' + tailedSidesOutsideTokens);
   });
-  it('no rule sets color and background to the same resolved colour ('
+  it('no rule sets color and background to the same resolved colour (walked ' + WALK_LABEL + ': '
     + gradable + ' pairs graded of ' + composedTotal + ' composed across ' + violations.length + ' violation)', () => {
     expect(
       violations.length,
