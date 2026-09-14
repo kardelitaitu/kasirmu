@@ -198,45 +198,6 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
-.btn--primary {
-  background: var(--color-accent);
-  color: var(--color-accent-fg);
-  border-color: var(--color-accent);
-}
-.btn--primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
-}
-.btn--primary:active:not(:disabled) {
-  background: var(--color-accent-active);
-}
-.btn--secondary {
-  background: transparent;
-  color: var(--color-fg);
-  border-color: var(--color-border);
-}
-.btn--secondary:hover:not(:disabled) {
-  background: var(--color-bg-surface);
-  border-color: var(--color-border-hover);
-}
-.btn--danger {
-  background: var(--color-danger);
-  color: var(--color-danger-fg);
-  border-color: var(--color-danger);
-}
-.btn--danger:hover:not(:disabled) {
-  background: var(--color-danger-hover);
-  border-color: var(--color-danger-hover);
-}
-.btn--ghost {
-  background: transparent;
-  color: var(--color-fg-secondary);
-  border-color: transparent;
-}
-.btn--ghost:hover:not(:disabled) {
-  background: var(--color-bg-surface);
-  color: var(--color-fg);
-}
 
 /* ── Form elements ──────────────────────────────── */
 .ds-form-grid {
