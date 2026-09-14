@@ -25,6 +25,7 @@ import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
+import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
 import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
@@ -614,6 +615,57 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── CartPanel call-site groups ───────────────────────────────
+  // CartPanelProps is a SHARED 77-field contract - features/retail imports it and
+  // RetailCartPanel.test.tsx asserts it - so the TYPE DOES NOT CHANGE and CartPanel
+  // still receives the same 77 individual props. Only this call site is regrouped: the
+  // objects below are local to PosScreen, live for one render, and are never handed to
+  // a component as a prop. cartPanelProps carries the CartPanelProps annotation, so a
+  // dropped, renamed or misspelled field is a typecheck error here instead of a silent
+  // undefined at render, and a future 78th required prop breaks this screen rather than
+  // going unnoticed. Pure construction: no value, handler or prop name changed.
+  const panelChrome = {
+    startResize, cartPanelRef, cartWidth, handleCartPanelKeyDown, cartSwipe, activeWorkspace,
+  };
+  const shiftRow = {
+    shiftLoading, activeShift, shiftNow, handleCloseShiftClick, handleOpenShiftClick,
+    shiftErrorExit, closeShiftError,
+  };
+  const deductionBinding = {
+    deductionLocationName, handleDeductionBadgeClick, deductionOverridden,
+    deductionLocationIdRef, setDeductionLocationName, setDeductionOverridden,
+  };
+  const hubNav = {
+    isEnabled, setShowTables, setShowSalesHistory, setShowStockInquiry,
+    onNavigate, handleOpenSettings, handleLock,
+  };
+  const tableNumberRow = { showTableNumberSetting, tableNumber, setTableNumber };
+  const cartLineRows = {
+    lines, fireCourse, fireAllCourses, setCartLineRef,
+    handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
+    isManager, setOverrideTarget, ensureCart,
+    animatedUndoStack, handleUndoRemove, handleDismissUndo,
+  };
+  const discountEditor = {
+    discountPercent, discountLabel, discountAmount, showOptions, setShowOptions,
+    showDiscountInput, setShowDiscountInput, setShowPromotions,
+    appliedPromotions, setAppliedPromotions, discountInput, setDiscountInput,
+    discountName, setDiscountName, handleApplyDiscount, handleClearDiscount,
+  };
+  const totalsRow = {
+    subtotal, tipPercent, setTipPercent, tipAmount,
+    serviceChargeEnabled, serviceChargePercent, serviceChargeAmount, setServiceCharge,
+    cartTax, taxEstimated, taxState, retryTaxEstimate,
+  };
+  const checkoutRow = {
+    handlePay, addToast, setShowOpenBillInput, setCartId, resetCart,
+    setShowOpenBills, openBills,
+  };
+  const cartPanelProps: CartPanelProps = {
+    ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,
+    ...cartLineRows, ...discountEditor, ...totalsRow, ...checkoutRow,
+  };
+
   return (
     <>
     <div className="pos-screen" ref={posScreenRef}>
@@ -627,85 +679,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       </div>
 
       {/* ── Resize handle ───────────────────────── */}
-      <CartPanel
-        startResize={startResize}
-        cartPanelRef={cartPanelRef}
-        cartWidth={cartWidth}
-        handleCartPanelKeyDown={handleCartPanelKeyDown}
-        cartSwipe={cartSwipe}
-        activeWorkspace={activeWorkspace}
-        lines={lines}
-        deductionLocationName={deductionLocationName}
-        handleDeductionBadgeClick={handleDeductionBadgeClick}
-        deductionOverridden={deductionOverridden}
-        shiftLoading={shiftLoading}
-        activeShift={activeShift}
-        shiftNow={shiftNow}
-        handleCloseShiftClick={handleCloseShiftClick}
-        handleOpenShiftClick={handleOpenShiftClick}
-        isEnabled={isEnabled}
-        setShowTables={setShowTables}
-        setShowSalesHistory={setShowSalesHistory}
-        setShowStockInquiry={setShowStockInquiry}
-        onNavigate={onNavigate}
-        handleOpenSettings={handleOpenSettings}
-        handleLock={handleLock}
-        showTableNumberSetting={showTableNumberSetting}
-        tableNumber={tableNumber}
-        setTableNumber={setTableNumber}
-        shiftErrorExit={shiftErrorExit}
-        closeShiftError={closeShiftError}
-        fireCourse={fireCourse}
-        fireAllCourses={fireAllCourses}
-        handleRemoveLine={handleRemoveLine}
-        handleDecreaseQty={handleDecreaseQty}
-        handleIncreaseQty={handleIncreaseQty}
-        setCartLineRef={setCartLineRef}
-        isManager={isManager}
-        setOverrideTarget={setOverrideTarget}
-        ensureCart={ensureCart}
-        animatedUndoStack={animatedUndoStack}
-        handleUndoRemove={handleUndoRemove}
-        handleDismissUndo={handleDismissUndo}
-        subtotal={subtotal}
-        discountPercent={discountPercent}
-        discountLabel={discountLabel}
-        discountAmount={discountAmount}
-        showOptions={showOptions}
-        setShowOptions={setShowOptions}
-        showDiscountInput={showDiscountInput}
-        setShowDiscountInput={setShowDiscountInput}
-        setShowPromotions={setShowPromotions}
-        appliedPromotions={appliedPromotions}
-        setAppliedPromotions={setAppliedPromotions}
-        discountInput={discountInput}
-        setDiscountInput={setDiscountInput}
-        discountName={discountName}
-        setDiscountName={setDiscountName}
-        handleApplyDiscount={handleApplyDiscount}
-        handleClearDiscount={handleClearDiscount}
-        tipPercent={tipPercent}
-        setTipPercent={setTipPercent}
-        tipAmount={tipAmount}
-        serviceChargeEnabled={serviceChargeEnabled}
-        serviceChargePercent={serviceChargePercent}
-        serviceChargeAmount={serviceChargeAmount}
-        setServiceCharge={setServiceCharge}
-        cartTax={cartTax}
-        taxEstimated={taxEstimated}
-        taxState={taxState}
-        retryTaxEstimate={retryTaxEstimate}
-        handlePay={handlePay}
-        addToast={addToast}
-        setShowOpenBillInput={setShowOpenBillInput}
-        setCartId={setCartId}
-        deductionLocationIdRef={deductionLocationIdRef}
-        setDeductionLocationName={setDeductionLocationName}
-        setDeductionOverridden={setDeductionOverridden}
-        resetCart={resetCart}
-        setShowOpenBills={setShowOpenBills}
-        openBills={openBills}
-      />
+      <CartPanel {...cartPanelProps} />
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
       <CartTaxWatcher
