@@ -52,6 +52,17 @@
   letter-spacing: 0.5px;
 }
 
+/* The branch suffix (RetailHeader.tsx:86) is the quietest of the three header
+   lines and it carries its own · separator, so it takes a tertiary
+   foreground rather than the .retail-header-address opacity trick (:55-58, this
+   sheet), which would fade the separator with it. Both declarations copied from
+   .retail-cart-line-sku in THIS sheet (:790-793) - the same secondary-text pair,
+   no new value, no new token. */
+.retail-header-branch {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+}
+
 .retail-header-address {
   font-size: var(--text-xs);
   opacity: 0.8;
@@ -883,6 +894,19 @@
   justify-content: space-between;
   font-size: var(--text-sm);
   padding: var(--space-0_5) 0;
+}
+
+/* Caution strip on the tax-estimate row (RetailCartPanel.tsx:386). It is ALSO a
+   .retail-total-row (:881-886, this sheet), which already supplies display,
+   justify-content, font-size and padding - so only the colour pair is added
+   here, background + foreground from one family, the pattern copied from
+   .retail-load-error (:1446-1454, this sheet: --color-danger-bg + --color-danger).
+   Both tokens exist in all three theme blocks of tokens.css (:121-122 :root,
+   :430-431 light, :569-570 dark). Placed before --grand, matching document
+   order (the banner renders above the grand total). */
+.retail-tax-estimate-banner {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .retail-total-row--grand {
