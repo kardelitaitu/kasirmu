@@ -61,7 +61,7 @@ import {
   type KdsOrder,
 } from '@/api/kds';
 import { nextKdsStatus } from '@/features/kds/kdsStatus';
-import { sameOrders } from '@/features/kds/KdsScreen';
+import { sameOrders } from '@/features/kds/kdsOrdersDiff';
 import { readExpoStation, writeExpoStation } from '@/features/kds/kdsStationPrefs';
 import { KdsTicketCard } from '@/features/kds/components/KdsTicketCard';
 import { StationSelectorModal, type StationOption } from '@/features/kds/components/StationSelectorModal';
