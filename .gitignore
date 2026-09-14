@@ -271,3 +271,6 @@ manager-journal.md
 # already live in both commands/mod.rs files) but deletion stays the owner's call.
 /..rev_ae_bridge_commands.rs
 /.agents/orphan-mod-rs.diff
+# 2026-09-14 wave-4 scratch: live shared-checkout rules + a HEAD-pinned snapshot; kept on disk, out of status.
+/.agents/manager-wave4-rules.md
+/.agents/plan-docs-facts-*.md
