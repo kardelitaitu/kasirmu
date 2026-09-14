@@ -28,11 +28,11 @@ export function normalizeRole(roleString?: string | null): RoleVariant {
  * BOTH the bare role name and its `role-*` preset id, so a caller holding
  * either spelling can compare without normalizing first.
  *
- * This deliberately mirrors the table inlined in
- * `features/workspaces/WorkspaceHome.tsx` (`ROLE_HIERARCHY`, :96). Folding
- * WorkspaceHome onto this export is a recorded follow-up — that file is out of
- * scope for this change and stays untouched, so the duplication is known and
- * temporary rather than accidental.
+ * There is exactly one such table. `features/workspaces/WorkspaceHome.tsx`
+ * imports this export (`:13`) rather than inlining a copy of its own, so the
+ * Tools-section gate there and every rank comparison made here read the same
+ * ten keys — five presets in two spellings each. The duplication an earlier
+ * revision of this comment called known-and-temporary is gone, not pending.
  */
 export const ROLE_HIERARCHY: Record<string, number> = {
   owner: 5,

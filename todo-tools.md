@@ -860,6 +860,12 @@ so both are named with their evidence base so a future order can start from it r
 2. **Gate the Tools section on a permission key instead of `ROLE_HIERARCHY`**
    (`WorkspaceHome.tsx:363`, table at `:97-108`). Ruled on 14-09; not implemented. Until it is, an
    unknown custom role sees no Tools section and no explanation — a silent lockout.
+   — **CORRECTED 2026-09-14, append-only; the lines above stand as written: the inlined duplicate this
+   item pointed at no longer exists.** `c8efd4b2a` deleted it, so `WorkspaceHome.tsx` now imports the
+   single canonical table — `:13` is that import, the rank read this record named at `:363` sits at
+   `:351`, and the table itself is `ui/src/utils/role.ts:37-48`. The ruling is unchanged (gate on the
+   permission vocabulary, not a rank map — `:815`); only the count moved: there is now ONE map to
+   replace, not two, and the duplication premise re-verified at `:511-515` is superseded by this line.
 
 ### How to re-open this file
 
