@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 74 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 75 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 74/227/35 as of this edit: (3 x 74) + 4 + 1 = 227,
+// 902e07678, and 75/230/34 as of this edit: (3 x 75) + 4 + 1 = 230,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1134,6 +1134,14 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'inventory/LocationPicker.tsx',
     css: ['inventory/LocationPicker.css'],
   },
+  {
+    // 213-line panel over a 251-line sheet, own import at :9. Mounted by
+    // products/ProductManagementScreen.tsx:30 (JSX :766); zero outside consumers,
+    // so the entry is own-sheet only.
+    name: 'StockAlertPanel',
+    tsx: 'inventory/StockAlertPanel.tsx',
+    css: ['inventory/StockAlertPanel.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1278,7 +1286,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 35 entries is a named path, not a prefix, not a
+// every one of its 34 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1291,7 +1299,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 35 since, one line per sheet a landed entry cited, and
+// it has shrunk to 34 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1303,7 +1311,6 @@ const BASELINE_UNCITED: string[] = [
   'design/TooltipPreview.css',
   'design/brand-tokens.css',
   'inventory/ShiftBar.css',
-  'inventory/StockAlertPanel.css',
   'inventory/ThresholdConfigScreen.css',
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
