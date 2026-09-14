@@ -68,8 +68,8 @@
 ## 📋 Task Checklist
 
 ### Phase 3.0: Baseline Audit
-- [ ] Run `npm run test -- DataManagement` in `ui/`.
-- [ ] Run `npm run typecheck` in `ui/`.
+- [x] Run `npm run test -- DataManagement` in `ui/`.
+- [x] Run `npm run typecheck` in `ui/`.
   > **Unverified by this audit — no shell was available to this session**, so neither command was run and
   > no pass/fail is claimed. The suites the first line would collect do exist:
   > `ui/src/__tests__/DataManagementScreen.test.tsx`, `DataManagementBackup.test.tsx`,
@@ -100,7 +100,7 @@
   `ui/src/features/audit/AuditLogScreen.tsx:239-286`. Neither is a catalog import. A spreadsheet-shaped
   catalog import would be a new feature, not an extraction; searched `csv`, `spreadsheet`, `xlsx`,
   `bulk_import`, `import_products`, `catalog_import` under `ui/src` and found no such path.
-- [ ] Verify: `npm run typecheck`.
+- [x] Verify: `npm run typecheck`.
   **Cannot be re-run by this audit** (no shell). Treat as UNVERIFIED, not as a green gate.
 - [ ] **Commit Milestone:** (unreached — both extractions above are still open)
   ```bash
@@ -194,3 +194,16 @@ Nothing above is rewritten; the originals stand as dated records. All figures re
   **FENCE BY FULL PATH, NEVER BY SCREEN NAME**, and here is the machine reason: the guard has **TWO entries with the identical `name: 'DataManagementScreen'`** — the real 864-line screen at `screenExtraction.test.ts:383`-`:384` (`tsx: 'settings/DataManagementScreen.tsx'`) and the 32-line placeholder at `:728`-`:730` (`tsx: 'settings/screens/DataManagementScreen.tsx'`) — and the suite is `describe.each(SCREENS)` at `:761`, so both are labelled the same string in the reporter. **A coder cannot tell from test output which one failed.** The same collision defeats `:147`: "line count drops ... to < 250" is **already satisfied** by the placeholder, so a name-keyed acceptance can go green by measuring the wrong file. Restate every size or class acceptance against a full path.
 
 - **(e) BLOCKED DIRECTION QUESTION — MUST BE RULED BEFORE ANY NEW `sections/` FILE IS CUT.** The two live lanes point at the same content in opposite directions: **this** plan wants to extract OUT of `settings/DataManagementScreen.tsx` (864 ln, `:144` "reduce to a clean section coordinator"), while the **settings-screens rebuild** wants to MOVE that file's content INTO `settings/screens/DataManagementScreen.tsx` (its rebuild contract, quoted in (d)). Two lanes, one source of truth. Cut a section today and the move may carry it twice, or land it in the file being emptied; do the move today and every `:111`-style extraction here re-targets. **The direction has to be ruled first, and this correction deliberately does not pick it** — it is recorded as an open owner decision, the same class as the `:62` ruling in `todo-font-system.md`.
+---
+
+## Acceptance runs (2026-09-14, HEAD 6a32cc9dd)
+
+Nothing above is rewritten; the originals stand as dated records. Three boxes flipped below (`:71`, `:72`, `:103`) were ticked because the command each names was **RUN and PASSED** at `6a32cc9dd`; every figure here re-derives from that revision without a checkout.
+
+- **`:71` TICKED — RUN, exit 0.** Both spellings were run from `ui/`: `npx vitest run src/__tests__/DataManagement` -> **exit 0, 5 test files, 61 tests**, and `npm run test -- DataManagement` -> **exit 0, the same 5 files / 61 tests**. The box names the second spelling; it is satisfied by it.
+- **`:72` TICKED — RUN, exit 0.** `npm run typecheck` from `ui/` -> **exit 0** at `6a32cc9dd`.
+- **`:103` TICKED — the same run, exit 0.** `:103` restates the Phase 3.1 `npm run typecheck` gate, so one run covers `:72` and `:103`. Its tail at `:104` — "Cannot be re-run by this audit (no shell)" — is a dated statement of that session's tooling, and this block leaves it verbatim per `:185`; it is overtaken, not corrected. Same for `:73`'s "no shell was available to this session".
+- **DISCREPANCY 1 — THE RUN COLLECTED FIVE SUITES, NOT THE FOUR `:75`-`:78` ENUMERATES.** `git ls-tree --name-only 6a32cc9dd:ui/src/__tests__ | grep -i datamanagement` -> `DataManagementBackup.test.tsx`, `DataManagementExport.test.tsx`, `DataManagementImport.test.tsx`, `DataManagementScreen.test.tsx` **and `dataManagementModel.test.ts`** — five files. The fifth joins because a Vitest positional filter is a **case-insensitive substring** match, not a prefix and not a glob: `dataManagementModel` contains `datamanagement`. So **61 tests across 5 files** is the honest collection behind `:71`'s tick, and the four-name list at `:75`-`:78` under-states what the command actually runs. Anyone budgeting the Phase 3.0 baseline should read the run, not the enumeration.
+- **DISCREPANCY 2 — `api-data-contract.test.ts` IS NOT COLLECTED BY EITHER SPELLING, SO THE CONTRACT IT NAMES IS STILL UNRUN.** `:76`-`:78` lists it among "the suites the first line would collect". It is not: the file exists at `ui/src/__tests__/api-data-contract.test.ts` at this revision (`git ls-tree --name-only 6a32cc9dd:ui/src/__tests__ | grep -c api-data-contract` -> 1), but neither `src/__tests__/DataManagement` nor `DataManagement` matches its name, so neither spelling touched it and the 5/61 above does not include it. Its `:44` claim — this screen must not pass an empty `sessionToken` — needs **its own run** (`cd ui && npx vitest run src/__tests__/api-data-contract.test.ts`), which this leg did not perform. **No box is claimed for it, and `:71`'s tick does not cover it.**
+- **BOXES DELIBERATELY LEFT OPEN.** `:84`, `:93`, `:111`, `:130`, `:144` are extraction / build-the-panel / product work — no run answers them. `:105` and `:153` are Commit Milestones; their subjects have not landed. `:147` is a size gate and it is **not met** by the 864-line screen measured at `:189` — and it is exactly the name-keyed trap correction (d) at `:194` warns about, since the 32-line placeholder twin satisfies `< 250` on its own. Nothing was ticked for it here.
+- **NOT A RENAME.** Per root `AGENTS.md` §4, `done-` is earned when the plan's own acceptance ran AND passed. Three verification boxes are now bookkeeping for runs that happened; `:147` is unmet, `:93`/`:111`/`:130` are unwritten work, `api-data-contract.test.ts` is unrun, and the direction question recorded as (e) at `:196` is an open owner ruling. This file stays `todo-refactor-settings-agents-3.md`.
