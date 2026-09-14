@@ -562,8 +562,53 @@ saves settings whose controls no user can reach.
 that no user reaches this markup, but it deletes a real check from files that still exist and still
 compile, so their a11y and dead-class coverage silently becomes nobody's problem. Not done tonight.
 
+> **ANSWERED-BY-MEASUREMENT (2026-09-15, HEAD f7872bd9a4): NO — for a harder reason than the one above.** De-registering would not merely lose coverage, it would go red on the LIVE page's own case: `SettingsPage.css` defines **29** of its 93 classes that are referenced ONLY from `sections/*.tsx` (per class: `git grep -l -F -w <class> -- ui/src ':!ui/src/__tests__'`), and the `SettingsPage` entry's css list is `['settings/SettingsPage.css']` (:316), so dropping `additionalTsx` flips all 29 into the no-dead-class case at :828. The honest fix is annotation, not deletion — mark the five registrations so the record says what the graph says, and the walk keeps its teeth.
+
 *Q2: add a mount-reachability check to that guard (every `additionalTsx` must have a registry key)?*
 It would catch this drift permanently, but on today's tree it goes red on five knowns at once and
 poisons a shared gate other lanes are committing against. The honest form is an explicit dated
 allowlist, which is a separate decision the plan owner signs — also not written here.
+
+> **ANSWERED-BY-MEASUREMENT (2026-09-15, HEAD f7872bd9a4): STILL OPEN — but now with a named constraint.** A mount-reachability check must NOT be satisfiable by an entry whose companion css is shared across >= 2 entries, because such a case can never fail: `screens/screens-placeholder.css` is the css of **14** entries (`grep -c 'screens-placeholder.css' ui/src/__tests__/screenExtraction.test.ts`) and defines exactly 3 classes (`.settings-screen-placeholder`, `-title`, `-note`), all three used by every one of the 13 placeholder screens — delete 12 of the 13 files and their 13 no-dead-class cases still pass. A check that can only be satisfied by guaranteed-present markup certifies the scaffolds as covered while grading nothing.
+
 > last audited 2026-09-15 by DSH (settings lane) · every figure above re-measured against C:/dev/ozpos at f0ad9b170e by the command named in its own row.
+
+---
+
+## Reachability answers (2026-09-15, HEAD f7872bd9a4)
+
+Tip read: **f7872bd9a4** (`git rev-parse --short=10 HEAD`) — the tree moved past `f0ad9b170e` (three
+`docs(agents)` commits by other lanes); the probe commit `f7872bd9a` named in the brief IS this tip.
+Static measures only this pass — no vitest, no tsc, no npm, no cargo: a registration lane is changing
+that suite's case count underfoot, so every number here is one a `grep`/`wc`/`git grep` re-derives.
+This closes nothing: open boxes 2 before and 2 after, done 8 and 8, in both grep forms.
+
+### The five answers, each with its command
+
+| # | Finding | Command | Result |
+|---|---|---|---|
+| 1 | The scaffolds are REACHABLE — the guard is not grading unreachable placeholder shells | `grep -n 'route:\|registerPage' ui/src/features/settings/register.tsx` · `grep -oE "key: '[a-z-]+'" SettingsNavTree.tsx` vs `sed -n '27,42p' screens/registry.ts` vs `KEPT_SECTIONS` | `registerSettingsFeature` declares exactly **3** routes — :10 `settings -> SettingsPage`, :21 `features -> FeatureToggleScreen`, :31 `data-management -> DataManagementScreen` — each with a matching `registerNavItem`. NAV_KEYS, SETTINGS_SCREENS keys and KEPT_SECTIONS are **three identical 14-element sets** (`diff` prints nothing for both pairs). So reachability is not the defect; the earlier '13 of 14 carry the placeholder' figure was wrong in both directions (it is 14 of 14 for the shell, 12 of 14 for 'being rebuilt'). |
+| 2 | `AppearanceSettings.tsx` (526 ln) is unreachable — the guard grades TWO orphan bodies of one UI | `git grep -n 'AppearanceSettings' -- ui/src ':!ui/src/__tests__' ':!ui/src/features/settings/AppearanceSettings.tsx'` | 7 hits, of which exactly **one** is code: `sections/AppearanceSection.tsx:11` (`import { AppearanceSettings } from '../AppearanceSettings';`, used at :141). `api/branding.ts:58`, `contexts/BrandContext.tsx:40`, `components/SettingsTopbar.tsx:18`, `main.tablet.tsx:59` are all inside comment blocks — prose, not imports. The importer is itself unmounted, so `AppearanceSection.tsx` AND `AppearanceSettings.tsx` (registered at :651-653) are two unreachable bodies of the same appearance UI. Confirms the open item this file handed back. |
+| 3 | Q1's verdict is right, its mechanism was wrong — recording both | `grep -n 'settings-sync-token-actions\|settings-sync-status-text' ui/src/__tests__/screenExtraction.test.ts ui/src/features/settings/sections/*.tsx` · `git grep -rn <class> -- '*.css'` | The two fragments are where the brief said: **:350 and :351**, inside `SettingsPage`'s `knownDynamicFragments`. But they are **case-1 suppressions**, not failure triggers — neither class is defined in any `.css` file (0 hits tree-wide), and `settings-sync-status-text` is also used by `LocalApiSection.tsx:341`, so it is not exclusively SyncSection's. What actually breaks on de-registration is the **29** `SettingsPage.css` classes referenced only from `sections/*.tsx` (`settings-char-count`, `settings-input--error`, `settings-size-*`, the `settings-sync-plan-*` family, …), which would surface as dead classes on the live page's own entry. Verdict unchanged, reason corrected. |
+| 4 | The case arithmetic that rebinds every '187 passed' quoted tonight | `grep -cE "^    name: '" screenExtraction.test.ts` · `awk 'NR>=764&&NR<=860&&/^    it\(/' -n` · `grep -nE "^  it\('" ` (extractor block) | `describe.each(SCREENS)` at :764 runs **3 cases per entry** (:797 className-has-a-rule, :811 no-class-in-two-css-files, :828 no-dead-classes) plus **4 extractor self-tests** (:862, :866, :877, :884). **61** entries -> 61x3+4 = **187**, which is exactly the number measured twice earlier today — so '187 passed' is 183 screen cases of which **6 grade unreachable markup** (5 sections in `additionalTsx` + `AppearanceSettings` at :651-653) and **39 grade the 13 placeholder screens** (13 entries x 3, `grep -cE "tsx: 'settings/screens/"` = 13). The placeholders' 13 no-dead-class cases are **unsatisfiable by failure**: `screens-placeholder.css` is shared by 14 entries and its 3 classes are used by all 13 files, so deleting 12 of them still passes. Two notes: (a) the comment at :837-838 says the dead-class case 'logs a warning rather than hard-failing', but :844 is `expect.soft(dead, ...).toEqual([])` — a soft assertion still fails the test, so that comment understates the gate; (b) `61x3+4=187` is a formula, not a count of what a lane will see tomorrow — with a registration lane adding entries, the total moves by 3 per entry added. |
+| 5 | The mirror-image gap: the real shipped settings UI is invisible to that same guard | `wc -l screens/{ReceiptFormatSettingsCard,StatutoryNumberingCard,RegionalSettingsCard,LocalPaymentSettingsCard}.tsx` · `grep -c <Name> screenExtraction.test.ts` per card | **0** guard hits for each of the four cards that `BusinessDefaultsScreen` mounts — **1,486 ln** total (488 + 401 + **315** + 282; the brief said 316 and ~1,490 — the tree says 315 and 1,486). Each ships a `.css` of its own (all five `.css` files exist under `screens/`) and none is named by any entry. `BusinessDefaultsScreen`'s own entry (:711-713) pairs the only settings screen with real content against `screens-placeholder.css` and not against any card css. So while 39 cases grade markup nobody can reach, ~1,486 lines of the settings UI that actually ships get none. |
+
+**One line, outranking any box in this plan:** the guard's problem is not that it is broken — it is
+calibrated to the wrong surface, spending 39 unfailable cases on 13 scaffolds while the 4 real Cards
+and 1,415 unreachable section lines (`205+156+257+567+176`) sit on opposite sides of the same blind spot.
+
+### Corrections to the figures handed to this pass (the tree won, as it must)
+
+* '13 of the 14 mounted screens contain the placeholder' -> **14 of 14** (shell + 'move here
+  selectively'), **12 of 14** for 'This page is being rebuilt'. Repeated from the last pass; still wrong.
+* Q1's stated reason ('de-registration would FAIL the live page's case' via the two fragments at :350-351)
+  -> the fragments are suppressions that cannot fail on removal; the **29 section-only classes** in
+  `SettingsPage.css` are what would fail. Same verdict, different mechanism, different fix.
+* `RegionalSettingsCard.tsx` = **315** ln (brief: 316); the four cards = **1,486** ln (brief: ~1,490).
+* `settings-sync-status-text` is not SyncSection-only — `LocalApiSection.tsx:341` uses it too.
+* The guard's own :837-838 comment misdescribes `expect.soft` as warning-only.
+
+> reachability answers 2026-09-15 · DSH · re-measured at f7872bd9a4 with static commands only; no
+> ui/** file touched, no test runner invoked, both open questions left as written with the answers
+> appended beside them rather than over them.
+
