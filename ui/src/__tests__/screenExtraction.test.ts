@@ -32,8 +32,9 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 61 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
-// counts 66 *Screen.tsx files — and the two numbers are not even the
+// 66 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// counts 66 *Screen.tsx files — and the match is arithmetic, not
+// agreement: the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
 // tree is therefore read by none of the three checks. The cleanest
@@ -45,10 +46,14 @@
 // largest instance today; the note in the Sales section below records
 // why that entry is pending rather than registered.
 //
-// CASE ARITHMETIC, so the total is never read as code health: every
-// entry contributes exactly 3 cases, the extractor self-tests at the foot
-// of this file contribute 4 more, and stylesheet coverage adds 1 —
-// 3 x entries + 4 + 1. That is 188 today (61 x 3 + 4 + 1). The number
+// CASE ARITHMETIC, so the total is never read as code health. Keep the
+// FORM, never a substitution of it:
+//     cases = (3 x entries) + (4 extractor self-tests) + (1 coverage case)
+// Substitute the LIVE entry count, because the total is a property of
+// this list and moves with it — quoting a number instead of a formula
+// made four lines of this header go stale twice in one night (61/188/54
+// before 101b4869e, 65/200/50 after it). As this file stands: 66 entries,
+// so (3 x 66) + 4 + 1 = 203, which is what the run reads. The number
 // moves when the LIST moves and never when the tree's CSS health changes:
 // a registration adds three green cases whether or not anything got
 // better. Read the entry count for coverage and the failures for health.
@@ -637,21 +642,26 @@ const SCREENS: ScreenEntry[] = [
   // payment/LoyaltyTenderPanel.tsx in `additionalTsx` beside the other
   // four panels. Verification each time is `npx vitest run
   // src/__tests__/screenExtraction.test.ts`: 3 cases per entry, so the
-  // run should read 190, and both PaymentModal cases must pass without
-  // any prefix added beyond the two named above.
+  // total is (3 x entries) + 5 by the CASE ARITHMETIC form at the head of
+  // this file — 206 once this entry lands on the 66 it now holds. Both
+  // PaymentModal cases must pass with no prefix beyond the two named.
   //
-  // THREE OTHER CANDIDATES WERE MEASURED ON THIS PASS AND NONE OF THEM
-  // LANDS EITHER, each for a different reason worth keeping straight:
-  //   - memo/MemosScreen.tsx — REACHABLE (memo/register.tsx:5 lazy
-  //     import, registerPage route 'memos' + registerNavItem, wired by
-  //     features/index.ts:27,:103). Its 4 raw dead classes are the
-  //     runtime-composed `memos-badge--draft/published/stopped/muted`
-  //     family and one prefix 'memos-badge--' clears all four; but
-  //     registering it then fails case 1 with two genuine findings,
-  //     `memos-form` and `memos-field` (MemosScreen.tsx:315,:319), for
-  //     which no .css in the repo defines a rule. Verified by a live
-  //     run, not by probe: 1 failed | 189 passed (190), "MemosScreen:
+  // THREE OTHER CANDIDATES WERE MEASURED ON THAT PASS, and they have come
+  // apart three different ways since: one landed, one was a FALSE finding
+  // born of a scoping error, one is not reachable at all.
+  //   - memo/MemosScreen.tsx — **LANDED**, at the foot of this list. What
+  //     blocked it here was real and got PAID rather than muted: the
+  //     registration failed case 1 on two genuinely undefined classes,
+  //     bare memos-form and memos-field, which no .css defined — measured
+  //     live, not by probe: 1 failed | 189 passed (190), "MemosScreen:
   //     className(s) used but not defined: memos-form, memos-field".
+  //     69324986e then deleted both bare names from the markup (the form
+  //     element and its onSubmit survived at MemosScreen.tsx:315; the four
+  //     grid children kept the real layout name memos-field--full at
+  //     :318,:379) and e9162a84 ran five memo suites green over it. The
+  //     one prefix 'memos-badge--' stays load-bearing, for the four
+  //     runtime-composed states at MemosScreen.css:289,:294,:299,:304.
+  //     Re-measured with the entry in: 203 passed (203), zero failures.
   //   - sales/PosScreen.tsx — REACHABLE, but its markup already lives in
   //     eight sales/components/*.tsx and its classes in six CartPanel*.
   //     css sheets it imports at :46-52. Registered as a single-screen
@@ -958,6 +968,25 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'settings/screens/SystemDiagnosticsScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
   },
+
+  // ── Memo ───────────────────────────────────────────────
+  {
+    // Migrated memo manager, reachable at route 'memos' (memo/register.tsx:
+    // lazy import + registerPage + registerNavItem). Its one dynamic family
+    // is the status badge: MemosScreen.tsx:47-50 returns each complete name
+    // from a helper and :513 interpolates the RESULT, so no quoted token
+    // survives at the className site and the four rules at
+    // MemosScreen.css:289,:294,:299,:304 read as dead without the prefix.
+    // ONE prefix, not four names: it covers exactly the four states and
+    // nothing else. The two bare classNames this entry used to fail on
+    // (memos-form, memos-field) were deleted from the markup at 69324986e.
+    // Citing memo/MemosScreen.css here also retires its BASELINE_UNCITED line:
+    // the array went 50 -> 49, which is all the array is for.
+    name: 'MemosScreen',
+    tsx: 'memo/MemosScreen.tsx',
+    css: ['memo/MemosScreen.css'],
+    dynamicClassPrefixes: ['memos-badge--'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1102,7 +1131,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 54 entries is a named path, not a prefix, not a
+// every one of its 49 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1114,7 +1143,8 @@ describe.each(SCREENS)(
 // because a whole-tree blocker is unusable — 93 honest candidates, of
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
-// on 54 unread sheets would buy nothing, so the 54 are frozen, named, and
+// on 54 unread sheets would buy nothing, so the list was frozen at 54 —
+// it has shrunk to 49 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1140,7 +1170,6 @@ const BASELINE_UNCITED: string[] = [
   'locations/TopologyScreen.css',
   'marketplace/AddonsMarketplace.css',
   'memo/MemoBanner.css',
-  'memo/MemosScreen.css',
   'reports/CustomReportScreen.css',
   'reports/MenuEngineeringScreen.css',
   'retail/RetailPosScreen.css',
