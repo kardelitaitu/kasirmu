@@ -57,7 +57,7 @@
   > unknown current result.
 
 ### Phase 1.1: Extract Keyboard Navigation & Audio Alert
-- [ ] Extract keyboard shortcuts into `hooks/useBumpBar.ts`.
+- [x] Extract keyboard shortcuts into `hooks/useBumpBar.ts`. <!-- TICKED 2026-09-15 by the relocation lane (c965baddb): the target now EXISTS at `ui/src/features/kds/hooks/useKdsKeyboardShortcuts.ts`, 129 ln. It previously sat at the FEATURE ROOT as `useKdsShortcuts.ts` -- a name-and-location disagreement, not unstarted work. The shape this box guessed was wrong: 'bump bar' matches 0 code and 0 i18n strings, and that concern is `hooks/useNewTicketSound.ts` (81 ln), already closed at :68 below. Box wording unchanged; the exported symbol is still `useKdsShortcuts`, so the identifier survives by design while the old PATH has 0 references tree-wide. -->
   > **Corrected key list — the old one named keys the screen does not handle.**
   > `KdsScreen.tsx:412-468` binds digits `1`–`9` (`:434`), `ArrowDown` (`:440`), `ArrowUp` (`:447`),
   > `' '` Space to advance (`:454`) and `Escape` (`:462`). It does **not** bind `Enter` (0 hits in
