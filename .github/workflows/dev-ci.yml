@@ -343,11 +343,11 @@ jobs:
   # check.sh, so the gate auditing CI truthfulness was the one thing CI truthfulness
   # never audited.
   #
-  # Deliberately continue-on-error: the checker currently fails with 69 items, and
-  # turning CI red for unrelated PRs is worse than the status quo. The point of
-  # this step is to make the number VISIBLE and trending on every docs/CI change;
-  # flip it to blocking as part of closing R36-10, once the count reaches 0.
-  # Not added to northflank-deploy's `needs` for the same reason.
+  # BLOCKING, not continue-on-error: the 69-item baseline this comment once described
+  # was closed out by R36-10, which was the stated condition for the flip, so the
+  # `drift` step now ends on [ "$status" = "PASS" ] and a false claim fails the job.
+  # It is still deliberately NOT in northflank-deploy's `needs`, but that is a deploy
+  # topology choice and not an advisory status -- see that job's comment block.
   # Gate: scripts/gates.json -> "ci-docs-drift".
   ci-docs-drift:
     name: CI Docs Drift
@@ -655,13 +655,40 @@ jobs:
     name: Deploy Backend (Northflank)
     runs-on: ubuntu-latest
     needs: [changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates]
-    # A skipped dependency skips this job. That is intended and is unreachable
-    # in practice: `changes` forces every route to true for non-PR events, and
-    # the only non-PR event that can reach here is workflow_dispatch.
-    # static-gates was added and carries no `if:`, so it can never skip and
-    # silently unblock a deploy. ci-docs-drift is deliberately NOT a dependency:
-    # it is advisory, and gating a deploy on a known-red count would train people
-    # to ignore the gate.
+    # A skipped dependency skips this job, and nothing skips on a deploy run: the
+    # `changes` router forces every route true for all non-PR events, and
+    # `static-gates` carries no `if:` at all, so neither can quietly unblock one.
+    # What used to be claimed here is false: workflow_dispatch is NOT the only
+    # non-PR event that can reach this job. `on.push` is declared at :6-7, so a
+    # merge to `main` runs this workflow and the `if:` below deploys it; a
+    # workflow_dispatch off a `0.0.*` branch deploys the same way, while a PUSH to
+    # a `0.0.*` branch runs nothing, because `on.push.branches` lists only `main`.
+    #
+    # Two jobs are left out of `needs` as decisions, not as oversights:
+    #
+    #   * release-readiness proves the DESKTOP updater signing chain, and this job
+    #     consumes none of it. It POSTs the commit sha to Northflank, which builds
+    #     Dockerfile.unified -- a backend container that takes no installer, no
+    #     latest.json and no updater pubkey. That chain is already hard-gated where
+    #     it binds, in release.yml: release-validate runs the same
+    #     scripts/check-updater-compat.mjs, release-build needs release-validate,
+    #     release-publish needs release-build. Adding the edge here would bind 100%
+    #     of deploys to a check unrelated to the artifact shipped, because the
+    #     router forces release=true on every non-PR event while the release router
+    #     paths held 140 of 7,841 commits over the last 90 days (1.79%), and because
+    #     its own failure surface -- an unstable rust-toolchain pin, node 24, a cold
+    #     cargo build under the workflow-wide RUSTFLAGS -- would be able to stop a
+    #     deploy of an artifact it cannot affect. Narrowing the route instead is a
+    #     no-op on the deploy path: it only changes PR routing.
+    #
+    #   * ci-docs-drift is NOT advisory. Its `drift` step ends on
+    #     [ "$status" = "PASS" ], so a false CI claim fails that job and the build.
+    #     It stays off `needs` so a docs-truthfulness mismatch cannot hold a
+    #     production deploy hostage.
+    #
+    # Residual risk, named rather than hidden: `main` is unprotected, so a red
+    # release-readiness or a red ci-docs-drift is still mergeable -- both fail
+    # visibly, neither fails fatally, and that is the accepted cost.
     #
     # Push trigger on main runs Dev CI and automatically deploys to Northflank
     # when NORTHFLANK_API_TOKEN is configured.
