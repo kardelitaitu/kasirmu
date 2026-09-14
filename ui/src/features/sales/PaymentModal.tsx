@@ -30,6 +30,7 @@ import { useGatewayQr } from './payment/useGatewayQr';
 import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import QrisTenderPanel from './payment/QrisTenderPanel';
+import CashTenderPanel from './payment/CashTenderPanel';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -1636,81 +1637,16 @@ export default function PaymentModal({
                 )}
 
                 {method === 'cash' && (
-                  <div className="payment-cash-section">
-                    <div className="payment-tendered-label">
-                      <Localized id="payment-amount-tendered">
-                        <span>Amount Tendered</span>
-                      </Localized>
-                        <Localized id="payment-tendered-input" attrs={{ 'aria-label': true, placeholder: true }}>
-                        <input
-                          type="text"
-                          className="payment-tendered-input"
-                          inputMode="decimal"
-                          value={tendered}
-                          onChange={(e) => setTendered(e.target.value)}
-                        />
-                        </Localized>
-                    </div>
-
-                    <div className="payment-quick-cash">
-                      {(tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).map((amount) => {
-                        // Presets are major-unit denominations (Rp 5.000 / $5). Scale the
-                        // face value to minor units and round the tender UP there, in exact
-                        // integer (BigInt) arithmetic — the amount never passes through a
-                        // binary float, and stays consistent with tenderedMinor's parse.
-                        const exp = minorUnitExponent(total.currency);
-                        const denomMinor = BigInt(amount) * 10n ** BigInt(exp);
-                        const targetMinorUnits = BigInt(Number(total.minor_units));
-                        const ceilStep = targetMinorUnits % denomMinor > 0n ? 1n : 0n;
-                        const quickMinor = Number((targetMinorUnits / denomMinor + ceilStep) * denomMinor);
-                        // What the tender input holds must be a decimal literal; what the
-                        // button shows is display money, so it goes through the formatter.
-                        const quickInput = minorUnitsToInputString(quickMinor, exp);
-                        return (
-                          <button
-                            key={amount}
-                            type="button"
-                            className="payment-quick-btn"
-                            aria-label={l10n.getString('payment-quick-tender-aria', { amount: quickInput }, 'Tender')}
-                            onClick={() => setTendered(quickInput)}
-                          >
-                            {formatMoney({ minor_units: quickMinor, currency: total.currency }, locale)}
-                          </button>
-                        );
-                      })}
-                      <Localized id="payment-tender-exact-aria" attrs={{ 'aria-label': true }}>
-                      <button
-                        type="button"
-                        className="payment-quick-btn"
-                        onClick={() => {
-                          const exp = minorUnitExponent(total.currency);
-                          // Exact tender: the total itself, rendered as the input's
-                          // decimal literal by integer digit placement, not float division.
-                          setTendered(minorUnitsToInputString(Number(total.minor_units), exp));
-                        }}
-                      >
-                        <Localized id="payment-tender-exact">
-                          <span>Exact</span>
-                        </Localized>
-                      </button>
-                      </Localized>
-                    </div>
-
-                    {tendered.length > 0 && (
-                      <div className="payment-change-preview">
-                        <Localized id="payment-change">
-                          <span className="payment-change-label">Change</span>
-                        </Localized>
-                        <span
-                          className={`payment-change-amount ${!sufficient ? 'payment-change-insufficient' : ''}`}
-                        >
-                          {sufficient && change
-                            ? formatMoney(change)
-                            : l10n.getString('payment-insufficient')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  <CashTenderPanel
+                    tendered={tendered}
+                    onTenderedChange={setTendered}
+                    total={total}
+                    tenderPresets={tenderPresets}
+                    sufficient={sufficient}
+                    change={change}
+                    locale={locale}
+                    formatMinorUnits={minorUnitsToInputString}
+                  />
                 )}
 
                 {method === 'card' && !splitMode && edcOffered && (
