@@ -254,6 +254,7 @@ const SCREENS: ScreenEntry[] = [
       // dismiss) are still styled by kds/KdsScreen.css above, so this entry is
       // what keeps them reachable — without it the guard would call them dead.
       'kds/components/KdsNoticeBanners.tsx',
+      'kds/components/KdsHeaderLeft.tsx',
     ],
   },
   {
