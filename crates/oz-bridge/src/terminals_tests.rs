@@ -18,7 +18,64 @@
 //! db) is preserved exactly as extracted.
 
 use super::*;
+use crate::testing::seeded_row_loads;
 use crate::testing::{TestBridge, temp_conn};
+use oz_core::subscription::TenantSubscription;
+
+/// The release leg for a command this file drives through the subscription
+/// gate. `register_terminal_scoped` is the propagating shape this whole
+/// campaign cites it for - `sub.verify_signature()?` at `terminals.rs:432` -
+/// so in release the command RETURNS AN ERROR before the owner ever reaches
+/// the registration: no ok-result, no id, no row, and therefore nothing for a
+/// fail-closed projection to describe. The `FAIL_CLOSED_*` template is
+/// deliberately absent from this file.
+///
+/// Existence is pinned FIRST, because `seeded_row_loads() == false` collapses
+/// five distinct causes (`testing.rs:210-216`: no default row, a load `Err` on
+/// a mis-shaped table, a public-key failure, the intended base64 reject on the
+/// BOOTSTRAP_FREE sentinel, a genuine RSA mismatch) and only the fourth is this
+/// fixture vocabulary. The pin reads the GLOBAL identity connection - both
+/// fixtures hand their `temp_conn()` straight to `scoped_bridge`, and this file
+/// contains no re-tier and no `open_store` write - so the stamped tier below is
+/// the same row the predicate is about, not a store-db copy of it.
+async fn assert_refused_by_the_seeded_row<T>(
+    tb: &TestBridge,
+    settled: Result<T, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = tb.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture registers against must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the command must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
 
 use oz_core::session::SessionContext;
 use rusqlite::Connection;
@@ -295,6 +352,14 @@ async fn owner_can_register_terminal() {
         },
     )
     .await;
+    // Release: the refusal is not a failure of the owner permission this
+    // fixture is about - it is the signature gate one step earlier - so the
+    // is_ok assert below is a debug-leg fact, asserted as such rather than
+    // widened into a claim that both arms are the same answer.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, result, "free").await;
+        return;
+    }
     assert!(result.is_ok(), "owner should register a terminal");
     let registered = result.unwrap();
     assert!(!registered.id.is_empty());
@@ -317,8 +382,15 @@ async fn owner_can_get_terminal_by_id() {
             metadata: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: no terminal was ever registered, so the fetch below has no id
+    // to look up and the get-by-id half of this case stays debug-only rather
+    // than being re-cut into a second assertion of the same refusal.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, registered, "free").await;
+        return;
+    }
+    let registered = registered.unwrap();
 
     let fetched = get_terminal_scoped(&ctx, "tok", registered.id.clone()).await;
     assert!(fetched.is_ok());
