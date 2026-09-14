@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 80 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 81 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 80/246/29 as of this edit: (3 x 80) + 4 + 2 = 246,
+// 902e07678, and 81/249/28 as of this edit: (3 x 81) + 4 + 2 = 249,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1248,6 +1248,25 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'auth/LicenseActivationScreen.tsx',
     css: ['auth/LicenseActivationScreen.css'],
   },
+  {
+    // Routed reports screen, strong mount, all three surfaces checked rather than
+    // inferred from one import grep: reports/register.tsx:9 lazy-imports it, :57
+    // registerPage binds route 'custom-report' (label 'Custom Report',
+    // requiredRole 'manager', requiredPermission 'reports:view'), :59/:63
+    // registerNavItem carries i18nKey 'nav-custom-report' — and the third grep, every
+    // `route: 'custom-report'` in ui/src, returns those two lines and NO workspace
+    // card, so it is nav-linked and not carded. Own sheet imported at :13.
+    // Walk A is clean with NO exemption at all, which is the dossier's claim and now
+    // the run's: 0 undefined / 0 dead over 35 distinct class names in 46 selector
+    // rules, no prefix line, no fragment line, and a trial parentCss of
+    // ../frontend/themes/components.css refused RED by the citation case as vacuous.
+    // Note `.custom-report-col-item--selected` is both defined and used here — the
+    // --selected name TopologyApplyConfirm's dossier called an orphan belongs to THIS
+    // sheet, where it is honest, and 0 case-insensitive `selected` hits remain there.
+    name: 'CustomReportScreen',
+    tsx: 'reports/CustomReportScreen.tsx',
+    css: ['reports/CustomReportScreen.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1399,7 +1418,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 29 entries is a named path, not a prefix, not a
+// every one of its 28 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1412,7 +1431,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 29 since, one line per sheet a landed entry cited, and
+// it has shrunk to 28 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1430,7 +1449,6 @@ const BASELINE_UNCITED: string[] = [
   'locations/TopologyScreen.css',
   'marketplace/AddonsMarketplace.css',
   'memo/MemoBanner.css',
-  'reports/CustomReportScreen.css',
   'retail/RetailPosScreen.css',
   'sales/PromotionsModal.css',
   'sales/WeightScaleWidget.css',
