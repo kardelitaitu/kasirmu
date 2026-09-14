@@ -94,7 +94,13 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.reject(new Error('Mock failure: ' + cmd));
     }
     if (cmd === 'get_store_settings_scoped') {
-      return Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '' });
+      // currency: 'USD' matches get_default_currency below on purpose - the two
+      // readers hit the SAME column (run_set_store_settings stamps
+      // store.currency through Settings::set_default_currency,
+      // crates/oz-bridge/src/settings.rs:1024), so a fixture that shows them
+      // disagreeing hands Save one real diff to send on an untouched page and
+      // the zero-write contract below stops being testable.
+      return Promise.resolve({ name: '', address: '', taxId: '', currency: 'USD', branch: '' });
     }
     if (cmd === 'get_receipt_settings_scoped') {
       return Promise.resolve({
@@ -429,33 +435,44 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
 });
 
 describe('SettingsPage topbar save flow (kept)', () => {
-  it('Save writes receipt, store, currency, prefs, sync and branding', async () => {
+  // CONTRACT REVERSAL, deliberately: this case used to assert that Save on an
+  // UNTOUCHED page re-stamped all seven families. That was the old fan-out's
+  // behaviour (every task sent its WHOLE DTO), and it is the data-loss path -
+  // an untouched page is exactly the page whose draft may be stale (org switch,
+  // partial load). The page can no longer express "edit a field": after the
+  // flat-IA rebuild it owns no draft inputs, so the edit-then-write half of this
+  // case moved to useSettingsSave.test.tsx (describe 'with genuine edits'), and
+  // what stays here is the new page-level contract: nothing to write, nothing
+  // sent, nothing claimed.
+  it('Save on an untouched page sends no settings write at all', async () => {
     await openShell();
+    invokeMock.mockClear();
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /saved!/i })).toBeNull();
     });
-    expect(invokeMock).toHaveBeenCalledWith('set_receipt_settings_scoped', expect.any(Object));
-    expect(invokeMock).toHaveBeenCalledWith('set_store_settings_scoped', expect.any(Object));
-    expect(invokeMock).toHaveBeenCalledWith('update_sync_settings_scoped', expect.any(Object));
-    expect(invokeMock).toHaveBeenCalledWith('set_brand_primary_colour_scoped', expect.any(Object));
-    expect(invokeMock).toHaveBeenCalledWith('set_brand_store_name_scoped', expect.any(Object));
+    const writes = invokeMock.mock.calls.map((c) => String(c[0])).filter((c) => c.startsWith('set_') || c === 'update_sync_settings_scoped');
+    expect(writes).toEqual([]);
+    expect(screen.queryByText(ftlValue('settings-save-error'))).toBeNull();
+    expect(screen.queryByText(ftlValue('settings-save-partial'))).toBeNull();
   });
 
-  it('sync save carries the cloud draft default with enabled state and no apiKey', async () => {
-    // SettingsContext applies withSyncDefaults to an unconfigured sync; the
-    // page mirrors that DTO into the save call even though no sync inputs
-    // remain on the shell.
+  // Second half of the reversal above, and the one that mattered: the old fan-
+  // out pushed the CONTEXT'S withSyncDefaults fallback into update_sync_settings
+  // _scoped, whose serverUrl write is unconditional (sync.rs:64-82), so a clean
+  // Save could invent a sync target the operator never chose - and, with a
+  // partial load, clear a configured one. Same-name payload coverage (an EDITED
+  // sync still carries the server's URL) moved to useSettingsSave.test.tsx.
+  it('an untouched page sends no sync write, so no URL is invented or cleared', async () => {
     await openShell();
+    invokeMock.mockClear();
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /saved!/i })).toBeNull();
     });
-    const envelope = lastInvokeArgs('update_sync_settings_scoped');
-    expect(envelope).toBeDefined();
-    expect(envelope!['args']).toEqual({ serverUrl: 'https://license.ozpos.my.id', enabled: true });
+    expect(lastInvokeArgs('update_sync_settings_scoped')).toBeUndefined();
   });
 
   it('withSyncDefaults keeps configured URLs and states untouched', () => {
@@ -467,7 +484,14 @@ describe('SettingsPage topbar save flow (kept)', () => {
     });
   });
 
-  it('shows the full save-error toast when every save API call fails', async () => {
+  // The all-fail toast itself needs seven REAL writes, which the page can no
+  // longer produce; that case moved to useSettingsSave.test.tsx ('reports every
+  // task failing as an error even when all seven fires'). What the page still
+  // owns is the other half of the same UI promise, which the old code got wrong
+  // in the loud direction: an omitted task used to read as a failed one
+  // (findIndex -1 -> undefined -> false), so a do-nothing Save on a page whose
+  // writes are down must NOT be reported as a save error.
+  it('is silent when every write API is down and nothing needed writing', async () => {
     for (const cmd of [
       'set_receipt_settings_scoped', 'set_store_settings_scoped', 'set_default_currency',
       'set_user_preferences_scoped', 'update_sync_settings_scoped',
@@ -478,47 +502,56 @@ describe('SettingsPage topbar save flow (kept)', () => {
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(ftlValue('settings-save-error'))).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /saved!/i })).toBeNull();
     });
+    expect(screen.queryByText(ftlValue('settings-save-error'))).toBeNull();
   });
 
-  it('shows the partial-save toast when some saves fail', async () => {
+  // Partial-toast-with-a-real-edit moved to useSettingsSave.test.tsx ('refreshes
+  // the snapshot per task, not wholesale'). The page-level residual it replaces
+  // is the rule that made the old lookup dangerous: SKIPPED must never render as
+  // FAILED, so a failing receipt write on an untouched page is invisible.
+  it('does not report a partial save for a task it never sent', async () => {
     failCommands.add('set_receipt_settings_scoped');
     await openShell();
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /saved!/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /saved!/i })).toBeNull();
     });
-    await waitFor(() => {
-      expect(screen.getByText(ftlValue('settings-save-partial'))).toBeInTheDocument();
-    });
+    expect(screen.queryByText(ftlValue('settings-save-partial'))).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith('set_receipt_settings_scoped', expect.any(Object));
   });
 
-  it('Ctrl+S triggers the same save', async () => {
+  // Still the keyboard wiring, now asserted on the path that reaches the fan-out
+  // at all: the read-backs. The write assertion went with the contract above.
+  it('Ctrl+S runs the same save path (it reads the server back)', async () => {
     await openShell();
+    invokeMock.mockClear();
     fireEvent.keyDown(document, { key: 's', ctrlKey: true });
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('set_store_settings_scoped', expect.any(Object));
+      expect(invokeMock).toHaveBeenCalledWith('get_store_settings_scoped', expect.any(Object));
     });
+    expect(invokeMock).not.toHaveBeenCalledWith('set_store_settings_scoped', expect.any(Object));
   });
 
-  it('Save button is aria-busy while the saves are in flight', async () => {
-    invokeMock.mockImplementation((cmd: string) => {
-      if (String(cmd).startsWith('set_') || cmd === 'update_sync_settings_scoped') {
-        return new Promise(() => {});
-      }
-      return defaultImpl(String(cmd));
-    });
-
+  // aria-busy is a STATE, so it survives the reversal - but it can now only be
+  // reached by a save with something to write, which the flat-IA page cannot
+  // produce. The in-flight half moved to useSettingsSave.test.tsx ('brackets
+  // only real writes with the saving state'). What the page must guarantee
+  // instead is the negative: the zero-task short-circuit resolves BEFORE
+  // setSaving(true), so an untouched Save never flickers busy.
+  it('Save never enters the busy state when there is nothing to write', async () => {
     await openShell();
     const saveBtn = screen.getByRole('button', { name: /save settings/i });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(saveBtn).toHaveAttribute('aria-busy', 'true');
+      expect(saveBtn).toBeInTheDocument();
     });
+    expect(saveBtn).not.toHaveAttribute('aria-busy', 'true');
+    expect(saveBtn).toHaveTextContent(ftlValue('settings-btn-save'));
   });
 });
 
