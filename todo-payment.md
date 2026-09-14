@@ -1147,3 +1147,137 @@ checks) remain in `## Open questions`.
 > local to PaymentModal; cite the four call sites above, not a heading that does not say it.
 >
 > last audited 14-09-26 by docs-auditor · re-audited same day (2nd pass, HEAD `ec2edf258`) by DSH — see the audit stamp at the top
+
+---
+
+## Append-only record (2026-09-15, HEAD `373faab92`) — did tonight's split-tender extraction close the boxes it looks like? NO.
+
+> Nothing above this line was rewritten, renumbered or re-ticked. This block adds **zero** checkbox
+> characters, so every count in § 5 is the same number before and after it landed, and that is the
+> passing outcome the brief asked for. `ui/**` was not touched: read-only `grep`/`ls`/`wc`/`git show`
+> only. No hook was opened, no code written, § 4 names the gap rather than fixing it.
+
+### 0. The three candidates are NOT in this file — they are in `todo-refactor-pos-screen-agents-3.md`
+
+Measured before anything else, because it changes who owns every verdict below. This file has **no box at
+`:99`, `:103` or `:106`**: those three lines here are prose inside the header blockquote (`:99` =
+"as design progresses.", `:103` = the SHA512 settlement clause, `:106` = the re-issue/cancel clause), and
+`grep -nE '^[[:space:]]*- \[[ x]\]' todo-payment.md` jumps from `:96`-of-header straight to its first box at
+`:432`. The three boxes the brief describes exist verbatim in **`todo-refactor-pos-screen-agents-3.md`**, and
+the two lines the brief says to leave alone are there too and are indeed already ticked (`:105`, `:120`). So the
+**line numbers name agents-3 while the FENCE names this file**. Consequence, stated rather than resolved
+sideways: this pass may write only here, so what follows is a **record of the verdicts, not an edit of the
+plan that owns the boxes**. agents-3 is also inside the "do not touch … any other plan" clause, so nothing was
+ticked there either — including nothing that the evidence would let me tick. If these verdicts are meant to
+move checkboxes, **`todo-refactor-pos-screen-agents-3.md` has to be in the fence.** Requested, not assumed.
+
+### 1. The test applied per box: does the box's OWN wording name a component, a hook, or a state move?
+
+- **agents-3 `:99`** — own wording: "Extract **split rows state**, balance remaining, multi-currency
+  conversion, and quick cash." Its first-named object is a **STATE move**, not a component and not markup.
+  Verdict: **NOT TICKED.** Every byte of that state is still in the shell, right now: `interface SplitRow`
+  `ui/src/features/sales/PaymentModal.tsx:72` · `splitMode` `:260` · `splits` `:261` · the id allocator
+  `nextSplitId = useRef(3)` `:265` · `addSplit` `:830` · `removeSplit` `:837` · `updateSplit` `:844` ·
+  `autoSplitEvenly` `:848`. **But § 1 of the census's claim was half-right and the half matters:** the *other*
+  three objects in this one box have ALREADY landed, elsewhere and under other names — balance remaining and
+  the guard in `payment/useTenderMath.ts:175-191` (`splitTotals`, `splitComplete`, returned at `:202-203`),
+  currency in `payment/useMultiCurrency.ts:80-81` + `:142` (`currencies`, `exchangeRates`, `latestRate`),
+  quick cash in `payment/CashTenderPanel.tsx:54` + `:93` (`tenderPresets` kept as a **prop**, honoring the
+  `:102` correction, rendered as the five Rp denominations, "Exact" at `:124-130`). So `:99` is a **4-object box
+  with 3 objects landed and the money-touching one left**. A markup move cannot close a box whose verb is
+  "state".
+- **agents-3 `:103`** — own wording: "Move into `ui/src/features/sales/payment/useSplitTenders.ts`." It names
+  a **HOOK FILE** by path, exactly as the census's use of the word "HOOK" implied. Evidence run as instructed:
+  `ls ui/src/features/sales/payment/` → **11 files, and `useSplitTenders.ts` is not one of them**
+  (`CardTenderPanel.tsx` 86 · `CashTenderPanel.tsx` 152 · `QrisTenderPanel.tsx` 101 · `SplitTenderRows.tsx` 228 ·
+  `completedSale.ts` 108 · `moneyFormat.ts` 31 · `types.ts` 56 · `useAutoQr.ts` 242 · `useGatewayQr.ts` 112 ·
+  `useMultiCurrency.ts` 200 · `useTenderMath.ts` 206). `git grep -n useSplitTenders -- ui/src` → **exit 1, zero
+  hits**. Tree-wide the symbol occurs in exactly **one tracked file: `todo-refactor-pos-screen-agents-3.md`
+  itself** — the plan that asks for it. The box's target is a **named file that does not exist**. Verdict:
+  **NOT TICKED.** The ALIAS note § 2 is why this line exists at all.
+- **agents-3 `:106`** — own wording: "**Commit Milestone:** nothing to commit yet." Verdict: **NOT TICKED**,
+  and § 3 gives the dependency in that file's own words rather than in the brief's summary.
+
+### 2. ALIAS note — what landed instead of `useSplitTenders.ts`, so a log-reader is not misled
+
+A future reader sees `refactor(sales): extract the split tender rows into a component` in the log and concludes
+`:99` is done. It is not, and what shipped is a different artifact:
+
+- **Commit `ff16161545ad852a7170f30b71820395fcf45f6b`** (Tue Sep 15 00:40:49 2026 +0700). `git show --numstat`:
+  `PaymentModal.tsx` **+12 / -119 = the -107 modal delta**, and `payment/SplitTenderRows.tsx` **+228 / -0**.
+- **A component, not a hook.** 228 ln, **9 props** (`SplitTenderRowsProps` at `SplitTenderRows.tsx:70-89`:
+  `splitMode`, `splits`, `currency`, `remainingMinor`, `onSplitModeChange`, `onAddSplit`, `onRemoveSplit`,
+  `onUpdateSplit`, `onAutoSplitEvenly` — i.e. the shell's state plus the shell's writers, handed across the seam).
+  Imported at `PaymentModal.tsx:35`, mounted at `PaymentModal.tsx:1648`. Its own header says so:
+  "No state, no effect and no memo moved in, and none created here" (`:8`), and "This component calls them,
+  it never reimplements them" (`:16`). Verified mechanically: the file contains **zero hook calls** — the only
+  matches for `useState|useEffect|useMemo|useRef|useCallback` are the three words inside its own header comment
+  (`:11`, `:12`, `:15`).
+- **Guard rollup, so nobody fears the money moved.** `splitComplete` is at `useTenderMath.ts:183-191` and is
+  consumed in the shell at `PaymentModal.tsx:397`; `canComplete` is the shell's own `useMemo` at `:871-879`
+  and `:872` still reads `if (splitMode) return splitComplete;`; the gate reaches the button at `:1888`
+  `disabled={!canComplete}`. The new component receives only `remainingMinor={splitTotals.remaining}` (`:1652`)
+  as a **value**. **No part of the settle-decision lives in `SplitTenderRows.tsx`** — correct for a markup
+  slice, and precisely why it is not `:99`/`:103` work.
+- **One gap this pass found and did not fix** (`ui/**` is out of fence): the new component is **not registered
+  as a class guard**. `git grep -nE "TenderPanel|SplitTenderRows|features/sales/payment" --
+  ui/src/__tests__/screenExtraction.test.ts` → **exit 1**. The settings lane's `BackupSection` tick cites its
+  registration at `screenExtraction.test.ts:391`; **none of the four components now under `payment/`**
+  (`CardTenderPanel.tsx`, `CashTenderPanel.tsx`, `QrisTenderPanel.tsx`, `SplitTenderRows.tsx`) has such a
+  witness, so nothing currently fails if one is re-inlined. Filed, not acted on — the guard file is dirty in
+  the working tree (` M ui/src/__tests__/screenExtraction.test.ts`), which is another lane's in-flight edit.
+
+### 3. The milestone's dependency, read out of agents-3's OWN text
+
+`todo-refactor-pos-screen-agents-3.md:196` — the file's own closing "NOT A RENAME" clause — states it in so
+many words: "the extraction boxes `:75`, `:90`, **`:99`**, **`:103`**, `:116`, `:118`, `:119`, `:127` **plus the
+four milestones are still work**." So this file itself declares `:106` rides on `:99` and `:103`; with both open,
+`:106` cannot close, and it is left open. Its embedded command reinforces that instead of contradicting it:
+the commit `:106` prescribes is `refactor(payment): extract tender splitting and currency logic into
+**useSplitTenders hook**`, and **no commit on this branch carries that subject** — `ff1616154` says "into a
+component". Read either way (children open, or named artifact uncommitted), `:106` is open. Also left alone as
+instructed: `:119` (open_bill/credit, a different region, still parked per agents-3 `:113`), and `:105`/`:120`,
+which are already ticked.
+
+### 4. Dated census correction — one append-only line
+
+**2026-09-15 · the extraction lane's census had the region wrong, and the file is now measured against it:
+the split-tender region is `PaymentModal.tsx:1647-1765`, NOT `:1807`** — proven by the artifact's own header
+("the page's lines 1647–1765 verbatim", `SplitTenderRows.tsx:41`) arithmetically against the diff, since
+`1765 - 1647 + 1 = 119` = the exact deletion count in § 2; the census's `:1807` pre-extraction is a **blank line**
+between the customer `</div>` (`:1806`) and `{isEnabled(FEATURES.LOYALTY_PROGRAM)` (`:1808`) — a region boundary,
+not a region. **And `payment-customer-section` — `ff1616154^:1767`, and `1767 - 107 = 1660` = where it sits today
+— is a separate, still-inline surface with no box anywhere in any plan.** Measured now:
+`wc -l ui/src/features/sales/PaymentModal.tsx` = **1,912**; badge `:1660-:1699` = **40 ln**; its own search
+overlay `:1804-:1877` = **74 ln**; **customer surface total ≈ 114 ln = 6.0% of the file**, plus 3 `useState`
+(`:139`, `:173`, `:174`) and 2 `useEffect` (`:346-:364`, `:366-:382`). **Verdict: NOT a rounding error.** 114 ln is
+the same size class as the 119 just moved, and the badge half is cheaper still — 3 props, no money guard, no
+id allocator, nothing float, no `splitComplete` in sight. **Verdict also, on funding: this file may not claim
+it.** `grep -nE '^[[:space:]]*- \[[ x]\]' todo-*.md | grep -i customer` finds **no customer-extraction box in any
+plan**; `git grep -n CustomerPanel -- ui/src` → exit 1; the only near-claim is agents-3 `:118` (LoyaltyTenderPanel),
+which lists `selectedCustomer`/`customerSearchResults` as its own state and so already speaks to the **overlay's**
+state, not to the badge markup. Naming it is a legitimate output; ticking a box for it is not, and none was ticked.
+
+### 5. Box counts, both grep forms, before and after (identical — by design)
+
+| form | command | before | after |
+|---|---|---|---|
+| any-depth open | `grep -cE '^[[:space:]]*- \[ \]' todo-payment.md` | **36** | **36** |
+| anchored open | `grep -cE '^- \[ \]' todo-payment.md` | **35** | **35** |
+| any-depth ticked | `grep -cE '^[[:space:]]*- \[x\]' todo-payment.md` | **11** | **11** |
+| anchored ticked | `grep -cE '^- \[x\]' todo-payment.md` | **11** | **11** |
+| all bullets | `grep -cE '^[[:space:]]*- ' todo-payment.md` | **130** | **137** |
+
+The 36-vs-35 gap is one indented box, and **the pointer to it is stale in both places that cite it**: the re-tag
+pass at `:93` says `:403`, the triage block at `:147` says `:459`, and the box actually lives at **`:607`**
+(`  - [ ] **Fix:** the driver hardcodes "airpay shopee"…`). `:459` is prose ("Affected: Phase 0 `:290`…"). Both
+dated records are left exactly as written — corrected only here, per this file's convention. `git show --numstat`
+on this block's commit contains **no deletion**, because no checkbox was flipped anywhere.
+
+**The next real payment work item, in one sentence:** yes — the state half of agents-3 `:99` into the named
+`payment/useSplitTenders.ts` (`:103`) is now the only un-started, money-adjacent extraction left on this modal,
+because the currency, the remaining-balance math and the quick-cash presets have all found homes and the markup
+has just been moved, which leaves the split-row state plus its four handlers and the id allocator as a small,
+real, **guard-touching** job that must run with `PaymentModal.tsx` free of every other lane (agents-3 `:182`:
+the whole pos lane is one sequenced coder).
+
