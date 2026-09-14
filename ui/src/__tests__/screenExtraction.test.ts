@@ -959,19 +959,16 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'gift-cards/GiftCardsScreen.tsx',
     css: ['gift-cards/GiftCardsScreen.css'],
     dynamicClassPrefixes: ['gift-card-status--', 'gift-card-txn-type--'],
-    externalClasses: [
-      'gift-cards-modal-overlay',
-      'gift-cards-modal-overlay--exiting',
-      'gift-cards-modal',
-      'gift-cards-modal--exiting',
-      'gift-cards-modal-title',
-      'gift-cards-modal-form',
-      'gift-cards-modal-field',
-      'gift-cards-modal-label',
-      'gift-cards-modal-input',
-      'gift-cards-modal-error',
-      'gift-cards-modal-actions',
-    ],
+    // The 11 gift-cards-modal-* values lived in externalClasses as another
+    // component's work, and the file that does that work is real markup in this
+    // feature: IssueGiftCardModal.tsx, which named none of the 11 in the screen file
+    // and was not read by this entry at all -- grep for it in this file returned zero
+    // occurrences before this line. additionalTsx is the device that says what the
+    // mute only assumed: the walk now includes the file, so all 11 resolve through
+    // the used-vs-defined check as names actually used, with no exemption and no
+    // shield, and a future deletion of that markup will be reported instead of being
+    // excused by a list nobody re-tests.
+    additionalTsx: ['gift-cards/IssueGiftCardModal.tsx'],
   },
 
   // ── Stock Counting ─────────────────────────────────────
@@ -1068,22 +1065,19 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'AppearanceSettings',
     tsx: 'settings/AppearanceSettings.tsx',
-    css: ['settings/AppearanceSettings.css', 'settings/SettingsPage.css'],
-    dynamicClassPrefixes: [
-      'settings-',
-      'tooltip-content',
-      'feature-toggle',
-      'data-mgmt',
-      'staff-mgmt',
-      'terminal-mgmt',
-      'multi-store-dashboard',
-      'audit-log',
-      'offline-queue-screen',
-      'shift-mgmt',
-      'tax-config',
-      'exchange-rate-config',
-      'promo-mgmt',
-    ],
+    // Its OWN sheet only. SettingsPage.css was listed here as css, which put a
+    // 1,090-line shared sheet into this entry's dead-class walk -- and 94 of its 98
+    // selectors were then reachable only because 13 prefixes excused them. As parentCss
+    // the same sheet still answers the used-vs-defined question (that check resolves
+    // against css UNION parentCss) and stops being graded for deadness here at all,
+    // which is what the field is for and what the four settings cards already do.
+    // Verified value by value, not by count: none of the 13 matches a SINGLE one of
+    // this entry's own 18 selectors -- zero of those 18 even begin with settings- --
+    // so every one of them existed to excuse the parent and all 13 go with the move.
+    // tooltip-content was worse than that: it matched nothing here, nothing in the
+    // parent, and nothing in the markup, a grant for a name no sheet defines.
+    css: ['settings/AppearanceSettings.css'],
+    parentCss: ['settings/SettingsPage.css'],
     knownDynamicFragments: [
       // Card component classes (defined in frontend/themes/components.css)
       // that are used inline in AppearanceSettings.tsx but not present
