@@ -10,6 +10,7 @@ import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
+import { ROLE_HIERARCHY } from '@/utils/role';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
@@ -93,19 +94,6 @@ const WS_ORDER: Record<string, number> = {
 //      honor the §B admin gate, which locks the moment the
 //      subscription leaves `active` (grace never re-opens admin
 //      features).
-
-const ROLE_HIERARCHY: Record<string, number> = {
-  owner: 5,
-  'role-owner': 5,
-  admin: 4,
-  'role-admin': 4,
-  manager: 3,
-  'role-manager': 3,
-  staff: 2,
-  'role-staff': 2,
-  auditor: 1,
-  'role-auditor': 1,
-};
 
 // (The Tools catalogue — entries, icons, groups, access policy — lives
 // in `./tools` and is imported below.)
