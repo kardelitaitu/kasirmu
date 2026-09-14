@@ -82,7 +82,7 @@
   `ui/src/__tests__/SettingsPage.test.tsx:8-11` records the removal ("Store/Currency/Display/Receipt/
   About/Cloud-Sync form fields … inputs left the page"). A second, live receipt surface exists at
   `screens/ReceiptFormatSettingsCard.tsx`, mounted by `screens/BusinessDefaultsScreen.tsx:26`.
-- [ ] Extract `<PrinterSettingsPanel />` into `panels/PrinterSettingsPanel.tsx`. — **RETIRED 2026-09-14, with proof; not open work.**
+- [ ] Extract `<PrinterSettingsPanel />` into `panels/PrinterSettingsPanel.tsx`. — **RETIRED 2026-09-14, with proof; not open work.** → **CLOSED AS RETIRED, 2026-09-15.** A retirement with proof is a disposition, not remaining work; the glyph stays `- [ ]` deliberately, because a tick would claim an acceptance leg that never ran — there was nothing to extract. Re-check: `ls ui/src/features/settings/` prints `components`, `hooks`, `screens`, `sections`, `workspace-cards`, `__tests__` and **no `panels/`**, and none is planned.
   Proof, so this is not a silence: **Store Info** ships at `workspace-cards/StoreInfoCard.tsx` (84 ln) and is opened by
   `WorkspaceSettingsModal.tsx` (236 ln), not by this page; **printer/hardware** configuration ships at
   `workspace-cards/WorkspaceStorePosSettings.tsx` / `WorkspaceRestaurantPosSettings.tsx`, reached through that modal, and
@@ -129,7 +129,7 @@
   `./screens/`, 1 from `../sync/SyncConflictReviewScreen`); dirty flag `:280` with
   `useUnsavedChangesGuard` `:286-292`; `handleSave` `:406-537` (named `saveTasks`, `Promise.allSettled`,
   per-task `changedKeys`); Revert + Save bar `:764-806`; Ctrl+S/Cmd+S `:546-549`.
-- [ ] Extract `<GeneralSettingsPanel />` and `<TaxSettingsPanel />`. — **RETIRED 2026-09-14, with proof; not open work.**
+- [ ] Extract `<GeneralSettingsPanel />` and `<TaxSettingsPanel />`. — **RETIRED 2026-09-14, with proof; not open work.** → **CLOSED AS RETIRED, 2026-09-15.** Same disposition, same reason for the unticked glyph: `panels/` exists nowhere and is not planned, so this is a closed question, not open work. Triage that reads `- [ ]` as remaining work will overstate this cluster — which is how a dispatch tonight quoted "fifty-one ticked boxes" for a cluster holding fourteen.
   Proof: **Receipt** shipped as `sections/ReceiptSection.tsx` (257 ln; test-only importers) plus the live
   `screens/ReceiptFormatSettingsCard.tsx` (488 ln); **Tax** is still `features/tax/TaxConfigurationScreen.tsx` (1,027 ln,
   route `tax-config`) — what this page mounts is a DIFFERENT file of the same basename, a placeholder lazy-imported at
@@ -144,7 +144,7 @@
   `screens/TaxConfigurationScreen.tsx` (32 lines) is the same placeholder ("Content moves here from
   `features/tax/TaxConfigurationScreen.tsx`", `:4`) while the real UI is still the standalone
   `ui/src/features/tax/TaxConfigurationScreen.tsx` (1,027 lines, route `tax-config`).
-- [x] Verify `SettingsPage.tsx` line count drops from 844 to < 250 lines. — **RETIRED 2026-09-14 and RESTATED: the gate is `<= 450`.** Both halves of the old line were wrong at the root, not stale.
+- [x] Verify `SettingsPage.tsx` line count drops from 844 to < 250 lines. — **RETIRED 2026-09-14 and RESTATED: the gate is `<= 450`.** Both halves of the old line were wrong at the root, not stale. **Correction to a dispatch of 2026-09-15 — right attribution, wrong number:** it asserted the page "measures exactly 450", so the restated gate is met *at the boundary*. It is not: `wc -l < ui/src/features/settings/SettingsPage.tsx` = **449**, one line of slack (`:149` already reads 449). What the dispatch had right and this plan should own: **the 844 baseline never belonged to this file** — `wc -l < ui/src/features/settings/SettingsNavTree.tsx` = **844**, a different component, and at `settings/SettingsNavTree.tsx` rather than `settings/components/` (`git ls-files` confirms the path) — while the ladder below shows this page's first rung was 921. So "< 250 from 844" was measured against the wrong file from its first day. The `[x]` is untouched and is evidence for the `<= 450` restatement only.
   **Ticked 2026-09-14 by a later pass (HEAD `e455e9d13`) — the RESTATED gate is MET; the ORIGINAL is not.** The gate as it
   now reads, `<= 450`, measures **449** by `wc -l < ui/src/features/settings/SettingsPage.tsx` → `449`. **`< 250` has NOT
   been achieved and is still false by ~200 lines** (449 against the 249 the struck wording demanded); this tick is not
