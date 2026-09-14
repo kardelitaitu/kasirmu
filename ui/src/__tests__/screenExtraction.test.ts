@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 78 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 79 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 78/240/31 as of this edit: (3 x 78) + 4 + 2 = 240,
+// 902e07678, and 79/243/30 as of this edit: (3 x 79) + 4 + 2 = 243,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1219,6 +1219,20 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'locations/TopologyApplyConfirm.tsx',
     css: ['locations/TopologyApplyConfirm.css'],
   },
+  {
+    // Gate screen, strong mount: AppShell.tsx:27 imports it and renders it BEFORE
+    // routing (features/index.ts:43 names the class of thing — "gate screens
+    // rendered before page routing"), opened by the user-count check at
+    // AppShell.tsx:112/:200. It imports its own sheet at :7 and resolves against
+    // it unaided — all eight base names (create-pin-container / -card / -header /
+    // -form-group / -input / -submit-btn / -error-banner and spinner) live in
+    // this entry's own sheet — so it carries NO parentCss either: a trial
+    // cite of ../frontend/themes/components.css came back RED from the citation case
+    // as vacuous. The new assertion refused a cite the queue had assumed.
+    name: 'CreatePinScreen',
+    tsx: 'auth/CreatePinScreen.tsx',
+    css: ['auth/CreatePinScreen.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1370,7 +1384,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 31 entries is a named path, not a prefix, not a
+// every one of its 30 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1383,11 +1397,10 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 31 since, one line per sheet a landed entry cited, and
+// it has shrunk to 30 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
-  'auth/CreatePinScreen.css',
   'auth/LicenseActivationScreen.css',
   'auth/SessionLockScreen.css',
   'design/DesignSystem.css',
