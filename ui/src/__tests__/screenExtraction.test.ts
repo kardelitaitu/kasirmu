@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 75 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 76 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 75/230/34 as of this edit: (3 x 75) + 4 + 1 = 230,
+// 902e07678, and 76/233/33 as of this edit: (3 x 76) + 4 + 1 = 233,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1142,6 +1142,17 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'inventory/StockAlertPanel.tsx',
     css: ['inventory/StockAlertPanel.css'],
   },
+  {
+    // 491-line modal over its own 334-line sheet (import at :12), mounted by
+    // kds/KdsScreen.tsx:29 and rendered at :586. This is the entry that was blocked
+    // all evening by two names: kds-enrollment-station-input-wrap, which a rules lane
+    // wrote, and kds-enrollment-success-icon, deleted by 6c33ae7c24. Its variant
+    // classes are complete quoted strings inside the className template, which
+    // extractUsedClassNames sees, so NO prefix was needed.
+    name: 'KdsEnrollmentModal',
+    tsx: 'kds/components/KdsEnrollmentModal.tsx',
+    css: ['kds/components/KdsEnrollmentModal.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1286,7 +1297,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 34 entries is a named path, not a prefix, not a
+// every one of its 33 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1299,7 +1310,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 34 since, one line per sheet a landed entry cited, and
+// it has shrunk to 33 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1315,7 +1326,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
   'kds/components/KdsDeviceStatusIndicator.css',
-  'kds/components/KdsEnrollmentModal.css',
   'locations/NodeTopologyEditor.css',
   'locations/TopologyApplyConfirm.css',
   'locations/TopologyRevisionBrowser.css',
