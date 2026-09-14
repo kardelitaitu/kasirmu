@@ -20,12 +20,22 @@ entries as dedicated operational/admin pages.
 > alone. The remedy applied here is dated verification lines and honest ticks,
 > NOT a restyle into an `agents-N` plan — this file's value is the audit above it.
 >
-> **RETIRED 2026-09-14 — renamed `done-todo-tools.md` and archived under `.agents/archived/`.**
+> **CLOSED 2026-09-14, BUT NOT RENAMEABLE — this file stays `todo-tools.md` at the repo root.**
+> A 14-09-26 attempt renamed it `done-` and moved it into `.agents/archived/` (commit `4b2e99e72`);
+> it was reverted. `AGENTS.md` §4 earns the `done-` prefix only when the file's own acceptance command
+> has been **run and passed**, and §4's own words place this file in the category that belongs in a
+> **dated header line, never in the filename**: an *audit whose verdicts keep items open*. It does keep
+> one open — see below — and its sibling `todo-tools-agents-3.md` additionally failed `check:all`, so
+> neither name was earned. §4 `:255` also fixes the location: renames happen **in place at the root**,
+> not in `.agents/archived/`, which that paragraph records as "measured, not approved" and which also
+> removes the file from the root glob a triage pass reads. This blockquote is the dated header line §4
+> asks for.
+>
 > Exactly **one** box leaves this file OPEN and is deliberately not closed here: the
 > organisation- and terminal-scope authorization axes (see §"Add SaaS authorization scope"). It stays
 > unticked so triage still finds it — this file's own rule, applied to itself. Everything else is
-> either done, ruled, or declined, each with a dated disposition. Read the retirement stamp at the
-> foot before re-opening anything.
+> either done, ruled, or declined, each with a dated disposition. Read the status stamp at the foot
+> before re-opening anything.
 
 ## Current implementation inventory (before redesign)
 
@@ -492,7 +502,7 @@ triage does not re-derive them a fourth time. The first is load-bearing.
 > "stop asking a role name for a rank, gate on the permission vocabulary"; the two optional ones are
 > declined as unfunded. Each box carries its own dated disposition. **The rulings are decisions, not
 > implementations** — the custom-role ruling requires code that no order yet covers, and it leaves
-> with the scope box below (see the retirement stamp).
+> with the scope box below (see the status stamp).
 
 - [x] **Decide how custom roles map to the hierarchy.** Unknown role names
       currently resolve to level 0 and see no Tools section.
@@ -528,7 +538,7 @@ triage does not re-derive them a fourth time. The first is load-bearing.
          presets) instead of on `ROLE_HIERARCHY`. Then a custom role holding the key sees the section
          — consistent with ADR #47 A2 — and no rank map is invented. Owner keeps its `&["*"]` wildcard.
       **The implementation is NOT done and does not belong to this file.** It is carried forward with the
-      scope box below (see the retirement stamp) because it is the same class of work: a real code change
+      scope box below (see the status stamp) because it is the same class of work: a real code change
       with a ruling attached and no order yet. Recorded, not implemented.
 - [x] **Optional: keyboard shortcuts for tools.** Workspace cards have "Press 1–9"
       hints; tool cards don't. Asymmetry only — low priority.
@@ -741,7 +751,17 @@ stream's authoring UI may still be pending at their next read.
 
 ---
 
-## 🏁 Retirement stamp — 2026-09-14 · reviewing pass · status: RETIRED (renamed `done-`, moved to `.agents/archived/`)
+## 🏁 Status stamp — 2026-09-14 · reviewing pass · status: CLOSED, NOT RENAMEABLE — stays `todo-` at the root
+
+**Naming, stated here so it is not re-litigated.** This file was briefly renamed `done-` and archived
+(`4b2e99e72`, 14-09-26) and then restored. Two rules in `AGENTS.md` §4 govern it, and both were
+violated by that attempt: the `done-` prefix is earned only when the file's own acceptance command has
+been **run and passed** (`:253`), and renames happen **in place at the repo root**, never into
+`.agents/archived/` (`:255`). §4 `:253` also names this file's category explicitly — an *audit whose
+verdicts keep items open* belongs in a dated header line, never in the filename — and this audit does
+keep one item open. The sibling `todo-tools-agents-3.md` is the case §4 names by name, and its
+`check:all` came back red, so its name is unearned too. The dated header line §4 asks for is the
+blockquote at the top of this file.
 
 **What this stamp is.** The last pass over this audit record before it leaves the open list. Every
 claim was measured against the tree at HEAD `30d6e035f` (branch `main`), with the reproducing command

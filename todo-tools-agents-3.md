@@ -1,6 +1,19 @@
-# Orchestrator Agent 3: Route Guards, Locked Badges & Upgrade Modals — **RETIRED 2026-09-14** (renamed `done-`, archived; read the retirement stamp at the foot of this file before re-opening anything)
+# Orchestrator Agent 3: Route Guards, Locked Badges & Upgrade Modals — **CLOSED AS A PLAN, NOT RENAMEABLE** (stays `todo-`; read the status stamp at the foot of this file before re-opening anything)
 
-**Document:** `done-todo-tools-agents-3.md` (was `todo-tools-agents-3.md` until the 14-09-26 retirement)  
+> **Why the name did not change, 2026-09-14.** This file was renamed to `done-` and moved into
+> `.agents/archived/` on 14-09-26 by commit `4b2e99e72`, and **both halves of that were wrong**. It
+> was restored to `todo-tools-agents-3.md` at the repo root by the commit that follows. The rule is
+> `AGENTS.md` §4 (`:253`), which names this file as its live example: `done-todo-*` is earned ONLY
+> when the file's own acceptance command was **RUN and PASSED**. `npm run check:all` is this file's
+> acceptance command; it was run on 14-09-26 for the first time and it **FAILED** (5 pass / 1 skip /
+> 2 fail — causes external to this order, detailed at the box), so the prefix is not earned and the
+> reason simply changed from "unrun" to "run and red". `AGENTS.md:255` is the second half: renames
+> happen **in place at the repo root** — do not move plans into `.agents/archived/`, which that
+> paragraph records as "measured, not approved", and which also takes the file out of the root glob
+> triage reads. The state of a closed-but-unaccepted plan belongs in a **dated header line**, never
+> in the filename — which is what this blockquote is.
+
+**Document:** `todo-tools-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Access Boundary & Upgrade UX Architect)  
 **Goal:** Implement route-level access protection, render lock/upgrade badges on plan-restricted tools, and display the contextual upgrade modal when an expired or non-entitled tool is clicked.
 
@@ -41,7 +54,7 @@
   3. **For half the locked cases it would contradict a stated contract.** `AdminLockedFeature.tsx:12-15` documents that it is "Deliberately NOT an upgrade prompt: the tier is not the problem, the subscription state is". A tile dialog fired on an expired subscription would tell the user to upgrade when the correct action is to renew or verify.
   4. **Cost of the alternative was priced and rejected:** it would overrule 14 shipped screens (22 JSX sites) to add a redundant surface.
   — **Recorded against this ruling, so a future reader can re-open it on evidence rather than taste:** it was never user-tested. The claim "the in-screen CTA is the right place" is an argument from design consistency, not a measurement. If a tile-level prompt is ever wanted, the cheap form is `openUpgradePricing(locale, tool.minimumTier)` from the locked card — the pattern the 9 live invocation sites already use. **This is the one box in this file whose closure is a judgement, not a fact; the other four are measurements.**
-  - **A gating UI already exists, so nobody must conclude otherwise from :37 being parked:** 14 production screens render `TierLockedFeature` / `AdminLockedFeature` today (22 JSX sites — `grep -rn '<TierLockedFeature\|<AdminLockedFeature' ui/src --include=*.tsx | wc -l`; the drafted "~26" did not reproduce, and this file's own 13-09 stamp said 10 sites, so both older numbers are superseded by the command), and `useAdminGate` fails closed — `ui/src/contexts/SubscriptionContext.tsx:100-104`, `locked: resolved !== 'active'` with absent state resolving to `unavailable`, in 14 production files (`grep -rln useAdminGate ui/src --include=*.tsx | grep -v __tests__ | wc -l` = 14; the drafted 15 counted nothing else, re-derive before quoting). What :37 lacks is a *tile-triggered* dialog, not gating.
+  - **A gating UI already exists, so nobody must conclude otherwise from :50 being parked:** 14 production screens render `TierLockedFeature` / `AdminLockedFeature` today (22 JSX sites — `grep -rn '<TierLockedFeature\|<AdminLockedFeature' ui/src --include=*.tsx | wc -l`; the drafted "~26" did not reproduce, and this file's own 13-09 stamp said 10 sites, so both older numbers are superseded by the command), and `useAdminGate` fails closed — `ui/src/contexts/SubscriptionContext.tsx:100-104`, `locked: resolved !== 'active'` with absent state resolving to `unavailable`, in 14 production files (`grep -rln useAdminGate ui/src --include=*.tsx | grep -v __tests__ | wc -l` = 14; the drafted 15 counted nothing else, re-derive before quoting). What :50 lacks is a *tile-triggered* dialog, not gating.
   - **Nuance added 14-09-26, so the two "14"s are not read as one list:** both counts reproduce exactly (`grep -rln '<TierLockedFeature\|<AdminLockedFeature' ui/src --include=*.tsx | grep -v __tests__ | wc -l` = 14 and `grep -rln useAdminGate ui/src --include=*.tsx | grep -v __tests__ | wc -l` = 14) but they are **different sets** — they overlap on 11 files and differ by three on each side. Rendering a lock screen but *not* calling `useAdminGate`: `AnalyticsScreen.tsx`, `LoyaltyManagementScreen.tsx`, `sales/widgets/DailyTotalWidget.tsx` — all three gate through `useSubscription()` state instead, which is a legitimate alternative and **not** a defect (checked 14-09-26 rather than assumed from the set difference). Calling `useAdminGate` but not rendering a lock screen: `AdminLockedFeature.tsx` (it *is* the lock screen), `contexts/SubscriptionContext.tsx` (it defines the hook), `workspaces/WorkspaceHome.tsx` (the tile gate). The identical numbers are a coincidence; quoting either without its command invites the other to be read as the same fact.
 - [x] Wrap target administrative routes in `<RouteGuard />` to prevent bypassing via direct URL hash entry (`#/<route>`).
   <!-- TICKED WITHOUT THE PROPOSED FILE 14-09-26: no RouteGuard.tsx was built and none should be. The guard is the
@@ -52,7 +65,7 @@
        16/16) — this docs pass counted cases, it did not run vitest — including describe('hash-route entry is access-gated') at :904, which drives a hashchange WHILE MOUNTED: the path no test in the tree covered before (the 13-09 parity test pinned the matrix, not the bypass). What a RouteGuard would NOT fix, and why it is not the gap: the four hardcoded fullscreen branches that return
        before pageDenied is consulted — AppShell.tsx:443 kdsKiosk, :477 restaurant-pos, :519 store-pos, :560 kds — and that
        isPageAccessible (ui/src/platform/ui/page-registry/index.ts:92-104) ignores registration.feature entirely, so a DISABLED feature's page still renders on direct hash entry across all 12 feature-gated register.tsx files. Extracting ~6 lines into a component would leave both gaps exactly where they are. -->
-- [ ] Run pre-commit checks: `npm run check:all`. — **left unticked 14-09-26 on purpose:** `check:all` chains lint → typecheck → test → i18n → E2E (Docker-gated) and was NOT run; only the two AppShell suites behind :44 were. Nothing in this file may read as a full-suite green.
+- [ ] Run pre-commit checks: `npm run check:all`. — **left unticked 14-09-26 on purpose:** `check:all` chains lint → typecheck → test → i18n → E2E (Docker-gated) and was NOT run; only the two AppShell suites behind :57 were. Nothing in this file may read as a full-suite green.
   — **RUN 14-09-26, FIRST TIME, AND IT IS RED — so this box STAYS UNTICKED, for the same reason it was unticked before.** A tick here would read as "checks passed"; they did not. The corrected chain, read from `scripts/check-ui.mjs:124-157` rather than quoted from the sentence above, is **eight gates plus a manifest-drift check**: ESLint · TypeScript · Unit tests · i18n lint · **FTL dedupe** · **Bundle budget** · E2E (Docker-gated) · **Perf smoke**. The earlier sentence named four of them and omitted the three in bold. Result at HEAD `30d6e035f`, 351.3s:
   ```
   ✔ ESLint (45.7s)              ✔ FTL dedupe (1.2s)
@@ -65,7 +78,7 @@
   1. **Unit tests** — 1 suite of **573** failed, and it failed to *transform*, not to assert: `src/__tests__/AppShellFeatureGateRoute.test.tsx:433` → `Expected ")" but found end of file` (esbuild). That file is **untracked and mid-write by another session** (`git status` = `??`, 447 lines and growing between the run and this note) — the repo's documented multi-agent hazard, live. Everything else in the suite is green: **9731 passed, 25 skipped**. This order touched no `.ts`/`.tsx` file.
   2. **Perf smoke** — environmental, not a defect: the sandbox's delete shim refused Playwright's cleanup of `ui/test-results` (`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":589,"threshold":50}`). It would not reproduce outside this sandbox.
   **What this run therefore does and does not establish.** It establishes that the four suites this order actually leans on are green (re-run separately: 33/33, 16/16, 48/48, 39/39) and that the UI suite has no failing *assertion* anywhere in 573 files. It does **not** establish a green chain, and this file must not be read as claiming one — which is exactly why the box stays empty.
-- [x] **Commit Milestone:** — **CLOSED 14-09-26 as N/A, on the same reasoning that left it unticked:** there is no production change to commit for the box above — the proof was a test, and the two real gaps named there are still open. The order closes with exactly one commit, the documentation one that renames this file and its parent to `done-`; the milestone command below was never run and should not be, because running it would file a test-only change under a subject claiming a feature implementation.
+- [x] **Commit Milestone:** — **CLOSED 14-09-26 as N/A, on the same reasoning that left it unticked:** there is no production change to commit for the box above — the proof was a test, and the two real gaps named there are still open. The order closes with documentation commits only — the 14-09 pass over this file and its parent, and the correction that restored both names; the milestone command below was never run and should not be, because running it would file a test-only change under a subject claiming a feature implementation.
   ```bash
   git commit -m "feat(tools-guard): implement route guards, locked badges, and contextual upgrade modal"
   ```
@@ -92,21 +105,37 @@ Verified against the tree (09:4x, HEAD near `ad76c16c2`), not against any subjec
        nine — it is 9 today and the tree has moved since (`30d6e035f`), so both readings are plausible and neither
        is worth reconstructing. Re-derive rather than quote. -->
 
-**NOT shipped — deliberately left unticked:** *(SUPERSEDED 14-09-26: the header was true when written — both bullets below were unticked — but neither is unticked now. The first is RULED (declined by design) and the second is CLOSED (the bypass measured shut with no new code). They are kept verbatim because they are the 13-09 finding; the dispositions live at the boxes and in the retirement stamp. Note that the first bullet's instruction "Reconcile with product intent before building the dialog" was followed literally: it was reconciled, and the answer was no.)*
+**NOT shipped — deliberately left unticked:** *(SUPERSEDED 14-09-26: the header was true when written — both bullets below were unticked — but neither is unticked now. The first is RULED (declined by design) and the second is CLOSED (the bypass measured shut with no new code). They are kept verbatim because they are the 13-09 finding; the dispositions live at the boxes and in the status stamp. Note that the first bullet's instruction "Reconcile with product intent before building the dialog" was followed literally: it was reconciled, and the answer was no.)*
 - *"intercept the navigation and prompt the contextual upgrade dialog"* — navigation is intercepted (card renders locked/disabled), but clicking a locked tile does not open an upgrade dialog; `openUpgradePricing` has **zero** call sites in `features/workspaces/**`. The absorbed design answers upgrade intent *inside* the gated feature, not on the tile. Reconcile with product intent before building the dialog.
-- *"Wrap target administrative routes in `<RouteGuard />`"* — no `RouteGuard.tsx` exists and this session could not locate a route-level role/tier enforcement site by grep (`requiredRole` appears only in `PermissionDenied.tsx` props). Page registration carries role metadata consumed somewhere in the lazy router, but "direct `#<route>` hash entry is blocked" is **unverified** — the parity test pins the matrix, not the bypass behavior. This is the real residual: a hash-bypass test + guard wiring, in the tools session's fence. **SUPERSEDED at its second half 14-09-26: the bypass is now measured CLOSED with zero new code — see :44 for the guard, the two shell line numbers and the 33/33 + 16/16 suites. The bullet's conclusion still stands: do NOT build `RouteGuard.tsx`.**
+- *"Wrap target administrative routes in `<RouteGuard />`"* — no `RouteGuard.tsx` exists and this session could not locate a route-level role/tier enforcement site by grep (`requiredRole` appears only in `PermissionDenied.tsx` props). Page registration carries role metadata consumed somewhere in the lazy router, but "direct `#<route>` hash entry is blocked" is **unverified** — the parity test pins the matrix, not the bypass behavior. This is the real residual: a hash-bypass test + guard wiring, in the tools session's fence. **SUPERSEDED at its second half 14-09-26: the bypass is now measured CLOSED with zero new code — see :57 for the guard, the two shell line numbers and the 33/33 + 16/16 suites. The bullet's conclusion still stands: do NOT build `RouteGuard.tsx`.**
 
-Prefix kept as `todo-` because unlike today's four renamed orders, verifiable open items remain. The remaining work sits in the tools campaign's hot zone (owning sessions committed `09:16`/`09:40`) — not executed here by fence law. **SUPERSEDED 14-09-26: the prefix has been changed to `done-` and the file archived; the sentence above is kept because it records why the file was *not* retired on the 13th. See the retirement stamp below.**
+Prefix kept as `todo-` because unlike today's four renamed orders, verifiable open items remain. The remaining work sits in the tools campaign's hot zone (owning sessions committed `09:16`/`09:40`) — not executed here by fence law. **CONFIRMED 14-09-26, and it turned out to be the right call for a second reason the 13-09 session could not have known:** the prefix is *still* `todo-`. A 14-09-26 attempt renamed this file to `done-` and moved it to `.agents/archived/` (commit `4b2e99e72`); it was reverted, because `AGENTS.md` §4 requires the file's own acceptance command to run **and pass** and `check:all` came back red. See the status stamp below and the header note at the top.
 
 ---
 
-## 🏁 Retirement stamp — 2026-09-14 · reviewing pass · status: RETIRED (renamed `done-`, moved to `.agents/archived/`)
+## 🏁 Status stamp — 2026-09-14 · reviewing pass · status: CLOSED AS A PLAN, NOT ACCEPTED — file stays `todo-`
 
-**What this stamp is.** The last pass over this order before it leaves the open list. Every claim it
-makes was measured against the tree at HEAD `30d6e035f` (branch `main`), with the reproducing command
-inline; nothing here is carried over from another document. It does **not** re-litigate the 13-09
-verdict (that the access-protection goal largely shipped under other names) — that verdict was
+**What this stamp is.** The last pass over this order before it leaves the *working* list. Every claim
+it makes was measured against the tree at HEAD `30d6e035f` (branch `main`), with the reproducing
+command inline; nothing here is carried over from another document. It does **not** re-litigate the
+13-09 verdict (that the access-protection goal largely shipped under other names) — that verdict was
 re-checked and holds. It records what changed, what was ruled, and what leaves with the file.
+
+**Naming, and why it is not `done-`.** This file was briefly renamed `done-` and archived
+(`4b2e99e72`, 14-09-26) and then restored to `todo-` at the root. `AGENTS.md` §4 is the authority:
+the prefix is earned only when the file's own acceptance command has been **run and passed**. That
+command is `npm run check:all`; it was run for the first time in this pass and it failed. The failure
+causes are external to this order, but the rule does not have an "external" clause, and inventing one
+would be exactly the kind of false claim this campaign exists to remove. `AGENTS.md:255` also places
+renames in place at the root, not in `.agents/archived/`.
+
+**Anchor discipline, recorded because this file got it wrong twice in one day.** This file refers to
+its own boxes by line number (`:50` is the tile-click box, `:57` the gating-UI bullet). Every edit
+above the boxes moves those numbers, and the 14-09 pass moved them twice — once by adding the ruling
+text, once by adding the header blockquote at the top. Both times they were re-derived by grep after
+the last edit rather than assumed, and both times the earlier number was left visible in the prose so
+the drift is auditable. If you edit this file, re-run
+`grep -n '^- \[x\]\|^- \[ \]' todo-tools-agents-3.md` and re-check every `:NN` before committing.
 
 **Disposition of every box** (six, not five — the 14-09 pass originally wrote "all five" and the
 baseline-audit box below was the one it had overlooked; corrected on re-read rather than left as a
