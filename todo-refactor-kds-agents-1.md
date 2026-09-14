@@ -78,7 +78,7 @@
   > Subject adjusted to drop the invented "bump bar" noun; the prefix is unchanged.
 
 ### Phase 1.2: Extract KDS Ticket Lifecycle State Machine
-- [ ] Extract ticket fetching, the `kds:orders-changed` listener and status updates into `hooks/useKdsTickets.ts`.
+- [x] Extract ticket fetching, the `kds:orders-changed` listener and status updates into `hooks/useKdsTickets.ts`. <!-- TICKED 2026-09-15 at 32886394e: landed under another name - the named target hooks/useKdsTickets.ts does not exist (ls returns 0) and the work is ui/src/features/kds/useKdsRealtime.ts, in the flat kds/ directory rather than hooks/ -->
   > **Corrected API names — the old `bumpOrder` / `recallOrder` / `holdTicket` trio does not exist**
   > (0 hits across `ui/src`). The real wrappers, in `ui/src/api/kds.ts`:
   > `listKdsOrders:59` · `listKdsOrdersScoped:63` · `getKdsQueueScoped:71` ·
@@ -90,7 +90,7 @@
   > Sibling behaviour already extracted and reusable: `hooks/useKdsPreferences.ts` (212 ln),
   > `hooks/useActionCooldown.ts` (64 ln), `kdsAutoAccept.ts` (`isAutoAckEligible`), and the
   > `sameOrders` diff helper exported at `KdsScreen.tsx:42`.
-- [ ] Wire hook into `KdsScreen.tsx`.
+- [x] Wire hook into `KdsScreen.tsx`. <!-- TICKED 2026-09-15 at 32886394e: proved by grep -c addEventListener ui/src/features/kds/KdsScreen.tsx printing 0 - the screen no longer subscribes -->
 - [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: the same single `npm run typecheck` run at bd1a8a4e32 -> exit code 0, no diagnostics; one run, three identically-worded boxes (this one, agents-1:73, agents-2:93) per the lane owner's ruling. The box's own text names only that command and asks for nothing further. -->
 - [ ] **Commit Milestone:**
   ```bash

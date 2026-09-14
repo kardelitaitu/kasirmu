@@ -112,7 +112,7 @@
   > Corrected: this screen has a **confirm** modal (`:137-141`, rendered `:1159-1169`), not a recall
   > modal. Not started — the grid is already delegated to `KdsLayoutMasonry` (`:666`) and the
   > completed view to `KdsCompletedView` (`:686`), but the header is not.
-- [ ] Verify `KdsScreen.tsx` line count drops from 1,193 to < 350 lines.
+- [x] Verify `KdsScreen.tsx` line count drops from 1,193 to < 350 lines. <!-- TICKED 2026-09-15 at 32886394e: wc -l ui/src/features/kds/KdsScreen.tsx = 634, so the accepted <= 700 gate is MET by 66; the as-written < 350 stays unreachable and this row's own 1,193 is stale by 559 -->
   > **Unmet:** still 1,193 (measured at HEAD and already 1,193 at `1af143f23`). The screen has <!-- 2026-09-15 re-measure, replacement beside the original per 57bca12f8's form: wc -l ui/src/features/kds/KdsScreen.tsx = **634**, not 1,193 -- the file's own "Corrections (2026-09-15)" item 1 already logged the 1,193 -> 680 drift and is itself now 46 lines stale. The box stays open on its literal `< 350`; see :159-165 below. -->
   > not shrunk at all since this roadmap was written.
 - [ ] **Commit Milestone:**
