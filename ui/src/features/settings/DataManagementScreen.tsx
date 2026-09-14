@@ -355,7 +355,8 @@ function DataManagementScreenContent() {
           onStartExport={startExport}
           onConfirmExport={confirmExport}
           onResetExport={resetExport}
-          onFieldChange={(patch) => setExportState((prev) => ({ ...prev, ...patch }))}
+          onFieldChange={(key, value) => setExportState((prev) => ({ ...prev, [key]: value }))}
+          onBack={() => setExportState((prev) => ({ ...prev, step: 'select' }))}
           onTogglePassword={() => setShowExportPw((p) => !p)}
         />
       )}

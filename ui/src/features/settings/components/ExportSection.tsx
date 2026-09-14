@@ -20,8 +20,8 @@
  * in the screen. The four-step machine (exportState.step: select -> encrypt -> exporting
  * -> done) is still advanced by the screen, not here - startExport, confirmExport and
  * resetExport are the screen's, and so are exportingRef, the toasts and triggerFlash
- * ("export-done"); the only step value this file can still name is the Back control's
- * 'select' reset, and ExportPatch enumerates it. No useState, no
+ * ("export-done"); this file names NO step value at all — the Back control calls
+ * onBack and the screen performs that 'select' write. No useState, no
  * useEffect, no invoke() and no "@/api" import lives in this file.
  *
  * Registered in screenExtraction.test.ts (additionalTsx) because the data-mgmt-* classes
@@ -29,6 +29,11 @@
  * date-range, form, password-wrapper, password-toggle, input, input--no-toggle, progress,
  * progress-done, done-text, error, actions, section, section-title, tabpanel, label -
  * are styled by DataManagementScreen.css.
+ *
+ * LATER CHANGE, not covered by the eleven-attribute count above: the single narrow patch
+ * prop became key-based dispatch — onFieldChange(key, value) plus a separate onBack for
+ * the Back reset — because a patch object was type-narrow but not type-sealed. See the
+ * ExportFieldKey comment for the escape that made that necessary.
  */
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
@@ -39,29 +44,27 @@ import { DATA_TYPES, type DataType, type ExportState } from '../dataManagementMo
 import { checkIcon, eyeIcon, eyeOffIcon } from '../dataManagementIcons';
 
 /**
- * What this panel may write: the four fields it renders an input for. The previous
- * `Partial<ExportState>` also accepted step, error, selectedTypes, progress and
- * outputFile, so the header's "advanced by the screen, not here" claim held by
- * convention only; as this union it holds by the compiler.
+ * What this panel may write: the four fields it renders an input for, dispatched by
+ * KEY rather than by object. A patch object could not be locked down — `ExportState`
+ * is structurally assignable to `Partial<Pick<ExportState, ...>>`, and a spread or any
+ * other non-fresh value skips excess-property checking entirely, so
+ * `onFieldChange({ ...exportState })` type-checked and wrote step/error/selectedTypes/
+ * progress/outputFile at runtime. Two scalar parameters cannot smuggle a key: the only
+ * names accepted are the four below, and `step` is not among them. The Back reset
+ * therefore moved out of this signature onto `onBack` (the screen owns the step write);
+ * `error`, `selectedTypes`, `progress` and `outputFile` are unreachable from here, and
+ * so is every step value — this file names none any more.
  */
-type ExportFieldPatch = Partial<Pick<ExportState, 'dateFrom' | 'dateTo' | 'password' | 'passwordConfirm'>>;
-
-/**
- * The one step write that lives here, and the only step value this file can name:
- * the Back control's reset. 'encrypt' / 'exporting' / 'done' are not assignable to
- * this member, so the machine still cannot be advanced from the child.
- */
-type ExportResetToSelect = { step: 'select' };
-
-/** A dispatch patch: one of the four fields, or the Back reset. Nothing else type-checks. */
-type ExportPatch = ExportFieldPatch | ExportResetToSelect;
+type ExportFieldKey = 'dateFrom' | 'dateTo' | 'password' | 'passwordConfirm';
 
 interface ExportSectionProps {
   /** The screen's export wizard state; read-only here. */
   exportState: ExportState;
   showExportPw: boolean;
-  /** Narrow dispatch: the screen merges the patch into exportState. */
-  onFieldChange: (patch: ExportPatch) => void;
+  /** Key-based dispatch: the screen writes exactly this one string field. */
+  onFieldChange: (key: ExportFieldKey, value: string) => void;
+  /** The Back control's step reset — a step write, so it is the screen's, not ours. */
+  onBack: () => void;
   onToggleAll: () => void;
   onToggleType: (type: DataType) => void;
   onTogglePassword: () => void;
@@ -71,7 +74,7 @@ interface ExportSectionProps {
 }
 
 /** Renders the four export-wizard steps. Owns no state. */
-export function ExportSection({ exportState, showExportPw, onFieldChange, onToggleAll, onToggleType, onTogglePassword, onStartExport, onConfirmExport, onResetExport }: ExportSectionProps) {
+export function ExportSection({ exportState, showExportPw, onFieldChange, onBack, onToggleAll, onToggleType, onTogglePassword, onStartExport, onConfirmExport, onResetExport }: ExportSectionProps) {
   const { l10n } = useLocalization();
 
   return (
@@ -135,7 +138,7 @@ export function ExportSection({ exportState, showExportPw, onFieldChange, onTogg
                       className="data-mgmt-input"
                       type="date"
                       value={exportState.dateFrom}
-                      onChange={(e) => onFieldChange({ dateFrom: e.target.value })}
+                      onChange={(e) => onFieldChange('dateFrom', e.target.value)}
                     />
                   </div>
                   <div className="data-mgmt-field">
@@ -147,7 +150,7 @@ export function ExportSection({ exportState, showExportPw, onFieldChange, onTogg
                       className="data-mgmt-input"
                       type="date"
                       value={exportState.dateTo}
-                      onChange={(e) => onFieldChange({ dateTo: e.target.value })}
+                      onChange={(e) => onFieldChange('dateTo', e.target.value)}
                     />
                   </div>
                 </div>
@@ -187,7 +190,7 @@ export function ExportSection({ exportState, showExportPw, onFieldChange, onTogg
                         autoComplete="off"
                         placeholder={l10n.getString('data-mgmt-encrypt-password-placeholder')}
                         value={exportState.password}
-                        onChange={(e) => onFieldChange({ password: e.target.value })}
+                        onChange={(e) => onFieldChange('password', e.target.value)}
                       />
                       <button
                         type="button"
@@ -211,14 +214,14 @@ export function ExportSection({ exportState, showExportPw, onFieldChange, onTogg
                         autoComplete="off"
                         placeholder={l10n.getString('data-mgmt-encrypt-confirm-placeholder')}
                         value={exportState.passwordConfirm}
-                        onChange={(e) => onFieldChange({ passwordConfirm: e.target.value })}
+                        onChange={(e) => onFieldChange('passwordConfirm', e.target.value)}
                       />
                     </div>
                   </div>
                 </div>
 
                 <div className="data-mgmt-actions">
-                  <Button variant="ghost" onClick={() => onFieldChange({ step: 'select' })}>
+                  <Button variant="ghost" onClick={onBack}>
                     <Localized id="data-mgmt-encrypt-back">Back</Localized>
                   </Button>
                   <Button variant="primary" onClick={onConfirmExport}>

@@ -41,7 +41,7 @@ export function BackupSection({ flashRows, backup, onBackup }: BackupSectionProp
 // sat in an expression container; here it would be the first token of a parenthesised
 // expression, which is not valid TypeScript (TS1005). The markup below is untouched.
   return (
-        <div key="backup" className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-backup-status-aria')}>
+        <div className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-backup-status-aria')}>
           <Card shadow="sm">
             <div className="data-mgmt-section">
               <Localized id="data-mgmt-backup-title">
