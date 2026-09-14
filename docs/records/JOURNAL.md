@@ -10853,3 +10853,96 @@ both profiles (`audit_tests.rs:248-252`) — a type-and-lock-order argument, sou
 only made observational by mutating the gate and watching the release arm go red. Everything else came from a command run
 this pass against the tree: `wc -l`, `grep -c`, `git show --numstat`, `git diff -w --numstat`. Docs-only; no code, test,
 build or gate was run, and nothing was pushed — standing rule.
+
+## 2026-09-15 — Contrast: the gate that said 69/69 never opened a feature sheet (ui/theming)
+
+**Context:**
+Three shipped rules painted text in the SAME hex as its own background — ratio 1.00:1, literally invisible — and
+`ui/src/__tests__/colorContrastCompliance.test.ts` reported 69/69 immediately before and immediately after that
+defect was fixed. The finding is about the GATE, and no plan file owns gates: the gate plans live in `todo-*.md`,
+none of them covers contrast, so this goes into the live region of the journal. The repair and its follow-up landed the
+same night — `268af4a6e` (CSS) and `34085577d` (a new guard); this entry authors no code.
+
+**Fact 1 — what the gate reads, and why its green is structure and not measurement.**
+1. It opens exactly ONE path: `../frontend/themes/tokens.css`, resolved at `:353` and read at `:367`.
+   Across its 398 lines (`wc -l`) the string `features/` appears ZERO times. No feature stylesheet is in
+   its universe at all.
+2. `buildPairs()` hands back 22 hardcoded rows — `return [` at `:210`, `];` at `:309` — and
+   the runner is 3 themes (`THEMES` at `:360-364`) × (22 pairs + 1 smoke case at `:374`) = 69. The 69 is
+   arithmetic over a literal, so "69 passed" reports the SHAPE OF THE FILE, never the health of a stylesheet. Which is
+   exactly why it read 69/69 on both sides of a real defect.
+3. Three rules sat outside it, each resolving text and background to one hex:
+   `.void-orders-action-btn--void:hover` at `ui/src/features/sales/VoidOrdersScreen.css:238` — its
+   `color: var(--color-danger)` comes from the base rule at `:234` while the hover supplies
+   `--color-danger-dim`: #FF6B68 at `ui/src/frontend/themes/tokens.css:129` and `:133`, #FC3D39 at
+   `:438` and `:442`. Then `.offline-queue-plan-badge--pro` at
+   `ui/src/features/offline/OfflineQueueScreen.css:121`, and its copy-paste twin
+   `.settings-sync-plan-badge--pro` at `ui/src/features/settings/SettingsPage.css:929` — both
+   `--color-success` on `--color-success-dim`: #6FE884 at `tokens.css:113` and `:115`,
+   #2E9E3E at `:422` and `:424`.
+4. ONE OF THE THREE IS A HOVER ON THE CONTROL THAT VOIDS A SALE. The two badges read as empty pills; that one
+   disappears only when a cashier reaches for it.
+5. Repaired at `268af4a6e` (+17/−3 across the three sheets; no token added, no selector renamed) with tokens
+   that ALREADY EXISTED — `--color-success-fg` (`tokens.css:116` dark / `:425` light) and
+   `--color-danger-fg` (`:134` / `:443`) — following the precedent the lane found at
+   `ui/src/features/tables/TableManagementScreen.css:229` and `:248`, both annotated
+   `TBL-11: dedicated status foreground pair`.
+
+**Fact 2 — the population, which is why this belongs in a journal and not only in a commit note.**
+A census parsed every same-block color+background pair in `ui/src/features/**/*.css`: **766 composed pairs across
+105 sheets**; **362** of them resolve to an opaque hex in all three themes and are therefore computable WITHOUT a
+browser; **125** of those sit below WCAG AA-normal 4.5:1 in at least one theme; **three** were at 1.00:1 — the three in
+Fact 1. This is one file's exception, not a repo convention: `focusVisibleCompliance.test.ts`,
+`touchTargetSizing.test.tsx` and `forcedColorsCompliance.test.ts` all DO name feature sheets (58, 57
+and 5 `features/` references respectively), and the shape of a fix is precedented by TBL-11 above.
+NOT statically checkable, from the same census: the **404** pairs whose text or fill is an `rgba()`, a gradient,
+`currentColor` or an ancestor-dependent background; and the ONE-SIDED rules — **784** blocks set only a background,
+**1,316** set only a color. That asymmetry is precisely how the QRIS hover composed its defect across two rules instead
+of one (`.payment-qris-btn:hover:not(:disabled)` at `ui/src/features/sales/PaymentModal.css:663`
+supplies a background and no colour). jsdom computes NO used value for a `var()`-driven background, so that half
+needs a real browser — and Docker's daemon was unreachable on this machine tonight, so it did not run, and nothing here
+claims that it did.
+
+**Fact 3 — the residual. OPEN DECISION, no answer proposed and none invented.**
+After the repair the LIGHT theme sits at **3.46:1** (`--color-success-fg` #ffffff on #2E9E3E) and **3.96:1**
+(`--color-danger-fg` #1C2B45 on #FC3D39) — both under AA-normal 4.5:1, both far better than the 1.00:1 they
+replaced, and neither of them compliant. The same arithmetic on the dark/:root theme passes: 11.88:1 and 5.10:1. Every
+existing alternative was computed first and none closes it: `--color-accent-fg` on the same success fill is
+3.46 — the SAME number, not a better one, because light `--color-accent-fg` (`tokens.css:408`) is
+also #ffffff, so it is not a candidate either; saturated text on `--color-danger-subtle` /
+`--color-success-subtle` composited over a white card gives 3.21 and 3.16; `--color-danger-700`
+(#b91c1c) in dark is 2.84 against the theme background. So closing the light-theme residual is a `tokens.css`
+decision — a new light-theme pair, not a selector edit — and no lane may quietly pick one. **Left OPEN.** The work that
+owns it is the dossier measuring whether the TBL-11 dedicated-status-foreground decision can be ROLLED OUT instead of
+re-decided; whichever way that lands, these two numbers move with it.
+
+**What it means — the tone this entry exists to set.**
+The 69-green was a TRUE report about a narrow question: "are these 22 token pairings, in these 3 theme blocks, above
+their stated threshold?" It asked that, and it answered it correctly, before and after. **The gate is not broken — it is
+narrow.** In six months a reader will otherwise find an invisible-text defect that Vitest did not catch and conclude
+`colorContrastCompliance.test.ts` is faulty, then "repair" something that works exactly as designed. It was never
+faulty, and widening it is not the fix either. The escalation that is right is the one already in flight: a SECOND file
+that reads the sheets, `ui/src/__tests__/composedRuleIdenticalPair.test.ts` (`34085577d`, +312/−0),
+whose third case puts its own denominator in its own name — today `395 pairs graded of 951 composed across 0
+violation`. A gate that reports the population it graded is the lesson here; a broader threshold on the old file is
+not.
+
+**Verification:**
+- `npx vitest run src/__tests__/colorContrastCompliance.test.ts` → 69 passed, re-run this pass on the repaired tree.
+- `npx vitest run src/__tests__/composedRuleIdenticalPair.test.ts --reporter=verbose` → 3 passed, the third named
+  "395 pairs graded of 951 composed across 0 violation".
+- `git show --stat 268af4a6e` → 3 files, +17/−3. `git show --stat 34085577d` → 1 file, +312/−0.
+- The ratios are this entry's own arithmetic — WCAG relative luminance over the hexes in `tokens.css` — not a
+  browser measurement: 3.46, 3.96, 11.88, 5.10, 3.21, 3.16, 2.84. The two alpha cases are composited over #ffffff.
+- The census totals (766 / 362 / 125 / 404 / 784 / 1,316 across 105 sheets) are the lane's parse, restated. A second
+  parse written during this pass over the same 105 sheets reads 957 composed / 358 opaque-in-all-three / 126 below
+  4.5:1 / 810 background-only / 1,125 color-only, and finds 0 identical pairs. The gap is block-splitting rule and the
+  fallback-idiom double count that the new guard warns about in its own comment at
+  `composedRuleIdenticalPair.test.ts:116-124` — two parsers over one tree, neither correcting the other. The
+  1.00:1 count is the one figure that moved for a real reason: it is empty post-repair.
+- `wc -l ui/src/__tests__/colorContrastCompliance.test.ts` → 398, against a briefing that said 399. Recorded as
+  found, and the gap is a method difference, not a moved file: the file ends in a newline, so splitting on `\n` yields
+  399 elements for 398 newline-terminated lines. Nothing in this entry depends on which of the two is quoted.
+- `python3 scripts/verify-agents-mirrors.py` → exit 0 before and after this append. Docs-only; nothing pushed.
+
+**Commit:** single pathspec commit `docs(records): the contrast gate grades token pairs and never reads the rules that compose them`.
