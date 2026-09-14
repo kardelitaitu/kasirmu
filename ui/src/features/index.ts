@@ -29,9 +29,15 @@ import { registerMemoFeature } from './memo/register';
 /**
  * Register all UI features, pages, navigation items, and widgets.
  *
- * Five feature directories intentionally have NO register.ts/tsx because
- * they are NOT navigable pages — they are rendered directly by AppShell
- * as gate screens, workspace-specific layouts, or pre-condition flows:
+ * Eight feature directories have NO register.ts/tsx. That is not one reason
+ * but four, and the difference matters to anyone deciding whether a directory
+ * is dead. Reproduce the set before trusting this sentence:
+ *   for d in src/features/*; do [ -d "$d" ] || continue; [ -f "$d/register.tsx" ] || [ -f "$d/register.ts" ] || echo "$d"; done
+ *   (the -d guard is load-bearing: without it src/features/index.ts itself
+ *   matches and the list reads nine)
+ *
+ * (1) Five are NOT navigable pages — AppShell renders them directly, as gate
+ *     screens, workspace-specific layouts, or pre-condition flows:
  *
  *   auth/       — StaffLoginScreen, SessionLockScreen, LicenseActivationScreen,
  *                 CreatePinScreen: gate screens rendered before page routing.
@@ -43,6 +49,29 @@ import { registerMemoFeature } from './memo/register';
  *                 completed, never a navigable route.
  *   workspaces/ — WorkspaceHome: rendered by AppShell when no workspace
  *                 is selected; it is the workspace picker, not a page.
+ *
+ * (2) pos/ holds NO screen, so it can never gain a register.tsx — there is no
+ *     route, nav item, or page to register. It is the shared-primitive home
+ *     for the two POS stacks, consumed by features/sales/PosScreen.tsx and
+ *     features/retail/RetailPosScreen.tsx. Today it holds exactly one file,
+ *     components/CartTaxWatcher.tsx (keyed cart-tax watcher: four props,
+ *     renders null). Rule for anything under pos/: consumer-only, shared by
+ *     both stacks, so a change to a pos/ file is its OWN commit by one named
+ *     owner and is never bundled with a sales or retail edit.
+ *
+ * (3) sync/ is a live screen reached the lazy way: SettingsPage.tsx:51
+ *     lazy(() => import('../sync/SyncConflictReviewScreen')) and renders it at
+ *     :667 as a settings section. It has no register because it is not a
+ *     top-level page. This is the case a bare "no register" reading gets
+ *     backwards — see AGENTS.md, "Is this screen dead code? needs three greps".
+ *
+ * (4) marketplace/ is the one entry this file cannot close: AddonsMarketplace.tsx
+ *     has no register.tsx and, on the three greps above (component name,
+ *     route: '<x>', lazy import path), no importer outside its own file and its
+ *     tests. Recorded as UNRESOLVED, not as dead code — that distinction is the
+ *     whole point of item (3), and a false "not routed, delete it" reading has
+ *     already cost this repo a review pass. Whoever owns it should either
+ *     register it or say so here.
  */
 export function registerAllFeatures() {
   registerSalesFeature();
