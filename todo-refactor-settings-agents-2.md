@@ -226,4 +226,117 @@ only `BusinessDefaultsScreen.tsx` (35 lines) mounts real cards. The content to m
 `sections/` set — deleting those files before they are moved into `screens/` would drop the last copy of
 that UI, since the only importers today are tests.
 
+---
+
+## 🚫 Two hazards this plan's own migration walks into (2026-09-14 · notes added, NO box ticked or unticked)
+
+> Both were measured against HEAD `8f2a15d19` / `575dcaeae` and re-derived mid-write, when `6843bde02`
+> ("extract the topbar and save bar into SettingsTopbar, taking the page to 539 lines") landed from another
+> lane. So each anchor is given TWICE — as measured, and as it reads on the current tree. Cite these by NAME.
+> Path caution, because this file cannot police itself: `check-dead-refs.py` exempts any plan whose name
+> contains `todo-` (`is_historical_doc`, `.agents/skills/docs-auditor/scripts/check-dead-refs.py:193-213`), so a
+> dead path written below still reads clean. Every path here was re-opened with `sed -n` instead of trusting it,
+> and one did move: the topbar and save bar now live at `ui/src/features/settings/components/SettingsTopbar.tsx`,
+> and `AppShell` is at `ui/src/frontend/shell/AppShell.tsx` (not `ui/src/frontend/AppShell.tsx`).
+
+### N-1 — the save fan-out re-stamps WHOLE DTOs from a one-shot hydrate
+
+`hooks/useSettingsSave.ts:146-174` (identical on both readings) builds **7** named tasks. Two of them address a
+whole DTO: `crates/oz-bridge/src/settings.rs:997-1007` — ten `Settings::set_receipt_*` calls plus
+`set_tax_rounding_mode_str`, every one unconditional — and `:1021-1026`, all six store setters. Each runs in ONE
+`unchecked_transaction()`. Nothing is compared, so an untouched field is still rewritten.
+
+The values come from a hydrate that runs once by construction: `SettingsPage.tsx:250-262` as measured, now
+`:229-241`, gated `!settingsCtx.loading && !initialized`. The comment above it (measured `:247-249`, now
+`:226-228`) says later refetches must NOT overwrite user edits. There is **no ETag, no diff, no
+read-before-write** anywhere in the path.
+
+Server semantics are NOT uniform, and that is what turns a re-stamp into data loss — measured in
+`crates/oz-bridge/src/sync.rs:64-82`: `api_key` is `if let Some(ref key)`, so **ABSENT PRESERVES**; `server_url`
+is `.unwrap_or("")` and then written unconditionally, so **NULL/ABSENT CLEARS**. The clear branch is pinned by
+`sync_tests.rs:69 update_sync_settings_data_clear_url_writes_empty_row`; the preserve branch I could pin only as
+deserialization (`sync_tests.rs:51-64`) plus the PG password twin (`:345`) — no DB-level test asserts that an
+ABSENT `api_key` preserves the stored one, so "both branches already have Rust tests" is HALF true as far as this
+pass could measure. The rest of this note stands either way.
+
+**The hazard, quoted:** a partial load (`hasPartialError`) leaves `syncServerUrl === ''`, the fan-out sends
+`serverUrl: null`, and Save clears a configured sync URL. The degraded-load path is the reachable trigger.
+Today's blast radius is zero because there is nothing to dirty: the page renders **0** editable fields
+(`grep -c '<input' ui/src/features/settings/SettingsPage.tsx` = 0; the one `<input>` is the topbar search box),
+so under a correct diff today's Save is always a no-op — which is exactly why the fix is a diff and not a
+warning. A warning would nag on a page that cannot become dirty; the diff is what makes the hazard
+unconstructible.
+
+### N-2 — the dirty-flag machinery is vestigial: its editors were UNMOUNTED, not unwired
+
+Four `sections/*` files still declare `markDirty: () => void` — `AppearanceSection.tsx:19`,
+`GeneralSection.tsx:16`, `ReceiptSection.tsx:12`, `SyncSection.tsx:106` — and call it at **26** sites
+(`grep -rno 'markDirty()' ui/src/features/settings/sections/*.tsx | wc -l` = 26: Appearance 7, General 5,
+Receipt 10, Sync 4). None of the four is mounted: `renderSection` (measured `SettingsPage.tsx:461-489`, now
+`:440-473`, **14** case arms) instantiates only `screens/*`. The sections are imported by `__tests__` and by two
+guard lists — `ui/src/__tests__/screenExtraction.test.ts:315-319` and
+`ui/src/__tests__/nativeTooltipCompliance.test.ts:190` — and by **nothing** under `features/`. Both guard
+registrations are load-bearing: unlist a section there and the CSS-reachability guard reports its classes dead,
+which is the KDS lesson this file already records for slice 3.
+
+Consequences, all measured:
+- `isDirty` has no `true` writer in production: `git grep -n setIsDirty -- ui/src` returns `SettingsPage.tsx`
+  `:173`/`:210`/`:317` and `useSettingsSave.ts:75`/`:114`/`:184` plus test files, and **every non-test call
+  passes `false`**.
+- The dirty dot and Revert are permanently hidden (measured `SettingsPage.tsx:586`/`:592`, now
+  `SettingsTopbar.tsx:187`/`:193`), and Revert is permanently `tabIndex -1` (measured `:595`, now
+  `SettingsTopbar.tsx:196`) while still in the DOM with a live `onClick`.
+- The close guard can never prompt: `useUnsavedChangesGuard(isDirty)` with `isDirty` pinned false.
+- The suite already admits it: `ui/src/__tests__/SettingsPage.test.tsx:12-13` — "nothing on the page can become
+  dirty" — and `:570` pins that as expected ("does not block window close while nothing is dirty").
+- `syncApiKey` has only test writers, so it stays `''`; and `SettingsPage.tsx:144` (now `:137`) is
+  `const [, setSyncApiKeyVisible] = useState(false)` — a **DISCARDED** setter. The key UI was removed on
+  purpose, so this is not wiring to re-attach.
+
+### The sequencing ruling — applies to BOTH notes
+
+**No `sections/` file may be migrated into `screens/` until the fan-out is differential.** The migration named
+in this plan (`## 📌 What actually landed`: "the content to move is the orphaned `sections/` set") is precisely
+what RE-ARMS N-1: a migrated editor is both the first real `markDirty` writer and a writer of the same rows the
+page re-stamps. Until then N-1 is latent, not absent — the page is safe only because it is empty.
+
+Rejected alternatives, with their reasons, so nobody re-drafts them:
+- **Delete the page's Save button.** Rejected: it removes the affordance `AGENTS.md` uses to IDENTIFY the page
+  ("the master–detail UI (route `settings`) with the top-right Save button"), and it forecloses the migration the
+  rest of this doc is about.
+- **Rehydrate on `markSettingsUpdated`.** Rejected: it contradicts the `:247-249` comment directly (later
+  refetches must not overwrite edits) and it eats in-flight edits.
+- **The interim the researcher recommends — read-back-before-compose — is NOT a fix.** Re-read the DTOs before
+  building the fan-out so the values stamped are the server's rather than a one-shot hydrate's. It is the most
+  that can be done on the current IPC surface, because the whole-DTO endpoints physically cannot express a
+  per-key write: a durable fix needs a **NEW partial-write command**, which is behind this file's fence (Agent 1
+  owns the Rust side).
+
+### One open item CLOSED, one still OPEN
+
+- **(a) CLOSED 2026-09-14, and it closed opposite to the guess.** The question was whether the cross-store case
+  is reachable at all. **Store switch: NOT REACHABLE.** `switchStore`
+  (`ui/src/contexts/WorkspaceContext.tsx:269-282`) calls `setSessionToken(null)` at `:274` BEFORE minting a
+  replacement, and `ui/src/frontend/shell/AppShell.tsx:410-431` returns `<StaffLoginScreen/>` whenever there is
+  no session — so React commits a render where the routed page is not in the tree, `SettingsPage` unmounts,
+  `initialized` dies with it, and the remount hydrates fresh. There is **no `key={sessionToken}` anywhere**; the
+  protection is the login gate, not a key. Say it plainly: the store-switch path is safe BY ACCIDENT of the
+  login gate — nobody wrote a guard for it, so a future change that stops nulling the token would silently
+  re-arm it. That is why it is recorded. **What IS reachable is cross-ORG, and it is bigger.**
+  `switchOrganization` (`WorkspaceContext.tsx:353-364`) sets a NEW token in place at `:363` with no `null` in
+  between — a full PIN re-auth, but NO login screen and NO unmount. `SettingsContext` refetches on
+  `[sessionToken, loadAll]` (`ui/src/contexts/SettingsContext.tsx:432`) and republishes `store`/currency, while
+  the page's draft keeps the PREVIOUS ORG's `name`/`address`/`taxId`/`branch`/`logo` (the `:247-249` comment
+  makes that intentional) and `defaultCurrency` has already followed the new tenant via `:125`. One click on Save
+  fuses them and `run_set_store_settings` (`settings.rs:1021-1026`) stamps all six **ACROSS THE TENANT LINE**.
+  `FastPINOverlay` (`:333`) is the same no-unmount mechanism within one store, so it is only stale against
+  concurrent writers. **Consequence for ordering: the first D0 test must pin ORG-switch-then-Save, not
+  store-switch-then-Save.**
+- **(b) STILL OPEN — the `store.currency` / `defaultCurrency` fusion.** `useSettingsSave.ts:133` is
+  `const syncedStore = { ...store, currency: defaultCurrency }`, and the `store` task and the `currency` task
+  write the SAME column (`settings.rs:1024` versus `setCtxCurrency`). A per-DTO diff must therefore be computed
+  on the **fused** payload, not on `store` — diffing `store` alone reads a currency change as "no diff" and drops
+  it. Unresolved, and deliberately not resolved here: which of the two is authoritative when they disagree at
+  save time.
+
 > last audited 2026-09-14 by DSH (docs subagent); counts re-measured with read/grep against C:/dev/ozpos
