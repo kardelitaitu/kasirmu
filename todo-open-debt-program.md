@@ -317,3 +317,21 @@ Recorded because each one is still live in some document a worker might read, an
 - **The parked arm** (`license.rs:670-683`) needs an owner ruling. Named as a task, not decided.
 - **The organisation scope axis** needs a design doc before a migration. Named as a task, not decided.
 - **Whether this file should be split** into `todo-open-debt-agents-N.md`. Owner's call; the fences already support it.
+
+---
+
+## Box-count reconciliation (2026-09-15, docs audit, HEAD 9ab4e58da) — no historical number above is rewritten
+
+Two places in this file state a box total beside a command that no longer produces it. The commands as written are correct in form; the numbers are stale. Re-measured with this file's own `:59` any-depth pattern, brackets backslash-escaped:
+
+- `:227` states **36 any-depth open / 11 done** for `todo-payment.md`. Today: `grep -cE '^[[:space:]]*[-*][[:space:]]+\[ \]' todo-payment.md` -> **30**, and the same pattern with `\[[xX]\]` -> **20**. Six boxes were ticked after that line was written, which is the line's own success, and the `11 done` figure cannot be reproduced by any form now on the tree.
+- `:307` states `todo-refactor-kds-agents-merged.md` **18 open**, `todo-refactor-pos-screen-agents-3.md` **21 open**, `todo-refactor-settings-agents-3.md` **11 open**, `todo-font-system.md` **5 open**. The canonical command returns **7**, **11**, **2** and **5** respectively. One of four reproduced; three did not, and the direction is not uniform — two overstate and one understates — so this is not one stale snapshot but a census nobody re-ran. The `5 open` for `todo-font-system.md` is the only one of the four that a reader may still trust, and only until the next tick.
+
+Canonical pair, marker- and indent- and bracket-spacing-tolerant, for use in any brief or clause in this tree:
+
+```bash
+grep -cE '^[[:space:]]*[-*][[:space:]]+\[[[:space:]]\]' file.md   # OPEN boxes
+grep -cE '^[[:space:]]*[-*][[:space:]]+\[[xX]\]'        file.md   # TICKED boxes (accepts [X])
+```
+
+Two traps these lines exist to close, both measured the same day: (1) **unescaped brackets are not literals in ERE** — `grep -cE '^- [ ] '` returns **0** on `todo-font-system.md`, which holds **5** open boxes, because `[ ]` is a bracket expression matching one space, so the pattern silently asks for hyphen-plus-three-spaces. A zero from that form is a regex artifact, never a harvest. (2) **anchoring the marker to column zero under-counts TICKED and only ticked** — `todo-refactor-oz-pos-app-agents-3.md` reads **22** with `^- \[[xX]\]` and **43** with the canonical line, because 21 of its boxes are indented sub-rows, while its open count is 4 either way (no indented or `*`-marker open box exists anywhere in the 19 root plans, so open counts are form-insensitive today and that is luck, not a property). A completion ratio computed from anchored numerators and any-depth denominators is wrong in both directions at once.
