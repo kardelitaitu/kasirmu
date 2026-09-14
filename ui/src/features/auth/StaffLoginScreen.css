@@ -455,9 +455,15 @@
   border-color: var(--color-accent);
 }
 
+/* No focus ring on the keypad keys. The PIN pad is ring-free by decision on
+   both PIN screens (this rule plus .staff-login-pin-wrap:focus-visible above,
+   mirrored in SessionLockScreen.css): typed digits already read in the PIN
+   dots, and each key has its own :active press state. Scoped to
+   :focus-visible, not set on the base rule, so it outranks reset.css's bare
+   `:focus-visible` (0,1,0) on specificity instead of on sheet order.
+   This is keypad-only: the username text field below KEEPS its ring. */
 .staff-login-pad-key:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .staff-login-pad-key:disabled {

@@ -38,11 +38,11 @@
   padding: var(--space-1_5) var(--space-2_5);
   background: var(--color-accent-subtle, rgba(16, 82, 188, 0.18));
   border-bottom: 1px solid var(--color-border, rgba(90, 159, 212, 0.12));
-  font-size: var(--text-2xs, 0.5625rem);
-  font-weight: var(--font-weight-semibold, 600);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-accent-fg);
   text-transform: uppercase;
-  letter-spacing: var(--tracking-wide, 0.02em);
+  letter-spacing: var(--tracking-wide);
   cursor: grab;
 }
 
@@ -76,7 +76,7 @@
   background: transparent;
   color: var(--color-fg-secondary);
   cursor: pointer;
-  font-size: var(--text-2xs, 0.5625rem);
+  font-size: var(--text-2xs);
   white-space: nowrap;
   transition:
     background var(--duration-150) var(--ease-out),
@@ -116,12 +116,12 @@
 
 .dev-toolbar-badge {
   padding: var(--space-0_5) var(--space-1_5);
-  border-radius: var(--radius-full, 9999px);
+  border-radius: var(--radius-full);
   background: var(--color-accent-subtle, rgba(16, 82, 188, 0.18));
   color: var(--color-accent);
-  font-size: var(--text-2xs, 0.5625rem);
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: var(--tracking-tight, -0.01em);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-tight);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -134,7 +134,7 @@
 .dev-toolbar-swatch {
   width: 12px;
   height: 12px;
-  border-radius: var(--radius-full, 9999px);
+  border-radius: var(--radius-full);
   border: 1px solid var(--color-border, rgba(90, 159, 212, 0.12));
   flex-shrink: 0;
 }
@@ -154,9 +154,9 @@
   background: transparent;
   color: var(--color-fg-secondary);
   cursor: pointer;
-  font-size: var(--text-2xs, 0.5625rem);
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: var(--tracking-wide, 0.02em);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   transition:
     background var(--duration-150) var(--ease-out),

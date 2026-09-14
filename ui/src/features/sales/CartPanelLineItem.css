@@ -39,7 +39,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .pos-cart-line-wrap--exiting {
-    animation: pos-cart-line-out var(--duration-200, 200ms) var(--ease-in) forwards;
+    animation: pos-cart-line-out var(--duration-200) var(--ease-in) forwards;
   }
 
   .pos-cart-line-wrap--qty-flash {

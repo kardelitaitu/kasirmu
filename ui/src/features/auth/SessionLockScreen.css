@@ -323,8 +323,10 @@
 /* No focus ring on the pad CONTAINER. It is focused programmatically on
    mount (`pinWrapRef.current?.focus()`), and Chromium does match
    :focus-visible for that focus — measured in a real Chromium, not inferred.
-   The operator's position cue is each key's own :focus-visible outline
-   below; what has been typed is already shown by the filled PIN dots.
+   The keypad paints no ring anywhere on this screen: what the operator has
+   typed shows in the filled PIN dots, and each key has its own :active press
+   state. Kept in sync with `.staff-login-pad-key:focus-visible`
+   (StaffLoginScreen.css) -- both PIN screens, text fields excluded.
    Scoped to :focus-visible rather than sitting in the base rule on purpose:
    reset.css's bare `:focus-visible` has specificity (0,1,0) — the same as
    `.session-lock-pad` — so an unscoped `outline: none` won only by being

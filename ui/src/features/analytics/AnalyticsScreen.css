@@ -388,7 +388,7 @@
   border: 1px solid var(--analytics-border);
   border-radius: 5px;
   background: var(--analytics-bg-surface);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--analytics-fg-muted);
 }
@@ -1667,7 +1667,7 @@
   border: 1px solid var(--analytics-border);
   border-radius: 5px;
   background: var(--analytics-bg-surface);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--analytics-fg-secondary);
 }

@@ -22,11 +22,11 @@
   padding: var(--space-1) var(--space-3);
   font-family: var(--font-sans);
   font-size: var(--text-xs);
-  font-weight: var(--font-weight-semibold, 600);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-full, 9999px);
+  border-radius: var(--radius-full);
   cursor: pointer;
   transition: background-color var(--duration-150) var(--ease-out),
     border-color var(--duration-150) var(--ease-out),
@@ -61,15 +61,15 @@
   height: 1.125rem;
   padding: 0 var(--space-1_5);
   font-size: var(--text-xs);
-  font-weight: var(--font-weight-bold, 700);
+  font-weight: var(--font-weight-bold);
   color: var(--color-accent-fg);
   background: var(--color-accent, #2563eb);
-  border-radius: var(--radius-full, 9999px);
+  border-radius: var(--radius-full);
 }
 
 .pos-cart-course-btn--all {
   color: var(--color-accent, #2563eb);
-  font-weight: var(--font-weight-bold, 700);
+  font-weight: var(--font-weight-bold);
   margin-left: auto;
 }
 

@@ -1531,7 +1531,11 @@ describe("literal tail vs block relation", () => {
     expect(TOKEN_BLOCKS.root.size, "tokens.css :root parsed empty -- the block reader is broken").toBeGreaterThanOrEqual(200);
     expect(TOKEN_BLOCKS.light.size).toBeGreaterThanOrEqual(100);
     expect(TOKEN_BLOCKS.dark.size).toBeGreaterThanOrEqual(40);
-    expect(TAILED_TOKEN_REFS.length, "no tailed reference to a tokens.css name parsed").toBeGreaterThanOrEqual(300);
+    // Calibrated at 334 tailed references; this tree cleared 93 :root-only ones in
+    // refactor(css): clear the :root-only fallback tails that no theme can reach, so the
+    // population the floor guards is now 241. The floor is calibration, not law: it exists
+    // to prove this case has input, and it moves down as the debt is paid, never up.
+    expect(TAILED_TOKEN_REFS.length, "no tailed reference to a tokens.css name parsed").toBeGreaterThanOrEqual(200);
     // The classifier must be capable of the red it reports green for today.
     const live = TAILED_TOKEN_REFS.filter((r) => tailRelation(r.token).liveTail);
     const disagreeing = new Set(TAILED_TOKEN_REFS.filter((r) => !tailRelation(r.token).agrees).map((r) => r.token));

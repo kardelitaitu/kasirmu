@@ -143,7 +143,7 @@
 .custom-report-col-key {
   font-size: var(--text-xs);
   color: var(--color-fg-tertiary);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   background: var(--color-bg);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
