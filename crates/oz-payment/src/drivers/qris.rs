@@ -6,6 +6,7 @@ next: fix amount parsing (PAY-1), honor idempotency (PAY-2), partial refund (PAY
 fixed 2026-07-25 (glm-5.3 review P1 pass): PAY-1 parse_amount now returns Result — decimal "14500.00" forms parse 1:1 into exp-0 IDR minor units (inverse of to_amount_string), non-zero fractions and malformed input are InvalidResponse instead of silent zeros (refund refund_amount included); PAY-2 order_id_for() reuses PaymentRequest.idempotency_key (charset-filtered, Midtrans 50-char cap) with fresh fallback when absent
 fixed 2026-07-25 (glm-5.3 review P2 pass): PAY-3 refund now honors Some(amount) — partial refunds submit the amount in whole IDR minor units, non-IDR rejected pre-flight, None keeps full-refund null; PAY-6 sale/capture docs now state the honest two-phase contract (success = QR issued; capture polls ~60s per call vs 300s QR validity, re-enter on Timeout); PAY-7 Default (empty-key processor) removed — construct via new/from_env/sandbox_from_env; PAY-8 expire maps to the new PaymentError::Expired instead of InvalidCard
 fixed 2026-09-09 (agent-2-cargo): PAY-2 refund now accepts a caller-supplied idempotency_key (honoured when present; transaction-prefixed fresh key fallback when absent); COR-31 HTTP client bounded (10s connect / 30s total) — safe because charges honour the caller key and refunds accept a caller-supplied key; the poll loop's own 60s budget sits above the per-request cap, so a stalled status call now fails fast.
+fixed 2026-09-14: QRIS acquirer hardcode removed from charge_qris() — the driver no longer sends the legacy "airpay shopee" (ShopeePay-only) alias for every merchant. `qris.acquirer` is now omitted entirely by default (generic QRIS, any wallet), and is sent verbatim only when a processor is built with with_acquirer(); per-merchant/per-terminal default + cashier override remain the cloud-server's job (todo-payment.md Phase 3).
 */
 //! QRIS payment processor — implements [`PaymentProcessor`] using the
 //! Midtrans REST API for Indonesian QRIS (Quick Response Code Indonesian
@@ -34,6 +35,12 @@ fixed 2026-09-09 (agent-2-cargo): PAY-2 refund now accepts a caller-supplied ide
 //! The processor reads `MIDTRANS_SERVER_KEY` from the environment at
 //! construction. The server key is found in the Midtrans dashboard
 //! under Settings → Access Keys.
+//!
+//! The QRIS acquirer is **not** configured here and is **not** sent at all by
+//! default: a charge omits `qris.acquirer`, so Midtrans issues a generic QRIS
+//! code any wallet can scan. Call [`QrisPaymentProcessor::with_acquirer`] to
+//! pin a charge to one acquirer for a merchant holding that co-branded
+//! activation.
 //!
 //! # Testing
 //!
@@ -88,6 +95,13 @@ pub struct QrisPaymentProcessor {
     sandbox: bool,
     /// Base URL for the Midtrans API (configurable for testing).
     api_base: String,
+    /// Optional QRIS acquirer override sent as `qris.acquirer` on charge.
+    ///
+    /// `None` — the default — omits the field entirely so Midtrans issues a
+    /// **generic** QRIS code any QRIS-compliant wallet can scan. Set it via
+    /// [`QrisPaymentProcessor::with_acquirer`] only for a merchant that holds
+    /// that acquirer's co-branded activation.
+    acquirer: Option<String>,
 }
 
 impl fmt::Debug for QrisPaymentProcessor {
@@ -97,6 +111,7 @@ impl fmt::Debug for QrisPaymentProcessor {
             .field("server_key", &"***")
             .field("sandbox", &self.sandbox)
             .field("api_base", &self.api_base)
+            .field("acquirer", &self.acquirer)
             .finish()
     }
 }
@@ -107,6 +122,7 @@ impl Clone for QrisPaymentProcessor {
             client: Arc::clone(&self.client),
             sandbox: self.sandbox,
             api_base: self.api_base.clone(),
+            acquirer: self.acquirer.clone(),
         }
     }
 }
@@ -237,7 +253,40 @@ impl QrisPaymentProcessor {
             client: Arc::new(client),
             sandbox,
             api_base: api_base.to_owned(),
+            // No acquirer by default: the charge omits `qris.acquirer` so the
+            // QR Midtrans returns is generic (see `with_acquirer`).
+            acquirer: None,
         }
+    }
+
+    /// Pin the charge to a specific QRIS acquirer (e.g. `"gopay"`,
+    /// `"shopeepay"`, `"dana"`, `"linkaja"`).
+    ///
+    /// Builder-style; the value is forwarded to Midtrans verbatim as
+    /// `qris.acquirer` in the `POST /charge` body — the driver does not
+    /// validate or rewrite it, because which acquirer a merchant may name is
+    /// governed by that merchant's Midtrans activation, not by this client.
+    /// A blank value is treated as unset, restoring the generic default.
+    ///
+    /// Leaving this unset (the default for every constructor) omits the
+    /// `qris` object entirely, which is what makes the issued QR scanable by
+    /// any QRIS-compliant wallet instead of one branded e-wallet.
+    #[must_use]
+    pub fn with_acquirer(mut self, acquirer: impl Into<String>) -> Self {
+        let value = acquirer.into();
+        self.acquirer = if value.trim().is_empty() {
+            None
+        } else {
+            Some(value)
+        };
+        self
+    }
+
+    /// The configured QRIS acquirer, or `None` when the driver sends a
+    /// generic (no-acquirer) charge.
+    #[must_use]
+    pub fn acquirer(&self) -> Option<&str> {
+        self.acquirer.as_deref()
     }
 
     /// Create a new QRIS processor from the `MIDTRANS_SERVER_KEY`
@@ -417,20 +466,29 @@ impl QrisPaymentProcessor {
         order_id: &str,
     ) -> Result<QrisChargeResponse, PaymentError> {
         let amount_str = Self::to_amount_string(&request.amount);
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "payment_type": "qris",
             "transaction_details": {
                 "order_id": order_id,
                 "gross_amount": amount_str
-            },
-            "qris": {
-                "acquirer": "airpay shopee"
             },
             "custom_expiry": {
                 "expiry_duration": QRIS_EXPIRY_SECS,
                 "unit": "second"
             }
         });
+
+        // `qris.acquirer` is a wire field that locks the issued QR to one
+        // branded e-wallet, and a merchant may only name an acquirer Midtrans
+        // has activated for that account. This driver used to hardcode the
+        // legacy `"airpay shopee"` alias here, which pinned EVERY merchant's
+        // QRIS code to ShopeePay. The field is now sent only when explicitly
+        // configured via [`Self::with_acquirer`]; otherwise the whole `qris`
+        // object is omitted and Midtrans returns a generic QRIS code that any
+        // QRIS-compliant wallet can scan.
+        if let Some(acquirer) = self.acquirer.as_deref() {
+            body["qris"] = serde_json::json!({ "acquirer": acquirer });
+        }
 
         let (status, text) = self.post_json("/charge", body).await?;
         if !(200..300).contains(&status) {

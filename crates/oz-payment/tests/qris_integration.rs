@@ -516,7 +516,18 @@ async fn authorize_sends_correct_json_body() {
         body["transaction_details"]["gross_amount"], "15000",
         "body: {body}"
     );
-    assert_eq!(body["qris"]["acquirer"], "airpay shopee", "body: {body}");
+    // No acquirer is configured on this processor, so the charge must carry
+    // NO `qris` object at all. The previous behaviour — a hardcoded
+    // `"airpay shopee"` (the legacy ShopeePay alias) — locked every merchant's
+    // QR to one wallet; a generic QRIS code is what any wallet can scan.
+    assert!(
+        body.get("qris").is_none(),
+        "generic charge must omit `qris` entirely, body: {body}"
+    );
+    assert!(
+        !body.to_string().contains("airpay") && !body.to_string().contains("shopee"),
+        "no vendor acquirer may be hardcoded into the charge, body: {body}"
+    );
     assert_eq!(
         body["custom_expiry"]["expiry_duration"], 300,
         "body: {body}"
@@ -549,6 +560,87 @@ async fn authorize_sends_correct_json_body() {
     assert!(
         content_type.contains("application/json"),
         "expected JSON content type, got: {content_type:?}"
+    );
+}
+
+/// The other half of the acquirer contract: omitting it is the default, but an
+/// explicitly configured acquirer must still reach the wire unchanged.
+#[tokio::test]
+async fn authorize_sends_configured_acquirer_verbatim() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/charge"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "status_code": "201",
+            "status_message": "OK",
+            "transaction_id": "txn_acq_001",
+            "order_id": "QRIS-acq-001",
+            "gross_amount": "15000",
+            "transaction_status": "pending",
+            "qr_code_url": "https://example.com/qr/acq-test"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let proc = QrisPaymentProcessor::new_with_endpoint(MOCK_SERVER_KEY, &mock_server.uri(), false)
+        .with_acquirer("gopay");
+    assert_eq!(proc.acquirer(), Some("gopay"));
+
+    let _ = proc.authorize(&request(15000)).await.unwrap();
+
+    let received = mock_server.received_requests().await.unwrap_or_default();
+    assert_eq!(received.len(), 1, "expected 1 request");
+    let body: serde_json::Value =
+        serde_json::from_slice(&received[0].body).expect("request should be valid JSON");
+
+    // The configured acquirer is forwarded verbatim...
+    assert_eq!(body["qris"]["acquirer"], "gopay", "body: {body}");
+    // ...and nothing else about the charge changes.
+    assert_eq!(body["payment_type"], "qris", "body: {body}");
+    assert_eq!(
+        body["transaction_details"]["gross_amount"], "15000",
+        "body: {body}"
+    );
+    assert_eq!(
+        body["custom_expiry"]["expiry_duration"], 300,
+        "body: {body}"
+    );
+    assert_eq!(body["custom_expiry"]["unit"], "second", "body: {body}");
+}
+
+/// A blank acquirer is treated as unset, so a misconfigured terminal falls back
+/// to a generic QRIS charge rather than sending `"acquirer": ""`.
+#[tokio::test]
+async fn authorize_blank_acquirer_falls_back_to_generic() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/charge"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "status_code": "201",
+            "status_message": "OK",
+            "transaction_id": "txn_acq_002",
+            "order_id": "QRIS-acq-002",
+            "gross_amount": "15000",
+            "transaction_status": "pending"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let proc = QrisPaymentProcessor::new_with_endpoint(MOCK_SERVER_KEY, &mock_server.uri(), false)
+        .with_acquirer("   ");
+    assert_eq!(proc.acquirer(), None);
+
+    let _ = proc.authorize(&request(15000)).await.unwrap();
+
+    let received = mock_server.received_requests().await.unwrap_or_default();
+    assert_eq!(received.len(), 1, "expected 1 request");
+    let body: serde_json::Value =
+        serde_json::from_slice(&received[0].body).expect("request should be valid JSON");
+    assert!(
+        body.get("qris").is_none(),
+        "blank acquirer must omit `qris`, body: {body}"
     );
 }
 
