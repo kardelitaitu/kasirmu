@@ -190,6 +190,12 @@ pub fn resolve_sync_probe_url(
         return Some(url);
     }
 
+    // Every caller still passes this flag in every profile; only the debug arm below
+    // reads it, because production must not probe an unexpected URL. Name the unused
+    // arm rather than renaming the parameter or deleting the caller's intent.
+    #[cfg(not(debug_assertions))]
+    let _ = allow_local_fallback;
+
     // The health indicator must be able to probe the cloud server before
     // the asynchronous bootstrap has persisted URL/key settings. Keep this
     // fallback debug-only so production never probes an unexpected URL.

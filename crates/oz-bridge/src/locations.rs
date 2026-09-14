@@ -31,7 +31,12 @@ use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
 use oz_core::entitlements::Entitlements;
 use oz_core::permissions;
-use oz_core::subscription::{SubscriptionTier, TenantSubscription};
+use oz_core::subscription::TenantSubscription;
+// The debug-only Free->Premium shim below (`#[cfg(debug_assertions)]`) is the only
+// consumer of `SubscriptionTier` in this file, so the name is imported only where
+// it is used; release would otherwise see an unused import under `-D warnings`.
+#[cfg(debug_assertions)]
+use oz_core::subscription::SubscriptionTier;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
