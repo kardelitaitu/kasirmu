@@ -856,6 +856,32 @@ describe('KdsScreen', () => {
     });
   });
 
+  // Kill-proof for components/KdsHeaderTabs.tsx: the indicator pill and the
+  // count span were the only two nodes in the moved region that NO existing
+  // case read (the tab bar case stops at .kds-tabs / .kds-tab, the click cases
+  // at data-testid). Without this, deleting the pill from the extracted file
+  // left all 952 KDS cases green — the moved component would have landed blind.
+  it('binds the indicator pill and count into the extracted tab track', async () => {
+    mockGetKdsQueue.mockResolvedValue([makeOrder()]);
+    renderScreen();
+    await waitFor(() => {
+      expect(document.querySelector('.kds-tabs')).not.toBeNull();
+    });
+    const tabs = document.querySelector('.kds-tabs') as HTMLElement;
+    const pill = tabs.querySelector('.kds-tab-indicator');
+    expect(pill).not.toBeNull();
+    // Same ordering as before the move: the pill is the track's first child,
+    // and its inline geometry still comes from useKdsTabIndicator.
+    expect(tabs.firstElementChild).toBe(pill);
+    expect(pill!.getAttribute('style')).toContain('width');
+    // role + localized name survive the move out of the screen.
+    expect(tabs.getAttribute('role')).toBe('tablist');
+    expect(tabs.getAttribute('aria-label')).toBeTruthy();
+    // The count span still lives inside the Open tab button.
+    expect(screen.getByTestId('kds-tab-open').querySelector('.kds-tab-count')).not.toBeNull();
+    expect(screen.getByTestId('kds-tab-open').textContent).toMatch(/1/);
+  });
+
   it('shows completed view when the Completed tab is clicked', async () => {
     mockGetKdsQueue.mockResolvedValue([]);
     renderScreen();

@@ -262,6 +262,7 @@ const SCREENS: ScreenEntry[] = [
       // three as dead CSS while every other suite stays green.
       'kds/components/KdsZoneChips.tsx',
       'kds/components/KdsHeaderRight.tsx',
+      'kds/components/KdsHeaderTabs.tsx',
     ],
   },
   {

@@ -22,6 +22,7 @@ import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { KdsHeaderLeft } from '@/features/kds/components/KdsHeaderLeft';
 import { KdsHeaderRight } from '@/features/kds/components/KdsHeaderRight';
+import { KdsHeaderTabs } from '@/features/kds/components/KdsHeaderTabs';
 import { KdsNoticeBanners } from '@/features/kds/components/KdsNoticeBanners';
 import { KdsZoneChips } from '@/features/kds/components/KdsZoneChips';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
@@ -359,7 +360,10 @@ export default function KdsScreen() {
   } = useKdsFilterNav({ zones, setKdsZone, showFilter, setShowFilter });
 
   // TAB-01 (extracted): the pill's measure + animate pair and its resize re-measure.
-  // The four refs come back OUT because the tab markup below binds them.
+  // The four refs come back OUT because the tab markup binds them -- it now lives in
+  // components/KdsHeaderTabs.tsx, which receives them as props. The call stays here on
+  // purpose: React flushes child effects before parent effects, so moving it into that
+  // component would re-order these two effects against the screen's own sequence.
   const { tabIndicator, tabsTrackRef, tabOpenRef, tabCompletedRef, tabIndicatorRef } =
     useKdsTabIndicator({ activeTab, orderCount: orders.length });
 
@@ -484,35 +488,16 @@ export default function KdsScreen() {
         handleFilterPanelKeyDown={handleFilterPanelKeyDown}
       />
 
-        {/* Open/Completed tabs — prototype .kds-tabs */}
-        <div className="kds-tabs" ref={tabsTrackRef} role="tablist" aria-label={requiredLocalized(l10n, 'kds-tablist-aria')}>
-          <span
-            ref={tabIndicatorRef}
-            className="kds-tab-indicator"
-            style={{ left: tabIndicator.left, width: tabIndicator.width }}
-          />
-          <button
-            ref={tabOpenRef}
-            className={`kds-tab${activeTab === 'open' ? ' active' : ''}`}
-            onClick={() => setActiveTab('open')}
-            role="tab"
-            aria-selected={activeTab === 'open'}
-            data-testid="kds-tab-open"
-          >
-            <Localized id="kds-tab-open"><span>Open</span></Localized>
-            <span className="kds-tab-count">{filteredOrders.length}</span>
-          </button>
-          <button
-            ref={tabCompletedRef}
-            className={`kds-tab${activeTab === 'completed' ? ' active' : ''}`}
-            onClick={() => setActiveTab('completed')}
-            role="tab"
-            aria-selected={activeTab === 'completed'}
-            data-testid="kds-tab-completed"
-          >
-            <Localized id="kds-tab-completed"><span>Completed</span></Localized>
-          </button>
-        </div>
+        <KdsHeaderTabs
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          openCount={filteredOrders.length}
+          tabIndicator={tabIndicator}
+          tabsTrackRef={tabsTrackRef}
+          tabOpenRef={tabOpenRef}
+          tabCompletedRef={tabCompletedRef}
+          tabIndicatorRef={tabIndicatorRef}
+        />
 
         <KdsHeaderRight
           inShift={inShift}
