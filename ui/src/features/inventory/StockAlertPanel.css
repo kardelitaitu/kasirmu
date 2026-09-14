@@ -74,7 +74,7 @@
 }
 
 .stock-alert-card--warning {
-  border-left: 3px solid var(--color-warning-pos, #f59e0b);
+  border-left: 3px solid var(--color-warning-pos);
 }
 
 /* Product info row */
@@ -139,7 +139,7 @@
 }
 
 .stock-alert-severity-dot--warning {
-  background: var(--color-warning-pos, #f59e0b);
+  background: var(--color-warning-pos);
 }
 
 /* Time and acknowledge row */

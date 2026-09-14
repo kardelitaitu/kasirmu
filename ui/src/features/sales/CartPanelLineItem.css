@@ -285,7 +285,7 @@
   border-radius: var(--radius-full);
   background: var(--color-danger-bg, rgba(239, 68, 68, 0.12));
   cursor: pointer;
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
   transition:
     background var(--duration-100) var(--ease-out),
     color var(--duration-100) var(--ease-out);
@@ -297,7 +297,7 @@
 
 .pos-cart-line-remove:hover {
   color: var(--color-accent-fg);
-  background: var(--color-danger, #ef4444);
+  background: var(--color-danger);
 }
 
 .pos-cart-line-remove:focus-visible {
@@ -335,7 +335,7 @@
   font-size: var(--text-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--color-accent-fg);
-  background: var(--color-danger, #ef4444);
+  background: var(--color-danger);
   border: none;
   cursor: pointer;
   border-radius: 0;
@@ -343,7 +343,7 @@
 }
 
 .pos-cart-line-swipe-remove:hover {
-  background: var(--color-danger-hover, #dc2626);
+  background: var(--color-danger-hover);
 }
 
 .pos-cart-line-swipe-remove:focus-visible {

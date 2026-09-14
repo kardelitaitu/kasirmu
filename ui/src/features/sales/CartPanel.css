@@ -176,9 +176,9 @@
   padding: var(--space-0_5) var(--space-2);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--color-warning-fg, #856404);
-  background: var(--color-warning-bg, #fff3cd);
-  border: 1px solid var(--color-warning-border, #ffc107);
+  color: var(--color-warning-fg);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   user-select: none;
@@ -189,7 +189,7 @@
 
 .pos-cart-deduction-badge:hover,
 .pos-cart-deduction-badge:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-warning-border, #ffc107);
+  box-shadow: 0 0 0 2px var(--color-warning-border);
   outline: none;
 }
 
