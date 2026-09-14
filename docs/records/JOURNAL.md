@@ -10751,3 +10751,105 @@ coverage is zero either way — the six scope tests will assert fail-closed or b
 later scope work inherits an invisible hole and must be told about it. Recording pass: this entry
 is written from a docs check-out of the cited files, so the two test runs above are the release
 profile's measurements and every other number here is a read of a file, not a run.
+
+## 2026-09-15 — the licensing seam decides the test strategy, and two guards turn out to grade less than their green says
+
+Phase 2 of the release debt closed tonight in `crates/oz-bridge`, and two UI lanes came back with measurements about their
+own test surfaces. Six facts, in the order they were learned, append-only, because all of them currently live only in commit
+messages and a session journal — and the last three change how a green run should be read.
+
+**The licensing fact that drove everything else.** A release-built fresh UNACTIVATED install projects `state:
+"unavailable"`, tier `free`, every gate locked — the fail-closed projection the shared consts now name
+(`crates/oz-bridge/src/testing.rs:226`, `:235`, `:242`) — because the signature on the seeded `tenant_subscription` row is the
+`BOOTSTRAP_FREE` DEVELOPMENT sentinel (`crates/oz-core/migrations/20260813_init.sql:1514`) and `verify_license_signature`
+has NO seam: the embedded public half is the ONLY key material on that path
+(`crates/oz-core/src/license_verification.rs:44`, an `include_str!` of `crates/oz-core/oz-license.key.pub`), while the
+private PEM is git-ignored (`.gitignore:70`, `*.pem`) and absent from disk. So NO test can mint a signature that verifies,
+and the remedy taken was per-site BOTH-PROFILE forks speaking one shared harness vocabulary —
+`crates/oz-bridge/src/testing.rs`, added by `8229bd2b9` (+133/−0, one file, purely additive) — and not one of the rejected
+alternatives: never `[profile.release] debug-assertions = true` (the manifest does not set it — `Cargo.toml:199-204`),
+never sign fixtures with `OZPOS_OZ_LICENSE_PRIVATE_KEY`, never blank a signature, never make release accept the sentinel.
+The forged-signature cases stay `Err` in BOTH profiles: `crates/oz-bridge/src/auth_tests.rs:391-430` — that range, not the
+`:391-409` previously cited, because `f742736f0` established that the `UPDATE` alone is not the proof; the `expect_err` at
+`:428` and the match after it are what make the case load-bearing.
+
+**Two defects the pilot found in its own brief, kept because they generalise.** (1) A `#[cfg(not(debug_assertions))]` arm
+does not COMPILE when the release leg is reached by a runtime `if seeded_row_loads()`: both arms are built and type-checked in
+both profiles, so attribute-gating one side of a runtime fork is not a smaller change, it is a broken one. The shipped fix
+branches at runtime ONLY (re-measure: `grep -c 'cfg(' crates/oz-bridge/src/audit_tests.rs` → 0, same for
+`audit_security_events_tests.rs`), and that same choice dodges an `unused_imports` red which
+`RUSTFLAGS: -D warnings` (`dev-ci.yml:12`) would otherwise turn into a hard failure in `dev-ci.yml#cargo-check`. (2) THE
+DANGEROUS FIXTURES ARE THE GREEN ONES: gate order is TIER-then-PERMISSION, so a permission leg can pass with `audit:view`
+never consulted at all — a red-chasing brief structurally cannot surface it, because the case reports success the whole time.
+The two lanes: `1760a080d` forked FOUR fixtures (SIX runtime sites — count the diff, not the briefing:
+`git show 1760a080d | grep -cE '^\+\s+if seeded_row_loads\(\) \{'` → 6, four test bodies plus the shared
+`assert_gate_projection` helper), +163/−6, release 4 → 0, zero `#[ignore]`, and no assertion dropped: two assert lines
+disappear from the raw diff and BOTH reappear inside the new arms (`audit_tests.rs:257` still pins `page.total == 0`), while
+the file's assert count rises 22 → 38. `b891f2db7` forked the security-events tier fixtures, +470/−59, release 29/0, THREE
+vacuous permission legs closed (a fourth "VACUOUS LEG" marker names a case that needed no fork — `resolve_scope` is honest in
+both profiles), and all 33 original assert lines verified surviving by a whitespace-insensitive diff:
+`git diff -w b891f2db7^ b891f2db7 --numstat` → 435/24 with zero `^-\s*assert` lines, file count 33 → 95.
+
+**The contract's own corrections, and the blind spot nobody had written down.** `f742736f0` (+95/−12 to `testing.rs`)
+fixed four false claims in the shared contract and named the release hole in the same file: `FAIL_CLOSED_*` and
+`seeded_row_loads()` describe the `tenant_subscription` / caps read ONLY and must NEVER fork a `get_license_status`
+fixture — that command forks three ways on its own (`license.rs:594-601` a stored pair that will not verify;
+`:698-708` no stored pair in release; `:685-697` no stored pair in debug; `:659-668` an expired payload), and not ONE of
+them projects the Unavailable + Free pair the consts pin, so forking it there is wrong-green in debug and wrong-red in
+release. In release a `false` from `seeded_row_loads()` collapses FIVE distinct causes into one bool (no default row; a load
+`Err`; `load_public_key()` failing; the base64 reject on the sentinel's own text; a genuine RSA mismatch — `testing.rs`,
+"What `false` does NOT mean"), so a release arm must ALSO assert the seeded row EXISTS before it asserts the projection;
+both lanes already obey (`audit_tests.rs:145`, `audit_security_events_tests.rs:62`). And the tripwire
+(`testing.rs:564`) flips SILENTLY IN BOTH PROFILES under `[profile.release] debug-assertions = true` — `true == true` stays
+green while the licence bypass ships — which no CI can see, because there is NO `--release` test invocation anywhere:
+`grep -c -- '--release'` returns 0 for `.github/workflows/dev-ci.yml`, `scripts/check.sh`, `scripts/release.sh` and
+`scripts/run-pre-push.py` (re-run this pass; the only Rust test runs are `dev-ci.yml:244`, `check.sh:106`/`:110`,
+`release.sh:65`).
+
+**The coverage honesty note, which is the part most likely to be lost.** Release-side SCOPE coverage behind
+`verify_signature` is ZERO either way: the six scope tests named in `todo-open-debt-program.md:90` will assert fail-closed
+or be ignored, and the parked arm at `crates/oz-bridge/src/locations.rs:231-236` (same doc, `:109`) stays unreachable.
+UNREACHABLE, not untested — and that distinction is ATTRIBUTION, not a pass. It is handed to Phase 3b explicitly, so that
+phase inherits a named hole rather than a counted fix.
+
+**`screenExtraction.test.ts` is a REGISTRATION guard, not a sweep — and `17a5032a0` (+145/−8) put that in its header.**
+Three cases per entry (`it(` at `:927`, `:941`, `:958` inside `describe.each(SCREENS)` at `:894`) plus four extractor
+self-tests (`:999`, `:1003`, `:1014`, `:1021`), so 61 entries read **187** — `grep -cE "^    name: '"` → 61, and
+61 × 3 + 4 = 187. The count is a function of the LIST, never of the tree's CSS health: a registration adds three green cases
+whether or not anything got better. An UNREGISTERED screen is invisible to all three checks, so it cannot fail and cannot be
+counted as clean. Tonight's correction to the briefing on this point: PaymentModal was NOT brought inside the guard —
+`17a5032a0` is the commit that records why it CANNOT be registered yet. Its four extracted tender children
+(`payment/CashTenderPanel`, `CardTenderPanel`, `QrisTenderPanel`, `SplitTenderRows`) are named in the note, and so are the
+two blockers: three static classNames with no rule anywhere in the repo (HARD, so `dynamicClassPrefixes` cannot reach it) and
+twelve `payment-loyalty-*` rules that `LoyaltyTenderPanel.tsx` has rendered since `6ddf49f1e` but that no `additionalTsx`
+list names (SOFT-but-still-failing). The header's own sizes — `sales/PaymentModal.tsx` 1,912 lines over
+`sales/PaymentModal.css` 1,165 — are pre-`6ddf49f1e`: `wc -l` reads 1,858 today. Those are stale-by-history, not
+wrong-by-method, and re-measuring is the one command a reader should trust. The placeholders make the other half of the
+point: `screens/screens-placeholder.css` is the companion css of FOURTEEN entries and defines three classes used by every one
+of the thirteen placeholder files, so deleting twelve of them still passes their twelve no-dead-class cases — a check
+satisfiable only by guaranteed-present markup certifies nothing.
+
+**Settings reachability, stated as measured.** Of the fourteen screens the hub can mount
+(`ui/src/features/settings/screens/registry.ts`, fourteen `lazy()` arms), FOURTEEN render the placeholder shell
+(`grep -c settings-screen-placeholder` over each mounted target: thirteen files under `screens/` plus
+`ui/src/features/sync/SyncConflictReviewScreen.tsx`, which is mounted by key and is not under `screens/`) — so
+`SettingsPage.tsx` has ZERO form controls
+(`grep -cE '<(input|select|textarea)' ui/src/features/settings/SettingsPage.tsx` → 0; the only `<button` is the hidden
+`type="submit"` at `:415`) while still loading and saving settings whose controls no user reaches, and SIX guard entries
+grade markup nobody can reach (the five `settings/sections/*.tsx` files in `additionalTsx`,
+`screenExtraction.test.ts:370-374`, plus `AppearanceSettings` at `:782`) — 39 cases grading the thirteen placeholders, six
+grading unreachable sections. Against that, the ~1,486 lines of the only real shipped settings UI — the four cards
+`BusinessDefaultsScreen` mounts, 488 + 401 + 315 + 282 by `wc -l` — sat outside the guard until tonight, and re-measured
+this pass they are STILL outside it: `grep -c` over each card name in the test file returns 0, 0, 0, 0. The finding is
+recorded (the audit is `80ebb278e` against `f0ad9b170e`, its Q1/Q2 answered by `4a34206be` at `f7872bd9a`, and `13348f9ae`
+labelled three of the unreachable sections dead in their own module headers); the registration is NOT done, and no sentence
+here should be read as saying it is.
+
+**Honest sourcing, which is why the numbers above sit in three classes.** The release tallies — 4 → 0 for `1760a080d`,
+29/0 for `b891f2db7`, and the 76 → 0 trajectory behind them — are LANE-REPORTED runs, not re-executed in this docs pass:
+nothing here ran `cargo test -p oz-bridge --release`. One of those greens was flagged in review as REASONED rather than
+observed, and it stays that way in the record: the no-panic pin holds because a `blocking_lock()` on a tokio Mutex aborts in
+both profiles (`audit_tests.rs:248-252`) — a type-and-lock-order argument, sound as argument, unproven as measurement, and
+only made observational by mutating the gate and watching the release arm go red. Everything else came from a command run
+this pass against the tree: `wc -l`, `grep -c`, `git show --numstat`, `git diff -w --numstat`. Docs-only; no code, test,
+build or gate was run, and nothing was pushed — standing rule.
