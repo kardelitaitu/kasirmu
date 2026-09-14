@@ -1538,6 +1538,59 @@ describe('TopologyScreen', () => {
     expect(capturedEditorProps.canSave).toBe(true);
   });
 
+  // ── The READ gate on the same helper (regression) ────────────────
+  //
+  // canViewTopologyHistory decides whether the deploy-history button is even
+  // offered (TopologyScreen.tsx:845, ADR #46 §8) and used the SAME key the
+  // audit-read commands authorize with — `audit:view` (rbac.rs AUDIT_VIEW) —
+  // but matched it with two raw `Array.includes` calls: the literal `*` and
+  // the literal `audit:view`. The backend matcher (platform/core/src/rbac.rs
+  // :259-266, mirrored in TS at ui/src/platform/ui/page-registry/index.ts
+  // :163-172) accepts THREE forms: exact, `*`, and `<domain>:*`. So a custom
+  // role holding `audit:*` — which the kernel would serve — was denied the
+  // control. Same helper as canSaveTopology above, same three forms, asserted
+  // on the rendered button rather than a prop.
+  const historyButton = async () => {
+    await renderReady();
+    const btn = screen.getByRole('button', { name: 'topology-history-open' });
+    await waitFor(() => expect(btn).toBeInTheDocument());
+    return btn;
+  };
+
+  it('offers deploy history for an OWNER grant set (wildcard `*`)', async () => {
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['*'];
+    const btn = await historyButton();
+    expect(btn).toBeEnabled();
+  });
+
+  it('offers deploy history for an explicit `audit:view` grant', async () => {
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['staff:update', 'audit:view'];
+    const btn = await historyButton();
+    expect(btn).toBeEnabled();
+  });
+
+  it('offers deploy history for a CUSTOM role holding the `audit:*` domain wildcard', async () => {
+    // The regression: the kernel grants this read to `audit:*`, so the gate
+    // must not be the thing that says no.
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['staff:update', 'audit:*'];
+    const btn = await historyButton();
+    expect(btn).toBeEnabled();
+  });
+
+  it('withholds deploy history from a grant set without any audit form', async () => {
+    // Topology:write alone buys the WRITE control, not the audit READ. The
+    // sibling Add Branch button is asserted first so this proves the READ
+    // gate, not an unselected branch or an absent toolbar.
+    mockRenderRealHeader = true;
+    mockSessionPermissions = ['staff:update', 'topology:write'];
+    await renderReady();
+    expect(screen.getByRole('button', { name: 'topology-branch-add' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'topology-history-open' })).not.toBeInTheDocument();
+  });
+
   it('blocks renames for non-manager roles with a permission toast', async () => {
     mockIsManager = false;
     await renderReady();

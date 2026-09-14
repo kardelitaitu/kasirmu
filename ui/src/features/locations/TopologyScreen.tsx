@@ -138,11 +138,15 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
   // READ gate. The commands themselves check `audit:view` server-side; this
   // only decides whether to offer the button, so a user without the
   // permission is not shown a control that would fail on click.
+  //
+  // Same helper, for the same reason: `hasGrantedPermission` mirrors the
+  // backend matcher (exact / `*` / `<domain>:*`), so a custom role granted
+  // `audit:*` — which the kernel DOES authorize for the history read — is not
+  // denied its own control here. The raw `includes('*') || includes('audit:view')`
+  // this replaces matched only two of those three forms, denying `audit:*`.
   const canViewTopologyHistory = useMemo(() => {
     if (!session) return false;
-    const perms = session.permissions ?? [];
-    if (perms.includes('*')) return true;
-    return perms.includes('audit:view');
+    return hasGrantedPermission(session.permissions, 'audit:view');
   }, [session]);
   const [historyOpen, setHistoryOpen] = useState(false);
   /** The branch's SAVED diagram, fetched when the browser opens. Deliberately
