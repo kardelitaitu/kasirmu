@@ -11,8 +11,14 @@
 // the domain exactly as the runtime produces it, with the source named so a
 // future reader can tell whether the list went stale.
 //
-// Two families are imported live rather than restated, so the test cannot
-// drift from the code: GRANULARITIES and MONTH_LABEL_KEYS.
+// Four families were imported live rather than restated, so they cannot drift
+// from the code: GRANULARITIES, MONTH_LABEL_KEYS, DAY_KEYS and SORT_MODES (this
+// line said two until the data-mgmt case was rewired, which is itself an example
+// of the drift this file exists to catch). DATA_TYPES makes five. Every case
+// still restating its domain by hand is listed at the bottom of this comment
+// with what it duplicates, because a hand-restated list checks the BUNDLES, not
+// the code: adding a value to the screen ships red-free until someone edits a
+// test that never asked to be edited.
 
 import { describe, it, expect } from 'vitest';
 import { getBundle } from '@/i18n';
@@ -20,6 +26,7 @@ import { GRANULARITIES } from '@/features/analytics/utils/dateRangePresets';
 import { MONTH_LABEL_KEYS } from '@/features/analytics/analytics-data';
 import { DAY_KEYS } from '@/features/reports/SalesReportScreen';
 import { SORT_MODES } from '@/features/restaurant/RestaurantMenu';
+import { DATA_TYPES } from '@/features/settings/dataManagementModel';
 
 /** Assert every id resolves to non-empty, non-self text in both bundles. */
 function expectResolved(ids: string[], label: string) {
@@ -59,14 +66,19 @@ describe('dynamic Fluent id families', () => {
     expectResolved(['daily', 'weekly', 'monthly'].map((m) => `sales-report-${m}`), 'view mode');
   });
 
-  it('data-mgmt types: every export/import row key resolves', () => {
-    // DataManagementScreen.tsx DATA_TYPES: products, categories, sales,
-    // customers, users, settings.
-    expectResolved(
-      ['products', 'categories', 'sales', 'customers', 'users', 'settings']
-        .map((k) => `data-mgmt-type-${k}`),
-      'data-mgmt type',
-    );
+  it('data-mgmt types: every label and description id the MODEL emits resolves', () => {
+    // The domain is DATA_TYPES itself, not a copy of its names. The table moved
+    // out of DataManagementScreen.tsx into features/settings/dataManagementModel.ts
+    // in DataManagement slice 1, and this case kept citing the screen — the stale
+    // comment was the least of it. Restating the six names meant a seventh type
+    // added to the table with no bundle keys shipped unchecked, and the six -desc
+    // twins were never verified at all even though the screen renders every row's
+    // descriptionId through requiredLocalized, where a miss returns the id itself
+    // and prints 'data-mgmt-type-produts' to a cashier.
+    const ids = DATA_TYPES.flatMap((row) => [row.labelId, row.descriptionId]);
+    expect(ids).toHaveLength(DATA_TYPES.length * 2);
+    expect(new Set(ids).size).toBe(ids.length);
+    expectResolved(ids, 'data-mgmt type');
   });
 
   it('topology rack panels: every panel title resolves', () => {
