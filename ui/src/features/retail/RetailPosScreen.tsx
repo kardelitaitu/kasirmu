@@ -29,7 +29,7 @@ import { holdCartScoped, listHeldCartsScoped, getHeldCartScoped, deleteHeldCartS
 import { getStoreSettingsScoped, listCreditSalesScoped, settleCreditScoped, type StoreSettingsDto, type CreditSaleDto } from '@/api/settings';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
-import { CartTaxWatcher, IDLE_TAX_STATE } from '@/features/pos/components/CartTaxWatcher';
+import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { recordMark } from '@/utils/perf-metrics';
 import { DEFAULT_LOW_STOCK_THRESHOLD, minorUnitExponent, parseMinorUnits, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/frontend/shared/useSound';
@@ -940,7 +940,11 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   // gate (D64 b): a stale estimate is displayed but never added to the
   // amount due. Cancellation is the hook's own cancelled flag (the
   // screen-level AbortController is subsumed by the adoption).
-  const [taxState, setTaxState] = useState<CartTaxCacheState>(IDLE_TAX_STATE);
+  // Seeded through the factory, passed as React's lazy initializer so this
+  // mount builds its OWN idle object (one per mount, none per re-render).
+  // The module-level IDLE_TAX_STATE would be the same reference here as in
+  // PosScreen, so one non-copying updater would corrupt both screens.
+  const [taxState, setTaxState] = useState<CartTaxCacheState>(createIdleTaxState);
   const taxLines: CartLineTaxInput[] = lines.map((l) => ({
     sku: String(l.sku),
     qty: l.qty,

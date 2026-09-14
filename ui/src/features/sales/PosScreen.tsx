@@ -23,7 +23,7 @@ import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
-import { CartTaxWatcher, IDLE_TAX_STATE } from '@/features/pos/components/CartTaxWatcher';
+import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
 import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
@@ -392,7 +392,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // gate (D64 b): a stale estimate is displayed but never added to the
   // amount due. Zero on an empty cart is a genuinely computed zero.
   const [taxRetryNonce, setTaxRetryNonce] = useState(0);
-  const [taxState, setTaxState] = useState<CartTaxCacheState>(IDLE_TAX_STATE);
+  // Seeded through the factory, passed as React's lazy initializer so this
+  // mount builds its OWN idle object (one per mount, none per re-render).
+  // The module-level IDLE_TAX_STATE would be the same reference here as in
+  // RetailPosScreen, so one non-copying updater would corrupt both screens.
+  const [taxState, setTaxState] = useState<CartTaxCacheState>(createIdleTaxState);
   const taxLines: CartLineTaxInput[] = lines.map((l) => ({
     sku: String(l.sku),
     qty: l.qty,

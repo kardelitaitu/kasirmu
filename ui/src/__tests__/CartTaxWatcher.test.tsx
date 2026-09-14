@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState } from 'react';
 import { render } from '@testing-library/react';
 import { withFluent } from '@/locales/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import {
   CartTaxWatcher,
+  createIdleTaxState,
   IDLE_TAX_STATE,
 } from '@/features/pos/components/CartTaxWatcher';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
@@ -104,7 +106,7 @@ describe('CartTaxWatcher', () => {
       estimated: false,
       cacheFresh: false,
     });
-    // The three readings PosScreen.tsx:456-462 derives from it — 0 tax shown,
+    // The three readings PosScreen.tsx:406-408 derives from it — 0 tax shown,
     // no exclusive add-on, and NOT cacheFresh, which is what marks a non-null
     // cart's figure as an estimate. BINDING (D64 b): cacheFresh false must
     // keep this tax out of the tender total.
@@ -175,7 +177,7 @@ describe('CartTaxWatcher', () => {
     mountOne.unmount();
 
     // The retry affordance is a fresh mount with identical props
-    // (PosScreen.tsx:686). Nothing about the props changed, so the only thing
+    // (PosScreen.tsx:636). Nothing about the props changed, so the only thing
     // a remount can be relied on to do is re-run the effect and re-publish.
     useCartTaxMock.mockReturnValue(OK_STATE);
     const second = vi.fn();
@@ -191,3 +193,115 @@ describe('CartTaxWatcher', () => {
     expect(third).toHaveBeenCalledWith(IDLE_TAX_STATE);
   });
 });
+
+// ── Shared-seed hazard: the idle value must be fresh per consumer ─────────
+//
+// WHY THIS EXISTS, measured. Until this change both POS stacks seeded their
+// tax state from the ONE module-scope idle object exported by
+// CartTaxWatcher.tsx — sales at PosScreen.tsx:399, retail at
+// RetailPosScreen.tsx:947. One object in module scope means the two live
+// screens held the SAME reference as their initial state. No field was being
+// written: every setTaxState call is a wholesale replace through onState
+// (PosScreen.tsx:640, RetailPosScreen.tsx:1449) and no `=== IDLE_TAX_STATE`
+// identity check exists anywhere. But CartTaxCacheState is NOT readonly
+// (useCartTax.ts:71), so nothing stopped a non-copying updater —
+// `setTaxState(s => { s.taxMinor = x; return s; })` — and once da4d1c395
+// collapsed the two per-screen literals into one, that single write would
+// corrupt BOTH screens at once, plus this file's own fixture.
+//
+// Object.freeze is deliberately NOT the fix: it converts a latent corruption
+// into a strict-mode throw at whichever call site writes first — a different
+// failure, further from its cause. The fix is a fresh object per consumer, so
+// there is no shared identity left to corrupt.
+//
+// The first two tests below are the check reading could not make: identity, observed at
+// runtime from two mounts. Run against the pre-fix seeding they fail as
+// expected — `expected { severity: 'unknown', …(4) } not to be
+// { severity: 'unknown', …(4) }` ("Compared values have no visual
+// difference", which is exactly the point: equal by value, indistinguishable
+// because it IS one object), and the corrupting write through the sales seed
+// surfaced in the retail seed. Seeded from the factory, both pass.
+describe('idle tax state per consumer', () => {
+  // Mirror of the two consumer sites' hook call, factored so both probes
+  // below seed exactly the way the screens do. Keep the seed expression in
+  // step with PosScreen.tsx:399 and RetailPosScreen.tsx:947.
+  function useConsumerTaxState(): CartTaxCacheState {
+    const [taxState] = useState<CartTaxCacheState>(createIdleTaxState);
+    return taxState;
+  }
+
+  function TaxStateConsumer({
+    into,
+  }: {
+    into: { current: CartTaxCacheState | null };
+  }) {
+    const taxState = useConsumerTaxState();
+    into.current = taxState;
+    return null;
+  }
+
+  it('seeds each consumer with its own object, so the screens share no identity', () => {
+    const sales: { current: CartTaxCacheState | null } = { current: null };
+    const retail: { current: CartTaxCacheState | null } = { current: null };
+
+    render(withFluent(<TaxStateConsumer into={sales} />, salesFtl));
+    render(withFluent(<TaxStateConsumer into={retail} />, salesFtl));
+
+    // Both mounted, so the comparison below is between two real seeds.
+    expect(sales.current).not.toBeNull();
+    expect(retail.current).not.toBeNull();
+    // Same VALUE is required (both screens must start identically)...
+    expect(sales.current).toEqual(retail.current);
+    // ...and the same REFERENCE is the defect.
+    expect(sales.current).not.toBe(retail.current);
+    expect(sales.current).not.toBe(IDLE_TAX_STATE);
+    expect(retail.current).not.toBe(IDLE_TAX_STATE);
+  });
+
+  it('leaves a non-copying write on one screen invisible to the other', () => {
+    const sales: { current: CartTaxCacheState | null } = { current: null };
+    const retail: { current: CartTaxCacheState | null } = { current: null };
+
+    render(withFluent(<TaxStateConsumer into={sales} />, salesFtl));
+    render(withFluent(<TaxStateConsumer into={retail} />, salesFtl));
+
+    const retailBefore = { ...retail.current! };
+    // The exposing input, verbatim: an updater that mutates instead of
+    // copying. Legal TS today, and nothing in the type prevents it.
+    const corrupt = (s: CartTaxCacheState) => {
+      s.taxMinor = 9_990_000;
+      s.severity = 'ok';
+      s.cacheFresh = true;
+      return s;
+    };
+    corrupt(sales.current!);
+
+    expect(sales.current!.taxMinor).toBe(9_990_000);
+    expect(retail.current).toEqual(retailBefore);
+    // And the exported exemplar every test file imports must stay pristine.
+    expect(IDLE_TAX_STATE).toEqual({
+      severity: 'unknown',
+      taxMinor: 0,
+      hasExclusive: null,
+      estimated: false,
+      cacheFresh: false,
+    });
+  });
+
+  it('documents why the exported exemplar must never be a seed: it IS one shared object', () => {
+    // Positive statement of the hazard, kept green on purpose. IDLE_TAX_STATE
+    // stays exported because test files import it to assert against — and it
+    // stays ONE module-scope reference, which is exactly what makes it wrong
+    // as a useState initial value. If someone reintroduces
+    // `useState<CartTaxCacheState>(IDLE_TAX_STATE)` at a screen, this is the
+    // identity the two screens above would start sharing.
+    expect(createIdleTaxState()).not.toBe(IDLE_TAX_STATE);
+    expect(createIdleTaxState()).not.toBe(createIdleTaxState());
+    expect(createIdleTaxState()).toEqual(IDLE_TAX_STATE);
+
+    const probe = createIdleTaxState();
+    probe.severity = 'warn';
+    expect(IDLE_TAX_STATE.severity).toBe('unknown');
+  });
+});
+
