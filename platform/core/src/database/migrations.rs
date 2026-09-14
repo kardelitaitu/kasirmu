@@ -2,8 +2,9 @@
 /*
 last audited 25-07-26 by RSA-Agent (platform-core slice D: database/migrations deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: exemplary — DB-02 checksum verification with legacy-line-ending migration and drift re-apply (idempotency requirement documented, tx-atomic so no partial DDL); DB-05 FK isolation around applies/rollback (PRAGMA is a no-op inside tx — documented), restore-never-masks-error; last-only rollback prevents out-of-order reverts; parameterized; production 1-337 read, 338+ inline tests
-next: none | perf: single pass over registered migrations
+findings: exemplary — DB-02 checksum verification with legacy-line-ending migration and drift re-apply (idempotency requirement documented, tx-atomic so no partial DDL); DB-05 FK isolation around applies/rollback (PRAGMA is a no-op inside tx — documented), restore-never-masks-error; last-only rollback prevents out-of-order reverts; parameterized; production 1-1078 read, 1079+ inline tests
+drift re-apply, 14-09-26: the "must be idempotent" requirement that comment stated was unsatisfiable for the statement form the registry leans on most — SQLite has no `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, and 26 of the 58 registered migrations use the unguarded form (63 statements) — so a comment-only edit to any of them reached the re-apply and panicked startup with `duplicate column name`. `reapply_script` now falls back to statement-by-statement execution, skipping only statements whose effect is provably already present: `pragma_table_info` for ADD COLUMN, `sqlite_master.sql` text for INDEX/TRIGGER/VIEW, and never `CREATE TABLE` (SQLite rewrites a table's stored DDL on a later ADD COLUMN — measured — so that text is not a record of the statement). The splitter is hand-rolled because rusqlite 0.31 keeps `sqlite3_prepare_v3`'s tail pointer in a `pub(crate)` field. Measured over the registry by oz-core's `cosmetic_edit_to_any_migration_re_applies_cleanly`: 30 of 58 migrations failed a comment-only edit before the fallback, 3 after — and those 3 are one-shot data/rename migrations (a column converted then dropped, a table renamed, a rebuild reading a column it has already replaced) where re-running the script is impossible by construction, which the forward-only contract already assigns to backup-plus-forward-repair (DB-03). Production range re-measured against the file, not inferred.
+next: none | perf: single pass over registered migrations; the splitter runs only on the drift path
 */
 //!
 //! A [`Migration`] is a named SQL script. [`run`] applies every
@@ -19,7 +20,10 @@ next: none | perf: single pass over registered migrations
 //!   checksum of its SQL. [`run`] recomputes the checksum of each
 //!   registered migration and **fails closed** when an already-applied
 //!   definition changed (historical migrations must never be edited in
-//!   place). Rows applied before checksum tracking existed are backfilled
+//!   place). A changed definition is first re-applied — see
+//!   [`reapply_script`], which tolerates the statements whose effect is
+//!   provably already present so that a comment-only edit cannot brick
+//!   startup. Rows applied before checksum tracking existed are backfilled
 //!   once on the first run after upgrade.
 //! * **Foreign-key isolation** — [`run`] disables `foreign_keys` at the
 //!   connection level *around* each migration apply and restores the
@@ -35,7 +39,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::collections::HashSet;
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
 
 use crate::error::PlatformError;
@@ -76,16 +80,18 @@ pub fn run(conn: &mut Connection, migrations: &[Migration]) -> Result<(), Platfo
                         // DB-02: the migration SQL changed after it was applied.
                         // Instead of hard-failing (which bricks the app for
                         // comment-only / whitespace edits), re-run the
-                        // migration SQL — properly-written migrations use
-                        // `IF NOT EXISTS` / `IF EXISTS` and are idempotent.
-                        // If the re-apply fails, the SQL has genuinely
-                        // changed in a breaking way and the user must act.
+                        // migration SQL. A script that is idempotent, or whose
+                        // drift is cosmetic, re-applies cleanly; one that is
+                        // not gets a second, statement-level attempt (see
+                        // [`reapply_script`]). If both attempts fail, the SQL
+                        // has genuinely changed in a way that cannot be
+                        // reconciled and the user must act.
                         tracing::warn!(
                             migration = mig.id,
                             stored = %stored,
                             current = %current,
                             "migration definition drift detected — \
-                             re-applying SQL (must be idempotent) and updating checksum (DB-02)"
+                             re-applying SQL and updating checksum (DB-02)"
                         );
                         reapply_for_drift(conn, mig)?;
                         update_checksum(conn, mig.id, &current)?;
@@ -294,12 +300,7 @@ fn reapply_for_drift(conn: &mut Connection, mig: &Migration) -> Result<(), Platf
     if fk_was_on {
         conn.pragma_update(None, "foreign_keys", "OFF")?;
     }
-    let result = (|| -> Result<(), PlatformError> {
-        let tx: Transaction = conn.transaction()?;
-        tx.execute_batch(mig.sql)?;
-        tx.commit()?;
-        Ok(())
-    })();
+    let result = reapply_script(conn, mig);
     if fk_was_on && let Err(restore_err) = conn.pragma_update(None, "foreign_keys", "ON") {
         tracing::error!(
             migration = mig.id,
@@ -308,6 +309,739 @@ fn reapply_for_drift(conn: &mut Connection, mig: &Migration) -> Result<(), Platf
         );
     }
     result
+}
+
+/// Re-apply a drifted migration script, whole first and statement by
+/// statement only as a fallback.
+///
+/// Attempt 1 runs the script as a unit — the historical behaviour, which
+/// succeeds whenever the script is idempotent or the drift is cosmetic and
+/// every statement is already a no-op. Attempt 2 is reached only when
+/// attempt 1 failed with a duplicate-object error; it runs the script one
+/// statement at a time and skips the statements whose effect is already
+/// present *and provably identical* (see [`already_satisfied`]).
+///
+/// When attempt 2 does not recover either, the caller receives **attempt 2's**
+/// error, because that is the one that names the statement which actually
+/// blocked the re-apply — attempt 1 can only ever report the *first*
+/// duplicate-object error, which is usually the benign one. The script-level
+/// error is logged alongside it. Attempt 1 stays the gatekeeper: attempt 2 is
+/// never entered unless attempt 1 failed with a duplicate-object error, so a
+/// script that fails for any other reason still reports exactly what it
+/// reported before this fallback existed.
+fn reapply_script(conn: &mut Connection, mig: &Migration) -> Result<(), PlatformError> {
+    let whole_script_error = match apply_whole_script(conn, mig) {
+        Ok(()) => return Ok(()),
+        Err(err) => err,
+    };
+    if !is_duplicate_object_error(&whole_script_error) {
+        return Err(whole_script_error.into());
+    }
+    match apply_statement_by_statement(conn, mig) {
+        Ok(()) => {
+            tracing::info!(
+                migration = mig.id,
+                "drift re-applied statement by statement (already-satisfied statements skipped)"
+            );
+            Ok(())
+        }
+        Err(err) => {
+            tracing::warn!(
+                migration = mig.id,
+                error = %err,
+                script_error = %whole_script_error,
+                "per-statement drift re-apply did not recover"
+            );
+            Err(err)
+        }
+    }
+}
+
+/// Run a migration script as a single batch, inside one transaction.
+fn apply_whole_script(conn: &mut Connection, mig: &Migration) -> Result<(), rusqlite::Error> {
+    let tx: Transaction = conn.transaction()?;
+    tx.execute_batch(mig.sql)?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Run a migration script one statement at a time, skipping the statements
+/// whose effect is already present and provably identical.
+///
+/// Every skip is logged: a statement that is silently skipped is a statement
+/// whose intended change is *not* applied, and that decision must be
+/// auditable from the log alone.
+fn apply_statement_by_statement(
+    conn: &mut Connection,
+    mig: &Migration,
+) -> Result<(), PlatformError> {
+    let tx: Transaction = conn.transaction()?;
+    for statement in split_statements(mig.sql) {
+        let statement = statement.trim();
+        if statement.is_empty() || canonical_ddl(statement).is_empty() {
+            continue; // whitespace or a trailing comment
+        }
+        if let Err(err) = tx.execute_batch(statement) {
+            if !is_duplicate_object_error(&err) || !already_satisfied(&tx, statement, &err)? {
+                return Err(err.into());
+            }
+            tracing::info!(
+                migration = mig.id,
+                "drift re-apply: statement already satisfied — skipped"
+            );
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Whether a SQLite error reports that the object a statement declares
+/// already exists.
+fn is_duplicate_object_error(err: &rusqlite::Error) -> bool {
+    let message = err.to_string().to_ascii_lowercase();
+    message.contains("already exists") || message.contains("duplicate column name")
+}
+
+/// Whether a statement's effect is already present *and provably identical*,
+/// so the duplicate-object error it just raised can be ignored.
+///
+/// The proof is per statement kind and deliberately conservative — a
+/// statement this function cannot prove is never skipped:
+///
+/// * `ALTER TABLE … ADD COLUMN` — `pragma_table_info` reports the existing
+///   column's declared type, nullability and default. That is an
+///   authoritative record of the definition the statement asked for, so a
+///   difference in any of the three is a real divergence and is surfaced.
+/// * `CREATE INDEX` / `CREATE TRIGGER` / `CREATE VIEW` — `sqlite_master.sql`
+///   holds the statement verbatim, so the stored text and the script's text
+///   are compared token for token.
+/// * `CREATE TABLE` — never skipped, because `sqlite_master.sql` is not a
+///   record of the statement that created the table: SQLite *rewrites* a
+///   table's stored DDL when a later `ALTER TABLE ADD COLUMN` runs, and
+///   rebuild migrations create `*_new` scratch tables that they then drop
+///   and rename. Migrations whose only non-idempotent statements are
+///   `CREATE TABLE` therefore still fail loudly, as they always have.
+fn already_satisfied(
+    conn: &Connection,
+    statement: &str,
+    error: &rusqlite::Error,
+) -> Result<bool, PlatformError> {
+    let tokens: Vec<Token<'_>> = tokenize(statement)
+        .into_iter()
+        .filter(|token| !is_terminator(token))
+        .collect();
+    let message = error.to_string();
+
+    if let Some(add) = parse_add_column(&tokens) {
+        if !message.contains("duplicate column name") || !message.contains(&add.column) {
+            return Ok(false);
+        }
+        let existing = column_info(conn, &add.table, &add.column)?;
+        return Ok(existing.is_some_and(|existing| add.declared.matches(&existing)));
+    }
+
+    if let Some(create) = parse_create(&tokens) {
+        if create.kind == CreateKind::Table {
+            return Ok(false);
+        }
+        if !message.contains("already exists") || !message.contains(&create.name) {
+            return Ok(false);
+        }
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE name = ?1 AND sql IS NOT NULL",
+                params![create.name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        return Ok(stored.is_some_and(|stored| canonical_ddl(&stored) == canonical_ddl(statement)));
+    }
+
+    Ok(false)
+}
+
+// ── Statement splitting ──────────────────────────────────────────
+//
+// SQLite's own splitter is not reachable from `rusqlite` 0.31: the tail
+// pointer `sqlite3_prepare_v3` produces is stored in `RawStatement::tail`,
+// which is `pub(crate)` (`Statement::check_no_tail` is the only consumer).
+// The fallback therefore walks the script itself, with a scanner that knows
+// the four places a `;` can hide — a `--` comment, a `/* */` comment, a
+// quoted literal or identifier, and a `CREATE TRIGGER` body, whose `;`
+// separators sit between `BEGIN` and the `END` that closes it.
+
+/// Split a migration script into its individual statements.
+///
+/// The split is lossless: concatenating the returned slices reproduces the
+/// input exactly, so a fragment cannot be silently dropped.
+fn split_statements(sql: &str) -> Vec<&str> {
+    let mut statements = Vec::new();
+    let mut start = 0usize;
+    let mut index = 0usize;
+    // Inside a `CREATE TRIGGER` body, `BEGIN` and `CASE` open a level and
+    // `END` closes one. The `;` that ends the statement is the first one seen
+    // at level zero *after* the body's own `END` has closed it.
+    let mut in_trigger = false;
+    let mut trigger_depth = 0i32;
+    let mut trigger_body_closed = false;
+    let mut lead: Vec<&str> = Vec::with_capacity(3);
+
+    while index < sql.len() {
+        let rest = &sql[index..];
+        if rest.starts_with("--") {
+            index = skip_line_comment(sql, index + 2);
+            continue;
+        }
+        if rest.starts_with("/*") {
+            index = skip_block_comment(sql, index + 2);
+            continue;
+        }
+        let ch = rest.chars().next().expect("index is on a char boundary");
+        if ch == '\'' {
+            index = skip_quoted(sql, index, '\'').1;
+        } else if ch == '"' || ch == '`' {
+            index = skip_quoted(sql, index, ch).1;
+        } else if ch == '[' {
+            index = skip_bracket(sql, index).1;
+        } else if ch == ';' {
+            if !in_trigger || (trigger_depth == 0 && trigger_body_closed) {
+                statements.push(&sql[start..index + 1]);
+                start = index + 1;
+                in_trigger = false;
+                trigger_depth = 0;
+                trigger_body_closed = false;
+                lead.clear();
+            }
+            index += 1;
+        } else if is_identifier_char(ch) {
+            let word_start = index;
+            while index < sql.len() {
+                let c = sql[index..].chars().next().expect("char boundary");
+                if is_identifier_char(c) {
+                    index += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            let word = &sql[word_start..index];
+            if in_trigger {
+                if word.eq_ignore_ascii_case("BEGIN") || word.eq_ignore_ascii_case("CASE") {
+                    trigger_depth += 1;
+                } else if word.eq_ignore_ascii_case("END") && trigger_depth > 0 {
+                    trigger_depth -= 1;
+                    if trigger_depth == 0 {
+                        trigger_body_closed = true;
+                    }
+                }
+            } else {
+                if lead.len() < 3 {
+                    lead.push(word);
+                }
+                if is_create_trigger_lead(&lead) {
+                    in_trigger = true;
+                }
+            }
+        } else {
+            index += ch.len_utf8();
+        }
+    }
+    if start < sql.len() {
+        statements.push(&sql[start..]);
+    }
+    statements
+}
+
+/// Whether a character can appear in a bare SQL word (identifier or keyword).
+fn is_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'
+}
+
+/// Whether the leading words of a statement spell `CREATE [TEMP|TEMPORARY]
+/// TRIGGER`.
+fn is_create_trigger_lead(lead: &[&str]) -> bool {
+    let is = |word: &str, expected: &str| word.eq_ignore_ascii_case(expected);
+    match lead {
+        [create, trigger] => is(create, "CREATE") && is(trigger, "TRIGGER"),
+        [create, temp, trigger] => {
+            is(create, "CREATE")
+                && (is(temp, "TEMP") || is(temp, "TEMPORARY"))
+                && is(trigger, "TRIGGER")
+        }
+        _ => false,
+    }
+}
+
+/// Skip a quoted region opened by `quote` at `index`; returns
+/// `(body_end, next_index)`. A doubled quote is an escaped quote rather than
+/// a terminator, and an unterminated region runs to the end of the input.
+fn skip_quoted(sql: &str, index: usize, quote: char) -> (usize, usize) {
+    let mut cursor = index + quote.len_utf8();
+    while cursor < sql.len() {
+        let ch = sql[cursor..].chars().next().expect("char boundary");
+        if ch == quote {
+            let after = cursor + ch.len_utf8();
+            if sql[after..].starts_with(quote) {
+                cursor = after + quote.len_utf8();
+                continue;
+            }
+            return (cursor, after);
+        }
+        cursor += ch.len_utf8();
+    }
+    (sql.len(), sql.len())
+}
+
+/// Skip a `[...]` identifier opened at `index`; returns `(body_end, next)`.
+fn skip_bracket(sql: &str, index: usize) -> (usize, usize) {
+    let mut cursor = index + 1;
+    while cursor < sql.len() {
+        if sql.as_bytes()[cursor] == b']' {
+            return (cursor, cursor + 1);
+        }
+        cursor += sql[cursor..]
+            .chars()
+            .next()
+            .expect("char boundary")
+            .len_utf8();
+    }
+    (sql.len(), sql.len())
+}
+
+/// Skip past the newline that ends a `--` comment (or to the end of input).
+fn skip_line_comment(sql: &str, index: usize) -> usize {
+    match sql[index..].find('\n') {
+        Some(offset) => index + offset + 1,
+        None => sql.len(),
+    }
+}
+
+/// Skip past the `*/` that closes a `/* */` comment (or to the end of input).
+fn skip_block_comment(sql: &str, index: usize) -> usize {
+    match sql[index..].find("*/") {
+        Some(offset) => index + offset + 2,
+        None => sql.len(),
+    }
+}
+
+// ── Statement classification ─────────────────────────────────────
+
+/// A significant token of a SQL statement. Whitespace and comments are not
+/// tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TokenKind {
+    /// A bare word: `ALTER`, `products`, `TEXT`, `0`.
+    Word,
+    /// A single-quoted literal; `value` is the body without the quotes.
+    Str,
+    /// A quoted identifier (`"x"`, `` `x` ``, `[x]`); `value` is the body.
+    Quoted,
+    /// Any other significant character: `(`, `)`, `,`, `;`.
+    Punct,
+}
+
+/// One token of a SQL statement.
+#[derive(Debug, Clone, Copy)]
+struct Token<'a> {
+    kind: TokenKind,
+    /// Unquoted token text.
+    value: &'a str,
+}
+
+/// Tokenize a SQL statement, dropping whitespace and comments.
+fn tokenize(sql: &str) -> Vec<Token<'_>> {
+    let mut tokens = Vec::new();
+    let mut index = 0usize;
+    while index < sql.len() {
+        let rest = &sql[index..];
+        let ch = rest.chars().next().expect("index is on a char boundary");
+        if ch.is_whitespace() {
+            index += ch.len_utf8();
+            continue;
+        }
+        if rest.starts_with("--") {
+            index = skip_line_comment(sql, index + 2);
+            continue;
+        }
+        if rest.starts_with("/*") {
+            index = skip_block_comment(sql, index + 2);
+            continue;
+        }
+        match ch {
+            '\'' | '"' | '`' => {
+                let (body_end, next) = skip_quoted(sql, index, ch);
+                tokens.push(Token {
+                    kind: if ch == '\'' {
+                        TokenKind::Str
+                    } else {
+                        TokenKind::Quoted
+                    },
+                    value: &sql[index + ch.len_utf8()..body_end],
+                });
+                index = next;
+            }
+            '[' => {
+                let (body_end, next) = skip_bracket(sql, index);
+                tokens.push(Token {
+                    kind: TokenKind::Quoted,
+                    value: &sql[index + 1..body_end],
+                });
+                index = next;
+            }
+            _ if is_identifier_char(ch) => {
+                let start = index;
+                while index < sql.len() {
+                    let c = sql[index..].chars().next().expect("char boundary");
+                    if is_identifier_char(c) {
+                        index += c.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+                tokens.push(Token {
+                    kind: TokenKind::Word,
+                    value: &sql[start..index],
+                });
+            }
+            _ => {
+                tokens.push(Token {
+                    kind: TokenKind::Punct,
+                    value: &sql[index..index + ch.len_utf8()],
+                });
+                index += ch.len_utf8();
+            }
+        }
+    }
+    tokens
+}
+
+/// Canonical, comparable form of a token sequence.
+///
+/// SQL keywords, identifiers and function names are case-insensitive, so they
+/// are upper-cased; string literals are not, so they are kept verbatim and
+/// delimited, which also keeps a literal from ever being confused with a bare
+/// word. Tokens are joined with a separator that cannot occur inside one.
+fn canonical(tokens: &[Token<'_>]) -> String {
+    let mut parts: Vec<String> = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        match token.kind {
+            TokenKind::Str => parts.push(format!("'{}'", token.value)),
+            _ => parts.push(token.value.to_ascii_uppercase()),
+        }
+    }
+    parts.join("\u{1}")
+}
+
+/// Canonical form of a whole DDL statement, for comparison against the text
+/// SQLite stores in `sqlite_master.sql`.
+///
+/// SQLite strips `IF NOT EXISTS` from the DDL it stores — measured, not
+/// assumed — so the clause is dropped from both sides before comparing.
+fn canonical_ddl(sql: &str) -> String {
+    let tokens = tokenize(sql);
+    let mut kept: Vec<Token<'_>> = Vec::with_capacity(tokens.len());
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = tokens[index];
+        if is_terminator(&token) {
+            index += 1;
+            continue;
+        }
+        if is_word(&token, "IF")
+            && tokens.get(index + 1).is_some_and(|t| is_word(t, "NOT"))
+            && tokens.get(index + 2).is_some_and(|t| is_word(t, "EXISTS"))
+        {
+            index += 3;
+            continue;
+        }
+        kept.push(token);
+        index += 1;
+    }
+    canonical(&kept)
+}
+
+/// Whether a token is a statement terminator.
+fn is_terminator(token: &Token<'_>) -> bool {
+    token.kind == TokenKind::Punct && token.value == ";"
+}
+
+/// Whether a token is the given bare keyword, ignoring case.
+fn is_word(token: &Token<'_>, word: &str) -> bool {
+    token.kind == TokenKind::Word && token.value.eq_ignore_ascii_case(word)
+}
+
+/// The unquoted text of an identifier token.
+fn identifier(token: &Token<'_>) -> Option<String> {
+    match token.kind {
+        TokenKind::Word | TokenKind::Quoted => Some(token.value.to_string()),
+        _ => None,
+    }
+}
+
+/// A column's declared definition, in canonical form.
+struct ColumnDecl {
+    /// Canonical token form of the declared type (`TEXT`, `INTEGER`).
+    type_name: String,
+    /// Whether the declaration carries `NOT NULL`.
+    not_null: bool,
+    /// Canonical token form of the `DEFAULT` expression, outer parentheses
+    /// removed.
+    default: Option<String>,
+}
+
+impl ColumnDecl {
+    /// Whether an existing column carries exactly this declaration.
+    fn matches(&self, existing: &ColumnInfo) -> bool {
+        self.type_name == existing.type_name
+            && self.not_null == existing.not_null
+            && self.default == existing.default
+    }
+}
+
+/// A column as the database reports it, in canonical form.
+struct ColumnInfo {
+    type_name: String,
+    not_null: bool,
+    default: Option<String>,
+}
+
+/// `ALTER TABLE <table> ADD [COLUMN] <column> <declaration>`.
+struct AddColumn {
+    table: String,
+    column: String,
+    declared: ColumnDecl,
+}
+
+/// The kind of object a `CREATE` statement declares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CreateKind {
+    Table,
+    Index,
+    Trigger,
+    View,
+}
+
+/// `CREATE [UNIQUE|TEMP|TEMPORARY|VIRTUAL] <kind> [IF NOT EXISTS] <name>`.
+struct Create {
+    kind: CreateKind,
+    name: String,
+}
+
+/// Parse an `ADD COLUMN` statement, or `None` for anything else.
+fn parse_add_column(tokens: &[Token<'_>]) -> Option<AddColumn> {
+    if !tokens.first().is_some_and(|t| is_word(t, "ALTER"))
+        || !tokens.get(1).is_some_and(|t| is_word(t, "TABLE"))
+    {
+        return None;
+    }
+    let table = identifier(tokens.get(2)?)?;
+    let mut cursor = 3usize;
+    if !tokens.get(cursor).is_some_and(|t| is_word(t, "ADD")) {
+        return None;
+    }
+    cursor += 1;
+    if tokens.get(cursor).is_some_and(|t| is_word(t, "COLUMN")) {
+        cursor += 1;
+    }
+    let column = identifier(tokens.get(cursor)?)?;
+    let declared = parse_column_decl(&tokens[cursor + 1..]);
+    Some(AddColumn {
+        table,
+        column,
+        declared,
+    })
+}
+
+/// Parse a `CREATE` statement, or `None` for anything else.
+fn parse_create(tokens: &[Token<'_>]) -> Option<Create> {
+    if !tokens.first().is_some_and(|t| is_word(t, "CREATE")) {
+        return None;
+    }
+    let mut cursor = 1usize;
+    while tokens.get(cursor).is_some_and(|t| {
+        is_word(t, "UNIQUE")
+            || is_word(t, "TEMP")
+            || is_word(t, "TEMPORARY")
+            || is_word(t, "VIRTUAL")
+    }) {
+        cursor += 1;
+    }
+    let kind = tokens.get(cursor)?;
+    let kind = if is_word(kind, "TABLE") {
+        CreateKind::Table
+    } else if is_word(kind, "INDEX") {
+        CreateKind::Index
+    } else if is_word(kind, "TRIGGER") {
+        CreateKind::Trigger
+    } else if is_word(kind, "VIEW") {
+        CreateKind::View
+    } else {
+        return None;
+    };
+    cursor += 1;
+    if tokens.get(cursor).is_some_and(|t| is_word(t, "IF"))
+        && tokens.get(cursor + 1).is_some_and(|t| is_word(t, "NOT"))
+        && tokens.get(cursor + 2).is_some_and(|t| is_word(t, "EXISTS"))
+    {
+        cursor += 3;
+    }
+    let name = identifier(tokens.get(cursor)?)?;
+    Some(Create { kind, name })
+}
+
+/// Parse the declaration that follows an `ADD COLUMN` column name.
+fn parse_column_decl(tokens: &[Token<'_>]) -> ColumnDecl {
+    // The declared type runs until the first constraint keyword at the top
+    // level, so a type with arguments (`VARCHAR(255)`) stays intact.
+    let mut depth = 0i32;
+    let mut type_end = 0usize;
+    while type_end < tokens.len() {
+        let token = &tokens[type_end];
+        if token.kind == TokenKind::Punct {
+            if token.value == "(" {
+                depth += 1;
+            } else if token.value == ")" {
+                depth -= 1;
+            }
+        } else if depth == 0 && (is_column_constraint_keyword(token) || is_terminator(token)) {
+            break;
+        }
+        type_end += 1;
+    }
+
+    let mut not_null = false;
+    let mut default = None;
+    let mut cursor = type_end;
+    while cursor < tokens.len() {
+        if is_word(&tokens[cursor], "NOT")
+            && tokens.get(cursor + 1).is_some_and(|t| is_word(t, "NULL"))
+        {
+            not_null = true;
+            cursor += 2;
+            continue;
+        }
+        if is_word(&tokens[cursor], "DEFAULT") {
+            let end = expression_end(tokens, cursor + 1);
+            default = Some(canonical(strip_outer_parens(&tokens[cursor + 1..end])));
+            cursor = end;
+            continue;
+        }
+        cursor += 1;
+    }
+
+    ColumnDecl {
+        type_name: canonical(&tokens[..type_end]),
+        not_null,
+        default,
+    }
+}
+
+/// Index of the first token that ends an expression starting at `start`.
+fn expression_end(tokens: &[Token<'_>], start: usize) -> usize {
+    let mut depth = 0i32;
+    let mut cursor = start;
+    while cursor < tokens.len() {
+        let token = &tokens[cursor];
+        if token.kind == TokenKind::Punct {
+            if token.value == "(" {
+                depth += 1;
+            } else if token.value == ")" {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            }
+        } else if depth == 0 && (is_column_constraint_keyword(token) || is_terminator(token)) {
+            break;
+        }
+        cursor += 1;
+    }
+    cursor
+}
+
+/// Keywords that terminate a column's declared type or default expression.
+fn is_column_constraint_keyword(token: &Token<'_>) -> bool {
+    token.kind == TokenKind::Word
+        && [
+            "NOT",
+            "NULL",
+            "DEFAULT",
+            "CHECK",
+            "PRIMARY",
+            "UNIQUE",
+            "REFERENCES",
+            "COLLATE",
+            "GENERATED",
+            "AS",
+            "CONSTRAINT",
+        ]
+        .iter()
+        .any(|keyword| token.value.eq_ignore_ascii_case(keyword))
+}
+
+/// Strip parentheses that wrap a whole expression.
+///
+/// SQLite reports `DEFAULT (strftime(…))` as `strftime(…)` — measured — so the
+/// wrapper has to be removed from the script's side too before comparing.
+fn strip_outer_parens<'a>(mut tokens: &'a [Token<'a>]) -> &'a [Token<'a>] {
+    loop {
+        if tokens.len() < 2 {
+            return tokens;
+        }
+        let opens = tokens[0].kind == TokenKind::Punct && tokens[0].value == "(";
+        let closes = tokens[tokens.len() - 1].kind == TokenKind::Punct
+            && tokens[tokens.len() - 1].value == ")";
+        if !opens || !closes {
+            return tokens;
+        }
+        let mut depth = 0i32;
+        let mut wraps_whole = false;
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind == TokenKind::Punct && token.value == "(" {
+                depth += 1;
+            } else if token.kind == TokenKind::Punct && token.value == ")" {
+                depth -= 1;
+                if depth == 0 {
+                    wraps_whole = index == tokens.len() - 1;
+                    break;
+                }
+            }
+        }
+        if !wraps_whole {
+            return tokens;
+        }
+        tokens = &tokens[1..tokens.len() - 1];
+    }
+}
+
+/// Read a column's definition from the database.
+fn column_info(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+) -> Result<Option<ColumnInfo>, PlatformError> {
+    let mut statement =
+        conn.prepare("SELECT name, type, \"notnull\", dflt_value FROM pragma_table_info(?1)")?;
+    let mut rows = statement.query(params![table])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(0)?;
+        if !name.eq_ignore_ascii_case(column) {
+            continue;
+        }
+        let declared_type: String = row.get(1)?;
+        let not_null: i64 = row.get(2)?;
+        let default: Option<String> = row.get(3)?;
+        let default = default.map(|text| {
+            let tokens = tokenize(&text);
+            canonical(strip_outer_parens(&tokens))
+        });
+        let type_tokens = tokenize(&declared_type);
+        return Ok(Some(ColumnInfo {
+            type_name: canonical(&type_tokens),
+            not_null: not_null != 0,
+            default,
+        }));
+    }
+    Ok(None)
 }
 
 fn apply_one(conn: &mut Connection, mig: &Migration) -> Result<(), PlatformError> {
@@ -621,6 +1355,238 @@ mod tests {
             )
             .unwrap();
         assert_eq!(exists, 1);
+    }
+
+    // ── DB-02: statement-level drift re-apply ───────────────────────
+
+    /// A migration shaped like `20260901_product_images.sql`: a guarded
+    /// `CREATE TABLE` plus the unguarded `ALTER TABLE … ADD COLUMN` that
+    /// SQLite offers no `IF NOT EXISTS` form for.
+    const ADD_COLUMN_MIGRATION: &[Migration] = &[Migration {
+        id: "001_add_column.sql",
+        sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+              ALTER TABLE products ADD COLUMN image_hash TEXT;",
+    }];
+
+    /// The same migration after a comment-only edit — the drift that used to
+    /// panic startup with `duplicate column name: image_hash`.
+    const ADD_COLUMN_MIGRATION_COMMENTED: &[Migration] = &[Migration {
+        id: "001_add_column.sql",
+        sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+              ALTER TABLE products ADD COLUMN image_hash TEXT;\n\
+              -- cosmetic: the hash mirrors product_images slot 1",
+    }];
+
+    #[test]
+    fn drift_comment_only_edit_to_unguarded_add_column_self_heals() {
+        let mut conn = fresh();
+        run(&mut conn, ADD_COLUMN_MIGRATION).unwrap();
+
+        // A comment-only edit changes the file's checksum but not its
+        // executable SQL, so the re-apply must succeed: the `ADD COLUMN` is
+        // already satisfied and the column definition is identical.
+        run(&mut conn, ADD_COLUMN_MIGRATION_COMMENTED).unwrap();
+
+        let stored: String = conn
+            .query_row(
+                "SELECT checksum FROM schema_migrations WHERE id = '001_add_column.sql'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, checksum_hex(ADD_COLUMN_MIGRATION_COMMENTED[0].sql));
+
+        let declared: Option<String> = conn
+            .query_row(
+                "SELECT type FROM pragma_table_info('products') WHERE name = 'image_hash'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(declared.as_deref(), Some("TEXT"));
+    }
+
+    #[test]
+    fn drift_add_column_with_conflicting_type_is_surfaced() {
+        let mut conn = fresh();
+        run(&mut conn, ADD_COLUMN_MIGRATION).unwrap();
+
+        // Same column name, different declared type: the existing column is
+        // not what the edited script asks for, so the drift must be reported
+        // rather than skipped.
+        let drifted = &[Migration {
+            id: "001_add_column.sql",
+            sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+                  ALTER TABLE products ADD COLUMN image_hash INTEGER;",
+        }];
+        let err = run(&mut conn, drifted).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate column name"),
+            "expected the duplicate-column error to surface, got: {err}"
+        );
+    }
+
+    #[test]
+    fn drift_add_column_with_conflicting_default_is_surfaced() {
+        let mut conn = fresh();
+        run(
+            &mut conn,
+            &[Migration {
+                id: "001_add_column.sql",
+                sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+                      ALTER TABLE products ADD COLUMN currency TEXT NOT NULL DEFAULT '';",
+            }],
+        )
+        .unwrap();
+
+        let drifted = &[Migration {
+            id: "001_add_column.sql",
+            sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+                  ALTER TABLE products ADD COLUMN currency TEXT NOT NULL DEFAULT 'IDR';",
+        }];
+        let err = run(&mut conn, drifted).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate column name"),
+            "expected the duplicate-column error to surface, got: {err}"
+        );
+    }
+
+    #[test]
+    fn drift_add_column_with_expression_default_self_heals() {
+        // SQLite reports `DEFAULT (strftime(…))` without the wrapping
+        // parentheses, so the comparison has to strip them from the script's
+        // side too — otherwise a comment-only edit to a timestamp column
+        // would look like a changed default.
+        let mut conn = fresh();
+        run(
+            &mut conn,
+            &[Migration {
+                id: "001_add_column.sql",
+                sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+                      ALTER TABLE products ADD COLUMN created_at TEXT NOT NULL \
+                      DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));",
+            }],
+        )
+        .unwrap();
+
+        let drifted = &[Migration {
+            id: "001_add_column.sql",
+            sql: "CREATE TABLE IF NOT EXISTS products (id TEXT NOT NULL PRIMARY KEY);\n\
+                  ALTER TABLE products ADD COLUMN created_at TEXT NOT NULL \
+                  DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));\n\
+                  -- cosmetic",
+        }];
+        run(&mut conn, drifted).unwrap();
+    }
+
+    #[test]
+    fn drift_cosmetic_edit_to_unguarded_trigger_self_heals() {
+        let mut conn = fresh();
+        run(
+            &mut conn,
+            &[Migration {
+                id: "001_trigger.sql",
+                sql: "CREATE TABLE IF NOT EXISTS audit_log (id TEXT NOT NULL);\n\
+                      CREATE TRIGGER audit_log_immutable_delete BEFORE DELETE ON audit_log \
+                      BEGIN SELECT RAISE(ABORT, 'immutable'); END;",
+            }],
+        )
+        .unwrap();
+
+        let drifted = &[Migration {
+            id: "001_trigger.sql",
+            sql: "CREATE TABLE IF NOT EXISTS audit_log (id TEXT NOT NULL);\n\
+                  CREATE TRIGGER audit_log_immutable_delete BEFORE DELETE ON audit_log \
+                  BEGIN SELECT RAISE(ABORT, 'immutable'); END;\n\
+                  -- cosmetic",
+        }];
+        run(&mut conn, drifted).unwrap();
+    }
+
+    #[test]
+    fn drift_changed_trigger_body_is_surfaced() {
+        let mut conn = fresh();
+        run(
+            &mut conn,
+            &[Migration {
+                id: "001_trigger.sql",
+                sql: "CREATE TABLE IF NOT EXISTS audit_log (id TEXT NOT NULL);\n\
+                      CREATE TRIGGER audit_log_immutable_delete BEFORE DELETE ON audit_log \
+                      BEGIN SELECT RAISE(ABORT, 'immutable'); END;",
+            }],
+        )
+        .unwrap();
+
+        let drifted = &[Migration {
+            id: "001_trigger.sql",
+            sql: "CREATE TABLE IF NOT EXISTS audit_log (id TEXT NOT NULL);\n\
+                  CREATE TRIGGER audit_log_immutable_delete BEFORE DELETE ON audit_log \
+                  BEGIN SELECT RAISE(ABORT, 'cannot delete'); END;",
+        }];
+        let err = run(&mut conn, drifted).unwrap_err();
+        assert!(
+            err.to_string().contains("already exists"),
+            "expected the duplicate-trigger error to surface, got: {err}"
+        );
+    }
+
+    #[test]
+    fn split_statements_ignores_semicolons_in_comments_literals_and_trigger_bodies() {
+        let sql = "\
+-- a line comment with a ; semicolon\n\
+CREATE TABLE t (a TEXT DEFAULT 'x;y');\n\
+/* a block comment with a ; semicolon */\n\
+CREATE TRIGGER trg AFTER INSERT ON t BEGIN\n\
+    UPDATE t SET a = CASE WHEN a IS NULL THEN 'none' ELSE a END;\n\
+    DELETE FROM t WHERE a = 'gone;';\n\
+END;\n\
+CREATE INDEX idx_t_a ON t(a);\n";
+
+        let statements = split_statements(sql);
+
+        // Lossless: no fragment can be dropped without changing the script.
+        assert_eq!(statements.concat(), sql);
+
+        let significant: Vec<&str> = statements
+            .iter()
+            .copied()
+            .filter(|statement| !canonical_ddl(statement).is_empty())
+            .collect();
+        assert_eq!(significant.len(), 3, "got: {significant:#?}");
+        assert!(
+            significant[0].contains("CREATE TABLE t"),
+            "{}",
+            significant[0]
+        );
+        assert!(
+            significant[1].contains("CREATE TRIGGER trg"),
+            "{}",
+            significant[1]
+        );
+        // The body's own `;` separators and the `CASE … END` inside it must
+        // not split the statement.
+        assert!(
+            significant[1].trim_end().ends_with("END;"),
+            "the trigger body must stay one statement: {}",
+            significant[1]
+        );
+        assert!(
+            significant[2].contains("CREATE INDEX idx_t_a"),
+            "{}",
+            significant[2]
+        );
+    }
+
+    #[test]
+    fn canonical_ddl_ignores_if_not_exists_and_comments() {
+        // SQLite stores a table's DDL without the `IF NOT EXISTS` clause it
+        // was created with, so the two forms must compare equal.
+        let stored = "CREATE TABLE product_images (product_id TEXT NOT NULL)";
+        let statement = "CREATE TABLE IF NOT EXISTS product_images (\n\
+                         product_id TEXT NOT NULL  -- the owning product\n\
+                         );";
+        assert_eq!(canonical_ddl(stored), canonical_ddl(statement));
     }
 
     #[test]

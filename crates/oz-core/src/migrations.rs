@@ -22,6 +22,16 @@ next: reword COR-6 comments | perf: N/A
 //! backup-plus-forward-repair procedure, never ad-hoc down SQL (DB-03).
 //! The generic [`platform_core::database::rollback`] helper exists for
 //! synthetic/test tables only — the core registry carries no down SQL.
+//!
+//! The no-op requirement is a convention, not a precondition of the drift
+//! path: when an applied migration's file is edited, the runner re-applies the
+//! script and tolerates the statements whose effect is provably already
+//! present, so the unguarded `ALTER TABLE … ADD COLUMN` form — which SQLite
+//! gives no `IF NOT EXISTS` for — survives a comment-only edit. What it cannot
+//! rescue is a migration that consumes the state it transforms (a column
+//! converted and then dropped, a table renamed), which is the DB-03 class
+//! above. `cosmetic_edit_to_any_migration_re_applies_cleanly` in
+//! `migrations_tests.rs` pins which migrations are in which set.
 
 use platform_core::database::Migration;
 
