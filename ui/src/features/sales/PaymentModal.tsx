@@ -29,6 +29,7 @@ import type { PrintSalesReceiptArgs } from '@/api/sales';
 import { useAutoQr } from './payment/useAutoQr';
 import { useGatewayQr } from './payment/useGatewayQr';
 import { useMultiCurrency } from './payment/useMultiCurrency';
+import { useTenderMath } from './payment/useTenderMath';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -364,7 +365,31 @@ export default function PaymentModal({
     }
   }, [showCustomerSearch, customerSearchQuery]);
 
-  const totalMinor = useMemo(() => BigInt(total.minor_units), [total.minor_units]);
+  // W5-b: the ten-memo tender/split derivation cluster moved verbatim to
+  // ./payment/useTenderMath - nine plain-data inputs, no dep array changed.
+  // tenderSnapshot and canComplete stayed here on purpose (3 and 4 exclusive inputs).
+  const {
+    totalMinor,
+    effectiveTotalMoney,
+    unpromotedTotalInCartCurrency,
+    effectiveTotalInCartCurrency,
+    lineItemsInCartCurrency,
+    tenderedMinorInCartCurrency,
+    sufficient,
+    change,
+    splitTotals,
+    splitComplete,
+  } = useTenderMath({
+    total,
+    lineItems,
+    promoPreview,
+    loyaltyDiscount,
+    cartCurrency,
+    convertToChargeCurrency,
+    tendered,
+    method,
+    splits,
+  });
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -420,64 +445,6 @@ export default function PaymentModal({
     return () => { cancelled = true; };
   }, [pointsToRedeem, redeemPoints, totalMinor, sessionToken]);
 
-  const effectiveTotal = useMemo(() => {
-    // PROMO-3: when promotions are selected the base is the engine-exact
-    // previewed total (post-tax, post-cart-discount, promotions applied);
-    // otherwise the cart total prop. Loyalty discount subtracts on top in
-    // both cases.
-    const base = promoPreview ? BigInt(promoPreview.totalMinor) : totalMinor;
-    const discount = loyaltyDiscount;
-    return base - discount >= 0n ? base - discount : 0n;
-  }, [promoPreview, totalMinor, loyaltyDiscount]);
-
-  const effectiveTotalMoney = useMemo<Money>(() => ({
-    minor_units: Number(effectiveTotal),
-    currency: total.currency,
-  }), [effectiveTotal, total.currency]);
-
-  const tenderedMinor = useMemo(() => {
-    // MONEY-02: exact decimal parse (parseFloat mis-rounded "1.005").
-    const parsed = parseMinorUnits(tendered, minorUnitExponent(total.currency));
-    if (parsed === null || parsed < 0) return 0n;
-    return BigInt(parsed);
-  }, [tendered, total.currency]);
-
-  // PROMO-3: the charge total when promotions are selected — the engine
-  // preview result (already in cart currency) minus the loyalty discount
-  // converted into cart currency. Null when no preview (no promotions).
-  const promotedChargeTotal = useMemo(() => {
-    if (!promoPreview) return null;
-    const loyaltyInCart = cartCurrency === total.currency
-      ? Number(loyaltyDiscount)
-      : convertToChargeCurrency(loyaltyDiscount);
-    return Math.max(0, promoPreview.totalMinor - loyaltyInCart);
-  }, [promoPreview, loyaltyDiscount, cartCurrency, total.currency, convertToChargeCurrency]);
-
-  // Get the effective total in the cart currency — WITHOUT promotions.
-  // The StockShortfallDialog retry needs this unpromoted base: the backend
-  // shortfall command re-applies the promotions itself, so passing the
-  // promoted total here would discount twice.
-  const unpromotedTotalInCartCurrency = useMemo(() => {
-    if (cartCurrency === total.currency) return Number(effectiveTotal);
-    return convertToChargeCurrency(effectiveTotal);
-  }, [effectiveTotal, cartCurrency, total.currency, convertToChargeCurrency]);
-
-  // The charge total the cashier sees and pays: engine-promoted when a
-  // preview is active, the loyalty-adjusted cart total otherwise.
-  const effectiveTotalInCartCurrency = promotedChargeTotal ?? unpromotedTotalInCartCurrency;
-
-  // Convert line item unit prices to cart currency
-  const lineItemsInCartCurrency = useMemo(() => {
-    if (cartCurrency === total.currency) return lineItems;
-    return lineItems.map((line) => ({
-      ...line,
-      unit_price: {
-        minor_units: convertToChargeCurrency(line.unit_price.minor_units),
-        currency: cartCurrency,
-      },
-    }));
-  }, [lineItems, cartCurrency, total.currency, convertToChargeCurrency]);
-
   // PROMO-3: keep the engine preview in sync with the displayed cart.
   // The backend cart doesn't exist yet (it is materialized at the confirm
   // step), so the preview runs over the raw lines — the same cart → sale →
@@ -517,15 +484,6 @@ export default function PaymentModal({
     };
   }, [open, sessionToken, promotionIds, lineItemsInCartCurrency, discountPercent]);
 
-  // Convert tendered amount to cart currency
-  const tenderedMinorInCartCurrency = useMemo(() => {
-    if (cartCurrency === total.currency) return Number(tenderedMinor);
-    // MONEY-02: exact decimal parse at the charge currency's exponent.
-    const parsed = parseMinorUnits(tendered, minorUnitExponent(cartCurrency));
-    if (parsed === null || parsed < 0) return 0;
-    return parsed;
-  }, [tendered, cartCurrency, tenderedMinor, total.currency]);
-
   // CUR-02: snapshot of what the customer actually paid — tip/service are
   // always sent; base-currency fields appear only when the charge
   // currency differs from the sale's base currency. Shared by the QRIS
@@ -550,42 +508,6 @@ export default function PaymentModal({
     }),
     [tipMinor, serviceChargeMinor, cartCurrency, total.currency, total.minor_units, effectiveRateInfo],
   );
-
-  const { sufficient, change } = useMemo(() => {
-    if (method !== 'cash') return { sufficient: true, change: null };
-    if (tenderedMinorInCartCurrency < effectiveTotalInCartCurrency) return { sufficient: false, change: null };
-    const diff = tenderedMinorInCartCurrency - effectiveTotalInCartCurrency;
-    return {
-      sufficient: true,
-      change: { minor_units: diff, currency: cartCurrency } as Money,
-    };
-  }, [method, tenderedMinorInCartCurrency, effectiveTotalInCartCurrency, cartCurrency]);
-
-  // Parse split amounts using cart currency exponent
-  const parseSplitMinor = useCallback((val: string): bigint => {
-    // MONEY-02: exact decimal parse (parseFloat mis-rounded "1.005").
-    const parsed = parseMinorUnits(val, minorUnitExponent(cartCurrency));
-    if (parsed === null || parsed < 0) return 0n;
-    return BigInt(parsed);
-  }, [cartCurrency]);
-
-  const splitTotals = useMemo(() => {
-    let splitSum = 0n;
-    for (const s of splits) {
-      splitSum += parseSplitMinor(s.amountMinor);
-    }
-    return { splitSum, remaining: BigInt(effectiveTotalInCartCurrency) - splitSum };
-  }, [splits, parseSplitMinor, effectiveTotalInCartCurrency]);
-
-  const splitComplete = useMemo(() => {
-    if (splitTotals.remaining !== 0n) return false;
-    // Zero-amount sale: empty splits are acceptable
-    if (effectiveTotalInCartCurrency === 0) return true;
-    return splits.every((s) => {
-      if (s.method === 'other' && !s.otherLabel.trim()) return false;
-      return parseSplitMinor(s.amountMinor) > 0n;
-    });
-  }, [splits, splitTotals, parseSplitMinor, effectiveTotalInCartCurrency]);
 
   // Shared gateway-tender front half (manual QRIS, Auto QRIS, EDC card):
   // cart -> discount -> lines -> complete. The caller's split metadata
