@@ -21,6 +21,58 @@
 use super::*;
 
 use crate::testing::TestBridge;
+use crate::testing::seeded_row_loads;
+use oz_core::subscription::TenantSubscription;
+
+/// The release leg for a staff command this file drives through the subscription gate.
+/// create_staff_scoped calls sub.verify_signature()? at staff.rs:1080 and propagates
+/// it, so in release the command RETURNS AN ERROR before the tier limit, before the
+/// write and before any audit call: no DTO, no row, nothing for a fail-closed
+/// projection to describe - FAIL_CLOSED_* appears nowhere in this file.
+///
+/// Ethe row this fixture records audit events against must be the row the fork predicate is aboutistence is pinned FIRST, because seeded_row_loads() == false is also the answer
+/// for a lost default row, a load Err, a public-key failure, the intended base64
+/// reject on the BOOTSTRAP_FREE sentinel, or a genuine RSA mismatch
+/// (testing.rs:210-216) - only the last two are this fixture vocabulary.
+///
+/// The stamp is per fixture, not a constant: seed_subscription_tier writes tier_key
+/// into the SAME temp_conn() that is then moved into with_conn, so pin and re-tier
+/// address one row and the locations two-table trap cannot fire here - but which row
+/// the pin reads is pro / plus / free depending on the caller.
+async fn assert_refused_by_the_seeded_row<T>(
+    tb: &TestBridge,
+    settled: Result<T, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = tb.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(row.verify_signature().is_ok(), seeded_row_loads(), "x");
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the command must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
 
 // ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
 #[allow(dead_code)]
@@ -152,9 +204,16 @@ async fn create_staff_scoped_records_a_security_event() {
     // installs persistence — the trail must name who did it and who appeared.
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
-    create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx)
-        .await
-        .unwrap();
+    let settled = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
+    // Release: staff.rs:1080 refuses the create at the seeded row signature before the
+    // recorder is ever reached, so there is NO event to read - asserting a row count
+    // here would be false evidence. Actor-vs-subject, the action name and the PIN
+    // redaction below are all debug-profile claims about the WRITE side.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, settled, "premium").await;
+        return;
+    }
+    settled.unwrap();
 
     let rows = audit_rows(&bridge).await;
     assert_eq!(rows.len(), 1, "one create event, got {rows:?}");
@@ -188,6 +247,14 @@ async fn a_rejected_create_records_no_security_event() {
     // by validation or a duplicate username leaves no phantom row.
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
+    // DELIBERATELY LEFT RED in the release profile: this fixtures VERDICT is that a
+    // create refused for a DUPLICATE USERNAME writes no audit row, and in release the
+    // setup create below is refused at the seeded row signature instead. Forking here
+    // would turn the test green while its subject - the recorder staying silent on a
+    // rejected mutation - stops being exercised, and the 0 == 0 comparison at the end
+    // would then hold for the wrong reason. A green that asserts nothing is worse than
+    // a red with a reason; the honest fix is a verifying seeded row, which is an owner
+    // decision and not a fixture edit.
     create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx)
         .await
         .unwrap();
