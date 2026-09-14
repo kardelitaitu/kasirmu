@@ -323,8 +323,102 @@ let contrastBlock: string;
 let reducedBlock: string;
 let allCssFiles: string[];
 let uncoveredSurfaces: { file: string; selector: string }[];
+/*
+ * Population counters for the shadow walk, added because the verdict had no
+ * denominator next to it. `0 uncovered` reads as a claim about elevation in this
+ * UI; the walk only ever examined the tokenised minority, and nothing printed how
+ * small that was. Same lesson popupBackgroundCompliance is still carrying: a file
+ * count is not a population, and files.length > 0 cannot catch a walker that
+ * grades one rule of six thousand.
+ */
+let rulesExamined = 0;      // every non-@ rule in every sheet the walk opened
+let shadowRules = 0;        // ...of those, the ones whose body names box-shadow
+let shadowRulesGraded = 0;  // ...and also names a --shadow-* token: the gate's reach
+let shadowRulesSkipped = 0; // hardcoded shadow, no token: the counted skip
+let sheetsRefused = 0;      // basenames the walk declines to open at all
+let unparseableSheets: string[] = [];  // sheets it tried and could not read
+
 
 /* ── Tests ────────────────────────────────────────────────────── */
+
+/*
+ * The shadow walk runs at MODULE scope, not in beforeAll, for one reason: its
+ * numbers are printed in a case title, and a title is evaluated while the file is
+ * still being collected -- before any hook runs. A title that reads `0 graded of 0
+ * box-shadow rules` is worse than no title, because it looks like a floor that
+ * passed. Measured that way the first time: 9 passed, all four counters zero.
+ */
+function walkShadowPopulation(): void {
+  // Find all shadow-using selectors across CSS files
+  uncoveredSurfaces = [];
+  allCssFiles = [];
+  rulesExamined = 0; shadowRules = 0; shadowRulesGraded = 0; shadowRulesSkipped = 0;
+  sheetsRefused = 0; unparseableSheets = [];
+
+  for (const dir of ['features', 'frontend', 'components']) {
+    const files = findCssFiles(dir);
+    allCssFiles.push(...files);
+
+    for (const file of files) {
+      const basename = file.split(/[/\\]/).pop() || '';
+      if (basename === 'tokens.css' || basename === 'components.css') { sheetsRefused++; continue; }
+
+      try {
+        let content = readFileSync(file, 'utf-8');
+        // Remove CSS comments to prevent false positives
+        content = content.replace(/\/\*[\s\S]*?\*\//g, '');
+
+        // Split into individual rule blocks by finding top-level `}` boundaries
+        // Each rule block is: selectors { properties }
+        const rules: string[] = [];
+        let depth = 0;
+        let current = '';
+        for (const ch of content) {
+          if (ch === '{') depth++;
+          else if (ch === '}') {
+            depth--;
+            if (depth === 0) {
+              current += '}';
+              rules.push(current);
+              current = '';
+              continue;
+            }
+          }
+          current += ch;
+        }
+
+        for (const rule of rules) {
+          const braceIdx = rule.indexOf('{');
+          if (braceIdx < 0) continue;
+
+          const rawSelectors = rule.slice(0, braceIdx).trim();
+          const body = rule.slice(braceIdx + 1, -1).trim();
+
+          // Skip @-rules (keyframes, media, font-face, etc)
+          if (rawSelectors.startsWith('@')) continue;
+          rulesExamined++;
+          if (!body.includes('box-shadow')) continue;
+          shadowRules++;
+          if (!body.includes('--shadow-')) { shadowRulesSkipped++; continue; }
+          shadowRulesGraded++;
+
+          // Split by comma to get individual selectors, then clean
+          for (const part of rawSelectors.split(',')) {
+            const sel = part.trim();
+            if (!sel || sel.includes('::')) continue; // Skip pseudo-elements
+
+            const relPath = file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '');
+            uncoveredSurfaces.push({ file: relPath, selector: sel });
+          }
+        }
+      } catch (err) {
+        unparseableSheets.push(file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '') + ' -- ' + String(err).slice(0, 60));
+      }
+    }
+  }
+
+}
+walkShadowPopulation();
 
 describe('Noise-dither overlay coverage (P11-5)', () => {
   beforeAll(() => {
@@ -338,66 +432,6 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     contrastBlock = extractMediaBlock(componentsCss, 'prefers-contrast', 'high');
     reducedBlock = extractMediaBlock(componentsCss, 'prefers-reduced-motion', 'reduce');
 
-    // Find all shadow-using selectors across CSS files
-    uncoveredSurfaces = [];
-    allCssFiles = [];
-
-    for (const dir of ['features', 'frontend', 'components']) {
-      const files = findCssFiles(dir);
-      allCssFiles.push(...files);
-
-      for (const file of files) {
-        const basename = file.split(/[/\\]/).pop() || '';
-        if (basename === 'tokens.css' || basename === 'components.css') continue;
-
-        try {
-          let content = readFileSync(file, 'utf-8');
-          // Remove CSS comments to prevent false positives
-          content = content.replace(/\/\*[\s\S]*?\*\//g, '');
-
-          // Split into individual rule blocks by finding top-level `}` boundaries
-          // Each rule block is: selectors { properties }
-          const rules: string[] = [];
-          let depth = 0;
-          let current = '';
-          for (const ch of content) {
-            if (ch === '{') depth++;
-            else if (ch === '}') {
-              depth--;
-              if (depth === 0) {
-                current += '}';
-                rules.push(current);
-                current = '';
-                continue;
-              }
-            }
-            current += ch;
-          }
-
-          for (const rule of rules) {
-            const braceIdx = rule.indexOf('{');
-            if (braceIdx < 0) continue;
-
-            const rawSelectors = rule.slice(0, braceIdx).trim();
-            const body = rule.slice(braceIdx + 1, -1).trim();
-
-            // Skip @-rules (keyframes, media, font-face, etc)
-            if (rawSelectors.startsWith('@')) continue;
-            if (!body.includes('--shadow-')) continue;
-            if (!body.includes('box-shadow')) continue;
-
-            // Split by comma to get individual selectors, then clean
-            for (const part of rawSelectors.split(',')) {
-              const sel = part.trim();
-              if (!sel || sel.includes('::')) continue; // Skip pseudo-elements
-
-              const relPath = file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '');
-              uncoveredSurfaces.push({ file: relPath, selector: sel });
-            }
-          }
-        } catch { /* skip unparseable files */ }
-      }
-    }
   });
 
   // ── Baseline verification ──────────────────────────────────
@@ -485,6 +519,18 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
   });
 
   // ── Sanity checks ─────────────────────────────────────────
+
+  it(`the shadow walk reports its own denominator: ${shadowRulesGraded} rules graded of ${shadowRules} box-shadow rules, ${rulesExamined} rules examined, ${unparseableSheets.length} unparseable sheets`, () => {
+    // The floor this suite was missing. `allCssFiles.length > 0` can be true while
+    // the walk grades nothing; a relation cannot, because every rule the loop saw
+    // has to land in exactly one bucket.
+    expect(shadowRules, 'no rule in the walked tree names box-shadow -- the walker is dead').toBeGreaterThan(0);
+    expect(shadowRulesGraded + shadowRulesSkipped, 'the box-shadow population does not partition: graded ' + shadowRulesGraded + ' + skipped ' + shadowRulesSkipped + ' != ' + shadowRules).toBe(shadowRules);
+    expect(shadowRules, 'the box-shadow population exceeds the rules examined').toBeLessThanOrEqual(rulesExamined);
+    expect(rulesExamined, 'not one rule was examined across ' + allCssFiles.length + ' sheets -- the splitter is dead').toBeGreaterThanOrEqual(1000);
+    expect(unparseableSheets, 'a sheet the walk could not read is a silent blackout, not a pass:\n  ' + unparseableSheets.join('\n  ')).toEqual([]);
+    expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
+  });
 
   it('scanned at least 10 CSS files for shadow-using selectors', () => {
     expect(allCssFiles.length).toBeGreaterThanOrEqual(10);
