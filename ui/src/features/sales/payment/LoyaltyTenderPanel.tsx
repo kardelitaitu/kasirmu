@@ -87,11 +87,19 @@
  * Class names are unchanged and are still styled by ../PaymentModal.css, which
  * the page imports once for the whole modal - the same arrangement the four
  * sibling panels rely on, and why no CSS file is in this change set. Three of
- * them are queried by CLASS ONLY, with no accessible name to fall back on - FIVE
- * of them, not three: .payment-loyalty-value, .payment-loyalty-input-hint,
- * .payment-loyalty-input-label, .payment-loyalty-label and
- * .payment-loyalty-discount-label - so renaming one would redden a
- * characterization case without meaning anything real. Do not rename them.
+ * them are queried by CLASS ONLY, with no accessible name to fall back on. The
+ * census at this writing is EIGHT, counting nodes whose only test route is a
+ * class selector: .payment-loyalty-label, .payment-loyalty-value,
+ * .payment-loyalty-discount-label, .payment-loyalty-section,
+ * .payment-loyalty-active, .payment-loyalty-input-label,
+ * .payment-loyalty-input-hint, .payment-loyalty-balance. (The two buttons and
+ * the number input are not on it - they also answer to role/accessible-name
+ * queries.) Reproduce with: for each class in
+ * `grep -oE 'payment-loyalty-[a-z-]+' <this file> | sort -u`, count
+ * `.payment-loyalty-...` occurrences in the four PaymentModal*.test.tsx suites;
+ * this line was three before 87b4dc8b0 and that was already wrong. Renaming any
+ * of the eight reddens a characterization case without meaning anything real,
+ * so do not rename them.
  *
  * The JSX below is the page's lines verbatim, at the page's own indentation; only
  * the values and handlers named in the props differ.
