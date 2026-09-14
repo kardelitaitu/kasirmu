@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 68 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 69 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678. As this file stands: 68 entries, so (3 x 68) + 4 + 1 = 209,
+// 902e07678, and 69/212/40 as of this edit: (3 x 69) + 4 + 1 = 212,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -620,6 +620,35 @@ const SCREENS: ScreenEntry[] = [
     css: ['sales/components/ItemModifierModal.css'],
   },
   {
+    name: 'PosScreen',
+    tsx: 'sales/PosScreen.tsx',
+    // The fence of this measurement is the screen's own import block:
+    // PosScreen.tsx:46-52, seven sheets, 2,562 lines of CSS, and no other
+    // .css in the tree shares a single class name with them (measured: 149
+    // distinct names across the seven, zero appearing in two of them).
+    css: [
+      'sales/PosScreen.css',
+      'sales/CartPanel.css',
+      'sales/CartPanelLineItem.css',
+      'sales/CartPanelFooterTotals.css',
+      'sales/CartPanelActions.css',
+      'sales/CartPanel.brand.css',
+      'sales/CartPanelCourseBar.css',
+    ],
+    // Each of these seven is imported by PosScreen.tsx or by CartPanel.tsx, none
+    // imports a stylesheet of its own, and all are styled from the seven
+    // sheets above — which is what additionalTsx exists for.
+    additionalTsx: [
+      'sales/components/CartPanel.tsx',
+      'sales/components/CartLineItem.tsx',
+      'sales/components/CartFooterTotals.tsx',
+      'sales/components/CartActionBar.tsx',
+      'sales/components/CourseSelectorBar.tsx',
+      'sales/components/ShiftModals.tsx',
+      'sales/components/OpenBillModals.tsx',
+    ],
+  },
+  {
     name: 'PaymentModal',
     tsx: 'sales/PaymentModal.tsx',
     css: ['sales/PaymentModal.css'],
@@ -657,7 +686,7 @@ const SCREENS: ScreenEntry[] = [
   //      PAID OFF, all three, in this same sheet: 448839397 put
   //      .payment-method-name at PaymentModal.css:180 and the checked
   //      variant at :184; 4ea4f482b put .payment-qris-upgrade at :638,
-    //      .payment-qris-btn--dynamic at :681 with :697 and :707 behind it.
+  //      .payment-qris-btn--dynamic at :681 with :697 and :707 behind it.
   //      Re-grepped before this entry landed: 6 hits, all in
   //      PaymentModal.css. Case 1 now passes with no exemption at all.
   //   2. SOFT-BUT-FAILING, case "every className defined in CSS is
@@ -707,23 +736,29 @@ const SCREENS: ScreenEntry[] = [
   //     one prefix 'memos-badge--' stays load-bearing, for the four
   //     runtime-composed states at MemosScreen.css:289,:294,:299,:304.
   //     Re-measured with the entry in: 203 passed (203), zero failures.
-  //   - sales/PosScreen.tsx — REACHABLE, but its markup already lives in
-  //     eight sales/components/*.tsx and its classes in six CartPanel*.
-  //     css sheets it imports at :46-52. Registered as a single-screen
-  //     entry it reports 55 dead + 1 undefined. The rest of what this
-  //     bullet used to claim was FALSE and is corrected here, because the
-  //     error was believed for three hours and cost a briefing: the trial
-  //     then appended components/ItemModifierModal.tsx to PosScreen's
-  //     additionalTsx and read "34 undefined modifier-* classes in
-  //     PosScreen". That was a scoping error, not a finding — the modal's
-  //     markup has its own sheet, it is mounted by retail/RetailPosScreen
-  //     (:16,:1770) and never by PosScreen, and PosScreen.tsx contains zero
-  //     modifier- literals (grep -c = 0). Pulling that subtree in charged
-  //     PosScreen with classes it does not own. PosScreen's own undefined
-  //     count is therefore NOT 34; it is unmeasured, and a re-measurement
-  //     with a clean denominator (its 7 sheets at :46-52 against its own
-  //     tree plus the eight components that really share them) is a SEPARATE
-  //     task from this file's registrations.
+  //   - sales/PosScreen.tsx — **LANDED**, and measured twice on a clean
+  //     denominator before it did. The two numbers this bullet used to
+  //     carry were both wrong: the 34 undefined modifier-* was a SCOPING
+  //     ERROR (that trial appended components/ItemModifierModal.tsx to
+  //     additionalTsx, a subtree with its own sheet, mounted by
+  //     retail/RetailPosScreen :16,:1770 and never by PosScreen — whose
+  //     markup holds zero modifier- literals, grep -c = 0), and the
+  //     '55 dead + 1 undefined' it cites has NEVER reproduced: measured
+  //     against the screen's own import fence (PosScreen.tsx:46-52 = seven
+  //     sheets, 2,562 CSS lines, 149 distinct class names, none shared
+  //     between two of the seven), walk A — PosScreen.tsx alone, 749
+  //     lines, no additionalTsx — gave **0 undefined and 148 dead**, and
+  //     every one of the 148 is a pos-cart-*/pos-shift-*/pos-hold-*/
+  //     pos-held-*/pos-close-shift-* name belonging to a component that
+  //     shares these sheets, i.e. todo-refactor-kds-agents-merged.md:115
+  //     firing as designed, not debt. Walk B — the same seven sheets with
+  //     those seven components in additionalTsx, each named above — gave
+  //     **0 undefined, 0 dead**, 212 passed (212), exit 0. No rule was
+  //     deleted and no class muted to get there; the only exemptions the
+  //     entry holds are none — no parentCss, no prefixes, no external
+  //     classes. Seven BASELINE_UNCITED paths left with it (47 -> 40):
+  //     that is coverage, not arithmetic — case 3 grades all seven sheets
+  //     on every run, so a dead rule in any of them fails this entry.
   //   - inventory/TransactionLogScreen.tsx — NOT REACHABLE: the only
   //     importers are in __tests__ (inventory/register.tsx mounts
   //     InventoryAdjustmentScreen and StockCountsFlow, never this; no
@@ -1186,7 +1221,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 47 entries is a named path, not a prefix, not a
+// every one of its 40 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1199,7 +1234,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 47 since, one line per sheet a landed entry cited, and
+// it has shrunk to 40 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1228,13 +1263,6 @@ const BASELINE_UNCITED: string[] = [
   'reports/CustomReportScreen.css',
   'reports/MenuEngineeringScreen.css',
   'retail/RetailPosScreen.css',
-  'sales/CartPanel.brand.css',
-  'sales/CartPanel.css',
-  'sales/CartPanelActions.css',
-  'sales/CartPanelCourseBar.css',
-  'sales/CartPanelFooterTotals.css',
-  'sales/CartPanelLineItem.css',
-  'sales/PosScreen.css',
   'sales/PromotionsModal.css',
   'sales/ReceiptPreview.css',
   'sales/StockShortfallDialog.css',
