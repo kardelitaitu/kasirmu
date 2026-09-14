@@ -12,6 +12,7 @@ import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/locales/test-utils';
 import { ToastProvider } from '@/frontend/shared/Toast';
+import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import type { Money, CartLine, Sku, LineId } from '@/types/domain';
@@ -100,6 +101,14 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     workspaces: [],
     loading: false,
   }),
+  // This mock REPLACES the module (it does not spread the global harness's
+  // `...actual`), so `useWorkspaceScope` has to be declared here or the modal's
+  // import resolves to undefined. A `vi.fn` so a test can put the modal on a
+  // named terminal: the Open Bill tender is gated on the workspace type. The
+  // default is null — fail-closed, the tender stays hidden — and the file's
+  // `beforeEach` declares the Restaurant POS terminal, which the PINNED tender
+  // list below requires.
+  useWorkspaceScope: vi.fn(() => null),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
@@ -136,6 +145,18 @@ vi.mock('@/components/QrisQrDisplay', () => ({
 
 beforeEach(() => {
   invokeMock.mockClear();
+  // The modal is shared by both POS terminals, and the Open Bill tender is now
+  // gated on the workspace type: an open bill is the restaurant terminal's own
+  // concept, and `hold_cart_scoped` refuses it from anywhere else. The global
+  // harness returns a generic `typeKey` ('default'), which hides that tender, so
+  // this file declares the Restaurant POS terminal — the PINNED tender list
+  // asserted below includes `open_bill`. The store-pos direction is covered by
+  // `the store terminal does not offer the open bill tender`, which overrides this.
+  vi.mocked(useWorkspaceScope).mockReturnValue({
+    storeId: 'store-1',
+    instanceId: 'instance-1',
+    typeKey: 'restaurant-pos',
+  });
 });
 
 describe('PaymentModal — sale flow', () => {
@@ -1286,6 +1307,27 @@ describe('PaymentModal — local payment rails gating', () => {
   };
 
   const ALL_TENDERS = ['cash', 'card', 'qris', 'credit', 'other', 'open_bill'];
+
+  // The other direction of the workspace gate. `open_bill` is the restaurant
+  // terminal's own concept — `hold_cart_scoped` refuses it from any other
+  // workspace and `list_open_bills_scoped` will not serve one — so the shared
+  // modal must not offer the tender to a store-pos cashier, or Complete would
+  // submit a bill the backend rejects.
+  it('the store terminal does not offer the open bill tender', async () => {
+    vi.mocked(useWorkspaceScope).mockReturnValue({
+      storeId: 'store-1',
+      instanceId: 'instance-1',
+      typeKey: 'store-pos',
+    });
+
+    expect(await renderedTenders([rail(true)])).toEqual([
+      'cash',
+      'card',
+      'qris',
+      'credit',
+      'other',
+    ]);
+  });
 
   it('PINNED: every rail offered renders cash, card, qris, credit, other, open bill', async () => {
     expect(

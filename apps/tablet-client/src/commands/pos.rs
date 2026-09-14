@@ -47,12 +47,13 @@ use crate::state::AppState;
 // unwitnessed either way. The command bodies stay tablet-native (no
 // BridgeCtx yet — see the T2 seam notes in void.rs).
 pub use oz_bridge::pos::{
-    AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
-    CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
-    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs,
-    PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
-    PreviewPromotedTotalResult, PreviewPromotionDiscount, SerialNumberArg, SetCartDiscountArgs,
-    SetCartDiscountScopedArgs, StartSaleArgs, StartSaleResult,
+    AddLineArgs, AddLineResult, BILL_TYPE_OPEN_BILL, CartLineData, CompleteSaleArgs,
+    CompleteSaleResult, CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs,
+    DeductionLocationInfo, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
+    OverrideLinePriceScopedArgs, PreviewLineArgs, PreviewPromotedTotalArgs,
+    PreviewPromotedTotalFromLinesArgs, PreviewPromotedTotalResult, PreviewPromotionDiscount,
+    SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs, StartSaleArgs,
+    StartSaleResult, WORKSPACE_RESTAURANT_POS, is_restaurant_pos,
 };
 
 /// The tax scope for a sale rung up at `location_id` right now.
@@ -1656,6 +1657,11 @@ pub async fn hold_cart(
 }
 
 /// Park the current sale as a held order (scoped).
+///
+/// `bill_type` is checked against the caller's workspace type rather than
+/// trusted: `open_bill` is a Restaurant POS concept, so any other terminal is
+/// refused fail-closed. Mirrors `oz_bridge::pos::hold_cart_scoped` — this shell
+/// forked the body, so the check has to exist on both sides of the fork.
 #[command]
 pub async fn hold_cart_scoped(
     session_token: String,
@@ -1670,6 +1676,12 @@ pub async fn hold_cart_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
+    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos(&session) {
+        return Err(AppError::PermissionDenied(format!(
+            "workspace '{}' may not create an open bill; only '{WORKSPACE_RESTAURANT_POS}' may",
+            session.type_key
+        )));
+    }
     let id = store.hold_cart(
         &args.label,
         &args.cart_data,
@@ -1729,6 +1741,13 @@ pub async fn list_open_bills(
 }
 
 /// List open bills in the session scope. ADR #7.
+///
+/// Restaurant POS only — an open bill is that terminal's own concept, so a
+/// session whose `type_key` is not [`WORKSPACE_RESTAURANT_POS`] is refused
+/// rather than served an empty list, which would read as "there are none"
+/// instead of "this is not your terminal". Mirrors
+/// `oz_bridge::pos::list_open_bills_scoped`; this shell forked the body, so the
+/// check has to exist on both sides of the fork.
 #[command]
 pub async fn list_open_bills_scoped(
     session_token: String,
@@ -1742,6 +1761,12 @@ pub async fn list_open_bills_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
+    if !is_restaurant_pos(&session) {
+        return Err(AppError::PermissionDenied(format!(
+            "workspace '{}' may not list open bills; only '{WORKSPACE_RESTAURANT_POS}' may",
+            session.type_key
+        )));
+    }
     let carts = store.list_open_bills()?;
     drop(db);
     Ok(carts)

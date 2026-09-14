@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'r
 import { useToast } from '@/frontend/shared/Toast';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
@@ -275,6 +276,18 @@ export default function PaymentModal({
 
   const { isEnabled } = useFeatures();
   const multiCurrency = isEnabled(FEATURES.MULTI_CURRENCY);
+  // This modal is shared by both POS terminals, but an open bill is a Restaurant
+  // POS concept: `list_open_bills_scoped` — its only reader — is reachable from
+  // the restaurant terminal alone, and `hold_cart_scoped` now refuses
+  // `bill_type: 'open_bill'` from any other workspace. Offering the tender to a
+  // store-pos cashier would therefore produce a call the backend rejects, so the
+  // method is gated here too rather than left to fail at checkout.
+  //
+  // Read through `useWorkspaceScope` (nullable, not `useWorkspace`) so a modal
+  // rendered outside a provider hides the method instead of throwing — the same
+  // fail-closed direction the backend takes.
+  const workspaceScope = useWorkspaceScope();
+  const isRestaurantPos = workspaceScope?.typeKey === 'restaurant-pos';
   // One read of the entitlement, shared by the FETCH and the render below: an
   // unlicensed tenant must not spend a getLoyaltyAccount round-trip on a panel it
   // can never show. A named boolean rather than the call inline in the effect, so
@@ -288,6 +301,15 @@ export default function PaymentModal({
   useEffect(() => {
     if (!qrisOffered && method === 'qris') setMethod('cash');
   }, [qrisOffered, method]);
+
+  // The Open Bill tender is restaurant-only (see `isRestaurantPos` above), so a
+  // method chosen while the modal was on a restaurant terminal — or chosen on a
+  // modal mounted outside a restaurant scope — must not survive as a tender the
+  // cashier can no longer see: Complete would submit a bill the backend now
+  // refuses. Same recovery shape as the QRIS reset above.
+  useEffect(() => {
+    if (!isRestaurantPos && method === 'open_bill') setMethod('cash');
+  }, [isRestaurantPos, method]);
 
   // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
   // Charge-currency state, the rate reads, the converter and cartCurrency
@@ -1530,22 +1552,24 @@ export default function PaymentModal({
                         />
                         </Localized>
                     </div>
-                    <>
-                      {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-                      <label className="payment-method-label" htmlFor="payment-method-open-bill">
-                        <input
-                          id="payment-method-open-bill"
-                          type="radio"
-                          name="payment-method"
-                          value="open_bill"
-                          checked={method === 'open_bill'}
-                          onChange={() => setMethod('open_bill')}
-                        />
-                        <span className="payment-method-name">
-                          <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
-                        </span>
-                      </label>
-                    </>
+                    {isRestaurantPos && (
+                      <>
+                        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                        <label className="payment-method-label" htmlFor="payment-method-open-bill">
+                          <input
+                            id="payment-method-open-bill"
+                            type="radio"
+                            name="payment-method"
+                            value="open_bill"
+                            checked={method === 'open_bill'}
+                            onChange={() => setMethod('open_bill')}
+                          />
+                          <span className="payment-method-name">
+                            <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
+                          </span>
+                        </label>
+                      </>
+                    )}
                   </div>
                 </fieldset>
 

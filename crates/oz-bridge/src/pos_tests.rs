@@ -567,12 +567,42 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// The workspace `type_key` a fixture session carries when the test does not
+/// care which terminal it is.
+///
+/// Deliberately NOT [`WORKSPACE_RESTAURANT_POS`]: a session's `type_key` now
+/// decides whether the open-bill paths are reachable, so the default fixture
+/// must not silently hold the restaurant terminal's extra rights. Tests that
+/// need the restaurant terminal use [`scoped_bridge_typed`].
+const DEFAULT_TEST_TYPE_KEY: &str = "pos";
+
 fn scoped_bridge(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
+) -> crate::testing::TestBridge {
+    scoped_bridge_typed(
+        conn,
+        token,
+        user_id,
+        role_id,
+        store_id,
+        DEFAULT_TEST_TYPE_KEY,
+    )
+}
+
+/// As [`scoped_bridge`], but with an explicit workspace `type_key`, so a test can
+/// place the session on a named terminal and assert what that terminal may and
+/// may not do.
+fn scoped_bridge_typed(
+    conn: rusqlite::Connection,
+    token: &str,
+    user_id: &str,
+    role_id: &str,
+    store_id: &str,
+    type_key: &str,
 ) -> crate::testing::TestBridge {
     let bridge = crate::testing::TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
@@ -583,7 +613,7 @@ fn scoped_bridge(
             "terminal-1".into(),
             store_id.into(),
             "instance-1".into(),
-            "pos".into(),
+            type_key.into(),
             None,
             0,
         ),
@@ -693,14 +723,104 @@ async fn list_held_carts_empty_when_none() {
 
 // ── Owner open_bills ─────────────────────────────────────────────
 
+/// A hold request, so each terminal test states only the `bill_type` it is about.
+fn hold_args(bill_type: &str) -> HoldCartArgs {
+    HoldCartArgs {
+        label: "Table 5".into(),
+        cart_data: r#"{"lines":[]}"#.into(),
+        item_count: 1,
+        total_minor: 500,
+        currency: "USD".into(),
+        bill_type: bill_type.into(),
+        customer_name: None,
+        deduction_location_id: None,
+    }
+}
+
 #[tokio::test]
 async fn owner_can_list_open_bills_empty() {
     let conn = crate::testing::temp_conn();
     seed_owner(&conn);
-    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok",
+        "user-owner",
+        "role-owner",
+        "s1",
+        WORKSPACE_RESTAURANT_POS,
+    );
 
     let bills = list_open_bills_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert!(bills.is_empty());
+}
+
+// ── Terminal identity: the open-bill paths are restaurant-only ───
+//
+// `bill_type` used to be written through exactly as the client sent it, which
+// let a store-pos session create an open bill — reachable in practice through
+// the shared `PaymentModal`, whose Open Bill tender was not workspace-gated.
+// The checks below pin the value against the session's workspace type instead.
+
+#[tokio::test]
+async fn restaurant_pos_can_create_and_read_an_open_bill() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok",
+        "user-owner",
+        "role-owner",
+        "s1",
+        WORKSPACE_RESTAURANT_POS,
+    );
+
+    hold_cart_scoped(&bridge.ctx(), "tok", hold_args(BILL_TYPE_OPEN_BILL))
+        .await
+        .expect("the restaurant terminal owns the open bill");
+
+    let bills = list_open_bills_scoped(&bridge.ctx(), "tok").await.unwrap();
+    assert_eq!(bills.len(), 1, "the open bill must read back");
+}
+
+#[tokio::test]
+async fn store_pos_cannot_create_open_bill() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(conn, "tok", "user-owner", "role-owner", "s1", "store-pos");
+
+    let err = hold_cart_scoped(&bridge.ctx(), "tok", hold_args(BILL_TYPE_OPEN_BILL))
+        .await
+        .expect_err("a store-pos session must not be able to create an open bill");
+    assert!(
+        matches!(err, BridgeError::PermissionDenied(_)),
+        "the refusal must be fail-closed, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn store_pos_can_still_hold_a_plain_cart() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(conn, "tok", "user-owner", "role-owner", "s1", "store-pos");
+
+    hold_cart_scoped(&bridge.ctx(), "tok", hold_args("hold"))
+        .await
+        .expect("the enforcement must not remove the plain hold from any terminal");
+}
+
+#[tokio::test]
+async fn store_pos_cannot_list_open_bills() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(conn, "tok", "user-owner", "role-owner", "s1", "store-pos");
+
+    let err = list_open_bills_scoped(&bridge.ctx(), "tok")
+        .await
+        .expect_err("a store-pos session must not be able to list open bills");
+    assert!(
+        matches!(err, BridgeError::PermissionDenied(_)),
+        "the refusal must be fail-closed, got {err:?}"
+    );
 }
 
 // ── Permission matrix: staff (has SALES_PROCESS) ─────────────────
