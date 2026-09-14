@@ -1,12 +1,64 @@
 // ── Screen CSS extraction integrity tests ─────────────────────────
 //
-// Regression guard: for every screen component with companion
-// stylesheet(s), we assert that:
-//   1. Every className used in the TSX has a CSS rule defined
-//   2. No className is duplicated across multiple files
-//   3. No dead classes exist (soft warning)
+// SCOPE — read this before quoting a green run. This is a
+// REGISTRATION guard over an explicit list, NOT a sweep of the tree.
+// Each of the three checks below runs once per entry in the SCREENS
+// array and reads only the files THAT ENTRY names: `tsx` plus
+// `additionalTsx` for the used-class walk, `css` for the
+// defined-rule walk. There is no readdir, no glob, no default entry.
+// A screen that is not registered here is invisible to all three
+// checks — it cannot fail, so it cannot be counted as clean.
 //
-// Add a new screen by appending an entry to the SCREENS array below.
+// The same limit is stated in the plan this file serves, at
+// todo-refactor-kds-agents-merged.md:121, and the contrast it draws
+// there is the one a reader needs next to the mechanism:
+//
+//   `screenExtraction.test.ts` is a **REGISTRATION** guard — it checks
+//   only the files a screen's `additionalTsx` list names. Skip the
+//   step and it says NOTHING: the moved classes read as dead CSS while
+//   the suite stays green. **SILENT failure mode**; the bullet above it
+//   exists because of this one.
+//   `nativeTooltipCompliance.test.ts` is an **AUTO-WALKING** guard —
+//   `collectTsxFiles` at :47 sweeps every `.tsx` under `ui/src`, with
+//   `__tests__` filtered at the call site (`:115`), so there is **no
+//   registration step to forget**. A new file is caught on sight and
+//   the run goes **LOUD** the moment markup moves. **The opposite
+//   failure mode: it cannot be skipped, only answered.**
+//
+// Measured against this file, not against that sentence: SCREENS holds
+// 61 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// counts 66 *Screen.tsx files — and the two numbers are not even the
+// same kind of thing, since several entries are modals, panels and
+// shared placeholder sheets rather than screens. A large share of the
+// tree is therefore read by none of the three checks. The cleanest
+// statement of what that costs is the one this header used to be
+// missing: **none of this guard's three checks — including "every
+// className used has a CSS rule", and including the dead-class check —
+// ever reads the sales tender surface.** sales/PaymentModal.tsx
+// (1,912 lines) over sales/PaymentModal.css (1,165 lines) is the
+// largest instance today; the note in the Sales section below records
+// why that entry is pending rather than registered.
+//
+// CASE ARITHMETIC, so the total is never read as code health: every
+// entry contributes exactly 3 cases and the extractor self-tests at the
+// foot of this file contribute 4 more — 3 x entries + 4. That is 187
+// today (61 x 3 + 4). The number moves when the LIST moves and never
+// when the tree's CSS health changes: a registration adds three green
+// cases whether or not anything got better. Read the entry count for
+// coverage and the failures for health.
+//
+// For each REGISTERED entry we assert:
+//   1. Every className used in its TSX has a CSS rule defined  (HARD)
+//   2. No className is duplicated across its CSS files         (HARD)
+//   3. No dead classes (CSS rule with no reference in the walked
+//      TSX) — reported via `expect.soft`, and soft is soft in NAME
+//      only: a soft failure still fails the run.
+//
+// Add a new screen by appending an entry to the SCREENS array below;
+// when markup moves OUT of a registered screen, append the receiving
+// component to that entry's `additionalTsx` in the same change-set and
+// prove the line is load-bearing by deleting it and re-running (see
+// todo-refactor-kds-agents-merged.md:115).
 
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
@@ -513,6 +565,84 @@ const SCREENS: ScreenEntry[] = [
     css: ['sales/PriceOverrideModal.css'],
     dynamicClassPrefixes: ['price-override-pin-dot--'],
   },
+  // PaymentModal is deliberately NOT registered yet, and this is the
+  // note that keeps that gap from being silent. Its companion sheet
+  // (sales/PaymentModal.css, 1,165 lines) and its 1,912-line TSX are
+  // read by NO check in this file, which is precisely the blind spot the
+  // header describes. Attempting the entry — tsx + css + the four
+  // extracted tender panels (payment/CashTenderPanel, CardTenderPanel,
+  // QrisTenderPanel, SplitTenderRows) — produced two findings, and
+  // neither is a runtime-composed modifier that dynamicClassPrefixes
+  // may excuse:
+  //   1. HARD, case "every className used in PaymentModal has a CSS rule
+  //      defined": payment-method-name (PaymentModal.tsx:1544,:1581),
+  //      payment-qris-upgrade (payment/QrisTenderPanel.tsx:57) and
+  //      payment-qris-btn--dynamic (same file,:90) are static
+  //      classNames with NO rule in any .css in the repo (verified:
+  //      git grep '\\.(payment-method-name|payment-qris-upgrade|payment-qris-btn--dynamic)'
+  //      over ui/src returns 0 css hits). Unstyled markup, not parser
+  //      blindness — and dynamicClassPrefixes cannot reach this check
+  //      anyway, since a prefix only suppresses the dead-class walk.
+  //   2. SOFT-BUT-FAILING, case "every className defined in CSS is
+  //      reachable from PaymentModal": the twelve payment-loyalty-*
+  //      rules. These are NOT debt: payment/LoyaltyTenderPanel.tsx
+  //      renders them (mounted at PaymentModal.tsx:36,:1703 since
+  //      6ddf49f1e). They are the rule at
+  //      todo-refactor-kds-agents-merged.md:115 firing exactly as
+  //      designed — markup left the screen, the extraction did not
+  //      append its new file to this list, so ten-plus live classes
+  //      read as dead CSS.
+  // So the entry needs one of two out-of-fence changes first: three new
+  // rules in PaymentModal.css (or the three classNames dropped), and
+  // LoyaltyTenderPanel.tsx added to additionalTsx alongside the other
+  // four. The four animation classes the pass was scoped around
+  // (payment-overlay--enter/--exit, payment-modal--enter/--exit) ARE
+  // runtime-composed — PaymentModal.tsx:1150-1151 selects each by
+  // ternary into a local and interpolates the LOCAL, which
+  // extractUsedClassNames strips — and would be excused by the two
+  // prefixes 'payment-overlay--' and 'payment-modal--', each of which
+  // covers exactly the enter/exit pair and nothing else
+  // (PaymentModal.css:17,:21,:49,:53). Registering them is the next
+  // pass's job; swallowing 1 and 2 to get green is not.
+  //
+  // THE OWNERSHIP IS TWO-STEP AND NEITHER STEP IS INSIDE A TEST FILE.
+  // Step 1, sales lane: give the three classNames above a rule in
+  // PaymentModal.css, or delete them from the markup — a real
+  // used-but-undefined class is unstyled markup, and only the owner of
+  // the sheet can say which of the two it wants. Step 2, whoever lands
+  // step 1: add the entry above with the two prefixes, plus
+  // payment/LoyaltyTenderPanel.tsx in `additionalTsx` beside the other
+  // four panels. Verification each time is `npx vitest run
+  // src/__tests__/screenExtraction.test.ts`: 3 cases per entry, so the
+  // run should read 190, and both PaymentModal cases must pass without
+  // any prefix added beyond the two named above.
+  //
+  // THREE OTHER CANDIDATES WERE MEASURED ON THIS PASS AND NONE OF THEM
+  // LANDS EITHER, each for a different reason worth keeping straight:
+  //   - memo/MemosScreen.tsx — REACHABLE (memo/register.tsx:5 lazy
+  //     import, registerPage route 'memos' + registerNavItem, wired by
+  //     features/index.ts:27,:103). Its 4 raw dead classes are the
+  //     runtime-composed `memos-badge--draft/published/stopped/muted`
+  //     family and one prefix 'memos-badge--' clears all four; but
+  //     registering it then fails case 1 with two genuine findings,
+  //     `memos-form` and `memos-field` (MemosScreen.tsx:315,:319), for
+  //     which no .css in the repo defines a rule. Verified by a live
+  //     run, not by probe: 1 failed | 189 passed (190), "MemosScreen:
+  //     className(s) used but not defined: memos-form, memos-field".
+  //   - sales/PosScreen.tsx — REACHABLE, but its markup already lives in
+  //     eight sales/components/*.tsx and its classes in six CartPanel*.
+  //     css sheets it imports at :46-52. Registered as a single-screen
+  //     entry it reports 55 dead + 1 undefined; given all eight
+  //     components and all six sheets it still reports 34 undefined
+  //     `modifier-*` classes owned by components/ItemModifierModal.css.
+  //     That is a scoping pass, not a registration.
+  //   - inventory/TransactionLogScreen.tsx — NOT REACHABLE: the only
+  //     importers are in __tests__ (inventory/register.tsx mounts
+  //     InventoryAdjustmentScreen and StockCountsFlow, never this; no
+  //     route names it). Registering it would have bought a green over
+  //     markup no user can reach, which is a worse outcome than the
+  //     blind spot it closes. It stays out until someone shows the
+  //     mount.
 
   // ── Reports ───────────────────────────────────────────
   {
@@ -834,8 +964,15 @@ describe.each(SCREENS)(
           dead.push(cls);
         }
       }
-      // Soft assertion — logs a warning rather than hard-failing,
-      // because some classes may be shared with other components.
+      // Soft in NAME only. `expect.soft` does NOT "log a warning
+      // rather than hard-fail" — it records a real failed assertion and
+      // the run exits non-zero, so a dead class here fails the suite as
+      // surely as cases 1 and 2 do. What soft actually buys is
+      // sequencing: it lets this case report every dead class (and lets
+      // the other two cases in this entry still run) instead of
+      // aborting the file on the first one. The `console.warn` below is
+      // the informative half; this line is the gate. Do not read the
+      // word "soft", or that warn, as "advisory".
       if (dead.length > 0) {
         console.warn(
           `[WARN] ${name}: className(s) defined in CSS but never referenced ` +
