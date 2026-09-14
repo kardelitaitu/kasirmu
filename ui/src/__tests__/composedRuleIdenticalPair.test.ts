@@ -53,9 +53,23 @@
  * the used value. See the note above collectSameBlockPairs for the one rule
  * where that difference fabricated a violation.
  *
- * NO VACUOUS GREEN: if the walk finds zero gradable pairs the suite FAILS with
- * "parser matched nothing". A check that goes quiet the moment its input
- * changes shape is how a green run starts meaning nothing.
+ * NO VACUOUS GREEN, in TWO layers, because one is provably not enough:
+ *   (a) tree-wide — if the walk finds zero gradable pairs the suite FAILS with
+ *       "parser matched nothing"; and
+ *   (b) PER FILE — any sheet containing a '{' must contribute at least one
+ *       recorded declaration block, else the suite names the file and prints how
+ *       many braces it holds against how many blocks it parsed.
+ * (b) exists because (a) cannot see a single blind sheet. Three stray ')' in
+ * src/features/warehouse/WarehouseConsole.css drove the walk's paren counter
+ * negative; below zero the depth-0 recording gate never fires again, so that sheet
+ * stopped contributing while 104 other sheets kept the total healthy and the run
+ * green. aa56aba9d deleted the three characters — the INPUT is gone, so the parser
+ * is now clamped (')' never decrements below 0) and a malformed sheet can never
+ * black out its own file again; and the floor is the loud half, because a clamped
+ * counter silently resumes grading whatever it can parse. Measured with throwaway
+ * sheets under features/sales: the unclamped walk reads a 2-block sheet as 0
+ * graded pairs and prints 400/960 exactly as it did without the file at all; the
+ * floor turns that same sheet into a named failure.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -110,7 +124,7 @@ const themeTokens = THEMES.map((t) => ({
 }));
 
 interface Decl { prop: string; value: string; line: number }
-interface Frame { selector: string; decls: Decl[]; line: number; skip: boolean }
+interface Frame { selector: string; decls: Decl[]; line: number; skip: boolean; declCount: number }
 interface Pair { file: string; selector: string; line: number; color: Decl; bg: Decl }
 
 /* The census counted 766 same-block pairs; a first pass here counted more,
@@ -122,22 +136,43 @@ interface Pair { file: string; selector: string; line: number; color: Decl; bg: 
    (last declaration wins, same origin, same specificity) and one block yields
    at most one pair. Both numbers are reported: crossProduct is the census's
    shape, usedValuePairs is what this check actually grades. */
-function lastOf(decls: Decl[], prop: string): Decl | null {
-  for (let i = decls.length - 1; i >= 0; i--) {
-    if (decls[i]!.prop === prop) return decls[i]!;
+/* CSS cascade within one block: last declaration wins — EXCEPT that an !important
+   declaration beats every later normal one, and among several !important ones the last
+   wins. Plain last-wins mis-graded BOTH directions: '.x { color: A !important;
+   background: B; color: B; }' was read as color:B background:B, i.e. reported as
+   invisible text that cannot actually paint, and the mirror shape hid a real defect.
+   Measured on the committed tree: exactly three !important colour-ish declarations exist
+   under features/ — KdsScreen.css:741-742 (border-color, outline-color) and
+   NodeTopologyEditor.css:1098 (border-color) — and none names a graded property, so
+   record() never saw them: latent, not live. Choosing the important declaration is the
+   cheaper rule to be right about. */
+function isImportant(d: Decl): boolean { return /\s*!important\b/i.test(d.value); }
+/** Last !important declaration for prop, else the last one at all. */
+function pickImportant(decls: Decl[], matches: (d: Decl) => boolean): Decl | null {
+  let last: Decl | null = null;
+  let lastImportant: Decl | null = null;
+  for (const d of decls) {
+    if (!matches(d)) continue;
+    last = d;
+    if (isImportant(d)) lastImportant = d;
   }
-  return null;
+  return lastImportant ?? last;
+}
+function lastOf(decls: Decl[], prop: string): Decl | null {
+  return pickImportant(decls, (d) => d.prop === prop);
 }
 function lastBackground(decls: Decl[]): Decl | null {
-  let best: Decl | null = null;
-  for (const d of decls) if (d.prop === 'background' || d.prop === 'background-color') best = d;
-  return best;
+  return pickImportant(decls, (d) => d.prop === 'background' || d.prop === 'background-color');
 }
 
 const GRADEABLE_PROPS = new Set(['color', 'background', 'background-color']);
 
+export interface SheetTally {
+  file: string; braces: number; blocksClosed: number; blocksRecorded: number; pairs: number;
+}
+
 /** Every color:+background: pairing that shares ONE declaration block. */
-function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number } {
+function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number; tally: SheetTally } {
   const css = stripCommentsKeepLines(readFileSync(cssPath, 'utf8'));
   const rel = path.relative(FEATURES_DIR, cssPath).split(path.sep).join('/');
   const pairs: Pair[] = [];
@@ -145,6 +180,14 @@ function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number 
   let line = 1;
   let seg = '';
   let paren = 0;
+  // Per-file parse evidence for the floor: a sheet the walk cannot read must be NAMED, not
+  // silently contribute nothing. braces counts '{', blocksClosed counts the matching pops,
+  // blocksRecorded counts blocks that got at least ONE declaration of ANY property past
+  // depth-0 recording. braces > 0 with blocksRecorded === 0 is the shape of a blackout: the
+  // file was opened, parsed to nothing, and graded as if it were absent.
+  let braces = 0;
+  let blocksClosed = 0;
+  let blocksRecorded = 0;
   const stack: Frame[] = [];
 
   const record = (text: string, at: number): void => {
@@ -154,21 +197,32 @@ function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number 
     if (colon < 0) return;
     const prop = text.slice(0, colon).trim().toLowerCase();
     const value = text.slice(colon + 1).trim();
-    if (value && GRADEABLE_PROPS.has(prop)) frame.decls.push({ prop, value, line: at });
+    if (!prop || !value) return;
+    frame.declCount++;
+    if (GRADEABLE_PROPS.has(prop)) frame.decls.push({ prop, value, line: at });
   };
 
   for (let i = 0; i < css.length; i++) {
     const ch = css[i];
     if (ch === '\n') { line++; seg += ch; continue; }
     if (ch === '(') { paren++; seg += ch; continue; }
-    if (ch === ')') { paren--; seg += ch; continue; }
+    // CLAMP: a ')' below zero is malformed input, not a nesting level. Decrementing
+    // unconditionally drove the counter negative — three stray ')' in
+    // src/features/warehouse/WarehouseConsole.css did exactly that until aa56aba9d — and
+    // once negative, the "ch === ';' && paren === 0" gate below can never fire again, so the
+    // rest of the file recorded nothing while the suite stayed green. Clamping alone is NOT
+    // enough: a clamped walk silently resumes grading whatever it can parse, so the per-file
+    // floor is what turns a blackout into a named failure.
+    if (ch === ')') { if (paren > 0) paren--; seg += ch; continue; }
     if (ch === ';' && paren === 0) { record(seg, line); seg = ''; continue; }
     if (ch === '{') {
+      braces++;
       const selector = seg.trim();
       const parent = stack[stack.length - 1];
       stack.push({
         selector,
         decls: [],
+        declCount: 0,
         line,
         skip: Boolean(parent?.skip) || selector.startsWith('@keyframes')
           || selector.startsWith('@-webkit-keyframes'),
@@ -177,7 +231,18 @@ function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number 
       continue;
     }
     if (ch === '}') {
+      // FLUSH BEFORE POP. The pending segment is a declaration whose author omitted the
+      // trailing ';' — '.x { color: #fff; background: #eee }'. Recording it while the frame
+      // is still on the stack keeps that last declaration; popping first dropped it, which
+      // mis-grades BOTH ways: it can hide a real identical pair, or split one so a pair
+      // never forms. Measured on the committed tree: zero such blocks today, so this is
+      // latency, not a live defect.
+      record(seg, line);
       const frame = stack.pop();
+      if (frame) {
+        blocksClosed++;
+        if (frame.declCount > 0) blocksRecorded++;
+      }
       if (frame && !frame.skip && frame.selector && !frame.selector.startsWith('@')) {
         const color = lastOf(frame.decls, 'color');
         const bg = lastBackground(frame.decls);
@@ -191,7 +256,7 @@ function collectSameBlockPairs(cssPath: string): { pairs: Pair[]; total: number 
     }
     seg += ch;
   }
-  return { pairs, total };
+  return { pairs, total, tally: { file: rel, braces, blocksClosed, blocksRecorded, pairs: total } };
 }
 
 function cssFiles(dir: string): string[] {
@@ -223,8 +288,16 @@ function cssFiles(dir: string): string[] {
 
 const sheets = cssFiles(FEATURES_DIR);
 const composed: Pair[] = [];
-for (const f of sheets) composed.push(...collectSameBlockPairs(f).pairs);
+const tallies: SheetTally[] = [];
+for (const f of sheets) {
+  const walk = collectSameBlockPairs(f);
+  composed.push(...walk.pairs);
+  tallies.push(walk.tally);
+}
 const composedTotal = composed.length;
+// The per-file floor's population: every sheet that opens a block at all. A sheet with no
+// '{' (comment-only) is legitimately silent and is excluded by the braces > 0 test.
+const blindSheets = tallies.filter((t) => t.braces > 0 && t.blocksRecorded === 0);
 
 /** A side is gradable only when it resolves to a bare #hex through this theme. */
 function resolveHex(value: string, tokens: Record<string, string>): string | null {
@@ -288,6 +361,30 @@ describe('Composed rules: text and background resolving to one colour', () => {
       );
     }
     expect(gradable, 'only ' + gradable + ' gradable pairs of ' + composedTotal).toBeGreaterThan(10);
+  });
+
+  /* PER-FILE FLOOR. The assertion above is tree-wide, so ONE blacked-out sheet passes it
+     while the run prints a healthy total: three stray ')' in WarehouseConsole.css pushed the
+     paren counter negative and that file stopped contributing, and 104 other sheets kept the
+     average green. A floor that every readable sheet clears turns a single blind sheet into
+     a named, line-numbered failure — "sheet X parsed to zero blocks" is actionable,
+     "population is low" is not. */
+  it('every sheet that opens a block contributes at least one recorded declaration block', () => {
+    expect(
+      blindSheets.length,
+      'UNREADABLE SHEET(S) — the walk found braces but recorded ZERO declaration blocks, so '
+      + 'nothing in them was graded:\n'
+      + blindSheets
+        .map((t) => '  ' + t.file + '   contains ' + t.braces + " '{' and closed " + t.blocksClosed
+          + ' block(s), but contributed ' + t.blocksRecorded + ' recorded declaration block(s)'
+          + ' and ' + t.pairs + ' composed pair(s)')
+        .join('\n')
+      + '\n\nA malformed value (an unbalanced \'(\' or \')\') anywhere above the first block can'
+      + ' do this: declarations are only recorded at paren depth 0. Fix the sheet, or fix the'
+      + ' parser — but do not let the file grade as if it were absent.',
+    ).toBe(0);
+    // The floor must have a population to be worth anything: it grades this many sheets.
+    expect(tallies.filter((t) => t.braces > 0).length, 'no sheet with a brace was walked').toBeGreaterThan(50);
   });
 
   it('resolves all three theme blocks over the :root base', () => {
