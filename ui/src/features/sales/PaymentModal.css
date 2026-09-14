@@ -684,9 +684,28 @@
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
+/* Hover keeps the base hover's exact (:hover:not(:disabled)) shape on purpose:
+   at plain :hover this selector is (0,2,0) while .payment-qris-btn:hover:not(:disabled)
+   is (0,3,0), so "tidying" it would hand the solid --color-accent-hover fill back
+   to the button that mints a charge. Do not simplify this selector.
+   Text uses --color-accent-subtle-fg — the foreground tokens.css declares as the
+   matched pair of --color-accent-subtle (tokens.css:410 light, :553 dark solid) and
+   colorContrastCompliance.test.ts:305-310 asserts as a pair. --color-accent measured
+   3.68:1 on this fill over --color-pos-modal-bg in dark (below the 4.5 AA-normal bar
+   AND below this button's own resting 4.57:1); subtle-fg measures 11.88:1 dark /
+   13.84:1 light. --color-accent-dim as the fill was measured at 3.99:1, still failing. */
 .payment-qris-btn--dynamic:hover:not(:disabled) {
   background: var(--color-accent-subtle);
-  color: var(--color-accent);
+  color: var(--color-accent-subtle-fg);
+}
+
+/* Resting hairline is 1px at the same (0,2,0)-shaped value the base focus-visible
+   rule uses, so a 1px cue here was indistinguishable from the unfocused state —
+   the demotion killed its own focus ring. 2px reads against the 1px resting line
+   (and keyboard focus was never lost outright: themes/reset.css:133 gives
+   :focus-visible a 2px outline and nothing here sets outline:none). */
+.payment-qris-btn--dynamic:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 
 .payment-receipt-currency-row span:last-child {
