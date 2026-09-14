@@ -173,6 +173,19 @@
   accent-color: var(--color-accent);
 }
 
+/* The tender row inherited everything from .payment-method-label, so the name
+   never claimed the row and the selected method never read as selected — the
+   radio dot was the only signal. flex:1 lets it fill; the checked state keys
+   off the input so the chosen tender's text changes with it. */
+.payment-method-name {
+  flex: 1;
+}
+
+.payment-method-label input[type="radio"]:checked + .payment-method-name {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
 .payment-other-input {
   border: none;
   border-bottom: 1px solid var(--color-border);
@@ -618,6 +631,21 @@
   margin: 0;
 }
 
+/* The Free-tier branch of the QRIS gate. The ALLOWED branch gets its box from
+   .payment-qris-section above; this mirrors that pair (same padding, column,
+   gap, centring, small secondary text) so both sides of the gate occupy one
+   box instead of the notice sitting flush on the modal edge. */
+.payment-qris-upgrade {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
 .payment-qris-btn {
   width: 100%;
   padding: var(--space-3) var(--space-4);
@@ -643,6 +671,22 @@
 
 .payment-qris-btn:focus-visible {
   box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* Money-safety demotion: this variant mints a Midtrans charge while the base
+   button records a cashier-asserted amount, so the two must not read as the
+   same primary action. Secondary treatment — transparent fill, accent text,
+   inset accent hairline — and a hover at the base hover's specificity shape,
+   which must restate background or the solid accent-hover fill would win. */
+.payment-qris-btn--dynamic {
+  background: transparent;
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.payment-qris-btn--dynamic:hover:not(:disabled) {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
 }
 
 .payment-receipt-currency-row span:last-child {
