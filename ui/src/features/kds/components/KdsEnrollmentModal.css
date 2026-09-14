@@ -95,8 +95,8 @@
    with no .css hit anywhere in the tree, and git log -S shows only that one
    adding commit — the wrapper was born unstyled rather than losing a rule. It is not decorative: its job is to be the box the
    control fills, so the honest property is the one every other wrapper in this
-   sheet already opens with — .kds-enrollment-generating /:138,
-   .kds-enrollment-qr-body /:164 and .kds-enrollment-qr-wrapper /:179 are all
+   sheet already opens with — .kds-enrollment-generating /:162,
+   .kds-enrollment-qr-body /:187 and .kds-enrollment-qr-wrapper /:202 are all
    display:flex — which also takes the input out of the parent's line box, so a
    width:100% /:77 control no longer hangs a descender gap under itself.
    Nothing else: no colour and no font-size, because .kds-enrollment-input
