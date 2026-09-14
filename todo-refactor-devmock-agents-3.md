@@ -1,5 +1,7 @@
 # Orchestrator Agent 3: Enterprise Mocks (Staff, Workspaces, Topology & Settings)
 
+<!-- Audit stamp: 2026-09-14 · DSH · status: ACCURATE AFTER REPAIR (9 corrections) · MAJOR — the "Lane status (measured 2026-09-13): ZERO PROGRESS" header and the phase 3.1 staff box were overtaken by the tree: `ui/src/dev-mock/handlers/staff.ts` now EXISTS (572 lines, 33 command keys, its own header at :2-6 citing this work order's phase 3.1) and is imported at `tauri-api.ts:52` / registered at `:951`, so the box is ticked on that evidence and the lane status is restated as PARTIALLY landed. · DEAD REFS — the three sibling links (`todo-refactor-devmock-agents-1/-2/-4.md`) no longer resolve: those orders were renamed to `done-todo-*` and now live under `.agents/archived/`, so all three are cited as bare names with no path prefix, which survives in either location; the phase-4.5 anchor that this doc's load-bearing "SUPERSEDED BY PHASE 4.5" ownership claim hung on is re-pointed AND the claim is restated in prose so it stands without a resolvable path (confirmed in the archived order itself: `done-todo-refactor-devmock-agents-4.md`:166 "Phase 4.5: Final Cleanup — OWNS the router consolidation (supersedes agent 3's phase 3.3)", restated at :204). · INVENTED SYMBOLS — the phase 3.1 box named `login_with_pin` and `assign_role`, which exist as IPC commands nowhere in `ui/` or `apps/` (searched both; also searched the sibling vocabulary: the staff surface is `staff_login` / `verify_pin` / `list_staff_scoped` / `create_staff_scoped` / `list_roles_scoped` — `apps/desktop-client/src/commands/staff.rs:119`, `:147`, `:231`); a worker following the old text would hunt for mocks that never existed. · STALE COUNTS — "as of 2026-09-13 it measures 2,375 lines … with 181 literal entries": today the router measures 1,127 lines (read-tool count; `wc -l` agrees) with ~123 named handlers still inline (92 quoted object keys + 31 `handlers['…'] =` additions, counted by rg); the 4,904 figure is now labelled unreproduced (no commit was found that measures it), while 5,226 / 4,991 are kept with the command that reproduces them. · FORBIDDEN PATHS list was incomplete — 9 further modules exist in `handlers/` outside this fence (analytics, crm, floorplan, kds, locations, loyalty, payment, system, topology-state); the 14th is this lane's own landed `staff.ts`. · SCOPE — dev-mock is a UI-only surface: 20 files / 6,174 lines under `ui/src/dev-mock/`, no crates/ or platform/ devmock layer. · METHOD: read/grep against the working tree only; no git command ran in this pass, so the three phase 3.3 wait-gate SHAs are carried from the reference-integrity audit (repo-wide `git cat-file`: 71/71 resolve) rather than re-derived here. -->
+
 **Document:** `todo-refactor-devmock-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Enterprise Mock Domain Architect)  
 **Goal:** Extract staff profiles, authentication tokens, roles/permissions, workspace instances, topology graph persistence, hardware printer mocks, and system settings from `ui/src/dev-mock/tauri-api.ts`. Reduce `tauri-api.ts` into a clean entry router.
@@ -11,13 +13,20 @@ Policy §3), because a bare `git commit` in this shared checkout files whatever 
 session happened to stage under your subject. Immediately before each commit, confirm the
 router is clean against HEAD: `git --no-optional-locks status --porcelain -- ui/src/dev-mock/tauri-api.ts`.
 If it holds edits that are not yours, stop and report rather than committing them.  
-**Lane status (measured 2026-09-13): ZERO PROGRESS.** None of `handlers/staff.ts`,
-`handlers/workspaces.ts`, `handlers/topology.ts` or `handlers/settings.ts` exists, and
-`resolve_boot_store`, `list_workspaces`, `load_topology` and `apply_topology_diff` are still
-literal entries in the router. This lane is still open.  
+**Lane status (re-measured 2026-09-14): PARTIALLY LANDED — staff done, the rest not.**
+`ui/src/dev-mock/handlers/staff.ts` now EXISTS (572 lines, 33 staff/auth/role/preferences
+command keys exported as `staffHandlers` at :266), imported by the router at
+`tauri-api.ts:52` and registered at `:951`; the module header at `staff.ts:2-6` names this
+work order and phase 3.1 as its reason. `handlers/workspaces.ts`, `handlers/topology.ts` and
+`handlers/settings.ts` still do NOT exist — the topology *state* that did land
+(`handlers/topology-state.ts`, 86 lines) is shared revision bookkeeping under sibling
+ownership, not the handler map phase 3.2 planned — and `resolve_boot_store` (`tauri-api.ts:548`),
+`list_workspaces` (`:601`), `create_workspace_instance_scoped` (`:609`), `load_topology`
+(`:664`) and `apply_topology_diff` (`:674`) are still literal entries in the router.
+So: phase 3.1's staff half CLOSED, phase 3.1's workspace half and all of phase 3.2 still OPEN.  
 **Sibling Documents:**
-- [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
-- [`todo-refactor-devmock-agents-2.md`](./todo-refactor-devmock-agents-2.md) (Agent 2 — Operational Mocks: Sales, Inventory & Catalog)
+- `done-todo-refactor-devmock-agents-1.md` (Agent 1 — Dev-Mock Storage Core & Seeding Engine) — CLOSED work order, cited by name only: it has moved under `.agents/archived/`, and a bare name resolves in either location.
+- `done-todo-refactor-devmock-agents-2.md` (Agent 2 — Operational Mocks: Sales, Inventory & Catalog) — CLOSED work order, cited by name only for the same reason.
 
 ---
 
@@ -29,7 +38,7 @@ literal entries in the router. This lane is still open.
    - All commits made by Agent 3 MUST use:
      - `refactor(devmock-enterprise): ...`
 3. **Owned Path Fence (Exclusive to Agent 3):**
-   - `ui/src/dev-mock/handlers/staff.ts` (NEW)
+   - `ui/src/dev-mock/handlers/staff.ts` (LANDED 2026-09-14, 572 lines — this is phase 3.1's staff output, not a pending file)
    - `ui/src/dev-mock/handlers/workspaces.ts` (NEW)
    - `ui/src/dev-mock/handlers/topology.ts` (NEW)
    - `ui/src/dev-mock/handlers/settings.ts` (NEW)
@@ -37,6 +46,7 @@ literal entries in the router. This lane is still open.
 4. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit mock storage engine in `ui/src/dev-mock/core/` (Owned by Agent 1).
    - DO NOT edit operational command mocks in `ui/src/dev-mock/handlers/{sales,inventory,catalog,shifts}.ts` (Owned by Agent 2).
+   - Measured 2026-09-14, `ui/src/dev-mock/handlers/` holds 14 modules, so this list names only some of them: `analytics.ts`, `crm.ts`, `floorplan.ts`, `kds.ts`, `locations.ts`, `loyalty.ts`, `payment.ts`, `system.ts` and `topology-state.ts` also exist, none owned by Agent 3 (`system.ts` and `topology-state.ts` are Agent 4's; `staff.ts` is this lane's own finished phase 3.1 output). Treat any path not named in §3 above as off-limits.
 5. **Git Dependency Waiting Protocol:**
    - Agent 3 can create and test `staff.ts`, `workspaces.ts`, `topology.ts`, and `settings.ts` independently.
    - Before Phase 3.3 (final consolidation of `tauri-api.ts`), check that Agent 1 and Agent 2 have committed:
@@ -50,23 +60,29 @@ literal entries in the router. This lane is still open.
 ## 📋 Task Checklist
 
 ### Phase 3.0: Baseline Audit
-- [ ] Map remaining staff, workspace, topology, and settings command strings in `tauri-api.ts`.
+- [x] Map remaining staff, workspace, topology, and settings command strings in `tauri-api.ts`. Mapped 2026-09-14: staff = 33 keys, extracted (see 3.1); workspace = `resolve_boot_store` :548, `list_workspaces` :601, `list_workspaces_scoped` :602, `create_workspace_instance_scoped` :609, `list_workspaces_for_store_scoped` :1088; topology = `load_topology` :664, `apply_topology_diff` :674, `load_topology_revision` :769 (+ revision state in `topology-state.ts`); settings = `get_receipt_settings` :651/:656, `set_receipt_settings` :661, `set_receipt_settings_scoped` :797, `pg_sync_status` :1079, license `get_license_status` :555 / `check_license_status` :556 / `activate_license` :558.
 
 ### Phase 3.1: Extract Staff & Workspace Mocks
-- [ ] Move `login_with_pin`, `list_staff`, `create_staff`, `assign_role` mocks to `handlers/staff.ts`.
-- [ ] Move `list_workspaces`, `create_workspace_instance`, `resolve_boot_store` mocks to `handlers/workspaces.ts`.
+- [x] Move the staff/auth/role mocks to `handlers/staff.ts` — **LANDED** 2026-09-14: `staff.ts:266` exports `staffHandlers` (33 keys incl. `staff_login` :278, `verify_pin`, `list_staff_scoped` :430, `create_staff_scoped` :509, `list_roles_scoped`, `get/set_user_preferences*`), wired by `tauri-api.ts:52` + `:951`. The commands this box originally named — `login_with_pin` and `assign_role` — were invented: neither exists in `ui/` or `apps/` (searched both, plus the sibling vocabulary above); `list_staff`/`create_staff` exist only in their `_scoped` form.
+- [ ] Move `list_workspaces`, `create_workspace_instance_scoped`, `resolve_boot_store` mocks to `handlers/workspaces.ts` — **STILL OPEN** (measured 2026-09-14): all three are still literal entries in the router at `tauri-api.ts:601`, `:609`, `:548`, and `handlers/workspaces.ts` does not exist.
 - [ ] Verify: `npm run typecheck`.
 - [ ] **Commit Milestone:**
   ```bash
   git add -- ui/src/dev-mock/handlers/staff.ts ui/src/dev-mock/handlers/workspaces.ts && git commit -m "refactor(devmock-enterprise): extract staff and workspace mock handlers" -- ui/src/dev-mock/handlers/staff.ts ui/src/dev-mock/handlers/workspaces.ts ui/src/dev-mock/tauri-api.ts
   ```
+  *Half-executed (measured 2026-09-14): the `staff.ts` half of this commit already landed —
+  it exists on disk at 572 lines and is registered by the router — so only the
+  `workspaces.ts` path (and `tauri-api.ts`) remains open. Do not re-add `staff.ts` to a new
+  pathspec commit; it is tracked, and a `git add` of a tracked file is the forbidden staging
+  (AGENTS.md §3).*
+
   The `add` is required only because both handler files are new: a bare pathspec commit
   cannot introduce an untracked path and `git commit --include` fails the same way (§3 rev 2).
   Chain the two on one line so no staged window is left open for another agent.
 
 ### Phase 3.2: Extract Topology & Settings Mocks
-- [ ] Move `load_topology`, `apply_topology_diff` mocks to `handlers/topology.ts`.
-- [ ] Move printer/receipt settings, cloud sync status, and license mocks to `handlers/settings.ts`.
+- [ ] Move `load_topology`, `apply_topology_diff` mocks to `handlers/topology.ts` — **STILL OPEN** (2026-09-14): both remain literal at `tauri-api.ts:664` / `:674`; `handlers/topology.ts` does not exist. Note `handlers/topology-state.ts` (86 lines, Agent 4) already holds the revision state both of these read, so the extraction is thinner than it looks.
+- [ ] Move printer/receipt settings, cloud sync status, and license mocks to `handlers/settings.ts` — **STILL OPEN** (2026-09-14): `get/set_receipt_settings(_scoped)` at `tauri-api.ts:651`/`:656`/`:661`/`:797`, `pg_sync_status` at `:1079`, license at `:555`/`:556`/`:558`; `handlers/settings.ts` does not exist.
 - [ ] Verify: `npm run typecheck`.
 - [ ] **Commit Milestone:**
   ```bash
@@ -74,14 +90,19 @@ literal entries in the router. This lane is still open.
   ```
 
 ### Phase 3.3: Final Reduction of `tauri-api.ts` — SUPERSEDED BY PHASE 4.5
-> **Do not execute this phase.** It and [`todo-refactor-devmock-agents-4.md`](./todo-refactor-devmock-agents-4.md)
-> phase 4.5 both claimed the final consolidation of the router; that is one job with one
-> owner, and 4.5 owns it. Agent 3's remaining scope is phases 3.1 and 3.2 only — extract
-> the four enterprise handler modules and leave the router to Agent 4. The milestone below
+> **Do not execute this phase.** The Agent 4 work order — `done-todo-refactor-devmock-agents-4.md`
+> (retired; currently filed under `.agents/archived/`) — claims this same final consolidation as its
+> **phase 4.5, "Final Cleanup — OWNS the router consolidation (supersedes agent 3's phase 3.3)"**
+> (its :166 heading, restated in its own status note at :204). Router consolidation is ONE job with
+> ONE owner, and that owner is Agent 4's phase 4.5. This sentence is deliberately spelled out in
+> prose: the claim used to hang on a relative link to a file that has since been renamed and moved,
+> so a reader who could not follow the link lost the ownership ruling entirely. Agent 3's remaining scope is phases 3.1 and 3.2 only — extract
+> the enterprise handler modules still missing (workspaces, topology, settings — staff already landed) and leave
+> the router to Agent 4. The milestone below
 > is kept in corrected form solely so a stale grep for a bare commit cannot resurrect it.
-- [ ] ~~*Wait Gate:* Verify Agent 1 has landed `refactor(devmock-core):` and Agent 2 has landed `refactor(devmock-ops):`.~~ Both landed: `ce8666604`, `6105ce224`, `efd766226`.
+- [ ] ~~*Wait Gate:* Verify Agent 1 has landed `refactor(devmock-core):` and Agent 2 has landed `refactor(devmock-ops):`.~~ Both landed: `ce8666604`, `6105ce224`, `efd766226` (SHAs carried from the reference audit — repo-wide `git cat-file` resolved all cited SHAs; not re-derived in this pass, which had no git command available).
 - [ ] ~~Reduce `ui/src/dev-mock/tauri-api.ts` to registering the domain handler maps into `mockDispatcher`.~~ see phase 4.5
-- [ ] ~~Verify `tauri-api.ts` line count drops from 4,904 to < 200 lines.~~ Both numbers were wrong. The file never measured 4,904 at any commit in this history (`ce8666604^` = 5,226; `ce8666604` = 4,991), and as of 2026-09-13 it measures 2,375 lines at HEAD with 181 literal entries still inside it — a line-count target is not a definition of done while entries remain unowned. Measure with `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l`.
+- [ ] ~~Verify `tauri-api.ts` line count drops from 4,904 to < 200 lines.~~ Both numbers were wrong. The file never measured 4,904 at any commit this audit could reach — that figure is **unreproduced**, kept only as the claim being corrected. The two history numbers ARE reproducible: `git show ce8666604^:ui/src/dev-mock/tauri-api.ts | wc -l` = 5,226 and `ce8666604` = 4,991 (both re-checked against those commits by the 09-14 reference pass). Current: 2026-09-14 re-measure = **1,127 lines** (`wc -l` and the read-tool line count agree; ±1 elsewhere is a method artifact, not an error) with roughly **123 named handlers still inline** — 92 quoted object keys plus 31 `handlers['…'] =` additions, both counted by `rg -c` on the file — down from the 2,375 lines / 181 entries recorded on 2026-09-13, because phase 3.1's staff extraction and Agent 4's `system.ts`/`topology-state.ts` landings removed them. A line-count target is still not a definition of done while entries remain unowned. Measure with `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l` and `rg -c "^\s*'" ui/src/dev-mock/tauri-api.ts`.
 - [ ] Run full UI tests: `npm run test` and `npm run check:all`.
 - [ ] **Commit Milestone:**
   ```bash
