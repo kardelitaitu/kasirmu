@@ -782,12 +782,7 @@ export default function PaymentModal({
   // pending sale to void. The inverse risk (captured, then the app dies
   // before complete_sale) is the accepted one — it reconciles through the
   // terminal's own journal, and the pre-flight + decline paths never touch
-  // the ledger at all. Preflight is `edc_terminal_status_scoped`: the
-  // never-shipped `test_edc_connection_scoped` (agents-2 residual) is
-  // decided INTO this call — same session enforcement, same answer. On the
-  // tablet (no edc commands registered) the pre-flight simply rejects and
-  // the flow falls back to manual card — desktop-only expressed as
-  // degradation, not platform-sniffing.
+  // the ledger at all.
   // B1: the edc phase atom, its preflight/waiting/declined writer and the
   // dismiss handler moved verbatim to ./payment/useEdcTenderPhase - the seam is
   // acyclic because every writer and every reader of this atom sits BELOW both

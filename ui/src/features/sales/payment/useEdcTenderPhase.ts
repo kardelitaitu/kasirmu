@@ -110,6 +110,12 @@ export function useEdcTenderPhase({
   const handleTerminalPay = useCallback(async () => {
     setProcessing(true);
     try {
+      // Preflight is `edc_terminal_status_scoped`: the never-shipped
+      // `test_edc_connection_scoped` (agents-2 residual) is decided INTO this
+      // call — same session enforcement, same answer. On the tablet (no edc
+      // commands registered) the pre-flight simply rejects and the flow falls
+      // back to manual card — desktop-only expressed as degradation, not
+      // platform-sniffing.
       setEdc({ phase: 'preflight' });
       const status = await edcTerminalStatusScoped(sessionToken!);
       if (status.status !== 'ready') {
