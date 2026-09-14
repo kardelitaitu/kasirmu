@@ -49,7 +49,7 @@
 ## 📋 Task Checklist
 
 ### Phase 1.0: Baseline Audit
-- [ ] Run `npm run test -- KdsScreen` in `ui/`.
+- [x] Run `npm run test -- KdsScreen` in `ui/`. <!-- TICKED 2026-09-15 by the acceptance lane: ran exactly this command from ui/ -> "Test Files  4 passed (4)", "Tests  88 passed (88)", exit code 0. Measured at bd1a8a4e32; the kds + __tests__ surface is byte-identical to c8ea8bbe4. Full rollup in "Acceptance runs (2026-09-15, HEAD c8ea8bbe4)" below. The "not executed / unknown current result" note under this box is superseded by that run and is kept verbatim as a record. -->
   > The suite exists and is large: `ui/src/__tests__/KdsScreen.test.tsx` holds **56** `test`/`it`
   > cases (`grep -cE '^\s*(test|it)\(' ui/src/__tests__/KdsScreen.test.tsx`), plus
   > `KdsScreenSameOrders.test.ts` and two `KdsScreenFooter*` suites. **Not executed by this docs
@@ -70,7 +70,7 @@
   > `hooks/useNewTicketSound.ts` detects unseen order IDs and plays a debounced chime (5 s window
   > with a trailing catch-up), gated by `settings.soundEnabled`. Evidence: `useNewTicketSound.ts:5`
   > (`DEBOUNCE_MS = 5000`), `:29` (signature), wired at `KdsScreen.tsx:159`.
-- [ ] Verify: `npm run typecheck`.
+- [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: ONE `npm run typecheck` (tsc --noEmit) from ui/ at bd1a8a4e32 (= c8ea8bbe4 for this surface) -> no diagnostics, exit code 0. Per the lane owner's ruling this single run also satisfies agents-1:94 and agents-2:93; see "Acceptance runs (2026-09-15, HEAD c8ea8bbe4)". -->
 - [ ] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-state): extract keyboard navigation and audio alerts"
@@ -91,8 +91,88 @@
   > `hooks/useActionCooldown.ts` (64 ln), `kdsAutoAccept.ts` (`isAutoAckEligible`), and the
   > `sameOrders` diff helper exported at `KdsScreen.tsx:42`.
 - [ ] Wire hook into `KdsScreen.tsx`.
-- [ ] Verify: `npm run typecheck`.
+- [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: the same single `npm run typecheck` run at bd1a8a4e32 -> exit code 0, no diagnostics; one run, three identically-worded boxes (this one, agents-1:73, agents-2:93) per the lane owner's ruling. The box's own text names only that command and asks for nothing further. -->
 - [ ] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-state): decouple ticket lifecycle state machine into useKdsTickets"
   ```
+
+---
+
+## Acceptance runs (2026-09-15, HEAD c8ea8bbe4)
+
+> **Fence was clean, so these numbers are attributable.** `git status --porcelain -- ui/src/features/kds
+> ui/src/__tests__` printed **nothing** before the runs and again after them — no kds file was dirty, so
+> nothing below is measured off a half-written file.
+> **Revision actually measured at:** `bd1a8a4e32` (branch `0.0.39`, tip at run time). The `c8ea8bbe4` named
+> in the heading is its parent, the one commit between them (`bd1a8a4e3`) is docs-only,
+> `git diff --stat c8ea8bbe4 HEAD -- ui/src/features/kds ui/src/__tests__` is **empty**, and
+> `ui/src/features/kds/KdsScreen.tsx` is the same blob at both
+> (`a8d669e1fae4e51c8f33b4301c29005399b590c8`). The heading therefore cites the SHA the lane was told
+> to cite without misdating the measurement.
+
+### Run 1 — `npm run test -- KdsScreen`  (from `ui/`) — exit code 0
+
+```text
+ Test Files  4 passed (4)
+      Tests  88 passed (88)
+   Duration  4.65s (transform 1.02s, setup 827ms, import 1.12s, tests 3.71s, environment 1.95s)
+```
+
+The rollup is 4 files, exactly the suite surface `:53-57` predicts, and the case counts add up to it:
+`KdsScreen.test.tsx` 1,361 ln / 57 cases (the 1,361 cited in the plans is **correct**);
+`KdsScreenSameOrders.test.ts` 188 ln / 24; `KdsScreenFooter.test.tsx` 46 ln / 2;
+`KdsScreenFooterFormatClock.test.ts` 43 ln / 5. 57+24+2+5 = **88**, so no file in the `KdsScreen*` family
+was skipped and none outside it was pulled in. **Satisfies `:52` (ticked).**
+
+### Run 2 — `npm run typecheck`  (`tsc --noEmit`, from `ui/`) — exit code 0
+
+No diagnostics emitted; command completed clean.
+
+**Three boxes, one run.** This single `npm run typecheck` at this one revision satisfies the three
+identically-worded boxes `agents-1:73`, `agents-1:94` and `agents-2:93`, because each box's OWN text is
+exactly `Verify: npm run typecheck` and asks for nothing further (no extra assertion, no named file).
+This is the lane owner's ruling, applied here: one measurement recorded three times, **not** three
+pieces of work — which is why each of the three ticks cites this same block.
+
+### Boxes this run did NOT tick (findings, not work)
+`:60`, `:81` and `:93` are, per the census, **already done in substance** — and they are **not this
+lane's to close**, because each names a path with no file behind it. Measured, not inferred:
+- **`:60`** *Extract keyboard shortcuts into `hooks/useBumpBar.ts`* — the keyboard work shipped **under a
+  different name and in a different directory**: `ui/src/features/kds/useKdsShortcuts.ts` (129 ln) sits
+  at the feature **root**, is imported at `KdsScreen.tsx:11` and called at `:324`. `hooks/useBumpBar.ts`
+  does not exist, and neither does the merged plan's spelling `hooks/useKdsKeyboardShortcuts.ts`
+  (`ls ui/src/features/kds/hooks/` → `useActionCooldown.ts`, `useKdsPreferences.ts`,
+  `useNewTicketSound.ts`, `useTicketSla.ts`). Ticking would certify a path that is not there; leaving
+  it silent denies work that is. **This is an alias problem, and it is the plan owner's call.**
+- **`:81`** *Extract ticket fetching, the `kds:orders-changed` listener and status updates into
+  `hooks/useKdsTickets.ts`* — that target file has **0 files behind it**, and no `listen(…)`, `listen<…>`
+  or `unlisten` call remains anywhere in `KdsScreen.tsx` (grep = 0 hits), so the subscription is already
+  out of the screen. Whether that satisfies a box whose fenced target does not exist is the same
+  owner-side question as `:60`.
+- **`:93`** *Wire hook into `KdsScreen.tsx`* — one hook IS wired (`useKdsShortcuts` at `:11`/`:324`);
+  `useKdsTickets` is not, because it was never written.
+
+None of the three is ticked by this lane. The commands I was sent to run say nothing about whether
+they were, and a green suite is not evidence about a path that does not exist.
+- `:95` **Commit Milestone** — SUPERSEDED (merged plan carries the commit form; see its PREFIX RULING).
+
+### Corrections (2026-09-15, measured) — the stale lines above stay verbatim as records
+1. **`:9` prints a 1,193-line baseline as the working number; the file is 680 lines today — a −513
+   drift.** `wc -l ui/src/features/kds/KdsScreen.tsx` = **680** at `bd1a8a4e32`. The same figure is
+   repeated as "measured" at `:11-14` (audit 2026-09-14). It was true then and is not now: the file's
+   own history reads 1,193 ln at `cb3254878` (09-13) → 1,192 (`4af8e1237`) → 1,119 → 1,000 → 979 → 898
+   → 842 → 807 → 774 → 729 → 695 (`de165c118`, 09-14) → **680** (`02dd03278`, 09-15).
+2. **`todo-refactor-kds-agents-merged.md:151` names a target that does not exist.** It says the keyboard
+   slice goes into `hooks/useKdsKeyboardShortcuts.ts`. `ls
+   ui/src/features/kds/hooks/useKdsKeyboardShortcuts.ts` → *No such file or directory*; `hooks/` holds
+   exactly `useActionCooldown.ts`, `useKdsPreferences.ts`, `useNewTicketSound.ts`, `useTicketSla.ts`.
+   The shipped file is **`ui/src/features/kds/useKdsShortcuts.ts`, 129 ln, at the feature root — not
+   under `hooks/`**. The only occurrence of the string `useKdsKeyboardShortcuts` anywhere in `ui/src` is
+   a prose comment at `components/KdsHeaderLeft.tsx:21`. `merged` is outside this fence and is being
+   written by another lane right now, so it is reported here, not edited.
+
+> Recorded 2026-09-15 by the test/acceptance lane (time-boxed to the four commands named in the brief).
+> Nothing outside `todo-refactor-kds-agents-1.md` and `todo-refactor-kds-agents-2.md` was edited; no test
+> or source file was touched.
+

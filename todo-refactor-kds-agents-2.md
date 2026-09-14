@@ -90,7 +90,7 @@
   > --diff-filter=A` → `ae6d19ae7`, 2026-07-09. It has its own suites (`KdsTicketCard.test.tsx`
   > with 14 cases, plus 5 sibling test files for course label, duration format, grouping and
   > next-action). Nothing left in this bullet to do.
-- [ ] Verify: `npm run typecheck`.
+- [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: ONE `npm run typecheck` (tsc --noEmit) from ui/ at bd1a8a4e32 -> no diagnostics, exit code 0. The same run also satisfies agents-1:73 and agents-1:94 per the lane owner's shared-command ruling; see "Acceptance runs (2026-09-15, HEAD c8ea8bbe4)" below. -->
 - [ ] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-ui): extract KdsTicketCard, line items, and timer badges"
@@ -119,3 +119,75 @@
   ```bash
   git commit -m "refactor(kds-ui): consolidate KdsHeaderToolbar and reduce KdsScreen to composition root"
   ```
+
+---
+
+## Acceptance runs (2026-09-15, HEAD c8ea8bbe4)
+
+> **Fence was clean, so these numbers are attributable.** `git status --porcelain -- ui/src/features/kds
+> ui/src/__tests__` printed **nothing** before and after the runs.
+> **Revision actually measured at:** `bd1a8a4e32` (branch `0.0.39`, tip at run time). The `c8ea8bbe4` in
+> the heading is its parent; the one commit between them is docs-only,
+> `git diff --stat c8ea8bbe4 HEAD -- ui/src/features/kds ui/src/__tests__` is **empty**, and
+> `KdsScreen.tsx` is the same blob at both (`a8d669e1fae4e51c8f33b4301c29005399b590c8`).
+
+### The run that ticks `:93` — `npm run typecheck`  (`tsc --noEmit`, from `ui/`) — exit code 0
+
+No diagnostics emitted; command completed clean.
+
+**Three boxes, one run.** This single `npm run typecheck` at this one revision also satisfies
+`agents-1:73` and `agents-1:94`, because all three boxes' OWN text is exactly
+`Verify: npm run typecheck` and each names nothing further (no extra assertion, no specific file).
+Lane owner's ruling, applied: one measurement recorded three times, **not** three pieces of work —
+each of the three ticks cites this same block, so the sharing is on the record rather than implied.
+
+### Same-lane context (not a `:93` requirement, recorded because Phase 2.0 is this file's baseline)
+`npm run test -- KdsScreen` from `ui/` at the same revision: **`Test Files  4 passed (4)` /
+`Tests  88 passed (88)`, exit code 0** (rollup = `KdsScreen.test.tsx` 1,361 ln/57,
+`KdsScreenSameOrders.test.ts` 188/24, `KdsScreenFooter.test.tsx` 46/2,
+`KdsScreenFooterFormatClock.test.ts` 43/5). Ticked in `agents-1:52`, which is where that box lives.
+
+### Boxes this run did NOT tick (findings, not work)
+- **`:102` *Extract `<KdsHeaderToolbar />` (station filter, sound toggle, device status, shift
+  button)* — an ALIAS problem, and it needs the plan owner's word, not a tick.** The named composite
+  has **0 tree hits** (`grep -rn 'KdsHeaderToolbar' --include='*.ts*' ui/src` = 0 hits, file and
+  component both), while four real components are mounted where the box says one would be:
+  `KdsHeaderLeft` (212 ln) at `KdsScreen.tsx:472`, `KdsHeaderTabs` (104 ln) at `:491`,
+  `KdsHeaderRight` (142 ln) at `:502`, `KdsZoneChips` (91 ln) at `:521`. Ticking would certify a
+  component that no file spells; leaving it silent denies work that shipped. **`:111`**
+  (*Reduce `KdsScreen.tsx` to orchestrating…*) sits on the same call and is likewise left open.
+- **`:115` *Verify `KdsScreen.tsx` line count drops from 1,193 to < 350 lines* — the size gate is met
+  twice over; the box's own literal is not met and is unreachable.** Measured:
+  `wc -l ui/src/features/kds/KdsScreen.tsx` = **680**, so **`<= 760`** (merged plan's wave-1 line) is
+  **MET** and **`<= 700`** (its named later wave) is **MET** — 680 clears both. The literal
+  **`< 350`** this box still carries is **NOT met** and was restated as unreachable by the merged plan
+  (`merged:74`, `merged:175`). Which of the three numbers governs the box is the owner's decision; no
+  tick either way.
+- **`:73` (`KdsTicketLineItem`) and `:80` (`KdsTimerBadge`) are PARKED** on rulings the merged plan
+  already made (both are relocations/view-over-shipped-logic, and the merged doc owns the disposition).
+- **`:94` and `:118` (Commit Milestones) are SUPERSEDED.** `:64` and `:88` were already `[x]` before
+  this lane arrived and were not touched.
+
+### Corrections (2026-09-15, measured) — the stale lines above stay verbatim as records
+1. **`:9` and `:11-14` print a 1,193-line baseline as if current; the file is 680 lines — a −513 drift.**
+   Same command, same tree: `wc -l` = **680** at `bd1a8a4e32`. The audit's 1,193 was accurate when
+   stamped on 2026-09-14 and has since been overtaken 12 times (`4af8e1237` 1,192 → `de165c118` 695 →
+   `02dd03278` **680**, 2026-09-15).
+2. **`:14-17` is false today: the header, tabs and zone chips no longer render inline.** It claims
+   `KdsScreen.tsx` "*is still 1,193 lines and still renders its own header (`:715-935`), tabs (`:856`)
+   and zone chips (`:939`) inline*". All four of those regions are extracted components mounted at
+   `:472` / `:491` / `:502` / `:521` (`KdsHeaderLeft`, `KdsHeaderTabs`, `KdsHeaderRight`,
+   `KdsZoneChips`), and the file is 680 lines — so **`:856`, `:939` and the `:715-935` range are past
+   the end of the file**. The same stale range is repeated in the fence at `:44` ("*the header is inline
+   at `KdsScreen.tsx:715-935`*").
+3. **`todo-refactor-kds-agents-merged.md:151` names a keyboard target that does not exist.** It gives
+   `hooks/useKdsKeyboardShortcuts.ts`; there is no such file, and `hooks/` holds only
+   `useActionCooldown.ts`, `useKdsPreferences.ts`, `useNewTicketSound.ts`, `useTicketSla.ts`. The shipped
+   file is **`ui/src/features/kds/useKdsShortcuts.ts`, 129 ln, at the feature root, not under `hooks/`**
+   (imported `KdsScreen.tsx:11`, called `:324`). The string `useKdsKeyboardShortcuts` survives in
+   `ui/src` only as a comment at `components/KdsHeaderLeft.tsx:21`. `merged` is outside this fence and
+   another lane is writing it, so this is reported, not edited.
+
+> Recorded 2026-09-15 by the test/acceptance lane. Only this file and `todo-refactor-kds-agents-1.md`
+> were edited; no test or source file was touched.
+
