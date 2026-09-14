@@ -1576,11 +1576,20 @@ describe("literal tail vs block relation", () => {
     expect(TOKEN_BLOCKS.root.size, "tokens.css :root parsed empty -- the block reader is broken").toBeGreaterThanOrEqual(200);
     expect(TOKEN_BLOCKS.light.size).toBeGreaterThanOrEqual(100);
     expect(TOKEN_BLOCKS.dark.size).toBeGreaterThanOrEqual(40);
-    // Calibrated at 334 tailed references; this tree cleared 93 :root-only ones in
-    // refactor(css): clear the :root-only fallback tails that no theme can reach, so the
-    // population the floor guards is now 241. The floor is calibration, not law: it exists
-    // to prove this case has input, and it moves down as the debt is paid, never up.
-    expect(TAILED_TOKEN_REFS.length, "no tailed reference to a tokens.css name parsed").toBeGreaterThanOrEqual(200);
+    // Calibration history, all of it downward and none of it silent: 334 measured before
+    // the first sweep, 241 after the 93 cleared in refactor(css): clear the :root-only
+    // fallback tails that no theme can reach, 218 after the 23 paid at 2374161e9, and
+    // **153** after style(ui): drop the fallbacks on tokens no theme can leave undefined
+    // in two shared sheets swept 65 more (49 in components/FastPINOverlay.css across 11
+    // names, 16 in frontend/themes/reset.css across 13; 218 - 65 = 153, and the assertion
+    // below failing at exactly 153 was the measurement). The floor is calibration, not
+    // law -- it exists to prove this case has an input, so it must stay far above zero and
+    // it moves down as debt is paid and never up past what the tree holds. 150 is chosen
+    // with a reason rather than as headroom: it sits ABOVE the 133 sites of the frozen
+    // disagreeing-tail worklist below, so a tree thin enough to fail this floor is also
+    // one where that worklist has lost its input, and it sits 3 below today's 153 so the
+    // next sweep has to be deliberate rather than free.
+    expect(TAILED_TOKEN_REFS.length, "no tailed reference to a tokens.css name parsed").toBeGreaterThanOrEqual(150);
     // The classifier must be capable of the red it reports green for today.
     const live = TAILED_TOKEN_REFS.filter((r) => tailRelation(r.token).liveTail);
     const disagreeing = new Set(TAILED_TOKEN_REFS.filter((r) => !tailRelation(r.token).agrees).map((r) => r.token));
