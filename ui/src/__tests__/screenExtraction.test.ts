@@ -725,7 +725,7 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
-    name: 'DataManagementScreen',
+    name: 'DataManagementScreen (placeholder)',
     tsx: 'settings/screens/DataManagementScreen.tsx',
     css: ['settings/screens/screens-placeholder.css'],
   },
