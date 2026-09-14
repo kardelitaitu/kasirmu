@@ -382,3 +382,194 @@ fn subscription_store_leaves_the_cleartext_column_empty_and_the_sealed_row_intac
         "the struct view agrees with the column"
     );
 }
+
+// ── get_license_status: the two debug-only bypasses ─────────────────
+//
+// These are the FIRST tests this command has ever had. Measured 2026-09-14
+// before this block landed: get_license_status appears 39 times tree-wide —
+// definition (license.rs:572), a scoped wrapper, two desktop IPC shims,
+// generate_handler! registrations, a gate table, doc comments — and ZERO times
+// in any *_tests.rs in either crate or in apps/.
+// cargo test -p oz-bridge --release --lib license reported 18/18 green, and
+// that green was the absence of any call, not coverage.
+//
+// Both hazards are cfg-split in production, so every case below asserts BOTH
+// build profiles in ONE body, in the repo's two established forms:
+// oz-core/src/db/audit_security_tests.rs:418
+// (assert_eq!(recorded, cfg!(debug_assertions))) and
+// oz-bridge/src/subscription_tests.rs:26-48 (an explicit debug arm plus a
+// #[cfg(not(debug_assertions))] arm). Asserting only the debug value would go
+// red in release and get "fixed" by weakening it — the mechanism that kept
+// this gap invisible.
+//
+// THE TRAP, named so a release failure is never misread as a bad assertion:
+// the only signature a test can seed is the BOOTSTRAP_FREE sentinel, and
+// oz-core/src/license_verification.rs:391-393 accepts it under
+// #[cfg(debug_assertions)] ONLY. So every payload-seeded case forks for that
+// reason alone: debug verifies and falls through to the date logic; release
+// rejects at license.rs:594 and returns InvalidSignature before a single date
+// is read. Consequence, recorded rather than papered over: the release arm of
+// the expired-past-grace branch (license.rs:670-683, is_active: false +
+// Expired) is UNREACHABLE from any test in this crate — it needs an RSA
+// signature made with the license server's private key, and
+// license_verification embeds only the public half.
+
+/// Seed the two settings lanes get_license_status reads (license.rs:590-591).
+fn seed_license_settings(conn: &rusqlite::Connection, payload: &str, signature: &str) {
+    Settings::set(conn, "license.payload", payload).expect("seed license.payload");
+    Settings::set(conn, "license.signature", signature).expect("seed license.signature");
+}
+
+/// A payload whose dates are entirely in the past: expired 2020-01-01, grace
+/// ended 2020-01-15, so now >= grace_deadline on every tier's window.
+fn expired_payload_json() -> String {
+    r#"{
+        "tenant_id": "default",
+        "tier_key": "pro",
+        "status": "expired",
+        "max_stores": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["store-pos"],
+        "starts_at": "2019-01-01T00:00:00Z",
+        "expires_at": "2020-01-01T00:00:00Z",
+        "grace_until": "2020-01-15T00:00:00Z",
+        "issued_at": "2019-01-01T00:00:00Z"
+    }"#
+    .to_string()
+}
+
+/// The ACTIVE control: same shape, same seed path, dates entirely future.
+fn active_payload_json() -> String {
+    r#"{
+        "tenant_id": "default",
+        "tier_key": "pro",
+        "status": "active",
+        "max_stores": 2,
+        "max_pos_instances": 3,
+        "allowed_types": ["store-pos"],
+        "starts_at": "2020-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:00:00Z",
+        "grace_until": "2099-01-15T00:00:00Z",
+        "issued_at": "2020-01-01T00:00:00Z"
+    }"#
+    .to_string()
+}
+
+#[tokio::test]
+async fn get_license_status_without_a_stored_payload_is_free_in_debug_and_missing_in_release() {
+    // HAZARD 2 of 2 — license.rs:687. No license.payload and no
+    // license.signature row: debug answers "Valid, free tier, go ahead",
+    // release answers "Missing, please activate". A fresh migrated DB is
+    // exactly that state (no migration seeds these two settings rows), so this
+    // is also the suite's BOTH-PROFILE CONTROL: the only case whose release
+    // arm reaches a real verdict instead of the sentinel, which is what proves
+    // the release arms below are about BOOTSTRAP_FREE and not about the
+    // command being broken in release.
+    let app = crate::testing::TestBridge::new();
+    let dto = get_license_status(&app.ctx()).await.expect("status");
+
+    // Shared by both profiles.
+    assert!(dto.payload.is_none(), "no payload exists to report");
+
+    // Profile-split, one body, both builds.
+    assert_eq!(
+        dto.is_active,
+        cfg!(debug_assertions),
+        "debug reports an unlicensed install ACTIVE (the :687 bypass); release reports it INACTIVE"
+    );
+    assert_eq!(
+        dto.status,
+        if cfg!(debug_assertions) {
+            LicenseVerificationStatus::Valid
+        } else {
+            LicenseVerificationStatus::Missing
+        },
+        "debug takes Valid(:692), release takes Missing(:702)"
+    );
+    assert_eq!(
+        dto.tier.as_deref(),
+        if cfg!(debug_assertions) { Some("free") } else { None },
+        "the debug bypass invents a free tier; release reports no tier at all"
+    );
+    assert_eq!(
+        dto.message.as_deref(),
+        if cfg!(debug_assertions) {
+            None
+        } else {
+            Some("No license found. Please activate.")
+        },
+        "only the release path tells the operator why"
+    );
+}
+
+#[tokio::test]
+async fn get_license_status_past_grace_reports_active_in_debug_only() {
+    // HAZARD 1 of 2 — license.rs:659. A license that expired AND whose grace
+    // window has closed must be INACTIVE. In debug it is not: that cfg arm
+    // returns is_active: true / Valid with the payload attached. Asserted AS
+    // SHIPPED, not as correct — this is the pin that fails loudly if anyone
+    // later reads the debug arm as the spec.
+    let conn = crate::testing::temp_conn();
+    let payload = expired_payload_json();
+    seed_license_settings(&conn, &payload, "BOOTSTRAP_FREE");
+    let app = crate::testing::TestBridge::new().with_conn(conn);
+    let dto = get_license_status(&app.ctx()).await.expect("status");
+
+    if cfg!(debug_assertions) {
+        assert!(
+            dto.is_active,
+            "the :659 debug bypass must report an expired, past-grace license as ACTIVE"
+        );
+        assert_eq!(
+            dto.status,
+            LicenseVerificationStatus::Valid,
+            "debug returns Valid, not Expired and not GracePeriod"
+        );
+        assert_eq!(dto.tier.as_deref(), Some("pro"), "the payload tier is echoed");
+        assert_eq!(
+            dto.payload.as_deref(),
+            Some(payload.as_str()),
+            "and the raw payload is handed back to the caller"
+        );
+        assert!(dto.message.is_none(), "the debug arm reports no problem at all");
+    } else {
+        // NOT the Expired arm: BOOTSTRAP_FREE is rejected at :594, so the date
+        // logic at :638-684 never runs in release. See the trap note above.
+        assert!(!dto.is_active, "release never reports an active license here");
+        assert_eq!(
+            dto.status,
+            LicenseVerificationStatus::InvalidSignature,
+            "release stops at the sentinel, NOT at the :670 Expired arm — an Expired assertion here would be unreachable, not wrong"
+        );
+        assert!(dto.tier.is_none(), "nothing is parsed after a failed verify");
+    }
+}
+
+#[tokio::test]
+async fn get_license_status_active_payload_is_the_control_that_passes_in_debug() {
+    // CONTROL — an actually-valid license through the same fixture and the
+    // same seed path. Debug returns active/Valid/tier=pro/payload-echoed for
+    // BOTH this and the expired case, which is exactly why the case above is
+    // the finding: to a debug caller a past-grace license and a live one are
+    // indistinguishable. It also shows the suite is not asserting "everything
+    // fails in release" — release fails here for the same sentinel reason.
+    let conn = crate::testing::temp_conn();
+    let payload = active_payload_json();
+    seed_license_settings(&conn, &payload, "BOOTSTRAP_FREE");
+    let app = crate::testing::TestBridge::new().with_conn(conn);
+    let dto = get_license_status(&app.ctx()).await.expect("status");
+
+    if cfg!(debug_assertions) {
+        assert!(dto.is_active, "a future expiry is active whenever the signature verifies");
+        assert_eq!(dto.status, LicenseVerificationStatus::Valid);
+        assert_eq!(dto.tier.as_deref(), Some("pro"));
+        assert_eq!(dto.payload.as_deref(), Some(payload.as_str()));
+    } else {
+        assert_eq!(
+            dto.status,
+            LicenseVerificationStatus::InvalidSignature,
+            "release: the sentinel again — this control cannot reach :638 either"
+        );
+        assert!(!dto.is_active);
+    }
+}
