@@ -1329,4 +1329,56 @@ describe('PaymentModal — local payment rails gating', () => {
   it('PINNED: an empty rail list fails open to the full tender list', async () => {
     expect(await renderedTenders([])).toEqual(ALL_TENDERS);
   });
+
+  // ── PINNED label TEXT ─────────────────────────────────────────────────
+  //
+  // The four cases above read `input.value`, so none of them can see what a
+  // tab is CALLED. That gap was the one fragile place in the derivation: the
+  // strip rendered its name through a nested ternary whose ELSE-BRANCH was
+  // `payment-method-credit`, so a 5th TENDER_RAILS row (`ewallet`) would have
+  // compiled clean, kept every value list above matching, and handed the
+  // cashier a tab labelled Credit that tendered an e-wallet (Correctness
+  // review of 994c0e364, PaymentModal.tsx:1516). This case is the runtime net
+  // under the compile-time one (`PAYMENT_METHOD_MESSAGE_IDS` is total over the
+  // union): each row is paired with the text the cashier actually reads, so a
+  // new tab -- or a new tab borrowing an existing name -- goes red here too.
+  it('PINNED: every tender tab renders its own label text, in order', async () => {
+    const { view, restore } = await mountWithRails([
+      rail(true),
+      { rail_code: 'edc', label: 'EDC', is_enabled: true, scope: 'location', parameters: '{}' },
+    ]);
+    const labelOf: string[] = [];
+    try {
+      // Post-settle read, same discipline as renderedTenders(): wait for a
+      // rail-gated tab to exist before naming the list.
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+      const inputs = Array.from(
+        view.container.querySelectorAll<HTMLInputElement>('input[name="payment-method"]'),
+      );
+      for (const input of inputs) {
+        const row = input.closest('label, div.payment-method-label');
+        // What the cashier reads for this row: its label span, or -- for the
+        // free-text `other` row, which has no span -- the placeholder the
+        // Localized wrapper resolves onto its text input.
+        const name = row?.querySelector('.payment-method-name')?.textContent?.trim() ||
+          (row?.querySelector<HTMLInputElement>('.payment-other-input'))?.placeholder ||
+          '';
+        labelOf.push(input.value + ': ' + name);
+      }
+    } finally {
+      restore();
+      view.unmount();
+    }
+
+    expect(labelOf).toEqual([
+      'cash: Cash',
+      'card: Card',
+      'qris: QRIS',
+      'credit: Credit',
+      'other: Other...',
+      'open_bill: Open Bill',
+    ]);
+  });
 });

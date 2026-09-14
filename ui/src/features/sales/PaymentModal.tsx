@@ -40,6 +40,34 @@ import './PaymentModal.css';
 
 type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
 
+/**
+ * The Fluent message that carries each tender's visible name. TOTAL over
+ * `PaymentMethod` on purpose: this lookup was a nested ternary in the method
+ * strip whose ELSE-BRANCH was `payment-method-credit`, so a 5th `TENDER_RAILS`
+ * row (say `ewallet`) compiled clean, left every `input[name=payment-method]`
+ * value assertion green, and put a tab LABELED Credit in front of the cashier
+ * that tendered an e-wallet (Correctness review of 994c0e364, then
+ * PaymentModal.tsx:1516 -- the one place the derivation was not self-checking).
+ * A Record keyed by the union cannot stay silent about a new member: widen the
+ * union, or widen `TenderMethod`/`TENDER_RAILS` under it, and `tsc` fails at
+ * THIS declaration instead of at the register.
+ *
+ * Every entry names the key that renders TODAY -- none is new, none renamed.
+ * `other` and `open_bill` are mapped because they are `PaymentMethod`s too, not
+ * because they are strip tabs: `other` shows its name through the
+ * `payment-other-placeholder` attributes and `open_bill` is fixed markup after
+ * the strip. Do not fold either into `visibleMethods()`, and do not add a
+ * member to the union without adding its id here.
+ */
+const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
+  cash: 'payment-method-cash',
+  card: 'payment-method-card',
+  qris: 'payment-method-qris',
+  other: 'payment-other-placeholder',
+  open_bill: 'payment-open-bill',
+  credit: 'payment-method-credit',
+};
+
 interface SplitRow {
   id: number;
   method: PaymentMethod;
@@ -1513,7 +1541,7 @@ export default function PaymentModal({
                           onChange={() => setMethod(m)}
                         />
                         <span className="payment-method-name">
-                          {m === 'cash' ? l10n.getString('payment-method-cash') : m === 'card' ? l10n.getString('payment-method-card') : m === 'qris' ? l10n.getString('payment-method-qris') : requiredLocalized(l10n, 'payment-method-credit')}
+                          {requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
                         </span>
                       </label>
                     ))}
