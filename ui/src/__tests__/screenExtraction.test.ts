@@ -1738,6 +1738,82 @@ describe.each(SCREENS)(
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
 // it has shrunk to 23 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
+// Every stylesheet under src, keyed the way SCREENS names it: a feature sheet loses its
+// features/ prefix, anything else keeps its path from src (frontend/themes/components.css
+// and friends). This is the universe the externalClasses case grades against, because a
+// mute makes a claim about a sheet and a sheet outside the entry can only be found by
+// walking sheets rather than by believing the list.
+function allSheetIndex(): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  const root = path.resolve(process.cwd(), 'src');
+  const walk = (dir: string) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === '__tests__' || ent.name === 'node_modules') continue;
+        walk(full);
+      } else if (ent.name.endsWith('.css')) {
+        const rel = path.relative(root, full).replace(/\\/g, '/');
+        const key = rel.startsWith('features/') ? rel.slice('features/'.length) : rel;
+        out.set(key, new Set(extractClassSelectors(fs.readFileSync(full, 'utf8'))));
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+// An exemption ledger, not a mute list: every externalClasses value the structural case
+// below finds defined only inside its declaring entry must appear here WITH ITS REASON,
+// and a member whose violation has gone away fails the case itself, so the ledger shrinks
+// when the tree does rather than accreting decoration. Seeded from measurement, each
+// citation re-read from source. The three names the last two boxes called candidate dead
+// rules are deliberately NOT listed: staff-login-connection-group
+// (auth/StaffLoginScreen.css), restaurant-pill-dot (restaurant/RestaurantMenu.css) and
+// workspace-home-user (workspaces/WorkspaceHome.css) were each tested for a composition
+// site and have none, so they are either live-and-unspeakable or dead rules, and both
+// answers are a stylesheet question rather than an exemption this file may grant.
+const EXTERNAL_CLASS_OPEN_QUESTIONS: { entry: string; value: string; question: string }[] = [
+  {
+    entry: 'StaffLoginScreen',
+    value: 'staff-login-connection-group',
+    question: 'is the rule at auth/StaffLoginScreen.css dead? no production file anywhere references the name or even its stem, so the mute may be the only thing keeping a dead rule unreported',
+  },
+  {
+    entry: 'WorkspaceHome',
+    value: 'workspace-home-user',
+    question: 'is the bare base rule at workspaces/WorkspaceHome.css dead? its single-dash children are live (-profile :239, -avatar :240, -info :245, -name :246, -role composed at :247) but the base has no site, and a prefix cannot cover a base shorter than its children',
+  },
+  {
+    entry: 'RestaurantMenu',
+    value: 'restaurant-pill-dot',
+    question: 'is the rule at restaurant/RestaurantMenu.css dead? restaurant-pill-icon is live at MenuItemTile.tsx:132, no interpolated tail for -dot was found',
+  },
+];
+
+const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] = [
+  {
+    entry: 'SettingsPage',
+    value: 'settings-topology-container',
+    reason: 'cross-consumer: defined at settings/SettingsPage.css:501, read by a literal className at features/locations/TopologyScreen.tsx:716; the only device pointing at a consumer, additionalTsx, was measured to cost 13 new used-but-undefined findings',
+  },
+  {
+    entry: 'WorkspaceHome',
+    value: 'workspace-card-ripple',
+    reason: 'non-JSX: assigned imperatively at features/workspaces/WorkspaceHome.tsx:488, so it never enters the used set; removing its mute printed Dead classes and the value was restored',
+  },
+  {
+    entry: 'RestaurantMenu',
+    value: 'restaurant-card',
+    reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
+  },
+  {
+    entry: 'KdsScreen',
+    value: 'no-anim',
+    reason: 'non-JSX: applied to document.body by classList.toggle at features/kds/KdsScreen.tsx:93-94, outside every component JSX and every prefix shape',
+  },
+];
+
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
   'auth/SessionLockScreen.css',
@@ -1915,6 +1991,49 @@ describe('stylesheet coverage', () => {
 // glued itself to the preceding class name, so `kds-hex-input` was reported DEAD while
 // genuinely in use. These cases pin the behaviour directly, so a future regression fails
 // here with a message about the extractor instead of a misleading one about a screen.
+
+  it('every externalClasses value names a rule defined outside its declaring entry', () => {
+    // The entry's OWN css only: a sheet this entry cites as parentCss counts as OUTSIDE
+    // it, because the claim a mute makes is that the rule lives beyond the css this entry
+    // owns, and a parent-cited shared sheet satisfies that (ruling one). Written the other
+    // way round first, the case went red on AppearanceSettings: section-loading, a value
+    // defined in the parent -- an inverted ruling caught by the assertion, not by reading.
+    const index = allSheetIndex();
+    const definedElsewhere = (entry: ScreenEntry, cls: string) => {
+      const own = new Set(entry.css);
+      for (const [sheet, classes] of index) {
+        if (!own.has(sheet) && classes.has(cls)) return true;
+      }
+      return false;
+    };
+    const violations = SCREENS.flatMap((entry) =>
+      (entry.externalClasses ?? [])
+        .filter((cls) => !definedElsewhere(entry, cls))
+        .map((cls) => `${entry.name}: ${cls}`),
+    );
+    const ledger = new Set(EXTERNAL_CLASS_LEDGER.map((m) => `${m.entry}: ${m.value}`));
+    // Count assertion BEFORE any expectation: a case over an empty population reads
+    // exactly like a clean tree, which is how three devices in this session landed as a
+    // comment without data or as a census of zero.
+    const graded = SCREENS.reduce((n, e) => n + (e.externalClasses?.length ?? 0), 0);
+    console.log(
+      `externalClasses ledger case: ${index.size} sheets indexed, ${graded} values graded, ${violations.length} violation(s), ${EXTERNAL_CLASS_LEDGER.length} ledger member(s)`,
+    );
+    expect(index.size).toBeGreaterThan(100);
+    expect(graded).toBeGreaterThan(0);
+    const asked = new Set(EXTERNAL_CLASS_OPEN_QUESTIONS.map((m) => `${m.entry}: ${m.value}`));
+    // Graded, not waived: an open question is listed so the check neither agrees with the
+    // mute nor turns the tree red for a stylesheet owner's decision, and every member of
+    // BOTH lists is still required to have a live violation below, so a resolved question
+    // fails the case until it is struck here too.
+    console.log(
+      `  of which ledgered=${[...ledger].filter((m) => violations.includes(m)).length} open-question=${[...asked].filter((m) => violations.includes(m)).length}`,
+    );
+    expect(violations.filter((v) => !ledger.has(v) && !asked.has(v))).toEqual([]);
+    // No exempt member without a matching violation, so a healed value cannot stay.
+    expect([...ledger].filter((m) => !violations.includes(m))).toEqual([]);
+    expect([...asked].filter((m) => !violations.includes(m))).toEqual([]);
+  });
 
 describe('selector-only class claims', () => {
   // Three structural whole-tree cases, one per half of the contract plus the
