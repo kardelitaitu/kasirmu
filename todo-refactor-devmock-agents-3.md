@@ -232,3 +232,43 @@ for the reason the file already gives at `:137`, `:139` and in the 09-14 disposi
 of this file -- router consolidation is Agent 4's phase 4.5, one job, one owner, another
 fence -- and no line number into that archived plan is quoted here because this box never opened
 it.
+
+### Test leg re-run green: 2026-09-15, HEAD `3b8d8b20e`, the row `Run full UI tests: npm run test and npm run check:all` stays OPEN
+
+The test half of that row has now been run whole, from inside `ui/`, by the command
+`npm run test` is: `cd ui && npx vitest run`. It printed **`Test Files  580 passed (580)`** and
+**`Tests  9948 passed | 25 skipped (9973)`**, `Duration  82.67s`, started at 06:48:26 +0700 and
+settled 82.67 s later at about 06:49:49 +0700 (the wall clock read 06:50:15 when the log was collected), against tip `3b8d8b20e` (re-read before the run;
+other lanes commit under a long run, so the tip is the interval's start, not its end).
+Zero files failed, so nothing here is a red to route. The four `PosScreen.test.tsx` cases this
+section's earlier entry recorded as red are closed, and closed by the harness rather than the
+component: `f27338da6` added the terminal-identity read at `PaymentModal.tsx:289-290` and updated
+its own two harnesses, missing the local `vi.mock` factory for `@/contexts/WorkspaceContext` in
+`src/__tests__/PosScreen.test.tsx`, which `3b8d8b20e` gave the `useWorkspaceScope` export; that
+is a different lane's surface and this file only records that it is no longer red.
+
+**The row is not ticked, and this paragraph is why.** It names two commands and one of them has
+still never run anywhere in this checkout: `npm run check:all` chains lint, typecheck, test, i18n
+and an E2E leg, and the E2E leg needs Docker, which this box has not been given. So the
+disposition is the one `:141` recorded on 09-14 and it survives a green test leg: the row stays
+open, the file stays `todo-`, and `check:all` is the named outstanding half rather than an
+unstated one. What changed today is narrower and worth keeping straight: this morning the test
+leg was red and the reason was a foreign missing mock export; this evening it is green at 580
+files, and the row is still open on the same single command.
+
+**Denominators, because a file count and a collected count are not the same measurement.** On
+disk: `find ui/src/__tests__ -type f | wc -l` = **589** files, which is more than the 580 vitest
+reported, and the difference is not lost work — the matching pair is
+`find ui/src -name '*.test.*' -o -name '*.spec.*' | wc -l` = **580**, exactly what vitest
+collected, so the nine extra files under `__tests__` are fixtures and helpers that are not suites
+by name. Against the standing whole-tree figure this session has been quoting — 577 files /
+9,795 passed / 25 skipped, several hours and roughly forty commits old — the tree has gained
+**3 files and 153 cases** and lost nothing: the skipped count is identical at 25. Both the 577
+and the 580 are run properties, not static counts, per the README rule that nothing re-derives a
+Vitest case total.
+
+One measurement discipline repeated because it produced the bad number earlier today: this run
+started from inside `ui/`. A run started at the repo root resolves a cached vitest outside
+`ui/node_modules`, walks `website/` too, and prints a file count above the number of files under
+`ui/src/__tests__` alongside `Cannot find package jsdom` on every worker — that reading is a
+broken runner, and the tell is the denominator, not the red.
