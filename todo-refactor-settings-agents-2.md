@@ -339,4 +339,125 @@ Rejected alternatives, with their reasons, so nobody re-drafts them:
   it. Unresolved, and deliberately not resolved here: which of the two is authoritative when they disagree at
   save time.
 
+---
+
+## ✅ Same day, later: the fan-out WAS made differential (2026-09-14 · notes added, NO box ticked or unticked)
+
+> This section records what CHANGED after the two hazards above were written, so nobody restores the behaviour
+> N-1 describes. It does not restate N-1 — read that first, the fix is only legible against it. Anchors are quoted
+> by NAME; the line-drift caution at the head of the hazard section stands, as does its warning that a green
+> `check-dead-refs.py` proves nothing about paths in this file. Every path below was re-opened before being named.
+>
+> **The commit:** `fix(settings): read the server back and write only edited fields, retiring the page-level
+> always-restamp contract` (`c7fd73cf3`, located with `git log --grep "read the server back"`; 3 files —
+> `ui/src/features/settings/hooks/useSettingsSave.ts`, `ui/src/__tests__/SettingsPage.test.tsx`, and a NEW
+> `ui/src/features/settings/__tests__/useSettingsSave.test.tsx`; +931/-139).
+
+### 1. The new contract — what Save does now
+
+The normative text is the file-header block `SAFETY: read-back / diff / merge` — it sits at the top of
+`hooks/useSettingsSave.ts` in `c7fd73cf3` and at the top of `hooks/saveDiff.ts` in the working tree; this is the
+digest.
+
+Anchor caution, in this file's own style: cite that block BY NAME. While this note was being written the working
+tree showed an in-flight, UNTRACKED extraction of the diff helpers into
+`hooks/saveDiff.ts` (plus `screens/registry.ts`) and a modified `SettingsPage.tsx` — another lane's commit-in-progress,
+not history, so no line number below survives it and none is offered.
+
+- **Differential per task.** Each of the seven tasks fires only if BOTH (a) the page edited that field —
+  draft vs `savedSnapshotRef.current`, the page's own record of what the user touched and the Revert target —
+  AND (b) the merged payload differs from a **fresh read-back** of that server row. The generic path is
+  `addDtoTask`: `pageEdits = changedKeys(draft, saved)` → `mergeChanged(server, draft, pageEdits)` →
+  `fires = changedKeys(payload, server) > 0`.
+- **Unedited fields ride the server's values.** So `store.logo` — a key the page does not carry at all
+  (`changedKeys` only walks keys the draft has) — and the untouched identity columns are no longer re-stamped,
+  and `sync.serverUrl` **cannot** be sent as `null` over a configured URL: the merged URL is the read-back's
+  unless the page changed it, and `normUrl` folds `''`/whitespace into the same state as `null` so an empty
+  draft cannot read as an edit. That closes N-1's quoted hazard ("Save clears a configured sync URL")
+  at the client, without changing `sync.rs`, whose unconditional write is still exactly as N-1 measured it.
+- **Skipped is a third outcome, not a failure** — `SettingsSaveOutcome = 'fulfilled' | 'rejected' | 'skipped'`.
+  The old by-name lookup read an omitted task as `false`, i.e. as failed; an omitted task now reads as
+  `skipped` and must never be rendered to the user as an error.
+- **A zero-task save short-circuits quietly, BEFORE `setSaving(true)`.** Nothing to write ⇒ `setIsDirty(false)`
+  and return: no saved flash, no toast, no busy flicker. That ordering is load-bearing — it is what stops the
+  old `failed < saveTasks.length` gate reading `0 < 0` as "do nothing, silently". It must not be folded into
+  the reporting branch: a 1-of-1 failure has to look different from a no-op, and it does.
+- **An unanswered read-back rejects that task loudly rather than writing blind.** A family that cannot be read
+  cannot be diffed, so it cannot be written: it lands in `failed` and in `attempted`, never in `succeeded`, and
+  the user sees the save-error toast. `noSession()` gives the no-token case the same shape, so "we never even
+  looked" is an error and not a silent skip. Pre-hydrate (`savedSnapshotRef.current === null`) writes nothing.
+- **The snapshot refreshes PER TASK**, from what is provably on the server — the merged payload that persisted,
+  or the read-back for a skipped family — never wholesale from the draft.
+- **Item (b) above, the fused-currency requirement, is what the store task actually does**: its draft is the fused
+  value (`syncedStore = { ...store, currency: defaultCurrency }`) and its comparison base is the fused snapshot
+  (`{ ...snapshot.store, currency: snapshot.defaultCurrency }`), so the diff is computed on the FUSED payload, never
+  on `store` alone, exactly as (b) demanded. What (b) left open — which of the two is authoritative when they
+  disagree — is not settled either: it is only made unwritable, because a currency that the page did not edit can
+  now never fire. (b) keeps its OPEN label for that reason.
+
+### 2. The reversal, stated once — do not "restore" a page-level write assertion
+
+Six `ui/src/__tests__/SettingsPage.test.tsx` cases encoded "Save re-stamps all seven DTOs from an untouched
+page": `Save writes receipt, store, currency, prefs, sync and branding` ·
+`sync save carries the cloud draft default with enabled state and no apiKey` ·
+`shows the full save-error toast when every save API call fails` ·
+`shows the partial-save toast when some saves fail` · `Ctrl+S triggers the same save` ·
+`Save button is aria-busy while the saves are in flight`. All six were INVERTED at page level into the no-op
+contract (`Save on an untouched page sends no settings write at all` ·
+`an untouched page sends no sync write, so no URL is invented or cleared` ·
+`is silent when every write API is down and nothing needed writing` ·
+`does not report a partial save for a task it never sent` ·
+`Ctrl+S runs the same save path (it reads the server back)` ·
+`Save never enters the busy state when there is nothing to write`). Why: after the flat-IA rebuild the page
+owns no draft inputs, so an edit is not constructible there — the edit-then-write, in-flight and partial-save
+coverage moved to `ui/src/features/settings/__tests__/useSettingsSave.test.tsx`, **17 cases**
+(`grep -c "^  it(" <file>`), where a draft change is just an argument to `setup()`. A future writer who wants
+to assert that a real edit persists must add it THERE; a page-level "it wrote the DTO" assertion is now a
+regression test for data loss.
+
+### 3. One disclosed deviation from the obvious reading
+
+"Fire iff merged != read-back" is NOT the rule and is not safe on its own — **the page must also have changed
+the field.** A literal "differs from the server" rule would let a stale `defaultCurrency` or brand name carried
+over from the PREVIOUS org be written onto the new tenant's row, which is N-1's cross-org hazard re-created by
+the fix. So the single-value writers are explicit conjunctions: currency
+`fires = currencyEdited && currencyDiffers`, brand colour/name `x !== snapshot.x && x !== server.x`.
+
+### 4. One fixture change that is load-bearing
+
+`ui/src/__tests__/SettingsPage.test.tsx`: the `get_store_settings_scoped` fake's `currency` went 'IDR' → 'USD'.
+Not cosmetics. `get_default_currency` in the same fake already returned 'USD', and the two readers are ONE
+column — `crates/oz-bridge/src/settings.rs:1024`, re-opened 2026-09-14 and reading
+`Settings::set_default_currency(&tx, &args.currency)?;`, the fourth of the six store setters. A fixture showing
+them disagreeing handed a *clean* page one real diff to send, so every zero-write case above would have failed.
+Do not "restore" the 'IDR'. Note the unscoped legacy twin `get_store_settings` still returns 'IDR' on purpose —
+different code path (no-session boot), not the read-back.
+
+### 5. The known residual — recorded as UNRESOLVED, not as fixed
+
+The quiet zero-task path clears `isDirty` but returns **before** the per-task snapshot block, so after an org
+switch with no edits the Revert target is still the PRE-SWITCH snapshot until some task actually runs. Pinned
+on purpose by the partial-load case `does not clear a configured sync server URL` in `useSettingsSave.test.tsx`
+(`:311` as read today), whose second assertion is that `snapshotRef.current.syncServerUrl` stays `''` —
+the draft's stale value — on that path while the read-back holds a URL. Not a data-loss path (nothing is
+written) and `isDirty` having no `true` writer in production is unchanged from N-2, so it is live-but-latent.
+Closing it means deciding whether a save that wrote nothing may move the Revert target; nobody has decided.
+
+### 6. The server-side question, restated — build it as an atomicity/consolidation item
+
+The read-back/merge closed the loss path, so a partial-write command is no longer needed FOR THAT BUG: frame it
+as neither optional cleanup nor urgent. Its honest case is two things. **(a) Atomicity** — read, merge, write
+is not one transaction, so a peer terminal changing the same row between the read-back and the write loses its
+update; only a server-side per-key write inside the transaction closes that. **(b) Consolidation** — this fix
+protects ONE fan-out. Other whole-DTO writers are still live: `workspace-cards/WorkspaceStorePosSettings.tsx:86`
+and `workspace-cards/WorkspaceRestaurantPosSettings.tsx:100` each send a complete `ReceiptSettingsDto`, and the
+second OMITS `taxRoundingMode`, which `crates/oz-bridge/src/settings.rs:153-154`
+(`#[serde(default = "default_tax_rounding_mode")]`, the fn at `:158-160` returns `"half_up"`) fills in — a live
+re-stamp of a field that card never edits; `ui/src/hooks/useTerminalHardware.ts:335` writes a whole hardware
+DTO the same way. So `set_*_settings_scoped` remains a landmine for the next caller who does not read this
+file. Limits of this claim, so it is not over-read: no production caller of `set_store_settings_scoped` was
+found outside the hook, and `ui/src/features/setup/SetupWizard.tsx` imports no `@/api` writer — "the setup
+wizard can clobber these rows" is NOT measured and must not be repeated as fact. Cost side: the read-back is
+~5 extra IPC reads per Save — the last paragraph of that same `SAFETY:` header block — bounded by that one file.
+
 > last audited 2026-09-14 by DSH (docs subagent); counts re-measured with read/grep against C:/dev/ozpos
