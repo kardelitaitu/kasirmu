@@ -49,7 +49,7 @@ export function ImportSection({ importState, flashRows, showImportPw, onFileSele
   const { l10n } = useLocalization();
 
   return (
-        <div key="import" className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-import-wizard-aria')}>
+        <div className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-import-wizard-aria')}>
           {importState.step === 'select' && (
             <Card shadow="sm">
               <div className="data-mgmt-section">

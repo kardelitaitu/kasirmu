@@ -20,7 +20,8 @@
  * in the screen. The four-step machine (exportState.step: select -> encrypt -> exporting
  * -> done) is still advanced by the screen, not here - startExport, confirmExport and
  * resetExport are the screen's, and so are exportingRef, the toasts and triggerFlash
- * ("export-done"). The child only renders whichever guard it is given. No useState, no
+ * ("export-done"); the only step value this file can still name is the Back control's
+ * 'select' reset, and ExportPatch enumerates it. No useState, no
  * useEffect, no invoke() and no "@/api" import lives in this file.
  *
  * Registered in screenExtraction.test.ts (additionalTsx) because the data-mgmt-* classes
@@ -37,12 +38,30 @@ import { requiredLocalized } from '@/frontend/shared';
 import { DATA_TYPES, type DataType, type ExportState } from '../dataManagementModel';
 import { checkIcon, eyeIcon, eyeOffIcon } from '../dataManagementIcons';
 
+/**
+ * What this panel may write: the four fields it renders an input for. The previous
+ * `Partial<ExportState>` also accepted step, error, selectedTypes, progress and
+ * outputFile, so the header's "advanced by the screen, not here" claim held by
+ * convention only; as this union it holds by the compiler.
+ */
+type ExportFieldPatch = Partial<Pick<ExportState, 'dateFrom' | 'dateTo' | 'password' | 'passwordConfirm'>>;
+
+/**
+ * The one step write that lives here, and the only step value this file can name:
+ * the Back control's reset. 'encrypt' / 'exporting' / 'done' are not assignable to
+ * this member, so the machine still cannot be advanced from the child.
+ */
+type ExportResetToSelect = { step: 'select' };
+
+/** A dispatch patch: one of the four fields, or the Back reset. Nothing else type-checks. */
+type ExportPatch = ExportFieldPatch | ExportResetToSelect;
+
 interface ExportSectionProps {
   /** The screen's export wizard state; read-only here. */
   exportState: ExportState;
   showExportPw: boolean;
   /** Narrow dispatch: the screen merges the patch into exportState. */
-  onFieldChange: (patch: Partial<ExportState>) => void;
+  onFieldChange: (patch: ExportPatch) => void;
   onToggleAll: () => void;
   onToggleType: (type: DataType) => void;
   onTogglePassword: () => void;
@@ -56,7 +75,7 @@ export function ExportSection({ exportState, showExportPw, onFieldChange, onTogg
   const { l10n } = useLocalization();
 
   return (
-        <div key="export" className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-export-wizard-aria')}>
+        <div className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-export-wizard-aria')}>
           {exportState.step === 'select' && (
             <Card shadow="sm">
               <div className="data-mgmt-section">
