@@ -13,7 +13,7 @@ router is clean against HEAD: `git --no-optional-locks status --porcelain -- ui/
 If it holds edits that are not yours, stop and report rather than committing them.  
 **Sibling Documents:**
 - [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
-- [`todo-refactor-devmock-agents-3.md`](./todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
+- [`todo-refactor-devmock-agents-3.md`](../../todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
 
 ---
 

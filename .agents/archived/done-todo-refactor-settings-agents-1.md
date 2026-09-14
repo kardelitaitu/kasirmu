@@ -14,8 +14,8 @@ bridge campaign's to decompose. No checklist item here was ever run. -->
 
 **Target File:** `apps/desktop-client/src/commands/settings.rs`  
 **Sibling Documents:**
-- [`todo-refactor-settings-agents-2.md`](./todo-refactor-settings-agents-2.md) (Agent 2 — Master-Detail Settings Screen Deconstruction)
-- [`todo-refactor-settings-agents-3.md`](./todo-refactor-settings-agents-3.md) (Agent 3 — Database Management & Factory Reset Workflows)
+- [`todo-refactor-settings-agents-2.md`](../../todo-refactor-settings-agents-2.md) (Agent 2 — Master-Detail Settings Screen Deconstruction)
+- [`todo-refactor-settings-agents-3.md`](../../todo-refactor-settings-agents-3.md) (Agent 3 — Database Management & Factory Reset Workflows)
 
 ---
 

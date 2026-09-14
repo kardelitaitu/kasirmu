@@ -6,7 +6,7 @@
 
 **Sibling Documents:**
 - [`todo-refactor-oz-pos-app-agents-1.md`](./todo-refactor-oz-pos-app-agents-1.md) (Agent 1 — Infrastructure, Daemons & CI Stabilizer)
-- [`todo-refactor-oz-pos-app-agents-3.md`](./todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
+- [`todo-refactor-oz-pos-app-agents-3.md`](../../todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
 
 ---
 

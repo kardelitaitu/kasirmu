@@ -7,7 +7,7 @@
 **Target File:** `ui/src/features/workspaces/WorkspaceHome.tsx` (Baseline: 886 lines)  
 **Sibling Documents:**
 - [`todo-tools-agents-1.md`](./todo-tools-agents-1.md) (Agent 1 — Entitlement, Expiry & Grace Period Engine)
-- [`todo-tools-agents-3.md`](./todo-tools-agents-3.md) (Agent 3 — Route Guards, Locked Badges & Upgrade Modals)
+- [`todo-tools-agents-3.md`](../../todo-tools-agents-3.md) (Agent 3 — Route Guards, Locked Badges & Upgrade Modals)
 
 ---
 

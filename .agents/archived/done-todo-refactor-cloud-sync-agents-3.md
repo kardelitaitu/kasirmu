@@ -30,7 +30,7 @@ was stale; it was already within the house cap and split from
 
 **Target Crate:** `apps/cloud-server/`  
 **Sibling Documents:**
-- [`todo-refactor-cloud-sync-agents-1.md`](./todo-refactor-cloud-sync-agents-1.md) (Agent 1 — Cloud Sync Engine & Protocol Handler)
+- [`todo-refactor-cloud-sync-agents-1.md`](../../todo-refactor-cloud-sync-agents-1.md) (Agent 1 — Cloud Sync Engine & Protocol Handler)
 - [`todo-refactor-cloud-sync-agents-2.md`](./todo-refactor-cloud-sync-agents-2.md) (Agent 2 — Email PG Daemon & Outbound Dispatch)
 
 ---

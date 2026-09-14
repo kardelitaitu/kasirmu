@@ -8,7 +8,7 @@
 **Lane status: COMPLETE.** Phases 1.0 and 1.1 landed as `ce8666604` — `refactor(devmock-core): extract mock storage engine, dispatcher, and seed fixtures` — at 05:46:39. Do not re-run this lane.  
 **Sibling Documents:**
 - [`todo-refactor-devmock-agents-2.md`](./todo-refactor-devmock-agents-2.md) (Agent 2 — Operational Mocks: Sales, Inventory & Catalog)
-- [`todo-refactor-devmock-agents-3.md`](./todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
+- [`todo-refactor-devmock-agents-3.md`](../../todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
 - [`todo-refactor-devmock-agents-4.md`](./todo-refactor-devmock-agents-4.md) (Agent 4 — Services & Platform Mocks)
 
 > **Shared-file hazard.** All four plans edit `ui/src/dev-mock/tauri-api.ts`, so these lanes

@@ -6,7 +6,7 @@
 
 **Sibling Documents:**
 - [`todo-refactor-oz-pos-app-agents-2.md`](./todo-refactor-oz-pos-app-agents-2.md) (Agent 2 — Core Command Middleware & `oz-bridge`)
-- [`todo-refactor-oz-pos-app-agents-3.md`](./todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
+- [`todo-refactor-oz-pos-app-agents-3.md`](../../todo-refactor-oz-pos-app-agents-3.md) (Agent 3 — Test Relocation, Thin Shell & IPC Parity)
 
 ---
 

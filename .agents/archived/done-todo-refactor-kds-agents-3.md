@@ -8,8 +8,8 @@
 
 **Target File:** `ui/src/features/restaurant/RestaurantMenu.tsx` (Baseline: 1,114 lines → **actual 1,197**)  
 **Sibling Documents:**
-- [`todo-refactor-kds-agents-1.md`](./todo-refactor-kds-agents-1.md) (Agent 1 — KDS Ticket State Machine & Input Peripherals)
-- [`todo-refactor-kds-agents-2.md`](./todo-refactor-kds-agents-2.md) (Agent 2 — Order Ticket Cards & Station Timers)
+- [`todo-refactor-kds-agents-1.md`](../../todo-refactor-kds-agents-1.md) (Agent 1 — KDS Ticket State Machine & Input Peripherals)
+- [`todo-refactor-kds-agents-2.md`](../../todo-refactor-kds-agents-2.md) (Agent 2 — Order Ticket Cards & Station Timers)
 
 ---
 

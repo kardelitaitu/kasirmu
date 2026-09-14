@@ -22,7 +22,7 @@ concern from this decomposition; no checklist item asked to split it. -->
 
 **Target Crate:** `apps/cloud-server/src/`  
 **Sibling Documents:**
-- [`todo-refactor-cloud-sync-agents-1.md`](./todo-refactor-cloud-sync-agents-1.md) (Agent 1 — Cloud Sync Engine & Protocol Handler)
+- [`todo-refactor-cloud-sync-agents-1.md`](../../todo-refactor-cloud-sync-agents-1.md) (Agent 1 — Cloud Sync Engine & Protocol Handler)
 - [`todo-refactor-cloud-sync-agents-3.md`](./todo-refactor-cloud-sync-agents-3.md) (Agent 3 — Tenant Migration & Schema Synchronization)
 
 ---
