@@ -238,7 +238,7 @@ const SCREENS: ScreenEntry[] = [
     css: ['products/ProductManagementScreen.css'],
     dynamicClassPrefixes: ['product-mgmt-type--'],
     // Classes used by child StockAlertPanel component rendered inside drawer
-    externalClasses: ['stock-alert-panel', 'product-mgmt-alert-badge'],
+    externalClasses: ['stock-alert-panel'],
   },
   {
     name: 'BundleManagementScreen',
@@ -366,7 +366,6 @@ const SCREENS: ScreenEntry[] = [
       //     so the classes are genuinely styled and need no exemption.
     ],
     externalClasses: [
-      'kds-empty',
       // `document.body.classList.toggle('no-anim', …)` at KdsScreen.tsx:127. A
       // body class is outside the component subtree the parser walks, and seven
       // rules are keyed on it.
@@ -579,12 +578,7 @@ const SCREENS: ScreenEntry[] = [
     // case 3 sees three defined rules with no reference and needs SOME shield; any
     // shield states the wrong thing, and this is the one that can be checked by
     // deleting it.
-    dynamicClassPrefixes: [
-      'settings-sync-expiry-badge--',
-      'settings-save-dot--',
-      'settings-btn-revert--',
-      'settings-sync-dot--',
-    ],
+    dynamicClassPrefixes: ['settings-sync-expiry-badge--'],
   },
   {
     name: 'DataManagementScreen',
@@ -1005,7 +999,7 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'inventory/StockCountsScreen.tsx',
     css: ['inventory/StockCountsScreen.css'],
     dynamicClassPrefixes: ['sc-badge--'],
-    externalClasses: ['sc-card-type', 'sc-card-date', 'sc-badge'],
+    externalClasses: ['sc-badge'],
   },
   {
     name: 'StockCountDetail',
@@ -1043,7 +1037,7 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'stock-transfers/StockTransfersScreen.tsx',
     css: ['stock-transfers/StockTransfersScreen.css'],
     dynamicClassPrefixes: ['stock-transfers-badge--'],
-    externalClasses: ['stock-transfers-detail'],
+
   },
 
   // ── Purchasing ─────────────────────────────────────────
