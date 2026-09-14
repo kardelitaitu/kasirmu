@@ -106,6 +106,34 @@
   cursor: not-allowed;
 }
 
+/* The checked state. It was an ORPHAN, not an inversion: the base at :79 already
+   owns border (1px solid --color-border) and background, and already transitions
+   exactly border-color + background at :91-92, so the variant needs only the two
+   colour values and re-declares nothing the base owns (no border-width/style, no
+   transition). The pair is copied from .custom-report-col-item--selected at
+   reports/CustomReportScreen.css:104-110 — accent border for the edge, accent-alpha
+   for the fill — deliberately NOT hover's pair (:96-97 uses --color-accent-dim),
+   because a selected row that looks identical to a hovered row tells the cashier
+   nothing. REFUSED: box-shadow (that is this sheet's :focus-visible signal at :101)
+   and opacity (that is :disabled's signal at :105) — a third state signal on two
+   axes would make the three indistinguishable. */
+.promo-picker-item-btn--selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-alpha);
+}
+
+/* The check mark (markup :165, an aria-hidden span rendering a glyph or nothing).
+   One declaration: --color-success is the token this sheet already uses for its
+   affirmative line at :118, and the glyph is the only thing that says "checked"
+   once the row also carries the accent pair above.
+   REFUSED: font-size (the row's :170 sibling renders a discount percentage, and the
+   type axis is the one a lane handed back 30 retail names over) and any
+   width/min-height slot — the empty-vs-glyph line jump is real, but reserving a row
+   is a layout decision for the markup owner, not a colour fix; noted, not written. */
+.promo-picker-item-check {
+  color: var(--color-success);
+}
+
 .promo-picker-item-name {
   font-size: var(--text-sm);
   font-weight: 600;
@@ -121,6 +149,61 @@
 .promo-picker-item-hint {
   font-size: var(--text-xs);
   color: var(--color-fg-muted, var(--color-fg));
+}
+
+/* Footer row (markup :193): a count and one control at opposite ends. Three
+   declarations, copied from .stock-alert-footer at
+   inventory/StockAlertPanel.css:147-151, the nearest sheet solving the same
+   count+action seam. align-items:center is load-bearing: the count is bare text and
+   the apply control below is a filled box, so the default stretch would make the
+   text item as tall as the button.
+   REFUSED: the sibling's gap: var(--space-2) (two children pushed apart by
+   space-between need no gap until they collide, which is a narrow-modal problem and
+   not solved by 8px) and its margin-top: var(--space-0_5); REFUSED the dialog-footer
+   treatment of .shortfall-footer (StockShortfallDialog.css:295-301) and
+   .modifier-footer (components/ItemModifierModal.css:256-262) — their border-top +
+   padding: var(--space-4) var(--space-5) exist because those footers sit OUTSIDE a
+   scroll area as a fixed seam, while this one scrolls inside .promo-picker-modal
+   (:21) whose padding: var(--space-5) (:26) already owns the inset. */
+.promo-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* "N selected" (markup :194, role=status). One declaration, and the fallback idiom
+   is this sheet's own (:59, :123). REFUSED font-size for the same type-axis reason
+   as the check mark, and REFUSED margin — the row's space-between owns the gap. */
+.promo-picker-count {
+  color: var(--color-fg-muted, var(--color-fg));
+}
+
+/* Apply: a raw <button>, so it inherits no design-system button styling at all and
+   was an unstyled control on a discount screen. Three declarations — the two-colour
+   fill pair plus border:none — from .pos-cart-pay-btn (CartPanelActions.css:58-64)
+   for border:none on an accent fill, and --color-accent-fg for text on accent, the
+   same pairing with the same comment at components/RoleBadge.css:18 and
+   components/FastPINOverlay.css:259; all three tokens are defined in each of the
+   three theme blocks (tokens.css:97-99, :406-408, :549-551).
+   REFUSED: padding, border-radius and font-size — geometry belongs to the shared
+   Button this markup does not use; inventing a fourth set of values here would fork
+   the button token recipe rather than converge on it, so the finding is that
+   promo-picker-apply should become <Button variant="primary"> in a markup change, not
+   that this sheet should imitate it. */
+.promo-picker-apply {
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+/* Disabled while nothing is selected (markup :200). Copied verbatim in shape from
+   .pos-cart-promotion-btn:disabled in the same directory
+   (CartPanelFooterTotals.css:92-95) — 0.45, not the pay button's 0.4/grayscale,
+   because this control is secondary to the picker rather than the screen's primary
+   action. REFUSED filter: grayscale (CartPanelActions.css:87) — same reason. */
+.promo-picker-apply:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 @media (prefers-reduced-motion: no-preference) {
