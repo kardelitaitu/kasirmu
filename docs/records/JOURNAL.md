@@ -11088,7 +11088,7 @@ on the runtime seed-row predicate. Every mechanical red is now gone.
   that the actor id is not the subject id and that a PIN never reaches the table. What survives is narrower and should
   be stated with the loss: the update-path event and the PIN-change behaviour are still exercised in release, because
   that command does not cross the create gate.
-- **The two reds that remain are deliberate, not residue.
+- **The two reds that remain are deliberate, not residue.**
 
   `staff_login_on_free_records_only_because_a_debug_build_promotes_it` asserts a debug-profile admission — its own
   name is the finding — and `a_rejected_create_records_no_security_event` would go green if it were forked while its
