@@ -27,8 +27,9 @@ import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getActiveShiftScoped, openShiftScoped, closeShiftScoped, type ShiftDto } from '@/api/shifts';
 import { holdCartScoped, listHeldCartsScoped, getHeldCartScoped, deleteHeldCartScoped, type HeldCartRow, type SaleDetail } from '@/api/sales';
 import { getStoreSettingsScoped, listCreditSalesScoped, settleCreditScoped, type StoreSettingsDto, type CreditSaleDto } from '@/api/settings';
-import { useCartTax, type CartTaxCacheState } from '@/hooks/useCartTax';
+import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
+import { CartTaxWatcher, IDLE_TAX_STATE } from '@/features/pos/components/CartTaxWatcher';
 import { recordMark } from '@/utils/perf-metrics';
 import { DEFAULT_LOW_STOCK_THRESHOLD, minorUnitExponent, parseMinorUnits, type CartId, type CartLine, type CourseId, type LineId, type ModifierSelection, type Money, type Product, type Sku } from '@/types/domain';
 import { useSound } from '@/frontend/shared/useSound';
@@ -44,37 +45,6 @@ import { SalesHistoryView, TableManagementView, StockInquiryView } from './Retai
 import RetailModals from './RetailModals';
 import RetailReminderPopup from './RetailReminderPopup';
 import './RetailPosScreen.css';
-
-// ── F2-3: cart-tax watcher (R36-19 / D64) ──────────────────────────
-// The hook owns the compute and the failure-window cache; the screen
-// consumes its state through this keyed child. Bumping the key remounts
-// the watcher and forces a fresh compute — the retry affordance for a
-// failed estimate, without changing the cart or the hook contract.
-const IDLE_TAX_STATE: CartTaxCacheState = {
-  severity: 'unknown',
-  taxMinor: 0,
-  hasExclusive: null,
-  estimated: false,
-  cacheFresh: false,
-};
-
-function CartTaxWatcher({
-  sessionToken,
-  lines,
-  currency,
-  onState,
-}: {
-  sessionToken: string | null;
-  lines: CartLineTaxInput[];
-  currency: string;
-  onState: (state: CartTaxCacheState) => void;
-}) {
-  const state = useCartTax(sessionToken, lines, currency);
-  useEffect(() => {
-    onState(state);
-  }, [state, onState]);
-  return null;
-}
 
 function toProduct(p: ProductDto): Product {
   return {
