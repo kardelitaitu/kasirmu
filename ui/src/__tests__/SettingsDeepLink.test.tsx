@@ -242,4 +242,98 @@ describe('Settings deep-links while the page is already mounted', () => {
     // URL alone, which is what keeps the guard honest for both link shapes.
     expect(window.location.hash).toBe('#/settings/topology');
   });
+
+  // ── The two rules the extraction names as contract ────────────────────
+  // Cases above cover the cleared-bare-link and rejected-key paths. These pin
+  // the two branches that were only reached incidentally: the query exception ON
+  // THE ACCEPTED PATH (every earlier query case used a removed section, so
+  // `if (queryIndex === -1)` never ran with a switch actually happening), and
+  // the page's own half of the AppShell hand-off — a hash that is NOT settings-
+  // scoped must be left entirely alone, because the shell owns those routes.
+
+  it('switches to a kept section AND leaves a query-carrying hash unconsumed', async () => {
+    // Locations -> Configure topology hands off `#/settings/<section>?branch=…`;
+    // the scope hint has to survive the switch or the target screen loses it.
+    // The accepted path is what no case above exercised: every query-bearing
+    // link there pointed at a REMOVED section, so the hash survived by being
+    // rejected, not by the query exception.
+    await renderAtSettingsRoot();
+    const before = activeSectionLabel();
+
+    window.location.hash = '#/settings/data-sync?branch=store-1';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+    await waitFor(() => {
+      expect(activeSectionLabel()).not.toBe(before);
+    });
+    // Same hash, still carrying its query: consumed as a section, kept as a hint.
+    expect(window.location.hash).toBe('#/settings/data-sync?branch=store-1');
+  });
+
+  it('leaves a non-settings hash entirely alone while mounted', async () => {
+    // The page claims `settings/...` and nothing else — the other half of the
+    // AppShell contract, whose own listener refuses `settings/...` and would
+    // otherwise collide with another workspace route on the same event.
+    await renderAtSettingsRoot();
+    const before = activeSectionLabel();
+    expect(before).not.toBeNull();
+
+    window.location.hash = '#/products';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // No section change, and no hash cleared: the listener must not touch a
+    // route it does not own, and must not consume another page's deep link.
+    expect(activeSectionLabel()).toBe(before);
+    expect(window.location.hash).toBe('#/products');
+    expect(isTopologySection()).toBe(false);
+
+    // A second shape, chosen to actually bite the prefix guard: the slice the
+    // handler takes is fixed-width ('settings/'.length = 9), so ANY 9-character
+    // prefix followed by a kept name would read as that section without the
+    // startsWith check. `Settings/...` differs only in case, so it is a real
+    // non-settings route whose tail is a kept section name — the guard, not the
+    // KEPT_SECTIONS lookup, is what refuses it here.
+    window.location.hash = '#/Settings/general';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(window.location.hash).toBe('#/Settings/general');
+  });
+
+  it('ignores an empty section name without blanking the body or the hash', async () => {
+    // `#/settings/` matches the prefix but names nothing; the `section &&` guard
+    // is what keeps it from setting activeSection to '' and rendering nothing.
+    await renderAtSettingsRoot();
+    const before = activeSectionLabel();
+
+    window.location.hash = '#/settings/';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(activeSectionLabel()).toBe(before);
+    expect(activeSectionLabel()).not.toBeNull();
+    expect(document.querySelector('.settings-section-content')).toBeTruthy();
+    expect(window.location.hash).toBe('#/settings/');
+  });
+
+  it('keeps listening after a link it refused', async () => {
+    // The refusal must not be terminal: the cleanup/registration happens once,
+    // so a removed-section bookmark cannot strand the hub for the rest of the
+    // session. This is the listener half of the contract AppShell forces.
+    await renderAtSettingsRoot();
+    const before = activeSectionLabel();
+
+    window.location.hash = '#/settings/staff';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(activeSectionLabel()).toBe(before);
+    expect(window.location.hash).toBe('#/settings/staff');
+
+    window.location.hash = '#/settings/exchange-rates';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => {
+      expect(activeSectionLabel()).not.toBe(before);
+    });
+    expect(window.location.hash).toBe('');
+  });
 });

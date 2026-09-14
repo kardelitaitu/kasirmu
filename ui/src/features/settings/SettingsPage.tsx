@@ -27,6 +27,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
+import { useSettingsHashSection } from './hooks/useSettingsHashSection';
 import { useSettingsSave } from './hooks/useSettingsSave';
 // ── Lazy-loaded flat-IA screens (blank scaffolds from the screens commit;
 //    selective migration fills each one in) ──
@@ -54,19 +55,6 @@ import SettingsNavTree, {
 
 import './SettingsPage.css';
 import './SettingsNavTree.css';
-
-/**
- * Sections the settings hub actually still has. Deep-links (`#/settings/<section>`) from
- * the workspace tool cards are matched against this, so a bookmark to a tab that was
- * removed in the hub redesign is ignored and the page opens on its default instead of an
- * empty body. Module scope on purpose: the hash effect in the component closes over this
- * and must not see a new Set on every render.
- */
-const KEPT_SECTIONS = new Set([
-  'general', 'license-subscription', 'devices-connectivity', 'business-defaults',
-  'features-modules', 'security-account', 'data-sync', 'data-management',
-  'sync-status', 'sync-conflicts', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
-]);
 
 /** Snapshot of initial loaded values for the Revert-to-saved button. */
 interface SettingsSnapshot {
@@ -225,48 +213,20 @@ function SettingsPageContent() {
   }), [cm]);
 
   // ── Navigation state ────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState('general');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  /** Navigate to a section. */
-  const navigateToSection = useCallback((key: string) => {
-    setActiveSection(key);
-    setMobileSidebarOpen(false);
-  }, []);
-
-  // ── Read section from the URL hash (e.g. #/settings/general) ────────
-  // Only sections that still exist in the flat IA are accepted; stale
-  // deep-links to removed sections are ignored so the hub opens on its
-  // default (general) section instead of an empty body — the "old settings
-  // on <tab>" problem. KEPT_SECTIONS is module-scope on purpose: as a
-  // render-scoped const it would be a new Set every render, re-running the
-  // effect each time. This is deliberately NOT a mount-only effect:
-  // AppShell's own hashchange listener refuses `settings/...` (only
-  // `settings` is a registered page), so while the page is already mounted
-  // nothing else re-reads the hash — listening here closes that gap.
-  useEffect(() => {
-    const applyHashSection = () => {
-      const hash = window.location.hash.replace(/^#\//, '');
-      if (!hash.startsWith('settings/')) return;
-      // A deep link may append a query scoping the target section; the
-      // section name is everything before the '?'.
-      const rawSection = hash.slice('settings/'.length);
-      const queryIndex = rawSection.indexOf('?');
-      const section = queryIndex === -1 ? rawSection : rawSection.slice(0, queryIndex);
-      if (section && KEPT_SECTIONS.has(section)) {
-        setActiveSection(section);
-        // Clear the hash after consuming it so stale sections don't persist.
-        // A query-carrying hash is left alone (scoped deep links may return).
-        if (queryIndex === -1) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      }
-    };
-    applyHashSection();
-    window.addEventListener('hashchange', applyHashSection);
-    return () => window.removeEventListener('hashchange', applyHashSection);
-  }, []);
+  // ── Section state + the URL deep-link contract ───────────────────
+  // Moved verbatim to ./hooks/useSettingsHashSection (settings slice 2): the
+  // activeSection state, navigateToSection, KEPT_SECTIONS and the hashchange
+  // listener. The mobile drawer and the nav search stay here, so the hook
+  // receives just the drawer setter and hands back the section and its
+  // navigator - and the two rules the deep-link suite pins (query-carrying
+  // hashes are never cleared; an unknown section name is ignored, not blanked)
+  // live in that file now.
+  const { activeSection, navigateToSection } = useSettingsHashSection({
+    setMobileSidebarOpen,
+  });
 
   // ── Unsaved changes tracking ────────────────────────────────
   const [isDirty, setIsDirty] = useState(false);
