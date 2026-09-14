@@ -8,6 +8,7 @@ import { useWorkspaceScope, useWorkspace } from '@/contexts/WorkspaceContext';
 import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, updateKdsLineItemStatusScoped, getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem, type CreateKdsLineItemInput } from '@/api/kds';
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
+import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
 import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
@@ -107,8 +108,6 @@ export default function KdsScreen() {
   /** Open vs Completed view — the prototype's primary tab navigation. */
   const [activeTab, setActiveTab] = useState<'open' | 'completed'>('open');
   const [initialLoading, setInitialLoading] = useState(true);
-  // KEY-07: ARIA tabs pattern — zone chips get roving tabindex + arrow keys.
-  const zoneTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   // Open/Completed tab indicator: measured from the track + active tab.
   const tabsTrackRef = useRef<HTMLDivElement>(null);
   const tabOpenRef = useRef<HTMLButtonElement>(null);
@@ -121,8 +120,6 @@ export default function KdsScreen() {
   const [filterCats, setFilterCats] = useState<Set<string> | null>(null);
   const [completedFilter, setCompletedFilter] = useState<'all' | 'dinein' | 'takeaway'>('all');
   const [showFilter, setShowFilter] = useState(false);
-  const filterBtnRef = useRef<HTMLButtonElement>(null);
-  const filterPanelRef = useRef<HTMLDivElement>(null);
   // 3f: Product picker state — which order is being edited.
   const [pickerOrderId, setPickerOrderId] = useState<string | null>(null);
   // KDS device enrollment modal state.
@@ -490,29 +487,18 @@ export default function KdsScreen() {
     { minDistance: 60, maxTimeMs: 400 },
   );
 
-  // KEY-07: ARIA tabs pattern — ArrowLeft/ArrowRight/Home/End move between the
-  // zone chips (roving tabindex: the selected chip keeps tabIndex 0, others -1),
-  // and the chip reached by arrow keys becomes the active zone filter.
-  const handleZoneTablistKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const chips = zoneTabRefs.current;
-    if (!chips || chips.length === 0) return;
-    const current = chips.findIndex((c) => c === document.activeElement);
-    let next = -1;
-    if (e.key === 'ArrowRight') {
-      next = current < 0 ? 0 : (current + 1) % chips.length;
-    } else if (e.key === 'ArrowLeft') {
-      next = current < 0 ? chips.length - 1 : (current - 1 + chips.length) % chips.length;
-    } else if (e.key === 'Home') {
-      next = 0;
-    } else if (e.key === 'End') {
-      next = chips.length - 1;
-    }
-    if (next < 0) return;
-    e.preventDefault();
-    chips[next]?.focus();
-    // chip 0 = "All" (zone ''), chips 1..n = zones[0..n-1]
-    setKdsZone(next === 0 ? '' : (zones[next - 1] ?? ''));
-  }, [zones, setKdsZone]);
+  // KEY-07 (extracted): the roving-tabindex trio — zone-chip tablist, filter
+  // popover listbox and the popover trigger — plus the popover's Escape /
+  // outside-click dismiss. The three refs come back OUT because the markup that
+  // binds them (KdsZoneChips / KdsHeaderLeft) is rendered here.
+  const {
+    zoneTabRefs,
+    filterBtnRef,
+    filterPanelRef,
+    handleZoneTablistKeyDown,
+    handleFilterPanelKeyDown,
+    handleFilterBtnKeyDown,
+  } = useKdsFilterNav({ zones, setKdsZone, showFilter, setShowFilter });
 
   // Open/Completed tab indicator: measure the active tab button inside
   // the track and slide the blue pill to it (prototype .kds-tab-indicator).
@@ -547,73 +533,6 @@ export default function KdsScreen() {
     window.addEventListener('resize', updateIndicator);
     return () => window.removeEventListener('resize', updateIndicator);
   }, [activeTab, orders.length]);
-
-  // Filter dropdown: close on outside click and Escape.
-  useEffect(() => {
-    if (!showFilter) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowFilter(false);
-    };
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node) &&
-        filterBtnRef.current && !filterBtnRef.current.contains(e.target as Node)
-      ) {
-        setShowFilter(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showFilter]);
-
-  // Keyboard navigation for the filter dropdown listbox.
-  const handleFilterPanelKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const panel = filterPanelRef.current;
-    if (!panel) return;
-    const options = Array.from(panel.querySelectorAll<HTMLButtonElement>('.kds-filter-option'));
-    if (options.length === 0) return;
-    const currentIndex = options.findIndex((opt) => opt === document.activeElement);
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % options.length;
-      options[nextIndex]?.focus();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      const nextIndex = currentIndex < 0 ? options.length - 1 : (currentIndex - 1 + options.length) % options.length;
-      options[nextIndex]?.focus();
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      options[0]?.focus();
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      options[options.length - 1]?.focus();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setShowFilter(false);
-      filterBtnRef.current?.focus();
-    }
-  }, []);
-
-  const handleFilterBtnKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      setShowFilter(true);
-      setTimeout(() => {
-        const panel = filterPanelRef.current;
-        if (!panel) return;
-        const options = Array.from(panel.querySelectorAll<HTMLButtonElement>('.kds-filter-option'));
-        if (options.length > 0) {
-          const target = e.key === 'ArrowDown' ? options[0] : options[options.length - 1];
-          target?.focus();
-        }
-      }, 0);
-    }
-  }, []);
 
   // PERF-KDS-01: stable identity so `KdsTicketCard`'s memo actually holds.
   // An inline arrow here changed on every KdsScreen render, which invalidated
