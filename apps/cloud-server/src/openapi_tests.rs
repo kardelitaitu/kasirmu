@@ -332,6 +332,7 @@ fn test_full_router() -> axum::Router {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let config = crate::config::CloudServerConfig {
         db_path: ":memory:".into(),
@@ -351,6 +352,7 @@ fn test_full_router() -> axum::Router {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
         api_secret: Some("test-secret".into()),
         redis_url: None,
     };

@@ -83,6 +83,7 @@ fn test_config() -> config::CloudServerConfig {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
         api_secret: None,
         redis_url: None,
     }
@@ -105,6 +106,7 @@ fn test_app() -> Router {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let config = test_config();
     build_router(
@@ -359,6 +361,7 @@ async fn cloud_health_reports_queue_depth() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let app = build_router(
         state.clone(),
@@ -404,6 +407,7 @@ async fn cloud_health_reports_last_sync_at() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let app = build_router(
         state.clone(),
@@ -495,6 +499,7 @@ async fn sync_push_and_pull_roundtrip() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -587,6 +592,7 @@ async fn multi_tenant_tenant_a_push_invisible_to_tenant_b() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -639,6 +645,7 @@ async fn multi_tenant_bidirectional_isolation() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -698,6 +705,7 @@ async fn multi_tenant_status_scoped_per_tenant() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -755,6 +763,7 @@ async fn multi_tenant_default_tenant_isolation() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let rate_limiter = crate::rate_limit::RateLimiterState::new();
     let app = build_router(state.clone(), rate_limiter, &test_config(), None);
@@ -806,6 +815,7 @@ async fn lifecycle_free_tenant_upgraded_via_webhook_can_sync() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let mut config = test_config();
     config.enforce_plans = true;
@@ -933,6 +943,7 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let app = build_router(
         state,

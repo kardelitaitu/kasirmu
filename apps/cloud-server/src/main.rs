@@ -116,6 +116,12 @@ pub struct CloudServerState {
     pub midtrans_server_key: Option<String>,
     /// agents-1: `MIDTRANS_SANDBOX` flag — steers only the charge endpoint.
     pub midtrans_sandbox: bool,
+    /// Optional QRIS acquirer (`MIDTRANS_QRIS_ACQUIRER`), forwarded to the
+    /// charge processor. `None` — the default — keeps the charge generic (no
+    /// `qris.acquirer` on the wire). Process-wide and read once at startup,
+    /// NOT a per-terminal setting; see
+    /// `config::CloudServerConfig::midtrans_qris_acquirer` for the scope note.
+    pub midtrans_qris_acquirer: Option<String>,
 }
 
 /// Read the Tokio worker-thread count from `OZ_WORKER_THREADS`.
@@ -299,6 +305,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 square_webhook_url: config.square_webhook_url.clone(),
                 midtrans_server_key: config.midtrans_server_key.clone(),
                 midtrans_sandbox: config.midtrans_sandbox,
+                midtrans_qris_acquirer: config.midtrans_qris_acquirer.clone(),
             };
             // Start the background prune loop (ADR #6 Q4 / P-1 Ledger Retention).
             prune::start_prune_loop(conn.clone());
@@ -354,6 +361,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 square_webhook_url: config.square_webhook_url.clone(),
                 midtrans_server_key: config.midtrans_server_key.clone(),
                 midtrans_sandbox: config.midtrans_sandbox,
+                midtrans_qris_acquirer: config.midtrans_qris_acquirer.clone(),
             };
 
             // P8-1: Per-tenant rate limiter state + background cleanup.

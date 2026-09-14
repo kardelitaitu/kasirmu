@@ -13,6 +13,21 @@ next: none | perf: N/A
 //! [`crate::midtrans_ledger`] so the settlement webhook can resolve the sale
 //! even before the device syncs.
 //!
+//! # Acquirer
+//!
+//! `MIDTRANS_QRIS_ACQUIRER` (read into `CloudServerConfig`) can pin the charge
+//! to one acquirer via [`QrisPaymentProcessor::with_acquirer`]. Unset — the
+//! default, and the state every deployment is in today — the `qris` object is
+//! omitted from the charge body entirely, so Midtrans issues a generic QRIS
+//! code.
+//!
+//! That env var is a **process-wide deployment knob read at startup**, not the
+//! per-terminal override `todo-payment.md` rules for merchants with a
+//! co-branded activation: nothing reads it per tenant, per terminal or per
+//! cashier, and there is no settings/UI path to it. Until that per-tenant
+//! plumbing exists it should be left unset on shared deployments, because
+//! setting it would pin every tenant's QR to one wallet.
+//!
 //! Two-phase contract kept honest end to end (PAY-6): a `200` here means the
 //! QR was ISSUED, not paid. `status: "qr_issued"` says so in the body; the
 //! QR validity window is Midtrans-side (300 s), settlement arrives via
@@ -77,16 +92,51 @@ impl PaymentState {
         state: CloudServerState,
         rate_limiter: RateLimiterState,
     ) -> Self {
-        let processor = state
-            .midtrans_server_key
-            .as_deref()
-            .map(|key| QrisPaymentProcessor::new(key, state.midtrans_sandbox));
+        let processor = state.midtrans_server_key.as_deref().map(|key| {
+            build_qris_processor(
+                key,
+                state.midtrans_sandbox,
+                state.midtrans_qris_acquirer.as_deref(),
+                None,
+            )
+        });
         Self {
             db: state.db.clone(),
             pg: state.pg.clone(),
             rate_limiter,
             processor,
         }
+    }
+}
+
+/// Build the QRIS charge processor from the server's Midtrans settings.
+///
+/// `acquirer` is the configured `MIDTRANS_QRIS_ACQUIRER` value. It is chained
+/// with [`QrisPaymentProcessor::with_acquirer`] **only when `Some`**, so the
+/// unset case keeps the driver's ruled generic default: no `qris` object in
+/// the `POST /charge` body and a QR any QRIS-compliant wallet can scan. A
+/// configured value reaches the wire verbatim — the driver does not validate
+/// or rewrite it, because which acquirer a merchant may name is governed by
+/// that merchant's Midtrans activation.
+///
+/// `api_base` selects the gateway endpoint. Production passes `None` and lets
+/// the driver's `sandbox` switch decide (the real sandbox/prod hosts); tests
+/// pass a wiremock URI so the actual charge body can be asserted. Mirrors
+/// `QrisPaymentProcessor::new_with_endpoint`, which exists for the same
+/// reason.
+pub(crate) fn build_qris_processor(
+    server_key: &str,
+    sandbox: bool,
+    acquirer: Option<&str>,
+    api_base: Option<&str>,
+) -> QrisPaymentProcessor {
+    let processor = match api_base {
+        Some(base) => QrisPaymentProcessor::new_with_endpoint(server_key, base, sandbox),
+        None => QrisPaymentProcessor::new(server_key, sandbox),
+    };
+    match acquirer {
+        Some(acquirer) => processor.with_acquirer(acquirer),
+        None => processor,
     }
 }
 

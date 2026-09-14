@@ -254,3 +254,75 @@ fn db_pool_size_respects_custom_value() {
         },
     );
 }
+
+// ── MIDTRANS_QRIS_ACQUIRER ───────────────────────────────────────────
+
+/// Unset, empty and whitespace-only all normalise to `None` — the generic
+/// QRIS charge. A blank value must never become `Some("")`: an empty
+/// `qris.acquirer` on the wire is a misconfiguration pretending to be a
+/// default, and it is the exact class of bug 6a32cc9dd removed.
+#[test]
+fn blank_qris_acquirer_is_not_an_acquirer() {
+    assert_eq!(parse_qris_acquirer(None), None);
+    assert_eq!(parse_qris_acquirer(Some(String::new())), None);
+    assert_eq!(parse_qris_acquirer(Some("   ".into())), None);
+}
+
+/// A configured value is kept byte-for-byte — no trim, no case folding —
+/// because the acquirer name belongs to Midtrans' vocabulary, not ours.
+#[test]
+fn configured_qris_acquirer_is_kept_verbatim() {
+    assert_eq!(
+        parse_qris_acquirer(Some("shopeepay".into())).as_deref(),
+        Some("shopeepay")
+    );
+    assert_eq!(
+        parse_qris_acquirer(Some("airpay shopee".into())).as_deref(),
+        Some("airpay shopee")
+    );
+}
+
+/// The whole config read: unset env → `None` (what every deployment does
+/// today), set env → the value, empty env → `None` again.
+#[serial]
+#[test]
+fn qris_acquirer_env_unset_is_generic_and_set_is_kept() {
+    with_env(
+        &[("OZ_REDIRECT_ONLY", None), ("MIDTRANS_QRIS_ACQUIRER", None)],
+        || {
+            let config = CloudServerConfig::from_env().expect("config should parse");
+            assert_eq!(
+                config.midtrans_qris_acquirer, None,
+                "unset MIDTRANS_QRIS_ACQUIRER must stay generic"
+            );
+        },
+    );
+    with_env(
+        &[
+            ("OZ_REDIRECT_ONLY", None),
+            ("MIDTRANS_QRIS_ACQUIRER", Some("gopay")),
+        ],
+        || {
+            let config = CloudServerConfig::from_env().expect("config should parse");
+            assert_eq!(
+                config.midtrans_qris_acquirer.as_deref(),
+                Some("gopay"),
+                "set MIDTRANS_QRIS_ACQUIRER must survive into the config"
+            );
+        },
+    );
+    with_env(
+        &[
+            ("OZ_REDIRECT_ONLY", None),
+            ("MIDTRANS_QRIS_ACQUIRER", Some("")),
+        ],
+        || {
+            let config = CloudServerConfig::from_env().expect("config should parse");
+            assert_eq!(
+                config.midtrans_qris_acquirer, None,
+                "an empty MIDTRANS_QRIS_ACQUIRER (Docker passes \"\" for an absent
+                host variable) must not become an acquirer"
+            );
+        },
+    );
+}

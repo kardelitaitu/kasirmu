@@ -112,6 +112,24 @@ pub struct CloudServerConfig {
     /// steers the charge endpoint.
     pub midtrans_sandbox: bool,
 
+    /// Optional QRIS acquirer (`MIDTRANS_QRIS_ACQUIRER`), forwarded verbatim to
+    /// Midtrans as `qris.acquirer` on every charge this server raises.
+    ///
+    /// **Unset (the default) sends no acquirer at all**, so the QR stays generic
+    /// and any QRIS-compliant wallet can scan it — what every deployment does
+    /// today. A blank or whitespace-only value is normalised to `None`, so a
+    /// stray `=""` in a compose file cannot pin every QR to one e-wallet.
+    ///
+    /// SCOPE HONESTY: this is a **process-wide deployment knob, read once at
+    /// startup** — not the per-terminal / per-merchant override
+    /// `todo-payment.md` rules for merchants with a co-branded activation.
+    /// There is no settings-table field, no admin route, no UI control and no
+    /// cashier path to it; changing it means setting the env var and restarting
+    /// the server. One entry in the whole platform may therefore pin **every**
+    /// tenant's QR to one wallet, so it must stay unset in shared multi-tenant
+    /// deployments until the per-tenant half is designed and ruled.
+    pub midtrans_qris_acquirer: Option<String>,
+
     /// JWT signing secret for `POST /api/v1/tokens`.
     /// Falls back to a hard-coded dev secret when unset.
     pub api_secret: Option<String>,
@@ -205,6 +223,9 @@ impl CloudServerConfig {
                 .ok()
                 .filter(|k| !k.is_empty()),
             midtrans_sandbox: env_bool("MIDTRANS_SANDBOX"),
+            midtrans_qris_acquirer: parse_qris_acquirer(
+                std::env::var("MIDTRANS_QRIS_ACQUIRER").ok(),
+            ),
             production,
             api_secret,
             redis_url: std::env::var("OZ_REDIS_URL").ok().filter(|s| !s.is_empty()),
@@ -220,6 +241,20 @@ fn env_bool(name: &str) -> bool {
     std::env::var(name)
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "on" | "ON"))
         .unwrap_or(false)
+}
+
+/// Normalise the raw `MIDTRANS_QRIS_ACQUIRER` value into an acquirer override.
+///
+/// Unset, empty and whitespace-only all map to `None`, which is the ruled
+/// default: the charge omits `qris.acquirer` and Midtrans issues a generic
+/// QRIS code. A configured value is passed through **verbatim** (the gateway,
+/// not this server, owns the vocabulary), so no trimming or case folding is
+/// applied to a non-blank value.
+///
+/// Split out from `from_env` so the semantics are unit-testable without
+/// mutating process env.
+fn parse_qris_acquirer(raw: Option<String>) -> Option<String> {
+    raw.filter(|v| !v.trim().is_empty())
 }
 
 /// Parse a positive integer environment variable.
