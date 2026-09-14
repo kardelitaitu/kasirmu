@@ -62,7 +62,7 @@ export type RoleFloor = 'auditor' | 'staff' | 'manager' | 'admin' | 'owner';
  * while an unrecognized floor demands `Number.MAX_SAFE_INTEGER` so nothing
  * clears it. No case-folding or trimming happens here (that is
  * {@link normalizeRole}'s job); the table carries the raw `role-*` preset ids
- * instead, which is exactly how WorkspaceHome reads its copy of the table.
+ * instead, which is exactly how WorkspaceHome reads the single shared table.
  *
  * @param roleName raw role name or preset id, e.g. `'admin'` or `'role-admin'`.
  * @param floor the minimum rank the caller requires.
