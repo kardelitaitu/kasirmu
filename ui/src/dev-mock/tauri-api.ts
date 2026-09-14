@@ -43,6 +43,7 @@ import { mockHandlerPayload, systemHandlers } from './handlers/system';
 import { staffHandlers } from './handlers/staff';
 import { workspaceHandlers } from './handlers/workspaces';
 import { topologyHandlers } from './handlers/topology';
+import { licenseHandlers, settingsHandlers, settingsWriteHandlers } from './handlers/settings';
 import { floorplanHandlers } from './handlers/floorplan';
 import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 
@@ -481,11 +482,7 @@ const entryHandlers: Record<string, MockHandler> = {
 
   'get_local_ip': () => '192.168.1.100',
 
-  'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
-  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
-  'get_device_id': () => 'mock-device-id-001',
-  'activate_license': () => true,
-  'renew_license': () => true,
+  ...licenseHandlers,
 
   // ═══════════════════════════════════════════════════════════════
   // LOCATIONS / DEPRECATED STORE PROFILE ALIASES
@@ -538,41 +535,7 @@ const entryHandlers: Record<string, MockHandler> = {
   // SETTINGS
   // ═══════════════════════════════════════════════════════════════
 
-  'get_store_settings': () => ({
-    name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
-  }),
-  'get_store_settings_scoped': () => ({
-    name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
-  }),
-  'set_store_settings': () => null,
-  'set_store_settings_scoped': () => null,
-
-  'get_receipt_settings': () => ({
-    showCurrency: true, decimalSeparator: 'dot', showTax: true, footer: 'Terima kasih',
-    paperWidth: 'standard', showTableNumber: false,
-    marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
-  }),
-  'get_receipt_settings_scoped': () => ({
-    showCurrency: true, decimalSeparator: 'dot', showTax: true, footer: 'Terima kasih',
-    paperWidth: 'standard', showTableNumber: false,
-    marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
-  }),
-  'set_receipt_settings': () => null,
-
-  'set_receipt_settings_scoped': () => null,
-  'get_setting': () => '',
-  'set_setting_scoped': () => null,
-
-  'get_hardware_settings': () => ({
-    printerConnection: 'usb', printerDevicePath: '', printerPaperSize: '80mm',
-    scannerDeviceId: '', scannerInputMode: 'usb',
-  }),
-  'set_hardware_settings': () => null,
-  'set_hardware_settings_scoped': () => null,
-
-  'get_credit_settings': () => ({ enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 }),
-  'set_credit_settings': () => null,
-  'set_credit_settings_scoped': () => null,
+  ...settingsHandlers,
 
   // ═══════════════════════════════════════════════════════════════
   // BRANDING
@@ -844,21 +807,7 @@ handlers['get_voided_items_scoped'] = () => [
 
 // KDS order item updates (non-scoped)
 // Settings writes (non-scoped + scoped)
-handlers['set_setting'] = () => true;
-handlers['set_settings'] = () => true;
-handlers['set_settings_scoped'] = () => true;
-
-// PG sync
-handlers['get_sync_plan'] = () => ({ pushed: 0, pulled: 0, conflicts: 0 });
-handlers['get_pg_sync_settings'] = () => ({
-  enabled: false, host: '', port: '5432', dbname: '', user: '',
-});
-handlers['update_pg_sync_settings'] = () => true;
-handlers['pg_sync_status'] = () => ({
-  running: false, last_error: null, last_sync_at: null,
-});
-handlers['pg_sync_start'] = () => true;
-handlers['pg_sync_stop'] = () => true;
+registerHandlers(settingsWriteHandlers);
 
 // Analytics daily staff breakdown
 

@@ -1,0 +1,107 @@
+/**
+ * Dev-mock handlers — Settings domain.
+ *
+ * The three settings-family groups that were still literal in `tauri-api.ts`:
+ * the store/receipt/hardware/credit settings reads and writes (the SETTINGS
+ * banner block), the license/device-id group (the BOOT/SETUP banner), and the
+ * trailing settings-WRITE + PG-sync patches. Extracted from `tauri-api.ts` by
+ * the agent-3 work order (`todo-refactor-devmock-agents-3.md`, phase 3.2, box
+ * :93); the bodies are moved verbatim, comments included — only their location
+ * changes. The three exported maps are spread/registered at the EXACT positions
+ * the keys occupied before, so neither the registry insertion order nor
+ * dispatch precedence moves: `licenseHandlers` and `settingsHandlers` spread
+ * back into the entry literal (object spread preserves position), and
+ * `settingsWriteHandlers` is registered where the `handlers[...]=` statements
+ * ran — registerHandlers is an Object.assign, so the call sits on the same line
+ * of the same sequence. That matters because applyScopedAliases() only fills a
+ * `_scoped` twin when it is still ABSENT: a moved key that arrived later than
+ * the alias pass would answer with another command handler.
+ *
+ * What is deliberately NOT here: the receipt-FORMAT trio
+ * (get_receipt_format_scoped / set_receipt_layout_scoped /
+ * set_receipt_content_scoped) — that is the regional receipt axis, registered
+ * under its own parity comment; `get/set/clear_device_binding`, a separate
+ * command family per handlers/workspaces.ts; `get_sync_settings` /
+ * get_sync_settings_scoped / update_sync_settings, which live under the
+ * cloud-sync banner mid-literal rather than with the PG-sync patches; and the
+ * two `handlers['set_settings*]` neighbours that stayed with their banner.
+ */
+
+import type { MockHandler } from '../core/mockDispatcher';
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT / SETUP — license group (was literal at the BOOT/SETUP banner)
+// ═══════════════════════════════════════════════════════════════
+
+export const licenseHandlers: Record<string, MockHandler> = {
+  'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
+  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
+  'get_device_id': () => 'mock-device-id-001',
+  'activate_license': () => true,
+  'renew_license': () => true,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS — store / receipt / hardware / credit (was the SETTINGS banner)
+// ═══════════════════════════════════════════════════════════════
+
+export const settingsHandlers: Record<string, MockHandler> = {
+  'get_store_settings': () => ({
+    name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
+  }),
+  'get_store_settings_scoped': () => ({
+    name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
+  }),
+  'set_store_settings': () => null,
+  'set_store_settings_scoped': () => null,
+
+  'get_receipt_settings': () => ({
+    showCurrency: true, decimalSeparator: 'dot', showTax: true, footer: 'Terima kasih',
+    paperWidth: 'standard', showTableNumber: false,
+    marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
+  }),
+  'get_receipt_settings_scoped': () => ({
+    showCurrency: true, decimalSeparator: 'dot', showTax: true, footer: 'Terima kasih',
+    paperWidth: 'standard', showTableNumber: false,
+    marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
+  }),
+  'set_receipt_settings': () => null,
+
+  'set_receipt_settings_scoped': () => null,
+  'get_setting': () => '',
+  'set_setting_scoped': () => null,
+
+  'get_hardware_settings': () => ({
+    printerConnection: 'usb', printerDevicePath: '', printerPaperSize: '80mm',
+    scannerDeviceId: '', scannerInputMode: 'usb',
+  }),
+  'set_hardware_settings': () => null,
+  'set_hardware_settings_scoped': () => null,
+
+  'get_credit_settings': () => ({ enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 }),
+  'set_credit_settings': () => null,
+  'set_credit_settings_scoped': () => null,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// Settings writes + PG sync (were trailing handlers[...] = ... patches)
+// ═══════════════════════════════════════════════════════════════
+
+export const settingsWriteHandlers: Record<string, MockHandler> = {
+  'set_setting': () => true,
+  'set_settings': () => true,
+  'set_settings_scoped': () => true,
+
+// PG sync
+  'get_sync_plan': () => ({ pushed: 0, pulled: 0, conflicts: 0 }),
+  'get_pg_sync_settings': () => ({
+  enabled: false, host: '', port: '5432', dbname: '', user: '',
+  }),
+  'update_pg_sync_settings': () => true,
+  'pg_sync_status': () => ({
+  running: false, last_error: null, last_sync_at: null,
+  }),
+  'pg_sync_start': () => true,
+  'pg_sync_stop': () => true,
+};
+
