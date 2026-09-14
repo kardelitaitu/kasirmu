@@ -190,6 +190,32 @@ interface ScreenEntry {
    * Paths are relative to src/features/, same as `tsx`.
    */
   additionalTsx?: string[];
+  /**
+   * Names that exist to be SELECTED and not styled — a class some ui/e2e spec
+   * queries so a test can find an element, with no rule styling it anywhere.
+   *
+   * This is the one device in this file that is GRADED rather than believed.
+   * `externalClasses`, `dynamicClassPrefixes` and `knownDynamicFragments` are all
+   * taken on the author's word: nothing re-tests that the name really belongs to a
+   * child component, that the prefix really composes, or that the string really is a
+   * parser artifact — which is how a prefix can keep granting on a family the
+   * extractor cannot even see. A name listed here must satisfy TWO static proofs,
+   * both re-read from disk on every run, and a failure is reported against the ENTRY:
+   *   1. a locator in ui/e2e/*.spec.ts reads `.name` — a `page.locator(...)` /
+   *      `querySelector(...)` / `getByTestId(...)` line, so prose in a spec's header
+   *      comment does not count;
+   *   2. a production `.tsx`/`.ts` under the entry's OWN feature dir names it as a
+   *      string literal, i.e. somebody really builds it.
+   *
+   * What it deliberately is NOT: it does not feed the used set (a name only a locator
+   * reads stays invisible to `used`, which is why the array blindness this works
+   * around stays pinned rather than quietly repaired); it exempts nothing from the
+   * used-vs-defined report unless both proofs hold, and an unproven claim then simply
+   * fails that report like any other missing name; and it never rescues a dead rule —
+   * a declared name that DOES have a rule of its own is reported by the third case
+   * below, because a rule whose only consumer is a locator is the thing worth deleting.
+   */
+  selectorOnlyClasses?: string[];
 }
 
 const SCREENS: ScreenEntry[] = [
@@ -389,6 +415,22 @@ const SCREENS: ScreenEntry[] = [
       'kds/components/KdsHeaderTabs.tsx',
       'kds/components/KdsMainContent.tsx',
     ],
+    // Three names that exist ONLY to be selected: string literals in the
+    // `statusClasses` array at features/kds/KdsLayoutMasonry.tsx:74, read back as
+    // `.kds-column--pending` at e2e/e2e-kds-critical-path.spec.ts:75, --preparing at
+    // :96 and --ready at :107, and asserted via toHaveClass at
+    // KdsLayoutMasonry.test.tsx:116-118. No rule anywhere styles them — the only CSS
+    // text is the comment at features/kds/KdsScreen.css:1801-1805 saying they carry no
+    // extra visual difference. They are invisible to the used-vs-defined report today
+    // because the extractor cannot see an array index (the blindness
+    // `still does not see a class that arrives through an array variable` pins on
+    // purpose), which is also why the `kds-column--` prefix in
+    // dynamicClassPrefixes just above has been granting on a family nothing can see:
+    // that prefix is inert, and this declaration is the honest replacement for it once
+    // the extractor learns arrays — not before, because resolution is not what clears
+    // a finding here. Graded, not believed: drop any one of these three names and the
+    // locator half or the markup half reports it against this entry.
+    selectorOnlyClasses: ['kds-column--pending', 'kds-column--preparing', 'kds-column--ready'],
   },
   {
     name: 'ExpoScreen',
@@ -1413,11 +1455,82 @@ const SCREENS: ScreenEntry[] = [
   },
 ];
 
+// ── The selector-only contract's two evidence sources ─────────────
+// Both maps are read from disk on every run, so a claim cannot age quietly:
+// `locatorReadNames` walks the specs as TEXT (a spec is not imported and not
+// executed here — Playwright never runs in this suite), and `classBuildingSites`
+// walks production files in ONE feature dir, tests excluded, because a test that
+// asserts a class is not proof that production builds it.
+const E2E_DIR = path.resolve(process.cwd(), 'e2e');
+
+function locatorReadNames(): Map<string, string[]> {
+  const hits = new Map<string, string[]>();
+  if (!fs.existsSync(E2E_DIR)) return hits;
+  for (const f of fs.readdirSync(E2E_DIR)) {
+    if (!f.endsWith('.spec.ts')) continue;
+    const lines = fs.readFileSync(path.join(E2E_DIR, f), 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (!/(page\.locator|\.locator\(|querySelector\(|getByTestId\()/.test(line)) return;
+      for (const m of line.matchAll(/\.([a-zA-Z][a-zA-Z0-9_-]*)/g)) {
+        const cls = m[1];
+        if (!cls) continue; // noUncheckedIndexedAccess: a match group is string | undefined
+        hits.set(cls, [...(hits.get(cls) ?? []), `${f}:${i + 1}`]);
+      }
+    });
+  }
+  return hits;
+}
+
+function classBuildingSites(featureDir: string): Map<string, string[]> {
+  const hits = new Map<string, string[]>();
+  const root = path.join(FEATURES_DIR, featureDir);
+  if (!fs.existsSync(root)) return hits;
+  const walk = (dir: string): void => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      if (!e.name.endsWith('.tsx') && !e.name.endsWith('.ts')) continue;
+      if (e.name.endsWith('.test.tsx') || e.name.endsWith('.spec.ts')) continue;
+      const lines = fs.readFileSync(full, 'utf8').split('\n');
+      lines.forEach((line, i) => {
+        for (const m of line.matchAll(/['"`]([a-z][a-z0-9_-]*(?:--[a-z0-9-]+)?)['"`]/g)) {
+          const cls = m[1];
+          if (!cls) continue;
+          const rel = path.relative(FEATURES_DIR, full).split(path.sep).join('/');
+          hits.set(cls, [...(hits.get(cls) ?? []), `${rel}:${i + 1}`]);
+        }
+      });
+    }
+  };
+  walk(root);
+  return hits;
+}
+
+function featureDirOf(tsx: string): string {
+  // src/features/<dir>/... — the one feature dir a selector-only claim may be built
+  // in. Written as a slice, not as split('/')[0], because noUncheckedIndexedAccess
+  // makes that expression string | undefined and tsc refuses it.
+  const i = tsx.indexOf('/');
+  return i > 0 ? tsx.slice(0, i) : tsx;
+}
+
+function ownSheetSelectors(entry: ScreenEntry): Set<string> {
+  const out = new Set<string>();
+  for (const c of entry.css) {
+    const file = c.startsWith('../')
+      ? path.resolve(FEATURES_DIR, c)
+      : path.join(FEATURES_DIR, c);
+    if (!fs.existsSync(file)) continue;
+    for (const cls of extractClassSelectors(fs.readFileSync(file, 'utf8'))) out.add(cls);
+  }
+  return out;
+}
+
 // ── Tests ─────────────────────────────────────────────────────────
 
 describe.each(SCREENS)(
   'CSS class integrity — $name',
-  ({ name, tsx, css, parentCss, dynamicClassPrefixes, externalClasses, knownDynamicFragments, additionalTsx }: ScreenEntry) => {
+  ({ name, tsx, css, parentCss, dynamicClassPrefixes, externalClasses, knownDynamicFragments, additionalTsx, selectorOnlyClasses }: ScreenEntry) => {
     const tsxPath = path.join(FEATURES_DIR, tsx);
     let tsxContent = fs.readFileSync(tsxPath, 'utf8');
 
@@ -1486,10 +1599,18 @@ describe.each(SCREENS)(
 
     it(`every className used in ${name} has a CSS rule defined`, () => {
       const fragments = new Set(knownDynamicFragments ?? []);
+      // The selector-only contract withholds a name from THIS report only when both
+      // proofs hold; an unproven claim stays in `missing` like any other undefined
+      // name, and nothing here is added to `used`. It is never a rescue from case 3.
+      const provenSelectorOnly = new Set(
+        (selectorOnlyClasses ?? []).filter(
+          (n) => locatorReadNames().has(n) && classBuildingSites(featureDirOf(tsx)).has(n),
+        ),
+      );
       const missing: string[] = [];
       for (const cls of used) {
         // Resolves against own css UNION parentCss — see the two maps above.
-        if (!definedIndex.has(cls) && !fragments.has(cls)) {
+        if (!definedIndex.has(cls) && !fragments.has(cls) && !provenSelectorOnly.has(cls)) {
           missing.push(cls);
         }
       }
@@ -1779,6 +1900,60 @@ describe('stylesheet coverage', () => {
 // glued itself to the preceding class name, so `kds-hex-input` was reported DEAD while
 // genuinely in use. These cases pin the behaviour directly, so a future regression fails
 // here with a message about the extractor instead of a misleading one about a screen.
+
+describe('selector-only class claims', () => {
+  // Three structural whole-tree cases, one per half of the contract plus the
+  // anti-rescue clause. They grade the DECLARATION, so a wrong claim is a finding
+  // against the entry that made it — the property none of the three believed arrays
+  // has. Entries and the uncited baseline are untouched by them: the contract adds
+  // cases without adding coverage, and that asymmetry is the point.
+  const claims = SCREENS.filter((e) => (e.selectorOnlyClasses ?? []).length > 0);
+
+  it('every selectorOnlyClasses name is read by a ui/e2e locator', () => {
+    const read = locatorReadNames();
+    const findings: string[] = [];
+    for (const entry of claims) {
+      for (const cls of entry.selectorOnlyClasses ?? []) {
+        if (!read.has(cls)) {
+          findings.push(`${entry.name}: ${cls} — declared selector-only, no locator in ui/e2e reads it`);
+        }
+      }
+    }
+    expect(findings, `Unproven selector-only claims (locator half).\n${findings.join('\n')}`).toEqual([]);
+  });
+
+  it('every selectorOnlyClasses name is built by production code in its own feature dir', () => {
+    const findings: string[] = [];
+    for (const entry of claims) {
+      const built = classBuildingSites(featureDirOf(entry.tsx));
+      for (const cls of entry.selectorOnlyClasses ?? []) {
+        if (!built.has(cls)) {
+          findings.push(
+            `${entry.name}: ${cls} — declared selector-only, no production file under ` +
+              `src/features/${featureDirOf(entry.tsx)}/ names it`,
+          );
+        }
+      }
+    }
+    expect(findings, `Unproven selector-only claims (markup half).\n${findings.join('\n')}`).toEqual([]);
+  });
+
+  it('no selectorOnlyClasses name is silently excusing a rule that still styles it', () => {
+    const findings: string[] = [];
+    for (const entry of claims) {
+      const defined = ownSheetSelectors(entry);
+      for (const cls of entry.selectorOnlyClasses ?? []) {
+        if (defined.has(cls)) {
+          findings.push(
+            `${entry.name}: ${cls} — declared selector-only but a rule in its own sheet ` +
+              `still styles it; a rule whose only consumer is a locator is delete-candidate debt`,
+          );
+        }
+      }
+    }
+    expect(findings, `Selector-only claims contradicted by a real rule.\n${findings.join('\n')}`).toEqual([]);
+  });
+});
 
 describe('extractUsedClassNames', () => {
   it('reads a plain static className', () => {
