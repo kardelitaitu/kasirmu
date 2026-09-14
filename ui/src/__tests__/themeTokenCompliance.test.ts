@@ -951,7 +951,7 @@ const TOKENS_CSS = join(UI_SRC, "frontend", "themes", "tokens.css");
 
 /** A custom-property DECLARATION at its own boundary -- not a var() read. */
 const CUSTOM_PROP_DEF_RE = /(?:^|[;{\s])(--[A-Za-z0-9_-]+)\s*:/g;
-const VAR_REF_RE = /var\(\s*(--[A-Za-z0-9_-]+)/g;
+const VAR_REF_RE = /var\(\s*(--[A-Za-z0-9_-]+)([^)]*)\)/g;
 const SET_PROPERTY_RE = /setProperty\(\s*["'`](--[A-Za-z0-9_-]+)/g;
 const STYLE_KEY_RE = /["'`](--[A-Za-z0-9_-]+)["'`]\s*:/g;
 
@@ -959,13 +959,20 @@ interface VarRef {
   file: string;
   line: number;
   token: string;
+  /** True when the reference reads `var(--x, <literal>)` -- the costume. */
+  hasFallback: boolean;
 }
 
 function varRefsFromCss(file: string, text: string): VarRef[] {
   const blanked = blankComments(text);
   const hits: VarRef[] = [];
   for (const m of blanked.matchAll(VAR_REF_RE)) {
-    hits.push({ file: shortFile(file), line: lineOf(blanked, m.index ?? 0), token: m[1] as string });
+    hits.push({
+      file: shortFile(file),
+      line: lineOf(blanked, m.index ?? 0),
+      token: m[1] as string,
+      hasFallback: /^\s*,/.test(m[2] ?? ''),
+    });
   }
   return hits;
 }
@@ -1142,5 +1149,174 @@ describe("var() token existence", () => {
     expect([...misses.keys()]).toEqual(["--ok-typo", "--nope"]);
     expect(misses.get("--ok-typo")?.map((m) => m.file + ":" + m.line)).toEqual(["a.css:1"]);
     expect(describeUnresolved(misses)).toContain("(1 site) -> a.css:1");
+  });
+});
+
+/* ── Foreign-scheme freeze (added 2026-09-15) ───────────────────────
+ *
+ * The existence case above refuses a name nothing defines. This one names
+ * the shape that refusal describes when it is written on purpose: a
+ * reference to a token declared NOWHERE in ui/src that carries a literal
+ * fallback, so `color: var(--text-primary, #1f2937)` resolves -- through the
+ * literal, not the token. That is a second palette living inside fallbacks,
+ * invisible to the token ladder, unwritten in tokens.css, and free to spread
+ * one line at a time. Renaming any of it is parked with the ink cluster
+ * (measured: not one of these names has a candidate token that matches in all
+ * three blocks -- the two closest match in light only, so a rename would turn
+ * a white card into #1c1f27 under the shipped dark default). This case does
+ * not migrate and does not judge the colour: it freezes the population.
+ *
+ * The predicate, not the vocabulary, is the rule: a FIFTEENTH foreign name --
+ * or a sixteenth site of a known one -- is a new (name @ file, count) pair and
+ * fails. Scope is every .css under ui/src, not just features/, because 24 of
+ * the 88 sites sit in ui/src/components/*.css, which the existence case above
+ * never reads. Both directions are enforced, like UNRESOLVED_VAR_TOKENS_BASELINE
+ * and for the same reason: a list nobody prunes is how a freeze becomes a mute.
+ */
+
+const ALL_CSS_SOURCES = collectCssFiles(UI_SRC).map((f) => ({ file: f, text: readFileSync(f, "utf-8") }));
+
+/** Every custom property declared by ANY stylesheet under ui/src, plus the runtime lane. */
+const ALL_DECLARED: Set<string> = (() => {
+  const d = new Set<string>();
+  for (const s of ALL_CSS_SOURCES) for (const n of customPropNamesIn(s.text)) d.add(n);
+  for (const n of jsProvidedTokens(UI_SRC)) d.add(n);
+  return d;
+})();
+
+const ALL_VAR_REFS: VarRef[] = ALL_CSS_SOURCES.flatMap((s) => varRefsFromCss(s.file, s.text));
+
+/**: (name @ sheet) -> site count, for the frozen foreign-scheme population. * */
+function foreignSchemePairs(refs: VarRef[], declared: Set<string>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of refs) {
+    if (declared.has(r.token) || !r.hasFallback) continue;
+    const key = r.token + " @ " + r.file;
+    out.set(key, (out.get(key) ?? 0) + 1);
+  }
+  return out;
+}
+
+/**
+ * Grandfathered instances, measured at HEAD 35011a227. Shrink-only in both
+ * directions. The 15 names the settings audit enumerated are the palette fork
+ * proper; the rest (--surface, --accent, --border, --muted, --danger,
+ * --accent-subtle, --surface-input, --accent-bg, --color-text-on-danger,
+ * --mouse-x/-y, --rotate-x/-y, --animation-play, --color-warning-pos-darker,
+ * --color-surface-alt) share the signature and are frozen with them, because a
+ * freeze that only covered the named 15 would leave the pattern unpoliced.
+ */
+const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
+  ["--accent", "ui/src/components/ExitSurveyModal.css", 2],
+  ["--accent", "ui/src/components/OrgSwitcher.css", 2],
+  ["--accent-bg", "ui/src/components/ExitSurveyModal.css", 1],
+  ["--accent-color", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
+  ["--accent-color", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
+  ["--accent-color", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
+  ["--accent-contrast", "ui/src/components/OrgSwitcher.css", 1],
+  ["--accent-contrast", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
+  ["--accent-contrast", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
+  ["--accent-contrast", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
+  ["--accent-subtle", "ui/src/components/OrgSelector.css", 1],
+  ["--accent-subtle", "ui/src/components/OrgSwitcher.css", 1],
+  ["--animation-play", "ui/src/features/warehouse/WarehouseConsole.css", 1],
+  ["--bg-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
+  ["--bg-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
+  ["--bg-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
+  ["--bg-secondary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
+  ["--border", "ui/src/components/ExitSurveyModal.css", 2],
+  ["--border-color", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 4],
+  ["--border-color", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
+  ["--border-color", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
+  ["--border-color", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
+  ["--border-subtle", "ui/src/components/OrgSelector.css", 2],
+  ["--border-subtle", "ui/src/components/OrgSwitcher.css", 5],
+  ["--border-subtle", "ui/src/features/settings/sections/DiagnosticsSection.css", 2],
+  ["--color-surface-alt", "ui/src/features/staff/RoleAuthoringScreen.css", 1],
+  ["--color-text-on-danger", "ui/src/components/StockAlertBell.css", 1],
+  ["--color-warning-pos-darker", "ui/src/features/retail/RetailPosScreen.css", 1],
+  ["--danger", "ui/src/components/OrgSwitcher.css", 1],
+  ["--danger-text", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
+  ["--mouse-x", "ui/src/features/locations/NodeTopologyEditor.css", 1],
+  ["--mouse-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
+  ["--mouse-y", "ui/src/features/locations/NodeTopologyEditor.css", 1],
+  ["--mouse-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
+  ["--muted", "ui/src/components/ExitSurveyModal.css", 1],
+  ["--rotate-x", "ui/src/features/workspaces/WorkspaceHome.css", 1],
+  ["--rotate-y", "ui/src/features/workspaces/WorkspaceHome.css", 1],
+  ["--status-danger", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
+  ["--status-danger", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
+  ["--status-danger", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
+  ["--status-success", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 1],
+  ["--status-success", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 1],
+  ["--status-success", "ui/src/features/settings/screens/RegionalSettingsCard.css", 1],
+  ["--success-bg", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
+  ["--surface", "ui/src/components/ExitSurveyModal.css", 1],
+  ["--surface", "ui/src/components/OrgSelector.css", 1],
+  ["--surface", "ui/src/components/OrgSwitcher.css", 2],
+  ["--surface-input", "ui/src/components/OrgSwitcher.css", 1],
+  ["--text-muted", "ui/src/features/settings/sections/DiagnosticsSection.css", 1],
+  ["--text-primary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 3],
+  ["--text-primary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 4],
+  ["--text-primary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
+  ["--text-primary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
+  ["--text-secondary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 2],
+  ["--text-secondary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
+  ["--text-secondary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
+  ["--text-secondary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 2],
+  ["--text-tertiary", "ui/src/features/settings/screens/LocalPaymentSettingsCard.css", 2],
+  ["--text-tertiary", "ui/src/features/settings/screens/ReceiptFormatSettingsCard.css", 2],
+  ["--text-tertiary", "ui/src/features/settings/screens/RegionalSettingsCard.css", 2],
+  ["--text-tertiary", "ui/src/features/settings/screens/StatutoryNumberingCard.css", 1],
+];
+
+describe("foreign-scheme token freeze", () => {
+  const harvested = foreignSchemePairs(ALL_VAR_REFS, ALL_DECLARED);
+  const baseline = new Map(FOREIGN_SCHEME_BASELINE.map(([tok, file, n]) => [tok + " @ " + file, n]));
+
+  it("reads a real population (never a vacuous freeze)", () => {
+    // Same discipline as the existence case: a harvest that matched nothing
+    // would make both directions below trivially true.
+    expect(ALL_CSS_SOURCES.length, "no stylesheets were collected over ui/src").toBeGreaterThanOrEqual(130);
+    expect(ALL_VAR_REFS.length, "not one var() parsed over ui/src").toBeGreaterThanOrEqual(14000);
+    const silent = ALL_CSS_SOURCES
+      .filter((s) => /var\(/.test(s.text) && varRefsFromCss(s.file, s.text).length === 0)
+      .map((s) => shortFile(s.file));
+    expect(silent, "sheets hold a literal var() the parser did not record:\n  " + silent.join("\n  ")).toEqual([]);
+    expect(harvested.size, "the foreign-scheme predicate matched no pair").toBeGreaterThanOrEqual(50);
+    expect([...harvested.values()].reduce((a, n) => a + n, 0)).toBeGreaterThanOrEqual(80);
+  });
+
+  it("no new foreign-scheme reference appears, and no frozen one silently vanished", () => {
+    const grown = [...harvested].filter(([k, n]) => baseline.has(k) && baseline.get(k) !== n)
+      .map(([k, n]) => k + " grew/shrank " + baseline.get(k) + " -> " + n);
+    const spread = [...harvested.keys()].filter((k) => !baseline.has(k)).sort()
+      .map((k) => k + " (" + harvested.get(k) + " site(s))");
+    const stale = [...baseline.keys()].filter((k) => !harvested.has(k)).sort();
+    expect(
+      spread,
+      "A var() now reads a token declared nowhere in ui/src through a literal "
+        +
+        "fallback in a sheet the freeze does not name. Declare the token in "
+        +
+        "tokens.css (in every theme block it must survive) and point the "
+        +
+        "reference at it -- do not add a line here:\n  " + spread.join("\n  "),
+    ).toEqual([]);
+    expect(
+      grown,
+      "A frozen site count moved. A freeze is an EXACT population: if a site "
+        +
+        "was fixed, delete or shrink its line here; if one was added elsewhere "
+        +
+        "in the same sheet, that is spread wearing an old name:\n  " + grown.join("\n  "),
+    ).toEqual([]);
+    expect(
+      stale,
+      "These frozen pairs no longer resolve to a reference -- the debt was paid. "
+        +
+        "Delete the lines; leaving them makes the freeze a mute:\n  " + stale.join("\n  "),
+    ).toEqual([]);
+    expect(harvested.size).toBe(FOREIGN_SCHEME_BASELINE.length);
   });
 });
