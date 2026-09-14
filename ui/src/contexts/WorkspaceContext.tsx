@@ -20,7 +20,7 @@ import {
 import { createSession, destroySession, refreshPickerTicket, switchOrganization as switchOrganizationApi } from "@/api/staff";
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
-import { requiredLocalized } from "@/frontend/shared";
+import { requiredLocalized, useToast } from "@/frontend/shared";
 import { useLocalization } from "@fluent/react";
 
 
@@ -71,6 +71,24 @@ export interface WorkspaceContextValue {
   resolvedStoreId: string;
   /** ADR #4 / ADR #7: opaque session token for scoped command authorization. */
   sessionToken: string | null;
+  /**
+   * Localized copy of the LAST failed create_session attempt, or null while no
+   * attempt has failed since the last success. A rejected createSession used to
+   * be a console.warn only, which left sessionToken null with nothing on screen
+   * to explain why (clock rollback, denied workspace type, expired subscription,
+   * invalid signature) while every token-taking command downstream failed or
+   * no-opped. The workspace picker renders this next to `retrySessionToken`;
+   * the toast is the immediate surface and this is the durable one.
+   * Optional so existing test mocks need not override it; the real provider
+   * always sets it.
+   */
+  sessionError?: string | null;
+  /**
+   * Re-invoke the create_session attempt that failed, for the instance it was
+   * attempted with. No-op when no attempt has been made. Optional for the same
+   * reason as `sessionError`.
+   */
+  retrySessionToken?: () => void;
   /** ADR #22: device/terminal ID for hardware-scoped settings. */
   terminalId: string;
   /**
@@ -129,6 +147,24 @@ const DEFAULT_STORE_ID = "default";
  */
 const PICKER_TICKET_NOOP = (_ticket: string) => {};
 
+/**
+ * Toast queue accessor that tolerates a missing `<ToastProvider>` ancestor.
+ *
+ * In production the provider sits above this one (see `contexts/AppProviders.tsx`,
+ * nesting order 7. ToastProvider -> 8. WorkspaceProvider), so the queue is always
+ * available here. Test harnesses that render `WorkspaceProvider` standalone do not
+ * mount it, and `useToast()` throws when its context is absent - which would turn
+ * an unrelated assertion into a mount failure. `useToast` throws *after* its own
+ * `useContext` call, so wrapping it cannot reorder hooks.
+ */
+function useToastIfAvailable(): ReturnType<typeof useToast> | null {
+  try {
+    return useToast();
+  } catch {
+    return null;
+  }
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session, pickerTicket, updatePickerTicket } = useAuth();
   // Localized copy for the error state. WorkspaceProvider mounts inside
@@ -164,6 +200,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const sessionTokenRef = useRef(sessionToken);
   sessionTokenRef.current = sessionToken;
+
+  // Bumped by `retrySessionToken` to re-fire the token-creation effect.
+  const [tokenAttemptNonce, setTokenAttemptNonce] = useState(0);
+  // Operator-visible failure state for the create_session attempt, plus the
+  // instance the last attempt was made for (what `retrySessionToken` re-plays).
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const sessionAttemptRef = useRef<WorkspaceDto | null>(null);
+  // l10n and the toast queue are read through refs so the callbacks below stay
+  // dependency-light: switching locale must not re-fire the token effect and
+  // re-mint a live session.
+  const l10nRef = useRef(l10n);
+  l10nRef.current = l10n;
+  const toast = useToastIfAvailable();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   // SaaS-3 L194: display-only label of the Organization (legal entity) the
   // active session is scoped to. Never used as an auth input.
@@ -365,6 +416,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // A rejected create_session has to reach the operator, not just the console.
+  // The toast is the immediate surface; `sessionError` is the durable one the
+  // workspace picker can render next to `retrySessionToken`. The console.warn
+  // stays for anyone reading devtools.
+  const reportSessionTokenFailure = useCallback((err: unknown) => {
+    const message = requiredLocalized(
+      l10nRef.current,
+      'workspace-session-token-error',
+    );
+    setSessionError(message);
+    toastRef.current?.addToast({
+      type: 'error',
+      message,
+      // The backend reason (clock rollback / denied workspace type / expired
+      // subscription / bad signature) under the error toast's Show detail toggle.
+      detail: err instanceof Error ? err.message : String(err),
+    });
+    console.warn("WorkspaceContext: failed to create session token", err);
+  }, []);
+
   // ADR #4 Phase 3: Resolve the boot store first, then load workspaces.
   // This is called once on mount (or when the picker ticket changes).
   useEffect(() => {
@@ -472,6 +543,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       null;
     if (!tokenInstance) return;
 
+    // Remembered so a retry knows WHICH instance to re-mint, and so
+    // `retrySessionToken` can be a no-op before anything was attempted.
+    sessionAttemptRef.current = tokenInstance;
+
     let cancelled = false;
 
     // Resolve device ID for terminal binding (ADR #7), then refresh
@@ -522,11 +597,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setSessionToken(result.session_token);
             setOrgLabel(result.context.orgLabel ?? null);
             setPendingOrgId(null);
+            setSessionError(null);
           }
         })
         .catch((err) => {
           if (!cancelled) {
-            console.warn("WorkspaceContext: failed to create session token", err);
+            reportSessionTokenFailure(err);
           }
         });
     })();
@@ -534,7 +610,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn]);
+  // tokenAttemptNonce is the retry lever: bumping it re-runs this effect over
+  // the same instance, which is exactly what a retry must do (re-resolve the
+  // device id, refresh the picker ticket, destroy the stale token, re-mint).
+  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn, tokenAttemptNonce, reportSessionTokenFailure]);
+
+  // Retry lever for a failed create_session. Bumping the nonce re-fires the
+  // effect above; the remembered instance is what makes the replay targeted,
+  // and its absence (nothing ever attempted) makes this a no-op.
+  const retrySessionToken = useCallback(() => {
+    if (!sessionAttemptRef.current) return;
+    setSessionError(null);
+    setTokenAttemptNonce((n) => n + 1);
+  }, []);
 
 
   // Backward-compat: sets the type_key string directly.
@@ -594,7 +682,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // useCallback-stable: handleSetActive/handleSetActiveInstance ([]),
   // retry ([pickerTicket, resolvedStoreId, fetchWorkspaces]),
   // switchStore ([fetchWorkspaces]), swapSessionToken
-  // ([updatePickerTicketFn] — stable per the comment at its deps).
+  // ([updatePickerTicketFn] — stable per the comment at its deps), and
+  // retrySessionToken ([] — it reads only refs and a state setter).
   const value = useMemo(
     () => ({
       activeWorkspace,
@@ -615,6 +704,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       orgLabel,
       setPendingOrgId,
       switchOrganization,
+      sessionError,
+      retrySessionToken,
     }),
     [
       activeWorkspace,
@@ -635,6 +726,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       orgLabel,
       setPendingOrgId,
       switchOrganization,
+      sessionError,
+      retrySessionToken,
     ],
   );
 

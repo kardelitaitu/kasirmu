@@ -55,7 +55,7 @@ staff-login-license-inactive = Lisensi tidak aktif
 statusbar-conflict-count = { $count } konflik sinkronisasi terselesaikan
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Status aplikasi
-statusbar-version = v0.0.37
+statusbar-version = v0.0.39
 statusbar-sync-name = Sinkronisasi
 statusbar-gateway-name = Stripe
 statusbar-license = Lisensi Proprietary
@@ -395,6 +395,9 @@ workspace-card-no-access-aria = { $name } — tidak tersedia untuk peran Anda
 workspace-card-no-access-badge = Tidak tersedia
 workspace-home-error-title = Galat Koneksi
 workspace-home-error-desc = Tidak dapat memuat ruang kerja. Periksa koneksi Anda dan coba lagi.
+# DITAMPILKAN saat create_session ditolak: ruang kerja terdaftar, tetapi token sesi
+# tidak dapat dibuat, jadi perintah yang memerlukan token tidak dapat berjalan.
+workspace-session-token-error = Tidak dapat memulai sesi untuk ruang kerja ini. Periksa detail dan coba lagi.
 workspace-home-retry = Coba Lagi
 workspace-home-retry-btn = Muat Ulang
 workspace-card-pin-aria = Sematkan { $name } ke atas

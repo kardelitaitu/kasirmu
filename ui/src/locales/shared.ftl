@@ -344,6 +344,11 @@ workspace-home-shortcut-hint = Press { $key } to open
 workspace-home-user-aria = Logged in as { $name }
 workspace-home-error-title = Connection Error
 workspace-home-error-desc = Could not load your workspaces. Check your connection and try again.
+# Shown when create_session is rejected: the workspace is listed, but no session
+# token could be minted for it, so token-taking commands cannot run. The toast's
+# Show detail carries the backend reason (clock rollback, denied workspace type,
+# expired subscription, invalid signature).
+workspace-session-token-error = Could not start the session for this workspace. Check the details and try again.
 workspace-home-retry = Try Again
 workspace-home-retry-btn = Retry
 workspace-card-pin-aria = Pin { $name } to top
@@ -365,7 +370,7 @@ staff-login-license-inactive = License inactive
 statusbar-conflict-count = { $count } sync conflict(s) resolved
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Application status
-statusbar-version = v0.0.37
+statusbar-version = v0.0.39
 statusbar-sync-name = Sync
 statusbar-gateway-name = Stripe
 statusbar-license = Proprietary License
