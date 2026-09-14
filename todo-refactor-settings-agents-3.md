@@ -108,7 +108,7 @@
   ```
 
 ### Phase 3.2: Extract Factory Reset Modal & Screen Reduction
-- [ ] Extract `<AuditRetentionSection />`.
+- [ ] Extract `<AuditRetentionSection />`.<!-- 2026-09-15 AUDIT, HEAD bc1a0445b+: NOT WORK AS WRITTEN, and deliberately left UNTICKED - a tick claims a delivery and nothing shipped. The verb is extraction; there is nothing to extract: `git grep -n AuditRetentionSection -- ui/src` -> **0**, and `grep -ci retention ui/src/features/settings/DataManagementScreen.tsx` -> **0**, so the component this row names does not exist at any layer (three-grep form: symbol over ui/src, the route/dir form under features/settings, and the unfiltered sanity grep, all zero). The BACKEND half the row cites still stands, re-verified by symbol not by number: `audit_retention_days` at crates/oz-core/src/subscription.rs:243 and entitlements.rs:190 (delegating at :191), `pub fn sweep_audit_retention(` at crates/oz-core/src/db/audit.rs:286, migration `20260920_audit_retention.sql` present, `docs/security/data-residency-and-retention.md` present. What DRIFTED is the daemon citation: this row says apps/desktop-client/src/lib.rs `:617`, `:642` and tablet `:250-292`; measured now the two desktop call sites are **:619 / :644** and the tablet sweep call is at **:284**. SIZED, so it can be funded as what it is (a small feature, not a refactor): one section component under `ui/src/features/settings/`, tier-gated off `audit_retention_days` (Free/OneTime = None = nothing retained), plus a `screenExtraction.test.ts` entry; proof-of-done is the first grep above going non-zero AND that new file being named by a guard entry. -->
   **The mechanism is real; only the UI is missing — do not delete this item.** The capability was first
   mis-reported to this audit as non-existent on the strength of one absent keyword (`retention` = 0 hits in
   this file); a vocabulary search disproved that. What exists:
@@ -127,7 +127,7 @@
   and display-only. So this is **build-the-panel work reading the existing entitlement/sweep state**, not
   an extraction from this file. Note the sweep is automatic: a UI here can show the window and next sweep,
   and any manual "scrub now" needs a new command.
-- [ ] Extract `<FactoryResetConfirmationModal />` (double PIN check + confirmation keyword input).
+- [ ] Extract `<FactoryResetConfirmationModal />` (double PIN check + confirmation keyword input).<!-- 2026-09-15 AUDIT: NOT WORK, kept open with its glyph and no tick. The vocabulary search over both plausible layers returns nothing at all - `git grep -niE 'factory_reset|FactoryReset|reset_all|wipe_data|erase_all' -- ui/src crates/oz-bridge` -> **0 hits** (grep exit 1, which is itself the measurement, not a failed command; it truncated my first battery mid-chain and was re-run in pieces to confirm). So there is no factory-reset feature to wrap and no modal to lift: as written this row cannot be done, and the only honest successor is a product decision about whether an app this offline-first should offer a destructive wipe at all. Recorded here so nobody re-derives the zero. -->
   **Could not be located at any layer. Searched:** `FactoryReset`, `factory reset`, `factory-reset`,
   `factory_reset`, `reset_to_factory`, `hard reset`, `reset_database`, `database_reset`, `clear_all_data`,
   `wipe_all`, `wipe_data`, `erase_data`, `purge_data` — across `ui/src`, `crates/`, `apps/`, `platform/`,
@@ -508,7 +508,7 @@ and that decision is now the only thing standing between this plan and a closabl
 - The blocker is one class, shared by design: `settings-section-title` is used by **all four** Cards
   (`RegionalSettingsCard.tsx:198`, `LocalPaymentSettingsCard.tsx:165`, and the other two likewise) but is
   defined **only** at `SettingsPage.css:514` - a sheet the extraction guard already cites from two entries.
-  Each Card therefore fails case 1 (used-must-exist) through no fault of its own stylesheet.
+  Each Card therefore fails case 1 (used-must-exist) through no fault of its own stylesheet.<!-- 2026-09-15 THE CONCLUSION OF THIS BULLET IS DEAD, and the premise survives it: `settings-section-title` is STILL defined only at SettingsPage.css:514 (`grep -rn 'settings-section-title {' ui/src --include=*.css` -> exactly one hit), but the four Cards are now REGISTERED, each against its own sheet - `git grep -nE 'RegionalSettingsCard|StatutoryNumberingCard|ReceiptFormatSettingsCard|LocalPaymentSettingsCard' -- ui/src/__tests__/screenExtraction.test.ts` -> entries at :1076-1078, :1087-1089, :1096-1098, :1105-1107, and each of the four `.css` files is now named by exactly **1** guard line. Landed as `101b4869e` test(ui): register the four settings cards that 1,486 lines of real UI never reached. -->
 - Two tempting wrong answers, recorded so nobody pays for them twice. Naming `SettingsPage.css` in all four
   entries makes the dead-class case unsatisfiable by construction, because a shared sheet is full of classes
   belonging to someone else. And adding `settings-section-title` to `knownDynamicFragments` is a mute
@@ -520,7 +520,7 @@ and that decision is now the only thing standing between this plan and a closabl
   (`parentCss?: string[]`, the case-1-union comment and the `parentPaths` resolution are all in the tree and
   all absent from HEAD - `git grep -c parentCss HEAD -- ui/src/__tests__/screenExtraction.test.ts` prints 0),
   which is why this bullet deliberately cites no line numbers. Re-verify against the commit that lands it
-  rather than trusting this sentence.
+  rather than trusting this sentence.<!-- 2026-09-15 re-verified exactly as instructed, and the sentence is now history rather than a state: `git grep -c parentCss HEAD -- ui/src/__tests__/screenExtraction.test.ts` prints **42**, not 0 - the one-way design (case-1 union, cases 2/3 own-CSS-only) is committed, in `3bfe87a3c` test(ui): give the extraction guard a parent-sheet direction and a frozen uncited-stylesheet baseline, extended since by `1adf4ba6c` (+20/-4), `79466dc63` (+27/-4) and `ef95b17a4`, all four touching ONLY that test file (`git show --stat`). So `screens-placeholder.css` is named by 16 guard lines today against the 13 this bullet counted: say lines, not entries. -->
 - The citation counts that justify the design, corrected by measurement: `SettingsPage.css` is named by
   **2 guard entries** and `screens-placeholder.css` by **13**. A raw `grep -o` over HEAD returns 3 and 14,
   because the extras are prose comments - so say "entries" or "occurrences", never just the number, which
@@ -535,7 +535,7 @@ and that decision is now the only thing standing between this plan and a closabl
   directory. All four Cards live in `ui/src/features/settings/screens/`, and that directory holds **13**
   `*Screen.tsx` files, not 14 - measured at `9836cf960`, where the 23 entries are 13 screens + 4 Card
   `.tsx` + 4 Card `.css` + `screens-placeholder.css` + `registry.ts`. A reader who trusts the wrong
-  directory name greps nothing and concludes the Cards were deleted.
+  directory name greps nothing and concludes the Cards were deleted.<!-- 2026-09-15 re-measured and TRUE, with the trap that made it worth measuring now closed by evidence: `ls ui/src/features/settings/screens/*Screen.tsx | wc -l` = **13**, `ui/src/features/settings/cards` = No such file or directory. But `screens/registry.ts` maps **14** names, and the 14th is not missing - it is a cross-directory lazy import: `registry.ts:38` resolves `'sync-conflicts'` to `../../sync/SyncConflictReviewScreen`, i.e. ui/src/features/sync/SyncConflictReviewScreen.tsx, which exists. Three greps or none: a search for that screen confined to features/settings finds only the registry line and reads as a dead route. -->
 - **The pairing of `BusinessDefaultsScreen` with `screens-placeholder.css` is CORRECT for its own 34-line
   file** and was never the gap: it uses `.settings-screen-placeholder` at `:20`, `-title` at `:21`,
   `-note` at `:28`, and mounts the four Cards at `:24`-`:27`. The wrapper is honest about its own classes;
