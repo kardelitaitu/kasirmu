@@ -311,6 +311,11 @@ const SCREENS: ScreenEntry[] = [
       'settings/sections/ReceiptSection.tsx',
       'settings/sections/SyncSection.tsx',
       'settings/sections/AboutSection.tsx',
+      // SettingsFooter.tsx carries the settings-footer-* markup (theme switch,
+      // version, Ctrl+S hint, date/clock), moved out of SettingsPage.tsx by the
+      // settings lane footer slice; unregistered, the guard reads those six
+      // classes as dead CSS.
+      'settings/components/SettingsFooter.tsx',
     ],
     knownDynamicFragments: [
       // Object-key strings inside template-literal interpolations that
