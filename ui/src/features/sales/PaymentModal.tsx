@@ -31,6 +31,7 @@ import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
+import CardTenderPanel from './payment/CardTenderPanel';
 import { minorUnitsToInputString } from './payment/moneyFormat';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
@@ -1590,25 +1591,14 @@ export default function PaymentModal({
                   />
                 )}
 
-                {method === 'card' && !splitMode && edcOffered && (
-                  <div className="payment-edc-section">
-                    <Localized id="payment-edc-description">
-                      <p className="payment-edc-description">
-                        Charge the total on the connected card terminal — tap, insert or swipe.
-                      </p>
-                    </Localized>
-                    <button
-                      type="button"
-                      className="payment-edc-btn"
-                      aria-label={l10n.getString('payment-edc-pay')}
-                      onClick={handleTerminalPay}
-                      disabled={processing || edc !== null || autoQr !== null}
-                    >
-                      <Localized id="payment-edc-pay">
-                        <span>Pay on card terminal</span>
-                      </Localized>
-                    </button>
-                  </div>
+                {method === 'card' && !splitMode && (
+                  <CardTenderPanel
+                    terminalOffered={edcOffered}
+                    processing={processing}
+                    terminalPending={edc !== null}
+                    autoQrPending={autoQr !== null}
+                    onTerminalPay={handleTerminalPay}
+                  />
                 )}
 
                 {method === 'qris' && (

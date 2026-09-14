@@ -1029,6 +1029,45 @@ describe('PaymentModal — EDC card-present tender', () => {
     );
     view.unmount();
   });
+
+  // W4-d (CardTenderPanel): the panel's own `terminalPending` operand. The
+  // three guards on the pay button are NOT one condition -- `processing` is
+  // false the moment the capture answer lands, so what keeps the button dark
+  // over a DECLINED exchange is `edc !== null` alone. Drop that operand and
+  // the second assertion below fails: a cashier could tap a fresh capture onto
+  // the terminal while still reading the decline. The dismiss end is asserted
+  // too, so the guard cannot be satisfied by leaving it dark forever.
+  it('a declined terminal answer keeps the pay button disabled until it is dismissed', async () => {
+    const view = await mount();
+    await overrideInvoke(
+      'edc_sale',
+      () =>
+        Promise.resolve({
+          success: false,
+          transactionId: null,
+          authCode: null,
+          cardScheme: null,
+          cardLast4: null,
+          message: 'insufficient funds',
+        }),
+      async () => {
+        await clickTerminalPay();
+        const dismiss = await screen.findByRole('button', { name: /back to payment/i });
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: /pay on card terminal/i }),
+          ).toBeDisabled(),
+        );
+        await userEvent.click(dismiss);
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: /pay on card terminal/i }),
+          ).not.toBeDisabled(),
+        );
+      },
+    );
+    view.unmount();
+  });
 });
 
 // ── Local payment rails gating (agents-5 R1) ─────────────────────────
