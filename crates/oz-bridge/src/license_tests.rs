@@ -488,7 +488,11 @@ async fn get_license_status_without_a_stored_payload_is_free_in_debug_and_missin
     );
     assert_eq!(
         dto.tier.as_deref(),
-        if cfg!(debug_assertions) { Some("free") } else { None },
+        if cfg!(debug_assertions) {
+            Some("free")
+        } else {
+            None
+        },
         "the debug bypass invents a free tier; release reports no tier at all"
     );
     assert_eq!(
@@ -525,23 +529,36 @@ async fn get_license_status_past_grace_reports_active_in_debug_only() {
             LicenseVerificationStatus::Valid,
             "debug returns Valid, not Expired and not GracePeriod"
         );
-        assert_eq!(dto.tier.as_deref(), Some("pro"), "the payload tier is echoed");
+        assert_eq!(
+            dto.tier.as_deref(),
+            Some("pro"),
+            "the payload tier is echoed"
+        );
         assert_eq!(
             dto.payload.as_deref(),
             Some(payload.as_str()),
             "and the raw payload is handed back to the caller"
         );
-        assert!(dto.message.is_none(), "the debug arm reports no problem at all");
+        assert!(
+            dto.message.is_none(),
+            "the debug arm reports no problem at all"
+        );
     } else {
         // NOT the Expired arm: BOOTSTRAP_FREE is rejected at :594, so the date
         // logic at :638-684 never runs in release. See the trap note above.
-        assert!(!dto.is_active, "release never reports an active license here");
+        assert!(
+            !dto.is_active,
+            "release never reports an active license here"
+        );
         assert_eq!(
             dto.status,
             LicenseVerificationStatus::InvalidSignature,
             "release stops at the sentinel, NOT at the :670 Expired arm — an Expired assertion here would be unreachable, not wrong"
         );
-        assert!(dto.tier.is_none(), "nothing is parsed after a failed verify");
+        assert!(
+            dto.tier.is_none(),
+            "nothing is parsed after a failed verify"
+        );
     }
 }
 
@@ -560,7 +577,10 @@ async fn get_license_status_active_payload_is_the_control_that_passes_in_debug()
     let dto = get_license_status(&app.ctx()).await.expect("status");
 
     if cfg!(debug_assertions) {
-        assert!(dto.is_active, "a future expiry is active whenever the signature verifies");
+        assert!(
+            dto.is_active,
+            "a future expiry is active whenever the signature verifies"
+        );
         assert_eq!(dto.status, LicenseVerificationStatus::Valid);
         assert_eq!(dto.tier.as_deref(), Some("pro"));
         assert_eq!(dto.payload.as_deref(), Some(payload.as_str()));
