@@ -10687,3 +10687,67 @@ failures are not 76 customer-visible bugs.** The one claim that survives
 untouched is that this release path has never been EXECUTED — and it still has
 not been. Docs-only pass; no test, build, or gate was run against code, so
 every number above is a read of a file, not a run.
+
+## 2026-09-14 — oz-bridge release profile: 76 reds, zero genuine differences, and a crate that cannot test its own verifier
+
+The release-profile numbers behind Phase 1 of the debt program, recorded here rather than only in
+a plan doc because the durable output of that pass is a PROHIBITION: the tempting fix for the 76 is
+worse than the 76.
+
+**The measurement.** `cargo test -p oz-bridge` in debug → **1308 passed / 0 failed**, exit 0,
+229.7s. The same command with `--release` → **1231 passed / 76 FAILED**, exit 101, 257.9s wall, of
+which **198.47s is execution**. The totals close exactly: 1231 + 76 = 1307 = 1308 − 1, and the
+missing one is a test that does not exist in the release binary at all —
+`sync_probe_falls_back_to_cloud_url_when_unconfigured`, gated `#[cfg(debug_assertions)]` at
+`crates/oz-bridge/src/sync_tests.rs:35-37`. No second discrepancy is hiding. Classification of the
+76: **76 profile-dishonest fixtures, 0 genuine profile differences, 0 environmental.**
+
+**Why that classification is a proof and not a guess: no test in this crate can mint a verifying
+signature.** `verify_license_signature` takes `(payload, signature_base64)` and nothing else
+(`crates/oz-core/src/license_verification.rs:387`); the key comes from the compile-time
+`include_str!` constant at `:44`, read at `:396` through `load_public_key()` at `:424-430`. There
+is no key parameter, no trait, no thread-local, no injected verifier anywhere on that path, and the
+callers the failing tests reach go straight to it: `TenantSubscription::verify_signature`
+(`crates/oz-core/src/subscription.rs:475-477`) and `crates/oz-bridge/src/license.rs:594`. The only
+tracked key material is `crates/oz-core/oz-license.key.pub`; the private PEM is git-ignored
+(`.gitignore:70`, `*.pem`) and absent from disk. Therefore a seeded `tenant_subscription` row is
+exactly one of two kinds: the **sentinel** `BOOTSTRAP_FREE`, which `:392-394` waves through in
+debug and which nothing else passes in release — or an **invalid** signature, which fails in both.
+**NO THIRD KIND EXISTS without a production seam, and adding that seam is an owner ruling, not a
+worker's fix.** Consequence, stated plainly: "release-side failures = 0 genuine" is ATTRIBUTION,
+NOT COVERAGE. A real profile difference could hide behind the sentinel, and this crate structurally
+cannot rule it out.
+
+**The tautology found while classifying.** `crates/oz-core/src/license_verification_tests.rs:27-64`
+— `verify_valid_signature` and `verify_tampered_payload_fails` — generate their own keypair
+(`:7`) and re-implement verification INLINE against that test key (`:18` onward, `VerifyingKey`
+used directly). Neither calls `verify_license_signature`. They are green in both profiles and cover
+nothing shipped: green there is not evidence about the shipped verifier.
+
+**The product fact the reds establish, and that a green suite would stop reporting.**
+`crates/oz-core/migrations/20260813_init.sql:1514` — and its GENERATED twin
+`20260813_init.pg.sql:2101` — seed `BOOTSTRAP_FREE` into every fresh install. So a release build
+of a fresh, UNACTIVATED, single-store install projects state unavailable, tier Free, every gate
+locked, until activation rewrites the row (`crates/oz-bridge/src/license.rs:175` →
+`crates/oz-core/src/license_verification.rs:625` `INSERT OR REPLACE`). Right now the 76 reds are
+the only place that fact is asserted by anything a machine runs.
+
+**The fixes that are prohibited, named so nobody rediscovers them.** (a) making release accept the
+sentinel; (b) `[profile.release] debug-assertions = true` — that puts the licence bypass in the
+shipped binary; (c) signing fixtures with `OZPOS_OZ_LICENSE_PRIVATE_KEY` from the registry —
+machine-dependent, non-CI, and it puts signing capability inside the test suite; (d) blanking or
+deleting a signature to silence a red, which converts a loud forged-row error into a silent Free
+run. Counter-example that must stay exactly as it is: the forged-signature expectation at
+`crates/oz-bridge/src/auth_tests.rs:391-409` stays `Err` in BOTH profiles.
+
+**The acceptance restatement for the release work.**
+
+> `cargo test -p oz-bridge` → 1308 passed / 0 failed; `cargo test -p oz-bridge --release` → 0 failed
+> / N ignored, with N listed by name and each ignored reason naming the parked seam. The release
+> suite is green because the fixtures stopped lying, not because release got weaker.
+
+Known residual, and it has to travel with any later scope work: after that work, release-side SCOPE
+coverage is zero either way — the six scope tests will assert fail-closed or be ignored — so any
+later scope work inherits an invisible hole and must be told about it. Recording pass: this entry
+is written from a docs check-out of the cited files, so the two test runs above are the release
+profile's measurements and every other number here is a read of a file, not a run.
