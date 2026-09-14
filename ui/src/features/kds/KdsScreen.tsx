@@ -10,6 +10,7 @@ import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
 import { useKdsShortcuts } from '@/features/kds/useKdsShortcuts';
+import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
 import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
@@ -107,13 +108,6 @@ export default function KdsScreen() {
   /** Open vs Completed view — the prototype's primary tab navigation. */
   const [activeTab, setActiveTab] = useState<'open' | 'completed'>('open');
   const [initialLoading, setInitialLoading] = useState(true);
-  // Open/Completed tab indicator: measured from the track + active tab.
-  const tabsTrackRef = useRef<HTMLDivElement>(null);
-  const tabOpenRef = useRef<HTMLButtonElement>(null);
-  const tabCompletedRef = useRef<HTMLButtonElement>(null);
-  const tabIndicatorRef = useRef<HTMLSpanElement>(null);
-  const isTabMountedRef = useRef(false);
-  const [tabIndicator, setTabIndicator] = useState<{ left: number; width: number }>({ left: 3, width: 0 });
   // Filter dropdown — view mode (All / Prepared) matching the prototype filter.
   const [filterMode, setFilterMode] = useState<'all' | 'prepared'>('all');
   const [filterCats, setFilterCats] = useState<Set<string> | null>(null);
@@ -444,39 +438,10 @@ export default function KdsScreen() {
     handleFilterBtnKeyDown,
   } = useKdsFilterNav({ zones, setKdsZone, showFilter, setShowFilter });
 
-  // Open/Completed tab indicator: measure the active tab button inside
-  // the track and slide the blue pill to it (prototype .kds-tab-indicator).
-  useEffect(() => {
-    const tab = activeTab === 'open' ? tabOpenRef.current : tabCompletedRef.current;
-    if (!tab) return;
-    setTabIndicator({
-      left: tab.offsetLeft,
-      width: tab.offsetWidth,
-    });
-    if (isTabMountedRef.current && tabIndicatorRef.current && typeof tabIndicatorRef.current.animate === 'function') {
-      /* 2-axis motion: squeeze (narrow+short) mid-flight → overshoot on landing → settle */
-      tabIndicatorRef.current.animate([
-        { transform: 'scale(1, 1)' },
-        { transform: 'scale(0.82, 0.85)', offset: 0.45 },
-        { transform: 'scale(1.08, 1.18)', offset: 0.85 },
-        { transform: 'scale(1, 1)' },
-      ], { duration: 340, easing: 'ease-in-out' });
-    }
-    isTabMountedRef.current = true;
-  }, [activeTab]);
-
-  useEffect(() => {
-    const updateIndicator = () => {
-      const tab = activeTab === 'open' ? tabOpenRef.current : tabCompletedRef.current;
-      if (!tab) return;
-      setTabIndicator({
-        left: tab.offsetLeft,
-        width: tab.offsetWidth,
-      });
-    };
-    window.addEventListener('resize', updateIndicator);
-    return () => window.removeEventListener('resize', updateIndicator);
-  }, [activeTab, orders.length]);
+  // TAB-01 (extracted): the pill's measure + animate pair and its resize re-measure.
+  // The four refs come back OUT because the tab markup below binds them.
+  const { tabIndicator, tabsTrackRef, tabOpenRef, tabCompletedRef, tabIndicatorRef } =
+    useKdsTabIndicator({ activeTab, orderCount: orders.length });
 
   // PERF-KDS-01: stable identity so `KdsTicketCard`'s memo actually holds.
   // An inline arrow here changed on every KdsScreen render, which invalidated
