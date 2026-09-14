@@ -1580,10 +1580,16 @@ export default function PaymentModal({
                         checked={method === 'other'}
                         onChange={() => setMethod('other')}
                       />
+                      {/* .payment-method-name on the text input below is not decoration:
+                          the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
+                          selector, so that input - the radio's next sibling, and the element
+                          the cashier actually reads for this row - is the only one the rule
+                          can treat. Without the class, Other was the one selected tender
+                          whose name kept neither the accent nor the semibold. */}
                         <Localized id="payment-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
                         <input
                           type="text"
-                          className="payment-other-input"
+                          className="payment-other-input payment-method-name"
                           value={otherLabel}
                           onChange={(e) => {
                             setMethod('other');

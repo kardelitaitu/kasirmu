@@ -1381,4 +1381,60 @@ describe('PaymentModal — local payment rails gating', () => {
       'open_bill: Open Bill',
     ]);
   });
+
+  // ── The checked-tender signal, row by row ─────────────────────────────
+  //
+  // PaymentModal.css:184 styles the selected tender through an ADJACENT-
+  // SIBLING rule - `input[type="radio"]:checked + .payment-method-name` - so a
+  // row is only treated when the element right after its radio carries that
+  // class. The case above reads each row's NAME; nobody read whether the name
+  // is in the position the rule can reach, and the free-text Other row was not
+  // (:1575-1595 - radio, then the .payment-other-input, no treated name), so
+  // selecting Other left the one checked row on screen with neither the accent
+  // nor the semibold every other tender gets. Reviewer's repro: type Voucher
+  // in Other and look.
+  it('PINNED: every tender row, Other included, has a .payment-method-name in the position the :checked rule reaches', async () => {
+    const { view, restore } = await mountWithRails([rail(true)]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+      const radios = Array.from(
+        view.container.querySelectorAll<HTMLInputElement>('input[name="payment-method"]'),
+      );
+      expect(radios.map((r) => r.value)).toEqual(['cash', 'card', 'qris', 'credit', 'other', 'open_bill']);
+
+      // The structural precondition of the CSS rule, per row. `+` needs the
+      // classed element to be the radio's own next sibling, so this fails for a
+      // row that names itself anywhere else in the row - and for Other, which
+      // named itself only through an input placeholder.
+      for (const radio of radios) {
+        const next = radio.nextElementSibling;
+        expect(
+          next?.classList.contains('payment-method-name'),
+          `tender ${radio.value}: its radio's next sibling must carry .payment-method-name or :checked cannot reach it`,
+        ).toBe(true);
+      }
+
+      // Now the repro itself: select Other, type a tender name, and require the
+      // element the rule treats to be the live one showing what was typed.
+      const other = radios.find((r) => r.value === 'other')!;
+      await userEvent.click(other);
+      const name = other.nextElementSibling!;
+      expect(name.classList.contains('payment-method-name'), 'the treated element').toBe(true);
+      await userEvent.type(name as HTMLInputElement, 'Voucher');
+      expect((name as HTMLInputElement).value, 'what the cashier typed is the treated element\'s own content').toBe('Voucher');
+      expect(other.checked).toBe(true);
+      // Every OTHER radio is now unchecked, and the row still named by a span is
+      // untouched - the change must not have moved a name out of any other row.
+      for (const radio of radios.filter((r) => r !== other)) {
+        expect(radio.checked, `tender ${radio.value} should be unchecked`).toBe(false);
+        expect(radio.nextElementSibling!.classList.contains('payment-method-name'),
+          `tender ${radio.value} lost its name element`).toBe(true);
+      }
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
 });
