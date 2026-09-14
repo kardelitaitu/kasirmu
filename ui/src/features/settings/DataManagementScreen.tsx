@@ -33,6 +33,7 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
 import { DATA_TYPES, INITIAL_EXPORT, INITIAL_IMPORT, type BackupInfo, type DataType, type ExportState, type ImportState } from './dataManagementModel';
 import { checkIcon, eyeIcon, eyeOffIcon, folderIcon, tabIcon } from './dataManagementIcons';
+import { BackupSection } from './components/BackupSection';
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -849,56 +850,13 @@ function DataManagementScreenContent() {
         </div>
       )}
 
-      {/* ── Backup tab ─────────────────────────────── */}
+      {/* ── Backup tab ──────────────────────────────────────── */}
       {activeTab === 'backup' && (
-        <div key="backup" className="data-mgmt-tabpanel" role="tabpanel" aria-label={l10n.getString('data-mgmt-backup-status-aria')}>
-          <Card shadow="sm">
-            <div className="data-mgmt-section">
-              <Localized id="data-mgmt-backup-title">
-                <h2 className="data-mgmt-section-title">Database backup</h2>
-              </Localized>
-              <Localized id="data-mgmt-backup-desc">
-                <p className="data-mgmt-section-desc">
-                  Create an online snapshot of the current database. The backup runs
-                  in the background and does not interrupt POS operations.
-                </p>
-              </Localized>
-
-              <div className={`data-mgmt-backup-status${flashRows.has('backup') ? ' data-mgmt-backup-status--flash' : ''}`}>
-                <div className="data-mgmt-backup-row">
-                  <Localized id="data-mgmt-backup-label-last">
-                    <span className="data-mgmt-label">Last backup</span>
-                  </Localized>
-                  <span className="data-mgmt-value">
-                    {backup.lastBackup ?? l10n.getString('data-mgmt-backup-never')}
-                  </span>
-                </div>
-                {backup.lastBackupSize && (
-                  <div className="data-mgmt-backup-row">
-                    <Localized id="data-mgmt-backup-label-size">
-                      <span className="data-mgmt-label">Size</span>
-                    </Localized>
-                    <span className="data-mgmt-value">{backup.lastBackupSize}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="data-mgmt-actions">
-                <Button
-                  variant="primary"
-                  loading={backup.backingUp}
-                  onClick={handleBackup}
-                >
-                  {backup.backingUp ? (
-                    <Localized id="data-mgmt-backup-backing-up">Backing up…</Localized>
-                  ) : (
-                    <Localized id="data-mgmt-backup-create">Create backup now</Localized>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
+        <BackupSection
+          backup={backup}
+          flashRows={flashRows}
+          onBackup={handleBackup}
+        />
       )}
     </div>
   );
