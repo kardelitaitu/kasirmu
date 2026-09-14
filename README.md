@@ -36,7 +36,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted `.ozpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 8,252 Rust `#[test]` functions and 572 front-end test files (measured 2026-09-14: `grep -rno --include=*.rs '#\[test\]' . | wc -l`; `ls ui/src/__tests__/* | wc -l`), strict Clippy, typed Money, transactional DB. The Vitest **case** total is not measured — it exists only in a test run, and no command here re-derives it.
+- **Enterprise-grade code quality** — 8,252 Rust `#[test]` functions and 572 front-end test files (measured 2026-09-14: `grep -rno --include=*.rs '#\[test\]' . | wc -l`; `ls ui/src/__tests__/* | wc -l`), strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI), typed Money, transactional DB. The Vitest **case** total is not measured — it exists only in a test run, and no command here re-derives it.
 
 ---
 
