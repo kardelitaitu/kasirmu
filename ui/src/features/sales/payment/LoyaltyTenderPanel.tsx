@@ -32,19 +32,30 @@
  * the shell reads useFeatures() once for the whole modal and hands the verdict
  * down, so this file calls no hook - and, unlike the first cut of this panel,
  * it can refuse itself. That refusal is the point. The panel used to render
- * whenever it was mounted at all, leaving
- * `isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount` at
- * PaymentModal.tsx:1710 as the ONLY thing standing between an unlicensed tenant
- * and a Points row; any second caller - and there will be second callers, this
- * modal is 1,866 lines and is being carved up - inherited no protection from it.
- * `loyaltyOffered` is required, with no default, so a caller that has not
- * decided cannot mount the subtree by omission: TypeScript fails it. The modal
- * keeps its own gate verbatim (it also performs the narrowing that lets `points`
- * arrive as a plain number) - two guards, one fact, checked where the fact is
- * known and again where it is rendered.
+ * whenever it was mounted at all, leaving the shell's mount gate - today
+ * PaymentModal.tsx:1698, `{loyaltyLicensed && loyaltyAccount && (` - as the ONLY
+ * thing standing between an unlicensed tenant and a Points row, so a second
+ * caller inherited no protection from it. `loyaltyLicensed` is the modal's
+ * `isEnabled(FEATURES.LOYALTY_PROGRAM)` read, declared once at
+ * PaymentModal.tsx:279 and shared by that gate, the loyalty fetch that now checks
+ * it before calling the bridge, and the prop below. The modal keeps its own gate
+ * (it also performs the narrowing that lets `points` arrive as a plain number).
+ *
+ * WHAT THAT DOES AND DOES NOT GUARANTEE, precisely. There is exactly ONE
+ * production caller today, the JSX at PaymentModal.tsx:1699, and it passes
+ * `loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}` - a literal restatement
+ * of its own enclosing condition - so on today's paths the `!loyaltyOffered`
+ * return below is UNREACHABLE from the modal. It stays because it is the default
+ * a second caller gets for free, and PaymentModalLoyalty's L14 mounts the panel
+ * directly to prove the branch works rather than merely exists. The compile-time
+ * half is narrower than the sentence it replaces: `loyaltyOffered` is required
+ * with no default, so a new caller must answer the LICENSING question, but
+ * TypeScript was never what carried the ACCOUNT condition - `points` is required
+ * and non-nullable, so a caller cannot construct these props at all without an
+ * account already in hand. The prop adds the flag; the account was structural.
  *
  * Nullable props: `pointsWorthMinor` is `number | null` (null while the
- * balance's valuation is pending, rendered as the ellipsis at :116) and that is
+ * balance's valuation is pending, rendered as the ellipsis at :145) and that is
  * the ONLY nullable value here; every other prop is required and non-null.
  * Nullability was deliberately not extended to carry the gate: `points: number
  * | null` would express only "no account", never "unlicensed", so it would be a
@@ -76,10 +87,11 @@
  * Class names are unchanged and are still styled by ../PaymentModal.css, which
  * the page imports once for the whole modal - the same arrangement the four
  * sibling panels rely on, and why no CSS file is in this change set. Three of
- * them are queried by CLASS ONLY, with no accessible name to fall back on -
- * .payment-loyalty-value, .payment-loyalty-input-hint and
- * .payment-loyalty-input-label - so renaming one would redden a characterization
- * case without meaning anything real. Do not rename them.
+ * them are queried by CLASS ONLY, with no accessible name to fall back on - FIVE
+ * of them, not three: .payment-loyalty-value, .payment-loyalty-input-hint,
+ * .payment-loyalty-input-label, .payment-loyalty-label and
+ * .payment-loyalty-discount-label - so renaming one would redden a
+ * characterization case without meaning anything real. Do not rename them.
  *
  * The JSX below is the page's lines verbatim, at the page's own indentation; only
  * the values and handlers named in the props differ.

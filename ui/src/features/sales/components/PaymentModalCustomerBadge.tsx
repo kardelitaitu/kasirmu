@@ -6,16 +6,16 @@
  * or clear that choice. No state, no effect, no memo, no fetch and no IPC moved
  * in, and none created here - useLocalization is the only hook this file reads,
  * the same way ./CardTenderPanel reads it for its own aria-label. The roster
- * fetch (listCustomersScoped at PaymentModal.tsx:360), the four atoms behind the
- * search (showCustomerSearch :140, customerSearchQuery :174, customerRoster :179,
- * loadingCustomers :180) and the overlay that renders from them all stay in the
+ * fetch (listCustomersScoped at PaymentModal.tsx:367), the four atoms behind the
+ * search (showCustomerSearch :141, customerSearchQuery :175, customerRoster :180,
+ * loadingCustomers :181) and the overlay that renders from them all stay in the
  * shell: the overlay is a SIBLING of this row in the DOM, not a child of it, so
  * taking the atoms would strand the overlay without a filter.
  *
  * THREE PROPS, and the count is the seam. `customer` is a read-only value, not a
  * getter; `onOpenSearch` and `onRemove` are the shell's own handlers passed back
  * in. Deliberately absent: any callback that carries a CustomerDto OUT. The
- * selection is written only by the shell's notifyCustomerChange (:152), which
+ * selection is written only by the shell's notifyCustomerChange (:153), which
  * owns both `selectedCustomer` and the `onCustomerChange` report to the host, so
  * a badge that could set the customer itself would re-parent the atom - and a
  * re-parented atom is exactly what S6 in PaymentModalCustomerSection.test.tsx
@@ -24,7 +24,8 @@
  *
  * SELF-GATING, in the form this row actually needs. It has no feature flag to
  * inherit, so refusing itself is not a null return - the section rendered
- * unconditionally at :1669 with the branch INSIDE the wrapper, and S1 asserts
+ * unconditionally at :1692 (PaymentModal.tsx, `<PaymentModalCustomerBadge`) with
+ * the branch INSIDE the wrapper, and S1 asserts
  * `section()` is non-null while S1b asserts the same for the empty case. So the
  * honest version is that BOTH states are derived here from the one input: a null
  * `customer` renders the Select Customer prompt and this file never touches
@@ -39,8 +40,13 @@
  * English introduced. Class names are unchanged and still styled by
  * ../PaymentModal.css, which the modal imports once for the whole surface - the
  * arrangement both tender siblings rely on, and the reason this file belongs in
- * the PaymentModal entry's `additionalTsx` (it is registered there as of
- * 038c79024, so a class that leaves with this markup cannot read as dead CSS).
+ * the PaymentModal entry's `additionalTsx` - registered there by 86c1af41c,
+ * "bring the extracted customer badge inside the PaymentModal entry that cites its
+ * sheet", the commit that added this path to that entry's file list, so a class
+ * that leaves with this markup cannot read as dead CSS. It named 038c79024 until
+ * now, which is wrong twice over: that entry registers PaymentModal with its FIVE
+ * tender panels and no badge, and it predates this file's own commit, 2b456338b,
+ * so it cannot have registered something that did not exist yet.
  */
 import { Localized, useLocalization } from '@fluent/react';
 import type { CustomerDto } from '@/api/customers';
