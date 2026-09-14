@@ -72,7 +72,11 @@ WHAT IT CHECKS
      .githooks/commit-msg actually accepts. A mirror omitting a valid type
      forbids work the gate allows.
   5. VERSION LOCK -- every mirror must carry the current version.
-  6. TRIGGER CLAIM -- a mirror saying CI runs on push must match the workflows.
+  6. TRIGGER CLAIMS -- both directions: "CI runs on push" must match a workflow that
+     declares one, and "there is no push trigger" must match one that does not. Graded
+     per workflow (the workflow the sentence names decides), never OR-ed across them.
+     Every exemption reaches only as far as its reason: a dated record, a quoted phrase,
+     a branch FILTER, checker prose adjacent to the claim -- not the whole paragraph.
 
 Usage:
     python3 scripts/verify-agents-mirrors.py
@@ -419,10 +423,37 @@ BRANCH_QUALIFIER_RE = re.compile(r"non-[\s*\x60]*main", re.I)
 
 # Sentences whose subject is the checker, a mirror, a finding or the rule are meta: they
 # quote a phrasing instead of claiming the fact. Both mirrors' scope paragraphs run
-# this way, and one of them is the paragraph that describes this very check.
+# this way, and one of them is the paragraph that describes this very check. Tested
+# against the CLAIM plus a window (CHECKER_PROSE_WINDOW) rather than the whole slice --
+# see the window's comment for why a slice-wide test inverted this guard.
 CHECKER_PROSE_RE = re.compile(
     r"verify-agents-mirrors|says_push|any_push|\bmirrors?\b|\bchecker\b|\bfinding\w*\b"
     r"|\bunenforced\b|\brules?\b|\bprose\b|\bpolic(?:e|es|ing)\b|\bgates?\b", re.I)
+
+# How far either side of a claim span the checker-prose exemption reaches. It used to be
+# the whole sentence, and line_sentences() hands back a SLICE OF A MARKDOWN LINE, not a
+# sentence: these mirrors carry 3,000-character paragraphs, so one occurrence of the word
+# "mirrors" anywhere in the slice exempted every CI claim inside it. That inverted the
+# guard -- a false claim could hide just by being written in the same paragraph as the word
+# "checker". A claim is meta prose only when the token is part of the claim, so the test is
+# now a window around the matched span, and 48 characters is that window: enough to cover
+# "the checker flags 'there is no push trigger'" and "this rule does not run on push", not
+# enough to reach a stray "mirrors" two hundred characters away. Measured on the shipped
+# mirrors: at 48 both stay clean, and the denial that sat invisible in .agents/AGENTS.md:41
+# is graded again.
+CHECKER_PROSE_WINDOW = 48
+
+
+def checker_prose_span(sent: str, start: int, end: int) -> bool:
+    """True when a checker-prose token sits inside the claim itself, not merely nearby.
+
+    START/END are offsets into SENT. The window is symmetric because the noun can be the
+    subject ahead of the verb ("the checker never reads a push trigger") or the object
+    after it ("a push trigger the checker does not read").
+    """
+    lo = max(0, start - CHECKER_PROSE_WINDOW)
+    hi = min(len(sent), end + CHECKER_PROSE_WINDOW)
+    return bool(CHECKER_PROSE_RE.search(sent[lo:hi]))
 
 
 def line_sentences(line: str) -> list[tuple[int, str]]:
@@ -473,8 +504,13 @@ def push_claim_findings(text: str, rel: str, wf_trigs: dict[str, list[str]],
     """
     findings: list[str] = []
     for ln, line in enumerate(text.splitlines(), 1):
-        low = line.lower()
-        if any(marker in low for marker in HISTORICAL_MARKERS):
+        # A dated audit stamp IS a record in its entirety: it lives on its own line inside
+        # an HTML comment and every claim in it speaks for the day it was written. That
+        # whole-line exemption is what the mirrors depend on, and it stays. What must NOT
+        # work this way is ordinary live prose, which in these mirrors runs to 3,500
+        # characters on one line -- see the per-slice test below.
+        stamped_record = line.lstrip().lower().startswith("<!--")
+        if stamped_record and any(k in line.lower() for k in HISTORICAL_MARKERS):
             continue
         quoted = [(m.start(), m.end()) for m in QUOTED_PHRASE_RE.finditer(line)]
 
@@ -482,7 +518,19 @@ def push_claim_findings(text: str, rel: str, wf_trigs: dict[str, list[str]],
             return any(s <= a and b <= e for s, e in quoted)
 
         for off, sent in line_sentences(line):
-            if not CI_SUBJECT_RE.search(sent) or CHECKER_PROSE_RE.search(sent):
+            # Dated records are exempt, but the unit has to be the claim's own slice, not
+            # the LINE: these mirrors park a whole dated paragraph on one markdown line, so
+            # a line-level test let a single "previously" standing 1,009 characters away
+            # exempt every CI claim in a 3,516-character paragraph (measured on
+            # .agents/AGENTS.md:41, which is why a false denial sat there invisibly while
+            # the identical claim in AGENTS.md:41 was caught). Same reasoning as the
+            # checker-prose window below: an exemption reaches as far as its reason does.
+            if any(marker in sent.lower() for marker in HISTORICAL_MARKERS):
+                continue
+            # Attribution is still a whole-slice test -- a claim needs a CI-ish subject
+            # somewhere in the text it sits in. The checker-prose exemption is NOT, and is
+            # applied to the matched span below (see CHECKER_PROSE_WINDOW).
+            if not CI_SUBJECT_RE.search(sent):
                 continue
 
             # Denials are tested FIRST: "there is no push trigger" also contains the
@@ -497,6 +545,8 @@ def push_claim_findings(text: str, rel: str, wf_trigs: dict[str, list[str]],
                 m = next((x for x in (unquoted(rx) for rx in PUSH_ASSERTION_RES) if x), None)
                 kind = "asserts" if m else None
             if not kind:
+                continue
+            if checker_prose_span(sent, m.start(), m.end()):
                 continue
             scope = named_workflows(sent, wfs) or list(wf_trigs)
             has_push = [n for n in scope if "push" in wf_trigs[n]]
