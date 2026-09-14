@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef, Profiler } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { listen } from '@/api/tauri';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
@@ -11,6 +10,7 @@ import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
 import { useKdsShortcuts } from '@/features/kds/useKdsShortcuts';
 import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
+import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
 import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
@@ -197,56 +197,11 @@ export default function KdsScreen() {
     }
   }, [sessionToken, workspaceScope?.storeId, prefs.kdsZone, wrapFetch, retryPending, speak, l10n]);
 
-  // PERF-KDS-01: the realtime subscription must not be torn down and rebuilt
-  // whenever `fetchOrders` changes identity — each rebuild costs two extra
-  // WebView2 IPC round trips (`plugin:event|listen` + `unlisten`), and the
-  // old code re-subscribed on every fetch. The listener reads the latest
-  // fetch through this ref instead.
-  const fetchOrdersRef = useRef(fetchOrders);
-  fetchOrdersRef.current = fetchOrders;
-
-  // 1a: Real-time push via Tauri events — replaces adaptive polling.
-  // Listens for kds:orders-changed emitted by the Rust backend after
-  // order creation or status updates. Falls back to re-fetch on tab
-  // visibility change to catch any events missed while hidden.
-  // Subscribes exactly once per mount.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-
-    // Subscribe to real-time KDS order changes (push, not poll).
-    listen<null>('kds:orders-changed', () => {
-      void fetchOrdersRef.current();
-    }).then((fn) => {
-      // The component may already have unmounted while `listen` was in
-      // flight; without this guard the subscription would leak.
-      if (cancelled) fn();
-      else unlisten = fn;
-    }).catch(() => {
-      /* event plugin unavailable (e.g. plain browser) — push is optional */
-    });
-
-    // Visibility change fallback — re-fetch when tab becomes visible
-    // to catch any events missed while the tab was hidden.
-    const onVisibilityChange = () => {
-      if (!document.hidden) {
-        void fetchOrdersRef.current();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    return () => {
-      cancelled = true;
-      if (unlisten) unlisten();
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      if (arrivalTimerRef.current !== null) clearTimeout(arrivalTimerRef.current);
-    };
-  }, []);
-
-  // Fetch whenever the query inputs change (mount, session, store, zone).
-  useEffect(() => {
-    void fetchOrders();
-  }, [fetchOrders]);
+  // PERF-KDS-01 / 1a (extracted): the whole realtime subscription block — the
+  // `fetchOrdersRef` indirection (each subscription rebuild costs two WebView2
+  // IPC round trips, so the ref must stay), the kds:orders-changed subscribe,
+  // the visibilitychange fallback and their one unmount cleanup.
+  useKdsRealtime({ fetchOrders, arrivalTimerRef });
 
   const clearError = useCallback(() => setError(null), []);
 
