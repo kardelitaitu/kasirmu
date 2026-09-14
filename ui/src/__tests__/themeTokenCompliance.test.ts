@@ -906,3 +906,240 @@ describe('font-reference portability', () => {
     ]);
   });
 });
+
+/* ── var() token existence (added 2026-09-15) ──────────────────────
+ *
+ * Everything above asks whether a value SHOULD have been a var(). Nothing
+ * asked whether the var() it already wrote names a token that exists. A
+ * reference to an undefined custom property is not a parse error: CSS makes
+ * the whole declaration invalid-at-computed-value-time, so color:
+ * var(--text-primary) paints the INHERITED colour and box-shadow:
+ * var(--shadow-foo) paints nothing, silently, in every theme. No existing
+ * gate sees it: eslint matches no config for .css and exits 0, the pre-commit
+ * hook never names a .css path, themeTokenCompliance forbids literal VALUES
+ * and never resolves a name, and composedRuleIdenticalPair skips anything that
+ * is not a bare hex. This is the existence grade those shapes all leave open.
+ *
+ * A token counts as DEFINED when it is declared in tokens.css (in ANY block)
+ * or in any sheet under features/, or when production code establishes it at
+ * runtime through a style object key or el.style.setProperty. The third lane
+ * is not a loophole: 12 of the tokens features reference are values React
+ * computes per element (--card-size, --thumb-hue, --preview-colour-*), and a
+ * gate that called those missing would be wrong on its first run. Test files
+ * are EXCLUDED from that lane on purpose -- a value only a test sets does not
+ * exist for a cashier, which is what turned --mouse-x/--mouse-y up here.
+ *
+ * The :root question was measured before this rule was written, and it is the
+ * reason ANY block is safe rather than generous: of the 363 distinct tokens
+ * features/ references, 66 are redefined in all three blocks, 137 only in
+ * :root, and ZERO are defined anywhere without also being in :root. So every
+ * reference resolves under the default theme today and this case asserts
+ * existence, not per-block parity -- it takes no position on the parked
+ * question of whether :root should equal dark.
+ *
+ * LANDS WITH A BASELINE. 29 token names across 84 sites were already
+ * unresolved at HEAD before this case existed, so the honest form is
+ * shrink-only naming, exactly like BASELINE_UNCITED in
+ * screenExtraction.test.ts. Both directions fail: a name outside the list is
+ * new debt, and a listed name that no longer resolves to a miss is stale.
+ */
+
+const TOKENS_CSS = join(UI_SRC, "frontend", "themes", "tokens.css");
+
+/** A custom-property DECLARATION at its own boundary -- not a var() read. */
+const CUSTOM_PROP_DEF_RE = /(?:^|[;{\s])(--[A-Za-z0-9_-]+)\s*:/g;
+const VAR_REF_RE = /var\(\s*(--[A-Za-z0-9_-]+)/g;
+const SET_PROPERTY_RE = /setProperty\(\s*["'`](--[A-Za-z0-9_-]+)/g;
+const STYLE_KEY_RE = /["'`](--[A-Za-z0-9_-]+)["'`]\s*:/g;
+
+interface VarRef {
+  file: string;
+  line: number;
+  token: string;
+}
+
+function varRefsFromCss(file: string, text: string): VarRef[] {
+  const blanked = blankComments(text);
+  const hits: VarRef[] = [];
+  for (const m of blanked.matchAll(VAR_REF_RE)) {
+    hits.push({ file: shortFile(file), line: lineOf(blanked, m.index ?? 0), token: m[1] as string });
+  }
+  return hits;
+}
+
+function customPropNamesIn(text: string): string[] {
+  const blanked = blankComments(text);
+  return [...blanked.matchAll(CUSTOM_PROP_DEF_RE)].map((m) => m[1] as string);
+}
+
+/** .ts/.tsx under dir -- production code only: no __tests__, no *.test.*, no spec. */
+function collectScriptFiles(dir: string): string[] {
+  const out: string[] = [];
+  let entries: Dirent[] = [];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "__tests__") continue;
+      out.push(...collectScriptFiles(full));
+    } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+      if (/\.(test|spec)\.[tj]sx$/i.test(entry.name)) continue;
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function jsProvidedTokens(dir: string): Set<string> {
+  const found = new Set<string>();
+  for (const f of collectScriptFiles(dir)) {
+    const text = readFileSync(f, "utf-8");
+    for (const re of [SET_PROPERTY_RE, STYLE_KEY_RE]) {
+      re.lastIndex = 0;
+      for (const m of text.matchAll(re)) found.add(m[1] as string);
+    }
+  }
+  return found;
+}
+
+const FEATURE_CSS_SOURCES = collectCssFiles(join(UI_SRC, "features"))
+  .map((f) => ({ file: f, text: readFileSync(f, "utf-8") }));
+
+const TOKEN_DEFINED: Set<string> = (() => {
+  const defined = new Set<string>();
+  if (existsSync(TOKENS_CSS)) {
+    for (const n of customPropNamesIn(readFileSync(TOKENS_CSS, "utf-8"))) defined.add(n);
+  }
+  for (const s of FEATURE_CSS_SOURCES) {
+    for (const n of customPropNamesIn(s.text)) defined.add(n);
+  }
+  for (const n of jsProvidedTokens(UI_SRC)) defined.add(n);
+  return defined;
+})();
+
+const VAR_REFS: VarRef[] = FEATURE_CSS_SOURCES.flatMap((s) => varRefsFromCss(s.file, s.text));
+
+function unresolvedByToken(refs: VarRef[], defined: Set<string>): Map<string, VarRef[]> {
+  const out = new Map<string, VarRef[]>();
+  for (const r of refs) {
+    if (defined.has(r.token)) continue;
+    const bucket = out.get(r.token);
+    if (bucket) bucket.push(r);
+    else out.set(r.token, [r]);
+  }
+  return out;
+}
+
+function describeUnresolved(misses: Map<string, VarRef[]>): string {
+  return [...misses.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([tok, sites]) => {
+      const shown = sites.slice(0, 3).map((s) => s.file + ":" + s.line).join(", ");
+      return "  " + tok + "  (" + sites.length + (sites.length > 1 ? " sites" : " site") + ") -> "
+        + shown + (sites.length > 3 ? " ..." : "");
+    })
+    .join("\n");
+}
+
+/**
+ * Shrink-only, and keyed by NAME rather than file:line on purpose: five lanes
+ * are editing these sheets tonight, and a line-number baseline would rot
+ * within the hour (RetailPosScreen.css moved 25 lines during the census alone)
+ * while a token name stays a name. Delete a line when a sheet is fixed; never
+ * add one.
+ */
+const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
+  "--accent-color", // 3 - settings/screens/*Card.css use a foreign naming scheme
+  "--accent-contrast", // 3 - the same three cards
+  "--animation-play", // 1 - warehouse/WarehouseConsole.css
+  "--bg-primary", // 3
+  "--bg-secondary", // 1
+  "--border-color", // 8
+  "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
+  "--color-surface-alt", // 1 - staff/RoleAuthoringScreen.css
+  "--color-warning-pos-darker", // 1 - retail/RetailPosScreen.css
+  "--danger-500", // 4 - inventory/*, a pre-token palette that never landed
+  "--danger-700", // 1
+  "--danger-text", // 1 - settings/screens/StatutoryNumberingCard.css
+  "--duration-250", // 10 - every transition carrying it is dropped
+  "--info-500", // 1
+  "--mouse-x", // 2 - only a TEST sets these, so nothing exists at runtime
+  "--mouse-y", // 2
+  "--rotate-x", // 1 - workspaces/WorkspaceHome.css
+  "--rotate-y", // 1
+  "--space-0-5", // 1 - the scale spells the half-step --space-0_5
+  "--space-0_25", // 1 - the scale has no 0.25 step at all
+  "--status-danger", // 3
+  "--status-success", // 3
+  "--success-500", // 2
+  "--success-bg", // 1
+  "--text-muted", // 1
+  "--text-primary", // 10
+  "--text-secondary", // 8
+  "--text-tertiary", // 7
+  "--z-popover", // 1 - settings/SettingsNavTree.css
+];
+
+describe("var() token existence", () => {
+  it("reads a real population (never a vacuous green)", () => {
+    // Four floors, each one a way this case could pass while checking
+    // nothing. Same discipline as the per-file floor 6efb2ec42 added to
+    // composedRuleIdenticalPair: a parser that matched nothing must not
+    // read as compliance.
+    expect(FEATURE_CSS_SOURCES.length, "no feature sheets were collected").toBeGreaterThanOrEqual(100);
+    expect(existsSync(TOKENS_CSS), "tokens.css missing -- every var() would read as undefined").toBe(true);
+    expect(TOKEN_DEFINED.size, "definition set is empty -- the def regex matched nothing").toBeGreaterThanOrEqual(300);
+    expect(VAR_REFS.length, "not one var() reference was parsed").toBeGreaterThanOrEqual(10000);
+    expect(new Set(VAR_REFS.map((r) => r.token)).size).toBeGreaterThanOrEqual(300);
+  });
+
+  it("every sheet that mentions var() contributes at least one parsed reference", () => {
+    const silent = FEATURE_CSS_SOURCES
+      .filter((s) => /var\(/.test(s.text) && varRefsFromCss(s.file, s.text).length === 0)
+      .map((s) => shortFile(s.file));
+    expect(silent, "sheets hold a literal var() the parser did not record:\n  " + silent.join("\n  ")).toEqual([]);
+  });
+
+  it("no feature sheet references a token that is defined nowhere, beyond a named baseline", () => {
+    const misses = unresolvedByToken(VAR_REFS, TOKEN_DEFINED);
+    const names = [...misses.keys()];
+    const unexpected = names.filter((n) => !UNRESOLVED_VAR_TOKENS_BASELINE.includes(n));
+    const stale = UNRESOLVED_VAR_TOKENS_BASELINE.filter((n) => !misses.has(n));
+    const subset = new Map(unexpected.map((n) => [n, misses.get(n) ?? []]));
+    expect(
+      unexpected,
+      "These var() references name a token no CSS file or runtime setter defines, "
+        +
+        "so the declaration holding them computes to NOTHING in every theme:\n"
+        + describeUnresolved(subset),
+    ).toEqual([]);
+    expect(
+      stale,
+      "These baseline names no longer resolve to a miss. The debt was paid: "
+        +
+        "delete their lines -- the list is shrink-only in both directions.",
+    ).toEqual([]);
+    expect(misses.size, "the miss set moved off its own baseline").toBe(UNRESOLVED_VAR_TOKENS_BASELINE.length);
+  });
+
+  it("probe: a renamed token is caught; a runtime-set token is not", () => {
+    const sheets = [
+      { file: "a.css", text: ":root { --ok: 4px; } .x { padding: var(--ok); margin: var(--ok-typo); }" },
+      { file: "b.css", text: ".y { color: var(--js-set); box-shadow: 0 0 0 1px var(--nope, #fff); }" },
+    ];
+    const refs = sheets.flatMap((s) => varRefsFromCss(s.file, s.text));
+    // The parser ran. Without this line a dead VAR_REF_RE makes the probe
+    // green, which is the exact failure 6efb2ec42 was written against.
+    expect(refs.length).toBe(4);
+    const defined = new Set([...sheets.flatMap((s) => customPropNamesIn(s.text)), "--js-set"]);
+    const misses = unresolvedByToken(refs, defined);
+    expect([...misses.keys()]).toEqual(["--ok-typo", "--nope"]);
+    expect(misses.get("--ok-typo")?.map((m) => m.file + ":" + m.line)).toEqual(["a.css:1"]);
+    expect(describeUnresolved(misses)).toContain("(1 site) -> a.css:1");
+  });
+});
