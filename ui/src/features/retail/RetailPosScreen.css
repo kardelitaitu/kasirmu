@@ -3376,3 +3376,108 @@
   font-size: var(--text-xs);
   color: var(--color-fg-tertiary);
 }
+
+/* ── Customer search panel (RetailModals.tsx:545-583) ──────────────────
+ * Nine class names the customer-search markup has always carried and that
+ * no sheet in ui/src defined -- verified by walking extractUsedClassNames
+ * over features/retail/*.tsx against extractClassSelectors over every .css
+ * under ui/src (41 names came back undefined tree-wide; these are the 11 in
+ * this family). Insertions only: nothing above this line was touched, and
+ * every rule lands at end-of-file so each base sits BEFORE its own modifier
+ * (--selected after .retail-customer-search-item), which is the same
+ * source-ordered-variant argument used at :1204-1207 for the --exiting
+ * blocks. Token vocabulary is copied, not invented: modal bg/border/fg from
+ * .retail-customer-modal (:1167-1173), --text-sm / font-family: inherit from
+ * .retail-search-input (:227-235), --color-fg-secondary from its ::placeholder
+ * (:238), --font-weight-semibold from .retail-*-modal label (:1290), --text-xs
+ * + a tertiary/secondary fg from .retail-edit-image-menu-note above, and the
+ * selected tint is the .retail-view-toggle-btn--active recipe (:3263) with the
+ * modal surface in place of --color-bg-elevated. No amount, quantity or tender
+ * node is touched: this panel renders customer names and phone numbers only,
+ * and nothing here changes font-size or alignment on any total. */
+.retail-customer-search-input {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--color-pos-modal-border);
+  border-radius: var(--radius-md);
+  background: var(--color-pos-modal-bg);
+  color: var(--color-pos-modal-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.retail-customer-search-input::placeholder {
+  color: var(--color-fg-secondary);
+}
+
+.retail-customer-search-list {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.retail-customer-search-loading,
+.retail-customer-search-empty {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.retail-customer-search-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-pos-modal-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Written after its base so the modifier wins on equal specificity. */
+.retail-customer-search-item--selected {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-pos-modal-bg));
+}
+
+.retail-customer-search-item-name {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-pos-modal-fg);
+}
+
+.retail-customer-search-item-detail {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.retail-customer-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.retail-customer-clear-btn,
+.retail-customer-close-btn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-pos-modal-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-pos-modal-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Focus ring copied from .retail-tile:focus-visible (:3271-3274). */
+.retail-customer-clear-btn:focus-visible,
+.retail-customer-close-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
