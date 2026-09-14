@@ -208,12 +208,16 @@ describe('PaymentModal loyalty / points-redeem block (characterization)', () => 
   it('L1 renders no loyalty section at all when LOYALTY_PROGRAM is off', async () => {
     flags.loyalty = false;
     await open();
-    await waitFor(() => expect(mockGetLoyaltyAccount).toHaveBeenCalled());
+    // Used to read: `await waitFor(() => expect(mockGetLoyaltyAccount).
+    // toHaveBeenCalled())` - i.e. this case had the unlicensed round-trip written
+    // down as EXPECTED BEHAVIOUR, which is why the suite could not see the defect
+    // L16 pins. Wait on the modal being up and settled instead, so the absence
+    // below means 'rendered without a loyalty UI' and not 'not rendered yet'.
+    await waitFor(() => expect(settle()).toBeInTheDocument());
     expect(section()).toBeNull();
     expect(qs('.payment-loyalty-redeem-btn')).toBeNull();
-    // The account resolves AFTER the modal is on screen; a late resolve must not
-    // bring the subtree in either - the gate is a render condition, not a
-    // one-shot taken at open().
+    // The account read is gone now (L16), so the label staying null is about the
+    // render gate holding even after everything the modal does has landed.
     await waitFor(() => expect(qs('.payment-loyalty-label')).toBeNull());
   });
 
@@ -414,6 +418,30 @@ describe('PaymentModal loyalty / points-redeem block (characterization)', () => 
     // points 0 hides Use Points on its OWN rule (the balance row's points > 0),
     // not via the gate - do not read this line as the gate working.
     expect(qs('.payment-loyalty-redeem-btn')).toBeNull();
+  });
+
+  // ── The gate measured on the BRIDGE, not on the DOM ───────────────────
+  //
+  // L1-L13 ask what an unlicensed tenant SEES; nobody asked what it SPENDS.
+  // The account read sits behind `if (selectedCustomer)` only
+  // (PaymentModal.tsx:421-426), so attaching a customer while LOYALTY_PROGRAM is
+  // off still costs a getLoyaltyAccount round-trip - and, through the account it
+  // hands back, the getPointsValue valuation at :442-448 as well. This is the
+  // assertion L1 used to make backwards: L1 waited for mockGetLoyaltyAccount TO
+  // be called with the feature off, i.e. the suite had the unlicensed fetch
+  // written down as expected behaviour rather than as a defect.
+
+  it('L16 an unlicensed tenant spends no loyalty IPC, with a customer attached', async () => {
+    flags.loyalty = false;
+    await open();                       // customer attached, 500 points on offer
+    await waitFor(() => expect(settle()).toBeInTheDocument());
+
+    // The licence is the only thing withholding loyalty in this input, so a
+    // call here is the entitlement paying for a read the UI is never allowed to
+    // use. Mocked at the api layer, which is where the modal's own IPC starts.
+    expect(mockGetLoyaltyAccount, 'getLoyaltyAccount on an unlicensed tenant').not.toHaveBeenCalled();
+    expect(mockGetPointsValue, 'its valuation follows the account, so neither').not.toHaveBeenCalled();
+    expect(section()).toBeNull();
   });
 });
 

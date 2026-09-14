@@ -271,6 +271,12 @@ export default function PaymentModal({
 
   const { isEnabled } = useFeatures();
   const multiCurrency = isEnabled(FEATURES.MULTI_CURRENCY);
+  // One read of the entitlement, shared by the FETCH and the render below: an
+  // unlicensed tenant must not spend a getLoyaltyAccount round-trip on a panel it
+  // can never show. A named boolean rather than the call inline in the effect, so
+  // the dep array holds a value (isEnabled's identity in this file is not
+  // something an effect should depend on).
+  const loyaltyLicensed = isEnabled(FEATURES.LOYALTY_PROGRAM);
 
 
   // A rail that loads (or reloads) to disabled while QRIS is the chosen
@@ -418,6 +424,16 @@ export default function PaymentModal({
   });
 
   useEffect(() => {
+    // Entitlement first, and the same three resets the no-customer branch below
+    // performs: with the feature off there is no account, and a stale account
+    // left in state would carry redeemPoints / loyaltyDiscount with it - a
+    // discount that moves Total Due while nothing on screen can cancel it.
+    if (!loyaltyLicensed) {
+      setLoyaltyAccount(null);
+      setRedeemPoints(false);
+      setLoyaltyDiscount(0n);
+      return;
+    }
     if (selectedCustomer) {
       if (!sessionToken) {
         setLoyaltyAccount(null);
@@ -437,7 +453,7 @@ export default function PaymentModal({
       setRedeemPoints(false);
       setLoyaltyDiscount(0n);
     }
-  }, [selectedCustomer, sessionToken, addToast]); // l10n via ref — stable dep chain
+  }, [selectedCustomer, sessionToken, addToast, loyaltyLicensed]); // l10n via ref — stable dep chain
 
   useEffect(() => {
     if (loyaltyAccount?.account && loyaltyAccount.account.points > 0) {
@@ -1673,9 +1689,9 @@ export default function PaymentModal({
               onRemove={() => notifyCustomerChange(null)}
             />
 
-            {isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount && (
+            {loyaltyLicensed && loyaltyAccount && (
               <LoyaltyTenderPanel
-                loyaltyOffered={isEnabled(FEATURES.LOYALTY_PROGRAM) && !!loyaltyAccount}
+                loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}
                 points={loyaltyAccount.account.points}
                 pointsWorthMinor={pointsWorthMinor}
                 currency={total.currency}
