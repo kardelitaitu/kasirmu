@@ -328,6 +328,14 @@ const SCREENS: ScreenEntry[] = [
       // registration reads nine of them as dead CSS (the other four are still
       // rendered by the page's loading-skeleton header).
       'settings/components/SettingsTopbar.tsx',
+      // SettingsLoadChrome.tsx carries the loading-skeleton shell (the settings-topbar /
+      // __col--brand / -icon / -name header mock and settings-loading-card) and the
+      // fatal-load settings-error card, moved out of SettingsPage.tsx by the
+      // settings lane's load-chrome slice. This registration is load-bearing in
+      // the loud direction: with the markup gone from the page, dropping the line
+      // fails the dead-class check on settings-loading, settings-loading-card and
+      // settings-error (verified: 1 failed | 186 passed, exit 1).
+      'settings/components/SettingsLoadChrome.tsx',
     ],
     knownDynamicFragments: [
       // Object-key strings inside template-literal interpolations that

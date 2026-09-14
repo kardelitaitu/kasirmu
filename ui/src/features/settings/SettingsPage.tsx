@@ -17,8 +17,6 @@ import { type SyncSettingsDto } from '@/api/offline';
 // only the BrandContext refresh handle is still read here.
 import { useBrand } from '@/contexts/BrandContext';
 import { deriveAccentPalette, applyAccentPalette } from '@/utils/color';
-import { Button } from '@/components/Button';
-import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
@@ -30,6 +28,8 @@ import { useSettingsSave } from './hooks/useSettingsSave';
 import SettingsNavTree from './SettingsNavTree';
 import { SettingsFooter } from './components/SettingsFooter';
 import { SettingsTopbar } from './components/SettingsTopbar';
+// The two load-state renders moved here (both reuse this sheet's shell).
+import { SettingsLoadingChrome, SettingsLoadError } from './components/SettingsLoadChrome';
 // The flat-IA screens (blank scaffolds from the screens commit; selective
 // migration fills each one in) are keyed to sections in ./screens/registry.
 import { SETTINGS_SCREENS } from './screens/registry';
@@ -374,61 +374,12 @@ function SettingsPageContent() {
   // ── Loading / Error states ───────────────────────────────────
 
   if (loading) {
-    return (
-      <div className="settings-page">
-        <header className="settings-topbar">
-          {/* COL 1: mobile menu — empty in skeleton */}
-          <div className="settings-topbar__col" />
-          {/* COL 2: branding */}
-          <div className="settings-topbar__col settings-topbar__col--brand">
-            <div className="settings-topbar-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </div>
-            <span className="settings-topbar-name"><Localized id="settings-title">Settings</Localized></span>
-          </div>
-          {/* COL 3–5: empty in skeleton */}
-          <div className="settings-topbar__col settings-topbar__col--search" />
-          <div className="settings-topbar__col" />
-          <div className="settings-topbar__col settings-topbar__col--actions" />
-        </header>
-        <div className="settings-body">
-          <div className="settings-loading">
-            <div className="settings-loading-card">
-              <Skeleton variant="block" width="40%" height="1.5rem" />
-              <Skeleton variant="text" width="100%" />
-              <Skeleton variant="text" width="100%" />
-              <Skeleton variant="text" width="60%" />
-            </div>
-            <div className="settings-loading-card">
-              <Skeleton variant="block" width="35%" height="1.5rem" />
-              <Skeleton variant="text" width="100%" />
-              <Skeleton variant="text" width="80%" />
-            </div>
-            <div className="settings-loading-card">
-              <Skeleton variant="block" width="30%" height="1.5rem" />
-              <Skeleton variant="text" width="100%" />
-              <Skeleton variant="text" width="50%" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <SettingsLoadingChrome />;
   }
 
   if (loadError) {
-    return (
-      <div className="settings-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="settings-error" role="alert">
-          <p>{l10n.getString(loadError)}</p>
-          <Button variant="secondary" onClick={() => { setInitialized(false); settingsCtx.refetch(); }}>
-            <Localized id="settings-retry"><span>Retry</span></Localized>
-          </Button>
-        </div>
-      </div>
-    );
+    const onRetry = () => { setInitialized(false); settingsCtx.refetch(); };
+    return <SettingsLoadError errorId={loadError} onRetry={onRetry} />;
   }
 
   // ── Main render ──────────────────────────────────────────────
