@@ -37,7 +37,17 @@ import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '@/features/settings/SettingsNavTree';
+import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { withSyncDefaults } from '@/contexts/SettingsContext';
+
+// The accepted-URL-name list, KEPT_SECTIONS, is module-local in
+// ./hooks/useSettingsHashSection.ts (not exported). The sync assertion in the
+// sweep below reads it from that file's own source instead of copying it into
+// a fourth list; the match is asserted non-null, so a renamed or restructured
+// Set literal fails loudly rather than comparing against an empty array.
+const KEPT_SECTIONS_SRC = resolve(__dirname, '..', 'features', 'settings', 'hooks', 'useSettingsHashSection.ts');
 
 // Re-export the REAL @/api/branding module, overriding the global stub that
 // test-setup.ts installs: the load/save error-path tests need branding to go
@@ -356,6 +366,19 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
   });
 
   it('every renderSection key mounts its own screen under the shared scaffold', async () => {
+    // ── Named sync assertion (this coupling used to be implicit DOM only) ──
+    // Three lists stay independent on purpose: NAV_ITEMS owns labels/icons/
+    // order, KEPT_SECTIONS owns the accepted deep-link names, SETTINGS_SCREENS
+    // owns key -> component. None derives from another, so dropping a key
+    // from any one of them fails here instead of rendering a blank body.
+    const registryKeys = Object.keys(SETTINGS_SCREENS).sort();
+    expect(registryKeys).toEqual(NAV_ITEMS.map((n) => n.key).sort());
+    const keptMatch = readFileSync(KEPT_SECTIONS_SRC, 'utf-8')
+      .match(/const KEPT_SECTIONS = new Set\(\[([\s\S]*?)\]\)/);
+    expect(keptMatch, 'KEPT_SECTIONS Set literal not found in useSettingsHashSection.ts').not.toBeNull();
+    const keptNames = (keptMatch?.[1]?.match(/'[^']+'/g) ?? []).map((s) => s.slice(1, -1)).sort();
+    expect(registryKeys).toEqual(keptNames);
+
     await openShell();
 
     // Loop over the nav registry: one key must map to one screen. Most

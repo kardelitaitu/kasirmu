@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 
 import { Localized, useLocalization } from '@fluent/react';
 import {
@@ -30,22 +30,9 @@ import { useSettingsSave } from './hooks/useSettingsSave';
 import SettingsNavTree from './SettingsNavTree';
 import { SettingsFooter } from './components/SettingsFooter';
 import { SettingsTopbar } from './components/SettingsTopbar';
-// ── Lazy-loaded flat-IA screens (blank scaffolds from the screens commit;
-//    selective migration fills each one in) ──
-const GeneralScreen = lazy(() => import('./screens/GeneralScreen').then((m) => ({ default: m.GeneralScreen })));
-const LicenseSubscriptionScreen = lazy(() => import('./screens/LicenseSubscriptionScreen').then((m) => ({ default: m.LicenseSubscriptionScreen })));
-const DevicesConnectivityScreen = lazy(() => import('./screens/DevicesConnectivityScreen').then((m) => ({ default: m.DevicesConnectivityScreen })));
-const BusinessDefaultsScreen = lazy(() => import('./screens/BusinessDefaultsScreen').then((m) => ({ default: m.BusinessDefaultsScreen })));
-const FeaturesModulesScreen = lazy(() => import('./screens/FeaturesModulesScreen').then((m) => ({ default: m.FeaturesModulesScreen })));
-const SecurityAccountScreen = lazy(() => import('./screens/SecurityAccountScreen').then((m) => ({ default: m.SecurityAccountScreen })));
-const DataSyncScreen = lazy(() => import('./screens/DataSyncScreen').then((m) => ({ default: m.DataSyncScreen })));
-const DataManagementScreen = lazy(() => import('./screens/DataManagementScreen').then((m) => ({ default: m.DataManagementScreen })));
-const SyncStatusScreen = lazy(() => import('./screens/SyncStatusScreen').then((m) => ({ default: m.SyncStatusScreen })));
-const OfflineQueueScreen = lazy(() => import('./screens/OfflineQueueScreen').then((m) => ({ default: m.OfflineQueueScreen })));
-const SyncConflictReviewScreen = lazy(() => import('../sync/SyncConflictReviewScreen').then((m) => ({ default: m.SyncConflictReviewScreen })));
-const TaxConfigurationScreen = lazy(() => import('./screens/TaxConfigurationScreen').then((m) => ({ default: m.TaxConfigurationScreen })));
-const ExchangeRatesScreen = lazy(() => import('./screens/ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen })));
-const SystemDiagnosticsScreen = lazy(() => import('./screens/SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen })));
+// The flat-IA screens (blank scaffolds from the screens commit; selective
+// migration fills each one in) are keyed to sections in ./screens/registry.
+import { SETTINGS_SCREENS } from './screens/registry';
 
 import './SettingsPage.css';
 import './SettingsNavTree.css';
@@ -68,6 +55,15 @@ interface SettingsSnapshot {
 // useClock + getToday moved to ./components/SettingsFooter with their only
 // consumer (the footer's date/clock span); numLocale moved with them, so this
 // page no longer formats a time anywhere.
+
+// ── Section -> screen lookup ───────────────────────────────────────────
+/** The screen registered for a section key; an unknown key renders nothing,
+ *  the old switch's default arm. The Suspense boundary stays at the call
+ *  site so a late chunk resolves against the section container below. */
+function renderSection(key: string) {
+  const Screen = SETTINGS_SCREENS[key];
+  return Screen ? <Screen /> : null;
+}
 
 // ── Component ─────────────────────────────────────────────────────
 
@@ -433,43 +429,6 @@ function SettingsPageContent() {
         </div>
       </div>
     );
-  }
-
-  // ── Render section content ───────────────────────────────────
-
-  function renderSection(key: string) {
-    switch (key) {
-      case 'general':
-        return <GeneralScreen />;
-      case 'license-subscription':
-        return <LicenseSubscriptionScreen />;
-      case 'devices-connectivity':
-        return <DevicesConnectivityScreen />;
-      case 'business-defaults':
-        return <BusinessDefaultsScreen />;
-      case 'features-modules':
-        return <FeaturesModulesScreen />;
-      case 'security-account':
-        return <SecurityAccountScreen />;
-      case 'data-sync':
-        return <DataSyncScreen />;
-      case 'data-management':
-        return <DataManagementScreen />;
-      case 'sync-status':
-        return <SyncStatusScreen />;
-      case 'offline-queue':
-        return <OfflineQueueScreen />;
-      case 'sync-conflicts':
-        return <SyncConflictReviewScreen />;
-      case 'tax-configuration':
-        return <TaxConfigurationScreen />;
-      case 'exchange-rates':
-        return <ExchangeRatesScreen />;
-      case 'system-diagnostics':
-        return <SystemDiagnosticsScreen />;
-      default:
-        return null;
-    }
   }
 
   // ── Main render ──────────────────────────────────────────────
