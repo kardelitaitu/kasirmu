@@ -10,7 +10,7 @@ This file carries the shared contract every phase must preserve (current
 baseline, core access contract, canonical hierarchy, adopted target policy,
 and the decisions list) plus the Phase 1 work list: the P0 foundations that
 make the platform safe to call multi-tenant. Phase 1 gates the full Tools
-redesign ([`todo-tools.md`](./todo-tools.md)).
+redesign ([`todo-tools.md`](../../todo-tools.md)).
 
 Supersedes the single-file `todo-global-saas.md` (split into phases
 2026-09-05). The Tools IA is tracked separately in `todo-tools.md`.
