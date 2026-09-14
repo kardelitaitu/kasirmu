@@ -955,24 +955,72 @@ const VAR_REF_RE = /var\(\s*(--[A-Za-z0-9_-]+)([^)]*)\)/g;
 const SET_PROPERTY_RE = /setProperty\(\s*["'`](--[A-Za-z0-9_-]+)/g;
 const STYLE_KEY_RE = /["'`](--[A-Za-z0-9_-]+)["'`]\s*:/g;
 
+/** The token universe gains a name from a nested read exactly as from an outer one. */
 interface VarRef {
   file: string;
   line: number;
   token: string;
   /** True when the reference reads `var(--x, <literal>)` -- the costume. */
   hasFallback: boolean;
+  /**
+   * True when this name was reached INSIDE another reference's fallback: the
+   * `--b` of `var(--a, var(--b, #fff))`. VAR_REF_RE stops its tail capture at the
+   * first `)`, so before this flag existed those names were recorded nowhere --
+   * they passed the existence gate, missed the foreign-scheme freeze and never
+   * reached the block-relation case, while the printed denominator counted the
+   * outer reference and looked healthy. Measured at the commit that adds this:
+   * 85 nested reads carrying 25 distinct names.
+   */
+  nested?: boolean;
 }
 
+/** Same shape as VAR_REF_RE, applied to a captured tail rather than to a sheet. */
+const NESTED_VAR_RE = /var\(\s*(--[A-Za-z0-9_-]+)([^)]*)/g;
+
+/**
+ * Every var() name a sheet reads, outer and nested.
+ *
+ * Invariant this function must keep: the OUTER refs are exactly what they were --
+ * same count, same `hasFallback` classification, same order -- because the
+ * tail-classifying cases (the foreign freeze, the block-relation worklist) are
+ * built on them. A nested name is emitted WITH `nested: true` so a caller can
+ * choose: existence and the freeze take both, tail classification takes the
+ * outers only. `line` points at the inner read when the tail is on the same
+ * line, which is where a fallback always lives today.
+ */
 function varRefsFromCss(file: string, text: string): VarRef[] {
   const blanked = blankComments(text);
   const hits: VarRef[] = [];
+  const short = shortFile(file);
   for (const m of blanked.matchAll(VAR_REF_RE)) {
+    const outerLine = lineOf(blanked, m.index ?? 0);
+    const tail = m[2] ?? '';
     hits.push({
-      file: shortFile(file),
-      line: lineOf(blanked, m.index ?? 0),
+      file: short,
+      line: outerLine,
       token: m[1] as string,
-      hasFallback: /^\s*,/.test(m[2] ?? ''),
+      hasFallback: /^\s*,/.test(tail),
     });
+    // Walk the fallback: a nested var() is a reference, not decoration.
+    let frontier: Array<{ tail: string; at: number }> = tail ? [{ tail, at: (m.index ?? 0) + m[0].indexOf(tail) }] : [];
+    for (let depth = 0; depth < 8 && frontier.length; depth++) {
+      const next: Array<{ tail: string; at: number }> = [];
+      for (const node of frontier) {
+        NESTED_VAR_RE.lastIndex = 0;
+        for (const inner of node.tail.matchAll(NESTED_VAR_RE)) {
+          const itail = inner[2] ?? '';
+          hits.push({
+            file: short,
+            line: lineOf(blanked, node.at + (inner.index ?? 0)),
+            token: inner[1] as string,
+            hasFallback: /^\s*,/.test(itail),
+            nested: true,
+          });
+          if (itail) next.push({ tail: itail, at: node.at + (inner.index ?? 0) + itail.length * 0 + 1 });
+        }
+      }
+      frontier = next;
+    }
   }
   return hits;
 }
@@ -1032,7 +1080,11 @@ const TOKEN_DEFINED: Set<string> = (() => {
   return defined;
 })();
 
-const VAR_REFS: VarRef[] = FEATURE_CSS_SOURCES.flatMap((s) => varRefsFromCss(s.file, s.text));
+const FEATURE_REF_HARVEST: VarRef[] = FEATURE_CSS_SOURCES.flatMap((s) => varRefsFromCss(s.file, s.text));
+/** Outer refs only -- the population every existing assertion was calibrated on. */
+const VAR_REFS: VarRef[] = FEATURE_REF_HARVEST.filter((r) => !r.nested);
+/** Names reached only inside another token's fallback -- harvested, and existence-checked. */
+const NESTED_REFS: VarRef[] = FEATURE_REF_HARVEST.filter((r) => r.nested === true);
 
 function unresolvedByToken(refs: VarRef[], defined: Set<string>): Map<string, VarRef[]> {
   const out = new Map<string, VarRef[]>();
@@ -1092,7 +1144,7 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
 ];
 
 describe("var() token existence", () => {
-  it("reads a real population (never a vacuous green)", () => {
+  it(`reads a real population (never a vacuous green): ${VAR_REFS.length} outer refs + ${NESTED_REFS.length} nested reads carrying ${new Set(NESTED_REFS.map((r) => r.token)).size} inner names`, () => {
     // Four floors, each one a way this case could pass while checking
     // nothing. Same discipline as the per-file floor 6efb2ec42 added to
     // composedRuleIdenticalPair: a parser that matched nothing must not
@@ -1102,6 +1154,11 @@ describe("var() token existence", () => {
     expect(TOKEN_DEFINED.size, "definition set is empty -- the def regex matched nothing").toBeGreaterThanOrEqual(300);
     expect(VAR_REFS.length, "not one var() reference was parsed").toBeGreaterThanOrEqual(10000);
     expect(new Set(VAR_REFS.map((r) => r.token)).size).toBeGreaterThanOrEqual(300);
+    // The nested population is asserted, not assumed: a harvest that stopped seeing
+    // inside fallbacks would drop these to 0 and leave the outer count looking fine.
+    expect(NESTED_REFS.length, "no nested var() read was harvested -- the fallback walk is dead").toBeGreaterThanOrEqual(60);
+    expect(new Set(NESTED_REFS.map((r) => r.token)).size, "nested names vanished").toBeGreaterThanOrEqual(15);
+    expect(NESTED_ALL_REFS.length, "nested reads over all of ui/src").toBeGreaterThanOrEqual(NESTED_REFS.length);
   });
 
   it("every sheet that mentions var() contributes at least one parsed reference", () => {
@@ -1112,7 +1169,7 @@ describe("var() token existence", () => {
   });
 
   it("no feature sheet references a token that is defined nowhere, beyond a named baseline", () => {
-    const misses = unresolvedByToken(VAR_REFS, TOKEN_DEFINED);
+    const misses = unresolvedByToken([...VAR_REFS, ...NESTED_REFS], TOKEN_DEFINED);
     const names = [...misses.keys()];
     const unexpected = names.filter((n) => !UNRESOLVED_VAR_TOKENS_BASELINE.includes(n));
     const stale = UNRESOLVED_VAR_TOKENS_BASELINE.filter((n) => !misses.has(n));
@@ -1184,7 +1241,9 @@ const ALL_DECLARED: Set<string> = (() => {
   return d;
 })();
 
-const ALL_VAR_REFS: VarRef[] = ALL_CSS_SOURCES.flatMap((s) => varRefsFromCss(s.file, s.text));
+const ALL_REF_HARVEST: VarRef[] = ALL_CSS_SOURCES.flatMap((s) => varRefsFromCss(s.file, s.text));
+const ALL_VAR_REFS: VarRef[] = ALL_REF_HARVEST.filter((r) => !r.nested);
+const NESTED_ALL_REFS: VarRef[] = ALL_REF_HARVEST.filter((r) => r.nested === true);
 
 /**: (name @ sheet) -> site count, for the frozen foreign-scheme population. * */
 function foreignSchemePairs(refs: VarRef[], declared: Set<string>): Map<string, number> {
@@ -1271,7 +1330,7 @@ const FOREIGN_SCHEME_BASELINE: Array<[string, string, number]> = [
 ];
 
 describe("foreign-scheme token freeze", () => {
-  const harvested = foreignSchemePairs(ALL_VAR_REFS, ALL_DECLARED);
+  const harvested = foreignSchemePairs([...ALL_VAR_REFS, ...NESTED_ALL_REFS], ALL_DECLARED);
   const baseline = new Map(FOREIGN_SCHEME_BASELINE.map(([tok, file, n]) => [tok + " @ " + file, n]));
 
   it("reads a real population (never a vacuous freeze)", () => {
