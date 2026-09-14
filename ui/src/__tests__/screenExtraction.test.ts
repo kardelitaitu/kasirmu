@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 71 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 72 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 71/218/38 as of this edit: (3 x 71) + 4 + 1 = 218,
+// 902e07678, and 72/221/37 as of this edit: (3 x 72) + 4 + 1 = 221,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1108,6 +1108,15 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'reports/MenuEngineeringScreen.tsx',
     css: ['reports/MenuEngineeringScreen.css'],
   },
+  {
+    // 280-line preview over a 292-line sheet, own import at :5. Mounted by the
+    // already-registered PaymentModal: sales/PaymentModal.tsx:26, JSX at :1376.
+    // No other .tsx references a name from this sheet, so the entry is own-sheet
+    // only - no parentCss, no prefix, no externalClasses, no additionalTsx.
+    name: 'ReceiptPreview',
+    tsx: 'sales/ReceiptPreview.tsx',
+    css: ['sales/ReceiptPreview.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1252,7 +1261,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 38 entries is a named path, not a prefix, not a
+// every one of its 37 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1265,7 +1274,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 38 since, one line per sheet a landed entry cited, and
+// it has shrunk to 37 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1293,7 +1302,6 @@ const BASELINE_UNCITED: string[] = [
   'reports/CustomReportScreen.css',
   'retail/RetailPosScreen.css',
   'sales/PromotionsModal.css',
-  'sales/ReceiptPreview.css',
   'sales/StockShortfallDialog.css',
   'sales/WeightScaleWidget.css',
   'sales/widgets/widgets.css',
