@@ -1,7 +1,8 @@
 # Payment Types — Plan & TODO
 
 <!-- Audit stamp: 2026-09-14 · DSH · status: REPAIRED (2nd pass, HEAD ec2edf258) ·
-corrections applied: 24 · re-audited against a HEAD that post-dates the pass
+corrections applied: 34 edit operations (21 first pass · 4 second · 2 EDC box ticks ·
+11 grep-scope rewordings · 3 repairs of my own overlapping edits) · re-audited against a HEAD that post-dates the pass
 below, with every fact re-measured on disk in this checkout (line counts use the
 read-tool totalLines method, which equals wc -l here: PaymentModal.tsx = 2,436).
 Box census moved from 43 unchecked / 4 checked to 39 / 8: exactly four boxes were
@@ -10,8 +11,12 @@ doc's say-so — `register_card_terminals`, the `qr_string` wire field, the merc
 static-QR payload home (ticked with its prescribed location corrected: it shipped
 in the rail store, not in hardware config), and Phase 4's "Map to checkout" (the
 EDC tender does reach `completeSale`, but as `CARD` with the transactionId in
-`gatewayReference`, not as `EDC` with the auth_code). No other box was touched; the
-remaining 39 open boxes were each checked against the tree and are still open.
+`gatewayReference`, not as `EDC` with the auth_code). No other box was touched. Of the 39 still-open boxes,
+the ones this pass makes a claim about were verified (the `payment:*` keys, the
+phantom codec names, the `"airpay shopee"` hardcode at `qris.rs:427`, the missing
+`PaymentError::classify()`, the absent `resilience.rs`, the unbuilt offline leg, the
+un-reconciled `pending` sales); the rest were NOT individually re-verified and are
+reported as unverified rather than as confirmed-open.
 Most consequential error found: **two items recorded as still awaiting evidence
 had already shipped**, and **one decision recorded as made is implemented the
 other way round**. (1) Phase 4's "Implement
@@ -30,13 +35,21 @@ SHA512 verified in constant time, no re-fetch, dedupe on the
 `midtrans_transactions` ledger instead of `processed_webhooks`. Found by reading
 the handler body rather than trusting the ruling. Second class: proposals written
 in present tense — `IndonesianEcr`/`MandiriEcr` and the `edc_sale(terminal_id,
-Money)` snippet match no file or signature in the tree (real:
+Money)` snippet match no file or signature in the source trees (real:
 `apps/desktop-client/src/commands/edc.rs:43-48`), `POST /api/payment/edc` is not a
-route anywhere (EDC is local Tauri IPC), the `payment:*` feature keys were never
+route in any source file (EDC is local Tauri IPC), the `payment:*` keys were never
 created (the rail store is what gates the tabs), and the `offlineOk` leg of the
-visibility formula does not exist. Third: `references/midtrans-*` is a
+visibility formula has no implementation in the checkout. Third: `references/midtrans-*` is a
 `.gitignore` entry (`:213-214`) with no directory behind it, so its line-level
 citations are unverifiable in-repo and are relabelled rather than deleted.
+FIX-FORWARD at G1's request (committed `0408ff612` by the manager): every absolute
+"does not exist / nowhere / 0 hits" claim now names WHICH TREE was searched, because
+a code-scoped grep reported as a repo-wide absolute is itself a wrong claim — e.g.
+"`ErrorClass` appears nowhere in the repo" was false (a repo-wide `git grep -c`
+returns 4 hits, all of them this doc proposing it); the true claim is 0 hits in the
+source trees. Corrections applied rose from 24 to 34 with that pass. Note also
+`crates/oz-core/src/terminal_override.rs:17` still points readers at a non-existent
+`crate::feature_key` module — code-side rot, outside this fence, flagged not fixed.
 Overlay drift fixed too: "R4–R6 stay open" now reads R4–R7 to match
 `todo-payment-agents-4.md:138`, and agents-4 is named as the epic's single status
 authority. UNVERIFIED, left stated as such: the Midtrans wire-level behaviours
@@ -181,7 +194,7 @@ is the Tauri v2 Rust side). The real axis is **device-local vs cloud**.
 
 | Concern | Lives in | Notes |
 |---|---|---|
-| Which methods visible on THIS terminal (show/hide) | `TerminalFeatureOverride` (device SQLite) | planned keys `payment:qris-manual`, `payment:midtrans`, `payment:edc` — **never created** (0 code refs); what actually shipped is the per-location rail store, keyed by `rail_code` (`ui/src/features/sales/useLocalPaymentRails.ts:4-12`) |
+| Which methods visible on THIS terminal (show/hide) | `TerminalFeatureOverride` (device SQLite) | planned keys `payment:qris-manual`, `payment:midtrans`, `payment:edc` — **never created** — 0 hits for all three strings across the source trees (`git grep 'payment:qris-manual\|payment:midtrans\|payment:edc' -- crates/ apps/ platform/ modules/ foundation/ ui/` returns only a `useLocalPaymentRails.ts:4` comment describing their absence); what actually shipped is the per-location rail store, keyed by `rail_code` (`ui/src/features/sales/useLocalPaymentRails.ts:4-12`) |
 | Hardware-bound config (EDC LAN list, merchant QRIS string, Midtrans endpoint choice) | `HardwareConfig` / `apply_config` (HAL) | applied at startup; offline-capable |
 | Entitlements (method allowed on plan?) | cloud subscription `caps` | existing QRIS Plus+ gate stays |
 | Gateway secrets (Midtrans keys) | cloud-server | device holds only enable flag + endpoint ref |
@@ -196,12 +209,13 @@ visibleMethods = ALL_METHODS
 Today `PaymentModal` still hardcodes `['cash','card','qris','credit']`
 (`PaymentModal.tsx:1845`) and gates QRIS via `caps.supportsQris` (`:2017`) — that
 list must become this derived set. Re-measured 2026-09-14: the first two legs are
-PARTLY real and the third does not exist. `bffcbda97a` made the QRIS radio defer
+PARTLY real and the third is absent from the checkout. `bffcbda97a` made the QRIS radio defer
 to `qrisOffered` (`:124`, `:1846`) and the EDC button to `edcOffered` (`:125`,
 `:1995`) — but both read the **rail store** (`useLocalPaymentRails.ts`), not
-`TerminalFeatureOverride`, so no `payment:*` key is consulted anywhere. And the
-`offlineOk` leg is unbuilt: the words `online` / `offline` appear nowhere in
-`PaymentModal.tsx` (searched `online`, `offline`, `navigator`).
+`TerminalFeatureOverride`, so no `payment:*` key is consulted in any source file. And the
+`offlineOk` leg is unbuilt: case-insensitive counts of `online`, `offline`,
+`navigator` and `network` inside `PaymentModal.tsx` are all 0 (whole file read,
+2,436 lines) — the gate exists in no source file I searched.
 
 ## Payment flow (per-method)
 
@@ -276,8 +290,10 @@ graph TD
 - [ ] Define payment-method feature keys in the `feature_key` style — note it
       is a **function** (`crates/oz-core/src/features.rs:422`, `pub fn
       feature_key(f: Feature) -> &'static str`), not a module/namespace, so the
-      original wording pointed at a path that does not exist
-      (`payment:qris-manual`, `payment:midtrans`, `payment:edc`); verify against
+      original wording pointed at a path that does not exist (and the doc comment at
+      `crates/oz-core/src/terminal_override.rs:17` still points a reader at the same
+      non-existent `crate::feature_key` — code-side rot, outside this fence) —
+      `payment:qris-manual`, `payment:midtrans`, `payment:edc`; verify against
       existing `feature_key` style for consistency.
 - [ ] Use `TerminalFeatureOverride` for per-terminal show/hide (no new table
       needed; reuse `set_terminal_override_scoped` / `list_terminal_overrides_scoped`).
@@ -533,8 +549,10 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       per call / health check. LAN EDC -> `register_wireless_terminal(target, info)`
       (target = IP:port); wired serial/USB -> `register_wired_terminal(port, baud, info)`.
 - [ ] **Protocol codecs** — the names `IndonesianEcr` / `MandiriEcr` used below
-      are **phantom**: `git grep` finds 0 hits in `crates/`, `apps/`, `platform/`,
-      `ui/`, and `drivers/edc/indonesian_ecr.rs` does not exist. What exists under
+      are **phantom**: 0 hits in the source trees (`git grep` over `crates/`, `apps/`,
+      `platform/`, `modules/`, `foundation/`, `ui/`), and the only repo-wide occurrences
+      are this doc's own proposal text; `drivers/edc/indonesian_ecr.rs` does not exist on
+      disk. What does exist under
       `crates/oz-hal/src/drivers/edc/` is `wired.rs` / `wireless.rs` plus
       `protocol/{ingenico,pax,verifone}.rs` — all fail-closed stubs (R7). LRC framing / payload build / parse
       belong in the codec; the registry only routes by id. Bank-specific structs
@@ -558,7 +576,8 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       supplies the device list.
       **Re-measured 2026-09-14: only half of this pair exists.** The device list
       shipped (`edc_terminals` -> `register_card_terminals` -> the registry), the flag
-      did not: no `payment:edc` key exists anywhere. The EDC button is gated by the
+      did not: `payment:edc` exists in no source file (same scoped grep as the Phase 0
+      box; repo-wide it appears only in docs). The EDC button is gated by the
       **rail store** instead — `edcOffered = railOffered(rails, 'edc')`
       (`PaymentModal.tsx:125`, used at `:1995`; `bffcbda97a`). `47ade2148` records
       rails gating for `payment:edc` as *declined with reasons*, so what is open here
@@ -651,7 +670,7 @@ abstraction should contain the failure and offer a fallback path.
 | `sale()` synchronous poll | QRIS `sale()` (`qris.rs:566`; the SCAN_QR literal is built at `:585-587`) returns a `SCAN_QR\|...` string and `capture()` polls ~60s while the QR is valid 300s (PAY-6) | blocks the server request up to 60s; a customer who pays at 90s never settles in-call |
 | Webhook lost / late pay | nothing reconciles `pending` sales | sale stuck `pending` forever |
 | Midtrans slow (not down) | every call waits up to COR-31 30s | no circuit breaker => cashier waits on every sale |
-| UI error handling | ~~string-matches English messages~~ **no longer true**: `classifyError` is now a 4-line adapter delegating the retry verdict to the shared typed boundary classifier `classifyRetry` (`PaymentModal.tsx:225-231`, `ui/src/utils/app-error.ts:120`) — `3d50b3ac5a` | was brittle; now the shared classifier owns it. The remaining gap is the **backend** half: `PaymentError` still has no `classify()`/`ErrorClass` at all (`crates/oz-payment/src/error.rs`, 0 hits repo-wide) |
+| UI error handling | ~~string-matches English messages~~ **no longer true**: `classifyError` is now a 4-line adapter delegating the retry verdict to the shared typed boundary classifier `classifyRetry` (`PaymentModal.tsx:225-231`, `ui/src/utils/app-error.ts:120`) — `3d50b3ac5a` | was brittle; now the shared classifier owns it. The remaining gap is the **backend** half: `PaymentError` still has no `classify()`/`ErrorClass` at all (`crates/oz-payment/src/error.rs` declares 8 variants and no such method; `git grep 'ErrorClass'` over the source trees = 0) |
 
 ### Recommended resilient abstraction
 - **A. Async settlement (kill the sync trap).** `authorize()` for QRIS returns
@@ -674,7 +693,10 @@ abstraction should contain the failure and offer a fallback path.
   `PaymentError::classify() -> ErrorClass { Transient, Terminal, Deferred }`
   (`Transient` = Network/Timeout; `Terminal` = the rest; `Deferred` = QR
   issued, awaiting settlement) — `error.rs` today declares 8 variants and no
-  `classify()`, and `ErrorClass` appears nowhere in the repo.
+  `classify()`; `ErrorClass` appears nowhere in the Rust or TS sources
+  (`git grep -n ErrorClass -- crates/ apps/ platform/ modules/ foundation/
+  ui/ website/` = 0 hits). Scoped honestly: a repo-wide `git grep -c ErrorClass`
+  returns 4 hits, and all four are this plan doc naming the thing it proposes.
   (Plug-in: `error.rs`.)
 - **D. Resilience decorator.** A `ResilientProcessor` wrapping
   `Arc<dyn PaymentProcessor>` adds: bounded timeout (COR-31 already),
