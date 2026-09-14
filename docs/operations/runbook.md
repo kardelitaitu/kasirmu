@@ -1006,7 +1006,7 @@ run by hand** — `website/package.json:17` shells out to `scripts/wrangler-depl
 > that calls bare `bash`. AGENTS.md's "Running CLI Tools on Windows" section records
 > that bare `bash` resolves to `C:\Windows\System32\bash.exe` (WSL), which here either
 > **hangs until killed** or runs the Linux node against the Windows-built
-> `website/node_modules`. The script's own usage header shows the same form. Until it
+> `website/node_modules`. <!-- dead-ref: ok: `website/node_modules` is a build artifact created by `npm ci` in `website/`, named here as the tree WSL's Linux node resolves against — not a documentation path and never committed, so it cannot resolve in a clean checkout. --> The script's own usage header shows the same form. Until it
 > is changed, call it through Git's bash explicitly:
 > `& 'C:\Program Files\Git\bin\bash.exe' scripts/wrangler-deploy.sh`. Editing the npm
 > script is a code change and is deliberately not made here. The deploy authenticates
