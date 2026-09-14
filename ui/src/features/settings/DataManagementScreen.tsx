@@ -31,16 +31,7 @@ import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
-
-// ── Types ──────────────────────────────────────────────────────────
-
-type DataType =
-  | 'products'
-  | 'categories'
-  | 'sales'
-  | 'customers'
-  | 'users'
-  | 'settings';
+import { DATA_TYPES, INITIAL_EXPORT, INITIAL_IMPORT, type BackupInfo, type DataType, type ExportState, type ImportState } from './dataManagementModel';
 
 // ── SVG icon helpers ──────────────────────────────────────────────
 
@@ -58,69 +49,6 @@ const eyeOffIcon = () => (
     <line x1="1" y1="1" x2="23" y2="23" />
   </svg>
 );
-
-const DATA_TYPES: { key: DataType; label: string; description: string }[] = [
-  { key: 'products', label: 'Products', description: 'SKU, name, price, barcode, stock' },
-  { key: 'categories', label: 'Categories', description: 'Category id, name, colour' },
-  { key: 'sales', label: 'Sales', description: 'Sale header, line items, payments' },
-  { key: 'customers', label: 'Customers', description: 'Name, email, phone, loyalty points' },
-  { key: 'users', label: 'Users', description: 'Usernames, display names, roles (no passwords)' },
-  { key: 'settings', label: 'Settings', description: 'Store config, receipts, feature flags' },
-];
-
-interface ExportState {
-  selectedTypes: Set<DataType>;
-  dateFrom: string;
-  dateTo: string;
-  password: string;
-  passwordConfirm: string;
-  step: 'select' | 'encrypt' | 'exporting' | 'done';
-  progress: number;
-  outputFile: string | null;
-  error: string | null;
-}
-
-interface ImportState {
-  selectedFile: string | null;
-  metadata: { name: string; version: string; types: string[]; created: string } | null;
-  password: string;
-  step: 'select' | 'analysing' | 'preview' | 'importing' | 'done';
-  analysing: boolean;
-  progress: number;
-  error: string | null;
-  dryRun: { added: number; updated: number; skipped: number } | null;
-}
-
-interface BackupInfo {
-  lastBackup: string | null;
-  lastBackupSize: string | null | undefined;
-  backingUp: boolean;
-}
-
-// ── Initial state ──────────────────────────────────────────────────
-
-const INITIAL_EXPORT: ExportState = {
-  selectedTypes: new Set(DATA_TYPES.map((t) => t.key)),
-  dateFrom: '',
-  dateTo: '',
-  password: '',
-  passwordConfirm: '',
-  step: 'select',
-  progress: 0,
-  outputFile: null,
-  error: null,
-};
-
-const INITIAL_IMPORT: ImportState = {
-  selectedFile: null,
-  metadata: null,
-  password: '',
-  step: 'select',
-  analysing: false,
-  progress: 0,
-  error: null,
-  dryRun: null,
-};
 
 // ── Tab / icon helpers ───────────────────────────────────────────
 
