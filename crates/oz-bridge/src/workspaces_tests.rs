@@ -9,6 +9,61 @@
 use super::*;
 
 use crate::testing::TestBridge;
+use crate::testing::seeded_row_loads;
+use oz_core::subscription::TenantSubscription;
+
+// -- The release leg for these listings (crate::testing, RULE at :204-208) --
+
+/// Every scoped listing this file drives reaches the subscription row through
+/// `sub.verify_signature()?` (`workspaces.rs:232`, `:657` - the same propagating
+/// shape as `terminals.rs:432`), so in release the command RETURNS AN ERROR: no
+/// Vec is produced, no tier is projected, no row is written. There is therefore
+/// no fail-closed projection to assert here and the template is deliberately not
+/// used - the honest release leg is the error arm, named exactly.
+///
+/// Existence is pinned FIRST. `seeded_row_loads() == false` collapses five
+/// distinct causes (lost default row, a load `Err` on a mis-shaped table, a
+/// public-key failure, the intended base64 reject on the BOOTSTRAP_FREE
+/// sentinel, a genuine RSA mismatch); only the fourth is this fixture
+/// vocabulary, so the row and its stamp are asserted before the refusal is.
+async fn assert_refused_by_the_seeded_row<T>(
+    tb: &TestBridge,
+    listed: Result<T, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = tb.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture lists against must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match listed {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the listing must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
 
 // ── Token Rejection ─────────────────────────────────────────────────
 
@@ -226,9 +281,15 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
 
     // The session token binds the real role — a limited session listing
     // store-a must not see owner-level instances (same as the ticket path).
-    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "cashier-token", "store-a".into())
-        .await
-        .unwrap();
+    let listed =
+        list_workspaces_for_store_scoped(&tb.ctx(), "cashier-token", "store-a".into()).await;
+    // Release: the listing is refused at the signature before any scoping or
+    // tier filter runs, so the empty-list claim below has no list to make.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     assert!(
         rows.is_empty(),
         "cashier session must not enumerate store-a instances, got {rows:?}"
@@ -301,9 +362,14 @@ async fn scoped_assignment_filters_session_workspace_listing() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_scoped(&tb.ctx(), "owner-token")
-        .await
-        .unwrap();
+    let listed = list_workspaces_scoped(&tb.ctx(), "owner-token").await;
+    // Release: the assignment filter is never consulted - the row behind the
+    // tier and the allowed-types is unreadable, so the command fails first.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
         "in-scope workspace type must list, got {rows:?}"
@@ -338,9 +404,16 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_sessio
     });
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let in_scope = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
-        .await
-        .unwrap();
+    let in_scope =
+        list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    // Release: BOTH legs are refused, in-scope store first - the branch
+    // dimension never gets to answer, so neither the "lists" nor the "denies"
+    // half of this case is reachable. Assert the refusal and stop.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, in_scope, "free").await;
+        return;
+    }
+    let in_scope = in_scope.unwrap();
     assert!(in_scope.iter().any(|d| d.instance_id == "ws-a-1"));
 
     let out_of_scope = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-b".into())
@@ -391,9 +464,13 @@ async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
-        .await
-        .unwrap();
+    let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    // Release: refused at the signature, so the filter below has no list.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
         "in-scope workspace type must list, got {rows:?}"
@@ -419,9 +496,13 @@ async fn list_workspaces_for_store_scoped_filters_by_tier_entitlement() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
-        .await
-        .unwrap();
+    let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    // Release: refused at the signature, so the filter below has no list.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     // store-pos (ws-a-1) is allowed by the Free tier → must be present.
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
