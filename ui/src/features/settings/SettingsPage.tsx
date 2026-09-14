@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
 
 import { Localized, useLocalization } from '@fluent/react';
 import {
@@ -22,14 +22,14 @@ import { Skeleton } from '@/components/Skeleton';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useOptionalTheme, type Theme } from '@/frontend/shell/ThemeProvider';
-import Tooltip from '@/frontend/shell/Tooltip';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
-import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { useSettingsHashSection } from './hooks/useSettingsHashSection';
 import { useSettingsSave } from './hooks/useSettingsSave';
+import SettingsNavTree from './SettingsNavTree';
 import { SettingsFooter } from './components/SettingsFooter';
+import { SettingsTopbar } from './components/SettingsTopbar';
 // ── Lazy-loaded flat-IA screens (blank scaffolds from the screens commit;
 //    selective migration fills each one in) ──
 const GeneralScreen = lazy(() => import('./screens/GeneralScreen').then((m) => ({ default: m.GeneralScreen })));
@@ -46,13 +46,6 @@ const SyncConflictReviewScreen = lazy(() => import('../sync/SyncConflictReviewSc
 const TaxConfigurationScreen = lazy(() => import('./screens/TaxConfigurationScreen').then((m) => ({ default: m.TaxConfigurationScreen })));
 const ExchangeRatesScreen = lazy(() => import('./screens/ExchangeRatesScreen').then((m) => ({ default: m.ExchangeRatesScreen })));
 const SystemDiagnosticsScreen = lazy(() => import('./screens/SystemDiagnosticsScreen').then((m) => ({ default: m.SystemDiagnosticsScreen })));
-
-import { useContextMenu, ContextMenu } from '@/frontend/shared';
-
-import SettingsNavTree, {
-  NAV_ITEMS as NAV_ITEMS_REF,
-  NAV_L10N_KEYS as NAV_L10N_KEYS_REF,
-} from './SettingsNavTree';
 
 import './SettingsPage.css';
 import './SettingsNavTree.css';
@@ -150,7 +143,6 @@ function SettingsPageContent() {
   // unrecognized role — get the locked card instead of the shell.
   const adminUp = roleAtLeast(session?.role_name ?? null, 'admin');
   const { sessionToken } = useWorkspace();
-  const { goToWorkspacePicker } = useWorkspaceNav();
 
   const [displayCardSize, setDisplayCardSize] = useState(0);
   const [displayFontSize, setDisplayFontSize] = useState(0);
@@ -158,21 +150,8 @@ function SettingsPageContent() {
   const [brandColour, setBrandColour] = useState('#147EFB');
   const [brandStoreName, setBrandStoreName] = useState('');
 
-  // Right-click copy/paste on the page's remaining inputs (the custom menu
-  // replaces the natively-suppressed one; migrated screens re-wire their own
-  // fields to cmInput as they come back).
-  const cm = useContextMenu();
-
   // P7-4: Keyboard avoidance — scroll inputs into view on mobile
   const { containerRef: settingsKeyboardRef } = useKeyboardAvoidance();
-
-  const cmInput = useMemo(() => ({
-    autoComplete: 'off' as const,
-    autoCorrect: 'off' as const,
-    spellCheck: false as const,
-    'data-gramm': 'false' as const,
-    onContextMenu: (e: React.MouseEvent<HTMLInputElement>) => cm.open(e, e.currentTarget),
-  }), [cm]);
 
   // ── Navigation state ────────────────────────────────────────────
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -493,137 +472,21 @@ function SettingsPageContent() {
     }
   }
 
-  // ── Resolve current nav item for the topbar icon + title ─────
-
-  const currentNavItem = NAV_ITEMS_REF.find((n) => n.key === activeSection);
-
   // ── Main render ──────────────────────────────────────────────
 
   return (
     <div className="settings-page" onContextMenu={(e) => e.preventDefault()}>
-      {cm.menu && (
-        <ContextMenu
-          menu={cm.menu}
-          menuRef={cm.menuRef}
-          onCopy={cm.handleCopy}
-          onPaste={cm.handlePaste}
-          onClose={cm.close}
-        />
-      )}
-      {/* ── Top bar ────────────────────────────────────── */}
-      <header className="settings-topbar">
-        {/* COL 1: back button */}
-        <div className="settings-topbar__col">
-          <Tooltip content={l10n.getString('settings-back-aria')} fit="inline" portal>
-            <button
-              type="button"
-              className="settings-back-btn"
-              onClick={() => goToWorkspacePicker()}
-              aria-label={l10n.getString('settings-back-aria')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="16 5 8 12 16 19" />
-              </svg>
-            </button>
-          </Tooltip>
-        </div>
-        {/* COL 2: branding */}
-        <div className="settings-topbar__col settings-topbar__col--brand">
-          <div className="settings-topbar-icon" aria-hidden="true">
-            {currentNavItem?.icon ?? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            )}
-          </div>
-          <h1 className="settings-topbar-name">
-            <Localized id={NAV_L10N_KEYS_REF[currentNavItem?.key ?? ''] ?? 'settings-title'}>
-              {currentNavItem?.label ?? 'Settings'}
-            </Localized>
-          </h1>
-        </div>
-        {/* COL 3: search */}
-        <div className="settings-topbar__col settings-topbar__col--search">
-          <div className="settings-topbar-search">
-            <svg className="settings-topbar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              id="settings-search-input"
-              name="settings-search"
-              className="settings-topbar-search-input"
-              type="text"
-              placeholder={requiredLocalized(l10n, 'settings-search-placeholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label={l10n.getString('settings-sidebar-search-aria')}
-              {...cmInput}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="settings-topbar-search-clear"
-                onClick={() => setSearchQuery('')}
-                aria-label={l10n.getString('settings-sidebar-search-clear-aria')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-        {/* COL 4: actions */}
-        <div className="settings-topbar__col settings-topbar__col--actions">
-          <div className="settings-save-bar">
-            {/* Revert button is always rendered but invisible when not dirty.
-                This reserves layout space and prevents the clock and save
-                button from shifting on appearance/disappearance. */}
-            <span
-              className={`settings-save-dot${isDirty && !saving && !saved ? '' : ' settings-save-dot--hidden'}`}
-              aria-hidden="true"
-            />
-            <Localized id="settings-btn-revert-aria" attrs={{ 'aria-label': true }}>
-              <button
-                type="button"
-                className={`settings-btn-revert${isDirty && !saving && !saved ? '' : ' settings-btn-revert--hidden'}`}
-                onClick={handleRevert}
-                aria-label={l10n.getString('revert-changes-aria')}
-                tabIndex={isDirty && !saving && !saved ? undefined : -1}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                </svg>
-                <Localized id="settings-btn-revert">
-                  <span>Revert</span>
-                </Localized>
-              </button>
-            </Localized>
-            <Localized id="settings-btn-save-aria" attrs={{ 'aria-label': true }} vars={{ state: saved ? 'saved' : 'save' }}>
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={saving}
-              >
-                {saved && !saving ? (
-                  <span className="settings-saved-checkmark">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="16" height="16" aria-hidden="true">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    <Localized id="settings-saved"><span>Saved!</span></Localized>
-                  </span>
-                ) : (
-                  <Localized id="settings-btn-save"><span>Save</span></Localized>
-                )}
-              </Button>
-            </Localized>
-          </div>
-        </div>
-      </header>
+      {/* ── Top bar (child owns the context menu + breadcrumb; search/save state threaded) ── */}
+      <SettingsTopbar
+        activeSection={activeSection}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        isDirty={isDirty}
+        saving={saving}
+        saved={saved}
+        onRevert={handleRevert}
+        onSave={handleSave}
+      />
 
       {/* ── Body ──────────────────────────────────────────── */}
       <div className="settings-body">

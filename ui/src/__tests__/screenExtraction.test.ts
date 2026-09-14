@@ -322,6 +322,12 @@ const SCREENS: ScreenEntry[] = [
       // settings lane footer slice; unregistered, the guard reads those six
       // classes as dead CSS.
       'settings/components/SettingsFooter.tsx',
+      // SettingsTopbar.tsx carries the settings-topbar-* / settings-save-* markup (back
+      // button, breadcrumb, search field, revert+save bar) plus the ContextMenu it
+      // now owns; every one is styled by SettingsPage.css, so skipping this
+      // registration reads nine of them as dead CSS (the other four are still
+      // rendered by the page's loading-skeleton header).
+      'settings/components/SettingsTopbar.tsx',
     ],
     knownDynamicFragments: [
       // Object-key strings inside template-literal interpolations that
