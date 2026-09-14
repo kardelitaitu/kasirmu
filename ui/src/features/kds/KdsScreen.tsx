@@ -9,11 +9,10 @@ import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, up
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
+import { useKdsShortcuts } from '@/features/kds/useKdsShortcuts';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
 import { useSound } from '@/frontend/shared/useSound';
 import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
-import { isEditableTarget } from '@/utils/isEditableTarget';
-import { isAnyAriaModalOpen } from '@/utils/modal-guard';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { KdsLayoutMasonry } from '@/features/kds/KdsLayoutMasonry';
@@ -403,71 +402,16 @@ export default function KdsScreen() {
     redAtSec: settings.redThresholdMin * 60,
   }), [settings.yellowThresholdMin, settings.redThresholdMin]);
 
-  // Deselect if currently selected order is filtered out.
-  useEffect(() => {
-    if (selectedOrderId && !filteredOrders.some((o) => o.id === selectedOrderId)) {
-      setSelectedOrderId(null);
-    }
-  }, [selectedOrderId, filteredOrders]);
-
-  // 2d: Keyboard shortcuts — number keys to select, Space to advance, Arrows/Escape to navigate.
-  const kdsRef = useRef<HTMLDivElement>(null);
-  const selectedRef = useRef(selectedOrderId);
-  selectedRef.current = selectedOrderId;
-
-  // Auto-focus the container on mount so keyboard shortcuts work immediately.
-  useEffect(() => {
-    kdsRef.current?.focus();
-  }, []);
-
-  // KEY-07: managed screen-level listener with editable + modal guards.
-  // Previously the handler was bound to the root element, so shortcuts stopped
-  // working whenever focus left the region. Binding to `document` (with guards)
-  // keeps 1-9/Arrow/Space/Escape working regardless of where focus lands, and
-  // the KDS component unmounting removes the listener.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Guard: never intercept while the user is typing in an editable target.
-      if (isEditableTarget(e.target)) return;
-      // Guard: never intercept while a modal owns the keyboard.
-      if (isAnyAriaModalOpen()) return;
-
-      if (e.key >= '1' && e.key <= '9') {
-        e.preventDefault();
-        const idx = parseInt(e.key, 10) - 1;
-        if (idx < filteredOrders.length) {
-          setSelectedOrderId(filteredOrders[idx]!.id);
-        }
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedOrderId((prev) => {
-          const currentIdx = prev ? filteredOrders.findIndex((o) => o.id === prev) : -1;
-          const nextIdx = Math.min(currentIdx + 1, filteredOrders.length - 1);
-          return nextIdx >= 0 ? filteredOrders[nextIdx]!.id : null;
-        });
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedOrderId((prev) => {
-          const currentIdx = prev ? filteredOrders.findIndex((o) => o.id === prev) : filteredOrders.length;
-          const nextIdx = Math.max(currentIdx - 1, 0);
-          return filteredOrders.length > 0 ? filteredOrders[nextIdx]!.id : null;
-        });
-      } else if (e.key === ' ' && selectedRef.current) {
-        // Skip if a ticket button already has focus (its onClick will handle advance).
-        if ((e.target as HTMLElement).closest('.kds-ticket')) return;
-        e.preventDefault();
-        const selected = filteredOrders.find((o) => o.id === selectedRef.current);
-        if (selected) {
-          advanceStatus(selected);
-        }
-      } else if (e.key === 'Escape') {
-        setSelectedOrderId(null);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [filteredOrders, advanceStatus]);
+  // KEY-07 (extracted): the board keyboard cluster - deselect-on-filter, the
+  // mount autofocus and the document-level keydown handler with its editable +
+  // modal guards. kdsRef comes back OUT because the region below binds it; the
+  // selection state itself stays page-level (the layout props and render read it).
+  const { kdsRef } = useKdsShortcuts({
+    filteredOrders,
+    selectedOrderId,
+    setSelectedOrderId,
+    advanceStatus,
+  });
 
   // P7-3: Pull-to-refresh gesture on KDS ticket board
   const { containerProps: pullRefreshProps, state: pullState, pullDistance } = usePullToRefresh({
