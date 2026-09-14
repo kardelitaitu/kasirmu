@@ -165,6 +165,25 @@ describe('native browser tooltip compliance (no title= on HTML elements)', () =>
     expect(total, `native title= count rose from ${baselineTotal} to ${total}`).toBeLessThanOrEqual(baselineTotal);
   });
 
+  it('declares a total that equals the sum of its own counts', () => {
+    // Guards BOTH directions on purpose: a field that under-reads the sum is the
+    // same lie with the sign flipped. Nothing else in this file reads `total` —
+    // the growth and shrink guards derive their numbers from `counts` — so this
+    // case is the only reason the field can still be believed.
+    const doc = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as {
+      total?: number;
+      counts?: Record<string, number>;
+    };
+    const entries = doc.counts ?? {};
+    const sum = Object.values(entries).reduce((a, b) => a + b, 0);
+    expect(
+      doc.total,
+      `scripts/native-tooltip-baseline.json declares total=${String(doc.total)}, ` +
+        `but its ${Object.keys(entries).length} per-file counts sum to ${sum} — ` +
+        `set "total" to ${sum}, or delete the field — nothing else in this file reads it.`,
+    ).toBe(sum);
+  });
+
   // ── Specific guards ───────────────────────────────────────────────
 
   it('SettingsScopeTag carries no native title (the double-tooltip origin)', () => {
