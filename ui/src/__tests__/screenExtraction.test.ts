@@ -32,28 +32,33 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 66 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
-// counts 66 *Screen.tsx files — and the match is arithmetic, not
-// agreement: the two numbers are not even the
+// 68 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
 // tree is therefore read by none of the three checks. The cleanest
 // statement of what that costs is the one this header used to be
-// missing: **none of this guard's three checks — including "every
-// className used has a CSS rule", and including the dead-class check —
-// ever reads the sales tender surface.** sales/PaymentModal.tsx
-// (1,912 lines) over sales/PaymentModal.css (1,165 lines) is the
-// largest instance today; the note in the Sales section below records
-// why that entry is pending rather than registered.
+// missing, and it is now the statement that had to be RETIRED: the
+// guard used to read none of the sales tender surface — every
+// className used has a CSS rule, and the dead-class check alike —
+// because sales/PaymentModal.tsx (1,912 lines) over
+// sales/PaymentModal.css (1,165 lines) was unregistered. It is
+// registered now, with its five tender panels, and the note in the
+// Sales section records what the two findings were and which commits
+// paid them off. The general point stands: a screen not listed here is
+// invisible to all three checks, so it cannot fail and cannot be clean.
 //
 // CASE ARITHMETIC, so the total is never read as code health. Keep the
 // FORM, never a substitution of it:
 //     cases = (3 x entries) + (4 extractor self-tests) + (1 coverage case)
 // Substitute the LIVE entry count, because the total is a property of
 // this list and moves with it — quoting a number instead of a formula
-// made four lines of this header go stale twice in one night (61/188/54
-// before 101b4869e, 65/200/50 after it). As this file stands: 66 entries,
-// so (3 x 66) + 4 + 1 = 203, which is what the run reads. The number
+// made SIX lines of this header go stale three times in one night —
+// 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
+// 902e07678. As this file stands: 68 entries, so (3 x 68) + 4 + 1 = 209,
+// which is what the run reads. If a total is quoted anywhere in this
+// file, it is a dated observation and the form above is the truth. The
+// number
 // moves when the LIST moves and never when the tree's CSS health changes:
 // a registration adds three green cases whether or not anything got
 // better. Read the entry count for coverage and the failures for health.
@@ -614,24 +619,47 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'sales/components/ItemModifierModal.tsx',
     css: ['sales/components/ItemModifierModal.css'],
   },
-  // PaymentModal is deliberately NOT registered yet, and this is the
-  // note that keeps that gap from being silent. Its companion sheet
-  // (sales/PaymentModal.css, 1,165 lines) and its 1,912-line TSX are
-  // read by NO check in this file, which is precisely the blind spot the
-  // header describes. Attempting the entry — tsx + css + the four
-  // extracted tender panels (payment/CashTenderPanel, CardTenderPanel,
+  {
+    name: 'PaymentModal',
+    tsx: 'sales/PaymentModal.tsx',
+    css: ['sales/PaymentModal.css'],
+    dynamicClassPrefixes: ['payment-overlay--', 'payment-modal--'],
+    additionalTsx: [
+      'sales/payment/CashTenderPanel.tsx',
+      'sales/payment/CardTenderPanel.tsx',
+      'sales/payment/QrisTenderPanel.tsx',
+      'sales/payment/SplitTenderRows.tsx',
+      'sales/payment/LoyaltyTenderPanel.tsx',
+    ],
+  },
+  // PaymentModal WAS deliberately NOT registered, and this note is what
+  // kept that gap from being silent. Its companion sheet
+  // (sales/PaymentModal.css, 1,165 lines) and its 1,912-line TSX were
+  // read by NO check in this file — precisely the blind spot the header
+  // describes. The entry ABOVE closes it, twelve commits later; what
+  // follows stays as the record of why it could not be landed when it
+  // was measured, and each finding is marked with what paid it off.
+  // Attempting the entry that pass — tsx + css + the four extracted
+  // tender panels (payment/CashTenderPanel, CardTenderPanel,
   // QrisTenderPanel, SplitTenderRows) — produced two findings, and
-  // neither is a runtime-composed modifier that dynamicClassPrefixes
-  // may excuse:
+  // neither was a runtime-composed modifier that dynamicClassPrefixes
+  // could excuse:
   //   1. HARD, case "every className used in PaymentModal has a CSS rule
   //      defined": payment-method-name (PaymentModal.tsx:1544,:1581),
   //      payment-qris-upgrade (payment/QrisTenderPanel.tsx:57) and
-  //      payment-qris-btn--dynamic (same file,:90) are static
-  //      classNames with NO rule in any .css in the repo (verified:
+  //      payment-qris-btn--dynamic (same file,:90) were static
+  //      classNames with NO rule in any .css in the repo (verified that
+  //      pass:
   //      git grep '\\.(payment-method-name|payment-qris-upgrade|payment-qris-btn--dynamic)'
-  //      over ui/src returns 0 css hits). Unstyled markup, not parser
+  //      over ui/src returned 0 css hits). Unstyled markup, not parser
   //      blindness — and dynamicClassPrefixes cannot reach this check
   //      anyway, since a prefix only suppresses the dead-class walk.
+  //      PAID OFF, all three, in this same sheet: 448839397 put
+  //      .payment-method-name at PaymentModal.css:180 and the checked
+  //      variant at :184; 4ea4f482b put .payment-qris-upgrade at :638,
+    //      .payment-qris-btn--dynamic at :681 with :697 and :707 behind it.
+  //      Re-grepped before this entry landed: 6 hits, all in
+  //      PaymentModal.css. Case 1 now passes with no exemption at all.
   //   2. SOFT-BUT-FAILING, case "every className defined in CSS is
   //      reachable from PaymentModal": the twelve payment-loyalty-*
   //      rules. These are NOT debt: payment/LoyaltyTenderPanel.tsx
@@ -641,31 +669,27 @@ const SCREENS: ScreenEntry[] = [
   //      designed — markup left the screen, the extraction did not
   //      append its new file to this list, so ten-plus live classes
   //      read as dead CSS.
-  // So the entry needs one of two out-of-fence changes first: three new
-  // rules in PaymentModal.css (or the three classNames dropped), and
-  // LoyaltyTenderPanel.tsx added to additionalTsx alongside the other
-  // four. The four animation classes the pass was scoped around
-  // (payment-overlay--enter/--exit, payment-modal--enter/--exit) ARE
-  // runtime-composed — PaymentModal.tsx:1150-1151 selects each by
-  // ternary into a local and interpolates the LOCAL, which
-  // extractUsedClassNames strips — and would be excused by the two
-  // prefixes 'payment-overlay--' and 'payment-modal--', each of which
-  // covers exactly the enter/exit pair and nothing else
-  // (PaymentModal.css:17,:21,:49,:53). Registering them is the next
-  // pass's job; swallowing 1 and 2 to get green is not.
+  // Both steps are now done, and neither was taken inside a test file:
+  // step 1 by the two sales commits named above, step 2 by this entry,
+  // which lists all FIVE panels in additionalTsx — including
+  // payment/LoyaltyTenderPanel.tsx, whose twelve payment-loyalty-*
+  // rules finding 2 named. The prefix pair the pass predicted is exactly
+  // what the entry carries: 'payment-overlay--' and 'payment-modal--',
+  // each covering the enter/exit pair and nothing else
+  // (PaymentModal.css:17,:21,:49,:53). Nothing was swallowed to get
+  // green — the two prefixes are the only exemption this entry holds.
   //
-  // THE OWNERSHIP IS TWO-STEP AND NEITHER STEP IS INSIDE A TEST FILE.
-  // Step 1, sales lane: give the three classNames above a rule in
-  // PaymentModal.css, or delete them from the markup — a real
-  // used-but-undefined class is unstyled markup, and only the owner of
-  // the sheet can say which of the two it wants. Step 2, whoever lands
-  // step 1: add the entry above with the two prefixes, plus
-  // payment/LoyaltyTenderPanel.tsx in `additionalTsx` beside the other
-  // four panels. Verification each time is `npx vitest run
-  // src/__tests__/screenExtraction.test.ts`: 3 cases per entry, so the
-  // total is (3 x entries) + 5 by the CASE ARITHMETIC form at the head of
-  // this file — 206 once this entry lands on the 66 it now holds. Both
-  // PaymentModal cases must pass with no prefix beyond the two named.
+  // MEASURED, not asserted. With the entry in: 209 passed (209), exit
+  // 0, from 206 — three cases, one per entry, per the CASE ARITHMETIC
+  // form at the head of this file (68 entries now). Load-bearing proof
+  // for the fifth panel, done the way the header asks: deleting the
+  // single line 'sales/payment/LoyaltyTenderPanel.tsx' from additionalTsx
+  // and re-running gave 1 failed | 208 passed (209) with 'Dead classes:
+  // payment-loyalty-section, payment-loyalty-balance, payment-loyalty-
+  // label, payment-loyalty-value, payment-loyalty-redeem-btn, ...' — all
+  // twelve, i.e. finding 2 firing exactly as designed. Restored, 209.
+  // sales/PaymentModal.css left BASELINE_UNCITED in the same commit, so
+  // the array reads 48 -> 47 and the coverage case stays green.
   //
   // THREE OTHER CANDIDATES WERE MEASURED ON THAT PASS, and they have come
   // apart three different ways since: one landed, one was a FALSE finding
@@ -1162,7 +1186,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 49 entries is a named path, not a prefix, not a
+// every one of its 47 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1175,7 +1199,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 49 since, one line per sheet a landed entry cited, and
+// it has shrunk to 47 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1210,7 +1234,6 @@ const BASELINE_UNCITED: string[] = [
   'sales/CartPanelCourseBar.css',
   'sales/CartPanelFooterTotals.css',
   'sales/CartPanelLineItem.css',
-  'sales/PaymentModal.css',
   'sales/PosScreen.css',
   'sales/PromotionsModal.css',
   'sales/ReceiptPreview.css',
