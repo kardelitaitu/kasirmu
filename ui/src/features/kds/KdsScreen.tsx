@@ -8,7 +8,7 @@ import { getKdsQueueScoped, updateKdsStatusScoped, updateKdsOrderItemsScoped, up
 import { useKdsPreferences } from '@/features/kds/hooks/useKdsPreferences';
 import { useNewTicketSound } from '@/features/kds/hooks/useNewTicketSound';
 import { useKdsFilterNav } from '@/features/kds/useKdsFilterNav';
-import { useKdsShortcuts } from '@/features/kds/useKdsShortcuts';
+import { useKdsShortcuts } from '@/features/kds/hooks/useKdsKeyboardShortcuts';
 import { useKdsTabIndicator } from '@/features/kds/useKdsTabIndicator';
 import { useKdsRealtime } from '@/features/kds/useKdsRealtime';
 import type { SlaThresholds } from '@/features/kds/hooks/useTicketSla';
