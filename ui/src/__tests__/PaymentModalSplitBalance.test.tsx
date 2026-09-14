@@ -32,6 +32,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import { minorUnitExponent, type CartLine, type LineId, type Money, type Sku } from '@/types/domain';
 import type { CompleteSaleScopedArgs, PaymentSplitArg } from '@/api/sales';
+import { minorUnitsToInputString } from '@/features/sales/payment/moneyFormat';
 
 // The single-currency harness on purpose: with MULTI_CURRENCY off,
 // useMultiCurrency issues no IPC and cartCurrency === total.currency, so the
@@ -96,16 +97,15 @@ const line = (unitPriceMinor: number, currency: string): CartLine => ({
 });
 
 /** Minor units -> the decimal literal a split row's text input holds.
- *  Mirrors PaymentModal's module-private `minorUnitsToInputString` (:64),
- *  which is NOT exported, so it cannot be imported. Pure string placement:
- *  no division by the scale, no float, no exponentiation of a money value. */
+ *  Thin fixture adapter: resolves the currency's exponent, then delegates to the
+ *  PRODUCTION formatter `minorUnitsToInputString` (features/sales/payment/
+ *  moneyFormat.ts, exported; PaymentModal and CashTenderPanel import the same
+ *  function). This used to be a hand-written mirror of those five lines, which
+ *  meant the suite could not fail when production digit placement changed — a
+ *  control that cannot fail is not a control. Only the currency -> exponent
+ *  lookup is local now; the formatting itself is policed, not reproduced. */
 function minorToRowInput(minorUnits: number, currency: string): string {
-  const exp = minorUnitExponent(currency);
-  const digits = String(Math.trunc(Math.abs(minorUnits))).padStart(exp + 1, '0');
-  const body = exp > 0
-    ? `${digits.slice(0, digits.length - exp)}.${digits.slice(digits.length - exp)}`
-    : digits;
-  return minorUnits < 0 ? `-${body}` : body;
+  return minorUnitsToInputString(minorUnits, minorUnitExponent(currency));
 }
 
 type RowSpec = { minor: number; method?: 'cash' | 'card' | 'other'; label?: string };
