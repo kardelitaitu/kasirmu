@@ -812,7 +812,47 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
       per-**location** rail — not whether a flag was forgotten.
 - [ ] **Capture for later void/refund.** Store `terminal_id` + `auth_code` on the
       sale so void/refund (and the terminal's own `print_receipt`) route back to the
-      same device/batch.
+      same device/batch.  **Mapped 2026-09-15 at `e5e63d28d`: this row asks for two
+      values and only one of them is missing — the box stays open for a different reason
+      than it reads.**  `auth_code` already reaches the database:
+      `ui/src/features/sales/payment/useEdcTenderPhase.ts:149-154` writes it as one key
+      inside the `gatewayResponse` JSON, `crates/oz-core/src/db/sales_checkout.rs:587-600`
+      INSERTs it, `crates/oz-core/src/db/payments.rs:60,85` reads it back, and
+      `ui/src/__tests__/PaymentModalSaleFlow.test.tsx:957-960` asserts that blob today —
+      so **adding a column breaks nothing; deleting the JSON is what goes red.**  It is a
+      string at every layer (`crates/oz-hal/src/drivers/edc/protocol/mod.rs:39` ->
+      `crates/oz-hal/src/traits/edc.rs:65` -> `ui/src/api/edc.ts:26`) and it appears in no
+      migration (`git grep -in auth_code -- crates/oz-core/migrations` -> NOMATCH across
+      all 59), so `scripts/verify-migration-column-types.py:19` engages only if someone
+      types the new column numerically — name that trap, because
+      `crates/oz-hal/src/drivers/edc/protocol/protocol_tests.rs:76-88` pins `"001234"` as
+      a string that only looks like a number.
+      `terminal_id` is the absent half, and it is absent because **the command never takes
+      one**: `crates/oz-bridge/src/edc.rs:27` hardcodes `DEFAULT_TERMINAL_ID` and `:75-79`
+      resolves it unconditionally, and that file's own doc at `:23-26` names the argument
+      change the follow-up that removes it.  So this is an **IPC-surface change, not an
+      ALTER**: `PaymentSplitArg` (`crates/oz-core/src/payment.rs:61-80`) has no such field
+      and is written out in literal shape 72 times across 16 files with no
+      `..Default::default()` anywhere in them; `ui/src/__tests__/api-edc-contract.test.ts:35-38`
+      pins the current `edc_sale` argument shape; and the five EDC commands are registered
+      desktop-only (`apps/desktop-client/src/lib.rs:904-908`, while
+      `apps/tablet-client/src/lib.rs:122` boots the device list and registers none) — a
+      one-shell change on a 453-versus-322 surface.
+      **BLOCKED ON A NAMING RULING, and that is why this stays unticked:** the repo has two
+      things called a terminal — `terminals`, the POS workstation, which every existing
+      `terminal_id` foreign key points at (`shifts`,
+      `crates/oz-core/migrations/20260813_init.sql:642`), and `edc_terminals`, the card
+      reader (`crates/oz-core/migrations/20260824_media_edc.sql:60-73`) — while void/refund
+      must route to the second and the column name says the first.  **RULING NEEDED: does
+      `payments.terminal_id` reference `edc_terminals(id)`, or is the identity meant to be
+      the workstation with the reader recorded elsewhere?**  The wording above ("the same
+      device/batch") does not decide it, and whoever adds a column before it is answered
+      builds the wrong edge and every one of those 72 literals with it.
+      The argument change has **no row of its own**: the neighbours are **Reconcile with the
+      `payment:edc` flag** (a per-terminal *override*, not an argument) and the ticked **Map
+      to checkout**, whose snippet block below already says the `terminal_id` parameter is
+      "the still-open follow-up, not current code".  This row is therefore the closest thing
+      to that item the plan has — a finding about the plan, not about the code.
 - [x] **Map to checkout.** ~~Feed `completeSaleScoped` a `paymentSplit` with
       `method: "EDC"` (or per-bank), `amountMinor`, and `gatewayReference:
       auth_code` (+ terminal id).~~ **Shipped, with three differences from this
