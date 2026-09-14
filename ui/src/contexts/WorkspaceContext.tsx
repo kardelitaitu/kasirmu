@@ -21,6 +21,7 @@ import { createSession, destroySession, refreshPickerTicket, switchOrganization 
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
 import { requiredLocalized, useToast } from "@/frontend/shared";
+import { errorDetail } from "@/utils/app-error";
 import { useLocalization } from "@fluent/react";
 
 
@@ -426,12 +427,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       'workspace-session-token-error',
     );
     setSessionError(message);
+    // The backend reason (clock rollback / denied workspace type / expired
+    // subscription / bad signature) under the error toast's Show detail
+    // toggle, via the ERR-06 normalizer: it contributes the typed
+    // `kind`/`subKind` code and only a redacted server line, so no raw Rust
+    // string (unlocalized, possibly carrying internals) reaches the UI.
+    const detail = errorDetail(err);
     toastRef.current?.addToast({
       type: 'error',
       message,
-      // The backend reason (clock rollback / denied workspace type / expired
-      // subscription / bad signature) under the error toast's Show detail toggle.
-      detail: err instanceof Error ? err.message : String(err),
+      ...(detail ? { detail } : {}),
     });
     console.warn("WorkspaceContext: failed to create session token", err);
   }, []);
