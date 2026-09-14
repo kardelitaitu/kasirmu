@@ -946,12 +946,11 @@ const SCREENS: ScreenEntry[] = [
       'restaurant/components/MenuPreferencesMenu.tsx',
       'restaurant/components/MenuSearchBar.tsx',
     ],
-    knownDynamicFragments: [
-      // Global utility from frontend/themes/components.css (not the screen's
-      // own stylesheet) — the menu card's visible "Add" label moved into an
-      // sr-only span when the + Add affordance became an SVG glyph.
-      'sr-only',
-    ],
+    // Cited, not muted: the sr-only span the menu card's "Add" label moved into
+    // is styled by frontend/themes/components.css:1492, which both entry points
+    // import (main.tsx:7, main.tablet.tsx:20) — so the name is global, not
+    // runtime-composed, and the cite is checkable by the coverage block.
+    parentCss: ['../frontend/themes/components.css'],
   },
 
   // ── Appearance Settings ────────────────────────────────
