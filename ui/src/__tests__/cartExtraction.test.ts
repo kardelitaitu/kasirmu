@@ -44,6 +44,12 @@ const ADDITIONAL_TSX_FILES = [
   // reachability check below would read all 25 pos-close-shift-* rules as
   // dead the moment the markup left the screen file.
   'components/ShiftModals.tsx',
+  // The last two inline modals (open-bill name input, open-bills list), moved
+  // the same way. Their pos-hold-* / pos-held-list-* / pos-held-item-* rules
+  // stay in PosScreen.css, and this file is the only .tsx that still names
+  // them, so the entry is what keeps all 21 reachable now that the markup has
+  // left the screen file.
+  'components/OpenBillModals.tsx',
 ];
 
 /**

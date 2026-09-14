@@ -27,6 +27,7 @@ import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
 import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
+import { OpenBillInput, OpenBillsPanel } from './components/OpenBillModals';
 import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
@@ -733,94 +734,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         onClose={() => setShowPromotions(false)}
       />
 
-      {/* ── Open Bill Input modal ────────────────────── */}
-      {openBillInputExit.shouldRender && (          <div
-            className={`pos-hold-overlay${openBillInputExit.exiting ? ' pos-hold-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-open-bill-overlay-aria')}
-          >
-            <div className={`pos-hold-modal${openBillInputExit.exiting ? ' pos-hold-modal--exiting' : ''}`}>
-            <h3 className="pos-hold-title">{l10n.getString('pos-open-bill-title')}</h3>
-            <p className="pos-hold-desc">
-              {l10n.getString('pos-open-bill-desc')}
-            </p>
-            <input
-              type="text"
-              className="pos-hold-input"
-              placeholder={l10n.getString('pos-open-bill-placeholder')}
-              value={openBillName}
-              onChange={(e) => setOpenBillName(e.target.value)}
-              aria-label={l10n.getString('pos-open-bill-name-aria')}
-            />
-            <div className="pos-hold-actions">
-              <button
-                type="button"
-                className="pos-hold-cancel-btn"
-                onClick={() => {
-                  openBillInputExit.requestClose();
-                  setOpenBillName('');
-                }}
-                disabled={openingBill}
-              >
-                {requiredLocalized(l10n, 'pos-hold-cancel')}
-              </button>
-              <button
-                type="button"
-                className="pos-hold-confirm-btn"
-                onClick={handleOpenBill}
-                disabled={openingBill}
-              >
-                <span>{l10n.getString(openingBill ? 'pos-open-bill-saving' : 'pos-open-bill-save')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* -- Open Bill Input modal / Open Bills panel (components/OpenBillModals) -- */}
+      <OpenBillInput
+        openBillInputExit={openBillInputExit}
+        openBillName={openBillName}
+        setOpenBillName={setOpenBillName}
+        openingBill={openingBill}
+        handleOpenBill={handleOpenBill}
+      />
 
-      {/* ── Open Bills panel ────────────────────────── */}
-      {openBillsExit.shouldRender && (          <div className={`pos-hold-overlay${openBillsExit.exiting ? ' pos-hold-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('pos-open-bills-overlay-aria')}>
-          <div className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
-            <div className="pos-held-list-header">
-              <h3>{l10n.getString('pos-open-bills-title')}</h3>
-              <button
-                type="button"
-                className="pos-held-list-close"
-                onClick={() => openBillsExit.requestClose()}
-                aria-label={l10n.getString('pos-open-bills-close-aria')}
-              >
-                &times;
-              </button>
-            </div>
-            <div className="pos-held-list-body">
-              {openBills.length === 0 ? (
-                <p className="pos-held-list-empty">{l10n.getString('pos-open-bills-empty')}</p>
-              ) : (
-                openBills.map((ob) => (
-                  <div key={ob.id} className="pos-held-item">
-                    <div className="pos-held-item-info">
-                      <span className="pos-held-item-label">
-                        {ob.customer_name || ob.label}
-                      </span>
-                      <span className="pos-held-item-meta">
-                        {ob.item_count} item{ob.item_count !== 1 ? 's' : ''} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="pos-held-item-resume"
-                      onClick={() => handleResumeOpenBill(ob.id)}
-                      aria-label={`${l10n.getString('pos-open-bills-resume')} ${ob.customer_name || ob.label}`}
-                    >
-                      {l10n.getString('pos-open-bills-resume')}
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <OpenBillsPanel
+        openBillsExit={openBillsExit}
+        openBills={openBills}
+        handleResumeOpenBill={handleResumeOpenBill}
+      />
 
       {/* -- Shift modals (Close Shift confirm / summary / Open Shift) -- */}
       <CloseShiftConfirm
