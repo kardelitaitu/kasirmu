@@ -38,16 +38,14 @@ import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 import { NAV_ITEMS, NAV_L10N_KEYS } from '@/features/settings/SettingsNavTree';
 import { SETTINGS_SCREENS } from '@/features/settings/screens/registry';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { KEPT_SECTIONS } from '@/features/settings/hooks/useSettingsHashSection';
 import { withSyncDefaults } from '@/contexts/SettingsContext';
 
-// The accepted-URL-name list, KEPT_SECTIONS, is module-local in
-// ./hooks/useSettingsHashSection.ts (not exported). The sync assertion in the
-// sweep below reads it from that file's own source instead of copying it into
-// a fourth list; the match is asserted non-null, so a renamed or restructured
-// Set literal fails loudly rather than comparing against an empty array.
-const KEPT_SECTIONS_SRC = resolve(__dirname, '..', 'features', 'settings', 'hooks', 'useSettingsHashSection.ts');
+// KEPT_SECTIONS is imported, not copied: the sweep below compares it against the
+// nav items and the screen registry rather than adding a fourth list of the 14
+// section names to this file. The three lists stay independent (exporting the
+// Set is not deriving one from another), which is what keeps that comparison a
+// real assertion.
 
 // Re-export the REAL @/api/branding module, overriding the global stub that
 // test-setup.ts installs: the load/save error-path tests need branding to go
@@ -373,10 +371,7 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
     // from any one of them fails here instead of rendering a blank body.
     const registryKeys = Object.keys(SETTINGS_SCREENS).sort();
     expect(registryKeys).toEqual(NAV_ITEMS.map((n) => n.key).sort());
-    const keptMatch = readFileSync(KEPT_SECTIONS_SRC, 'utf-8')
-      .match(/const KEPT_SECTIONS = new Set\(\[([\s\S]*?)\]\)/);
-    expect(keptMatch, 'KEPT_SECTIONS Set literal not found in useSettingsHashSection.ts').not.toBeNull();
-    const keptNames = (keptMatch?.[1]?.match(/'[^']+'/g) ?? []).map((s) => s.slice(1, -1)).sort();
+    const keptNames = [...KEPT_SECTIONS].sort();
     expect(registryKeys).toEqual(keptNames);
 
     await openShell();

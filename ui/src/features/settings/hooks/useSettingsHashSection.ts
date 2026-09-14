@@ -30,8 +30,12 @@ import { useCallback, useEffect, useState } from 'react';
  * removed in the hub redesign is ignored and the page opens on its default instead of an
  * empty body. Module scope on purpose: the hash effect in the component closes over this
  * and must not see a new Set on every render.
+ *
+ * Exported only so SettingsPage.test.tsx can assert it against the nav items and the
+ * screen registry; nothing outside this module reads it, and none of the three lists
+ * derives from another - that independence is what makes the assertion able to fail.
  */
-const KEPT_SECTIONS = new Set([
+export const KEPT_SECTIONS = new Set([
   'general', 'license-subscription', 'devices-connectivity', 'business-defaults',
   'features-modules', 'security-account', 'data-sync', 'data-management',
   'sync-status', 'sync-conflicts', 'offline-queue', 'tax-configuration', 'exchange-rates', 'system-diagnostics',
