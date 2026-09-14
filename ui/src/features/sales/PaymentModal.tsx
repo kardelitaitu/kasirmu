@@ -17,7 +17,7 @@ import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
-import { railOffered, staticQrisPayload, useLocalPaymentRails } from './useLocalPaymentRails';
+import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods } from './useLocalPaymentRails';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -88,6 +88,10 @@ export default function PaymentModal({
   // surface for "does this location offer QRIS" (the master doc's
   // payment:* keys were never implemented). Fail-open until loaded.
   const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+  // visibleMethods() owns which tabs the tender list offers; the two reads
+  // below are the gates that live OUTSIDE that list -- qrisOffered also kicks
+  // the selection back to cash when a reload withholds QRIS, and edcOffered
+  // gates only the pay-on-terminal button inside the card panel.
   const qrisOffered = railOffered(paymentRails, 'qris');
   const edcOffered = railOffered(paymentRails, 'edc');
   // Manual QRIS shows the merchant's real static QR when the rail
@@ -1499,9 +1503,7 @@ export default function PaymentModal({
                     <legend className="payment-section-title">Payment Method</legend>
                   </Localized>
                   <div className="payment-method-options">
-                    {(['cash', 'card', 'qris', 'credit'] as const)
-                      .filter((m) => qrisOffered || m !== 'qris')
-                      .map((m) => (
+                    {visibleMethods(paymentRails).map((m) => (
                       <label key={m} className="payment-method-label" data-testid="quick-pay-button">
                         <input
                           type="radio"

@@ -1252,4 +1252,81 @@ describe('PaymentModal — local payment rails gating', () => {
     // ...and refuses to launder a malformed bag into fresh JSON.
     expect(writeStaticQrPayload('{oops', 'PAY')).toBe('{oops');
   });
+
+  // ── PINNED tender list ───────────────────────────────────────────
+  //
+  // These four cases pin TODAY'S rendered tender list, not new behaviour:
+  // each asserts the exact ordered set of `payment-method` radios the
+  // operator sees for one named rail configuration, read from the DOM in
+  // document order. They exist as the equivalence harness for the
+  // `visibleMethods` derivation (todo-payment.md :315) that replaces the
+  // hardcoded literal at PaymentModal.tsx:1501. If any of them changes
+  // when the literal is replaced, the derivation and what rendered before
+  // disagree — that is a product ruling, not a refactor.
+  //
+  // `other` and `open_bill` are asserted too even though they are fixed
+  // markup outside the literal: they are part of what the operator sees,
+  // and a derivation that grew to cover the whole group has to keep them
+  // in this position.
+  const renderedTenders = async (rails: unknown[] | 'reject'): Promise<string[]> => {
+    const { view, restore } = await mountWithRails(rails);
+    try {
+      // The rails fetch resolves on mount; wait for a rail-gated outcome
+      // before reading the list so the read is post-settle, not mid-fetch.
+      await waitFor(() =>
+        expect(view.container.querySelector('input[name="payment-method"]')).not.toBeNull(),
+      );
+      return Array.from(
+        view.container.querySelectorAll<HTMLInputElement>('input[name="payment-method"]'),
+      ).map((input) => input.value);
+    } finally {
+      restore();
+      view.unmount();
+    }
+  };
+
+  const ALL_TENDERS = ['cash', 'card', 'qris', 'credit', 'other', 'open_bill'];
+
+  it('PINNED: every rail offered renders cash, card, qris, credit, other, open bill', async () => {
+    expect(
+      await renderedTenders([
+        rail(true),
+        { rail_code: 'edc', label: 'EDC', is_enabled: true, scope: 'location', parameters: '{}' },
+      ]),
+    ).toEqual(ALL_TENDERS);
+  });
+
+  it('PINNED: an edc-withheld site renders the SAME tender list (the rail gates the terminal button, not the card tab)', async () => {
+    const edcWithheld = [
+      rail(true),
+      { rail_code: 'edc', label: 'EDC', is_enabled: false, scope: 'location', parameters: '{}' },
+    ];
+    // Same ordered set as the all-rails-on configuration above.
+    expect(await renderedTenders(edcWithheld)).toEqual(ALL_TENDERS);
+    // ...and the difference the rail DOES make lives inside the card panel:
+    // no pay-on-terminal button, manual card still selectable.
+    const { view, restore } = await mountWithRails(edcWithheld);
+    try {
+      await userEvent.click(await screen.findByRole('radio', { name: /card/i }));
+      expect(screen.queryByRole('button', { name: /pay on card terminal/i })).toBeNull();
+      expect(screen.getByRole('radio', { name: /card/i })).toBeChecked();
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('PINNED: a disabled qris rail drops qris from the middle of the list, in place', async () => {
+    expect(await renderedTenders([rail(false)])).toEqual([
+      'cash',
+      'card',
+      'credit',
+      'other',
+      'open_bill',
+    ]);
+  });
+
+  it('PINNED: an empty rail list fails open to the full tender list', async () => {
+    expect(await renderedTenders([])).toEqual(ALL_TENDERS);
+  });
 });
