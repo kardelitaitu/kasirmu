@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 76 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 77 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 76/233/33 as of this edit: (3 x 76) + 4 + 1 = 233,
+// 902e07678, and 77/236/32 as of this edit: (3 x 77) + 4 + 1 = 236,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1153,6 +1153,19 @@ const SCREENS: ScreenEntry[] = [
     tsx: 'kds/components/KdsEnrollmentModal.tsx',
     css: ['kds/components/KdsEnrollmentModal.css'],
   },
+  {
+    // 193-line indicator over a 127-line sheet (import :10), mounted by
+    // kds/components/KdsHeaderRight.tsx:39, JSX :115. Case 1 is clean unaided:
+    // case 3 was red on kds-device-status--connected/--disconnected/--stale, which
+    // are literals in the table at :49/:53/:57 but reach the DOM only through the
+    // interpolated local at :143, so the sheet-level prefix below is the honest
+    // shape - it is NOT the PromotionsModal case, where a value in a comparison
+    // position never becomes a class at all and needs knownDynamicFragments instead.
+    name: 'KdsDeviceStatusIndicator',
+    tsx: 'kds/components/KdsDeviceStatusIndicator.tsx',
+    css: ['kds/components/KdsDeviceStatusIndicator.css'],
+    dynamicClassPrefixes: ['kds-device-status--'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1297,7 +1310,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 33 entries is a named path, not a prefix, not a
+// every one of its 32 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1310,7 +1323,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 33 since, one line per sheet a landed entry cited, and
+// it has shrunk to 32 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1325,7 +1338,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/ThresholdConfigScreen.css',
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
-  'kds/components/KdsDeviceStatusIndicator.css',
   'locations/NodeTopologyEditor.css',
   'locations/TopologyApplyConfirm.css',
   'locations/TopologyRevisionBrowser.css',
