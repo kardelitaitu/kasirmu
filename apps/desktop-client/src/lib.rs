@@ -18,7 +18,9 @@ next: none | perf: N/A
 //! 3. Document the command in the `tauri-ipc` skill.
 //!
 //! After the Wave E/F extraction, `oz-bridge` carries the command logic; this
-//! shell keeps the daemon-residue modules (local_api, pg_sync) and the 448-entry `tauri::generate_handler` list.
+//! shell keeps the daemon-residue modules (local_api, pg_sync) and the 453-entry
+//! `tauri::generate_handler` list (measured 2026-09-14) — re-measure it with
+//! `python scripts/verify-ipc-parity.py` instead of trusting the number here.
 
 /// All `#[tauri::command]` handlers, organised by domain.
 pub mod commands;
