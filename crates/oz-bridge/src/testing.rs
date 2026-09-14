@@ -241,6 +241,73 @@ pub const FAIL_CLOSED_TIER: &str = "free";
 /// sees `FAIL_CLOSED_STATE` must see this on every gate as well.
 pub const FAIL_CLOSED_GATES_LOCKED: bool = false;
 
+/// The release leg shared by every fixture this campaign forked on `seeded_row_loads`.
+///
+/// A command that propagates the seeded subscription row (`sub.verify_signature()?` -
+/// `staff.rs:1080`, `auth.rs:617`, `terminals.rs:432`, `workspaces.rs:232`,
+/// `inventory` create-location and the profile-scoped location commands) RETURNS AN
+/// ERROR in the release profile, because the BOOTSTRAP_FREE sentinel that seeds the
+/// row is accepted only under `#[cfg(debug_assertions)]` and otherwise dies in the
+/// base64 decoder. So the release arm has no result to project: no DTO, no id, no
+/// written row - which is why `FAIL_CLOSED_*` never appears as anything but an
+/// `assert_eq!` right-hand side, and why no row-counting fixture may use this helper
+/// at all (release writes skip only `loaded: true`, `audit_security.rs:389`).
+///
+/// Existence is pinned FIRST: `seeded_row_loads() == false` collapses five distinct
+/// causes (`:210-216` above - no default row, a load `Err`, a public-key failure, the
+/// intended sentinel reject, a genuine RSA mismatch) and only the last two are fixture
+/// vocabulary, so a broken migration must never be able to read as a profile
+/// difference. Then the tier the caller expects is checked ON THE ROW THE PIN READS
+/// (`lock_global()`), which is where the locations trap was found: a re-tier written
+/// through `db_manager().open_store(..)` lands in the store db, not here.
+///
+/// Wave-one extraction note: this is the MAJORITY form of eight file-local copies.
+/// Seven take the settled result as `settled` and say "the command must have been
+/// refused"; `workspaces_tests.rs` alone names it `listed` and says "the listing",
+/// and its row message reads "lists against" where the others say "mutates against",
+/// "signs a session against", "writes against" and so on. No copy differed in an
+/// assertion - all eight carry the same five, with a byte-identical existence-pin
+/// message - so the drift is vocabulary only and wave two must expect to lose those
+/// domain words from two assert messages per file, not to change behaviour.
+pub async fn assert_refused_by_the_seeded_row<T>(
+    tb: &TestBridge,
+    settled: Result<T, crate::error::BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = tb.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture drives must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the command must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            crate::error::BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
+
 /// Owns the backing state a borrowed `BridgeCtx` points at.
 ///
 /// The bridge crate holds no global state, so a test needs one owner for the

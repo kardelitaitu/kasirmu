@@ -11,58 +11,7 @@
 //! `AppError` -> `BridgeError` rename.
 use super::*;
 use crate::testing::TestBridge;
-use crate::testing::seeded_row_loads;
-use oz_core::subscription::TenantSubscription;
-
-/// The release leg for a staff command this file drives through the subscription gate.
-/// create_staff_scoped calls sub.verify_signature()? at staff.rs:1080 and propagates
-/// it, so in release the command RETURNS AN ERROR before the tier limit, before the
-/// write and before any audit call: no DTO, no row, nothing for a fail-closed
-/// projection to describe - FAIL_CLOSED_* appears nowhere in this file.
-///
-/// Ethe row this fixture writes staff against must be the row the fork predicate is aboutistence is pinned FIRST, because seeded_row_loads() == false is also the answer
-/// for a lost default row, a load Err, a public-key failure, the intended base64
-/// reject on the BOOTSTRAP_FREE sentinel, or a genuine RSA mismatch
-/// (testing.rs:210-216) - only the last two are this fixture vocabulary.
-///
-/// The stamp is per fixture, not a constant: seed_subscription_tier writes tier_key
-/// into the SAME temp_conn() that is then moved into with_conn, so pin and re-tier
-/// address one row and the locations two-table trap cannot fire here - but which row
-/// the pin reads is pro / plus / free depending on the caller.
-async fn assert_refused_by_the_seeded_row<T>(
-    tb: &TestBridge,
-    settled: Result<T, BridgeError>,
-    stamped_tier: &str,
-) {
-    let ctx = tb.ctx();
-    let db = ctx.lock_global().await;
-    let row = TenantSubscription::load(&db, "default")
-        .expect("the tenant_subscription read must succeed")
-        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
-    assert_eq!(
-        row.tier.tier_key(),
-        stamped_tier,
-        "the tier this fixture inherits must be on the row the release arm reads"
-    );
-    assert_eq!(row.verify_signature().is_ok(), seeded_row_loads(), "x");
-    drop(db);
-    let err = match settled {
-        Err(err) => err,
-        Ok(_) => panic!(
-            "this leg runs only where the seeded row does not verify, so the command must have been refused"
-        ),
-    };
-    assert!(
-        matches!(
-            err,
-            BridgeError::Core {
-                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
-                ..
-            }
-        ),
-        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
-    );
-}
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 // ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
 // The desktop tests called the shell commands with (token, args, State)
