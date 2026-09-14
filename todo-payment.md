@@ -466,18 +466,18 @@ graph TD
 > the `:322` sentence it corrects stands verbatim, per this file's convention.** "**no
 > `visibleMethods` symbol in any source file**" is FALSE as of `994c0e364` (2026-09-14,
 > *"refactor(sales): derive the tender tab list from the rails with visibleMethods"*,
-> +125/-4 over 3 files). Re-measured: `git grep -n visibleMethods -- ui/src` → **7 hits in
-> 3 files** — the definition `ui/src/features/sales/useLocalPaymentRails.ts:76` (`export
-> function visibleMethods(rails: LocalPaymentRail[] | null): TenderMethod[]`) and its note
-> at `:47`; `PaymentModal.tsx` import `:20`, comments `:59` and `:119`, render site `:1534`;
-> plus one test comment, `PaymentModalSaleFlow.test.tsx:1262`, which cites this doc's `:315`
-> by name. So the derivation this note says is missing HAS a home now; only its
-> `online-capable` term is unimplemented (`:382`). The hardcoded tab literal is gone from
-> the tender strip — the only `['cash', 'card']` left in the modal (`PaymentModal.tsx:1681`)
-> is the split-row method radio, not the tab list. **Do not read the claim above as
-> evidence that the derivation does not exist.** And do not tick `:713` from this line
-> either: `:713` stays open, and the authority doc's R-list — not this file — decides when
-> it closes.
+> +125/-4 over 3 files). Re-measured at HEAD `8229bd2b9`: `git grep -n visibleMethods --
+> ui/src` → **6 hits in 3 files** (7 in today's dirty tree) — the definition at
+> `ui/src/features/sales/useLocalPaymentRails.ts:76`, `export function visibleMethods(rails:
+> LocalPaymentRail[] | null): TenderMethod[]`, plus its note at `:47`; `PaymentModal.tsx`
+> import `:20`, comment `:91`, render site `:1506`; and one test comment,
+> `PaymentModalSaleFlow.test.tsx:1262`, which cites this doc's `:315` by name. So the
+> derivation this note says is missing HAS a home now; only its `online-capable` term is
+> unimplemented (`:382`). The hardcoded tab literal is gone from the tender strip — the only
+> `(['cash', 'card'] as const)` left in the modal (`PaymentModal.tsx:1653` at this HEAD) is
+> the split-row method radio, not the tab list. **Do not read the claim above as evidence
+> that the derivation does not exist.** And do not tick `:713` from this line either:
+> `:713` stays open, and the authority doc's R-list — not this file — decides when it closes.
 
 ### Phase 1 — Cash (always available)
 - [ ] Confirm cash is a constant with no config/flag. (Likely no code change.)
