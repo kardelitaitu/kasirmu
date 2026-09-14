@@ -519,3 +519,51 @@ wizard can clobber these rows" is NOT measured and must not be repeated as fact.
 ~5 extra IPC reads per Save — the last paragraph of that same `SAFETY:` header block — bounded by that one file.
 
 > last audited 2026-09-14 by DSH (docs subagent); counts re-measured with read/grep against C:/dev/ozpos
+
+---
+
+## Sections reachability audit (2026-09-15, HEAD f0ad9b170e)
+
+SHA read: **f0ad9b170e** (`git rev-parse --short=10 HEAD`) — the same tip the brief named as
+`f0ad9b170`; the tree had not moved. This block is an audit, not a box: NO box was opened, ticked or
+unticked here (open 2 before and 2 after, done 8 before and 8 after, both grep forms).
+
+### The five claims, each with the command that re-measured it
+
+| # | Command | What it returned |
+|---|---|---|
+| 1 | `wc -l ui/src/features/settings/sections/*` | 7 section .tsx = **2,016 ln** (176+156+226+205+429+257+567) + `DiagnosticsSection.css` 55 ln = 2,071 total. |
+| 1b | `git grep -nE "from '.'.*sections/[A-Za-z]" -- ui/src` | 11 import lines in 9 files, **every one under `ui/src/__tests__/`** — zero production importers of any section. |
+| 2 | `sed -n '63,66p' ui/src/features/settings/SettingsPage.tsx` | exactly `function renderSection(key: string) { const Screen = SETTINGS_SCREENS[key]; return Screen ? <Screen /> : null; }`. |
+| 2b | `grep -c sections ui/src/features/settings/screens/registry.ts` | **0**. The map at :27-42 holds 14 keys: 13 `./…Screen` lazy imports + `../../sync/SyncConflictReviewScreen`. No entry points at `sections/`. |
+| 3 | `grep -c settings-screen-placeholder` over each of the 14 mounted screens | **14 of 14** carry the placeholder shell and the `settings-screen-migrating` note ("Existing settings content will move here selectively."); **12 of 14** also carry "This page is being rebuilt." — the two that do not are `BusinessDefaultsScreen` and `SyncConflictReviewScreen`, the only two with real content. **The census figure 13 is wrong and must not be repeated.** |
+| 4 | `grep -cE 'onChange|<input|<select|<textarea' SettingsPage.tsx` → 0; `grep -cE 'set[A-Za-z]+.snap\.' SettingsPage.tsx` → 11 | No control markup on the page at all, yet `displayCardSize` is at :143 and `brandColour` at :146, both restored in the revert path at :198 and :201, and `interface SettingsSnapshot` (:41) carries 11 read/write restore sites (:192-202) plus its write at :243. |
+| 5 | `grep -n 'settings/sections/' ui/src/__tests__/screenExtraction.test.ts` | five sections registered as `additionalTsx` of the `SettingsPage` entry — General, Appearance, Receipt, Sync, About — at **:318-322** (the brief cited :317-321; it is off by one). `LocalApiSection` and `DiagnosticsSection` count 0 there. |
+
+### The bucket table
+
+| Bucket | n | File | Lines | Props | Why this bucket |
+|---|---|---|---|---|---|
+| ORPHAN | 1 | `LocalApiSection.tsx` | 429 | **0** | Self-sufficient, no nav key names it, and NOT in the guard's `additionalTsx` — its markup is invisible to the a11y and dead-class walks, so nothing grades it. |
+| PARKED | 3 | `GeneralSection.tsx` | 205 | **11** | Includes `store: StoreSettingsDto`. Named as the migration source by `screens/GeneralScreen.tsx:4`. Census said 10 props; the interface at :13-26 declares 11. |
+| | | `DiagnosticsSection.tsx` | 226 + 55 css | **0** | Census said 6 props — **false**: `export default function DiagnosticsSection()` at :50 takes none. Named by `screens/SystemDiagnosticsScreen.tsx:4`; also unregistered in the guard. |
+| | | `SyncSection.tsx` | 567 | **35** | Census said 37; the interface at :76-115 declares 35. Named by `screens/DataSyncScreen.tsx:4` and `SyncStatusScreen.tsx:4`. Not a wiring fix — days of work. |
+| DEAD | 3 | `ReceiptSection.tsx` | 257 | 5 | Shipped successor `screens/ReceiptFormatSettingsCard.tsx` (488 ln) mounted inside `BusinessDefaultsScreen` — import at :13, render at :26. |
+| | | `AboutSection.tsx` | 176 | 5 | No `about` key among the 14, so unreachable by construction. No successor exists. |
+| | | `AppearanceSection.tsx` | 156 | 12 | No `appearance` key among the 14, so unreachable by construction. A second unmounted body of the same UI lives at `features/settings/AppearanceSettings.tsx` (526 ln) which IS registered as a screen at `screenExtraction.test.ts:651-653` — the guard walks the copy while both stay orphaned. |
+
+**Taxonomy, in one line:** this is neither orphan, nor dead, nor pending-indirection — it is
+**parked-by-design content of record with live state and dead UI**, because the page still loads and
+saves settings whose controls no user can reach.
+
+### Two options on the guard — recorded as open questions, both deliberately left undone
+
+*Q1: de-register the five sections from `screenExtraction.test.ts:318-322`?* It would restore the truth
+that no user reaches this markup, but it deletes a real check from files that still exist and still
+compile, so their a11y and dead-class coverage silently becomes nobody's problem. Not done tonight.
+
+*Q2: add a mount-reachability check to that guard (every `additionalTsx` must have a registry key)?*
+It would catch this drift permanently, but on today's tree it goes red on five knowns at once and
+poisons a shared gate other lanes are committing against. The honest form is an explicit dated
+allowlist, which is a separate decision the plan owner signs — also not written here.
+> last audited 2026-09-15 by DSH (settings lane) · every figure above re-measured against C:/dev/ozpos at f0ad9b170e by the command named in its own row.
