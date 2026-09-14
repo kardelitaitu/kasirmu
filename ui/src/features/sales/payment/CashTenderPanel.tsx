@@ -21,11 +21,12 @@
  * this shape and changed what the button tendered. Do not simplify it, do not
  * turn it into a float division, do not reorder it.
  *
- * `formatMinorUnits` is the page's minor-units → decimal-literal helper, passed IN
- * rather than duplicated so there stays exactly one definition of how an amount
- * input's literal is spelled. That spelling is load-bearing: the value must
- * round-trip back through `parseMinorUnits` at the same exponent, which formatMoney
- * output (“Rp 10.000”) does not.
+ * The minor-units → decimal-literal helper is imported from ./moneyFormat, the
+ * shared home both this panel and PaymentModal's `autoSplitEvenly` compile against,
+ * so there stays exactly one definition of how an amount input's literal is
+ * spelled. That spelling is load-bearing: the value must round-trip back through
+ * `parseMinorUnits` at the same exponent, which formatMoney output (“Rp 10.000”)
+ * does not.
  *
  * Strings: `l10n` comes from the Fluent context, so the ids move with the
  * markup — payment-amount-tendered / -tendered-input / -quick-tender-aria /
@@ -40,6 +41,7 @@
  */
 import { Localized, useLocalization } from '@fluent/react';
 import { formatMoney, minorUnitExponent, type Money } from '@/types/domain';
+import { minorUnitsToInputString } from './moneyFormat';
 
 export interface CashTenderPanelProps {
   /** The tender input string, verbatim (the shell's `tendered` state). */
@@ -56,8 +58,6 @@ export interface CashTenderPanelProps {
   change: Money | null;
   /** Resolved locale, for the quick-tender button labels. */
   locale: string;
-  /** Minor units → the decimal literal the tender input holds. The page's own helper, passed so it stays single-defined. */
-  formatMinorUnits: (minor: number, exp: number) => string;
 }
 
 /** The cash method panel: tender entry, quick-tender keypad, change preview. */
@@ -69,7 +69,6 @@ export default function CashTenderPanel({
   sufficient,
   change,
   locale,
-  formatMinorUnits,
 }: CashTenderPanelProps) {
   const { l10n } = useLocalization();
 
@@ -103,7 +102,7 @@ export default function CashTenderPanel({
           const quickMinor = Number((targetMinorUnits / denomMinor + ceilStep) * denomMinor);
           // What the tender input holds must be a decimal literal; what the
           // button shows is display money, so it goes through the formatter.
-          const quickInput = formatMinorUnits(quickMinor, exp);
+          const quickInput = minorUnitsToInputString(quickMinor, exp);
           return (
             <button
               key={amount}
@@ -124,7 +123,7 @@ export default function CashTenderPanel({
             const exp = minorUnitExponent(total.currency);
             // Exact tender: the total itself, rendered as the input's
             // decimal literal by integer digit placement, not float division.
-            onTenderedChange(formatMinorUnits(Number(total.minor_units), exp));
+            onTenderedChange(minorUnitsToInputString(Number(total.minor_units), exp));
           }}
         >
           <Localized id="payment-tender-exact">

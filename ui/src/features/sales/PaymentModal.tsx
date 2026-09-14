@@ -31,6 +31,7 @@ import { useMultiCurrency } from './payment/useMultiCurrency';
 import { useTenderMath } from './payment/useTenderMath';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
+import { minorUnitsToInputString } from './payment/moneyFormat';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -49,27 +50,6 @@ interface SplitRow {
 // narrowed sub-component types the later slices add). Re-exported here so a future
 // `import type { PaymentModalProps } from '.../PaymentModal'` still resolves.
 export type { PaymentModalProps };
-
-/**
- * Render integer minor units as the plain decimal literal an editable amount
- * `<input>` needs — 350 with exp 2 → "3.50", 10000 with exp 0 → "10000" — so the
- * value round-trips back through `parseMinorUnits` unchanged.
- *
- * Deliberately NOT `formatMoney`: that is the *display* formatter, and its output
- * ("Rp 10.000") is not a decimal literal — `parseMinorUnits` returns `null` for
- * it, which would silently zero the tender. Digit placement here is pure
- * integer/string arithmetic, so no money value passes through a binary float
- * (same shape as `millionthsToDecimalString` in `@/types/domain`). It agrees with
- * the exact quotient for every input: an integer scaled by 10^exp has at most
- * `exp` fractional digits, so nothing is ever rounded.
- */
-function minorUnitsToInputString(minor: number, exp: number): string {
-  const digits = String(Math.trunc(Math.abs(minor))).padStart(exp + 1, '0');
-  const body = exp > 0
-    ? `${digits.slice(0, digits.length - exp)}.${digits.slice(digits.length - exp)}`
-    : digits;
-  return minor < 0 ? `-${body}` : body;
-}
 
 /** Payment processing modal — method selection (cash, card, QRIS, open bill, credit), split tender, customer/loyalty, multi-currency, and change calculation. */
 export default function PaymentModal({
@@ -1645,7 +1625,6 @@ export default function PaymentModal({
                     sufficient={sufficient}
                     change={change}
                     locale={locale}
-                    formatMinorUnits={minorUnitsToInputString}
                   />
                 )}
 
