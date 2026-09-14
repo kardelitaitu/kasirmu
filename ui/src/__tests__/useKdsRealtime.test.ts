@@ -12,10 +12,19 @@
  * because adds=1/removes=0 satisfies it; only post-unmount removes === adds
  * fails that mutation. So both are asserted.
  *
- * First to fail per seeded mutation (measured): registration/2 + registration/3
- * deps widened to fetchOrders · teardown/1 + teardown/2 + late/1 unlisten
- * deleted · late/1 ALONE (1 failed / 5 passed) fetchOrders captured in a
- * closure instead of read through the ref — that one is a genuine sole catcher.
+ * First to fail per seeded mutation (measured, 7 cases): registration/2 +
+ * registration/3 deps widened to fetchOrders · teardown/1 + teardown/2 +
+ * late/1 unlisten deleted · late/1 ALONE (1 failed / 5 passed) fetchOrders
+ * captured in a closure instead of read through the ref — that one is a
+ * genuine sole catcher · late/2 ALONE (1 failed / 6 passed) the `.then` guard
+ * at useKdsRealtime.ts:95-96 replaced by `unlisten = fn` unconditionally.
+ *
+ * late/2 IS THE ONLY ASSERTION IN THIS FILE OF THAT LATE-SETTLE BRANCH. Every
+ * other case awaits settle() before unmounting, so the fake listen's already
+ * resolved promise (see the mock below) always took the else-branch and :95
+ * never ran. It asserts nothing about the other two places this guard shape
+ * exists (ui/src/hooks/useUnsavedChangesGuard.ts:81,
+ * ui/src/features/kds/ExpoScreen.tsx:195) — those stay uncovered here.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
@@ -410,5 +419,45 @@ describe('useKdsRealtime - late resolution', () => {
 
     unmount();
     expect(tauriCounts()).toEqual({ adds: 1, removes: 1 });
+  });
+
+  it('calls the unlisten ITSELF when listen settles after the hook already unmounted', async () => {
+    // THE LATE-SETTLE BRANCH: useKdsRealtime.ts:95 `if (cancelled) fn();`.
+    // No other case in this file can reach it, because the fake listen above
+    // returns Promise.resolve(unlisten) and every case awaits settle() BEFORE
+    // unmounting - so the .then always takes the else at :96 and the cleanup
+    // at :112 is the thing that unlistens. Here the hook is mounted and
+    // unmounted with NO await between them: microtasks cannot run in between,
+    // so cleanup executes while `unlisten` is still undefined (:112 is a
+    // no-op) and :111 has set cancelled = true. Once settle() lets the .then
+    // fire, :95 is the ONLY remaining code that can call the resolved fn. If
+    // the guard is not there, the subscription leaks and removes stays 0.
+    const f1 = makeFetch('f1');
+    const { unmount } = mountHook(f1, { current: null });
+
+    // Synchronous: no await, therefore no microtask boundary, therefore the
+    // .then has not run yet.
+    unmount();
+
+    // The visibilitychange half of the same cleanup DID run, so this is a real
+    // unmount - but the Tauri side cannot have been released yet: nothing had
+    // handed the hook an unlisten to call.
+    expect(visCounts()).toEqual({ adds: 1, removes: 1 });
+    expect(live.size).toBe(0);
+    expect(tauriCounts()).toEqual({ adds: 1, removes: 0 });
+    expect(tauriSubs()[0]?.unlistenCount()).toBe(0);
+
+    // Now let the in-flight promise resolve, after the mount is gone.
+    await settle();
+
+    // The guard ran: exactly one release, from the late .then, and the counted
+    // add/remove seam is balanced with nothing live left behind.
+    expect(tauriSubs()[0]?.unlistenCount()).toBe(1);
+    expect(tauriCounts()).toEqual({ adds: 1, removes: 1 });
+    expect(visCounts()).toEqual({ adds: 1, removes: 1 });
+    expect(live.size).toBe(0);
+    // Nothing re-subscribed on the way out: the late .then released the ONE
+    // subscription this mount created, so the seam is closed, not rebuilt.
+    expect(tauriSubs()).toHaveLength(1);
   });
 });
