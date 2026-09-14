@@ -32,6 +32,7 @@ import { useTenderMath } from './payment/useTenderMath';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import { minorUnitsToInputString } from './payment/moneyFormat';
+import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -587,34 +588,15 @@ export default function PaymentModal({
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
-        const qrisReceiptData: PrintSalesReceiptArgs = {
-          date: new Date().toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-          }),
-          receiptNumber: `SALE-${saleResult.saleId}`,
-          items: lineItemsInCartCurrency.map((line, i) => {
-            const computedLine = completedSale?.lines?.[i];
-            const tax = computedLine?.tax_amount
-              ? { minorUnits: computedLine.tax_amount.minor_units, currency: computedLine.tax_amount.currency }
-              : null;
-            return {
-              name: line.name ?? line.sku,
-              quantity: line.qty,
-              unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
-              totalPrice: {
-                minorUnits: line.unit_price.minor_units * line.qty,
-                currency: line.unit_price.currency,
-              },
-              ...(tax ? { taxAmount: tax } : {}),
-            };
-          }),
-          subtotal: completedSale
-            ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
-            : { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
-          ...(completedSale && completedSale.taxTotal && completedSale.taxTotal.minor_units > 0
-            ? { tax: { minorUnits: completedSale.taxTotal.minor_units, currency: cartCurrency } }
-            : {}),
-          total: { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
+        setReceiptArgs(buildCompletedSaleReceipt({
+          saleId: saleResult.saleId,
+          saleTotal: saleResult.total,
+          completedSale,
+          cartLines: lineItemsInCartCurrency,
+          cartCurrency,
+          fallbackTotalMinor: effectiveTotalInCartCurrency,
+          // The one field this site and the direct-checkout site below really
+          // do differ: a gateway sale is a single QRIS tender with no change.
           payments: [
             {
               method: 'QRIS',
@@ -622,9 +604,8 @@ export default function PaymentModal({
               change: null,
             },
           ],
-          ...(tableNumber ? { tableNumber } : {}),
-        };
-        setReceiptArgs(qrisReceiptData);
+          tableNumber,
+        }));
       } catch {
         // Sale fetch may fail in edge cases — non-blocking.
       }
@@ -992,34 +973,15 @@ export default function PaymentModal({
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
-        const receiptData: PrintSalesReceiptArgs = {
-          date: new Date().toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-          }),
-          receiptNumber: `SALE-${saleResult.saleId}`,
-          items: lineItemsInCartCurrency.map((line, i) => {
-            const computedLine = completedSale?.lines?.[i];
-            const tax = computedLine?.tax_amount
-              ? { minorUnits: computedLine.tax_amount.minor_units, currency: computedLine.tax_amount.currency }
-              : null;
-            return {
-              name: line.name ?? line.sku,
-              quantity: line.qty,
-              unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
-              totalPrice: {
-                minorUnits: line.unit_price.minor_units * line.qty,
-                currency: line.unit_price.currency,
-              },
-              ...(tax ? { taxAmount: tax } : {}),
-            };
-          }),
-          subtotal: completedSale
-            ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
-            : { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
-          ...(completedSale && completedSale.taxTotal && completedSale.taxTotal.minor_units > 0
-            ? { tax: { minorUnits: completedSale.taxTotal.minor_units, currency: cartCurrency } }
-            : {}),
-          total: { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
+        const receiptData = buildCompletedSaleReceipt({
+          saleId: saleResult.saleId,
+          saleTotal: saleResult.total,
+          completedSale,
+          cartLines: lineItemsInCartCurrency,
+          cartCurrency,
+          fallbackTotalMinor: effectiveTotalInCartCurrency,
+          // Differs from the gateway site on purpose: split mode prints one row
+          // per tender, and a single cash tender prints with its real change.
           payments: paymentSplits
             ? paymentSplits.map((ps) => ({
                 method: ps.method,
@@ -1035,8 +997,8 @@ export default function PaymentModal({
                     : null,
                 },
               ],
-          ...(tableNumber ? { tableNumber } : {}),
-        };
+          tableNumber,
+        });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
       } catch {
