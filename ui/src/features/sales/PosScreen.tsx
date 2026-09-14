@@ -28,7 +28,6 @@ import { CartPanel } from './components/CartPanel';
 import type { CartPanelProps } from './components/CartPanel';
 import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
 import { OpenBillInput, OpenBillsPanel } from './components/OpenBillModals';
-import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
@@ -37,6 +36,7 @@ import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
 import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
+import { useCartResize } from './hooks/useCartResize';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
@@ -174,20 +174,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [tableNumber, setTableNumber] = useState('');
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
 
-  // ── Cart panel resize state ─────────────────────────────────────────────
-  // Viewport-aware so the panel can grow on wide screens (up to half
-  // the viewport, capped at 1200 px) but stays ≥ 320 px for legibility.
-  const [cartWidth, setCartWidth] = useState(() => {
-    const saved = localStorage.getItem('pos-cart-width');
-    const parsed = saved ? parseInt(saved, 10) : NaN;
-    const initial =
-      Number.isFinite(parsed) && parsed > 0 ? parsed : CART_WIDTH_DEFAULT;
-    const viewportWidth =
-      typeof window !== 'undefined' ? window.innerWidth : CART_WIDTH_DEFAULT * 2;
-    return clampCartWidth(initial, viewportWidth);
-  });
-  const isResizing = useRef(false);
-  const posScreenRef = useRef<HTMLDivElement>(null);
+  // ── Cart panel resize ──────────────────────────────────
+  // Width state, the isResizing latch, both window listeners and the drag
+  // handle live in hooks/useCartResize. posScreenRef comes back from it because
+  // the drag maths is that ref's only reader - the shell still binds it to the
+  // root div below, and cartPanelRef stays here as a pure CartPanel prop.
+  const { cartWidth, startResize, posScreenRef } = useCartResize();
   // ── Cart-line DOM refs for keyboard navigation ─────────────────────────
   // Each registered DOM node is the `<div class="pos-cart-line">` element.
   // The handler reads/writes focus so ↑/↓/+/-/Del/Enter work without
@@ -202,53 +194,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     },
     [],
   );
-
-  const startResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  useEffect(() => {
-    const stopResize = () => {
-      if (!isResizing.current) return;
-      isResizing.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current || !posScreenRef.current) return;
-      const rect = posScreenRef.current.getBoundingClientRect();
-      const clamped = clampCartWidth(rect.right - e.clientX, window.innerWidth);
-      setCartWidth(clamped);
-      // Persist the clamped value so the next launch on this
-      // display picks up the most recent *applied* width.
-      localStorage.setItem('pos-cart-width', String(clamped));
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', stopResize);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', stopResize);
-      stopResize();
-    };
-  }, []);
-
-  // Re-clamp the cart width whenever the window is resized —
-  // important when the cashier drags the window to a different
-  // monitor, or a docked laptop reconnects to its 4K display.
-  useEffect(() => {
-    const onResize = () => {
-      setCartWidth((w) => {
-        const clamped = clampCartWidth(w, window.innerWidth);
-        localStorage.setItem('pos-cart-width', String(clamped));
-        return clamped;
-      });
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const {
     activeShift,

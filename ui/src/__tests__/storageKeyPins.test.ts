@@ -57,7 +57,7 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-kds-prefs-': 'features/kds/hooks/useKdsPreferences.ts',
 
   // POS / retail
-  'pos-cart-width': 'features/sales/PosScreen.tsx',
+  'pos-cart-width': 'features/sales/hooks/useCartResize.ts',
   'pos-locked-cart': 'features/sales/posScreenHooks.ts',
   'oz-retail-cols-': 'features/retail/hooks/useRetailColumnPrefs.ts',
   'retail-cart-width': 'features/retail/RetailPosScreen.tsx',
@@ -193,7 +193,7 @@ describe('localStorage key registry', () => {
       .sort();
     expect(shared).toEqual([
       'current-username -> contexts/AuthContext.tsx, features/auth/SessionLockScreen.tsx',
-      'pos-cart-width -> features/sales/PosScreen.tsx, features/sales/posScreenHooks.ts',
+      'pos-cart-width -> features/sales/hooks/useCartResize.ts, features/sales/posScreenHooks.ts',
     ]);
   });
 });
