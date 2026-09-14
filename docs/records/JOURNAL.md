@@ -11073,6 +11073,7 @@ on the runtime seed-row predicate. Every mechanical red is now gone.
   reds exist at `crates/oz-bridge/src/auth_tests.rs:898`
   (`staff_login_on_free_records_only_because_a_debug_build_promotes_it`) and
   `crates/oz-bridge/src/staff_security_events_tests.rs:245`
+  (MARKED, not silently repointed, 2026-09-15: `:245` was the true line when this entry was committed as `db43bcfb5` at 05:46:01 +0700, and `f2d147dd7 refactor(bridge): give the seeded-row refusal helper one home instead of eight copies` landed **fifty-nine seconds later** at 05:47:00, rewriting 53 lines of that file — the same test is at **`:194`** at HEAD `7e893bc2c`, located by NAME and not by the number on this page: `findstr /N /C:"a_rejected_create_records_no_security_event" crates\oz-bridge\src\staff_security_events_tests.rs` → `194:`. That is a citation aging inside the minute of its own landing, which is the defect this whole session has been hunting, and it is why the survivable form of a line number here is the pair — number plus the SHA it was read at. Re-checked in the same breath: `auth_tests.rs:898` has **not** moved, and the only other figure in this entry that aged the same way is `146 uses` of `seeded_row_loads`, now **144** at `7e893bc2c` after the same deduplication — left as written above, because it was true at its SHA, and named here rather than rewritten.)
   (`a_rejected_create_records_no_security_event`) — `git grep -n <name> -- crates/oz-bridge`, both single hits; and the
   fork predicate itself, `git grep -o "seeded_row_loads" -- crates/oz-bridge | wc -l` = **146 uses across 13 files**
   (top: `subscription_tests.rs` 30, `auth_tests.rs` 17, `audit_security_events_tests.rs` 16, `audit_tests.rs` 12,
@@ -11103,6 +11104,7 @@ on the runtime seed-row predicate. Every mechanical red is now gone.
   `docs/plans/notes.md` runs items 1–11 today and item 8 is "The selector-class conflict: three names that only a test
   can see", not this. `git grep -rln "promoted forgery" -- docs .agents *.md` returns nothing. Recording it here is the
   substitute for recording it there until the page's owner accepts a twelfth item.
+  **Dated 2026-09-15, that decision now has a triage surface, and this line is the pointer, not the record:** `docs/plans/notes.md` item `## 12. Does the release profile keep exercising the permitted arm — and what comes back if the seam is built?` (at `:1370`, landed with item 13 in `14b40a839`), which carries the five claims, the surviving half and the recommendation to build the seam; item **13** beside it now holds the tier-refusal ruling that `auth_tests.rs:898` was carrying alone. One more line while the profile question is open, because it is the same disease seen from the CSS side and a reviewer measured it tonight: `composedRuleIdenticalPair.test.ts` prints a pass count and NO denominator in a normal run — its graded-of-composed figures live in its header prose and in a failure message, not in green output — so a green from a walker is not a coverage statement, exactly as a release green is not security coverage. The percentages themselves belong to `AGENTS.md` and its mirror, where a lane is writing them now, and are not restated here.
 - **Method notes, because these cost real hours and are portable.** (1) Assert counts must come from a char-exact
   statement walk; a bare `grep -c assert` has misled four lanes this week, and it under-reads on `assert!(` split
   across lines as much as it over-reads on comments. (2) A helper that counts WRITTEN rows must never be handed a
@@ -11114,3 +11116,4 @@ on the runtime seed-row predicate. Every mechanical red is now gone.
   you inspected, per root `AGENTS.md` §3.
 
 **Commit:** single pathspec commit `docs(journal): close the release-profile fixture campaign and record what it traded away`.
+
