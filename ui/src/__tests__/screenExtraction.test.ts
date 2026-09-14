@@ -9,6 +9,12 @@
 // A screen that is not registered here is invisible to all three
 // checks — it cannot fail, so it cannot be counted as clean.
 //
+// One case breaks that rule, deliberately: `stylesheet coverage` near the
+// foot of this file DOES readdir, and its whole question is "did anyone
+// claim this sheet?" — it walks the tree only to ask whether a path is
+// named, never what any class in it means. Every assertion ABOUT a class
+// still reads only the files an entry names.
+//
 // The same limit is stated in the plan this file serves, at
 // todo-refactor-kds-agents-merged.md:121, and the contrast it draws
 // there is the one a reader needs next to the mechanism:
@@ -40,12 +46,16 @@
 // why that entry is pending rather than registered.
 //
 // CASE ARITHMETIC, so the total is never read as code health: every
-// entry contributes exactly 3 cases and the extractor self-tests at the
-// foot of this file contribute 4 more — 3 x entries + 4. That is 187
-// today (61 x 3 + 4). The number moves when the LIST moves and never
-// when the tree's CSS health changes: a registration adds three green
-// cases whether or not anything got better. Read the entry count for
-// coverage and the failures for health.
+// entry contributes exactly 3 cases, the extractor self-tests at the foot
+// of this file contribute 4 more, and stylesheet coverage adds 1 —
+// 3 x entries + 4 + 1. That is 188 today (61 x 3 + 4 + 1). The number
+// moves when the LIST moves and never when the tree's CSS health changes:
+// a registration adds three green cases whether or not anything got
+// better. Read the entry count for coverage and the failures for health.
+// Coverage case +1 is the sole exception, and it is fixed: it is ONE case
+// over the whole tree, so an unregistered stylesheet makes it RED, never
+// MORE CASES — the total stops being a health signal in exactly one
+// direction and starts carrying a named failure in the other.
 //
 // For each REGISTERED entry we assert:
 //   1. Every className used in its TSX has a CSS rule defined  (HARD)
@@ -81,6 +91,19 @@ interface ScreenEntry {
   tsx: string;
   /** Path(s) to companion CSS files, relative to src/features/. */
   css: string[];
+  /**
+   * Shared "parent" stylesheets this entry INHERITS from but does not own
+   * — a sheet a whole family of entries cites, e.g. the settings scaffolds'
+   * `screens/screens-placeholder.css`.
+   *
+   * The two directions are deliberately NOT symmetric: the used-vs-defined
+   * check resolves against `css` UNION `parentCss`, while the duplicate check
+   * and the dead-class check keep walking `css` ALONE. Why, at the two maps
+   * in the runner below.
+   *
+   * Paths are relative to src/features/, same as `css`.
+   */
+  parentCss?: string[];
   /**
    * Class-name prefixes whose BEM‑like modifiers are constructed
    * at runtime via template literals or returned from helper
@@ -893,7 +916,7 @@ const SCREENS: ScreenEntry[] = [
 
 describe.each(SCREENS)(
   'CSS class integrity — $name',
-  ({ name, tsx, css, dynamicClassPrefixes, externalClasses, knownDynamicFragments, additionalTsx }: ScreenEntry) => {
+  ({ name, tsx, css, parentCss, dynamicClassPrefixes, externalClasses, knownDynamicFragments, additionalTsx }: ScreenEntry) => {
     const tsxPath = path.join(FEATURES_DIR, tsx);
     let tsxContent = fs.readFileSync(tsxPath, 'utf8');
 
@@ -907,28 +930,58 @@ describe.each(SCREENS)(
 
     const used = extractUsedClassNames(tsxContent);
 
-    // Build reverse map: className -> [file1, file2, ...]
-    const fileIndex = new Map<string, string[]>();
+    // ── Two reverse maps (className -> [file, ...]), split by DIRECTION ──
+    //
+    // The asymmetry IS the mechanism, so it gets stated rather than guessed:
+    //
+    //   case 1 (used -> defined)  walks own css UNION parentCss
+    //   cases 2 and 3            walk own css ONLY
+    //
+    // Case 1 asks "can this class resolve at all?", and a shared parent sheet
+    // really does provide it to this screen, so resolving short of the parent
+    // would invent a missing-class failure for markup that renders fine.
+    //
+    // Cases 2 and 3 ask "is THIS ENTRY's sheet honest?", and answering them
+    // over a union breaks. Grading case 3 (dead classes) against the union is
+    // precisely what makes a shared sheet unsatisfiable: a parent's classes
+    // are consumed across the whole family of children, never necessarily by
+    // one of them, so every child would report the siblings' classes dead.
+    // The mirror is measured, not hypothetical — screens-placeholder.css is
+    // cited by 13 entries and all 13 screens use all 3 of its classes, which
+    // is why those 13 case-3 bodies are provably empty today: scoped to the
+    // citing entry's own css, that sheet has nothing left to call dead.
+    // Scoping is also what keeps case 2 meaningful — see the note above the
+    // scaffold entries.
+    const ownIndex = new Map<string, string[]>();
+    const definedIndex = new Map<string, string[]>();
 
     // Track unique files to avoid counting the same path twice
     // when the same class appears in the same file via compound selectors.
     const cssPaths = css.map((c) => path.join(FEATURES_DIR, c));
+    const parentPaths = (parentCss ?? []).map((c) => path.join(FEATURES_DIR, c));
 
-    for (const cssPath of cssPaths) {
-      const content = fs.readFileSync(cssPath, 'utf8');
-      for (const cls of extractClassSelectors(content)) {
-        if (!fileIndex.has(cls)) {
-          fileIndex.set(cls, []);
+    const index = (target: Map<string, string[]>, cssPath: string) => {
+      for (const cls of extractClassSelectors(fs.readFileSync(cssPath, 'utf8'))) {
+        if (!target.has(cls)) {
+          target.set(cls, []);
         }
-        fileIndex.get(cls)!.push(cssPath);
+        target.get(cls)!.push(cssPath);
       }
+    };
+    for (const cssPath of cssPaths) {
+      index(ownIndex, cssPath);
+      index(definedIndex, cssPath);
+    }
+    for (const cssPath of parentPaths) {
+      index(definedIndex, cssPath);
     }
 
     it(`every className used in ${name} has a CSS rule defined`, () => {
       const fragments = new Set(knownDynamicFragments ?? []);
       const missing: string[] = [];
       for (const cls of used) {
-        if (!fileIndex.has(cls) && !fragments.has(cls)) {
+        // Resolves against own css UNION parentCss — see the two maps above.
+        if (!definedIndex.has(cls) && !fragments.has(cls)) {
           missing.push(cls);
         }
       }
@@ -940,7 +993,9 @@ describe.each(SCREENS)(
 
     it(`no className is defined in more than one CSS file for ${name}`, () => {
       const duplicates: string[] = [];
-      for (const [cls, files] of fileIndex) {
+      // Own css ONLY: a parent sheet is shared, so a duplicate inside it is
+      // the parent's owner's finding, not this entry's.
+      for (const [cls, files] of ownIndex) {
         // Only flag if the class appears in multiple unique files
         const uniqueFiles = [...new Set(files)];
         if (uniqueFiles.length > 1 && used.has(cls)) {
@@ -959,7 +1014,9 @@ describe.each(SCREENS)(
       const prefixes = dynamicClassPrefixes ?? [];
       const external = new Set(externalClasses ?? []);
       const dead: string[] = [];
-      for (const [cls] of fileIndex) {
+      // Own css ONLY — grading this over the union would make every shared
+      // parent sheet unsatisfiable. See the two maps above.
+      for (const [cls] of ownIndex) {
         if (!used.has(cls) && !external.has(cls) && !prefixes.some((p) => cls.startsWith(p))) {
           dead.push(cls);
         }
@@ -983,6 +1040,121 @@ describe.each(SCREENS)(
     });
   },
 );
+
+
+// ── Stylesheet coverage ──────────────────────────────────────────
+//
+// The three per-entry cases above only read what an entry NAMES, so the
+// guard cannot see a stylesheet nobody cited. This one case auto-walks
+// src/features/**/*.css and asks the single whole-tree question a
+// registration guard can answer honestly: is every sheet claimed?
+//
+// BASELINE_UNCITED is a BASELINE, not a MUTE, and the difference is the
+// whole point. `knownDynamicFragments` excuses a FINDING — the extractor
+// read real markup on a registered screen and produced a claim about it,
+// and this list says that claim is wrong. A path here postpones a CLAIM
+// about a file nobody has read yet: nothing in it is asserted false, and
+// every one of its 54 entries is a named path, not a prefix, not a
+// pattern, not a directory. So the array can only shrink — registering a
+// sheet (slice 2) or deleting one removes a line; nothing adds one except
+// a new stylesheet that has not been read. A stale line that is now cited
+// is inert, and deleting it is the courtesy, not the requirement.
+//
+// Why a baseline instead of asserting the whole tree today: the repo
+// already chose this shape for the same problem. `verify-ftl-orphans.py`
+// runs `--staged-only` as a HARD gate and `--census` as informational,
+// because a whole-tree blocker is unusable — 93 honest candidates, of
+// which an unknown fraction are detection gaps, means the first red run
+// gets the gate disabled rather than the debt paid. Same here: blocking
+// on 54 unread sheets would buy nothing, so the 54 are frozen, named, and
+// every NEW sheet fails loud with its own filename.
+const BASELINE_UNCITED: string[] = [
+  'analytics/AnalyticsScreen.css',
+  'auth/CreatePinScreen.css',
+  'auth/LicenseActivationScreen.css',
+  'auth/SessionLockScreen.css',
+  'design/DesignSystem.css',
+  'design/DevToolbar.css',
+  'design/TooltipPreview.css',
+  'design/brand-tokens.css',
+  'inventory/LocationPicker.css',
+  'inventory/ShiftBar.css',
+  'inventory/StockAlertPanel.css',
+  'inventory/ThresholdConfigScreen.css',
+  'inventory/TransactionLogScreen.css',
+  'inventory/TransitAuditScreen.css',
+  'kds/components/KdsDeviceStatusIndicator.css',
+  'kds/components/KdsEnrollmentModal.css',
+  'kds/components/KdsProductPickerModal.css',
+  'locations/NodeTopologyEditor.css',
+  'locations/TopologyApplyConfirm.css',
+  'locations/TopologyRevisionBrowser.css',
+  'locations/TopologyScreen.css',
+  'marketplace/AddonsMarketplace.css',
+  'memo/MemoBanner.css',
+  'memo/MemosScreen.css',
+  'reports/CustomReportScreen.css',
+  'reports/MenuEngineeringScreen.css',
+  'retail/RetailPosScreen.css',
+  'sales/CartPanel.brand.css',
+  'sales/CartPanel.css',
+  'sales/CartPanelActions.css',
+  'sales/CartPanelCourseBar.css',
+  'sales/CartPanelFooterTotals.css',
+  'sales/CartPanelLineItem.css',
+  'sales/PaymentModal.css',
+  'sales/PosScreen.css',
+  'sales/PromotionsModal.css',
+  'sales/ReceiptPreview.css',
+  'sales/StockShortfallDialog.css',
+  'sales/WeightScaleWidget.css',
+  'sales/components/ItemModifierModal.css',
+  'sales/widgets/widgets.css',
+  'settings/LicenseSettings.css',
+  'settings/SettingsNavTree.css',
+  'settings/SettingsScopeTag.css',
+  'settings/SettingsSelect.css',
+  'settings/WorkspaceSettingsModal.module.css',
+  'settings/screens/LocalPaymentSettingsCard.css',
+  'settings/screens/ReceiptFormatSettingsCard.css',
+  'settings/screens/RegionalSettingsCard.css',
+  'settings/screens/StatutoryNumberingCard.css',
+  'settings/sections/DiagnosticsSection.css',
+  'setup/components/LiveSetupPreview.css',
+  'staff/RoleAuthoringScreen.css',
+  'warehouse/WarehouseConsole.css',
+];
+
+describe('stylesheet coverage', () => {
+  it('every .css under src/features is cited by an entry, or listed in BASELINE_UNCITED', () => {
+    const cited = new Set<string>();
+    for (const entry of SCREENS) {
+      for (const c of entry.css) cited.add(c);
+      for (const c of entry.parentCss ?? []) cited.add(c);
+    }
+
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, dirent.name);
+        if (dirent.isDirectory()) walk(p);
+        else if (dirent.name.endsWith('.css')) {
+          found.push(path.relative(FEATURES_DIR, p).split(path.sep).join('/'));
+        }
+      }
+    };
+    walk(FEATURES_DIR);
+
+    const offenders = found
+      .filter((sheet) => !cited.has(sheet) && !BASELINE_UNCITED.includes(sheet))
+      .sort();
+
+    expect(
+      offenders,
+      `uncited: ${offenders.length} (baseline ${BASELINE_UNCITED.length}) — sheet(s) no entry cites via css or parentCss and no line of BASELINE_UNCITED names: ${offenders.join(', ')}`,
+    ).toEqual([]);
+  });
+});
 
 // ── The extractor itself ─────────────────────────────────────────
 //
