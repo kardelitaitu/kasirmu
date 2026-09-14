@@ -82,6 +82,17 @@ check-dead-refs clean (master additionally scanned via
 The 43 boxes remain physically untouched by policy — the inventory maps
 them row by row. -->
 
+<!-- Re-tag pass: 2026-09-14 · DSH · a sizing pass graded all open boxes against the tree at HEAD
+`7a310e013` and this file's conclusion is: **it is a research artifact wearing a work-list filename.**
+Funding it as a work list would pay for the same grid twice — the EDC/card grid is `todo-payment-agents-4.md`
+R1-R7, the PaymentModal size grid is `todo-refactor-pos-screen-agents-3.md` 3.1-3.4. Every claim below was
+re-measured on disk, and FOUR of the sizing pass's own premises FAILED — recorded as disagreements, not
+quietly smoothed: the airpay box is live not dead (`:403`), one of the four requested ticks is refused (`:310`,
+the `payment:qris-manual` key was never created), the "missing" override table exists (`terminal_feature_overrides`, plural), and the 2,150 / R5 / `useTenderMath.ts` attributions were pointed at the wrong places. Box census after this pass: **11 ticked / 36 open** (`grep -cE '^\s*- \[x\]'` = 11,
+`'^\s*- \[ \]'` = 36). The ANCHORED `'^- \[ \]'` form under-reads by one because the airpay box at `:403` is
+indented under a list; count with `^\s*`, not with the bare anchor, and do not trust a `-cF` match either —
+it counts box syntax appearing in prose and code fences as well. -->
+
 > Working plan for how payment types/methods are modeled, configured, and
 > rendered in the POS. The modal lives at `ui/src/features/sales/PaymentModal.tsx`.
 > This doc captures the architecture decision and a phased backlog. Add detail
@@ -303,21 +314,66 @@ graph TD
       only QRIS/Plus+ exists).
 - [ ] Define UI derivation: `visibleMethods = enabled ∩ entitled ∩ online-capable`.
 
+> 🚧 **BLOCKED ON PHASE 0 — sizing pass 2026-09-14: ~14 boxes in this file sit downstream of a data model that
+> does not exist, and this file's own `:197` already says so.** Re-measured, zero-hit in the source trees: no
+> `payment:qris-manual` / `payment:midtrans` / `payment:edc` key (the `feature_key` **function** is real —
+> `crates/oz-core/src/features.rs:422` — the `payment:*` keys are not); **no `hardware_config.rs` anywhere**
+> (`git ls-files | grep hardware_config` → 0 hits; the `HardwareConfig` additions asked for at `:300` have a
+> different home, `platform/startup/src/hardware.rs`); and **no `visibleMethods` symbol in any source file** —
+> the only hits are this document and one JOURNAL line. Two of the pass's four "missing" claims FAILED, so do
+> not over-read this list: the **`terminal_feature_overrides` table exists** (plural — `20260813_init.sql:909`,
+> `20260813_init.pg.sql:1144`) and **`TerminalFeatureOverride` exists** in Rust (`terminal_override.rs`,
+> `db/terminal_overrides.rs`), which is precisely why `:298` reads "no new table needed". What is missing is the
+> **keys** and the **derivation**.
+> Affected: Phase 0 `:290`, `:298`, `:300`, `:302`, `:304`; Phase 5 **`:634`**, **`:636`**; the Midtrans
+> client-side set `:324`, `:325`, `:326`, `:328`, `:780`, `:782`, `:784`. **`:634`'s "replace the hardcoded
+> `['cash','card','qris','credit']` list" is not free work sitting there waiting for a spare hour** — the symbol
+> it would replace INTO has no definition, no owner and no file, so the change cannot be written before Phase 0
+> lands. Record it as BLOCKED, and cost it that way.
+
 ### Phase 1 — Cash (always available)
 - [ ] Confirm cash is a constant with no config/flag. (Likely no code change.)
 
 ### Phase 2 — QRIS manual
 - [ ] `payment:qris-manual` show/hide flag (TerminalFeatureOverride).
+      > **DISAGREEMENT with the sizing pass, which asked for this box to be TICKED. It is not tickable, and
+      > the pass's own other item disproves it.** The key does not exist: `git grep -n payment:qris-manual`
+      > returns hits only in docs and in this file — `:197` here already says the three planned keys were
+      > **never created**, and `ui/src/features/sales/useLocalPaymentRails.ts:4` is a comment describing their
+      > absence. What shipped is the manual-QRIS **behaviour** (ticked in the two boxes below), not a
+      > per-terminal **flag**. The `TerminalFeatureOverride` plumbing this box wants to reuse IS real — the
+      > type lives in `crates/oz-core/src/terminal_override.rs` and `db/terminal_overrides.rs`, and the table
+      > `terminal_feature_overrides` is in both migrations (`20260813_init.sql:909`,
+      > `20260813_init.pg.sql:1144`) — so the missing piece is exactly the `payment:*` key set, i.e. Phase 0.
 - [x] ~~Store merchant QRIS string in hardware config~~ — **shipped elsewhere**:
       the payload lives in the rail store's credential-free `parameters` bag as
       `static_qr_payload` and the checkout reads it through
       `staticQrisPayload()` (`ui/src/features/sales/useLocalPaymentRails.ts`,
       `903b30a718`). Offline-capable either way; the hardware-config home did not
       happen.
-- [ ] Print static QR encoding merchant string + amount (offline).
-- [ ] Manual "payment received" confirmation path in `PaymentModal`
-      (no live bank callback; cashier confirms).
-- [ ] Keep existing Plus+ entitlement gate on top of terminal flag.
+- [x] Print static QR encoding merchant string + amount (offline). — **DONE-ON-DISK (shipped; nobody came
+      back to the box).** `903b30a71` (2026-09-14) *feat(payment-ui): manual QRIS shows the merchant's real
+      static QR - the demo grid dies*: `PaymentModal.tsx:109-111` renders
+      `const manualQrString = staticQrisPayload(paymentRails)`, the payload home is
+      `useLocalPaymentRails.ts` (`static_qr_payload`, already ticked at `:311`), and `QrisQrDisplay.tsx:50,213-215`
+      renders the amount beside the code (`amount / 10 ** minorUnitExponent`, `payment-qris-amount`).
+      Spec-fidelity note rather than a gap: the code is the merchant's **static** QR — the amount is displayed
+      alongside it, not encoded into the payload, which is what "static" and offline-capable mean here.
+- [x] Manual "payment received" confirmation path in `PaymentModal`
+      (no live bank callback; cashier confirms). — **DONE-ON-DISK.** The cashier-asserted settle path is live:
+      the shared gateway-tender front half at `PaymentModal.tsx:590-592`, `handleTerminalPay` (`:848`, wired to
+      the button at `:1805`), with the QRIS state extracted to `payment/useGatewayQr.ts` (`1328510ed`, 112 ln)
+      and `payment/useAutoQr.ts` (`0b13ff3e1`, 242 ln) — all three commits 2026-09-14. `todo-payment-agents-4.md:84`
+      records the same landing as DONE under R2.
+- [x] Keep existing Plus+ entitlement gate on top of terminal flag. — **DONE-ON-DISK, gate intact.**
+      `PaymentModal.tsx:1816-1824` still renders the Free→Plus trigger (`caps && !caps.supportsQris` →
+      `openUpgradePricing(locale, 'plus')`), with the caps contract at `:101` ("C2.2: QRIS is a Plus+ feature —
+      caps arrive from the subscription context"). The "on top of terminal flag" half is unsatisfiable today for
+      the reason named at `:310`: there is no terminal flag to sit under.
+      > **Name the rarity, because the next reader will mis-file this.** These three ticks are NOT the
+      > cloud-sync failure mode (a box written after the work, then never executed). This is work that
+      > **landed and nobody came back to the checkbox for days.** Different defect, same result: the plan
+      > under-reports itself, and a coder dispatched from the open boxes re-implements shipped code.
 
 ### Phase 3 — Midtrans
 - [ ] Research Midtrans endpoints / multiple endpoint profiles.
@@ -403,6 +459,17 @@ LinkAja instead of a generic QRIS code.
   - [ ] **Fix:** the driver hardcodes `"airpay shopee"`, the *legacy alias* for
         ShopeePay. Change to `"shopeepay"` (or make it configurable) in
         `charge_qris()` (`crates/oz-payment/src/drivers/qris.rs`).
+        > **DISAGREEMENT — the sizing pass asked for this box to be marked DEAD-AS-WRITTEN because
+        > `crates/oz-payment/src/drivers/airpay_shopee.rs` does not exist. The check disagrees: the box stays
+        > OPEN, and it is live.** That path is not what this box cites, and it was never in the tree —
+        > `git log --all --diff-filter=A -- crates/oz-payment/src/drivers` lists no such file, so nothing was
+        > deleted; the `airpay_shopee.rs` name is the pass splitting the alias string into a filename. The
+        > citation above is correct: the hardcode is at **`crates/oz-payment/src/drivers/qris.rs:427`**
+        > (`"acquirer": "airpay shopee"`); today's drivers are `mock, paddle, qris, square, stripe` plus an
+        > `edc/` tree; and this file's own header audit at `:16` already names the same site. It is also
+        > **pinned by a test** — `crates/oz-payment/tests/qris_integration.rs:519` asserts the literal — so the
+        > fix is a two-file edit (driver + assertion), not greenfield work. The alias family continues at
+        > `:441`, `:448`, `:766`, all with the same `qris.rs` home.
 - **Generic vs targeted trade-off:**
   - *Targeted* (`acquirer: "gopay"`) - co-branded QR that **only that wallet can
     scan**. Use to push a specific app (promo / branding / merchant deal).
@@ -516,6 +583,18 @@ refund: POST /{transaction_id}/refund (full = amount:null, partial = minor units
 ### Phase 4 — EDC (credit/debit card, LAN card-present)
 > Reconciled design: reuse the existing HAL `DriverRegistry`; do NOT add a new
 > `TerminalManager`. See `crates/oz-hal/src/registry.rs` and `traits/edc.rs`.
+>
+> ↗️ **OWNERSHIP MOVED — sizing pass 2026-09-14. Everything from here to `:600` is `crates/oz-payment` +
+> `crates/oz-hal` work: it is not PaymentModal work and it must not be funded from this file.** The text stays
+> (it is the research), but the asks at `:520`, `:525`, `:530`, `:534`, `:546`, `:551`, `:573`, `:586` are gated
+> on vendor protocol documentation and a merchant terminal MID, and the canonical ordering is
+> `todo-payment-agents-4.md` **R1-R7**. Two corrections to how the pass described that ordering: it is seven
+> `###` **headings, not a table**, and they are printed R1, R2, R3, R4, R7, R5, R6 — so "R2-R7 in numeric
+> order" is not a citation anyone can follow; and **R1-R3 are already marked DONE there** (`bffcbda97a`,
+> `903b30a718`, `3d50b3ac5a`), so only R4-R7 are live. This cluster is also further along than "not started":
+> `crates/oz-payment/src/drivers/edc/` exists on disk with `wired.rs`, `wireless.rs`, `mock.rs` and
+> `protocol/{ingenico,pax,verifone}.rs` — re-read the phantom-codec-name warning at `:551` against those files
+> before anyone acts on it.
 
 - [ ] **Reuse `DriverRegistry.terminals`.** It already holds
       `RwLock<HashMap<String, Arc<dyn EdcTerminal>>>` with
@@ -637,6 +716,24 @@ impl EdcTerminal for IndonesianEcr {
 - [ ] Per-type flow sections (cash tender, QRIS manual confirm, Midtrans online,
       EDC terminal interaction).
 - [ ] Update/extend tests: `ui/src/__tests__/PaymentModal*.test.tsx`.
+
+> 📋 **RETAG — sizing pass 2026-09-14: the ~14 boxes still open after this pass are QUESTIONS, not work.**
+> Named: `:290`-`:307` (define the data model / *confirm* cash is a constant), `:323`, `:326`, `:328`, `:330`,
+> `:338` (Midtrans research + vendored reference copies), `:780`, `:782`, `:784`, `:787`, `:790` (Open
+> questions — where flags live, key injection, credit orthogonality), `:829`, `:842`, `:850`, `:854`
+> (merchant activation, multi-tenant scoping, generic-QRIS interop, refund support). None has an implementation
+> target until Phase 0 decides something; a ticket written from one is a question with a checkbox on it.
+>
+> **And the one structural fact the pass produced, because it retires a fence nobody can reproduce:**
+> `PaymentModal.tsx` is **not** enumerated in `ui/src/__tests__/screenExtraction.test.ts` — its single
+> occurrence, at `screenExtraction.test.ts:220`, is a comment about the token `leaving` (16 substring hits, all
+> `const [leaving, setLeaving] = useState(false)` declarations in PaymentModal plus prose, "none of them a
+> className"), i.e. the screen is named as an example of a false positive, not registered as a subject. What
+> does watch this file: `focusVisibleCompliance.test.ts:179` and `touchTargetSizing.test.tsx:164`, both listing
+> `'features/sales/PaymentModal.css'`. And `grep -c 'title=' ui/src/features/sales/PaymentModal.tsx` = **0**, so
+> the tooltip ratchet cannot trip on it. **Any future slice for this file quoted as needing "the serialised
+> guard" is quoting a fence that does not reproduce — the pass searched, could not find it, and says so rather
+> than assuming it had been retired.**
 
 
 
@@ -879,4 +976,26 @@ checks) remain in `## Open questions`.
 - Midtrans official PHP client: https://github.com/Midtrans/midtrans-php
 - Midtrans PHP client - local vendored copy: `references/midtrans-php/` (gitignored research reference; not a dependency). Cross-verified the auth (HTTP Basic `base64(serverKey + ":")`) and base URLs against this client - see Phase 3 reference-copy bullet.
 
+> 📐 **ARITHMETIC — sizing pass 2026-09-14, measured at HEAD `7a310e013` (working tree clean for this file).**
+> `wc -l ui/src/features/sales/PaymentModal.tsx` = **2,235**, not the **2,436** this file records at `:7` and
+> `todo-refactor-pos-screen-agents-3.md:128-129` — five commits have touched the file since the
+> 2nd-pass HEAD `ec2edf258` (`git log --format=%h ec2edf258..HEAD -- ui/src/features/sales/PaymentModal.tsx`
+> = `cf3e4dd8b`, `1328510ed`, `0b13ff3e1`, `ca5d58957`, `3cb313277`), and the three named extractions account
+> for −200 of the −201: `cf3e4dd8b` *refactor(sales): extract useMultiCurrency from PaymentModal*
+> (35/−121 = −86 net), `0b13ff3e1` (26/−142 = −116 net), `1328510ed` (29/−27 = +2 net). The other −1 is in the
+> remaining two commits; do not read any single one of these as the whole delta. The honest floor is **~2,150** and it is recorded at
+> `todo-refactor-pos-screen-agents-3.md:58` (**not :129** as the pass cited — `:129` carries a different number:
+> the 450-line per-file ceiling for `ui/src/features/sales/payment/`). The next extraction is queued as
+> `payment/useTenderMath.ts`, pure math, forecast ~150-180 net — which lands almost exactly on that floor.
+> **It is NOT on disk yet:** `git ls-files ui/src/features/sales/payment/` = `types.ts`, `useAutoQr.ts`,
+> `useGatewayQr.ts`, `useMultiCurrency.ts`. So this file's own size goal is moving without a behaviour risk —
+> and it is moving inside the *other* plan's boxes, not these.
+>
+> **The converse, so nobody funds it from here: the Card/EDC panel is NOT extractable.** Lifting it threads
+> `settleGatewaySale` (defined `PaymentModal.tsx:677`, called at `:796`, `:823`, `:891`) across a panel boundary
+> and changes tender submission order. Correct the pass's attribution while recording this: that is **not**
+> "agents-4's R5 discount-order bug" — the word `discount` occurs **0 times** in `todo-payment-agents-4.md` and
+> R5 is *Resilience cluster (fallback chain, breaker, reconciliation job)*. The ordering hazard is real and
+> local to PaymentModal; cite the four call sites above, not a heading that does not say it.
+>
 > last audited 14-09-26 by docs-auditor · re-audited same day (2nd pass, HEAD `ec2edf258`) by DSH — see the audit stamp at the top
