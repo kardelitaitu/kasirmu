@@ -220,8 +220,8 @@ it counts box syntax appearing in prose and code fences as well. -->
 > **2 boxes are REAL-WORK, each with its blocker named:**
 >
 > - **`:665` — persist `terminal_id` + `auth_code` on the sale**, so void/refund route back to
->   the same device and batch. Blocker, measured: `auth_code` appears in **18 files**
->   (`git grep -l auth_code` — the HAL trait and mock, the `oz-payment` drivers,
+>   the same device and batch. Blocker, measured: `auth_code` appears in **18 code files**
+>   (`git grep -l auth_code` → 19 paths, one of them this doc; the rest: HAL trait and mock,
 >   `oz-bridge/src/edc.rs`, the desktop EDC command and its tests, `PaymentModal.tsx`) and in
 >   **no `crates/oz-core` file and no migration**: `git grep -n auth_code --
 >   'crates/oz-core/**'` exits 1 with zero hits, and the same grep scoped to
