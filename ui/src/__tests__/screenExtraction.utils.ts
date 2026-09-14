@@ -99,9 +99,14 @@ const VALID_CLASS_RE = /^[a-zA-Z_-][\w-]*$/;
 function isNonClassToken(token: string): boolean {
   // Reject any token that isn't a valid CSS class name.
   if (!VALID_CLASS_RE.test(token)) return true;
-  // Dangling BEM prefix from template literal `${variable}` parts
-  // (e.g. `kds-column--${status}` → the plain part is `kds-column--`)
-  if (token.endsWith('--')) return true;
+  // A token that OPENS or CLOSES with a hyphen is a fragment of a template
+  // interpolation, not a name. `kds-column--${status}` leaves `kds-column--`,
+  // and `${dir}-align` leaves `-align`; the double form was already rejected
+  // here and the single form was not, because VALID_CLASS_RE admits a hyphen at
+  // either end. Neither shape can ever appear in a stylesheet as a selector a
+  // rule could be written for, so each one could only ever arrive as a false
+  // "used but undefined" finding against a component that never wrote it.
+  if (token.startsWith('-') || token.endsWith('-')) return true;
   // Common non-class stop words.
   if (CANONICAL_STOP_WORDS.has(token)) return true;
   return false;
@@ -137,6 +142,34 @@ function stripInterpolations(body: string): string {
   return out;
 }
 
+/**
+ * Is the quote opening at `at` a class operand, or just a string the
+ * expression happens to contain?
+ *
+ * Steps 2 and 3 below fish every `'...'` out of a className expression, which
+ * is correct for ternaries (`cond ? 'a b' : 'c d'`) and wrong for two shapes
+ * that look identical to a regex: the right-hand side of a comparison
+ * (`status === 'eligible'`) and a Fluent message id passed to a localization
+ * helper (`requiredLocalized(l10n, 'inv-transit-error-load')`). Both are names
+ * in some OTHER namespace - a status enum, a message catalog - and the CSS
+ * gate cannot see either namespace, so a harvested one is reported as a class
+ * with no rule, which is how a lane ends up deleting markup that was never
+ * there. Context, not token shape, is the only discriminator available: a
+ * Fluent id and a BEM class are both lowercase kebab. The helper names are the
+ * three this repo actually has; `formatMessage` returns 0 hits tree-wide and is
+ * deliberately not listed. Every rule here only ever REMOVES a candidate, so
+ * the change is narrowing by construction and cannot widen `used`.
+ */
+function quoteIsClassOperand(expr: string, at: number): boolean {
+  const before = expr.slice(0, at).replace(/\s+$/, '');
+  // Comparison operand: `x === 'y'`, `x != 'y'`, `x == 'y'`.
+  if (/[=!]==?$/.test(before)) return false;
+  // Localization call argument: the quote is an argument position (after `(`,
+  // `,` or `[` in the head) and the nearest enclosing call is one of ours.
+  if (/[,($]$/.test(before) && /(?:requiredLocalized|l10nErrorMessage|getString)\s*[(,][^()]*$/.test(before)) return false;
+  return true;
+}
+
 export function extractUsedClassNames(tsx: string): Set<string> {
   const names = new Set<string>();
 
@@ -170,6 +203,7 @@ export function extractUsedClassNames(tsx: string): Set<string> {
     const quotedRe = /'([^']*)'/g;
     let qm: RegExpExecArray | null;
     while ((qm = quotedRe.exec(body)) !== null) {
+      if (!quoteIsClassOperand(body, qm.index)) continue;
       for (const token of qm[1]!.split(/\s+/)) {
         if (token && !isNonClassToken(token)) names.add(token);
       }
@@ -189,6 +223,7 @@ export function extractUsedClassNames(tsx: string): Set<string> {
     const quotedRe = /'([^']*)'/g;
     let qm: RegExpExecArray | null;
     while ((qm = quotedRe.exec(expr)) !== null) {
+      if (!quoteIsClassOperand(expr, qm.index)) continue;
       for (const token of qm[1]!.split(/\s+/)) {
         if (token && !isNonClassToken(token)) names.add(token);
       }

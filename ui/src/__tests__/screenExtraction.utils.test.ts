@@ -158,6 +158,62 @@ describe('extractUsedClassNames', () => {
     expect(result.size).toBe(0);
   });
 
+  // ── The six shapes the extractor was never tested against ───────────
+  //
+  // Every case below prints what it harvested, because the finding this block
+  // exists to pin came from a runner failure and not from a direct read of the
+  // util: a name reported undefined has to be distinguishable from a name the
+  // extractor invented, and only the extractor's own output can settle that.
+  const harvest = (label: string, tsx: string) => {
+    const set = extractUsedClassNames(tsx);
+    console.log(`[extractor:${label}]`, JSON.stringify([...set].sort()));
+    return set;
+  };
+
+  it('does not harvest a Fluent message id used as an aria-label', () => {
+    // The ScaleIndicator shape: a static className next to a localized label.
+    const names = harvest('fluent-id-aria', '<div className="scale-indicator scale-indicator--idle" role="status" aria-label={requiredLocalized(l10n, \'scale-indicator-aria\')} />');
+    expect(names.has('scale-indicator')).toBe(true);
+    expect(names.has('scale-indicator--idle')).toBe(true);
+    expect(names.has('scale-indicator-aria')).toBe(false);
+    expect(names.has('status')).toBe(false);
+  });
+
+  it('does not harvest the right-hand side of a comparison', () => {
+    const names = harvest('comparison-operand', '<div className={status === \'eligible\' ? \'promo-hit\' : \'promo-miss\'} />');
+    expect(names.has('promo-hit')).toBe(true);
+    expect(names.has('promo-miss')).toBe(true);
+    expect(names.has('eligible')).toBe(false);
+  });
+
+  it('does not harvest a localized string passed through a className expression', () => {
+    const names = harvest('localized-inside-class', '<div className={isOk ? requiredLocalized(l10n, \'inv-transit-error-load\') : \'transit-error\'} />');
+    expect(names.has('transit-error')).toBe(true);
+    expect(names.has('inv-transit-error-load')).toBe(false);
+  });
+
+  it('keeps the template-literal shape and drops the dangling prefix', () => {
+    const names = harvest('template-composition', '<div className={`kds-col ${dir}-align`} />');
+    expect(names.has('kds-col')).toBe(true);
+    expect(names.has('-align')).toBe(false);
+  });
+
+  it('rejects a token with one trailing hyphen, the way it already rejects two', () => {
+    // `pos-${x}` leaves `pos-` behind, which is a fragment of a name and not a
+    // name: no CSS rule can be written for it, so it can only ever be a false
+    // undefined finding. `endsWith('--')` already rejects the double form.
+    const names = harvest('trailing-single-hyphen', '<div className={`pos-${x}`} />');
+    expect(names.size).toBe(0);
+  });
+
+  it('still does not see a class that arrives through an array variable', () => {
+    // Pinned as a KNOWN GAP, not as a behaviour to change: widening `used` is
+    // the one edit that manufactures new reds across 84 entries, so this stays
+    // invisible until the runner is ready for the names it would add.
+    const names = harvest('array-variable', 'const VARIANTS = [\'kds-column--pending\'];\n<div className={VARIANTS[0]} />');
+    expect(names.has('kds-column--pending')).toBe(false);
+  });
+
   it('filters known stop words', () => {
     const tsx = '<div className={`${open ? \'show\' : \'hide\'}`} />';
     const result = extractUsedClassNames(tsx);
