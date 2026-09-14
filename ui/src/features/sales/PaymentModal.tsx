@@ -11,17 +11,9 @@ import { createKdsOrderFromSaleScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
-import {
-  listCurrenciesScoped,
-  listLatestExchangeRatesScoped,
-  getDefaultCurrencyScoped,
-  getLatestExchangeRateScoped,
-  exchangeRateToDecimal,
-  convertMinorUnits,
-  reciprocalMillionths,
-  type CurrencyDto,
-  type ExchangeRateDto,
-} from '@/api/currency';
+// W5-a: only the reciprocal helper is still read here (tenderSnapshot); the
+// currency/rate loaders and the fixed-point converter moved to useMultiCurrency.
+import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
@@ -36,6 +28,7 @@ import ReceiptPreview from '@/features/sales/ReceiptPreview';
 import type { PrintSalesReceiptArgs } from '@/api/sales';
 import { useAutoQr } from './payment/useAutoQr';
 import { useGatewayQr } from './payment/useGatewayQr';
+import { useMultiCurrency } from './payment/useMultiCurrency';
 import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
@@ -257,10 +250,6 @@ export default function PaymentModal({
   const { isEnabled } = useFeatures();
   const multiCurrency = isEnabled(FEATURES.MULTI_CURRENCY);
 
-  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
-  const [exchangeRates, setExchangeRates] = useState<ExchangeRateDto[]>([]);
-  const [selectedCurrency, setSelectedCurrency] = useState(total.currency);
-  const [baseCurrency, setBaseCurrency] = useState(total.currency);
 
   // A rail that loads (or reloads) to disabled while QRIS is the chosen
   // tab must not strand the cashier on a hidden surface (agents-5 R1).
@@ -268,83 +257,31 @@ export default function PaymentModal({
     if (!qrisOffered && method === 'qris') setMethod('cash');
   }, [qrisOffered, method]);
 
-  useEffect(() => {
-    if (open && multiCurrency) {
-      const loads: [
-        Promise<CurrencyDto[]>,
-        Promise<ExchangeRateDto[]>,
-        Promise<string | null>,
-      ] = [
-        listCurrenciesScoped(sessionToken!),
-        // CUR-11: the picker needs the CURRENT rate per pair, not the
-        // whole history — bounded query, no first-match ambiguity.
-        listLatestExchangeRatesScoped(sessionToken!),
-        getDefaultCurrencyScoped(sessionToken!),
-      ];
-      Promise.all(loads)
-        .then(([currs, rates, base]) => {
-          setCurrencies(currs);
-          setExchangeRates(rates);
-          if (base) setBaseCurrency(base);
-        })
-        .catch(() => addToast({ message: l10nRef.current.getString('payment-toast-currency-failed'), type: 'error' }));
-    }
-  }, [open, multiCurrency, sessionToken, addToast]); // l10n via ref — stable dep chain
-
-  const exchangeRateInfo = useMemo(() => {
-    if (selectedCurrency === total.currency) return null;
-    const rate = exchangeRates.find(
-      (r) => r.from_currency === total.currency && r.to_currency === selectedCurrency,
-    );
-    if (rate) {
-      return { ...rate, rate: exchangeRateToDecimal(rate), inverted: false };
-    }
-    const inverse = exchangeRates.find(
-      (r) => r.from_currency === selectedCurrency && r.to_currency === total.currency,
-    );
-    if (inverse) {
-      return {
-        ...inverse,
-        rate: 1 / exchangeRateToDecimal(inverse),
-        from_currency: total.currency,
-        to_currency: selectedCurrency,
-        // MONEY-01: the conversion must know the stored rate is the
-        // reciprocal — `rate` here is float display math only.
-        inverted: true,
-      };
-    }
-    return null;
-  }, [selectedCurrency, total.currency, exchangeRates]);
-
-  // CUR-04: when a session store is active, ask the backend for the latest
-  // rate effective today (or before) instead of relying on `find()` over the
-  // full history list — the list is not ordered by effective date, so a
-  // stale rate could be chosen. Falls back to the in-memory list only when
-  // there is no session (single-store legacy path).
-  const [latestRate, setLatestRate] = useState<ExchangeRateDto | null>(null);
-  useEffect(() => {
-    setLatestRate(null);
-    if (!open || !multiCurrency || !sessionToken || selectedCurrency === total.currency) {
-      return;
-    }
-    getLatestExchangeRateScoped(sessionToken, {
-      fromCurrency: total.currency,
-      toCurrency: selectedCurrency,
-    })
-      .then((r) => setLatestRate(r))
-      .catch(() => setLatestRate(null));
-  }, [open, multiCurrency, sessionToken, selectedCurrency, total.currency]);
-
-  const effectiveRateInfo = useMemo(() => {
-    if (!sessionToken || !latestRate) return exchangeRateInfo;
-    return {
-      ...latestRate,
-      rate: exchangeRateToDecimal(latestRate),
-      // The backend query is pair-specific (base→charge), so a hit is
-      // always the direct direction.
-      inverted: false,
-    };
-  }, [sessionToken, latestRate, exchangeRateInfo]);
+  // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
+  // Charge-currency state, the rate reads, the converter and cartCurrency
+  // moved verbatim to ./payment/useMultiCurrency (slice W5-a). It receives
+  // six values and writes none of the shell atoms; the totals that convert
+  // through it stay here because their other inputs (loyalty, promo preview,
+  // the displayed cart, the tendered string) are not currency data.
+  // cartCurrency / convertToChargeCurrency were declared far below, at :508
+  // and :529 — nothing above this call read them, so their first read is
+  // still the promoted/unpromoted total memos further down.
+  const {
+    currencies,
+    selectedCurrency,
+    setSelectedCurrency,
+    baseCurrency,
+    cartCurrency,
+    effectiveRateInfo,
+    convertToChargeCurrency,
+  } = useMultiCurrency({
+    open,
+    multiCurrency,
+    sessionToken,
+    totalCurrency: total.currency,
+    addToast,
+    l10nRef,
+  });
 
   useEffect(() => {
     if (open) {
@@ -380,11 +317,12 @@ export default function PaymentModal({
     // onCustomerChange is intentionally omitted: it is routed through
     // notifyCustomerChangeRef, so depending on it here would re-run this
     // reset (and wipe the tendered amount) on every parent re-render.
-    // setShowQr / setQrReference stay off this list: the array is evaluated
-    // during render and the hook call that creates them is BELOW this effect, so
-    // listing them is a use-before-declaration error — and a no-op, since a
-    // useState dispatcher never changes identity. The reset still fires only on
-    // open / charge-currency / controlled-customer changes.
+    // setShowQr / setQrReference / setSelectedCurrency stay off this list: the
+    // array is evaluated during render and the hook calls that create them are
+    // BELOW this effect, so listing them is a use-before-declaration error — and
+    // a no-op anyway, since a useState dispatcher never changes identity. The
+    // reset still fires only on open / charge-currency / controlled-customer
+    // changes (W3-c + W5-a).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, total.currency, selectedCustomerProp]);
 
@@ -503,30 +441,6 @@ export default function PaymentModal({
     if (parsed === null || parsed < 0) return 0n;
     return BigInt(parsed);
   }, [tendered, total.currency]);
-
-  // Convert base currency amount to selected charge currency using exchange rate
-  const convertToChargeCurrency = useCallback(
-    (minorUnits: number | bigint): number => {
-      if (selectedCurrency === total.currency || !effectiveRateInfo) {
-        return typeof minorUnits === 'bigint' ? Number(minorUnits) : minorUnits;
-      }
-      // MONEY-01: exact fixed-point conversion. The old float chain
-      // (divide to major, multiply by a binary-float rate, scale back)
-      // mis-rounded every product landing on the .5 minor boundary
-      // (0.03 USD @ 149.5 → 448 instead of 449).
-      return convertMinorUnits({
-        baseMinor: typeof minorUnits === 'bigint' ? Number(minorUnits) : minorUnits,
-        baseExponent: minorUnitExponent(total.currency),
-        rateMillionths: effectiveRateInfo.rate_millionths,
-        chargeExponent: minorUnitExponent(selectedCurrency),
-        inverse: effectiveRateInfo.inverted,
-      });
-    },
-    [selectedCurrency, total.currency, effectiveRateInfo],
-  );
-
-  // Get the currency to use for the cart (charge currency if multi-currency, else base)
-  const cartCurrency = multiCurrency && selectedCurrency !== total.currency ? selectedCurrency : total.currency;
 
   // PROMO-3: the charge total when promotions are selected — the engine
   // preview result (already in cart currency) minus the loyalty discount
