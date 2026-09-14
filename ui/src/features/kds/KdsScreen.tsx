@@ -23,6 +23,7 @@ import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsMo
 import { clampYellowThreshold, clampRedThreshold, clampYellowFollowingRed } from '@/features/kds/kdsThresholdMinutes';
 import { KdsHeaderLeft } from '@/features/kds/components/KdsHeaderLeft';
 import { KdsNoticeBanners } from '@/features/kds/components/KdsNoticeBanners';
+import { KdsZoneChips } from '@/features/kds/components/KdsZoneChips';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
 import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';
@@ -816,35 +817,13 @@ export default function KdsScreen() {
       </div>
 
       {/* ── Zone chips — secondary filter row below the header ────── */}
-      {zones.length > 0 && (
-        <div className="kds-zone-chips" role="tablist" aria-label={requiredLocalized(l10n, 'kds-zone-filter-aria')} onKeyDown={handleZoneTablistKeyDown} tabIndex={0}>
-          <button
-            className={`kds-zone-chip${!prefs.kdsZone ? ' kds-zone-chip--active' : ''}`}
-            onClick={() => setKdsZone('')}
-            role="tab"
-            aria-selected={!prefs.kdsZone}
-            tabIndex={!prefs.kdsZone ? 0 : -1}
-            ref={(el) => { zoneTabRefs.current[0] = el; }}
-            data-testid="kds-zone-chip-all"
-          >
-            <Localized id="kds-zone-all">All</Localized>
-          </button>
-          {zones.map((zone, i) => (
-            <button
-              key={zone}
-              className={`kds-zone-chip${prefs.kdsZone === zone ? ' kds-zone-chip--active' : ''}`}
-              onClick={() => setKdsZone(zone)}
-              role="tab"
-              aria-selected={prefs.kdsZone === zone}
-              tabIndex={prefs.kdsZone === zone ? 0 : -1}
-              ref={(el) => { zoneTabRefs.current[i + 1] = el; }}
-              data-testid={`kds-zone-chip-${zone}`}
-            >
-              {zone}
-            </button>
-          ))}
-        </div>
-      )}
+      <KdsZoneChips
+        zones={zones}
+        activeZone={prefs.kdsZone}
+        onSelectZone={setKdsZone}
+        onKeyDown={handleZoneTablistKeyDown}
+        zoneTabRefs={zoneTabRefs}
+      />
 
       <KdsNoticeBanners
         error={error}

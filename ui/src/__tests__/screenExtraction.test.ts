@@ -255,6 +255,12 @@ const SCREENS: ScreenEntry[] = [
       // what keeps them reachable — without it the guard would call them dead.
       'kds/components/KdsNoticeBanners.tsx',
       'kds/components/KdsHeaderLeft.tsx',
+      // Zone-chips slice: the three kds-zone-chip* classes moved out of
+      // KdsScreen.tsx:818-847 into components/KdsZoneChips.tsx. They are still
+      // styled by kds/KdsScreen.css, which this entry already lists, so this
+      // line is what keeps them reachable — drop it and the guard reads all
+      // three as dead CSS while every other suite stays green.
+      'kds/components/KdsZoneChips.tsx',
     ],
   },
   {
