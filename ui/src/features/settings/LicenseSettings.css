@@ -181,6 +181,21 @@
   border-bottom-color: var(--color-border);
 }
 
+/* Warning row -- the paused-subscription band at LicenseSettings.tsx:526, whose class
+   had no rule anywhere in the repo. Ported from the sibling row modifier above, which
+   overrides only the border colour, and from the base .settings-license-section
+   .settings-license-row at :3, whose four layout declarations this inherits rather than
+   repeats. Both tokens are real and triple-defined -- --color-warning-border at
+   tokens.css:126/:435/:574 and --color-warning-bg at :122/:431/:570, i.e. in :root,
+   [data-theme=light] and [data-theme=dark] -- and no literal colour or size appears
+   here. --color-warning-fg is deliberately NOT used: this rule sets a background and no
+   color, which is what keeps it out of composedRuleIdenticalPair's graded pairs, and the
+   sibling --status rule is the precedent for touching only the border. */
+.settings-license-row--warning {
+  border-bottom-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
 /* ── Empty state ────────────────────────────────────────── */
 .settings-license-empty {
   display: flex;

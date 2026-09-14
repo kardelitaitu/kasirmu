@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, 83/255/27 after 319a18e41, 83/255/26 after 338c15c01, and 84/258/25 after 1adf4ba6c, and 85/261/24 as of this edit: (3 x 85) + 4 + 2 = 261,
+// 902e07678, 83/255/27 after 319a18e41, 83/255/26 after 338c15c01, and 84/258/25 after 1adf4ba6c, and 85/261/24 after 79466dc63, and 86/264/23 as of this edit: (3 x 86) + 4 + 2 = 264,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -584,14 +584,39 @@ const SCREENS: ScreenEntry[] = [
     // externalClasses to dodge it (that field is filtered OUT of the leaner set, so a
     // name parked there is proved by nothing). Dead-rule check walks the sheet alone:
     // all 7 of its rules are referenced here, so 0 findings. The sibling row
-    // settings/LicenseSettings.css stays in BASELINE_UNCITED on purpose -- it has 5
-    // leaners too but only 3 are backed (settings-error is at :835) while
-    // settings-license-row--warning (LicenseSettings.tsx:526) and server-status are
-    // defined nowhere in src/, and 4 of its own rules (settings-license-value--tier-
-    // free/pro/premium/enterprise) have no reference in that tsx. Citing it would read
-    // as backed and registering it would go red twice over; that is define-work, not a
-    // citation.
+    // The row this entry nearly refused for the wrong reasons is registered below, and
+    // two of the three reasons given at 79466dc63 were mine and were wrong: server-status is
+    // not a class but the argument of triggerFlash('server-status') at LicenseSettings.tsx:156
+    // and :230, read back at :423 and :473 through flashRows.has('server-status') -- the parser
+    // false positive knownDynamicFragments documents -- and the four settings-license-value--tier-
+    // rules are not dead but composed at :352 and :478 in a template literal, which is what
+    // dynamicClassPrefixes is for. Only the first reason stood: settings-license-row--warning
+    // at :526 had no rule anywhere. A cite is all-or-nothing under check (iii), so the row could
+    // not land on a partial backing and the sheet could not be cited for a name no sheet defines;
+    // the define and the devices now land together, which is what paid it off.
     parentCss: ['settings/SettingsPage.css'],
+  },
+
+  {
+    name: 'LicenseSettings',
+    tsx: 'settings/LicenseSettings.tsx',
+    css: ['settings/LicenseSettings.css'],
+    // Shape #1 again, and it is complete: the component uses 31 names, its own sheet defines
+    // 30 and 26 of those are the same, leaving 5 leaners -- settings-section-title (:288, :344),
+    // settings-form (:345) and settings-error, at SettingsPage.css:514, :521 and :835. No other
+    // sheet defines any of the three. The two that are not classes at all go to their own fields
+    // rather than being muted into nothing: server-status is a flash-row KEY passed to
+    // triggerFlash at :156 and :230 and compared at :423 and :473, never a selector, and
+    // settings-license-value--tier-free/pro/premium/enterprise are built at :352 and :478 as
+    // `settings-license-value--tier-${payload.tier_key}`, so the prefix is cited for what it is
+    // and the four rules stay graded for every other name. The fifth leaner was real CSS debt:
+    // settings-license-row--warning at :526 had no rule in this repo, so the row rendered
+    // unstyled; it is defined in this sheet at :194 beside its sibling --status modifier, from
+    // which it takes the single-declaration shape, and the register could not have landed without
+    // that define because check (iii) grades a cite all-or-nothing.
+    parentCss: ['settings/SettingsPage.css'],
+    dynamicClassPrefixes: ['settings-license-value--tier-'],
+    knownDynamicFragments: ['server-status'],
   },
 
   // ── Locations (moved from stores/ in the Store→Location rename) ──
@@ -1537,7 +1562,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 24 entries is a named path, not a prefix, not a
+// every one of its 23 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line, and NOTHING here is a
 // place to put a new one: not a rename, not a sheet that "will be
@@ -1575,7 +1600,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 24 since, one line per sheet a landed entry cited, and
+// it has shrunk to 23 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1595,7 +1620,6 @@ const BASELINE_UNCITED: string[] = [
   'memo/MemoBanner.css',
   'retail/RetailPosScreen.css',
   'sales/widgets/widgets.css',
-  'settings/LicenseSettings.css',
   'settings/SettingsNavTree.css',
   'settings/SettingsScopeTag.css',
   'settings/WorkspaceSettingsModal.module.css',
