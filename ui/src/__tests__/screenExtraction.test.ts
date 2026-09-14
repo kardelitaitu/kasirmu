@@ -248,6 +248,12 @@ const SCREENS: ScreenEntry[] = [
       'kds/KdsCompletedView.tsx',
       'kds/KdsHamburgerPanel.tsx',
       'kds/KdsScreenFooter.tsx',
+      // Slice 1: the four notice banners moved out of KdsScreen.tsx:967-1081.
+      // All ten classes they use (kds-error-banner + text/retry/dismiss, and
+      // kds-offline-banner with its storage/deadletter variants + text/retry/
+      // dismiss) are still styled by kds/KdsScreen.css above, so this entry is
+      // what keeps them reachable — without it the guard would call them dead.
+      'kds/components/KdsNoticeBanners.tsx',
     ],
   },
   {

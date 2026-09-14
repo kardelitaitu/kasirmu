@@ -21,6 +21,7 @@ import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
 import { clampYellowThreshold, clampRedThreshold, clampYellowFollowingRed } from '@/features/kds/kdsThresholdMinutes';
+import { KdsNoticeBanners } from '@/features/kds/components/KdsNoticeBanners';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
 import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';
@@ -964,121 +965,47 @@ export default function KdsScreen() {
         </div>
       )}
 
-      {/* ── Error banner (dismissible + retry) ──────────────────── */}
-      {error && (
-        <div className="kds-error-banner" role="alert">
-          <span className="kds-error-banner-text">{error}</span>
-          <button
-            className="kds-error-retry-btn"
-            onClick={() => {
-              clearError();
-              fetchOrders();
-            }}
-            aria-label={requiredLocalized(l10n, 'kds-error-retry-aria')}
-            data-testid="kds-error-retry"
-          >
-            <Localized id="kds-offline-retry">Retry</Localized>
-          </button>
-          <button
-            className="kds-error-dismiss-btn"
-            onClick={clearError}
-            aria-label={requiredLocalized(l10n, 'kds-error-dismiss-aria')}
-            data-testid="kds-error-dismiss"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
-      {/* OFF-08: local persistence is unavailable — queued actions are not durable */}
-      {storageUnavailable && (
-        <div className="kds-offline-banner kds-offline-banner--storage" role="alert">
-          <span className="kds-offline-banner-text">
-            {requiredLocalized(l10n, 'kds-offline-storage-unavailable')}
-          </span>
-        </div>
-      )}
-
-      {/* OFF-05: actions that exhausted retries and need operator attention */}
-      {deadLetterLength > 0 && (
-        <div className="kds-offline-banner kds-offline-banner--deadletter" role="alert">
-          <span className="kds-offline-banner-text">
-            {requiredLocalized(l10n, 'kds-offline-dead-letter', { count: deadLetterLength })}
-          </span>
-          <button
-            className="kds-offline-retry-btn"
-            onClick={() => {
-              // OFF-05: requeue the dead-lettered actions into the pending
-              // queue (preserving operator intent), then flush the queue.
-              // The dismiss (×) button is the explicit "discard" path.
-              requeueDeadLetter();
-              retryPending(async (action) => {
-                try {
-                  await updateKdsStatusScoped(sessionToken, action.orderId, action.targetStatus);
-                  return true;
-                } catch {
-                  return false;
-                }
-              });
-            }}
-            aria-label={requiredLocalized(l10n, 'kds-offline-retry-aria')}
-            data-testid="kds-deadletter-retry"
-          >
-            <Localized id="kds-offline-retry">Retry</Localized>
-          </button>
-          <button
-            className="kds-offline-dismiss-btn"
-            onClick={clearDeadLetter}
-            aria-label={requiredLocalized(l10n, 'kds-offline-dead-letter-clear-aria')}
-            data-testid="kds-deadletter-dismiss"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
-      {/* 3b: Offline banner — shown when backend is unreachable or actions are queued */}
-      {!online && !offlineDismissed && (
-        <div className="kds-offline-banner" role="alert">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" aria-hidden="true">
-            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-.47.81c-.54.5-1.1 1.36-1.1 2.52V8l4.89-4.89c-.04-.26-.14-.52-.34-.73zM5.99 5.58l-2.84 2.84a1.532 1.532 0 000 2.16l7.29 7.29c.39.39 1.02.39 1.41 0l2.84-2.84-5.99-5.99-2.71-2.76v.3zm10.02 2.46l2.13 2.13a1.532 1.532 0 010 2.16l-2.13 2.13a.5.5 0 01-.71-.71l2.13-2.13a.532.532 0 000-.75l-2.13-2.13a.5.5 0 01.71-.71zm-5.02 5.32a1.25 1.25 0 110-2.5 1.25 1.25 0 010 2.5z" clipRule="evenodd" />
-          </svg>
-          <span className="kds-offline-banner-text">
-            {pendingQueueLength > 0
-              ? requiredLocalized(l10n, 'kds-offline-queued', { count: pendingQueueLength })
-              : requiredLocalized(l10n, 'kds-offline-label')}
-          </span>
-          {pendingQueueLength > 0 && (
-            <button
-              className="kds-offline-retry-btn"
-              onClick={() => {
-                retryPending(async (action) => {
-                  try {
-                    await updateKdsStatusScoped(sessionToken, action.orderId, action.targetStatus);
-                    return true;
-                  } catch {
-                    return false;
-                  }
-                });
-                // The backend will emit kds:orders-changed on success,
-                // which triggers fetchOrders via the event listener.
-              }}
-              aria-label={requiredLocalized(l10n, 'kds-offline-retry-aria')}
-              data-testid="kds-offline-retry"
-            >
-              <Localized id="kds-offline-retry">Retry</Localized>
-            </button>
-          )}
-          <button
-            className="kds-offline-dismiss-btn"
-            onClick={() => setOfflineDismissed(true)}
-            aria-label={requiredLocalized(l10n, 'kds-offline-dismiss-aria')}
-            data-testid="kds-offline-dismiss"
-          >
-            &times;
-          </button>
-        </div>
-      )}
+      <KdsNoticeBanners
+        error={error}
+        onRetryError={() => {
+          clearError();
+          fetchOrders();
+        }}
+        onDismissError={clearError}
+        storageUnavailable={storageUnavailable}
+        deadLetterLength={deadLetterLength}
+        onRetryDeadLetter={() => {
+          // OFF-05: requeue the dead-lettered actions into the pending
+          // queue (preserving operator intent), then flush the queue.
+          // The dismiss (×) button is the explicit "discard" path.
+          requeueDeadLetter();
+          retryPending(async (action) => {
+            try {
+              await updateKdsStatusScoped(sessionToken, action.orderId, action.targetStatus);
+              return true;
+            } catch {
+              return false;
+            }
+          });
+        }}
+        onClearDeadLetter={clearDeadLetter}
+        online={online}
+        offlineDismissed={offlineDismissed}
+        pendingQueueLength={pendingQueueLength}
+        onRetryPending={() => {
+          retryPending(async (action) => {
+            try {
+              await updateKdsStatusScoped(sessionToken, action.orderId, action.targetStatus);
+              return true;
+            } catch {
+              return false;
+            }
+          });
+          // The backend will emit kds:orders-changed on success,
+          // which triggers fetchOrders via the event listener.
+        }}
+        onDismissOffline={() => setOfflineDismissed(true)}
+      />
 
       {/* P7-3: Pull-to-refresh indicator */}
       {pullState !== 'idle' && (
