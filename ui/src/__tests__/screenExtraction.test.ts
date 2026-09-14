@@ -388,7 +388,7 @@ const SCREENS: ScreenEntry[] = [
     // BackupSection.tsx carries the data-mgmt-backup-* markup and its flash modifier,
     // moved out of the screen in DataManagement slice 3; unregistered, the guard
     // reads those classes as dead CSS.
-    additionalTsx: ['settings/components/BackupSection.tsx'],
+    additionalTsx: ['settings/components/BackupSection.tsx', 'settings/components/ImportSection.tsx'],
     dynamicClassPrefixes: ['data-mgmt-toast--'],
     knownDynamicFragments: [
       // Template-literal parameters inside flashRows.has() that the
