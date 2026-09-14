@@ -17,10 +17,8 @@ import {
   getBackupStatusScoped,
   createBackup,
   createBackupScoped,
-  exportData,
   importPreview,
   importData,
-  pickExportPath,
   pickImportFile,
 } from '@/api/data';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -28,11 +26,12 @@ import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
-import { DATA_TYPES, INITIAL_EXPORT, INITIAL_IMPORT, type BackupInfo, type DataType, type ExportState, type ImportState } from './dataManagementModel';
+import { INITIAL_IMPORT, type BackupInfo, type ImportState } from './dataManagementModel';
 import { tabIcon } from './dataManagementIcons';
 import { ExportSection } from './components/ExportSection';
 import { BackupSection } from './components/BackupSection';
 import { ImportSection } from './components/ImportSection';
+import { useExportWizard } from './hooks/useExportWizard';
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -52,7 +51,6 @@ function DataManagementScreenContent() {
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
-  const [exportState, setExportState] = useState<ExportState>(INITIAL_EXPORT);
   const [importState, setImportState] = useState<ImportState>(INITIAL_IMPORT);
   const [backup, setBackup] = useState<BackupInfo>({
     lastBackup: null,
@@ -60,7 +58,6 @@ function DataManagementScreenContent() {
     backingUp: false,
   });
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'backup'>('export');
-  const [showExportPw, setShowExportPw] = useState(false);
   const [showImportPw, setShowImportPw] = useState(false);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const { addToast } = useToast();
@@ -101,13 +98,23 @@ function DataManagementScreenContent() {
 
   // ── Refs to hold latest form state so callbacks don't depend on
   //     keystroke-level state (which would defeat useCallback).
-  const exportStateRef = useRef(exportState);
-  exportStateRef.current = exportState;
   const importStateRef = useRef(importState);
   importStateRef.current = importState;
 
-  // Guard ref to prevent double-clicks during export.
-  const exportingRef = useRef(false);
+  // ── Export wizard state machine -> hooks/useExportWizard (state owns behavior,
+  //     the child stays presentational; the props below are unchanged).
+  const {
+    exportState,
+    setExportState,
+    showExportPw,
+    setShowExportPw,
+    toggleType,
+    toggleAll,
+    startExport,
+    confirmExport,
+    resetExport,
+  } = useExportWizard({ sessionToken, triggerFlash });
+
 
   // ── Load backup status on mount ─────────────────────────────────
 
@@ -176,94 +183,6 @@ function DataManagementScreenContent() {
     }
   }, [addToast, l10n, triggerFlash, sessionToken]);
 
-  // ── Toggle data type selection ──────────────────────────────────
-
-  const toggleType = useCallback((type: DataType) => {
-    setExportState((prev) => {
-      const next = new Set(prev.selectedTypes);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return { ...prev, selectedTypes: next };
-    });
-  }, []);
-
-  const toggleAll = useCallback(() => {
-    setExportState((prev) => {
-      const allSelected = prev.selectedTypes.size === DATA_TYPES.length;
-      if (allSelected) {
-        return { ...prev, selectedTypes: new Set() };
-      }
-      return { ...prev, selectedTypes: new Set(DATA_TYPES.map((t) => t.key)) };
-    });
-  }, []);
-
-  // ── Export flow ─────────────────────────────────────────────────
-
-  const startExport = useCallback(() => {
-    const es = exportStateRef.current;
-    if (es.selectedTypes.size === 0) {
-      addToast({ message: l10n.getString('data-mgmt-toast-export-select-type'), type: 'error' });
-      return;
-    }
-    setExportState((prev) => ({ ...prev, step: 'encrypt', error: null }));
-  }, [addToast, l10n]);
-
-  const confirmExport = useCallback(async () => {
-    const es = exportStateRef.current;
-    if (es.password.length < 8) {
-      addToast({ message: l10n.getString('data-mgmt-toast-export-password-length'), type: 'error' });
-      return;
-    }
-    if (es.password !== es.passwordConfirm) {
-      addToast({ message: l10n.getString('data-mgmt-toast-export-password-match'), type: 'error' });
-      return;
-    }
-
-    if (exportingRef.current) return;
-    exportingRef.current = true;
-
-    setExportState((prev) => ({ ...prev, step: 'exporting', progress: 10, error: null }));
-
-    try {
-      const filePath = await pickExportPath();
-      if (!filePath) {
-        setExportState((prev) => ({ ...prev, step: 'encrypt', progress: 0 }));
-        return;
-      }
-
-      setExportState((prev) => ({ ...prev, progress: 30 }));
-
-      const result = await exportData(sessionToken, {
-        types: Array.from(es.selectedTypes),
-        password: es.password,
-        outputPath: filePath,
-        ...(es.dateFrom ? { dateFrom: es.dateFrom } : {}),
-        ...(es.dateTo ? { dateTo: es.dateTo } : {}),
-      });
-
-      setExportState((prev) => ({
-        ...prev,
-        step: 'done',
-        progress: 100,
-        outputFile: result.path,
-      }));
-      triggerFlash('export-done');
-      addToast({ message: l10n.getString('data-mgmt-toast-export-success'), type: 'success' });
-    } catch (err) {
-      setExportState((prev) => ({
-        ...prev,
-        step: 'encrypt',
-        error: l10nErrorMessage(err, l10n, 'data-mgmt-toast-export-fail'),
-      }));
-      addToast({ message: l10n.getString('data-mgmt-toast-export-fail'), type: 'error' });
-    } finally {
-      exportingRef.current = false;
-    }
-  }, [addToast, l10n, sessionToken, triggerFlash]);
-
-  const resetExport = useCallback(() => {
-    setExportState(INITIAL_EXPORT);
-  }, []);
 
   // ── Import flow ─────────────────────────────────────────────────
 
