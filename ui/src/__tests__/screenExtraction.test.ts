@@ -530,7 +530,6 @@ const SCREENS: ScreenEntry[] = [
     ],
     externalClasses: [
       'card',
-      'tab-list',
       'tooltip-content',
       'feature-toggle',
       'data-mgmt',
@@ -553,10 +552,23 @@ const SCREENS: ScreenEntry[] = [
       'settings-save-dot--hidden',
       // Sync status classes used in SettingsPage.tsx
       'settings-sync-dot--err',
-      'settings-sync-expiry-badge--good',
-      'settings-sync-expiry-badge--warn',
-      'settings-sync-expiry-badge--critical',
     ],
+    // These three modifiers are not another component's classes -- this entry's own
+    // code composes them. features/settings/sections/SyncSection.tsx:296 renders one
+    // span whose className is a single template literal emitting
+    // `settings-sync-expiry-badge` plus `settings-sync-expiry-badge--` and an
+    // interpolated tone, tone is a closed union of exactly good/warn/critical declared
+    // at :22, produced by the ternary at :40-41 with the matching literals at :31, :35
+    // and :51, and the three rules are real -- SettingsPage.css:1010, :1015, :1020. So
+    // they were live-by-composition while sitting in a field whose stated warrant is
+    // that the name belongs to ANOTHER sheet: the device for runtime composition is
+    // dynamicClassPrefixes, and one value replaces three. The verdict does not change
+    // tonight -- the extractor strips the interpolation and keeps only the base, which
+    // means case 1 can never see the composed name and so can never flag it, while
+    // case 3 sees three defined rules with no reference and needs SOME shield; any
+    // shield states the wrong thing, and this is the one that can be checked by
+    // deleting it.
+    dynamicClassPrefixes: ['settings-sync-expiry-badge--'],
   },
   {
     name: 'DataManagementScreen',
@@ -1088,7 +1100,6 @@ const SCREENS: ScreenEntry[] = [
     ],
     externalClasses: [
       'card',
-      'tab-list',
       'collapsed',
       'mobile-open',
       'visible',
