@@ -838,6 +838,54 @@ const SCREENS: ScreenEntry[] = [
     ],
   },
 
+  // ── Settings cards ─────────────────────────────────────────
+  // Four real settings surfaces (1,486 lines of markup between them) that
+  // grew under settings/screens/ while the scaffolds below stayed blank.
+  // Each owns its own sheet and borrows exactly ONE name from the settings
+  // scaffold — settings-section-title, defined only at
+  // settings/SettingsPage.css:514 — which is what parentCss is for: case 1
+  // resolves it through css UNION parentCss, while cases 2 and 3 keep
+  // walking the card's own sheet alone. Listing SettingsPage.css in css:
+  // instead would grade its whole class inventory against one card and make
+  // the entry unsatisfiable, the way the 13 placeholder entries are not.
+  // Every one of these four paths was removed from BASELINE_UNCITED as it
+  // was cited here: the array went 54 -> 50, four lines, one per entry.
+  {
+    name: 'ReceiptFormatSettingsCard',
+    tsx: 'settings/screens/ReceiptFormatSettingsCard.tsx',
+    css: ['settings/screens/ReceiptFormatSettingsCard.css'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+  {
+    // 13 classes, audited clean at 9836cf960: fiscalnum-overview-title keeps
+    // living as an id=/aria-labelledby= pair (StatutoryNumberingCard.tsx:345,
+    // :347), not as a className token, and fiscalnum-error is rendered by the
+    // card's own markup as well as asserted by the SettingsPage.test marker
+    // list — so this entry grades both without any exemption.
+    name: 'StatutoryNumberingCard',
+    tsx: 'settings/screens/StatutoryNumberingCard.tsx',
+    css: ['settings/screens/StatutoryNumberingCard.css'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+  {
+    // 12 classes, audited at zero orphans; regional-settings-empty is both the
+    // card's rendered empty state and a SettingsPage.test.tsx marker, and the
+    // markup carries no className={{ expression for the parser to trip over.
+    name: 'RegionalSettingsCard',
+    tsx: 'settings/screens/RegionalSettingsCard.tsx',
+    css: ['settings/screens/RegionalSettingsCard.css'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+  {
+    // 19 classes, audited at zero orphans, and the largest of the four by
+    // borrowed-name risk: settings-section-title at :165 is the only name in
+    // its markup that its own sheet does not define.
+    name: 'LocalPaymentSettingsCard',
+    tsx: 'settings/screens/LocalPaymentSettingsCard.tsx',
+    css: ['settings/screens/LocalPaymentSettingsCard.css'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+
   // ── Settings screen scaffolds (rebuild) ────────────────────
   // Blank placeholders under features/settings/screens/, one file per screen.
   // They share screens-placeholder.css, so each entry lists that single
@@ -1115,10 +1163,6 @@ const BASELINE_UNCITED: string[] = [
   'settings/SettingsScopeTag.css',
   'settings/SettingsSelect.css',
   'settings/WorkspaceSettingsModal.module.css',
-  'settings/screens/LocalPaymentSettingsCard.css',
-  'settings/screens/ReceiptFormatSettingsCard.css',
-  'settings/screens/RegionalSettingsCard.css',
-  'settings/screens/StatutoryNumberingCard.css',
   'settings/sections/DiagnosticsSection.css',
   'setup/components/LiveSetupPreview.css',
   'staff/RoleAuthoringScreen.css',
