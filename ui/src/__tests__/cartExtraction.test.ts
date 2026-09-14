@@ -38,6 +38,12 @@ const ADDITIONAL_TSX_FILES = [
   'components/CartFooterTotals.tsx',
   'components/CartActionBar.tsx',
   'components/CartPanel.tsx',
+  // The three SHIFT modals (close-shift confirm, close-shift summary,
+  // open-shift), moved out of PosScreen.tsx in the same byte-for-byte way.
+  // Their classes live on in PosScreen.css, so without this entry the
+  // reachability check below would read all 25 pos-close-shift-* rules as
+  // dead the moment the markup left the screen file.
+  'components/ShiftModals.tsx',
 ];
 
 /**

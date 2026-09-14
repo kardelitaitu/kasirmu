@@ -1,10 +1,3 @@
-/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
-// The rule above flags the two overlays that keep a keydown handler
-// while being non-interactive by ARIA defaults: the close-shift and
-// open-shift confirmation dialogs (`<div role="dialog" onKeyDown>`).
-// Both are valid ARIA — the rule only catches the non-interactive
-// defaults. The cart panel that used to need this moved to its own
-// component, components/CartPanel.tsx, under its own directive.
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
@@ -32,6 +25,7 @@ import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
 import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
+import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
 import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
@@ -927,302 +921,33 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         </div>
       )}
 
-      {/* ── Close Shift Confirmation Modal ───────── */}
-      {closeShiftExit.shouldRender && activeShift ? (          <div
-            className={`pos-close-shift-overlay${closeShiftExit.exiting ? ' pos-close-shift-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-close-shift-overlay-aria')}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                closeShiftExit.requestClose();
-                setCloseShiftError(null);
-              }
-              if (e.key === 'Enter') handleConfirmCloseShift();
-            }}
-          >
-            <div className={`pos-close-shift-modal${closeShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
-              <Localized id="pos-close-shift-title">
-              <h3 className="pos-close-shift-title">Close Shift</h3>
-            </Localized>
+      {/* -- Shift modals (Close Shift confirm / summary / Open Shift) -- */}
+      <CloseShiftConfirm
+        closeShiftExit={closeShiftExit}
+        activeShift={activeShift}
+        closeShiftError={closeShiftError}
+        setCloseShiftError={setCloseShiftError}
+        closingBalance={closingBalance}
+        setClosingBalance={setClosingBalance}
+        shiftNotes={shiftNotes}
+        setShiftNotes={setShiftNotes}
+        closingShift={closingShift}
+        setShowCloseShift={setShowCloseShift}
+        handleConfirmCloseShift={handleConfirmCloseShift}
+      />
 
-            {closeShiftError && (
-              <div className="pos-close-shift-error">
-                {closeShiftError}
-              </div>
-            )}
+      <ShiftSummary
+        shiftSummaryExit={shiftSummaryExit}
+        closedShiftSummary={closedShiftSummary}
+      />
 
-            <div className="pos-close-shift-info">
-              <div className="pos-close-shift-info-row">
-                <Localized id="pos-close-shift-opened">
-                  <span>Opened</span>
-                </Localized>
-                <span>{new Date(activeShift.openedAt).toLocaleString()}</span>
-              </div>
-              <div className="pos-close-shift-info-row">
-                <Localized id="pos-close-shift-opening-balance">
-                  <span>Opening balance</span>
-                </Localized>
-                <span>{formatMoney({ minor_units: activeShift.openingBalanceMinor, currency: 'USD' })}</span>
-              </div>
-            </div>
-
-            <div className="pos-close-shift-field">
-              <Localized id="pos-close-shift-counted-label">
-                <label htmlFor="closing-balance" className="pos-close-shift-label">
-                  Counted cash in drawer
-                </label>
-              </Localized>
-              <Localized id="pos-close-shift-counted-placeholder" attrs={{ placeholder: true }}>
-                <input
-                  id="closing-balance"
-                  type="number"
-                  className="pos-close-shift-input"
-                  min="0"
-                  placeholder="e.g. 15000 for $150.00"
-                  value={closingBalance}
-                  onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setClosingBalance(e.target.value);
-                    }
-                  }}
-                  aria-label={l10n.getString('pos-close-shift-balance-aria')}
-                />
-              </Localized>
-            </div>
-
-            <div className="pos-close-shift-field">
-              <Localized id="pos-close-shift-notes-label">
-                <label htmlFor="shift-notes" className="pos-close-shift-label">
-                  Notes (optional)
-                </label>
-              </Localized>
-              <Localized id="pos-close-shift-notes-placeholder" attrs={{ placeholder: true }}>
-                <textarea
-                  id="shift-notes"
-                  className="pos-close-shift-textarea"
-                  rows={3}
-                  placeholder="Any notes about this shift…"
-                  value={shiftNotes}
-                  onChange={(e) => setShiftNotes(e.target.value)}
-                  aria-label={l10n.getString('pos-close-shift-notes-aria')}
-                />
-              </Localized>
-            </div>
-
-            <div className="pos-close-shift-actions">
-              <Localized id="cancel">
-                <button
-                  type="button"
-                  className="pos-close-shift-cancel-btn"
-                  onClick={() => {
-                    setShowCloseShift(false);
-                    setCloseShiftError(null);
-                  }}
-                  disabled={closingShift}
-                >
-                  Cancel
-                </button>
-              </Localized>
-              { }
-              <button
-                type="button"
-                className="pos-close-shift-confirm-btn"
-                onClick={handleConfirmCloseShift}
-                disabled={
-                  closingShift ||
-                  !closingBalance ||
-                  !Number.isInteger(Number(closingBalance)) ||
-                  Number(closingBalance) < 0
-                }
-              >
-                <Localized id={closingShift ? 'pos-close-shift-closing' : 'pos-close-shift-confirm'}>
-                  <span>{closingShift ? 'Closing…' : 'Close Shift'}</span>
-                </Localized>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Close Shift Success Summary ────────────── */}
-      {shiftSummaryExit.shouldRender && closedShiftSummary ? (          <div
-            className={`pos-close-shift-overlay${shiftSummaryExit.exiting ? ' pos-close-shift-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-close-shift-summary-aria')}
-          >
-            <div className={`pos-close-shift-modal pos-close-shift-summary${shiftSummaryExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
-            <Localized id="pos-shift-closed-title">
-              <h3 className="pos-close-shift-title">
-                Shift Closed
-              </h3>
-            </Localized>
-
-            <div className="pos-close-shift-summary-grid">
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-total-sales">
-                  <span className="pos-close-shift-summary-label">Total Sales</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalSalesMinor, currency: 'USD' })}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-cash-sales">
-                  <span className="pos-close-shift-summary-label">Cash Sales</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalCashMinor, currency: 'USD' })}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-card-sales">
-                  <span className="pos-close-shift-summary-label">Card Sales</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalCardMinor, currency: 'USD' })}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-expected-cash">
-                  <span className="pos-close-shift-summary-label">Expected Cash</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {closedShiftSummary.expectedCashMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.expectedCashMinor, currency: 'USD' })
-                    : '—'}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-counted">
-                  <span className="pos-close-shift-summary-label">Counted</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {closedShiftSummary.closingBalanceMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.closingBalanceMinor, currency: 'USD' })
-                    : '—'}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-difference">
-                  <span className="pos-close-shift-summary-label">Difference</span>
-                </Localized>
-                <span
-                  className={`pos-close-shift-summary-value ${
-                    closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor < 0
-                      ? 'pos-close-shift-diff--negative'
-                      : closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor > 0
-                        ? 'pos-close-shift-diff--positive'
-                        : ''
-                  }`}
-                >
-                  {closedShiftSummary.cashDifferenceMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.cashDifferenceMinor, currency: 'USD' })
-                    : '—'}
-                  {closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor !== 0 && (
-                    <span className="pos-close-shift-diff-tag">
-                      <Localized id={closedShiftSummary.cashDifferenceMinor > 0 ? 'pos-shift-over' : 'pos-shift-short'}>
-                        <span>{closedShiftSummary.cashDifferenceMinor > 0 ? 'Over' : 'Short'}</span>
-                      </Localized>
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            {closedShiftSummary.notes && (
-              <div className="pos-close-shift-notes-display">
-                <Localized id="pos-shift-notes">
-                  <span className="pos-close-shift-summary-label">Notes</span>
-                </Localized>
-                <p>{closedShiftSummary.notes}</p>
-              </div>
-            )}            <Localized id="pos-shift-summary-done">
-              <button
-                type="button"
-                className="pos-close-shift-dismiss-btn"
-                onClick={() => shiftSummaryExit.requestClose()}
-              >
-                Done
-              </button>
-            </Localized>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Open Shift Modal ───────────────────────── */}
-      {openShiftExit.shouldRender && (          <div
-            className={`pos-close-shift-overlay${openShiftExit.exiting ? ' pos-close-shift-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-open-shift-overlay-aria')}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') openShiftExit.requestClose();
-              if (e.key === 'Enter') handleConfirmOpenShift();
-            }}
-          >
-            <div className={`pos-close-shift-modal${openShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
-              <Localized id="pos-open-shift-title">
-              <h3 className="pos-close-shift-title">Open Shift</h3>
-            </Localized>
-
-            <div className="pos-close-shift-field">
-              <Localized id="pos-open-shift-balance-label">
-                <label htmlFor="opening-balance" className="pos-close-shift-label">
-                  Opening balance
-                </label>
-              </Localized>
-              <Localized id="pos-open-shift-balance-placeholder" attrs={{ placeholder: true }}>
-                <input
-                  id="opening-balance"
-                  type="number"
-                  className="pos-close-shift-input"
-                  min="0"
-                  placeholder="e.g. 500 for $5.00"
-                  value={openingBalance}
-                  onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setOpeningBalance(e.target.value);
-                    }
-                  }}
-                  aria-label={l10n.getString('pos-open-shift-balance-aria')}
-                />
-              </Localized>
-            </div>
-
-            <div className="pos-close-shift-actions">
-              <Localized id="cancel">
-                <button
-                  type="button"
-                className="pos-close-shift-cancel-btn"
-                onClick={() => openShiftExit.requestClose()}
-                  disabled={openingShift}
-                >
-                  Cancel
-                </button>
-              </Localized>
-              { }
-              <button
-                type="button"
-                className="pos-close-shift-confirm-btn"
-                onClick={handleConfirmOpenShift}
-                disabled={openingShift}
-              >
-                <Localized id={openingShift ? 'pos-open-shift-opening' : 'pos-open-shift-title'}>
-                  <span>{openingShift ? 'Opening…' : 'Open Shift'}</span>
-                </Localized>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <OpenShiftModal
+        openShiftExit={openShiftExit}
+        openingBalance={openingBalance}
+        setOpeningBalance={setOpeningBalance}
+        openingShift={openingShift}
+        handleConfirmOpenShift={handleConfirmOpenShift}
+      />
 
       {/* ── FastPIN Overlay (ADR-19 §17: badge click → manager override) ── */}
       <FastPINOverlay
