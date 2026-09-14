@@ -942,6 +942,9 @@ describe('font-reference portability', () => {
  * shrink-only naming, exactly like BASELINE_UNCITED in
  * screenExtraction.test.ts. Both directions fail: a name outside the list is
  * new debt, and a listed name that no longer resolves to a miss is stale.
+ *
+ * 63 of the 84 sites carry a comma fallback and so render a literal; the 21
+ * that do not (the eight NO-FALLBACK names below) render nothing at all.
  */
 
 const TOKENS_CSS = join(UI_SRC, "frontend", "themes", "tokens.css");
@@ -1063,26 +1066,26 @@ const UNRESOLVED_VAR_TOKENS_BASELINE: string[] = [
   "--border-subtle", // 2 - settings/sections/DiagnosticsSection.css
   "--color-surface-alt", // 1 - staff/RoleAuthoringScreen.css
   "--color-warning-pos-darker", // 1 - retail/RetailPosScreen.css
-  "--danger-500", // 4 - inventory/*, a pre-token palette that never landed
-  "--danger-700", // 1
+  "--danger-500", // 4 NO FALLBACK - a colour that renders nothing
+  "--danger-700", // 1 NO FALLBACK
   "--danger-text", // 1 - settings/screens/StatutoryNumberingCard.css
-  "--duration-250", // 10 - every transition carrying it is dropped
-  "--info-500", // 1
+  "--duration-250", // 10 NO FALLBACK - every transition carrying it is dropped
+  "--info-500", // 1 NO FALLBACK
   "--mouse-x", // 2 - only a TEST sets these, so nothing exists at runtime
   "--mouse-y", // 2
   "--rotate-x", // 1 - workspaces/WorkspaceHome.css
   "--rotate-y", // 1
-  "--space-0-5", // 1 - the scale spells the half-step --space-0_5
-  "--space-0_25", // 1 - the scale has no 0.25 step at all
+  "--space-0-5", // 1 NO FALLBACK - the scale spells it --space-0_5
+  "--space-0_25", // 1 NO FALLBACK - the scale has no 0.25 step
   "--status-danger", // 3
   "--status-success", // 3
-  "--success-500", // 2
+  "--success-500", // 2 NO FALLBACK
   "--success-bg", // 1
   "--text-muted", // 1
   "--text-primary", // 10
   "--text-secondary", // 8
   "--text-tertiary", // 7
-  "--z-popover", // 1 - settings/SettingsNavTree.css
+  "--z-popover", // 1 NO FALLBACK - settings/SettingsNavTree.css
 ];
 
 describe("var() token existence", () => {
@@ -1113,9 +1116,11 @@ describe("var() token existence", () => {
     const subset = new Map(unexpected.map((n) => [n, misses.get(n) ?? []]));
     expect(
       unexpected,
-      "These var() references name a token no CSS file or runtime setter defines, "
+      "These var() references name a token no CSS file or runtime setter defines. A site "
         +
-        "so the declaration holding them computes to NOTHING in every theme:\n"
+        "that carries no comma fallback renders NOTHING in every theme; one that does "
+        +
+        "silently renders its fallback literal instead of a token:\n"
         + describeUnresolved(subset),
     ).toEqual([]);
     expect(
