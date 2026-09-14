@@ -32,46 +32,7 @@ import { useAdminGate } from '@/contexts/SubscriptionContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
 import { DATA_TYPES, INITIAL_EXPORT, INITIAL_IMPORT, type BackupInfo, type DataType, type ExportState, type ImportState } from './dataManagementModel';
-
-// ── SVG icon helpers ──────────────────────────────────────────────
-
-const eyeIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-    <circle cx="12" cy="12" r="3" />
-  </svg>
-);
-
-const eyeOffIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" width="14" height="14" aria-hidden="true">
-    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
-    <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
-    <line x1="1" y1="1" x2="23" y2="23" />
-  </svg>
-);
-
-// ── Tab / icon helpers ───────────────────────────────────────────
-
-const ICON_PROPS = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '1.5', strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
-
-function tabIcon(tab: 'export' | 'import' | 'backup'): React.ReactNode {
-  switch (tab) {
-    case 'export':
-      return <svg {...ICON_PROPS}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
-    case 'import':
-      return <svg {...ICON_PROPS}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
-    case 'backup':
-      return <svg {...ICON_PROPS}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>;
-  }
-}
-
-function folderIcon(): React.ReactNode {
-  return <svg {...ICON_PROPS} width={32} height={32}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>;
-}
-
-function checkIcon(): React.ReactNode {
-  return <svg {...ICON_PROPS}><polyline points="20 6 9 17 4 12"/></svg>;
-}
+import { checkIcon, eyeIcon, eyeOffIcon, folderIcon, tabIcon } from './dataManagementIcons';
 
 // ── Component ──────────────────────────────────────────────────────
 
