@@ -17,21 +17,18 @@ import {
   getBackupStatusScoped,
   createBackup,
   createBackupScoped,
-  importPreview,
-  importData,
-  pickImportFile,
 } from '@/api/data';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import AdminLockedFeature from '@/components/AdminLockedFeature';
 import { useAdminGate } from '@/contexts/SubscriptionContext';
-import { l10nErrorMessage } from '@/utils/app-error';
 import './DataManagementScreen.css';
-import { INITIAL_IMPORT, type BackupInfo, type ImportState } from './dataManagementModel';
+import { type BackupInfo } from './dataManagementModel';
 import { tabIcon } from './dataManagementIcons';
 import { ExportSection } from './components/ExportSection';
 import { BackupSection } from './components/BackupSection';
 import { ImportSection } from './components/ImportSection';
 import { useExportWizard } from './hooks/useExportWizard';
+import { useImportWizard } from './hooks/useImportWizard';
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -51,15 +48,12 @@ function DataManagementScreenContent() {
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
-  const [importState, setImportState] = useState<ImportState>(INITIAL_IMPORT);
   const [backup, setBackup] = useState<BackupInfo>({
     lastBackup: null,
     lastBackupSize: null,
     backingUp: false,
   });
   const [activeTab, setActiveTab] = useState<'export' | 'import' | 'backup'>('export');
-  const [showImportPw, setShowImportPw] = useState(false);
-  const [showImportConfirm, setShowImportConfirm] = useState(false);
   const { addToast } = useToast();
 
   // ── Row flash animation ─────────────────────────────────────────
@@ -98,8 +92,21 @@ function DataManagementScreenContent() {
 
   // ── Refs to hold latest form state so callbacks don't depend on
   //     keystroke-level state (which would defeat useCallback).
-  const importStateRef = useRef(importState);
-  importStateRef.current = importState;
+  // [hook] Import wizard state machine -> hooks/useImportWizard. The state owns behavior,
+  // the child stays presentational, and the props passed below are unchanged.
+  const {
+    importState,
+    setImportState,
+    showImportPw,
+    setShowImportPw,
+    showImportConfirm,
+    setShowImportConfirm,
+    handleFileSelect,
+    handleAnalyse,
+    startImport,
+    confirmImport,
+    resetImport,
+  } = useImportWizard({ sessionToken, triggerFlash });
 
   // ── Export wizard state machine -> hooks/useExportWizard (state owns behavior,
   //     the child stays presentational; the props below are unchanged).
@@ -182,130 +189,6 @@ function DataManagementScreenContent() {
       addToast({ message: l10n.getString('data-mgmt-toast-backup-fail'), type: 'error' });
     }
   }, [addToast, l10n, triggerFlash, sessionToken]);
-
-
-  // ── Import flow ─────────────────────────────────────────────────
-
-  const handleFileSelect = useCallback(async () => {
-    try {
-      const filePath = await pickImportFile();
-      if (!filePath) return;
-      setImportState((prev) => ({
-        ...prev,
-        selectedFile: filePath,
-        metadata: null,
-        error: null,
-        password: '',
-        step: 'analysing',
-      }));
-    } catch {
-      addToast({ message: l10n.getString('data-mgmt-toast-file-picker-fail'), type: 'error' });
-    }
-  }, [addToast, l10n]);
-
-  const handleAnalyse = useCallback(async () => {
-    const is = importStateRef.current;
-    if (!is.password) {
-      addToast({ message: l10n.getString('data-mgmt-toast-import-enter-password'), type: 'error' });
-      return;
-    }
-    if (!is.selectedFile) {
-      addToast({ message: l10n.getString('data-mgmt-toast-import-no-file'), type: 'error' });
-      return;
-    }
-
-    setImportState((prev) => ({ ...prev, progress: 10, error: null, analysing: true }));
-
-    try {
-      const preview = await importPreview(sessionToken, is.selectedFile, is.password);
-      setImportState((prev) => ({
-        ...prev,
-        analysing: false,
-        step: 'preview',
-        progress: 30,
-        metadata: {
-          name: preview.storeName,
-          version: preview.appVersion,
-          types: preview.types,
-          created: preview.createdAt,
-        },
-        dryRun: {
-          added:
-            preview.categoryCount +
-            preview.productCount +
-            (preview.saleCount ?? 0) +
-            (preview.customerCount ?? 0) +
-            (preview.userCount ?? 0) +
-            (preview.settingCount ?? 0),
-          updated: 0,
-          skipped: 0,
-        },
-      }));
-      triggerFlash('import-preview');
-    } catch (err) {
-      setImportState((prev) => ({
-        ...prev,
-        analysing: false,
-        error: l10nErrorMessage(err, l10n, 'data-mgmt-toast-import-fail'),
-      }));
-    }
-  }, [addToast, l10n, sessionToken, triggerFlash]);
-
-  const startImport = useCallback(async () => {
-    const is = importStateRef.current;
-    if (!is.selectedFile || !is.password) {
-      addToast({ message: l10n.getString('data-mgmt-toast-import-enter-password'), type: 'error' });
-      return;
-    }
-
-    setShowImportConfirm(true);
-  }, [addToast, l10n]);
-
-  const confirmImport = useCallback(async () => {
-    setShowImportConfirm(false);
-    const is = importStateRef.current;
-    if (!is.selectedFile || !is.password) {
-      addToast({ message: l10n.getString('data-mgmt-toast-import-enter-password'), type: 'error' });
-      return;
-    }
-
-    setImportState((prev) => ({ ...prev, step: 'importing', progress: 50, error: null }));
-
-    try {
-      // Execute import (preview already done in analyse step)
-      const result = await importData(sessionToken, is.selectedFile, is.password);
-
-      setImportState((prev) => ({
-        ...prev,
-        progress: 100,
-        dryRun: {
-          added:
-            result.productsImported +
-            result.categoriesImported +
-            result.salesImported +
-            result.customersImported +
-            result.usersImported +
-            result.settingsImported,
-          updated: 0,
-          skipped: 0,
-        },
-        step: 'done',
-      }));
-      triggerFlash('import-done');
-      addToast({ message: l10n.getString('data-mgmt-toast-import-success'), type: 'success' });
-    } catch (err) {
-      setImportState((prev) => ({
-        ...prev,
-        step: 'preview',
-        error: l10nErrorMessage(err, l10n, 'data-mgmt-toast-import-fail'),
-      }));
-      addToast({ message: l10nErrorMessage(err, l10n, 'data-mgmt-toast-import-fail'), type: 'error' });
-    }
-  }, [addToast, l10n, sessionToken, triggerFlash]);
-
-  const resetImport = useCallback(() => {
-    setImportState(INITIAL_IMPORT);
-  }, []);
 
   // ── Render ──────────────────────────────────────────────────────
 
