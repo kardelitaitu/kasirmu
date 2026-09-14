@@ -17,8 +17,11 @@
 //
 // These pin the general policy, not just the four names that happened to be caught.
 
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, normalize } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { invoke } from '@/dev-mock/tauri-api';
+import { handlers } from '@/dev-mock/core/mockDispatcher';
 
 // The four that were observed unhandled on the current tree.
 const OBSERVED = [
@@ -109,3 +112,136 @@ describe('dev-mock scoped command aliasing', () => {
     },
   );
 });
+
+// ── Registry integrity over the REAL registry (moved-set review) ───────────
+//
+// The static review of b27fad9ba said registration order cannot invert today and
+// named this the highest value-per-line gap: applyScopedAliases() is the last
+// statement in tauri-api.ts, every moved key has one registration site, the pass
+// skips any name ending in _scoped (core/mockDispatcher.ts:85) and writes a twin
+// only while it is absent (:91). True — and covered by nothing: the cases above
+// drive invoke() and assert only "a handler answered", which a SHADOWED twin also
+// satisfies. These cases read the registry object itself (the same module instance
+// tauri-api.ts populates) and the source it is built from.
+
+
+const REGISTRY_DIR = normalize(join(__dirname, '..', 'dev-mock'));
+const ENTRY_FILE = 'tauri-api.ts';
+const registrySources: string[] = [
+  ENTRY_FILE,
+  ...readdirSync(REGISTRY_DIR + "/handlers").filter((f) => f.endsWith(".ts")).map((f) => "handlers/" + f),
+];
+
+interface Site { readonly name: string; readonly file: string; readonly line: number }
+
+const SITES: Site[] = (() => {
+  const out: Site[] = [];
+  for (const rel of registrySources) {
+    const text = readFileSync(REGISTRY_DIR + "/" + rel, "utf8");
+    text.split(/\r?\n/).forEach((raw, i) => {
+      // Command names are not all bare snake_case: the updater plugin lane
+      // registers 'plugin:updater|check', and a narrower class silently loses it.
+      const key = /^\s*'([A-Za-z0-9_|:.-]+)'\s*:/.exec(raw);
+      const patch = /^\s*handlers\[.([A-Za-z0-9_|:.-]+).\]\s*=/.exec(raw);
+      const name = key?.[1] ?? patch?.[1];
+      if (name) out.push({ name, file: rel, line: i + 1 });
+    });
+  }
+  return out;
+})();
+
+const PASS_LINE = readFileSync(REGISTRY_DIR + "/" + ENTRY_FILE, "utf8")
+  .split(/\r?\n/).findIndex((l) => /^applyScopedAliases\(\);/.test(l)) + 1;
+
+// Only names the registry actually carries. The literal scan also trips over seed
+// object keys like '12h' and '30d', which are not commands.
+const REGISTERED = new Set(Object.keys(handlers));
+const COMMAND_SITES = SITES.filter((s) => REGISTERED.has(s.name));
+
+const siteNames = COMMAND_SITES.map((s) => s.name);
+const explicitTwins = new Set(siteNames.filter((n) => n.endsWith("_scoped")));
+const bases = [...new Set(siteNames.filter((n) => !n.endsWith("_scoped")))];
+const synthesized = bases.filter((b) => !explicitTwins.has(b + "_scoped"));
+
+describe("dev-mock registry alias integrity (real registry, not a fixture)", () => {
+  it("the source scan is faithful to the runtime registry", () => {
+    // If this stops matching, the parser drifted from the registry and every
+    // identity case below has quietly become vacuous.
+    const expected = [...explicitTwins, ...bases, ...synthesized.map((b) => b + "_scoped")].sort();
+    const actual = Object.keys(handlers).sort();
+    // Set equality, not an arithmetic count: a parser that stops seeing a
+    // registration names it here instead of cancelling out in a total.
+    expect(expected).toEqual(actual);
+    expect(actual.length).toBeGreaterThan(500);
+  });
+
+  it("every command has exactly ONE registration site", () => {
+    const seen = new Map<string, string[]>();
+    for (const s of SITES) seen.set(s.name, [...(seen.get(s.name) ?? []), s.file + ":" + s.line]);
+    const doubled = [...seen.entries()].filter(([, where]) => where.length > 1)
+      .map(([n, w]) => n + " @ " + w.join(" + "));
+    // A second site for one name is not a compile error and not a warn: the later
+    // Object.assign wins and the first handler becomes dead code that still reads
+    // as live in the file it lives in.
+    expect(doubled).toEqual([]);
+  });
+
+  it("applyScopedAliases() runs after every registration in the entry file", () => {
+    const entrySites = SITES.filter((s) => s.file === ENTRY_FILE);
+    const late = entrySites.filter((s) => s.line > PASS_LINE)
+      .map((s) => s.name + " @ :" + s.line + " > pass :" + PASS_LINE);
+    // The pass sees only what exists when it runs; a base registered after it gets
+    // no twin, and the api layer calls the twin.
+    expect(late).toEqual([]);
+    expect(PASS_LINE).toBeGreaterThan(Math.max(...entrySites.map((s) => s.line)));
+  });
+
+  it("every base has a twin in the registry — no name is left unaliased", () => {
+    const missing = bases.filter((b) => handlers[b + "_scoped"] === undefined).map((b) => b + "_scoped");
+    expect(missing).toEqual([]);
+  });
+
+  it("every twin the rule synthesized IS the base function object", () => {
+    // Identity, not "answers something": the rule copies the reference
+    // (handlers[scoped] = twin, mockDispatcher.ts:92), so a twin that is a DIFFERENT
+    // object came from somewhere other than the rule.
+    const divergent = synthesized.filter((b) => handlers[b + "_scoped"] !== handlers[b]).map((b) => b + "_scoped");
+    expect(divergent).toEqual([]);
+    expect(synthesized.length).toBeGreaterThan(100);
+  });
+
+  it("the explicitly registered settings twins were NOT overwritten", () => {
+    // Re-measured, not copied: handlers/settings.ts carries 8 explicit _scoped twins
+    // (:52 :56 :63 :70 :72 :79 :83 :93), reaching the registry through the
+    // ...settingsHandlers spread at :538 and registerHandlers(settingsWriteHandlers)
+    // at :810. The :485 license spread carries no _scoped key at all.
+    const settingsTwins = SITES.filter((s) => s.file === "handlers/settings.ts" && s.name.endsWith("_scoped"))
+      .map((s) => s.name).sort();
+    expect(settingsTwins).toEqual([
+      "get_receipt_settings_scoped", "get_store_settings_scoped", "set_credit_settings_scoped",
+      "set_hardware_settings_scoped", "set_receipt_settings_scoped", "set_setting_scoped",
+      "set_settings_scoped", "set_store_settings_scoped",
+    ]);
+
+    // An overwritten twin would BE the base function object — the exact failure the
+    // handlers[scoped] === undefined guard at mockDispatcher.ts:91 prevents.
+    const clobbered = settingsTwins.filter((t) => handlers[t] === handlers[t.slice(0, -"_scoped".length)]);
+    expect(clobbered).toEqual([]);
+  });
+
+  it("a twin kept by the guard answers its OWN stub, not the base", async () => {
+    // Behavioural face of the case above: set_setting answers true (settings.ts:91),
+    // set_setting_scoped answers null (:72). Had the alias clobbered the twin, both
+    // would answer true.
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const unscoped = await invoke<unknown>("set_setting", { key: "k", value: "v", userId: "u" });
+      const twin = await invoke<unknown>("set_setting_scoped", { sessionToken: "t", key: "k", value: "v" });
+      expect(unscoped).toBe(true);
+      expect(twin).toBeNull();
+    } finally {
+      log.mockRestore();
+    }
+  });
+});
+
