@@ -1281,3 +1281,94 @@ has just been moved, which leaves the split-row state plus its four handlers and
 real, **guard-touching** job that must run with `PaymentModal.tsx` free of every other lane (agents-3 `:182`:
 the whole pos lane is one sequenced coder).
 
+## Append-only record (2026-09-15, HEAD `d70026499`) — three boxes for the customer-search surface `b024da46e` measured
+
+> A census of this file's own region measured **114 lines** — the badge at `ui/src/features/sales/PaymentModal.tsx:1661-:1700`
+> (40) plus the overlay at `:1750-:1823` (74): 6.1% of the 1,858-line modal as it stood at `b024da46e`, 3 `useState` for
+> the surface (`showCustomerSearch` `:140`, `customerSearchQuery` `:174`, `customerSearchResults` `:175`, plus
+> `loadingCustomers` `:176`) and 2 `useEffect` (`:347-:365`, `:367-:383`) — and then established that **NO BOX IN ANY
+> PLAN CLAIMED IT**. Three findings came out of looking at a region nobody had tracked. That is the argument for the
+> next census, so it is written once, here. Nothing above this line was rewritten, renumbered or re-ticked: these three
+> boxes are **NEW work**, not reclassifications, and no existing checkbox flipped. `ui/**` was read with
+> `grep`/`sed`/`wc`/`git show` only — no `npm`, no `npx`, no `cargo`, because several lanes are writing in `ui/` the
+> whole time this pass runs. **Every `PaymentModal.tsx` pointer is quoted AT `b024da46e`, the commit that characterized
+> the surface and the revision the findings were measured against; `92e752666` landed during this pass and moved
+> everything below `:391` by +8, so both positions are given side by side.**
+
+- [ ] **Verify the customer-search desync fix IN A RUN, then tick — the fix is committed and that is NOT this box.**
+  `b024da46e` finding 3, a live defect: the list fetch's `.then` at `:361` wrote the FULL roster into
+  `customerSearchResults` while the filter effect (`:367-:383`, deps `[showCustomerSearch, customerSearchQuery]`) did
+  not re-run, because neither of its two deps had changed — so on a re-open after a surviving filter the input read
+  `ad` while the list showed all four customers, until the next keystroke. Its enabling half is finding 2: **no close
+  path clears `customerSearchQuery`** — Escape `:1757` (now `:1765`), the Cancel row `:1816` (now `:1824`) and the
+  inner focus trap `:1109` (now `:1117`) each only flip `showCustomerSearch` (`:140`, unmoved); only a selection
+  (`:1800`, in `:1796`'s button) or a fresh open (`:322`) reset it. **The fix LANDED while this record was being
+  written** — `92e752666`, "derive the customer search rows so a surviving filter cannot be ignored" (+30/−22 to
+  `PaymentModal.tsx`, +12/−6 to the test): the second stored list is gone, the rows are now a `useMemo` over
+  (`customerRoster` `:179`, `customerSearchQuery`) at `:379-:391` at HEAD, and the query is deliberately **not** cleared
+  on close, because clearing it would destroy the pinned surviving-filter behaviour. Case **S5**
+  (`ui/src/__tests__/PaymentModalCustomerSection.test.tsx:403`) had its pin **INVERTED** by that same commit: it now
+  asserts `input == 'ad'` and `rows() == 2` *together* after the re-open (`rowNames() == ['Ada','Adelaide']`) where
+  `b024da46e` pinned `ad` against the full roster — so it is the tripwire in both directions, and it reads like a focus
+  test until it fails. **Smallest remaining fix: none in code.** Closes when
+  `cd ui && npm run test -- PaymentModalCustomerSection` is RUN and green with the modal free of every other lane; that
+  command was not run here, so as of `d70026499` the change is **committed and UNVERIFIED** — ticking this box on the
+  commit's existence would be exactly the mistake the box exists to prevent. Adjacent, same class, different file:
+  `f65c660c8` (+259/−0) pins the retail screen's copy of that predicate, which its own header says "exists TWICE,
+  verbatim" — if this fix is ever generalised, that file is where the other half of the invariant lives.
+- [ ] **Carry the phantom-row pair across BEFORE the next extraction touches this region.** `b024da46e` finding 1: the
+  loading skeleton reuses the real item class — `payment-customer-search-item` on the ghost divs at `:1782` (now
+  `:1790`) and the same name on the actual buttons at `:1796` (now `:1804`) — so any **unqualified**
+  `querySelectorAll('.payment-customer-search-item')` counts three rows that are not rows. Only a button-scoped or
+  accessible-name query separates them, and case **S2** (`:312`) pins both counts on purpose: `ghosts() == 3`,
+  `rows() == 0`, unqualified `qsa('.payment-customer-search-item') == 3` while the read is in flight, then 4 and 4 once
+  it settles. **Cheap, and load-bearing for the NEXT lane here, stated plainly:** one that moves this overlay into a
+  component and keeps the markup shape will write an assertion that passes for the wrong reason — and an extraction
+  that DELETES the skeleton still reads 3 from any unqualified query carried over unchanged, so the check goes green on
+  a count that no longer means anything. Smallest fix: carry the `button.`-scoped row helper AND S2's two-count pair
+  into whatever receives the overlay, in the same change-set; prove the pair is load-bearing by deleting the skeleton
+  locally and watching the ghost count drop, not by watching the suite stay green.
+- [ ] **Register `PaymentModal` in `ui/src/__tests__/screenExtraction.test.ts` — two steps, and neither is a test edit.**
+  The guard gap this region still has, in one sentence: **`PaymentModalCustomerSection`'s selectors are policed by its
+  own suite and nothing else**, because the screen is not registered — `grep -cE "name: 'PaymentModal'"` over the file
+  at HEAD returns **0**, and the file's own note says so, now at `:617` (it sat at `:591` in `3bfe87a3c`). Why it could not land is
+  recorded in that header by `17a5032a0` (+145/−8), and step 1 of the unblock is to re-read it rather than inherit it:
+  three used-but-undefined classNames — `payment-method-name`, `payment-qris-upgrade`, `payment-qris-btn--dynamic` —
+  **have since been written**, by `448839397` (+44/−0) into `ui/src/features/sales/PaymentModal.css` at `:180`,
+  `:184`, `:638`, `:681`, `:687`; `4ea4f482b` (+20/−1) then grew that sheet to 1,228 lines and moved the dynamic-QR
+  hover/focus pair to `:697`/`:707`. **That blocker is CLEARED — confirm it, do not assume it still bites.** Step 2 is
+  the soft half and it still holds: twelve `payment-loyalty-*` rules in `PaymentModal.css` (12 defined, against 15
+  distinct `payment-loyalty-*` names used by `ui/src/features/sales/payment/LoyaltyTenderPanel.tsx`, 177 ln, from
+  `6ddf49f1e`) that no `additionalTsx` list names — that panel has to come in there alongside the four extracted tender
+  panels — plus the two runtime-composed animation prefixes `payment-overlay--` and `payment-modal--` (`:648`,
+  `:652`: each covers exactly its `--enter`/`--exit` pair, which is why a bare `payment-` prefix is not acceptable).
+  **One method note, because this pass watched the number move twice:** the guard's case total is a FORMULA, not a fact
+  to quote — `3 × entries + 4 self-tests + 1 coverage case`, restated at `:49-:59` by `902e07678` (+51/−22) after
+  `101b4869e` (+48/−4) had made the previous sentence stale; 61 entries / 188 cases at `3bfe87a3c`, 66 / 203 at
+  `902e07678`, and **67 entries — 206 on the formula — at this HEAD**, where the header's own `:55-:56` still prints
+  "As this file stands: 66 entries, so (3 x 66) + 4 + 1 = 203". The sentence went stale again in the one commit
+  between this measurement and this record. Count the list; never quote the sentence. Entry count is
+  coverage, failures are health — a registration adds three green cases whether or not anything got better.
+
+**Box counts for this file, both grep forms, before and after this block. Any-depth and anchored differ by exactly ONE
+here, and that one is the known indented box at `:607` (Phase 3's `  - [ ] **Fix:** the driver hardcodes "airpay
+shopee"…`): `:93` points at `:403` and `:147` points at `:459`, both stale pointers, both left exactly as written —
+this file corrects a pointer only in a new block.**
+
+| form | command | before | after | delta |
+|---|---|---|---|---|
+| open, ANY-DEPTH | `grep -cE '^[[:space:]]*- \[ \]' todo-payment.md` | 36 | 39 | **+3** |
+| open, ANCHORED | `grep -cE '^- \[ \]' todo-payment.md` | 35 | 38 | **+3** |
+| ticked, ANY-DEPTH | `grep -cE '^[[:space:]]*- \[x\]' todo-payment.md` | 11 | 11 | 0 |
+| ticked, ANCHORED | `grep -cE '^- \[x\]' todo-payment.md` | 11 | 11 | 0 |
+
+**Sourcing, three classes, deliberately not merged.** (a) **Re-measured by command in this pass:** every numstat above
+(`92e752666` 30/22 + 12/6, `b024da46e` 598/0, `17a5032a0` 145/8, `448839397` 44/0, `4ea4f482b` 20/1, `101b4869e` 48/4,
+`902e07678` 51/22, `f65c660c8` 259/0), both `PaymentModal.tsx` revisions (1,858 ln at `b024da46e` / 1,866 at HEAD), the
+test file (598 ln at `b024da46e`, 604 at HEAD, 12 `it('S` cases either way: S1, S1b, S2…S11), and every `:NNN` — read
+AFTER this append, since an EOF block shifts no line but HEAD moved five times during the pass; each pointer comes from
+the revision named beside it, not from one sweep. (b) **Reasoned, not observed:** that the desync is now
+*unrepresentable* — that is a reading of the memo's dependency array at `:391`, not a test result, and it must not be
+quoted as one. (c) **Not run here:** `npm run test`, so no green of any kind is claimed for `92e752666`. The fix was
+verified to EXIST, to carry those numstats and to invert S5's pin — and to nothing more. Docs-only. Nothing ticked.
+Nothing pushed.
