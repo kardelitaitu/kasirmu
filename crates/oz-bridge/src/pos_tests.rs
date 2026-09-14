@@ -7,7 +7,62 @@
 //! same delegation the landed desktop shims perform.
 
 use super::*;
+
+use crate::testing::seeded_row_loads;
 use oz_core::session::SessionContext;
+use oz_core::subscription::TenantSubscription;
+
+// -- The release leg for a PROPAGATING command (crate::testing, RULE at :204-208) --
+
+/// The settlement commands this file drives do NOT project a fail-closed
+/// entitlement when the seeded row will not verify: they carry
+/// `verify_signature()?` straight out as an error, exactly the way
+/// `terminals.rs:432` does. So the release leg has no tier, no state and no
+/// verdict to name - the settlement never happens, and every downstream
+/// assertion about a written sale row, a stamped idempotency key or a deducted
+/// stock quantity would describe a write this profile refuses to perform.
+///
+/// Existence is pinned FIRST: `seeded_row_loads() == false` collapses five
+/// causes (lost row, load Err, public-key failure, the intended base64 reject,
+/// a real RSA mismatch) and only one of them is this fixture.
+async fn assert_signature_denial(
+    bridge: &crate::testing::TestBridge,
+    settled: Result<CompleteSaleResult, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = bridge.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fork must never read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture settles against must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the settlement must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -359,7 +414,7 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
     )
     .await
     .unwrap();
-    complete_sale_scoped(
+    let completed = complete_sale_scoped(
         &bridge.ctx(),
         "stock-route-token",
         CompleteSaleScopedArgs {
@@ -382,8 +437,15 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             tax_estimated: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: the settlement is refused, so the stock quantities below never
+    // change - asserting them here would be asserting that nothing happened,
+    // not that the route prefers the warehouse. The error arm is the truth.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, completed, "free").await;
+        return;
+    }
+    completed.unwrap();
 
     let store_conn = bridge.db_manager().open_store(store_id).unwrap();
     let db = store_conn.lock().unwrap();
@@ -844,9 +906,16 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
 
     // Void it: the sale row flips to void, but the payment row keeps
     // `{att-x}:0` — a replayed key stays valid forever by design.
@@ -1009,9 +1078,16 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
     void_replay_sale(&bridge, &first.sale_id);
 
     let started2 = start_sale_scoped(
@@ -1088,9 +1164,16 @@ async fn voided_sale_does_not_satisfy_a_replay() {
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
     void_replay_sale(&bridge, &first.sale_id);
 
     let replayed = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
@@ -1174,9 +1257,16 @@ async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
     void_replay_sale(&bridge, &first.sale_id);
 
     let s1 = settle_shortfall_resolution(&bridge, "replay-tok", CartId::new(), Some("att-x")).await;
@@ -1216,9 +1306,16 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
 
     // Same attempt id, DIFFERENT cart: settles, never refuses.
     let started2 = start_sale_scoped(
@@ -1330,9 +1427,15 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
     )
     .await
     .unwrap();
-    let sale = settle_replay_cart(&bridge, "replay-tok", started.cart_id, Some("   "))
-        .await
-        .unwrap();
+    let sale = settle_replay_cart(&bridge, "replay-tok", started.cart_id, Some("   ")).await;
+    // Release: refused at the signature before the normalizer is ever asked
+    // whether a whitespace-only attempt id stamps NULL - that question needs a
+    // written payment row to be answerable.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, sale, "free").await;
+        return;
+    }
+    let sale = sale.unwrap();
     let store_conn = bridge
         .db_manager()
         .open_store("store-replay-guard")
