@@ -34,6 +34,7 @@ import { useCustomerDisplay } from './useCustomerDisplay';
 import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
+import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
@@ -508,92 +509,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     logout();
   }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, logout]);
 
-  // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ────────
-  // The cart panel handles keys when its focus, or any descendant
-  // cart line's focus, is active. Inputs, textareas, and content-
-  // editable elements are excluded so text-entry UX is preserved.
-  const focusLineByIndex = useCallback((idx: number) => {
-    if (lines.length === 0) return;
-    const clamped = Math.max(0, Math.min(lines.length - 1, idx));
-    cartLineRefs.current.get(lines[clamped]!.id)?.focus();
-  }, [lines]);
-
-  const handleCartPanelKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLElement>) => {
-      const tgt = e.target as HTMLElement;
-      if (
-        tgt instanceof HTMLInputElement ||
-        tgt instanceof HTMLTextAreaElement ||
-        tgt.isContentEditable
-      ) {
-        return;
-      }
-      // Resolve which cart line emitted the key (allow bubble from a
-      // child button inside the line — the line has data-line-id).
-      const lineEl = tgt.closest('[data-line-id]') as HTMLElement | null;
-      const focusedLineId = lineEl?.dataset['lineId'] as LineId | undefined;
-      const focusedIdx = focusedLineId
-        ? lines.findIndex((l) => l.id === focusedLineId)
-        : -1;
-
-      switch (e.key) {
-        case 'ArrowDown':
-          if (lines.length === 0) return;
-          e.preventDefault();
-          focusLineByIndex(focusedIdx < 0 ? 0 : focusedIdx + 1);
-          return;
-        case 'ArrowUp':
-          if (lines.length === 0) return;
-          e.preventDefault();
-          focusLineByIndex(focusedIdx < 0 ? lines.length - 1 : focusedIdx - 1);
-          return;
-        case '+':
-        case '=':
-          if (focusedLineId == null) return;
-          {
-            const l = lines.find((x) => x.id === focusedLineId);
-            if (!l) return;
-            e.preventDefault();
-            handleIncreaseQty(l);
-          }
-          return;
-        case '-':
-        case '_':
-          if (focusedLineId == null) return;
-          {
-            const l = lines.find((x) => x.id === focusedLineId);
-            if (!l) return;
-            e.preventDefault();
-            handleDecreaseQty(l);
-          }
-          return;
-        case 'Delete':
-        case 'Backspace':
-          if (focusedLineId == null) return;
-          {
-            const l = lines.find((x) => x.id === focusedLineId);
-            if (!l) return;
-            e.preventDefault();
-            handleRemoveLine(l);
-          }
-          return;
-        case 'Enter':
-          if (!total) return;
-          e.preventDefault();
-          handlePay();
-          return;
-      }
-    },
-    [
-      lines,
-      total,
-      handlePay,
-      handleIncreaseQty,
-      handleDecreaseQty,
-      handleRemoveLine,
-      focusLineByIndex,
-    ],
-  );
+  // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
+  // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
+  // setter stay here because CartPanel is registered from this screen.
+  const { handleCartPanelKeyDown } = useCartKeyboardNav({
+    cartLineRefs,
+    lines,
+    total,
+    handlePay,
+    handleIncreaseQty,
+    handleDecreaseQty,
+    handleRemoveLine,
+  });
 
   // ── Load receipt settings on mount ────────────────────────────
   useEffect(() => {
