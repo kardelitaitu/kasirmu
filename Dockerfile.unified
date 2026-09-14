@@ -139,9 +139,9 @@ RUN mkdir -p crates/oz-core/src crates/oz-api/src crates/oz-logging/src \
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
     && echo "// dummy" > apps/desktop-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-app"\nversion = "0.0.33"\nedition = "2021"\n' > apps/desktop-client/Cargo.toml \
+    && printf '[package]\nname = "oz-pos-app"\nversion = "0.0.38"\nedition = "2021"\n' > apps/desktop-client/Cargo.toml \
     && echo "// dummy" > apps/tablet-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-tablet"\nversion = "0.0.33"\nedition = "2021"\n' > apps/tablet-client/Cargo.toml \
+    && printf '[package]\nname = "oz-pos-tablet"\nversion = "0.0.38"\nedition = "2021"\n' > apps/tablet-client/Cargo.toml \
     && (cargo build --package oz-cloud-server --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true

@@ -127,9 +127,10 @@ Write-Host "`nUpdating version strings..." -ForegroundColor Cyan
 # PowerShell string - a single backtick escapes the `$` and renders a
 # literal "$currentVersion", so the pattern would never match and the file
 # would be silently skipped (it happened for 0.0.26).
-Update-File "AGENTS.md" "- **Version is locked at the current release (``$currentVersion``).** Never change the version number" "- **Version is locked at the current release (``$TargetVersion``).** Never change the version number"
-Update-File "AGENTS.md" "all read $currentVersion" "all read $TargetVersion"
-Update-File ".agents/AGENTS.md" "- **Version is locked at ``$currentVersion``.** Never change the version number" "- **Version is locked at ``$TargetVersion``.** Never change the version number"
+Update-File "AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
+Update-File "AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``." "| **Version Lock** | **Version is locked at ``$TargetVersion``."
+Update-File ".agents/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
+Update-File ".agents/AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``." "| **Version Lock** | **Version is locked at ``$TargetVersion``."
 Update-File "Cargo.toml" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "Dockerfile.server" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "apps/desktop-client/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
@@ -153,8 +154,16 @@ Update-File "ui/src/locales/shared.id.ftl" "statusbar-version = v$currentVersion
 
 # Website (marketing site): package version + i18n version strings. Single-quoted
 # format strings keep the em-dash out of the source; it is injected via [char]0x2014.
-Update-File "website/package.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
-Update-File "website/package-lock.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
+$websitePkgPath = "website/package.json"
+if (Test-Path $websitePkgPath) {
+    $websitePkgRaw = [System.IO.File]::ReadAllText($websitePkgPath, (New-Object System.Text.UTF8Encoding($false)))
+    $websiteVerMatch = [regex]::Match($websitePkgRaw, '(?m)"version"\s*:\s*"([^"]+)"')
+    if ($websiteVerMatch.Success) {
+        $websiteOldVer = $websiteVerMatch.Groups[1].Value
+        Update-File "website/package.json" "`"version`": `"$websiteOldVer`"," "`"version`": `"$TargetVersion`","
+        Update-File "website/package-lock.json" "`"version`": `"$websiteOldVer`"," "`"version`": `"$TargetVersion`","
+    }
+}
 Update-File "website/src/i18n/en.json" ('"versionValue": "{0}"' -f $currentVersion) ('"versionValue": "{0}"' -f $TargetVersion)
 Update-File "website/src/i18n/en.json" ('"subtitle": "Version {0} {1} free forever, no signup required."' -f $currentVersion, [char]0x2014) ('"subtitle": "Version {0} {1} free forever, no signup required."' -f $TargetVersion, [char]0x2014)
 Update-File "website/src/i18n/id.json" ('"versionValue": "{0}"' -f $currentVersion) ('"versionValue": "{0}"' -f $TargetVersion)
@@ -168,6 +177,7 @@ Update-File ".prime/AGENTS.md" "- **Version is locked at the current release (``
 
 # README's "Latest release" claim (prose, updated per release).
 Update-File "README.md" "Latest release: **v$currentVersion** (on branch ``$currentVersion``)." "Latest release: **v$TargetVersion** (on branch ``$TargetVersion``)."
+Update-File "README.md" "footer version 0.0.25 -> $currentVersion" "footer version 0.0.25 -> $TargetVersion"
 
 # 2b. Sync canonical CHANGELOG.md heading (RELEASE-07)
 Write-Host "`nSyncing CHANGELOG.md heading..." -ForegroundColor Cyan

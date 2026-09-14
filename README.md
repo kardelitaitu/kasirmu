@@ -1,7 +1,7 @@
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/oz-pos?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/oz-pos?style=flat-square) [![Nightly CI](https://github.com/kardelitaitu/oz-pos/actions/workflows/nightly.yml/badge.svg)](https://github.com/kardelitaitu/oz-pos/actions/workflows/nightly.yml)
 
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (6 major + 2 minor repaired) · F1: migration count 117 -> 19 files (131 squashed into init.sql, db6198a3) · F2: repointed 3 broken links docs/archived/{QUICKSTART,ROADMAP,MODULAR_APP_PLAN}.md -> docs/guides/ · F3: crate inventory 11 -> 13 (added oz-crypto, oz-media) · F4: "future CRM module" -> CRM ships (modules/crm registered in kernel) · F5: architecture diagram "Restaurant" (no such module) -> "Promotions" (real module) · F6: HAL device lists now include EDC payment terminals + weight scales (traits/edc.rs, drivers/scale.rs) · m1: oz-payment drivers add Paddle · m2: footer version 0.0.25 -> 0.0.33 · NOTE: test-file/ID counts kept approximate (volatile — parallel session adds tests continuously) · RE-AUDITED 31-08: reconciled internally inconsistent counts (UI files listed as both 228 and 265; Rust as both 5,200+ and 5,800+) to consistent approximate figures (400+ UI files, ~6,700 UI tests, 5,800+ Rust); corrected non-volatile structural counts — IPC 435+ -> 505 unique (matches api-reference.md), locales 48 -> 50 files (25 bundles x 2, matches ROADMAP/ui-README); migrations 19 re-confirmed -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (6 major + 2 minor repaired) · F1: migration count 117 -> 19 files (131 squashed into init.sql, db6198a3) · F2: repointed 3 broken links docs/archived/{QUICKSTART,ROADMAP,MODULAR_APP_PLAN}.md -> docs/guides/ · F3: crate inventory 11 -> 13 (added oz-crypto, oz-media) · F4: "future CRM module" -> CRM ships (modules/crm registered in kernel) · F5: architecture diagram "Restaurant" (no such module) -> "Promotions" (real module) · F6: HAL device lists now include EDC payment terminals + weight scales (traits/edc.rs, drivers/scale.rs) · m1: oz-payment drivers add Paddle · m2: footer version 0.0.25 -> 0.0.38 · NOTE: test-file/ID counts kept approximate (volatile — parallel session adds tests continuously) · RE-AUDITED 31-08: reconciled internally inconsistent counts (UI files listed as both 228 and 265; Rust as both 5,200+ and 5,800+) to consistent approximate figures (400+ UI files, ~6,700 UI tests, 5,800+ Rust); corrected non-volatile structural counts — IPC 435+ -> 505 unique (matches api-reference.md), locales 48 -> 50 files (25 bundles x 2, matches ROADMAP/ui-README); migrations 19 re-confirmed -->
 
 # OZ-POS
 
@@ -215,7 +215,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 | 4 | In Progress | CRM, Restaurant, Accounting |
 | 5 | In Progress | Multi-store topology, Cloud Sync, Plugin system |
 
-Latest release: **v0.0.33** (on branch `0.0.33`).
+Latest release: **v0.0.38** (on branch `0.0.38`).
 
 See [ROADMAP.md](./docs/guides/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/guides/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
 
