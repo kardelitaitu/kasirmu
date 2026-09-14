@@ -9,6 +9,8 @@
 > 📌 **Path correction (2026-09-14):** the file is `ui/src/features/sales/PaymentModal.tsx`. There is **no** `ui/src/features/pos/` directory in this repo; the POS surfaces live under `features/sales` and `features/retail`, registered lazily (`ui/src/features/sales/register.tsx:6,15-16`).
 
 **Target File:** `ui/src/features/sales/PaymentModal.tsx` (**Baseline: 2,436 lines**, `wc -l`; a split-on-newline count reads 2,437 — that ±1 is a method artifact, not a doc error)  
+- **2026-09-14 (re-measured the same day) - the 2,436 above is the baseline of record, not today's count: `wc -l ui/src/features/sales/PaymentModal.tsx` = **2,321**.** Path: 2,436 -> 2,321 (-115) across the three extracts now in `payment/` - `types.ts` (`3cb313277`), `useAutoQr.ts` (`0b13ff3e1`), `useGatewayQr.ts` (`1328510ed`). The 2,436 reading stays visible as the arithmetic denominator above and at 3.4; NO `< 450`-era box is ticked by this note.
+
 **Sibling Documents:**
 - `done-todo-refactor-pos-screen-agents-1.md` (Agent 1 — Cart Engine & State Architect) — **FINISHED**; cited by bare name with no `./` prefix: retired under the `done-todo-` convention (its only root commit is `238912974`; `git log -- todo-refactor-pos-screen-agents-1.md` under the old name is empty, so there is **no rename event to cite for this file**, and `94b5da2cc`, which renamed other work orders, never touched it), and one clause only: a separate session has an *uncommitted, in-flight* move of retired work orders out of the repo root, which is why no path is written here. This is the same fact as the "wait for Agent 1" gate in the sibling doc: that gate is waiting on completed work.
 - [`todo-refactor-pos-screen-agents-2.md`](./todo-refactor-pos-screen-agents-2.md) (Agent 2 — Cart UI Panels, Modals & Peripherals)
@@ -50,6 +52,8 @@
 
 ## 📋 Task Checklist
 
+**Current target (2026-09-14): no file under `features/sales/payment/` exceeds 450 lines.** The original `PaymentModal.tsx < 450` is retired as a whole-file bar: 3.3's cited ranges sum to 353 lines (14.5% of the file), so the number was never reachable by extraction; the shell's own count is trended separately - 2,436 -> 2,321, re-measured this pass with `wc -l ui/src/features/sales/PaymentModal.tsx`.
+
 ### Phase 3.0: Baseline & Checkout Invariant Safeguards
 - [ ] Run `npm run test -- PaymentModal` or checkout test suites. — **NOT RUN by this audit** (time box). The suite surface is confirmed to exist and is a useful pre-refactor harness: `ui/src/__tests__/PaymentModal.test.tsx` (27 `it(` cases), `PaymentModalEdgeCases.test.tsx` (29), `PaymentModalSaleFlow.test.tsx` (27) — 83 cases total, counted with `grep -cE "^[[:space:]]*(it|test)\(" <file>`.
 - [x] Record lines of code in `PaymentModal.tsx` — **2,436** (`wc -l`, 2026-09-14). The previously recorded "~1,933 lines" matches **no revision** of this file: walking every commit that ever touched it (`git log --format=%h -- ui/src/features/sales/PaymentModal.tsx`, 94 commits) yields 1,887 (`8f79bd43f`) and 1,987 (`a09aa73cb`) as the nearest values, and the file was already 2,045 lines at `e89e37c12` on 2026-09-10 — the day this plan document itself was committed (`1af143f23`).
@@ -79,6 +83,7 @@
     - `finalizeSale` — called `:841` and `:1279` (the `pending` → `completed` transition, commented at `:1274`)
     Two call chains exist (`:697-841` and `:1203-1279`) — the duplication is itself the strongest argument for this extraction, and it is not mentioned by the original plan.
 - [ ] Move into `ui/src/features/sales/payment/usePaymentStateMachine.ts`. — target directory still absent.
+  - **2026-09-14 - SUPERSEDES 'target directory still absent' here and in 3.2; both originals stay visible.** `payment/` EXISTS with three landed extracts: `types.ts` (56 ln, `3cb313277`), `useAutoQr.ts` (242 ln, `0b13ff3e1`), `useGatewayQr.ts` (112 ln, `1328510ed`) - re-check with `ls ui/src/features/sales/payment/`. Neither `usePaymentStateMachine.ts` nor `useSplitTenders.ts` is on that list, so THIS box remains open and unticked; what the extracts did was move QR plumbing, not the state machine 3.1 names.
 - [ ] Verify: `npm run typecheck`. — not run.
 - [ ] **Commit Milestone:** nothing to commit yet.
   ```bash
@@ -91,6 +96,7 @@
   - Currency side: `currencies` `:272`, `exchangeRates` `:273`, `latestRate` `:336`, `minorUnitExponent` conversions `:507`/`:519`/`:615`/`:658`.
   - ⚠️ **Correction:** "quick cash suggestions (`[50k, 100k, exact]`)" is not what the code does. The presets are a **prop** — `tenderPresets?: number[]` at `:67`, destructured `:109` — rendered at `:1943` as `(tenderPresets ?? [5000, 10000, 20000, 50000, 100000])`, i.e. five major-unit Rp denominations (5,000 / 10,000 / 20,000 / 50,000 / 100,000) computed as `Math.ceil(totalMajor / amount) * amount` (`:1949`), plus a separate "Exact" button at `:1962-1971`. Any extracted hook must keep the prop, not hardcode three amounts.
 - [ ] Move into `ui/src/features/sales/payment/useSplitTenders.ts`. — target directory still absent.
+  - **2026-09-14 - 'target directory still absent' is superseded here too:** see the 3.1 note - `payment/` holds `types.ts` + `useAutoQr.ts` + `useGatewayQr.ts`, and `useSplitTenders.ts` is NOT among them. Box stays open and unticked.
 - [ ] Verify: `npm run typecheck`. — not run.
 - [ ] **Commit Milestone:** nothing to commit yet.
   ```bash
@@ -105,7 +111,7 @@
 - [ ] **Card & EDC Tender Panel:** `payment/CardTenderPanel.tsx` (card type, EDC bridge, reference/auth codes). — JSX `{method === 'card' && !splitMode && edcOffered && (` at `:1995`; the EDC state machine `:1054-1085` and its status UI `:1494-1530`. Note the panel is gated on `edcOffered` (`:125`) — a rail from `useLocalPaymentRails`, added 2026-09-14 and not in the original plan.
 - [ ] **QRIS & Digital Tender Panel:** `payment/QrisTenderPanel.tsx` (dynamic QR, confirmation polling). — JSX `{method === 'qris' &&` at `:2016`; `autoQr` state `:905`; `qrisOffered` gate `:124` with the fallback that demotes the method at `:280`. Real dynamic-QR + settlement polling landed in `289be3959` (2026-09-13) and static-merchant-QR in `903b30a71` (2026-09-14) — this is most of the growth the baseline missed.
 - [ ] **Loyalty & Store Credit Panel:** `payment/LoyaltyTenderPanel.tsx` (points balance, redemption calculator, customer link). — JSX `{isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount && (` at `:2225`, section `:2226-2270`; state `loyaltyAccount` `:140`, `pointsWorthMinor` `:149`, `selectedCustomer` `:138`, `customerSearchResults` `:174`.
-- [ ] ❌ **Missing from the plan:** the `open_bill` (`:1890`, `:1902`, `:2417`) and `credit` (`:1166`, `:1263`, `:2421`) methods carry real UI and their own completion rules, and `'other'` (`:41`, whose `otherLabel` value feeds the completion payload at `:1395`) too — three tender modes with no planned panel. A decomposition that ships only four panels leaves ~`2,436 − (extracted)` still inline.
+- [ ] ❌ **Missing from the plan:** the `open_bill` (`:1890`, `:1902`, `:2417`) and `credit` (`:1166`, `:1263`, `:2421`) methods carry real UI and their own completion rules, — **2026-09-14: re-confirmed that these anchors (`:1890`, `:1902`, `:2417`) fall inside the parked span of the blockquote above, so this item is PARKED pending `todo-payment.md` sequencing (which owns `:1840-2060`); do not re-plan or re-cut against those line numbers until that span is released.** and `'other'` (`:41`, whose `otherLabel` value feeds the completion payload at `:1395`) too — three tender modes with no planned panel. A decomposition that ships only four panels leaves ~`2,436 − (extracted)` still inline.
 - [ ] Verify: `npm run typecheck` and unit tests. — not run.
 - [ ] **Commit Milestone:** nothing to commit yet.
   ```bash
@@ -114,7 +120,7 @@
 
 ### Phase 3.4: Reassemble `PaymentModal.tsx` & Verify — ❌ NOT STARTED
 - [ ] Reassemble `PaymentModal.tsx` as a clean coordinator wiring the state machine, the active tender panel, and receipt preview (reuse `ReceiptPreview.tsx` rather than re-implementing it).
-- [ ] Verify `PaymentModal.tsx` line count dropped from **2,436** to < 450 lines. — Re-baselined: that is **−1,986 lines, a −82% reduction**, not the −77% the old 1,933 baseline implied.
+- [ ] Verify `PaymentModal.tsx` line count dropped from **2,436** to < 450 lines. — Re-baselined: that is **−1,986 lines, a −82% reduction**, not the −77% the old 1,933 baseline implied. (retired 2026-09-14 - see Current target above)
   - **2026-09-14 · as an acceptance test for THIS checkbox the number is unusable: restate it as a PER-FILE ceiling.** `wc -l ui/src/features/sales/PaymentModal.tsx` = **2,436**, **every range 3.3 cites sums to 353 ln**, i.e. **14.5%** of the file (method: the spans printed under Phase 3.3 — `:1925` with `:1943-1971`, `:1995`, `:1054-1085`, `:1494-1530`, `:2016`, `:2225-2270` — added as written, then `353 / 2,436 = 14.5%`; no per-panel split is measured here). Even if 3.3 shipped in full, a shell cannot reach 450 by shedding 14.5%. So the gate is: **no file under `features/sales/payment/` exceeds 450 ln** (measure with `wc -l ui/src/features/sales/payment/*.ts*` after each slice), and `PaymentModal.tsx` itself is **measured separately and reported as a trend**, not gated.
   - **Where the other ~1,600 ln are:** they are carried by **3.1 and 3.2**, not 3.3 — the two call chains at `:697-841` and `:1203-1279` plus the split/currency block 3.2 lists. 3.4's number therefore tracks 3.1/3.2 completion and must not be quoted as evidence about 3.3. The file has moved the other way since this plan was written: 2,045 lines at `e89e37c12` (2026-09-10) → 2,436 today, i.e. **+391 lines across 7 commits** (`289be3959`, `26ffd89c1`, `8dc3ae7ef`, `0d0c1eda5`, `bffcbda97`, `903b30a71`, `3d50b3ac5`). Re-check the baseline again before starting — it is a moving target.
 - [ ] Run full UI tests: `npm run test` and `npm run typecheck`. — not run by this audit.
@@ -148,6 +154,7 @@
 3. **The two-customer problem:** `PosScreen.tsx` and `RetailPosScreen.tsx` both mount this modal. Extraction is only safe with the 83 existing cases green plus a new `RetailPosScreenCheckout`-side check.
 4. **Name the real states before extracting them** (Phase 3.1): the prescribed `idle → … → receipt` chain is a wish, not a description of `PaymentModal.tsx`. → **2026-09-14 addendum: read the 3.1 note before acting on this one.** Three of the six names (`processing` 9 mentions, `completed` 3, `receipt` 18) ARE in the file, so "name the real states" is not the whole job — the finding is that there is **no single machine** to extract (five independent atoms; only `edc.phase` and `autoQr` are phase-typed), and the binding constraint is that **no extracted hook may own `processing`**
 5. Three tender modes (`other`, `open_bill`, `credit`) have no planned destination panel.
+6. **`< 450` here, and `< 600` in the sibling file, are UNENFORCED numbers:** `grep -c max-lines ui/eslint.config.js` = 0 (re-run 2026-09-14), no row among the 70 in `scripts/gates.json` is a size gate (`grep -c '"id":' scripts/gates.json` = 70), and `AGENTS.md` §2 scopes the under-1,000 / preferably-under-600 rule to production `.rs` files. So they are editorial, and must not be cited as CI failures.
 
 > ⚠️ **2026-09-14 · anchor drift is live in this file.** `wc -l ui/src/features/sales/PaymentModal.tsx` = **2,436** was the day's first reading; three reads minutes later returned **2,404** and **2,435** while slice S1 landed, and every `:NNNN` above is anchored below the moved `PaymentModalProps` interface — the shift so far is a uniform **−32** for lines under `:56` (`processing` `:134`→`:102`, `id-ID` locale `:1958`→`:1926`, `<PaymentModal` in `PosScreen.tsx` `:800`→`:794`). Re-derive each anchor with `grep -n` against the file you are about to cut, and re-check `ls ui/src/features/sales/payment/` before assuming a planned file is absent.
 >
