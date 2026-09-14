@@ -14,6 +14,13 @@
 //! so a file-backed temp database cannot be built here. In-memory test
 //! connections are the established pattern (`AppState::for_test` and every
 //! `oz-core` test module use them).
+//!
+//! Licence fixtures fork on build profile and this module is the shared
+//! vocabulary for that fork: [`seeded_row_loads`] answers what a freshly seeded
+//! subscription row ACTUALLY does in the profile running the test (its doc
+//! carries the no-seam proof — read it before "fixing" a red licence fixture),
+//! and the `FAIL_CLOSED_*` consts name what the product projects when it does
+//! not load.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -24,6 +31,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use oz_core::cache::Cache;
 use oz_core::migrations;
 use oz_core::session::SessionContext;
+use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 use oz_hal::DriverRegistry;
 use oz_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;
@@ -76,6 +84,101 @@ fn unique_store_dir() -> PathBuf {
 pub fn temp_conn() -> Connection {
     migrations::fresh_db()
 }
+
+/// Whether a freshly seeded subscription row actually verifies and loads
+/// **in the profile running this test**, derived from behaviour and never
+/// from `cfg!` / `debug_assertions`.
+///
+/// It runs the product's own two steps over the row `temp_conn()` inherits:
+/// `TenantSubscription::load` for tenant `default` (the row the squashed init
+/// migration seeds — `20260813_init.sql`, "Default tenant subscription (from
+/// migration 061)", signature `BOOTSTRAP_FREE`), then that row's
+/// `TenantSubscription::verify_signature`. `true` only if BOTH succeed. The
+/// answer is produced BY the load path rather than asserted about it, so it
+/// cannot drift from the truth it claims.
+///
+/// # The no-seam proof — read this before "fixing" a red licence fixture
+///
+/// **No test in this crate can mint a signature that verifies.**
+/// `verify_license_signature` (`crates/oz-core/src/license_verification.rs:387`)
+/// takes only `(payload, signature_base64)`: no key parameter, and it reads the
+/// key from the build-time `include_str!` of `crates/oz-core/oz-license.key.pub`
+/// (`LICENSE_PUBLIC_KEY_PEM`, `:44`) through `load_public_key()` (`:396`,
+/// `:424-430`). That is the PUBLIC half of a keypair whose PRIVATE half is not
+/// in this checkout — `*.key` is git-ignored (`.gitignore:69`) and
+/// `crates/oz-core/oz-license.key` is absent from disk — so nothing a test
+/// writes can produce the RSA-2048 PKCS1v15/SHA-256 signature the embedded key
+/// accepts. Nor is there a seam to inject one: no parameter, no trait, no
+/// thread-local, no injected verifier, and both callers
+/// (`subscription.rs:475-477` and `license.rs:594`) reach it directly. A
+/// verification seam would be an owner decision about production code, not a
+/// fixture fix, and it is not this file's to make.
+///
+/// Consequence: a seeded subscription row is exactly ONE of two kinds, and no
+/// third kind exists.
+///
+/// - **sentinel** — the 14 bytes `BOOTSTRAP_FREE`. Accepted only under the
+///   debug-only arm (`license_verification.rs:391-394`); in release the same
+///   bytes fall through to the standard base64 decode at `:398` and fail on the
+///   underscore. Debug loads, release rejects.
+/// - **invalid** — everything else, including a well-formed base64 blob signed
+///   with any other key. Rejects in BOTH profiles.
+///
+/// So a release red on a sentinel-seeded fixture is a profile-DISHONEST
+/// FIXTURE: not a broken expectation to delete, and not a product bug. Fix it
+/// by forking the fixture on this helper, or by asserting the fail-closed
+/// projection below. Never by blanking, shortening or "resigning" a signature —
+/// that turns a loud fail-closed outcome into a silently Free run, and it
+/// destroys the pinned counter-example at `auth_tests.rs:391-409`, whose forged
+/// row must stay `Err` in BOTH profiles precisely because "this signature does
+/// not verify" is a result, not a state to be erased. Making release accept the
+/// sentinel, or setting debug-assertions in the release profile, would instead
+/// move a licence bypass into the SHIPPED binary — a strictly worse trade, and
+/// again not a fixture decision.
+///
+/// The settings pair `get_license_status` reads (`license.payload` /
+/// `license.signature`, `license.rs:590-594`) feeds the same two arguments into
+/// the same function, so this answer holds for both seed shapes; what differs
+/// downstream is only the projection, which is what the `FAIL_CLOSED_*` consts
+/// pin.
+///
+/// If a verification seam is ever genuinely added to the product, this helper's
+/// answer changes on its own — and `seeded_row_loads_agrees_with_the_profile`
+/// goes red, which is the point: it is the tripwire, not the truth.
+#[must_use]
+pub fn seeded_row_loads() -> bool {
+    let conn = temp_conn();
+    let Ok(Some(sub)) = TenantSubscription::load(&conn, "default") else {
+        return false;
+    };
+    sub.verify_signature().is_ok()
+}
+
+/// The `state` / `status` a subscription read projects when NO row verifies:
+/// the FAIL-CLOSED PROJECTION, not a licence verdict.
+///
+/// "Unavailable" is a statement about the READ, not about the tenant: it is the
+/// only honest answer for data that could not be trusted, and it is deliberately
+/// NOT `expired` — a rejected signature yields "unknown", never a date. Mirrors
+/// `SubscriptionLifecycleState::Unavailable.as_str()` (pinned by
+/// `fail_closed_consts_match_the_products_own_accessors`).
+pub const FAIL_CLOSED_STATE: &str = "unavailable";
+
+/// The `tier` a subscription read projects when NO row verifies: the
+/// FAIL-CLOSED PROJECTION, not a licence verdict.
+///
+/// Free is the floor everything degrades to so the quota axes still have an
+/// answer — a lock, not a grant, and never to be asserted as "this tenant is on
+/// the free plan". Mirrors `SubscriptionTier::Free.tier_key()` (pinned by
+/// `fail_closed_consts_match_the_products_own_accessors`).
+pub const FAIL_CLOSED_TIER: &str = "free";
+
+/// What every tier-gated `supports_*` flag reads in the FAIL-CLOSED PROJECTION,
+/// not a licence verdict: gates locked, because an unverifiable row grants
+/// nothing. `Entitlements::fail_closed` pairs the Free tier with the
+/// `Unavailable` state and the flags derive from that pair, so a fixture that
+/// sees `FAIL_CLOSED_STATE` must see this on every gate as well.
+pub const FAIL_CLOSED_GATES_LOCKED: bool = false;
 
 /// Owns the backing state a borrowed `BridgeCtx` points at.
 ///
@@ -364,5 +467,35 @@ mod tests {
             })
             .expect("schema_migrations table readable");
         assert_eq!(applied, migrations::ALL.len() as i64);
+    }
+
+    /// The pilot for the whole fixture programme, and the reason the vocabulary
+    /// above can be trusted: the helper's answer must agree with the profile it
+    /// claims to describe, in BOTH profiles, because it is derived by RUNNING
+    /// the load path rather than by reading `cfg!`. Debug — the BOOTSTRAP_FREE
+    /// row verifies. Release — the same bytes die in the base64 decode. If a
+    /// real verification seam is ever added, the helper stops matching
+    /// `cfg!(debug_assertions)` and THIS test is what says the fork shape moved
+    /// underneath 73 call sites.
+    #[test]
+    fn seeded_row_loads_agrees_with_the_profile() {
+        assert_eq!(
+            seeded_row_loads(),
+            cfg!(debug_assertions),
+            "the helper must report what the load path did, not what cfg! claims"
+        );
+    }
+
+    /// The fail-closed consts name the product's own projection, so they are
+    /// pinned to the product's own accessors rather than to remembered strings:
+    /// a state or tier rename is one red test here, not 73 red fixtures.
+    #[test]
+    fn fail_closed_consts_match_the_products_own_accessors() {
+        assert_eq!(
+            FAIL_CLOSED_STATE,
+            SubscriptionLifecycleState::Unavailable.as_str()
+        );
+        assert_eq!(FAIL_CLOSED_TIER, SubscriptionTier::Free.tier_key());
+        assert!(!FAIL_CLOSED_GATES_LOCKED, "a locked gate reads false");
     }
 }
