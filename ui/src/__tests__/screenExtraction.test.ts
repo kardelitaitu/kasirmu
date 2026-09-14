@@ -261,6 +261,7 @@ const SCREENS: ScreenEntry[] = [
       // line is what keeps them reachable — drop it and the guard reads all
       // three as dead CSS while every other suite stays green.
       'kds/components/KdsZoneChips.tsx',
+      'kds/components/KdsHeaderRight.tsx',
     ],
   },
   {

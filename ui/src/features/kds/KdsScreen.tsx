@@ -17,17 +17,15 @@ import { requiredLocalized, LoadingStatus } from '@/frontend/shared';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { KdsLayoutMasonry } from '@/features/kds/KdsLayoutMasonry';
-import { KdsHamburgerPanel } from '@/features/kds/KdsHamburgerPanel';
 import { KdsCardColorsProvider } from '@/features/kds/KdsCardColorsContext';
 import { KdsCompletedView } from '@/features/kds/KdsCompletedView';
 import { type KdsSettings, DEFAULT_SETTINGS } from '@/features/kds/kdsSettingsModel';
-import { clampYellowThreshold, clampRedThreshold, clampYellowFollowingRed } from '@/features/kds/kdsThresholdMinutes';
 import { KdsHeaderLeft } from '@/features/kds/components/KdsHeaderLeft';
+import { KdsHeaderRight } from '@/features/kds/components/KdsHeaderRight';
 import { KdsNoticeBanners } from '@/features/kds/components/KdsNoticeBanners';
 import { KdsZoneChips } from '@/features/kds/components/KdsZoneChips';
 import { KdsProductPickerModal } from '@/features/kds/components/KdsProductPickerModal';
 import type { ProductPickerResult } from '@/features/kds/components/KdsProductPickerModal';
-import { KdsDeviceStatusIndicator } from '@/features/kds/components/KdsDeviceStatusIndicator';
 import { KdsEnrollmentModal } from '@/features/kds/components/KdsEnrollmentModal';
 import { KdsScreenFooter } from '@/features/kds/KdsScreenFooter';
 import { nextKdsStatus } from '@/features/kds/kdsStatus';
@@ -516,54 +514,22 @@ export default function KdsScreen() {
           </button>
         </div>
 
-        <div className="kds-header-right">
-          {/* Shift start/stop button — prototype .kds-btn--shift .kds-btn--stack */}
-          <button
-            className={`kds-btn kds-btn--shift kds-btn--stack${inShift ? ' is-active' : ''}`}
-            onClick={() => {
-              if (inShift) {
-                setConfirm({
-                  title: requiredLocalized(l10n, 'kds-shift-end-title'),
-                  message: requiredLocalized(l10n, 'kds-shift-end-msg'),
-                  onOk: () => setInShift(false),
-                  danger: true,
-                });
-              } else {
-                setInShift(true);
-              }
-            }}
-            data-testid="kds-topbar-shift"
-          >
-            <span className={!inShift ? 'visible' : ''}><Localized id="kds-shift-start">Start Shift</Localized></span>
-            <span className={inShift ? 'visible' : ''}><Localized id="kds-shift-end">End Shift</Localized></span>
-          </button>
-          {/* Device status indicator */}
-          <KdsDeviceStatusIndicator sessionToken={sessionToken} onEnrollDevice={() => setShowEnrollment(true)} />
-          {/* Hamburger settings panel — only when prefs loaded */}
-          {!prefsLoading && (
-            <KdsHamburgerPanel
-              settings={{ ...settings, autoAcknowledge: prefs.autoAcknowledge }}
-              onChangeSound={(v) => setSettings((s) => ({ ...s, soundEnabled: v }))}
-              onChangeYellowThreshold={(v) => setSettings((s) => ({
-                ...s,
-                yellowThresholdMin: clampYellowThreshold(v, s.redThresholdMin),
-              }))}
-              onChangeRedThreshold={(v) => setSettings((s) => ({
-                ...s,
-                redThresholdMin: clampRedThreshold(v),
-                yellowThresholdMin: clampYellowFollowingRed(s.yellowThresholdMin, clampRedThreshold(v)),
-              }))}
-              onChangeAutoAcknowledge={(v) => setAutoAcknowledge(v)}
-              onChangeDensity={(v) => setSettings((s) => ({ ...s, density: v }))}
-              showOrderId={prefs.showOrderId}
-              showTableNumber={prefs.showTableNumber}
-              onToggleOrderId={setShowOrderId}
-              onToggleTableNumber={setShowTableNumber}
-              cardAnimations={cardAnimations}
-              onChangeCardAnimations={setCardAnimations}
-            />
-          )}
-        </div>
+        <KdsHeaderRight
+          inShift={inShift}
+          setInShift={setInShift}
+          setConfirm={setConfirm}
+          sessionToken={sessionToken}
+          setShowEnrollment={setShowEnrollment}
+          prefs={prefs}
+          prefsLoading={prefsLoading}
+          settings={settings}
+          setSettings={setSettings}
+          setAutoAcknowledge={setAutoAcknowledge}
+          setShowOrderId={setShowOrderId}
+          setShowTableNumber={setShowTableNumber}
+          cardAnimations={cardAnimations}
+          setCardAnimations={setCardAnimations}
+        />
       </div>
 
       {/* ── Zone chips — secondary filter row below the header ────── */}
