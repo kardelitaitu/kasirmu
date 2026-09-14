@@ -172,3 +172,56 @@
 > ⚠️ **2026-09-14 · this file's `wc -l ui/src/features/sales/PosScreen.tsx` = 1,247 is a HEAD reading, not the working tree.** Three reads of that file taken minutes apart inside this same audit pass reported **1,247 → 972 → 899** lines, and `PaymentModal.tsx` reported 2,404 then 2,435, with a new `components/ShiftModals.tsx` (417 ln) appearing mid-pass: concurrent agents are landing the extractions this plan describes **while these notes are being written**. Every `:NNNN` anchor above is into the 1,247-line file. Re-run `wc -l ui/src/features/sales/PosScreen.tsx` and re-derive each anchor with `grep -n` before cutting anything, and re-test the `<= 760` gate against whatever number comes back — on the reading above (899) the gate is already met and `< 600` is the live question again.
 >
 > last audited 2026-09-14 by DSH (docs-auditor)
+
+---
+
+## Acceptance runs (2026-09-15)
+
+> **First EXECUTION of this file’s acceptance commands — dated 2026-09-15, taken across a MOVING HEAD (concurrent lanes committed `a49194a3b` at 00:27, then `c8ea8bbe4`, then `bd1a8a4e3` at 00:34 during this pass). The payment lane’s in-flight `PaymentModal.tsx` + `PaymentModalSaleFlow.test.tsx` edits were COMMITTED by `a49194a3b` at 00:27, **before** the first Vitest leg at 00:29, and `git status --porcelain -- ui/` was re-checked EMPTY both before and mid-run — so nothing below measures an uncommitted edit, and none of it needed to: the legs below do not import those two files.** A docs pass; no code touched. **Result: all three Verify boxes stay OPEN — two on fence grounds, one because its own bar is unmet — and the record below says which is which.** **NOTE THE DATE: the local clock rolled past midnight (git reports `CD=2026-09-15`), so this block is stamped 09-15 and is deliberately NOT filed under the 09-14 stamps other lanes used.**
+
+### What each box actually asks for, in its own words
+
+| box | the command(s) the box itself names | status tonight |
+|---|---|---|
+| `:89` (Phase 2.1 Verify) | `npm run test` **and** `npm run typecheck` | **PARTLY RUN** — `typecheck` ran whole and is green; `npm run test` ran only scoped. **Not ticked.** |
+| `:116` (size bar) | **no command in the box line** — the command lives in `:117` (`wc -l ui/src/features/sales/PosScreen.tsx`, gate restated to `<= 760`) | **MEASURED, bars disagree.** Not ticked. |
+| `:119` (Phase 2.3 Verify) | `npm run check:all` | **NOT ATTEMPTED** — chains E2E behind Docker. Not ticked. |
+
+### The three legs that RAN tonight (from `ui/`; `npm run test` = `vitest run`)
+
+- `npm run test -- CourseSelector` → `Test Files  1 passed (1)` · `Tests  6 passed (6)` · 961 ms. One file ran: `src/__tests__/CourseSelectorBar.test.tsx (6 tests) 197ms`.
+- `npm run test -- Cart` → `Test Files  11 passed (11)` · `Tests  86 passed (86)` · 1.93 s. The eleven: `cartExtraction`(3), `hooks/useLockedCartPersistence`(6), `hooks/useCartWidth`(9), `CartTaxWatcher`(8), `CartScreen`(3), `CartActionBar`(6), `CartLineItem`(6), `CartFooterTotals`(6), `CartPanel`(4), `RetailCartPanel`(26), `hooks/useCartTax`(9).
+- `npm run typecheck` (`tsc --noEmit`, WHOLE project, unscoped) → **EXIT 0, 0 diagnostics** (the log holds the 4-line npm banner and nothing else).
+
+Both Vitest legs were checked for contamination **before** running them: no matched file imports `PaymentModal.tsx` or `useLocalPaymentRails.ts` (`grep -ln 'PaymentModal\|useLocalPaymentRails' ui/src/features/sales/components/*.tsx ui/src/features/sales/CartScreen.tsx ui/src/features/retail/RetailCartPanel.tsx ui/src/hooks/useCartTax.ts ui/src/hooks/useCartWidth.ts ui/src/hooks/useLockedCartPersistence.ts ui/src/__tests__/cartExtraction.test.ts` → **0 hits**), and `cartExtraction.test.ts` reads only `PosScreen.tsx` plus its 7 registered `components/*.tsx` — no payment file in that list. **So the scoped legs are attributable to this plan; the whole-tree `npm run test` is not, and was not run.**
+
+### `:89` — the box’s own reason for being open is now FALSE, yet it still cannot be ticked
+
+- `:89` asserts *“no test file for `CartPanel`, `CartLineItem`, `CartFooterTotals` or `CartActionBar` was found”*. Measured today, all four exist: `ls ui/src/__tests__/Cart*.test.tsx` → **6** files — `CartActionBar` 6 cases, `CartFooterTotals` 6, `CartLineItem` 6, `CartPanel` 4, `CartScreen` 3, `CartTaxWatcher` 8 (`grep -cE '^[[:space:]]*(it|test)\('` per file). `CartPanel.test.tsx` and `CartLineItem.test.tsx` are both real (`ls` finds them), which retires the coverage half of this box **and** the sentence at `:91` that still says “*Still no test file for `CartPanel` or `CartLineItem`*”. Two corrections to the briefing this pass was given: the count is **6 `Cart*.test.tsx` files, not five**, and the “five `Cart*` ” reading omits `CartScreen`/`CartTaxWatcher`.
+- **What is left is ONE command this lane may not run.** The box names `npm run test` **unscoped** — the whole UI suite — which tonight would also execute `ui/src/__tests__/PaymentModalSaleFlow.test.tsx`, the surface of the live Agent-3 lane (dirty until `a49194a3b` at 00:27). Reporting that as this plan’s acceptance would be measuring someone else’s work. **So `:89` stays unchecked on the fence, not on an unknown:** typecheck green, both scoped legs green, coverage exists. A clean-lane session that runs the full `npm run test` and passes it closes this box in one step. The prior full-suite reading sits at `:29` (566 files / 9,616 passed / 24 skipped / 0 failed at `bd2483574`) — this pass neither re-ran it nor vouches for it.
+
+### `:116` — the number moved by −498, and the file now carries two bars that disagree
+
+Current measurement: `wc -l ui/src/features/sales/PosScreen.tsx` = **749** (file clean against HEAD; last touched by `39f6ef7d4`, *fix(sales): give each POS screen its own idle tax state…*). Per this file’s own warning at `:172`, **“Actual: 1,247”** in `:116` is a point-in-time HEAD reading: it stays verbatim as the record and is superseded here, not rewritten.
+
+| bar | where it lives | verdict at 749 |
+|---|---|---|
+| `< 600` — the box’s literal text | `:116` | **MISSED by 149** |
+| `<= 760` — the wave-1 gate `:117` restated | `:117` / `:26` | **MET, margin 11** |
+| “no size gate is enforced” | `:118` / `:170` | unchanged — both numbers are editorial; no build fails on either |
+
+- The chain, re-derived from git rather than from prose (`git show <c>:ui/src/features/sales/PosScreen.tsx | wc -l`, one line per commit): **1,247** (`dace68dac`) → **972** (`ba601e036`) → **899** (`4753e5eb9`) → **873** (`025154aa7`) → **800** (`9ede8f737`) → **745** (`bd2483574`, which is what `:28` recorded and it was right for that commit) → **745** (`69a5c3fe1`) → **749** (`39f6ef7d4`, **+4** — the per-screen idle-tax fix grew the very file it was fixing). So the gate `:117` called the only reachable one is now met with room, and the `< 600` in the box line is not.
+- **Why `:116` is not ticked, and why it is a measurement rather than a run:** a tick would assert the sentence inside the box (“*dropped from 2,329 to < 600 lines*”), and at 749 that sentence is false; `wc -l` cannot “pass”, it can only land over or under a number. Closing it needs a decision this lane will not make — either the box text is formally restated to the `<= 760` bar `:117` already adopted (then it is green and tickable on 749), or `< 600` stands, which needs another 150 lines out of the `:56-695` body, the fence `:117` says nobody owns. Until then open `:116` is the accurate state, and the brief’s “stale by −498” is confirmed: 1,247 − 749 = **498**.
+
+### `:119` — declined, and why
+
+`npm run check:all` (`ui/package.json:11` → `node ../scripts/check-ui.mjs`) was **not attempted**: it chains E2E behind Docker, which cannot run in this window, and it carries the same unscoped Vitest leg the fence puts out of bounds tonight. So `:119` stays **unmeasured**, exactly as its own text says. Its 09-14 note (“*what was re-run is typecheck, the targeted Vitest files and lint*”) still stands — this pass re-ran two of those three (typecheck whole-project green, the two scoped Vitest legs green) and did **not** re-run `npm run lint`.
+
+### What the next session sees
+
+1. **`:89`** — one command from closing: full `npm run test` on a tree with nobody mid-edit in `PaymentModal*`. Its coverage premise is dead (measured above); do not re-add it.
+2. **`:116`** — needs an owner’s ruling on which bar the box owns, not a re-measure. 749 is the number, with its command, and it clears `<= 760`.
+3. **`:119`** — needs Docker. Nothing else is missing from it.
+
+**Box census, unchanged by this pass — by design:** open **3** (`:89`, `:116`, `:119`) · ticked **15**, identical before and after, because on tonight’s evidence none of the three reaches a tick. `python3 scripts/verify-agents-mirrors.py` → **EXIT 0**, “all 2 mirrors agree with the repo”, run again after this block landed.
+
