@@ -1495,9 +1495,19 @@ describe.each(SCREENS)(
 // about a file nobody has read yet: nothing in it is asserted false, and
 // every one of its 27 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
-// sheet (slice 2) or deleting one removes a line; nothing adds one except
-// a new stylesheet that has not been read. A stale line that is now cited
-// is inert, and deleting it is the courtesy, not the requirement.
+// sheet (slice 2) or deleting one removes a line, and NOTHING here is a
+// place to put a new one: not a rename, not a sheet that "will be
+// registered next sprint", not the 28th line a lane adds because the
+// coverage case turned red on its file. A NEW stylesheet has exactly one
+// legal landing — its css, its tsx and its SCREENS entry in the SAME
+// commit — and there is no third state, because a state a lane can fall
+// into is the mute-shaped hole in another shape. The sequence that bought
+// this sentence: 604ff27ad added retail/ScaleIndicator.css with its import
+// line and no entry, and HEAD stayed red on the coverage case until
+// c06450022 registered it — the gap between those two SHAs is a broken
+// tree that reads as somebody else's fault, which is the whole reason the
+// rule is written here rather than remembered. A stale line that is now
+// cited is inert, and deleting it is the courtesy, not the requirement.
 //
 // Why a baseline instead of asserting the whole tree today: the repo
 // already chose this shape for the same problem. `verify-ftl-orphans.py`
@@ -1564,7 +1574,7 @@ describe('stylesheet coverage', () => {
 
     expect(
       offenders,
-      `uncited: ${offenders.length} (baseline ${BASELINE_UNCITED.length}) — sheet(s) no entry cites via css or parentCss and no line of BASELINE_UNCITED names: ${offenders.join(', ')}`,
+      `uncited: ${offenders.length} (baseline ${BASELINE_UNCITED.length}) — sheet(s) no entry cites via css or parentCss and no line of BASELINE_UNCITED names: ${offenders.join(', ')} — if this is a NEW sheet, author its entry: a new stylesheet may not join a shrink-only list, so land its css, its tsx and its SCREENS entry in the same commit. Only an existing sheet nobody has read belongs in BASELINE_UNCITED (see the block above).`,
     ).toEqual([]);
 
     // Second structural check in this same case: WHERE a parent may live.
