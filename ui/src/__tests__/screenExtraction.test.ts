@@ -63,9 +63,12 @@
 // a registration adds three green cases whether or not anything got
 // better. Read the entry count for coverage and the failures for health.
 // Coverage-block cases are the exception to the 3x, and they are fixed in
-// number: the block is TWO cases over the whole tree — one for an
-// uncited stylesheet, one for a parentCss citation that does not earn
-// itself — so a violation makes one of them RED, never MORE CASES. The
+// number: the block is TWO cases over the whole tree, whatever they grow to
+// CHECK. The first case carries three structural assertions now — an uncited
+// stylesheet, a parentCss path that escapes src/features without naming a
+// theme sheet, and a BASELINE_UNCITED line that is paid-off or a ghost — and
+// the second enforces that a citation earns its place. A case count is not a
+// claim-count; adding a check to either one moves nothing in the 3x formula. The
 // total stops being a health signal in exactly one direction and starts
 // carrying a named failure in the other.
 //
@@ -1506,8 +1509,23 @@ describe.each(SCREENS)(
 // line and no entry, and HEAD stayed red on the coverage case until
 // c06450022 registered it — the gap between those two SHAs is a broken
 // tree that reads as somebody else's fault, which is the whole reason the
-// rule is written here rather than remembered. A stale line that is now
-// cited is inert, and deleting it is the courtesy, not the requirement.
+// rule is written here rather than remembered.
+//
+// The other half of that law was prose-only, and the prose was the WRONG
+// sentence: it called a paid-off line "inert" and its deletion "the
+// courtesy, not the requirement". A cited sheet left listed is not inert —
+// it goes back to ungraded the day its entry is removed, with no red to say
+// so — and a listed path whose file is gone is a line that can never shrink,
+// which makes the length of this array a lie about remaining debt either
+// way. So both directions are now asserted, as the third check inside the
+// coverage case below. The reason this half moved rather than the sibling's:
+// themeTokenCompliance.test.ts:940-944 already enforces both directions of
+// its own list and describes THIS array as the model for the phrase
+// "shrink-only naming" — the analogy was being paid to a file that only
+// policed one of them. Where the two lists genuinely differ, it is in what
+// a stale line means there (a name whose miss was fixed, so the debt is
+// paid) and here (a rename or a vanished file, so the claim was never about
+// this tree) — and both readings still say the line must go.
 //
 // Why a baseline instead of asserting the whole tree today: the repo
 // already chose this shape for the same problem. `verify-ftl-orphans.py`
@@ -1593,6 +1611,33 @@ describe('stylesheet coverage', () => {
     expect(
       escaping,
       `parentCss: ${escaping.length} citation(s) leave src/features without naming a theme sheet — the only prefix allowed is ../frontend/themes/: ${escaping.join(', ')}`,
+    ).toEqual([]);
+
+    // Third structural check in this same case, and the reason the block
+    // above can now say "shrink-only" about BOTH directions instead of one:
+    // a listed path that an entry already cites is paid-off debt still being
+    // counted, and a listed path with no file behind it is a ghost that can
+    // never be cleared. Neither is an offender in the first check — a sheet
+    // in both sets is by construction not uncited — so the list could rot in
+    // either direction while this case stayed green.
+    const walked = new Set(found);
+    const stale: string[] = [];
+    for (const sheet of BASELINE_UNCITED) {
+      if (cited.has(sheet)) {
+        stale.push(`paid-off: ${sheet} is already cited by an entry — delete the line, the debt is cleared`);
+      } else if (!walked.has(sheet)) {
+        stale.push(`ghost: ${sheet} is not a stylesheet under src/features anymore — the line can never shrink`);
+      }
+    }
+    const seen = new Set<string>();
+    for (const sheet of BASELINE_UNCITED) {
+      if (seen.has(sheet)) stale.push(`duplicated: ${sheet} is listed twice`);
+      seen.add(sheet);
+    }
+    stale.sort();
+    expect(
+      stale,
+      `BASELINE_UNCITED: ${stale.length} dishonest line(s) (baseline ${BASELINE_UNCITED.length}) — the list is shrink-only in BOTH directions: a path an entry already cites must be deleted, and a path with no file behind it is a ghost. A NEW sheet never joins this list; author its entry instead. ${stale.join(' | ')}`,
     ).toEqual([]);
   });
 
