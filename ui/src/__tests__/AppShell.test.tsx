@@ -886,4 +886,184 @@ describe('AppShell — KDS workspace navigation', () => {
       });
     });
   });
+
+  // ── Hash-route entry is access-gated ───────────────────────────
+  // todo-tools-agents-3 :38 ("can a cashier bypass the gate by typing a
+  // hash?"). The sync-from-hash listener (AppShell.tsx:244-277) calls
+  // setCurrentRoute WITHOUT any isPageAccessible check — unlike
+  // handleNavigate, which does check and falls back. What closes the gap is
+  // NOT a guard in the listener: it is that pageDenied (:473) is recomputed
+  // from currentRoute on every render, so the route change re-renders into
+  // PermissionDenied. Nothing in the tree asserted that, which is why the box
+  // looked open. The tablet twin (TabletAppShell.test.tsx:340) asserts the
+  // MOUNT-time case only; these assert mount-by-hash AND the live hashchange,
+  // end to end through the shell render — passesGate / isPageAccessible are
+  // the real ones, not mocked, and nothing here stubs pageDenied (a stubbed
+  // gate would be the shadow suite this repo already flagged at
+  // KdsStatusAdvance.test.ts:4-8).
+  describe('hash-route entry is access-gated', () => {
+    beforeEach(() => {
+      clearPages();
+      // An ungated page (the allowed starting point), a role-gated page, and a
+      // permission-gated page — all three land in the sidebar branch of the
+      // shell (AppShell.tsx:606-617), which is the branch that renders the
+      // registry page inside AppLayout.
+      registerPage({
+        route: 'products',
+        component: () => <div data-testid="products-page-stub" />,
+        label: 'Products',
+      });
+      registerPage({
+        route: 'audit-log',
+        component: () => <div data-testid="audit-page-stub" />,
+        label: 'Audit Trail',
+        requiredRole: 'manager',
+      });
+      registerPage({
+        route: 'analytics',
+        component: () => <div data-testid="analytics-page-stub" />,
+        label: 'Analytics',
+        requiredRole: 'manager',
+        requiredPermission: 'analytics:view',
+      });
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: 'admin',
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+      window.location.hash = '';
+    });
+
+    afterEach(() => {
+      window.location.hash = '';
+    });
+
+    function sessionFor(roleName: string, permissions: string[]) {
+      mockAuthSession.mockReturnValue({
+        session: {
+          user_id: 'user-1',
+          role_name: roleName,
+          role_id: 'role-1',
+          display_name: 'Test User',
+          permissions,
+        },
+        loading: false,
+        error: null,
+        login: vi.fn(),
+        logout: vi.fn(),
+        clearError: vi.fn(),
+        swapSession: vi.fn(),
+        pickerTicket: null,
+        isManager: roleName === 'manager' || roleName === 'owner',
+        isOwner: roleName === 'owner',
+      });
+    }
+
+    /**
+     * Positive-then-negative denial check. `desc` is the denial copy that names
+     * THIS route's label — role-gated pages get "<label> requires a <role>
+     * role.", permission-gated pages get "You don't have permission to access
+     * <label>." (PermissionDenied switches desc by requiredPermission, so the
+     * two gates are distinguishable from the DOM, not just from the flag).
+     * Read off .permission-denied-card's textContent because the fallback copy
+     * nests the label in a <strong>, which splits the string across nodes.
+     * The card + its wording can only exist if the shell rendered the denial
+     * on purpose, so the absence checks below cannot be won by an empty or
+     * crashed render.
+     */
+    function expectDeniedFor(desc: string) {
+      expect(screen.getByText('Access Denied')).toBeInTheDocument();
+      const card = document.querySelector('.permission-denied-card');
+      expect(card).not.toBeNull();
+      expect(card?.textContent).toContain(desc);
+      // Negative: the gated screen itself is not mounted.
+      expect(screen.queryByTestId('audit-page-stub')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('analytics-page-stub')).not.toBeInTheDocument();
+    }
+
+    it('denies a cashier who mounts straight on a role-gated route via the hash', async () => {
+      sessionFor('cashier', []);
+      window.location.hash = '#/audit-log';
+
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      expectDeniedFor('Audit Trail requires a manager role.');
+    });
+
+    it('renders the same route normally for a role that satisfies requiredRole', async () => {
+      // The control for the case above: same registry, same hash, same shell —
+      // only the role changes. If this also denied, the first test would be
+      // proving a routing failure rather than a gate.
+      sessionFor('owner', []);
+      window.location.hash = '#/audit-log';
+
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('audit-page-stub')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+    });
+
+    it('denies a hash CHANGE to a role-gated route while the shell is already mounted', async () => {
+      // The actual bypass path: the cashier is legitimately on an ungated
+      // page, then the hash moves to a gated one. The listener never checks
+      // access; pageDenied is recomputed on the render that follows.
+      sessionFor('cashier', []);
+      window.location.hash = '#/products';
+
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+      await waitFor(() => {
+        expect(screen.getByTestId('products-page-stub')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+
+      await act(async () => {
+        window.location.hash = '#/audit-log';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Access Denied')).toBeInTheDocument();
+      });
+      expect(document.querySelector('.permission-denied-card')?.textContent).toContain(
+        'Audit Trail requires a manager role.',
+      );
+      expect(screen.queryByTestId('audit-page-stub')).not.toBeInTheDocument();
+      // The previously-mounted page is gone, not merely hidden behind it.
+      expect(screen.queryByTestId('products-page-stub')).not.toBeInTheDocument();
+    });
+
+    it('denies a manager whose session lacks the page requiredPermission', async () => {
+      // passesGate is permission-authoritative when present
+      // (page-registry/index.ts:139-155): the role alone must not carry it.
+      sessionFor('manager', ['sales:view']);
+      window.location.hash = '#/analytics';
+
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      expectDeniedFor("You don't have permission to access Analytics.");
+    });
+
+    it('renders the permission-gated route for the same role once the key is granted', async () => {
+      // Control for the case above, including the wildcard form the backend
+      // mirrors: owner grants ["*"], not a literal key.
+      sessionFor('manager', ['analytics:*']);
+      window.location.hash = '#/analytics';
+
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('analytics-page-stub')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+    });
+  });
 });
