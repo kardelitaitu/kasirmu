@@ -54,6 +54,27 @@ interface SplitRow {
 // `import type { PaymentModalProps } from '.../PaymentModal'` still resolves.
 export type { PaymentModalProps };
 
+/**
+ * Render integer minor units as the plain decimal literal an editable amount
+ * `<input>` needs — 350 with exp 2 → "3.50", 10000 with exp 0 → "10000" — so the
+ * value round-trips back through `parseMinorUnits` unchanged.
+ *
+ * Deliberately NOT `formatMoney`: that is the *display* formatter, and its output
+ * ("Rp 10.000") is not a decimal literal — `parseMinorUnits` returns `null` for
+ * it, which would silently zero the tender. Digit placement here is pure
+ * integer/string arithmetic, so no money value passes through a binary float
+ * (same shape as `millionthsToDecimalString` in `@/types/domain`). It agrees with
+ * the exact quotient for every input: an integer scaled by 10^exp has at most
+ * `exp` fractional digits, so nothing is ever rounded.
+ */
+function minorUnitsToInputString(minor: number, exp: number): string {
+  const digits = String(Math.trunc(Math.abs(minor))).padStart(exp + 1, '0');
+  const body = exp > 0
+    ? `${digits.slice(0, digits.length - exp)}.${digits.slice(digits.length - exp)}`
+    : digits;
+  return minor < 0 ? `-${body}` : body;
+}
+
 /** Payment processing modal — method selection (cash, card, QRIS, open bill, credit), split tender, customer/loyalty, multi-currency, and change calculation. */
 export default function PaymentModal({
   open,
@@ -1116,7 +1137,9 @@ export default function PaymentModal({
     // 2,225,001 + 2,225,002 = 4,450,003).
     const baseMinor = Math.floor(effectiveTotalInCartCurrency / count);
     const remainderMinor = effectiveTotalInCartCurrency % count;
-    const fmt = (minor: number) => (minor / 10 ** exp).toFixed(exp);
+    // Minor → the decimal literal the split row's input holds. Integer digit
+    // placement, never a float division by the scale — no float money here.
+    const fmt = (minor: number) => minorUnitsToInputString(minor, exp);
     setSplits((prev) =>
       prev.map((s, i) => ({
         ...s,
@@ -1909,21 +1932,27 @@ export default function PaymentModal({
 
                     <div className="payment-quick-cash">
                       {(tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).map((amount) => {
-                        // Presets are major-unit denominations (Rp 5.000 / $5).
-                        // Use the currency's minor-unit exponent so the quick
-                        // buttons stay consistent with tenderedMinor's parse.
+                        // Presets are major-unit denominations (Rp 5.000 / $5). Scale the
+                        // face value to minor units and round the tender UP there, in exact
+                        // integer (BigInt) arithmetic — the amount never passes through a
+                        // binary float, and stays consistent with tenderedMinor's parse.
                         const exp = minorUnitExponent(total.currency);
-                        const totalMajor = Number(total.minor_units) / 10 ** exp;
-                        const quickVal = Math.ceil(totalMajor / amount) * amount;
+                        const denomMinor = BigInt(amount) * 10n ** BigInt(exp);
+                        const targetMinorUnits = BigInt(Number(total.minor_units));
+                        const ceilStep = targetMinorUnits % denomMinor > 0n ? 1n : 0n;
+                        const quickMinor = Number((targetMinorUnits / denomMinor + ceilStep) * denomMinor);
+                        // What the tender input holds must be a decimal literal; what the
+                        // button shows is display money, so it goes through the formatter.
+                        const quickInput = minorUnitsToInputString(quickMinor, exp);
                         return (
                           <button
                             key={amount}
                             type="button"
                             className="payment-quick-btn"
-                            aria-label={l10n.getString('payment-quick-tender-aria', { amount: quickVal.toFixed(exp) }, 'Tender')}
-                            onClick={() => setTendered(quickVal.toFixed(exp))}
+                            aria-label={l10n.getString('payment-quick-tender-aria', { amount: quickInput }, 'Tender')}
+                            onClick={() => setTendered(quickInput)}
                           >
-                            {total.currency} {quickVal.toLocaleString('id-ID')}
+                            {formatMoney({ minor_units: quickMinor, currency: total.currency }, locale)}
                           </button>
                         );
                       })}
@@ -1933,7 +1962,9 @@ export default function PaymentModal({
                         className="payment-quick-btn"
                         onClick={() => {
                           const exp = minorUnitExponent(total.currency);
-                          setTendered((Number(total.minor_units) / 10 ** exp).toFixed(exp));
+                          // Exact tender: the total itself, rendered as the input's
+                          // decimal literal by integer digit placement, not float division.
+                          setTendered(minorUnitsToInputString(Number(total.minor_units), exp));
                         }}
                       >
                         <Localized id="payment-tender-exact">
