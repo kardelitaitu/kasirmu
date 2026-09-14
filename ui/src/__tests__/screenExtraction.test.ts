@@ -32,7 +32,7 @@
 //   failure mode: it cannot be skipped, only answered.**
 //
 // Measured against this file, not against that sentence: SCREENS holds
-// 77 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
+// 78 entries while `find ui/src/features -name '*Screen.tsx' | wc -l`
 // counts 66 *Screen.tsx files — and the two numbers are not even the
 // same kind of thing, since several entries are modals, panels and
 // shared placeholder sheets rather than screens. A large share of the
@@ -55,7 +55,7 @@
 // this list and moves with it — quoting a number instead of a formula
 // made SIX lines of this header go stale three times in one night —
 // 61/188/54 before 101b4869e, 65/200/50 after it, 66/203/49 after
-// 902e07678, and 77/237/32 as of this edit: (3 x 77) + 4 + 2 = 237,
+// 902e07678, and 78/240/31 as of this edit: (3 x 78) + 4 + 2 = 240,
 // which is what the run reads. If a total is quoted anywhere in this
 // file, it is a dated observation and the form above is the truth. The
 // number
@@ -1201,6 +1201,24 @@ const SCREENS: ScreenEntry[] = [
     css: ['kds/components/KdsDeviceStatusIndicator.css'],
     dynamicClassPrefixes: ['kds-device-status--'],
   },
+  {
+    // Locations apply-confirmation panel; imports its own sheet at :30. Mounted
+    // by locations/NodeTopologyEditor.tsx:2465 (import :13) — and that parent's
+    // reachability is a HASH DEEP LINK, not a route: nothing in ui/src binds
+    // `route: 'topology'` and there is no register.tsx entry, so the only way in
+    // is MultiStoreDashboardScreen.tsx:149/:156 pushing `#/settings/topology?…`.
+    // Registered because its markup renders, not because a page is routed; no
+    // claim here that a registered page exists.
+    //
+    // Walk A came back 0 undefined / 0 dead UNAAIDED, so this entry carries NO
+    // parentCss: a trial cite of ../frontend/themes/components.css was refused RED
+    // by the citation case as vacuous (nothing this sheet's markup uses is missing
+    // from it). The dossier's `--selected` orphan is not in the tree any more —
+    // case-insensitive `selected` is 0 hits in both files at a8bc36269.
+    name: 'TopologyApplyConfirm',
+    tsx: 'locations/TopologyApplyConfirm.tsx',
+    css: ['locations/TopologyApplyConfirm.css'],
+  },
 ];
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -1352,7 +1370,7 @@ describe.each(SCREENS)(
 // read real markup on a registered screen and produced a claim about it,
 // and this list says that claim is wrong. A path here postpones a CLAIM
 // about a file nobody has read yet: nothing in it is asserted false, and
-// every one of its 32 entries is a named path, not a prefix, not a
+// every one of its 31 entries is a named path, not a prefix, not a
 // pattern, not a directory. So the array can only shrink — registering a
 // sheet (slice 2) or deleting one removes a line; nothing adds one except
 // a new stylesheet that has not been read. A stale line that is now cited
@@ -1365,7 +1383,7 @@ describe.each(SCREENS)(
 // which an unknown fraction are detection gaps, means the first red run
 // gets the gate disabled rather than the debt paid. Same here: blocking
 // on 54 unread sheets would buy nothing, so the list was frozen at 54 —
-// it has shrunk to 32 since, one line per sheet a landed entry cited, and
+// it has shrunk to 31 since, one line per sheet a landed entry cited, and
 // every NEW sheet fails loud with its own filename.
 const BASELINE_UNCITED: string[] = [
   'analytics/AnalyticsScreen.css',
@@ -1381,7 +1399,6 @@ const BASELINE_UNCITED: string[] = [
   'inventory/TransactionLogScreen.css',
   'inventory/TransitAuditScreen.css',
   'locations/NodeTopologyEditor.css',
-  'locations/TopologyApplyConfirm.css',
   'locations/TopologyRevisionBrowser.css',
   'locations/TopologyScreen.css',
   'marketplace/AddonsMarketplace.css',
