@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import FastPINOverlay from "@/components/FastPINOverlay";
@@ -549,5 +551,79 @@ describe("FastPINOverlay", () => {
       // staffLogin must NOT have been called.
       expect(mockStaffLogin).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── CSS integrity: the keypad is ring-free by decision, the rest is not ──────
+//
+// Companion guard to StaffLoginScreen.test.tsx and SessionLockScreen.test.tsx,
+// added when `.fastpin-pad-key:focus-visible` dropped its 2px ring. Here the
+// boundary matters more than the suppression: this overlay mixes a text input and
+// four real buttons with the keypad, so a `outline: none` widened past the keys
+// would silently take the cue off controls that have no PIN-dot display to fall
+// back on. JSDOM (css:false) cannot reflect any of this, hence the source read.
+
+describe("FastPINOverlay CSS integrity", () => {
+  const css = readFileSync(
+    resolve(__dirname, "..", "components", "FastPINOverlay.css"),
+    "utf8",
+  );
+  const tsx = readFileSync(
+    resolve(__dirname, "..", "components", "FastPINOverlay.tsx"),
+    "utf8",
+  );
+
+  function ruleBody(selector: string): string {
+    const pattern = new RegExp(
+      selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\{([^}]*)\\}",
+    );
+    const match = css.match(pattern);
+    expect(match, `${selector} rule must exist in FastPINOverlay.css`).not.toBeNull();
+    const body = match![1]!.trim();
+    expect(body, `${selector} rule body must not be empty`).not.toHaveLength(0);
+    return body;
+  }
+
+  it("has no focus outline on the keypad keys", () => {
+    const body = ruleBody(".fastpin-pad-key:focus-visible");
+    expect(body).toContain("outline: none");
+    expect(body).not.toMatch(/outline:\s*2px/);
+  });
+
+  it("keeps a visible focus outline on the four non-keypad buttons", () => {
+    for (const selector of [
+      ".fastpin-close-btn:focus-visible",
+      ".fastpin-submit-btn:focus-visible",
+      ".fastpin-back-btn:focus-visible",
+      ".fastpin-cancel-btn:focus-visible",
+    ]) {
+      const body = ruleBody(selector);
+      expect(body, `${selector} must keep its 2px outline`).toMatch(/outline:\s*2px\s+solid/);
+      expect(body).not.toContain("outline: none");
+    }
+  });
+
+  it("keeps a focus cue on the username text field", () => {
+    // .fastpin-input suppresses `outline` in its BASE rule and paints the cue with
+    // border-color + box-shadow instead, so the keypad decision must not have been
+    // made by quietly dropping that substitute.
+    const body = ruleBody(".fastpin-input:focus-visible");
+    expect(body).toMatch(/border-color\s*:/);
+    expect(body).toMatch(/box-shadow\s*:/);
+  });
+
+  it("leaves the pad container unfocusable, so it needs no container suppression", () => {
+    // The two PIN screens focus their pad programmatically (tabIndex={-1}) and
+    // therefore need a scoped `.x-pad:focus-visible { outline: none }`. This pad is
+    // a plain role="group". If that changes, add the container rule the way
+    // SessionLockScreen.css and StaffLoginScreen.css do -- otherwise the bare
+    // :focus-visible ring in themes/reset.css paints a blue box around the keypad.
+    const padOpenTag = tsx.match(/<div\b[^>]*className="fastpin-pad"[^>]*>/);
+    expect(
+      padOpenTag,
+      "the .fastpin-pad opening tag must stay findable in FastPINOverlay.tsx",
+    ).not.toBeNull();
+    expect(padOpenTag![0]).not.toMatch(/tabIndex/);
+    expect(css).not.toMatch(/\.fastpin-pad\s*\{[^}]*outline\s*:/);
   });
 });

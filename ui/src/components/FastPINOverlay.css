@@ -377,9 +377,19 @@
   transform: scale(0.95);
 }
 
+/* Keypad keys carry no focus ring -- the same decision as the other two PIN
+   screens (.staff-login-pad-key in StaffLoginScreen.css, .session-lock-pad-key
+   in SessionLockScreen.css): what has been typed already reads in the
+   .fastpin-pin-dot row, and :active scales the key. Keypad ONLY -- the username
+   text field (.fastpin-input, which uses a box-shadow cue rather than an
+   outline) and the close / submit / back / cancel buttons all keep their
+   :focus-visible cue. This selector is (0,2,0), so it outranks the bare
+   :focus-visible ring in themes/reset.css on specificity rather than on sheet
+   order, and `.fastpin-pad` needs no container suppression because it carries
+   no tabindex -- unlike the two PIN screens, whose pad is focused
+   programmatically for keyboard capture. */
 .fastpin-pad-key:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .fastpin-pad-key:disabled {
