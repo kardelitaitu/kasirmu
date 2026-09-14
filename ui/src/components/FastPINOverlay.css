@@ -229,7 +229,18 @@
   color: var(--color-fg);
   font-size: var(--text-base);
   font-family: inherit;
-  /* outline suppressed — focus ring provided by box-shadow on :focus-visible */
+  /* Read this declaration as history, not as behaviour: it does NOT suppress the
+     ring. It is a class-only (0,1,0) rule, and themes/reset.css styles
+     `input:focus-visible` -- element + pseudo-class, (0,1,1) -- which outranks it
+     whichever sheet loads last. Measured in Chromium: a keyboard-focused
+     .fastpin-input paints both the global 2px --color-border-focus outline AND the
+     box-shadow cue in the :focus-visible rule below. The line is inert either way
+     (an unfocused element paints no outline; reset.css's
+     `:focus:not(:focus-visible)` covers mouse focus), and a text field showing a
+     ring is the wanted behaviour, so nothing here changes it. Reaching the
+     box-shadow-only look this comment describes is a decision about a text field,
+     not a cleanup: it needs `outline: none` scoped to
+     `.fastpin-input:focus-visible`. */
   outline: none;
   transition: border-color var(--duration-100, 100ms) var(--ease-out);
 }
