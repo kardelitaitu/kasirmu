@@ -120,7 +120,12 @@
 
 .offline-queue-plan-badge--pro {
   background: var(--color-success-dim, rgba(16, 185, 129, 0.15));
-  color: var(--color-success, #10b981);
+  /* --color-success and --color-success-dim are the same hex in every theme
+     (#6FE884 dark / #2E9E3E light) — 1.00:1, the badge read as an empty pill.
+     --color-success-fg is the foreground tokens.css declares as the matched pair
+     of a success fill (TableManagementScreen.css:229 uses it the same way; the
+     sibling --free badge above already paints its own fg-on-fill token). */
+  color: var(--color-success-fg);
 }
 
 .offline-queue-plan-badge--free {

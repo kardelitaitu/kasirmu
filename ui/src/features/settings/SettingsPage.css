@@ -928,7 +928,12 @@
 
 .settings-sync-plan-badge--pro {
   background: var(--color-success-dim, rgba(16, 185, 129, 0.15));
-  color: var(--color-success, #10b981);
+  /* Copy-paste of the offline-queue badge: --color-success on --color-success-dim
+     is one hex in every theme (#6FE884 dark / #2E9E3E light) = 1.00:1.
+     --color-success-fg is the matched foreground tokens.css declares for a
+     success fill; selector and class name are unchanged (this sheet is a
+     parentCss for four registered cards). */
+  color: var(--color-success-fg);
 }
 
 .settings-sync-plan-badge--free {
