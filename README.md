@@ -36,7 +36,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted `.ozpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 8,252 Rust `#[test]` functions and 572 front-end test files (measured 2026-09-14: `grep -rno --include=*.rs '#\[test\]' . | wc -l`; `ls ui/src/__tests__/* | wc -l`), strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI), typed Money, transactional DB. The Vitest **case** total is not measured — it exists only in a test run, and no command here re-derives it.
+- **Enterprise-grade code quality** — 8,252 Rust `#[test]` functions and 572 front-end test files (measured 2026-09-14: `grep -rno --include=*.rs '#\[test\]' . | wc -l`; `find ui/src/__tests__ -type f | wc -l`), strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI), typed Money, transactional DB. The Vitest **case** total is not measured — it exists only in a test run, and no command here re-derives it.
 
 ---
 
@@ -178,7 +178,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
-| `npm run test` | Vitest — 572 files under `ui/src/__tests__` (`ls ui/src/__tests__/* \| wc -l`). No case total: that number exists only in a run, and none is recorded here. |
+| `npm run test` | Vitest — 572 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f \| wc -l`). No case total: that number exists only in a run, and none is recorded here. |
 | `npm run e2e` | Full E2E suite: Docker → Vite → Playwright → cleanup |
 | `npm run e2e:headed` | E2E with browser visible |
 | `npm run e2e:api` | API integration tests only |
@@ -213,7 +213,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Phase 4 (CRM, Restaurant, Accounting) in progress.** Measured 2026-09-14 against this checkout: 59 migration files (`ls crates/oz-core/migrations/*.sql | wc -l`), 453 desktop / 322 tablet IPC commands registered — 297 in both, 478 distinct (re-check with `python scripts/verify-ipc-parity.py`), 277 feature `.tsx` files (`find ui/src/features -name '*.tsx' | wc -l`), 572 files under `ui/src/__tests__` (`ls ui/src/__tests__/* | wc -l`), 8,252 Rust `#[test]` functions (`grep -rno --include=*.rs '#\[test\]' . | wc -l`), and 16 crates (`ls -d crates/*/ | wc -l`). Earlier readings of these same facts are dated history, not current: the 08-09-26 stamp above records 450 distinct IPC (425 / 297 / 272), 183 feature `.tsx`, 8,709 tests and 13 crates, and each has moved since.
+**Phase 4 (CRM, Restaurant, Accounting) in progress.** Measured 2026-09-14 against this checkout: 59 migration files (`ls crates/oz-core/migrations/*.sql | wc -l`), 453 desktop / 322 tablet IPC commands registered — 297 in both, 478 distinct (re-check with `python scripts/verify-ipc-parity.py`), 277 feature `.tsx` files (`find ui/src/features -name '*.tsx' | wc -l`), 572 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f | wc -l`), 8,252 Rust `#[test]` functions (`grep -rno --include=*.rs '#\[test\]' . | wc -l`), and 16 crates (`ls -d crates/*/ | wc -l`). Earlier readings of these same facts are dated history, not current: the 08-09-26 stamp above records 450 distinct IPC (425 / 297 / 272), 183 feature `.tsx`, 8,709 tests and 13 crates, and each has moved since.
 
 | Phase | Status | Focus |
 |---|---|---|

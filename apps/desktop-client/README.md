@@ -28,7 +28,7 @@ apps/desktop-client/
     ├── local_api.rs        # loopback REST server (daemon-residue module)
     ├── sync_bootstrap.rs   # sync daemon wiring at startup
     ├── state.rs            # AppState (DB, driver registry, scanner cancel channel; 23 `pub` fields as measured 2026-09-14 by `grep -c '^    pub [a-z_]*:' src/state.rs` — run from `apps/desktop-client/`; a looser `grep -c "^    pub "` reads 34 because it also catches `pub(crate)` and `pub fn` lines, so use the exact pattern)
-    └── commands/           # 58 production modules (114 .rs files incl. tests) as measured 08-09-26; 64 non-test .rs files here (63 domain modules + mod.rs) and 79 .rs in this dir including the topology/ submodules and 10 *_tests.rs, as measured 2026-09-14 by `ls apps/desktop-client/src/commands/*.rs | wc -l` and `find apps/desktop-client/src/commands -name '*.rs' | wc -l` — the tree below names each domain module once
+    └── commands/           # 58 production modules (114 .rs files incl. tests) as measured 08-09-26; 64 non-test .rs files here (63 domain modules + mod.rs) and 79 .rs in this dir including the topology/ submodules and 10 *_tests.rs, as measured 2026-09-14 by `find apps/desktop-client/src/commands -maxdepth 1 -name '*.rs' ! -name '*_tests.rs' | wc -l` and `find apps/desktop-client/src/commands -name '*.rs' | wc -l` — the tree below names each domain module once
         ├── analytics.rs    # analytics queries
         ├── audit.rs        # list_audit_log
         ├── auth.rs         # staff_login
