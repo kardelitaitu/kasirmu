@@ -1,6 +1,6 @@
 # todo-font-system.md — cross-OS typography
 
-**REVISION 3, 04:47. Two independent reviews, then my own re-measurement of both.** Revision 2 was written on a claim set that a fact-checker widened and partly corrected again; five counts drifted and two claims of mine were still false. **Owner: the D2 re-ruling request in Phase 3 still stands, and it is now better informed.**
+**REVISION 3, 04:47. Two independent reviews, then my own re-measurement of both.** Revision 2 was written on a claim set that a fact-checker widened and partly corrected again; five counts drifted and two claims of mine were still false. **Owner: the D2 re-ruling request in Phase 3 still stands, and it is now better informed.** **Pointer (2026-09-15, HEAD `991be1424`):** the `line-height` census recorded below (218 by `git grep -o`; re-walked comment-blanked as **217 declarations across 70 sheets**, of which **173** carry a hard value) is now owner decision `## 10` on `docs/plans/notes.md` — **31** of those 173 already equal a token's number (16 at 1.5, 15 at 1.25, 0 at 1.625) and 142 are off-scale (`1` ×66, `1.4` ×34). Read the decision before re-deriving the count.
 
 Goal: state honestly what is broken, fix the part that is a real defect at **zero bytes**, and separate that from the part that is a **visual change** needing design sign-off.
 
