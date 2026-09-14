@@ -81,7 +81,7 @@
   not map 1:1 onto that structure.
 
 ### Phase 3.1: Extract Backup & `.ozpkg` Import/Export Sections
-- [ ] Extract `<BackupSection />` (was: `<BackupRestoreSection />`).
+- [x] Extract `<BackupSection />` (was: `<BackupRestoreSection />`).
   **Renamed, not done.** Nothing has been extracted; the backup panel is inline at `:964-1013` — "Database
   backup" card, last-backup + size rows, `Create backup now` → `handleBackup` →
   `createBackupScoped(sessionToken)` / `createBackup()` at `:275-276`. **"restore" is 0 hits in this file**
@@ -222,3 +222,95 @@ Ruled at HEAD `017e71bf7` on 2026-09-14 from figures re-taken in this checkout, 
   - **Moving the live screen's content into the 32-line `screens/` placeholder is rejected twice over: it deletes rendered UI and it changes a privilege boundary.** `wc -l` -> `settings/DataManagementScreen.tsx` **864**, `settings/screens/DataManagementScreen.tsx` **32** (body renders "This page is being rebuilt."). `/settings` is `requiredRole: manager` + `requiredPermission: settings:read` (`settings/register.tsx:10`) while `/data-management` is `requiredRole: owner` with **no** permission key (`:31`), and `passesGate` (`ui/src/platform/ui/page-registry/index.ts:139`) is flat and single-registration with no parent/child inheritance - which is exactly why `:48` ruled that inlining would grant `.ozpkg` export, the import wizard and one-click backup to any manager holding `settings:read`. That ruling stands and this block adopts it.
 - **(d) WHY THE TWO WERE CONFUSABLE, so nobody re-confuses them.** `DataManagementScreen` is **two** entries in the extraction guard: `screenExtraction.test.ts:385` `name: DataManagementScreen` (the 864-line screen) and `:730` `name: DataManagementScreen (placeholder)` (the 32-line placeholder). The second label is `dd9a7885c` - "test(ui): disambiguate placeholder DataManagementScreen label in screenExtraction gate", 1 file, +1/-1, which replaced the duplicate `name` string - so the collision `:194` warns about is now named in the reporter. Anchor on the `name:` **string** rather than a line number: that file is in flight (the `additionalTsx` line `:187` cites at `:389` sits at `:391` as of this reading), so any pointer into it is worth one re-check per use.
 - **WHAT THIS RULING DOES NOT DECIDE.** `:130` `<FactoryResetConfirmationModal />` stays a product question for the owner, as `:191` filed it; `:147` (`< 250` lines) is unmet by the 864-line screen and can only be satisfied in fake green by the 32-line twin, per (d); and the `DataManagementBackup.test.tsx:286` inversion obligation recorded at `:49` is untouched. **Direction is closed; the work is not.**
+
+
+---
+
+## Append-only record (2026-09-15) - this plan reconciled with the tree; nothing above was renumbered
+
+> Appended at the END on purpose. This file cites itself by `:NNN` throughout (`:187`, `:212`, `:216`,
+> `:218` among them), and the only in-place edit below line 224 is the checkbox character on `:84`, which
+> moves no line number. Every pointer in this plan still resolves where it pointed on 2026-09-14. One
+> box changed state in the checklist region: `:84`, and it was ticked. That is the whole edit. No `.tsx`, no test,
+> no other plan was touched by this pass, and no test/typecheck run was executed here - the tester lane
+> owns those numbers (`## Acceptance runs` at `:199` is that lane's record, untouched).
+
+- **`:84` `<BackupSection />` - TICKED. Proof opened, both halves.** The component exists:
+  `ui/src/features/settings/components/BackupSection.tsx`, 93 ln (`wc -l`), `export function
+  BackupSection` at `:36`. It is mounted: `ui/src/features/settings/DataManagementScreen.tsx:34` imports
+  it and `:461` renders `<BackupSection backup flashRows onBackup />` behind the
+  `{activeTab === 'backup' && (` guard at `:460`. Registered in the class guard at
+  `ui/src/__tests__/screenExtraction.test.ts:391`. Commit `5054156be`. This was already asserted at
+  `:187`; it is closed here because the file:line evidence is direct, not because a correction said so.
+- **`:93` `<CatalogOzpkgImportExport />` - ALIAS, NOT TICKED; the tick is the owner's call.** No
+  component of that name exists: `git grep -inE "CatalogOzpkg|CatalogCsv" -- ui/src` -> **exit 1, zero
+  hits**, so the name in the box is ungreppable. The region it describes DID ship, as two children
+  (`ExportSection`, `ImportSection`) rather than the one component the box draws:
+  `ui/src/features/settings/components/ExportSection.tsx` 259 ln, `export function ExportSection` at
+  `:55`, imported at `DataManagementScreen.tsx:33`, mounted at `:431` under the guard at `:430`, commit
+  `c8ea8bbe4`; and `ui/src/features/settings/components/ImportSection.tsx` 269 ln, `export function
+  ImportSection` at `:48`, imported at `DataManagementScreen.tsx:35`, mounted at `:446` under the guard
+  at `:445`, commit `2bdd37c54`. Both registered in the guard at `screenExtraction.test.ts:391`.
+  **What is missing is a name, not a feature.** The shipped decomposition differs from the planned one
+  (two panels, one per tab; no single `Catalog...ImportExport` component), so ticking would silently
+  endorse a rename the owner has not agreed to, and rewriting the box would edit a claim out of the
+  audit record. A box naming a component nobody will ever grep for is a claim about vocabulary, not
+  about work - recorded, and left for the owner to rule (close as shipped-under-alias, or restate).
+- **`:105` Commit Milestone - OPEN, and its own text is stale.** Its stated condition was "both
+  extractions above", and that conjunction is now `ticked AND alias`, i.e. not decidable by this lane.
+  The command in the box also does not match what landed: subjects used were `refactor(settings): ...`,
+  not `refactor(settings-data): ...`, and the pathspec named `ui/src/features/settings/screens/`, the
+  directory `:218` ruled against in favour of `components/`. No commit is missing; the milestone text is.
+- **`:111` `<AuditRetentionSection />` - DROPPED-BY-RULING. Ticked nothing, wrote nothing.** Cite the
+  ruling block at `:212` and its item **(a)** at `:216`, which overrules this box's own verb
+  ("Extract") with its own body (`:127`-`:129`: "build-the-panel work ... not an extraction").
+  Re-measured on 2026-09-15 and the facts still hold: `git grep -n "AuditRetention" -- ui/src` -> exit 1,
+  `grep -rni "retention" ui/src/features/settings` -> exit 1. Per `:216` it returns as build work with
+  its own IPC command, never as `:111`.
+- **`:130` `<FactoryResetConfirmationModal />` - OPEN, no UI at any layer.** Searched before writing
+  that: `git grep -niE "factoryreset|factory_reset|factory reset" -- ui crates apps platform modules
+  foundation` -> **exit 1, zero hits**. There is no modal, no command and no inline reset flow to
+  extract, so no near-miss is offered: the generic `ConfirmDialog` mounted at
+  `DataManagementScreen.tsx:395-402` is the IMPORT confirmation and does not satisfy this box. Stays a
+  product question per `:191` and `:224`.
+- **`:144` "reduce to a clean section coordinator" - OPEN (judgement, and the plan states no number in
+  this box).** Measured 469 ln. All three tab panels are now mounted children. Still inline in the
+  screen: the `ConfirmDialog` (`:395-402`), the title header (`:404-408`), the tab bar (`:410-429`), the
+  three `{activeTab === ... }` guards (`:430`, `:445`, `:460`) and ALL state/handlers - 8 `useState`
+  (`:55`-`:70`), 2 `useEffect` (`:94`, `:114`), 12 `useCallback` (`:156`-`:387`). Both wizard state
+  machines are still owned by the screen, so whether this counts as "clean" is the owner's call.
+- **`:147` `< 250` lines - OPEN, NOT MET: 469.** Re-baselined from git objects rather than prose:
+  `git show <rev>:ui/src/features/settings/DataManagementScreen.tsx | wc -l` -> 905 (`5054156be^`), 863
+  (`5054156be`), 864 (after `8480b3789`), **660** (`2bdd37c54`), **469** (`c8ea8bbe4`). Do not close this
+  against `ui/src/features/settings/screens/DataManagementScreen.tsx`, which is 32 ln and would pass the
+  number while being the wrong file - the naming trap at `:193`-`:194`.
+- **`:153` Commit Milestone (Phase 3.2) - OPEN, and not closable in this wave**: it is conditioned on
+  `:111` (dropped by ruling) and `:130` (no UI at any layer). Its command repeats the `screens/`
+  pathspec `:218` rejected.
+
+**TRAJECTORY AND INVENTORY (the fact the rest of this block exists to make checkable).**
+This screen went **864 -> 660 -> 469** in two extractions: `2bdd37c54` (-204, import panel out) then
+`c8ea8bbe4` (-191, export panel out). Each touched exactly three paths - the screen, the new component and one
+line of the extraction guard (`git show --name-only`); no test case and no locale file moved, and the guard line
+`screenExtraction.test.ts:391` grew with each. `ui/src/features/settings/components/` now holds **six**
+files, 1,132 ln (`wc -l ui/src/features/settings/components/*.tsx`), which supersedes the "four
+components, 604 ln" count at `:218` - that figure was true before these two slices and is now stale:
+  - `BackupSection.tsx` 93 ln -> `DataManagementScreen.tsx:34` import, `:461` mount
+  - `ImportSection.tsx` 269 ln -> `DataManagementScreen.tsx:35` import, `:446` mount
+  - `ExportSection.tsx` 259 ln -> `DataManagementScreen.tsx:33` import, `:431` mount
+  - `SettingsTopbar.tsx` 230 ln -> `SettingsPage.tsx:30` (untouched by these slices)
+  - `SettingsFooter.tsx` 163 ln -> `SettingsPage.tsx:29` (untouched)
+  - `SettingsLoadChrome.tsx` 118 ln -> `SettingsPage.tsx:32` (untouched)
+All six are mounted by a live screen; none is dead code, and none lives in `sections/` (`:220`).
+
+**BOX COUNTS, both grep forms, before -> after this record** (the forms agree because every box in this
+file is at column 0, so the two forms cannot disagree here - an indented box is the only way they
+would, and this plan has none. The ALL-bullets form is a different quantity and the easy one to misread
+as a box total:
+`grep -cE '^[[:space:]]*- \[ \]'` 8 -> 7 · `grep -cE '^- \[ \]'` 8 -> 7 ·
+`grep -cE '^[[:space:]]*- \[[xX]\]'` 3 -> 4 · `grep -cE '^- \[[xX]\]'` 3 -> 4 ·
+`grep -cE '^[[:space:]]*-[ ]'` (ALL bullets, not a box count) 46 -> 60 - the +14 are this
+record's own prose bullets, so it is not a box total and must not be read as one.
+Genuinely open work after this pass: **`:144` and `:147`** - one judgement, one unmet number - plus
+`:130`, which is not work this lane can do at all. `:93`, `:105` and `:153` are now waiting on a
+naming/wording ruling, not on code.
