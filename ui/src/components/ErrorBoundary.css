@@ -40,7 +40,7 @@
 .error-boundary__message {
   margin: 0;
   font-size: var(--text-base);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
   color: var(--color-fg-secondary);
   max-width: 100%;
   overflow-wrap: anywhere;
