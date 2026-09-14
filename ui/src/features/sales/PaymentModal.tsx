@@ -32,6 +32,7 @@ import { useTenderMath } from './payment/useTenderMath';
 import QrisTenderPanel from './payment/QrisTenderPanel';
 import CashTenderPanel from './payment/CashTenderPanel';
 import CardTenderPanel from './payment/CardTenderPanel';
+import SplitTenderRows from './payment/SplitTenderRows';
 import { minorUnitsToInputString } from './payment/moneyFormat';
 import { buildCompletedSaleReceipt } from './payment/completedSale';
 import type { PaymentModalProps } from './payment/types';
@@ -1644,125 +1645,17 @@ export default function PaymentModal({
               </>
             )}
 
-            {splitMode && (
-              <div className="payment-split-section">
-                <div className="payment-split-header">
-                  <Localized id="payment-split-title">
-                    <span className="payment-section-title">Split Payments</span>
-                  </Localized>
-                  <div className="payment-split-actions">
-                    <button
-                      type="button"
-                      className="payment-split-btn"
-                      aria-label={l10n.getString('payment-split-evenly')}
-                      onClick={autoSplitEvenly}
-                    >
-                      <Localized id="payment-split-evenly">
-                        <span>Split Evenly</span>
-                      </Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className="payment-split-btn"
-                      aria-label={l10n.getString('payment-split-add')}
-                      onClick={addSplit}
-                    >
-                      <Localized id="payment-split-add">
-                        <span>+ Add Split</span>
-                      </Localized>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="payment-split-rows">
-                  {splits.map((s) => (
-                    <div key={s.id} className="payment-split-row">
-                      <div className="payment-split-method-group">
-                        {(['cash', 'card'] as const).map((m) => (
-                          <label key={m} className="payment-split-radio-label">
-                            <input
-                              type="radio"
-                              name={`split-method-${s.id}`}
-                              value={m}
-                              checked={s.method === m}
-                              onChange={() => updateSplit(s.id, { method: m, otherLabel: '' })}
-                            />
-                            <span>{m === 'cash' ? l10n.getString('payment-split-method-cash') : l10n.getString('payment-split-method-card')}</span>
-                          </label>
-                        ))}
-                        <div className="payment-split-radio-label">
-                          <input
-                            type="radio"
-                            name={`split-method-${s.id}`}
-                            value="other"
-                            checked={s.method === 'other'}
-                            onChange={() => updateSplit(s.id, { method: 'other' })}
-                          />
-                            <Localized id="payment-split-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
-                            <input
-                              type="text"
-                              className="payment-split-other-input"
-                              value={s.otherLabel}
-                              onChange={(e) => updateSplit(s.id, { otherLabel: e.target.value })}
-                              disabled={s.method !== 'other'}
-                            />
-                            </Localized>
-                        </div>
-                      </div>
-                      <div className="payment-split-amount-group">
-                        <span className="payment-split-currency">{total.currency}</span>
-                          <Localized id="payment-split-amount-placeholder" attrs={{ placeholder: true, 'aria-label': true }}>
-                            <input
-                              type="text"
-                              className="payment-split-amount-input"
-                              inputMode="decimal"
-                              value={s.amountMinor}
-                              onChange={(e) => updateSplit(s.id, { amountMinor: e.target.value })}
-                            />
-                          </Localized>
-                      </div>
-                      <button
-                        type="button"
-                        className="payment-split-remove"
-                        aria-label={l10n.getString('payment-split-remove-aria')}
-                        onClick={() => removeSplit(s.id)}
-                        disabled={splits.length <= 1}
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="payment-split-remaining">
-                  <Localized id="payment-split-remaining">
-                    <span className="payment-split-remaining-label">Remaining</span>
-                  </Localized>
-                  <span
-                    className={`payment-split-remaining-amount ${
-                      splitTotals.remaining !== 0n ? 'payment-split-remaining-positive' : ''
-                    }`}
-                  >
-                    {formatMoney({
-                      minor_units: Number(splitTotals.remaining),
-                      currency: total.currency,
-                    } as Money)}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="payment-split-toggle">
-              <label className="payment-split-toggle-label" htmlFor="payment-split-toggle-cb">
-                <input
-                  id="payment-split-toggle-cb"
-                  type="checkbox"
-                  checked={splitMode}
-                  onChange={(e) => setSplitMode(e.target.checked)}
-                />
-                {l10n.getString('payment-split-toggle')}
-              </label>
-            </div>
+            <SplitTenderRows
+              splitMode={splitMode}
+              splits={splits}
+              currency={total.currency}
+              remainingMinor={splitTotals.remaining}
+              onSplitModeChange={setSplitMode}
+              onAddSplit={addSplit}
+              onRemoveSplit={removeSplit}
+              onUpdateSplit={updateSplit}
+              onAutoSplitEvenly={autoSplitEvenly}
+            />
 
             <div className="payment-customer-section">
               {selectedCustomer ? (
