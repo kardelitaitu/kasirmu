@@ -210,41 +210,29 @@ pub async fn set_credit_settings(
 #[command]
 /// List credit sales.
 ///
-/// The SQL body stays inline here on purpose, even though
-/// `oz_bridge::settings::run_list_credit_sales` is byte-identical to it: the
-/// tablet registration gate's sweep reads a call into `oz_bridge::` as evidence
-/// that the shared funnel owns the RBAC, and for this pair of commands it does
-/// not — `run_list_credit_sales` is a pure query helper, and this shell's
-/// scoped twin has never asked for `sales:view` the way the bridge's
-/// `list_credit_sales_scoped` does. Delegating here would flip
-/// `settings::list_credit_sales_scoped` from "ungated debt on the ledger" to
-/// "gated" without a single permission being added, i.e. it would erase a real
-/// gap from the ratchet. The repair is to gate it, not to delegate it; see the
-/// 2026-09-15 T4 record in `todo-refactor-oz-pos-app-agents-3.md`.
+/// ADR #49: the SQL body is now the bridge's, measured byte-identical to
+/// `oz_bridge::settings::run_list_credit_sales` — same statement text, same
+/// `query_map`, same field mapping — which removes the second copy of a query
+/// ADR #49 exists to keep single.
+///
+/// **The gap is PRESERVED, deliberately.** This door resolves no session, so it
+/// asks for no permission, and neither does the pure-query helper it now calls.
+/// That is precisely why this delegation is ledger-neutral while the scoped
+/// twin's is not.
+///
+/// A note here previously said delegating would flip
+/// `settings::list_credit_sales_scoped` from "ungated debt" to "gated".
+/// **Measured 2026-09-16, that does not reproduce:** `fn_sources` in
+/// `registration_gate_tests.rs` keys its hits by EXACT fn name (`:275`), so this
+/// door's text cannot decide the scoped name's verdict — and the ratchet stays
+/// green 7/7 with this delegation in place. What remains true is the real gap:
+/// this shell's scoped twin has never asked for `sales:view` the way the
+/// bridge's `list_credit_sales_scoped` does. The repair is to gate it, not to
+/// delegate it; see the 2026-09-15 T4 record in
+/// `todo-refactor-oz-pos-app-agents-3.md`.
 pub async fn list_credit_sales(state: State<'_, AppState>) -> Result<Vec<CreditSaleDto>, AppError> {
     let conn = state.db.lock().await;
-    let mut stmt = conn.prepare(
-        "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
-                p.settled_at, COALESCE(u.display_name, '')
-         FROM sales s
-         JOIN payments p ON p.sale_id = s.id
-         LEFT JOIN users u ON u.id = s.user_id
-         WHERE s.status = 'completed'
-           AND p.method = 'credit'
-         ORDER BY s.created_at DESC",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CreditSaleDto {
-            sale_id: row.get(0)?,
-            customer_name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-            total_minor: row.get(2)?,
-            currency: row.get(3)?,
-            created_at: row.get(4)?,
-            settled_at: row.get(5)?,
-            cashier_name: row.get(6)?,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    Ok(oz_bridge::settings::run_list_credit_sales(&conn)?)
 }
 
 #[command]
