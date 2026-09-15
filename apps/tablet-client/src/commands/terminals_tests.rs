@@ -494,3 +494,234 @@ fn set_device_binding_args_debug() {
     assert!(d.contains("store-a"));
     assert!(d.contains("ws-a-1"));
 }
+
+// ── Scoped-command permission gates (F-017 parity) ────────────────────
+//
+// Added with `50b2fd14e`, which gave nine of this module's scoped commands the
+// gate their `oz_bridge::terminals` twins already enforced under a comment
+// naming the work item. Nothing above reaches a scoped command: every case in
+// this file drives `run_*` or the store helpers directly, which is precisely
+// why four of the reads could resolve a session, bind it to a store, and then
+// assume the caller may read — with this shell's own ledger recording each one
+// as `resolves_session_names_no_permission` the whole time.
+//
+// What these cases can and cannot prove, stated because the difference matters
+// here: they hold the PERMISSION half shut. They cannot hold the
+// missing-argument half shut. Calling a command function from Rust never asks
+// Tauri to resolve arguments, and `git grep -ln 'mock_ipc\|MockInvoke\|
+// handle_invoke\|ipc::Command' -- apps/tablet-client apps/desktop-client
+// ui/src` returns NO files: not one test in this repository crosses the IPC
+// boundary. So the `user_id: String` that made five of these commands
+// unreachable on a real tablet — rejected by `command.rs:100` before their
+// bodies ran, twice in this programme now, settings then terminals — is
+// undetectable by any test that exists, and no test in this file will ever
+// detect its return. See the argument-shape gate proposed in the plan file.
+
+use oz_core::session::SessionContext;
+use platform_core::StoreDatabaseManager;
+use tauri::Manager as _;
+
+/// Seed the GLOBAL identity DB with the default roles, an owner, and a cashier
+/// on `role-staff` — a role that holds no `terminals:*` grant.
+fn seed_identity(conn: &rusqlite::Connection) {
+    Store::new(conn).seed_default_roles().unwrap();
+    for (id, role) in [("user-owner", "role-owner"), ("user-cashier", "role-staff")] {
+        conn.execute(
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active,
+                                created_at, updated_at)
+             VALUES (?1, ?1, 'hash', ?1, ?2, 1, '2026-07-31T00:00:00.000Z',
+                     '2026-07-31T00:00:00.000Z')",
+            rusqlite::params![id, role],
+        )
+        .unwrap();
+    }
+}
+
+/// A Tauri test app with the given (token, user id) sessions, all bound to
+/// store `store-terminals`. The tempdir travels with the app because it holds
+/// the per-store databases the `StoreDatabaseManager` opens on demand.
+fn terminals_app(
+    sessions: &[(&str, &str)],
+) -> (tauri::App<tauri::test::MockRuntime>, tempfile::TempDir) {
+    let conn = oz_core::migrations::fresh_db();
+    seed_identity(&conn);
+    let temp = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager =
+        StoreDatabaseManager::new(temp.path().to_path_buf(), oz_core::migrations::ALL);
+    for (token, user_id) in sessions {
+        let role = if *user_id == "user-owner" {
+            "role-owner"
+        } else {
+            "role-staff"
+        };
+        state.session_store.write().unwrap().insert(
+            (*token).into(),
+            SessionContext::new(
+                (*user_id).into(),
+                role.into(),
+                "terminal-1".into(),
+                "store-terminals".into(),
+                "instance-1".into(),
+                "pos".into(),
+                None,
+                0,
+            ),
+        );
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    (app, temp)
+}
+
+/// The four reads that were the F-017 gap: each must now refuse a cashier.
+#[tokio::test]
+async fn scoped_terminal_reads_deny_a_session_without_terminals_read() {
+    let (app, _temp) = terminals_app(&[("cashier-token", "user-cashier")]);
+
+    let listed = list_terminals_scoped("cashier-token".into(), app.state()).await;
+    assert!(
+        matches!(listed, Err(AppError::PermissionDenied(_))),
+        "the terminal enumeration — device ids and metadata for every \
+         terminal in the store — was readable without terminals:read"
+    );
+    assert!(matches!(
+        get_terminal_scoped("cashier-token".into(), "t1".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(matches!(
+        ping_terminal_scoped("cashier-token".into(), "t1".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(matches!(
+        list_terminal_overrides_scoped("cashier-token".into(), "t1".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+}
+
+/// The writes, whose gates sit on two different permissions. The shapes of the
+/// calls are the shapes `ui/src/api/terminals.ts` sends: no `user_id` anywhere,
+/// because the session supplies the actor now.
+#[tokio::test]
+async fn scoped_terminal_writes_deny_a_session_without_their_permission() {
+    let (app, _temp) = terminals_app(&[("cashier-token", "user-cashier")]);
+
+    assert!(matches!(
+        delete_terminal_scoped("cashier-token".into(), "t1".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(matches!(
+        set_terminal_override_scoped(
+            "cashier-token".into(),
+            "t1".into(),
+            "kds".into(),
+            true,
+            app.state()
+        )
+        .await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(matches!(
+        delete_terminal_override_scoped("cashier-token".into(), "t1".into(), "kds".into(), app.state())
+            .await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(matches!(
+        update_terminal_scoped(
+            "cashier-token".into(),
+            UpdateTerminalArgs {
+                id: "t1".into(),
+                name: Some("Renamed".into()),
+                device_id: None,
+                terminal_secret: None,
+                is_active: None,
+                metadata: None,
+            },
+            app.state()
+        )
+        .await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    // `register_terminal_scoped` is not asserted either way. It calls
+    // `sub.verify_signature()?` on the tenant subscription before its gate, and
+    // a test-only DB has no signed default tenant, so a refusal here would prove
+    // nothing about the gate. What it lost — the required `user_id: String` — is
+    // held by the signature itself: this file would not compile against the old
+    // parameter list.
+}
+
+/// The other half: an owner session gets every one of these past the gate.
+///
+/// The assertion is deliberately "not a permission refusal" rather than
+/// `Ok(..)`. These commands run against a store with no terminals in it, so the
+/// bodies are free to answer NotFound, an empty list, or a validation refusal —
+/// what is being pinned is that the call reached the body at all, which is the
+/// half that the removed `user_id` parameters and the added gates both change.
+#[tokio::test]
+async fn scoped_terminal_writes_accept_an_owner_session() {
+    let (app, _temp) = terminals_app(&[("owner-token", "user-owner")]);
+
+    let listed = list_terminals_scoped("owner-token".into(), app.state())
+        .await
+        .expect("an owner may enumerate the store's terminals");
+    assert!(listed.is_empty(), "fresh store should hold no terminals");
+
+    for label in ["t-missing", "t-other"] {
+        let denied = get_terminal_scoped("owner-token".into(), label.into(), app.state()).await;
+        assert!(
+            !matches!(denied, Err(AppError::PermissionDenied(_))),
+            "{label}: the owner was refused by the gate rather than by the store"
+        );
+    }
+    assert!(!matches!(
+        ping_terminal_scoped("owner-token".into(), "t-missing".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(!matches!(
+        list_terminal_overrides_scoped("owner-token".into(), "t-missing".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(!matches!(
+        set_terminal_override_scoped(
+            "owner-token".into(),
+            "t-missing".into(),
+            "kds".into(),
+            true,
+            app.state()
+        )
+        .await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(!matches!(
+        delete_terminal_override_scoped(
+            "owner-token".into(),
+            "t-missing".into(),
+            "kds".into(),
+            app.state()
+        )
+        .await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(!matches!(
+        delete_terminal_scoped("owner-token".into(), "t-missing".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(!matches!(
+        update_terminal_scoped(
+            "owner-token".into(),
+            UpdateTerminalArgs {
+                id: "t-missing".into(),
+                name: Some("Renamed".into()),
+                device_id: None,
+                terminal_secret: None,
+                is_active: None,
+                metadata: None,
+            },
+            app.state()
+        )
+        .await,
+        Err(AppError::PermissionDenied(_))
+    ));
+}
