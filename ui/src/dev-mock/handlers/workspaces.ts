@@ -67,9 +67,7 @@ export const workspaceHandlers: Record<string, MockHandler> = {
     if (existing && name !== undefined) existing.name = name;
     return existing ?? null;
   },
-  'delete_workspace_instance_scoped': () => null,
   'archive_workspace_instance_scoped': () => null,
-  'set_default_instance_scoped': () => null,
   'list_all_workspaces_scoped': () => [
     { key: 'store-pos', name: 'Store POS', description: 'Point of Sale', icon: 'shopping-cart' },
     { key: 'restaurant-pos', name: 'Restaurant POS', description: 'Table service', icon: 'restaurant' },

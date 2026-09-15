@@ -279,8 +279,6 @@ const catalogHandlers: Record<string, MockHandler> = {
 
   'list_products': () => MOCK_PRODUCTS,
   'list_products_scoped': () => MOCK_PRODUCTS,
-  'get_products': () => ({ products: MOCK_PRODUCTS }),
-  'search_products': (_args) => ({ products: MOCK_PRODUCTS }),
   'create_product': () => ({ sku: 'SKU-NEW' }),
   'create_product_scoped': () => ({ sku: 'SKU-NEW' }),
   'update_product': () => ({ sku: 'SKU-UPD' }),
@@ -322,7 +320,6 @@ const catalogHandlers: Record<string, MockHandler> = {
     const { skus } = args as { skus: string[] };
     return (skus ?? []).map((sku) => ({ sku, track_serial: false }));
   },
-  'get_product_stock': () => ({ quantity: 50 }),
 
   'list_product_variants': () => [],
   'get_product_variant': () => null,

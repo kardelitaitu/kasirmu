@@ -535,10 +535,6 @@ export const staffHandlers: Record<string, MockHandler> = {
       is_active: a.is_active ?? true,
     });
   },
-  'generate_kds_pairing_token_scoped': () => ({
-    token: `mock-pairing-token-${Date.now()}`,
-    expires_at: new Date(Date.now() + 300_000).toISOString(),
-  }),
   'get_staff_analytics_scoped': () => [
   { user_id: 'u1', display_name: 'Rina W.', shift_count: 12, closed_shift_count: 11, shift_sales_minor: 48000000, sale_count: 96, sale_total_minor: 92000000 },
   { user_id: 'u2', display_name: 'Budi S.', shift_count: 11, closed_shift_count: 10, shift_sales_minor: 43000000, sale_count: 88, sale_total_minor: 86000000 },

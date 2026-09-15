@@ -451,8 +451,6 @@ export const systemHandlers: Record<string, MockHandler> = {
       },
     };
   },
-  'list_screens_scoped': () => [],
-
   'get_enabled_features': () => ({ features: ['sales', 'inventory', 'reporting', 'staff', 'settings'] }),
 
   // ═══════════════════════════════════════════════════════════════
