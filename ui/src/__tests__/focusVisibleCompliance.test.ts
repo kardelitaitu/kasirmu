@@ -8,7 +8,7 @@ const UI_SRC = resolve(__dirname, '..');
  * Denominator for this gate. Unit: individual selectors after comma-splitting, except
  * skipGroups/skipSelectors, which are counted where the check actually sits.
  */
-const S = { sheets: 0, interactive: 0, waivedExact: 0, waivedBoundary: 0, skipGroups: 0, skipSelectors: 0 };
+const S = { sheets: 0, interactive: 0, waivedExact: 0, waivedBoundary: 0, skipGroups: 0, skipSelectors: 0, rightmostCredits: 0 };
 const SKIP_FIRES = new Map<RegExp, number>();
 /** Every selector excused by the compound/descendant boundary, by name. */
 const BOUNDARY_WAIVED = new Set<string>();
@@ -33,6 +33,59 @@ const INTERACTIVE_SELECTORS = [
 
 function isInteractiveSelector(selector: string): boolean {
   return INTERACTIVE_SELECTORS.some((re) => re.test(selector));
+}
+
+/**
+ * THE CREDIT HUNT, 2026-09-15. A focus rule paints its ring on the RIGHT end of its
+ * selector, not the left: `.toggle-switch input:focus-visible + .toggle-track` is how
+ * this repo styles a hidden checkbox whose visible surface is a sibling <span>.
+ * Recording only the left end — which is what the base extraction below does, and the
+ * only thing it did until now — credits `input + .toggle-track`, a name that matches no
+ * rule in the sheet, so the part that actually receives the ring stayed uncredited and
+ * was reported as missing its focus style. Same defect class as a waiver attached to
+ * the wrong end of a selector: the credit was real but pointed at the wrong name.
+ *
+ * So credit the rightmost compound of every rule that already passed the
+ * focus-visible-with-visible-indicator gate, and then one hop further: a part that
+ * lives INSIDE a credited element (`.toggle-thumb`, seen in
+ * `input:checked + .toggle-track .toggle-thumb`) is reached by the same ring. Both
+ * steps are EARNED, never blanket: a rule with no :focus-visible anywhere in the sheet
+ * credits nothing, and a name that merely resembles a credited one — .trackX beside
+ * .track — credits nothing either, because every hop is an exact compound match.
+ */
+function compoundsOf(group: string): string[] {
+  return group
+    .split(/[ >+~]+/)
+    .map((seg) => seg.replace(/:focus-visible/g, '').replace(/^&/, '').trim())
+    .filter(Boolean);
+}
+
+function focusCredits(focusRules: string[], allRules: string[]): Set<string> {
+  const credited = new Set<string>();
+  for (const sel of focusRules) {
+    for (const group of sel.split(',')) {
+      const segs = compoundsOf(group.trim());
+      const last = segs[segs.length - 1];
+      if (last) credited.add(last);
+    }
+  }
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const sel of allRules) {
+      for (const group of sel.split(',')) {
+        const segs = compoundsOf(group.trim());
+        if (segs.length < 2) continue;
+        const tail = segs[segs.length - 1] ?? ''; // segs.length >= 2 was checked above
+        if (!segs.slice(0, -1).some((anc) => credited.has(anc))) continue;
+        if (!credited.has(tail)) {
+          credited.add(tail);
+          grew = true;
+        }
+      }
+    }
+  }
+  return credited;
 }
 
 /** Check if selector or body references :focus-visible. */
@@ -137,14 +190,19 @@ function scanCSS(filePath: string): Violation[] {
   const covered = new Set(GLOBAL_COVERED);
 
   // First pass: find all :focus-visible rules and track covered selectors
+  const focusRules: string[] = [];
+  const sheetRules: string[] = [];
+
   for (const rule of rules) {
     const braceIdx = rule.indexOf('{');
     const selectors = rule.slice(0, braceIdx).trim();
     const body = rule.slice(braceIdx + 1, -1).trim();
 
     if (selectors.startsWith('@')) continue;
+    sheetRules.push(selectors);
 
     if (hasFocusVisibleRef(selectors, body) && hasVisibleFocusIndicator(selectors, body)) {
+      focusRules.push(selectors);
       const baseSelector = selectors
         .replace(/:focus-visible\s*$/, '')
         .replace(/:focus-visible/, '')
@@ -152,6 +210,12 @@ function scanCSS(filePath: string): Violation[] {
         .trim();
       if (baseSelector) covered.add(baseSelector);
     }
+  }
+
+  // The rightmost-compound credit, and the one hop through a credited ancestor.
+  for (const name of focusCredits(focusRules, sheetRules)) {
+    covered.add(name);
+    S.rightmostCredits++;
   }
 
   /**
@@ -329,7 +393,7 @@ describe('Focus-visible compliance', () => {
     allViolations.push(...scanCSS(fullPath));
   }
 
-  it(`focus-visible denominator: ${S.interactive - S.waivedExact - S.waivedBoundary} interactive selectors graded, ${S.waivedExact + S.waivedBoundary} waived by a covered name (${S.waivedExact} by exact name, ${S.waivedBoundary} by the compound/descendant boundary), ${S.skipSelectors} more inside ${S.skipGroups} rule-groups a skip pattern named, over ${S.sheets} of ${CSS_FILES.length} listed sheets, ${allViolations.length} violations`, () => {
+  it(`focus-visible denominator: ${S.interactive - S.waivedExact - S.waivedBoundary} interactive selectors graded, ${S.waivedExact + S.waivedBoundary} waived by a covered name (${S.waivedExact} by exact name, ${S.waivedBoundary} by the compound/descendant boundary, ${S.rightmostCredits} names credited from the right end of a focus rule), ${S.skipSelectors} more inside ${S.skipGroups} rule-groups a skip pattern named, over ${S.sheets} of ${CSS_FILES.length} listed sheets, ${allViolations.length} violations`, () => {
     for (const [pat, cnt] of [...SKIP_FIRES.entries()].sort((x, y) => y[1] - x[1])) {
       console.log('  skip waiver ' + String(pat) + '  fires ' + cnt + ' rule-group(s)');
     }
@@ -424,6 +488,27 @@ const BOUNDARY_WAIVED_BASELINE: string[] = [
         : 'All interactive elements pass focus-visible compliance';
 
     expect(allViolations, message).toHaveLength(0);
+  });
+
+  /**
+   * The credit hunt cuts both ways, and this case is the half that keeps it honest:
+   * a credit must be EARNED by a rule that carries :focus-visible with a visible
+   * indicator, and it must land on an exact compound. Widen focusCredits into a
+   * blanket and this goes red first, not the denominator above.
+   */
+  it('the right-end credit is earned per rule and never by resemblance', () => {
+    // No :focus-visible rule anywhere, so a bare interactive name earns nothing and
+    // is still reported. This is the blanket the change must not become.
+    expect(focusCredits([], ['.bare-track { background: red }']).size).toBe(0);
+    // A sibling ring credits the part that is painted, not the hidden input.
+    expect([...focusCredits(['input:focus-visible + .ring-target'], [])]).toEqual(['.ring-target']);
+    // One hop down: a part inside a credited element is reached by the same ring.
+    expect(focusCredits(['input:focus-visible + .track'], ['.checked + .track .thumb']).has('.thumb')).toBe(true);
+    // Resemblance earns nothing — a longer name beside a credited one stays graded.
+    const near = focusCredits(['.btn:focus-visible { outline: 2px solid }'], ['.btnX { color: red }']);
+    expect(near.has('.btnX')).toBe(false);
+    // Nor is an unrelated compound of a sheet that does carry a focus rule.
+    expect(focusCredits(['.btn:focus-visible { outline: 2px solid }'], ['.unrelated { color: red }']).has('.unrelated')).toBe(false);
   });
 
   it('reset.css properly disables outline on bare mouse focus via :focus:not(:focus-visible)', () => {
