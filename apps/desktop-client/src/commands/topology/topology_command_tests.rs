@@ -1921,8 +1921,9 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
             char_audit_count(&st, store_b),
         ),
         (false, false, 0, 0),
-        "no instance and no audit row may exist in either store; observed {}",
+        "no instance and no audit row may exist in either store; observed {} errors [{}]",
         obs,
+        errs,
     );
     let _ = dir;
 }
