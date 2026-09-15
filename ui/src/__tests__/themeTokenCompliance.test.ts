@@ -1235,6 +1235,22 @@ describe('font-reference portability', () => {
     expect(CSS_SOURCES.length).toBeGreaterThanOrEqual(10);
   });
 
+  // WHY HTML_SOURCES IS EXACTLY TWO DOCUMENTS, and why widening it is a regression.
+  // Six other tracked files still name these hosts and every one of them is correct:
+  //   dev/design-language.html, dev/kds-prototype.html -- dev-only pages whose whole
+  //     job is to show the typefaces; they are never shipped and no CSP governs them.
+  //   website/public/admin/index.html, website/public/admin/login.html -- the
+  //     deployed console, standalone pages whose face can only come from a CDN
+  //     because nothing under website/public is wired to a fontsource package.
+  //   website/public/_headers, website/worker.ts -- not references at all: the CSP
+  //     that PERMITS those two admin pages, once as a header file and once in the
+  //     edge worker. _headers carries the reasoning in a comment that opens "fonts.
+  //     googleapis.com (style-src) + fonts.gstatic.com (font-src) cover", and it says
+  //     plainly that the public site does NOT use them because Base.astro self-hosts
+  //     both faces via fontsource.
+  // Grading any of those here fails on a correct tree, or -- worse -- pushes a lane
+  // to "clean up" the admin pages into rendering with no face available at all. The
+  // boundary is the app shell, because the app shell is what the CSP governs.
   it('rule 1: no remote font reference in a boot HTML document', () => {
     const hits = HTML_SOURCES.flatMap(({ file, text }) => findRemoteFontRefs(file, text));
     expect(
