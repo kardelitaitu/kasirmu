@@ -259,7 +259,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Registered commands the sweep found today. The floor in
 /// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
 /// that disagrees with a hand-kept floor fails the build.
-pub const REGISTERED_TOTAL: usize = 318;
+pub const REGISTERED_TOTAL: usize = 319;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///

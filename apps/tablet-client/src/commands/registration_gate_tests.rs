@@ -68,7 +68,7 @@ mod debt;
 
 /// The registered surface of this shell, measured 12-09-26. A moved include_str path
 /// must not be able to pass by finding nothing.
-const REGISTERED_FLOOR: usize = 318;
+const REGISTERED_FLOOR: usize = 319;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
