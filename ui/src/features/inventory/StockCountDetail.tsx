@@ -20,6 +20,9 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import './StockCountDetail.css';
+// The sc-badge family this screen paints at :243 lives in its own sheet, not in the
+// list screen's -- import it here so the styling no longer depends on the flow's static import.
+import './StockCountBadge.css';
 
 interface Props {
   countId: string;
