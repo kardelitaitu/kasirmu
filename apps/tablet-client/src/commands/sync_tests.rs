@@ -132,6 +132,46 @@ fn sync_settings_dto_wire_keys_match_bridge_twin() {
         tablet, bridge,
         "tablet/bridge SyncSettingsDto wire keys drifted"
     );
+
+    // The equality above is a ONE-SIDED guard: it fires when the two derives
+    // disagree and stays silent when they agree on nothing. Two serialised
+    // empty objects are equal, and `Option<String>` fields deserialise to
+    // `None` on both sides -- so a case whose only assertion is this pair
+    // passes on the exact shape that wiped the stored URL tonight: the UI
+    // reads `serverUrl`, gets nothing, shows a blank field, and the next save
+    // writes the blank back. Every pin below reads a KEY THE UI ACTUALLY
+    // NAMES and demands a VALUE behind it, on both twins, so an emptied
+    // fixture fails here instead of agreeing with itself.
+    for (side, obj) in [("tablet", &tablet), ("bridge", &bridge)] {
+        assert_eq!(
+            obj["serverUrl"], "https://sync.example.com",
+            "{side} must serialise serverUrl with the URL in it, not a key holding null"
+        );
+        assert_eq!(
+            obj["hasApiKey"], true,
+            "{side} must serialise hasApiKey from a real key"
+        );
+        assert_eq!(obj["enabled"], true, "{side} must serialise enabled");
+        // ...and must not ALSO carry the snake_case spellings: a camelCase key
+        // present plus a snake_case key present is a casing leak, which is how
+        // one side drifting reads as clean to a value pin alone.
+        assert!(
+            obj.get("server_url").is_none(),
+            "{side}: snake_case server_url key must not reach the UI"
+        );
+        assert!(
+            obj.get("has_api_key").is_none(),
+            "{side}: snake_case has_api_key key must not reach the UI"
+        );
+    }
+
+    // Non-emptiness of the fixture itself, named rather than implied: if the
+    // DTO above is ever reduced to all-None/false to make another case pass,
+    // this fails with a sentence about the fixture, not a null-vs-null diff.
+    assert!(
+        tablet_dto.server_url.is_some() && tablet_dto.has_api_key && tablet_dto.enabled,
+        "this case grades a POPULATED DTO; an empty one makes the value pins vacuous"
+    );
 }
 
 #[test]
