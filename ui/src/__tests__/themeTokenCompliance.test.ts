@@ -798,6 +798,39 @@ function duplicateFontDeclarations(stacks: FontStack[]): DuplicateFontDeclaratio
     .map(([name, sites]) => ({ name, sites }));
 }
 
+interface BootFontDecl {
+  file: string;
+  line: number;
+  value: string;
+}
+
+/**
+ * Rule 6's extractor: the `font-family` declarations of a BOOT document.
+ * blankComments already drops `<!-- -->` for this, so a face named in an
+ * HTML comment can never fail the gate, and line numbers stay true.
+ * HTML_SOURCES is filtered by existsSync, so a deleted document would shrink
+ * the population in silence -- rule 6's floor is what keeps that honest.
+ */
+function bootFontDeclarations(file: string, text: string): BootFontDecl[] {
+  const stripped = blankComments(text);
+  const out: BootFontDecl[] = [];
+  const re = /font-family\s*:\s*([^;{}]+);/gi;
+  let m: RegExpExecArray | null = re.exec(stripped);
+  while (m) {
+    out.push({
+      file: shortFile(file),
+      line: lineOf(stripped, m.index),
+      value: (m[1] ?? '').replace(/\s+/g, ' ').trim(),
+    });
+    m = re.exec(stripped);
+  }
+  return out;
+}
+
+function describeBootDecls(decls: BootFontDecl[]): string {
+  return decls.map((d) => `  ${d.file}:${d.line}  font-family: ${d.value}`).join('\n');
+}
+
 describe('font-reference portability', () => {
   it('scanned the boot documents and the ui/src CSS tree', () => {
     expect(HTML_SOURCES.length).toBeGreaterThanOrEqual(1);
@@ -979,6 +1012,64 @@ describe('font-reference portability', () => {
     const dupes = duplicateFontDeclarations(stacks);
     expect(dupes.map((d) => `${d.name} x${d.sites.length}`)).toEqual(['--font-sans x2']);
     expect(dupes[0]?.sites).toEqual(['probe.css:2', 'probe.css:6']);
+  });
+
+  it('rule 6: the boot documents agree on one splash font-family', () => {
+    // There are TWO boot documents (HTML_ENTRIES: index.html and
+    // index.tablet.html), and they render the same pre-CSS splash for two
+    // shells. Every rule above grades a document on its own, so a divergence
+    // between them is structurally invisible: the desktop fallback lost an
+    // unsatisfiable first position while the tablet one kept it, and rule 1
+    // stayed green on both because a local family name is not a remote
+    // reference. Only a comparison can see that class of defect.
+    const decls = HTML_SOURCES.flatMap(({ file, text }) => bootFontDeclarations(file, text));
+    expect(
+      decls.length,
+      'Every boot document must contribute exactly one splash font-family. Below 2 '
+        + 'a document is missing or lost its declaration -- HTML_SOURCES is filtered '
+        + 'by existsSync, so a deleted file shrinks this population without any other '
+        + 'rule noticing:\n'
+        + describeBootDecls(decls),
+    ).toBeGreaterThanOrEqual(2);
+    const values = new Map<string, string[]>();
+    for (const d of decls) {
+      const sites = values.get(d.value);
+      if (sites) sites.push(`${d.file}:${d.line}`);
+      else values.set(d.value, [`${d.file}:${d.line}`]);
+    }
+    expect(
+      values.size,
+      'The boot documents disagree about the face their splash renders in -- '
+        + `${values.size} distinct fallbacks across ${decls.length} declarations. `
+        + 'Name one fallback in both, or make the split deliberate and say which '
+        + 'shell it belongs to:\n'
+        + [...values.entries()]
+          .map(([value, sites]) => `  font-family: ${value}\n      at ${sites.join('\n      at ')}`)
+          .join('\n'),
+    ).toBe(1);
+  });
+
+  it('rule 6 probe: an identical fallback passes and a divergent one is counted', () => {
+    const shared = "  font-family: var(--font-sans, -apple-system, system-ui, sans-serif);";
+    const doc = (decl: string, extra = '') => `<html><head><style>\n${decl}\n${extra}</style></head></html>`;
+    const a = bootFontDeclarations('index.html', doc(shared));
+    expect(a.length).toBe(1);
+    expect(a[0]?.line).toBe(2);
+    const identical = bootFontDeclarations('index.tablet.html', doc(shared));
+    expect(new Set([...a, ...identical].map((d) => d.value)).size).toBe(1);
+    // The historical defect, restated: an unsatisfiable first position added to
+    // one shell only. Everything else byte-identical.
+    const diverged = bootFontDeclarations(
+      'index.tablet.html',
+      doc("  font-family: var(--font-sans, 'Inter', -apple-system, system-ui, sans-serif);"),
+    );
+    expect(new Set([...a, ...diverged].map((d) => d.value)).size).toBe(2);
+    // An HTML comment naming a face must not count -- blankComments blanks it.
+    const commented = bootFontDeclarations(
+      'index.tablet.html',
+      doc(shared, '  <!-- font-family: Georgia, serif; -->'),
+    );
+    expect(commented.length).toBe(1);
   });
 });
 
