@@ -8,6 +8,7 @@ use rusqlite::params;
 
 use crate::error::CoreError;
 use crate::subscription::{QuotaError, SubscriptionTier, TenantSubscription};
+use crate::workspace_type::{is_pos_type, KDS, WAREHOUSE};
 
 use super::Store;
 use super::*;
@@ -41,7 +42,7 @@ impl Store<'_> {
 
         // 2. Per-store register limit from the effective tier for POS registers,
         //    or warehouse limit for warehouse instances.
-        if type_key == "store-pos" || type_key == "restaurant-pos" {
+        if is_pos_type(type_key) {
             if let Some(limit) = effective.max_pos_instances() {
                 let current = self.count_active_pos_instances(store_id)?;
                 if current >= limit {
@@ -53,7 +54,7 @@ impl Store<'_> {
                     .into());
                 }
             }
-        } else if type_key == "warehouse" {
+        } else if type_key == WAREHOUSE {
             if let Some(limit) = effective.max_warehouses() {
                 let current = self.count_active_warehouse_instances(store_id)?;
                 if current >= limit {
@@ -65,7 +66,7 @@ impl Store<'_> {
                     .into());
                 }
             }
-        } else if type_key == "kds" {
+        } else if type_key == KDS {
             // KDS screen cap (subscription-tiers.md §Numeric Limits —
             // published contract: Free/Plus 0, Pro 2, Premium+ unlimited).
             // The type-allowlist above already rejects kds on Free/Plus, so
@@ -76,7 +77,7 @@ impl Store<'_> {
             // payload-widened kds gets Pro's screen budget (2).
             if let Some(limit) = effective.max_kds_screens() {
                 let payload_widened =
-                    !effective.allows_workspace_type("kds") && sub.allows_workspace_type("kds");
+                    !effective.allows_workspace_type(KDS) && sub.allows_workspace_type(KDS);
                 let limit = if payload_widened { 2 } else { limit };
                 let current = self.count_active_kds_instances(store_id)?;
                 if current >= limit {

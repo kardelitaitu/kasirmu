@@ -11,6 +11,7 @@ use super::*;
 use crate::testing::seeded_row_loads;
 use oz_core::session::SessionContext;
 use oz_core::subscription::TenantSubscription;
+use oz_core::workspace_type::RESTAURANT_POS;
 
 // -- The release leg for a PROPAGATING command (crate::testing, RULE at :204-208) --
 
@@ -570,7 +571,7 @@ fn seed_owner(conn: &rusqlite::Connection) {
 /// The workspace `type_key` a fixture session carries when the test does not
 /// care which terminal it is.
 ///
-/// Deliberately NOT [`WORKSPACE_RESTAURANT_POS`]: a session's `type_key` now
+/// Deliberately NOT [`RESTAURANT_POS`]: a session's `type_key` now
 /// decides whether the open-bill paths are reachable, so the default fixture
 /// must not silently hold the restaurant terminal's extra rights. Tests that
 /// need the restaurant terminal use [`scoped_bridge_typed`].
@@ -747,7 +748,7 @@ async fn owner_can_list_open_bills_empty() {
         "user-owner",
         "role-owner",
         "s1",
-        WORKSPACE_RESTAURANT_POS,
+        RESTAURANT_POS,
     );
 
     let bills = list_open_bills_scoped(&bridge.ctx(), "tok").await.unwrap();
@@ -771,7 +772,7 @@ async fn restaurant_pos_can_create_and_read_an_open_bill() {
         "user-owner",
         "role-owner",
         "s1",
-        WORKSPACE_RESTAURANT_POS,
+        RESTAURANT_POS,
     );
 
     hold_cart_scoped(&bridge.ctx(), "tok", hold_args(BILL_TYPE_OPEN_BILL))

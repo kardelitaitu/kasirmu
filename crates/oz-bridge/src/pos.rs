@@ -561,27 +561,29 @@ pub async fn compute_cart_tax_scoped(
 
 // ── Hold Orders ──────────────────────────────────────────────────────
 
-/// The workspace type key of the Restaurant POS terminal.
-///
-/// This is the anchor for "which terminal is calling". `session.type_key` is the
-/// workspace type the session was created for: `create_session` validates it
-/// against the licence's allowed types, and it is then fixed for the session's
-/// lifetime. That is a sound basis for an authorization decision, unlike
-/// [`HoldCartArgs::bill_type`], which arrives afresh on every call and was
-/// previously trusted exactly as sent.
-pub const WORKSPACE_RESTAURANT_POS: &str = "restaurant-pos";
-
 /// The `bill_type` value marking a held cart as an open bill.
 pub const BILL_TYPE_OPEN_BILL: &str = "open_bill";
 
-/// True when the session is bound to the Restaurant POS terminal.
+/// True when the session is bound to the Restaurant POS workspace vertical.
+///
+/// The vertical is read from `session.type_key` — validated by `create_session`
+/// against the licence's `allowed_types` and fixed for the session's lifetime —
+/// which is what makes it a sound basis for an authorization decision, unlike
+/// [`HoldCartArgs::bill_type`], which arrives afresh on every call and was
+/// previously trusted exactly as sent.
+///
+/// Named `…_workspace`, not `is_restaurant_pos`, to keep it distinct from
+/// `SessionContext::restaurant_pos_id`: that field is a **terminal id** (the
+/// ADR #40 peer-terminal binding used to resolve the effective store), not a
+/// vertical. The two are unrelated and only the name distinguishes them.
 ///
 /// An open bill is a Restaurant POS concept: its only reader,
 /// `list_open_bills_scoped`, is reached from the restaurant terminal alone, and
 /// the shared `PaymentModal` offers it as the "Open Bill" tender. Every other
-/// workspace type — `store-pos`, `kds`, `warehouse`, `admin` — is refused.
-pub fn is_restaurant_pos(session: &oz_core::session::SessionContext) -> bool {
-    session.type_key == WORKSPACE_RESTAURANT_POS
+/// vertical — [`oz_core::workspace_type::STORE_POS`], `kds`, `warehouse`,
+/// `admin` — is refused.
+pub fn is_restaurant_pos_workspace(session: &oz_core::session::SessionContext) -> bool {
+    oz_core::workspace_type::is_restaurant_pos_type(&session.type_key)
 }
 
 #[derive(Debug, Deserialize)]
@@ -629,7 +631,7 @@ pub struct HoldCartResult {
 ///
 /// `bill_type` is checked against the caller's workspace type rather than
 /// trusted. `open_bill` is a Restaurant POS concept, so a session whose
-/// `type_key` is not [`WORKSPACE_RESTAURANT_POS`] is refused fail-closed. Before
+/// `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused fail-closed. Before
 /// this check the value was written through as sent, which let the retail
 /// terminal create an open bill — reachable through the shared `PaymentModal`,
 /// whose Open Bill tender was not workspace-gated. A plain `hold` stays
@@ -642,10 +644,11 @@ pub async fn hold_cart_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
         .await?;
-    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos(&session) {
+    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
         return Err(BridgeError::PermissionDenied(format!(
-            "workspace '{}' may not create an open bill; only '{WORKSPACE_RESTAURANT_POS}' may",
-            session.type_key
+            "workspace '{}' may not create an open bill; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
         )));
     }
     let conn = ctx
@@ -705,7 +708,7 @@ pub async fn list_held_carts_scoped(
 /// Restaurant POS only. An open bill is that terminal's own concept — the
 /// restaurant cart reads it as "Open Bills" while the retail cart reads
 /// `list_held_carts_scoped` as "Held Carts" — so a session whose `type_key` is
-/// not [`WORKSPACE_RESTAURANT_POS`] is refused rather than served an empty list,
+/// not [`oz_core::workspace_type::RESTAURANT_POS`] is refused rather than served an empty list,
 /// which would read as "there are none" instead of "this is not your terminal".
 pub async fn list_open_bills_scoped(
     ctx: &BridgeCtx<'_>,
@@ -714,10 +717,11 @@ pub async fn list_open_bills_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
         .await?;
-    if !is_restaurant_pos(&session) {
+    if !is_restaurant_pos_workspace(&session) {
         return Err(BridgeError::PermissionDenied(format!(
-            "workspace '{}' may not list open bills; only '{WORKSPACE_RESTAURANT_POS}' may",
-            session.type_key
+            "workspace '{}' may not list open bills; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
         )));
     }
     let conn = ctx

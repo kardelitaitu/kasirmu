@@ -53,7 +53,7 @@ pub use oz_bridge::pos::{
     OverrideLinePriceScopedArgs, PreviewLineArgs, PreviewPromotedTotalArgs,
     PreviewPromotedTotalFromLinesArgs, PreviewPromotedTotalResult, PreviewPromotionDiscount,
     SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs, StartSaleArgs,
-    StartSaleResult, WORKSPACE_RESTAURANT_POS, is_restaurant_pos,
+    StartSaleResult, is_restaurant_pos_workspace,
 };
 
 /// The tax scope for a sale rung up at `location_id` right now.
@@ -1676,10 +1676,11 @@ pub async fn hold_cart_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
-    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos(&session) {
+    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
         return Err(AppError::PermissionDenied(format!(
-            "workspace '{}' may not create an open bill; only '{WORKSPACE_RESTAURANT_POS}' may",
-            session.type_key
+            "workspace '{}' may not create an open bill; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
         )));
     }
     let id = store.hold_cart(
@@ -1743,7 +1744,7 @@ pub async fn list_open_bills(
 /// List open bills in the session scope. ADR #7.
 ///
 /// Restaurant POS only — an open bill is that terminal's own concept, so a
-/// session whose `type_key` is not [`WORKSPACE_RESTAURANT_POS`] is refused
+/// session whose `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused
 /// rather than served an empty list, which would read as "there are none"
 /// instead of "this is not your terminal". Mirrors
 /// `oz_bridge::pos::list_open_bills_scoped`; this shell forked the body, so the
@@ -1761,10 +1762,11 @@ pub async fn list_open_bills_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
-    if !is_restaurant_pos(&session) {
+    if !is_restaurant_pos_workspace(&session) {
         return Err(AppError::PermissionDenied(format!(
-            "workspace '{}' may not list open bills; only '{WORKSPACE_RESTAURANT_POS}' may",
-            session.type_key
+            "workspace '{}' may not list open bills; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
         )));
     }
     let carts = store.list_open_bills()?;

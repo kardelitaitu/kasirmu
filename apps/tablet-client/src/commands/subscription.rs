@@ -20,6 +20,7 @@ use oz_core::downgrade::OverQuotaReport;
 use oz_core::entitlements::{Entitlements, SubscriptionLoader, build_entitlements};
 use oz_core::permissions;
 use oz_core::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
+use oz_core::workspace_type::{RESTAURANT_POS, STORE_POS, WAREHOUSE};
 
 use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
@@ -272,9 +273,9 @@ fn server_grant_for(
     match feature {
         // A warehouse workspace is an inventory-location surface; Free
         // tiers and withheld payload types both deny it server-side.
-        AvailabilityFeature::Warehouses => Some(allowed("warehouse")),
+        AvailabilityFeature::Warehouses => Some(allowed(WAREHOUSE)),
         AvailabilityFeature::PosInstances => {
-            Some(allowed("store-pos") || allowed("restaurant-pos"))
+            Some(allowed(STORE_POS) || allowed(RESTAURANT_POS))
         }
         _ => None,
     }

@@ -20,6 +20,7 @@ next: none | perf: single index pass per validation
 //! delegates here and maps [`CoreError::TopologyValidation`] onto its own
 //! `AppError::TopologyValidation` wire shape.
 
+use crate::workspace_type::{KDS, RESTAURANT_POS, STORE_POS, WAREHOUSE};
 use serde_json::Value;
 use std::sync::OnceLock;
 
@@ -156,7 +157,7 @@ pub fn semantic_branch_profile_id<'a>(nodes: &'a [Value], wires: &[Value]) -> Op
 fn semantic_type_key(node: &Value) -> &str {
     node.get("metadata")
         .and_then(|metadata| value_string(metadata, "typeKey"))
-        .unwrap_or("store-pos")
+        .unwrap_or(STORE_POS)
 }
 
 /// The node's semantic `type` field.
@@ -273,11 +274,11 @@ fn ambiguous_legacy_wire(
         ) | (Some("workspace"), _, Some("warehouse"), _)
             | (
                 Some("workspace"),
-                "restaurant-pos",
+                RESTAURANT_POS,
                 Some("workspace"),
-                "kds"
+                KDS
             )
-            | (Some("workspace"), "kds", Some("hardware"), _)
+            | (Some("workspace"), KDS, Some("hardware"), _)
     )
 }
 
@@ -662,16 +663,14 @@ pub fn validate_semantic_json(nodes: &[Value], wires: &[Value]) -> Result<(), Co
         let type_key = workspace_node
             .and_then(|node| node.get("metadata"))
             .and_then(|metadata| value_string(metadata, "typeKey"))
-            .unwrap_or("store-pos");
+            .unwrap_or(STORE_POS);
         let purpose_valid = matches!(
             (purpose_key, type_key),
-            (
-                "general",
-                "store-pos" | "restaurant-pos" | "kds" | "warehouse"
-            ) | ("checkout" | "returns", "store-pos")
-                | ("dining-room", "restaurant-pos")
-                | ("kitchen-hot-line", "kds")
-                | ("stock-control" | "receiving", "warehouse")
+            ("general", STORE_POS | RESTAURANT_POS | KDS | WAREHOUSE)
+                | ("checkout" | "returns", STORE_POS)
+                | ("dining-room", RESTAURANT_POS)
+                | ("kitchen-hot-line", KDS)
+                | ("stock-control" | "receiving", WAREHOUSE)
         );
         if !purpose_valid {
             return Err(topology_validation(
@@ -684,7 +683,7 @@ pub fn validate_semantic_json(nodes: &[Value], wires: &[Value]) -> Result<(), Co
                 ),
             ));
         }
-        let is_kds = type_key == "kds";
+        let is_kds = type_key == KDS;
         let incoming_slice: &[&Value] = incoming_by_target
             .get(workspace_id)
             .map_or(&[], |wires| wires.as_slice());
