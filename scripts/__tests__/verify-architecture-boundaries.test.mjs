@@ -369,6 +369,33 @@ describe('verify-architecture-boundaries.py', () => {
     assert.doesNotMatch(result.output, /0 tracked transitional/, result.output);
   });
 
+
+  it("refuses a graph whose declared workspace_root is not the tree it scores", () => {
+    // The hole two passes walked past: the tracked architecture-cargo-metadata.json
+    // names a NESTED sibling checkout, so relative_path() rendered its findings as
+    // plausible repo-relative paths with no "../" in them and the escape check never
+    // fired. Equality on resolved roots is the only comparison that sees it, and
+    // containment must NOT be accepted here -- release checkouts live inside this
+    // root by design. The second half proves the honest case still passes: a fixture
+    // that declares its own mkdtemp directory is exactly what --metadata-file is for.
+    const foreign = fixture({ packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
+    const sibling = join(foreign, '..', '0.0.35', 'oz-pos');
+    writeFileSync(join(foreign, 'scripts', 'metadata.json'), JSON.stringify({ workspace_root: sibling, packages: [] }, null, 2));
+    const refused = run(foreign, ['--strict']);
+    assert.equal(refused.code, 2, 'a sibling-checkout graph must be refused outright: ' + refused.output);
+    assert.match(refused.output, /workspace_root/, refused.output);
+    assert.match(refused.output, /cannot score this one/, 'the message must say why: ' + refused.output);
+    assert.doesNotMatch(refused.output, /stale baseline entry/, 'it must not report findings it never verified: ' + refused.output);
+    const own = fixture({ packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
+    const ownMeta = JSON.parse(readFileSync(join(own, 'scripts', 'metadata.json'), 'utf8'));
+    ownMeta.workspace_root = own;
+    writeFileSync(join(own, 'scripts', 'metadata.json'), JSON.stringify(ownMeta, null, 2));
+    const accepted = run(own, ['--strict']);
+    assert.equal(accepted.code, 0, 'a fixture-rooted graph must be scored, not refused: ' + accepted.output);
+    assert.match(accepted.output, /tracked transitional finding\(s\)/, 'the refusal must not replace the normal report: ' + accepted.output);
+    assert.doesNotMatch(accepted.output, /refusing to score/, 'equal roots are not a conflict: ' + accepted.output);
+  });
+
   it('does NOT let an escaped ../ entry silence a repo-relative finding', () => {
     // Before the repair this entry normalized to 'crates/oz-core/Cargo.toml' and
     // matched the finding, so a suppression naming a file OUTSIDE the repo

@@ -148,9 +148,12 @@ def metadata_from_cargo(root: Path) -> dict[str, Any]:
         # how eight live baseline entries once printed as stale with nothing in the
         # repo changed. A graph is a request, not a substitution: --metadata-file is
         # unchanged and remains the supported way to supply one (the harness uses it).
-        # The root comparison shipped at 55ff480d5 is deleted with the only route that
-        # could reach it; a check on a path nobody can walk is a seatbelt in a car
-        # with no seats, and leaving it would advertise protection that cannot fire.
+        # The root comparison shipped at 55ff480d5 was deleted WITH this route, which is
+        # the only reason that deletion was safe: a check on a path nobody can walk
+        # advertises protection that cannot fire. It is now restored, on every route in
+        # -- see check_graph_root() -- because the explicit --metadata-file route stayed
+        # reachable and unchecked, and an unchanged tree then scored 8 new blocking plus
+        # 8 stale off a committed graph whose workspace_root names a nested sibling.
         if result is None:
             raise ValueError(
                 "could not execute cargo metadata: no Cargo graph is available and this"
@@ -169,6 +172,39 @@ def metadata_from_cargo(root: Path) -> dict[str, Any]:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise ValueError(f"cargo metadata returned malformed JSON: {exc}") from exc
+
+
+def check_graph_root(metadata: dict[str, Any], root: Path) -> None:
+    """Refuse a graph that declares a workspace_root other than the tree being scored.
+
+    The same act as the implicit cached-graph fallback that 95ad42ea2 removed: a
+    request to score a tree is not a licence to score another one. Compared on
+    EQUALITY of resolved roots, never containment, because this repo documents a
+    multi-root layout whose release checkouts sit INSIDE the workspace root
+    (<base>/0.0.35/oz-pos), so a sibling checkout's manifests render as plausible
+    repo-relative findings with no "../" in them and relative_path() never sees an
+    escape. A graph that declares no workspace_root is accepted: nothing was
+    declared to disagree with. --metadata-file stays the supported route for
+    synthetic trees built under a fixture directory, whose declared root is that
+    directory.
+    """
+    declared = metadata.get("workspace_root")
+    if not isinstance(declared, str) or not declared.strip():
+        return
+    want = str(Path(declared).resolve())
+    have = str(root.resolve())
+    if os.path.normcase(want) != os.path.normcase(have):
+        raise ValueError(
+            f"refusing to score {have} with a graph that declares workspace_root {want}: a"
+            " graph describing another checkout cannot score this one. This is the same act as"
+            " the implicit fallback that was removed -- a request is not a licence to score the"
+            " wrong tree -- so it is checked on every route in, including this one."
+            " Containment is not agreement: release checkouts are nested inside this root,"
+            " which is how a sibling's paths read as repo-relative with no \"..\" marker in"
+            " them. Regenerate the graph for the tree you mean (cargo metadata --no-deps"
+            " --format-version 1) or pass --root at the checkout the graph describes; the"
+            " fixture route is for synthetic trees built under a fixture directory."
+        )
 
 
 def package_path_keys(path: str, root: Path) -> set[str]:
@@ -605,6 +641,7 @@ def main() -> int:
     metadata_path = args.metadata_file.resolve() if args.metadata_file else None
     try:
         metadata = load_json(metadata_path, "Cargo metadata fixture") if metadata_path else metadata_from_cargo(root)
+        check_graph_root(metadata, root)  # every route in, not only the deleted implicit one
         baseline = load_baseline(baseline_path, root)
         findings = dedupe_findings(cargo_findings(metadata, root) + ui_findings(root) + bridge_toolkit_findings(root))
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)
