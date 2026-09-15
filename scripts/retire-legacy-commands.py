@@ -208,8 +208,23 @@ def main() -> int:
             for p in sorted(src.rglob("*.rs")) if not p.name.endswith("_tests.rs")]
     tests = [(p.name, p.read_text(encoding="utf-8", errors="replace"))
              for p in sorted(src.rglob("*.rs")) if p.name.endswith("_tests.rs")]
-    ledger = (src / "commands" / ".registration_gate_debt.generated.rs")
-    ledger_text = ledger.read_text(encoding="utf-8", errors="replace") if ledger.exists() else ""
+    # What this tool called `ledger=` for 127 retirements was a check that could not fire,
+    # twice over. It read `.registration_gate_debt.generated.rs`, a file that does not exist
+    # (the real one has no leading dot), so the text was empty; and even from the right path
+    # it searched for `"<name>"` while every row is written `("pos::add_line_scoped",
+    # "resolves_session_names_no_permission")`, a module-qualified string -- and that ledger's
+    # population is *registered but not gate-accepted* commands, disjoint by construction from
+    # a candidate set that requires the command to be unregistered. It printed the right answer
+    # the whole time, which is the worst way to be wrong: `ledger=no` reads exactly like a
+    # passed check. The signal that can actually fire for an unregistered, unnamed, uncalled
+    # command lives in the parity allowlist's free text -- its `_comment` key names commands
+    # kept on purpose ("the unscoped names stay, because the ADR #7 conditional still falls
+    # back to them when no session token exists", of `create_backup` and `export_data` and
+    # friends), and its `dev_mock` / `scoped_orphans` sections carry the pairing that makes an
+    # unscoped name load-bearing for a scoped one. Read the whole file, not a parsed subset,
+    # and read it through the gate's own function rather than a forked parser: the fork is
+    # what produced the shape mismatch above.
+    allowlist_lines = vip.read_allowlist_text().splitlines()
 
     text = mod.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
@@ -258,13 +273,21 @@ def main() -> int:
             print(f"    PLAN MENTION (a written decision may hang on this name): {pl}")
         if plan and not (args.only and name in wanted):
             decision_hits.append(f"{name} -> {', '.join(plan[:4])}")
+        keep = [f"ipc-parity-allowlist.json:{i}: {ln.strip()[:100]}"
+                for i, ln in enumerate(allowlist_lines, 1)
+                if re.search(r"(?<![\w:.])" + re.escape(name) + r"\b(?!_scoped)", ln)]
+        for k in keep[:2]:
+            print(f"    KEEP MENTION (the parity allowlist names this command, often in its "
+                  f"_comment as a deliberate fallback): {k}")
+        if keep and not (args.only and name in wanted):
+            decision_hits.append(f"{name} -> {', '.join(keep[:2])}")
         tref = vip.fn_call_sites(name, tests)
         if tref:
             test_hits.append(f"{name} ({','.join(sorted({t.split(':')[0] for t in tref}))})")
-        in_ledger = bool(re.search(r'"{0}"'.format(re.escape(name)), ledger_text))
         print(f"  {name:34s} lines {sp[0] + 1}-{sp[1] + 1}  "
               f"tests={'yes:' + ','.join(sorted({t.split(':')[0] for t in tref})) if tref else 'no'}"
-              f"  ledger={'YES (do not delete)' if in_ledger else 'no'}")
+              f"  allowlist={'YES (' + str(len(keep)) + ' line(s))' if keep else 'no'}  "
+              f"plan={'yes' if plan else 'no'}")
     if path_hits and args.apply and not args.force:
         print(f"abort: {len(path_hits)} path mention(s) of a candidate name -- a bare "
               f"`::name` with no parenthesis is not a call, so the uncalled verdict rests "
