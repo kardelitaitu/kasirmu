@@ -349,7 +349,7 @@ describe('verify-architecture-boundaries.py', () => {
     }
   }
 
-  it('refuses a fallback cargo-metadata cache recorded for a different checkout', () => {
+  it('refuses to substitute the cached cargo graph when cargo metadata fails', () => {
     const dir = fixture({ packages: [{ name: 'oz-core' }] });
     // A manifest cargo cannot read, plus a cache that names ANOTHER root.
     writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = \"broken this is not valid toml\n');
@@ -358,10 +358,15 @@ describe('verify-architecture-boundaries.py', () => {
       JSON.stringify({ workspace_root: join(dir, '..', 'some-other-checkout'), packages: [], version: 1 }, null, 2),
     );
     const result = runWithoutMetadataFile(dir, ['--strict']);
-    assert.equal(result.code, 2, 'must fail closed, not score the foreign graph: ' + result.output);
-    assert.match(result.output, /UNUSABLE|different worktree|workspace_root/, result.output);
+    assert.equal(result.code, 2, 'must fail closed, never score a borrowed graph: ' + result.output);
+    // Names the cargo error AND the supported way in; no root arithmetic,
+    // because the implicit route that needed it is gone (same root would also
+    // refuse - the cache is never opened at all).
+    assert.match(result.output, /cargo metadata failed/, result.output);
+    assert.match(result.output, /does not substitute a cached one/, result.output);
+    assert.match(result.output, /--metadata-file/, 'must name the supported way in: ' + result.output);
     assert.doesNotMatch(result.output, /stale baseline entry/, 'it must not report stale entries it never verified');
-    assert.doesNotMatch(result.output, /^verify-architecture-boundaries: 0 tracked/m, result.output);
+    assert.doesNotMatch(result.output, /0 tracked transitional/, result.output);
   });
 
   it('does NOT let an escaped ../ entry silence a repo-relative finding', () => {
