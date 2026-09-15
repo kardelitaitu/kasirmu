@@ -497,7 +497,7 @@ impl Settings {
     ///
     /// Returns `""` when the store never set an override: the UI treats
     /// the empty string as "follow the active theme" (light #147EFB,
-    /// dark #1155CC in themes/tokens.css). The old `"#147EFB"` fallback
+    /// dark #1155CC in the theme token sheet). The old `"#147EFB"` fallback
     /// here silently pinned BOTH themes to the light blue, defeating
     /// per-theme primaries on every fresh install.
     pub fn get_brand_primary_colour(conn: &Connection) -> Result<String, PlatformError> {
