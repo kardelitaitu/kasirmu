@@ -388,8 +388,12 @@ consolidation is **not** why `check:all` is red. That red is, and remains, the t
 (popover on `RestaurantMenu.css`, theme on the uncommitted `CartPanelLineItem.css`); an un-reduced router
 fails no test. The fat router is ownerless quality debt, orthogonal to this file's acceptance.
 
-**Blast radius of the rename, recorded:** the new name broke two links inside `agents-4` — `:23` and `:167`
-point at `../../todo-refactor-devmock-agents-3.md`, which no longer resolves. Factually dead, though inert to
-the dead-ref checker (`check-dead-refs.py` `is_historical_doc()` is a `todo-` substring test and agents-4's own
-name carries it). Repointing them is a small edit to another, archived lane's file, so it is **not taken here**
-— flagged as an owner decision.
+**Blast radius of the rename — recorded, then repaired:** the new name broke two links inside `agents-4`
+— `:23` and `:167` pointed at `../../todo-refactor-devmock-agents-3.md`, which stopped resolving.
+Factually dead, though inert to the dead-ref checker (`check-dead-refs.py` `is_historical_doc()` is a
+`todo-` substring test and agents-4's own name carries it). Repointing is a small edit to another,
+archived lane's file; the owner directed it this round, so both were repointed to
+`../../done-todo-refactor-devmock-agents-3.md` in **`2f5406acb`**. Two sibling links in that same
+`agents-4` block — `:21` and `:22`, pointing at `./todo-refactor-devmock-agents-1.md` / `-2.md` — are
+also stale, but those were broken by an earlier lane's `done-todo-` rename + move into `archived/`, not
+by this one; they are that lane's cleanup and are deliberately left untouched here.
