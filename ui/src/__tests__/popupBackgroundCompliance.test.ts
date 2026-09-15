@@ -16,9 +16,20 @@
  *   - Excludes buttons/inputs inside popups (they have their own styling)
  *
  * Population guards, all in the floor case below, with their baselines named in
- * each message: four LOWER bounds on what the walk read, a TWO-SIDED band on
- * (parsed + hidden), a CEILING on hidden, and a required-member identity that
- * names every graded rule by file and by its WHOLE selector.
+ * each message: four LOWER bounds on what the walk read, EXACT MEMBERSHIP of the
+ * walked stylesheet set, a TWO-SIDED band on (parsed + hidden), a CEILING on
+ * hidden, and a required-member identity that names every graded rule by file and
+ * by its WHOLE selector.
+ *
+ * Membership rather than a band for the sheet set: a sheet that stops existing
+ * changes the set on the spot whatever the counts do, while a band wide enough to
+ * survive ordinary work is wide enough to swallow the largest sheet in the tree,
+ * and a floor on how many sheets were opened cannot see a rename or a swap that
+ * keeps the number. A growth is not a lie, so an added sheet is reported as an
+ * appearance and not failed. Refresh in one line when a sheet legitimately comes
+ * or goes:
+ *   cd ui && npx vitest run src/__tests__/popupBackgroundCompliance.test.ts
+ * and paste the walked-now pairs the failure prints over SHEETS_BASELINE.
  *
  * What is still blind, deliberately not papered over: a band has to be wide
  * enough to survive ordinary work, so up to ~500 rules -- one sheet the size of
@@ -149,6 +160,9 @@ describe('popup surfaces have visible backgrounds', () => {
   const cssFiles = collectCssFiles(UI_SRC);
   const failures: string[] = [];
   const stats = { atBlocks: [] as string[], nestedRules: [] as string[], parsed: 0, pseudo: 0, notRoot: 0, boundary: 0, boundaryNoBg: 0, graded: 0 };
+  // Rules contributed by each sheet the walk opened, so the sheet-membership case
+  // can say how much reading a disappeared sheet took with it.
+  const perSheet = new Map<string, number>();
   // Every rule that reaches the background check, by address. The count of this
   // set is what stats.graded is; the set itself is what the graded floor needs, so
   // a rule can be seen LEAVING even when a second rule arrives to hold the number up.
@@ -161,6 +175,7 @@ describe('popup surfaces have visible backgrounds', () => {
     const content = readFileSync(filePath, 'utf-8');
     const rules = extractRules(content, stats);
     const relPath = relative(UI_SRC, filePath);
+    perSheet.set(relPath.split(sep).join('/'), rules.length);
 
     for (const rule of rules) { stats.parsed++;
       // Skip pseudo-elements
@@ -296,6 +311,189 @@ describe('popup surfaces have visible backgrounds', () => {
     expect(stats.atBlocks.length, `at-blocks skipped ${stats.atBlocks.length}, floor ${FLOORS.atBlocks} (baseline 347) -- fewer containers are being abandoned wholesale`).toBeGreaterThan(FLOORS.atBlocks);
     expect(stats.nestedRules.length, `rules hidden inside at-blocks ${stats.nestedRules.length}, floor ${FLOORS.nestedRules} (baseline 816) -- content moved behind the door that skips it`).toBeGreaterThan(FLOORS.nestedRules);
 
+    // SHEET MEMBERSHIP, not a floor on size. Baseline: the 137 stylesheets this walk
+    // opened at tip bf990e2cc, read out of a git archive of HEAD and counted by this
+    // file's own extractor. The second field is the rules each sheet contributed at that
+    // moment: it is printed in a failure and never asserted, so a stale number beside a
+    // path costs a word, not a green.
+    //
+    // WHY A SET AND NOT A BAND: a sheet that stops existing changes membership on the
+    // spot, whatever the counts do. The largest sheet here holds 436 rules, so losing it
+    // moves parsed by that much and the sum band by the same amount -- a band wide enough
+    // to survive ordinary work is by construction wide enough to swallow it, and the
+    // sheets-opened floor only asks HOW MANY, so a rename or a swap that keeps the number
+    // passes that too. Membership needs no tuning: the set is the same or it is not, so
+    // this goes red on the commit that loses coverage, not on the day the band stops
+    // fitting. A GROWTH is not a lie, so it is not failed either: a new sheet is walked,
+    // graded and counted by every floor and band here, and this case only REPORTS it as
+    // an appearance. Refresh is one line -- paste the walked-now pairs the failure prints
+    // over SHEETS_BASELINE, and never delete a floor to make a failure go away.
+    //
+    // PATH EQUALITY, stated because the sibling guards in this repo match SELECTOR names and
+    // their rules do not transfer: an entry is the WHOLE sheet path as the walk sees it --
+    // relative(UI_SRC, file) with every platform separator folded to '/' -- and membership is
+    // exact string equality over that whole path (includes / ===), no prefix match and no
+    // boundary class. A '/' or a '.' in a path is not a boundary the way it is in a selector,
+    // so 'features/sales/CartPanel.css' cannot credit 'features/sales/CartPanelLineItem.css'
+    // and a moved directory cannot pass as the sheet it replaced.
+    const SHEETS_BASELINE: [string, number][] = [
+      ["components/ConnectionStatus.css",9],
+      ["components/ErrorBoundary.css",7],
+      ["components/ExitSurveyModal.css",11],
+      ["components/FastPINOverlay.css",49],
+      ["components/GatewayStatusBadge.css",5],
+      ["components/ImpersonationBanner.css",4],
+      ["components/MachineIdStatus.css",5],
+      ["components/OrgSelector.css",7],
+      ["components/OrgSwitcher.css",15],
+      ["components/PermissionDenied.css",10],
+      ["components/QrisQrDisplay.css",28],
+      ["components/RoleBadge.css",14],
+      ["components/StatusBar.css",9],
+      ["components/StockAlertBell.css",4],
+      ["components/StoreSwitcher.css",18],
+      ["components/TierLockedFeature.css",5],
+      ["components/UpdateBanner.css",16],
+      ["components/charts/charts.css",9],
+      ["contexts/HardwareAccel.css",9],
+      ["features/analytics/AnalyticsScreen.css",219],
+      ["features/audit/AuditLogScreen.css",64],
+      ["features/auth/CreatePinScreen.css",16],
+      ["features/auth/LicenseActivationScreen.css",30],
+      ["features/auth/SessionLockScreen.css",44],
+      ["features/auth/StaffLoginScreen.css",62],
+      ["features/categories/CategoryManagementScreen.css",45],
+      ["features/currency/ExchangeRateScreen.css",26],
+      ["features/customers/CustomerManagementScreen.css",58],
+      ["features/design/DesignSystem.css",34],
+      ["features/design/DevToolbar.css",19],
+      ["features/design/TooltipPreview.css",29],
+      ["features/design/brand-tokens.css",1],
+      ["features/gift-cards/GiftCardsScreen.css",63],
+      ["features/inventory/InventoryAdjustmentScreen.css",52],
+      ["features/inventory/LocationPicker.css",31],
+      ["features/inventory/ShiftBar.css",22],
+      ["features/inventory/StockAlertPanel.css",28],
+      ["features/inventory/StockCountDetail.css",39],
+      ["features/inventory/StockCountForm.css",13],
+      ["features/inventory/StockCountHistory.css",24],
+      ["features/inventory/StockCountsScreen.css",30],
+      ["features/inventory/ThresholdConfigScreen.css",16],
+      ["features/inventory/TransactionLogScreen.css",32],
+      ["features/inventory/TransitAuditScreen.css",18],
+      ["features/kds/ExpoScreen.css",59],
+      ["features/kds/KdsCompletedView.css",6],
+      ["features/kds/KdsScreen.css",336],
+      ["features/kds/components/KdsDeviceStatusIndicator.css",19],
+      ["features/kds/components/KdsEnrollmentModal.css",32],
+      ["features/kds/components/KdsProductPickerModal.css",51],
+      ["features/kds/components/KdsRoutingRulesEditor.css",63],
+      ["features/kds/components/ModifierBadge.css",6],
+      ["features/kiosk/KioskScreen.css",39],
+      ["features/locations/MultiStoreDashboardScreen.css",34],
+      ["features/locations/NodeTopologyEditor.css",351],
+      ["features/locations/TerminalStatusPanel.css",19],
+      ["features/locations/TopologyApplyConfirm.css",38],
+      ["features/locations/TopologyRevisionBrowser.css",33],
+      ["features/locations/TopologyScreen.css",9],
+      ["features/loyalty/LoyaltyManagementScreen.css",56],
+      ["features/marketplace/AddonsMarketplace.css",17],
+      ["features/memo/MemoBanner.css",25],
+      ["features/memo/MemosScreen.css",44],
+      ["features/offline/OfflineQueueScreen.css",62],
+      ["features/products/BundleManagementScreen.css",35],
+      ["features/products/ProductLookupScreen.css",58],
+      ["features/products/ProductManagementScreen.css",66],
+      ["features/promotions/PromotionManagementScreen.css",37],
+      ["features/purchasing/PurchaseOrderForm.css",26],
+      ["features/purchasing/PurchaseOrdersScreen.css",31],
+      ["features/purchasing/SuppliersScreen.css",30],
+      ["features/reports/CustomReportScreen.css",44],
+      ["features/reports/DashboardScreen.css",46],
+      ["features/reports/InventoryReportScreen.css",24],
+      ["features/reports/MenuEngineeringScreen.css",41],
+      ["features/reports/SalesReportScreen.css",42],
+      ["features/restaurant/RestaurantMenu.css",85],
+      ["features/retail/RetailPosScreen.css",436],
+      ["features/retail/ScaleIndicator.css",19],
+      ["features/sales/CartPanel.brand.css",1],
+      ["features/sales/CartPanel.css",37],
+      ["features/sales/CartPanelActions.css",14],
+      ["features/sales/CartPanelCourseBar.css",9],
+      ["features/sales/CartPanelFooterTotals.css",62],
+      ["features/sales/CartPanelLineItem.css",33],
+      ["features/sales/EodReportScreen.css",82],
+      ["features/sales/PaymentModal.css",151],
+      ["features/sales/PosScreen.css",77],
+      ["features/sales/PriceOverrideModal.css",41],
+      ["features/sales/PromotionsModal.css",22],
+      ["features/sales/ReceiptPreview.css",38],
+      ["features/sales/RefundModal.css",37],
+      ["features/sales/SalesDashboardScreen.css",4],
+      ["features/sales/SalesHistoryScreen.css",95],
+      ["features/sales/StockShortfallDialog.css",39],
+      ["features/sales/VoidOrdersScreen.css",66],
+      ["features/sales/components/ItemModifierModal.css",44],
+      ["features/sales/widgets/widgets.css",22],
+      ["features/settings/AppearanceSettings.css",29],
+      ["features/settings/DataManagementScreen.css",63],
+      ["features/settings/FeatureToggleScreen.css",50],
+      ["features/settings/LicenseSettings.css",35],
+      ["features/settings/SettingsNavTree.css",64],
+      ["features/settings/SettingsPage.css",126],
+      ["features/settings/SettingsScopeTag.css",6],
+      ["features/settings/SettingsSelect.css",14],
+      ["features/settings/WorkspaceSettingsModal.module.css",20],
+      ["features/settings/screens/LocalPaymentSettingsCard.css",21],
+      ["features/settings/screens/ReceiptFormatSettingsCard.css",16],
+      ["features/settings/screens/RegionalSettingsCard.css",14],
+      ["features/settings/screens/StatutoryNumberingCard.css",10],
+      ["features/settings/screens/screens-placeholder.css",3],
+      ["features/settings/sections/DiagnosticsSection.css",7],
+      ["features/setup/SetupWizard.css",67],
+      ["features/setup/components/LiveSetupPreview.css",25],
+      ["features/shifts/ShiftManagementScreen.css",101],
+      ["features/staff/RoleAuthoringScreen.css",31],
+      ["features/staff/StaffManagementScreen.css",74],
+      ["features/stock-transfers/StockTransfersScreen.css",73],
+      ["features/tables/TableManagementScreen.css",44],
+      ["features/tax/TaxConfigurationScreen.css",54],
+      ["features/terminals/TerminalManagementScreen.css",70],
+      ["features/warehouse/WarehouseConsole.css",104],
+      ["features/workspaces/WorkspaceHome.css",131],
+      ["frontend/shared/ContextMenu.css",5],
+      ["frontend/shared/LoadingStatus.css",3],
+      ["frontend/shared/PermissionDenied.css",8],
+      ["frontend/shared/SettingsPopup.css",14],
+      ["frontend/shell/AppLayout.css",62],
+      ["frontend/shell/StatusBar.css",20],
+      ["frontend/shell/Tooltip.css",30],
+      ["frontend/shell/UpdateBanner.css",23],
+      ["frontend/shell/tablet/tablet.css",32],
+      ["frontend/themes/components.css",140],
+      ["frontend/themes/reset.css",28],
+      ["frontend/themes/responsive.css",4],
+      ["frontend/themes/tokens.css",5],
+    ];
+    const walkedSheets = cssFiles.map((f) => relative(UI_SRC, f).split(sep).join('/')).sort();
+    const goneSheets = SHEETS_BASELINE.filter(([p]) => !walkedSheets.includes(p));
+    const appearedSheets = walkedSheets.filter((p) => !SHEETS_BASELINE.some(([b]) => b === p));
+    const goneRules = goneSheets.reduce((n, [, r]) => n + r, 0);
+    const appearedWithRules = appearedSheets.map((p) => [p, perSheet.get(p) ?? 0]);
+    expect(
+      goneSheets,
+      'walked stylesheet set lost a member: ' + JSON.stringify(goneSheets) +
+        ' -- ' + goneRules + ' rules that used to be read are now unread, counting what each '
+        + 'lost sheet contributed at the baseline tip. No size guard can see this: the '
+        + 'sheets-opened floor only counts, so a rename that keeps the count passes it, and a '
+        + 'deletion moves parsed and the sum band by exactly the amount a band wide enough to '
+        + 'survive ordinary work tolerates. Sheets that APPEARED since the baseline ('
+        + appearedWithRules.length + ') are walked, graded and REPORTED, not failed: ' +
+        JSON.stringify(appearedWithRules) +
+        '\n  REFRESH: paste this over SHEETS_BASELINE -- walked now: ' +
+        JSON.stringify(walkedSheets.map((p) => [p, perSheet.get(p) ?? 0])),
+    ).toEqual([]);
+
     // TWO-SIDED BOUNDS. Four lower bounds cannot see a MOVE, because the counter
     // that a move inflates is one of the counters being floored: putting one whole
     // sheet inside an @media took parsed 6078 -> 5642 and pushed hidden 816 -> 1238,
@@ -326,6 +524,13 @@ describe('popup surfaces have visible backgrounds', () => {
       `large sheet since that baseline, so re-measure it here rather than widening the band`,
     ).toBeLessThanOrEqual(SUM_BAND.high);
     const NESTED_CEILING = 1000;               // baseline 816 at 36ca7fc6b, largest single sheet hides 61
+    // Headroom, recorded rather than retuned: this ceiling leaves 184 rules of room above
+    // today's hidden count while FLOORS.nestedRules leaves 166 below, so the tightest guard
+    // in the file is the one ordinary responsive work trips. It also fails on the RIGHT fix
+    // -- teaching extractRules to descend into at-blocks drives nestedRules and atBlocks
+    // toward zero, which reddens the atBlocks and nestedRules floors above (and the sum band
+    // with them if a descended rule stops counting as seen) -- so whoever lands that descent
+    // re-baselines those floors in the same commit instead of deleting a guard that fired.
     expect(
       stats.nestedRules.length,
       `rules hidden inside at-blocks: ${stats.nestedRules.length}, above the ceiling ${NESTED_CEILING} (baseline 816, measured ` +
@@ -352,6 +557,15 @@ describe('popup surfaces have visible backgrounds', () => {
     // The check stays a required-member check, never a pinned set: a rule that
     // BECOMES gradable passes, one that changes shape or leaves fails.
     const GRADED_BASELINE = [{ file: 'frontend/themes/components.css', selector: '.toast' }];
+    // A subset check over an EMPTY baseline is a green with no population: toEqual([]) of
+    // a filter that had nothing to look for passes when nothing is required to stay graded.
+    // So floor the baseline itself, as the magnitude floors above bound the walk -- with a
+    // graded population of one rule this file is one deletion away from grading nothing.
+    expect(
+      GRADED_BASELINE.length,
+      `the graded-identity baseline holds ${GRADED_BASELINE.length} required rule(s) -- a subset check over nothing passes on ` +
+      `nothing, so name the rules that must keep reaching the background check before comparing against them`,
+    ).toBeGreaterThan(0);
     const lostGraded = GRADED_BASELINE.filter(
       (b) => !gradedMembers.some((m) => m.file === b.file && m.selector === b.selector),
     );
