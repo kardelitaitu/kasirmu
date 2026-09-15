@@ -2102,3 +2102,65 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
             .is_ok()
     );
 }
+
+// ── T11: the updater's pre-login settings write cannot land ──────────────
+//
+// `ui/src/frontend/shell/UpdateBanner.tsx:211` calls
+// `setSetting(key, value, 'system_updater')`. `system_updater` occurs exactly
+// once in this repository — at that call site: `git grep -rn system_updater --
+// crates apps ui/src` returns the one line. There is no such user row, no seed,
+// no migration, no constant.
+//
+// And the command is not decorative about its `user_id`.
+// `oz_bridge::settings::set_setting` runs
+// `ctx.require_permission_for_user(&store, user_id, SETTINGS_EDIT)?` at
+// `crates/oz-bridge/src/settings.rs:1259`, which reaches
+// `Store::require_permission` → `assignment_for_user(user_id)?`
+// (`crates/oz-core/src/db/staff.rs:220`) — so an id that resolves to no user is
+// an error before `run_set_setting` is ever called.
+//
+// So what this case pins is not "the gate works" but "the feature does not". The
+// banner's own comment at `:204-207` says the unscoped command is used
+// *deliberately*, because the scoped variant needs a session token that does not
+// exist pre-login, and the surrounding `try { … } catch { }` at `:212-214`
+// discards whatever comes back with the note that persistence is "best-effort".
+// Every updater preference the banner writes is therefore refused by a permission
+// check against an identity nobody seeded, silently, on both shells — and no
+// existing test could tell, because the renderer never looks at the result and
+// the UI-side contract test asserts the payload, not the outcome.
+//
+// The read-back goes through `get_setting`, the same layer the write targets, so
+// this does not encode any assumption about table or column names.
+
+#[tokio::test]
+async fn set_setting_refuses_the_hard_coded_updater_actor_and_writes_nothing() {
+    let conn = migrations::fresh_db();
+    {
+        Store::new(&conn).seed_default_roles().unwrap();
+    }
+    let state = store_state(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = set_setting(
+        "updater.dismissed_version".into(),
+        "0.0.39".into(),
+        "system_updater".into(),
+        app.state(),
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "a hard-coded actor that names no user must not be able to write settings; got {result:?}",
+    );
+
+    let read_back = get_setting("updater.dismissed_version".into(), app.state())
+        .await
+        .expect("get_setting must answer on a fresh store");
+    assert!(
+        read_back.is_none(),
+        "the write was reported refused yet landed in settings: {read_back:?}"
+    );
+}
