@@ -146,6 +146,73 @@ def extract_ui_commands() -> dict[str, list[str]]:
     return found
 
 
+# The ADR #7 pattern in the UI is a two-arm choice: with a session token call the scoped
+# wrapper, without one call the unscoped wrapper. Both wrappers exist in `ui/src/api/*.ts`, and
+# the parity leg grades the command each one invokes. What nothing asked until 2026-09-16 is
+# whether the ELSE arm is reachable at all: `list_scanners`, `create_product`, `adjust_stock`
+# and fourteen others are named by production UI code, allowlisted as known gaps, and have a
+# Rust body in the tablet -- but are registered in NEITHER shell, so the no-token branch of a
+# tested hook resolves to "command not found" in a production build while Vitest mocks the
+# wrapper (`useBarcodeScanner.test.tsx` asserts the branch fires) and the dev-mock answers the
+# key (`system.ts:501 'list_scanners': ...`). That is the defect class this programme keeps
+# meeting: two instruments agreeing with each other and neither touching reality.
+UI_EXPORT_INVOKE_RE = re.compile(
+    r"export const ([A-Za-z]\w*)[\s\S]{0,320}?loggedInvoke(?:<[^>]*>)?\(\s*[\"']([a-z0-9_]+)[\"']"
+)
+# `sessionToken ? () => scopedWrapper(sessionToken) : plainWrapper` and the call-immediately
+# form, captured as (token-taking wrapper, fallback wrapper).
+UI_FALLBACK_TERNARY_RE = re.compile(
+    r"sessionToken\s*\?\s*(?:\(\s*\)\s*=>\s*)?([A-Za-z]\w*)\s*\(([^)]*)\)\s*:\s*([A-Za-z]\w*)\b"
+)
+
+
+def no_token_fallbacks(
+    files: list[tuple[str, str]], registered: set[str]
+) -> dict[str, list[str]]:
+    """Unregistered commands the UI reaches through a no-session branch, by command.
+
+    Pure over (relative path, text) pairs and a registered set so the self-test can hand it a
+    fabricated tree: the whole point of the leg is a claim about a shape, and a check that
+    cannot be shown red cannot be trusted green.
+    """
+    wrapper_to_cmd: dict[str, str] = {}
+    for _, text in files:
+        for fn, cmd in UI_EXPORT_INVOKE_RE.findall(text):
+            wrapper_to_cmd.setdefault(fn, cmd)
+    gaps: dict[str, list[str]] = {}
+    for rel, text in files:
+        for number, line in enumerate(text.splitlines(), 1):
+            for scoped, _args, fallback in UI_FALLBACK_TERNARY_RE.findall(line):
+                cmd = wrapper_to_cmd.get(fallback)
+                if not cmd or cmd in registered:
+                    continue
+                # The token arm must itself be a real wrapper, or this is some other ternary
+                # that happens to mention a token and an unregistered name.
+                if wrapper_to_cmd.get(scoped) == cmd + "_scoped" or wrapper_to_cmd.get(scoped):
+                    gaps.setdefault(cmd, []).append(f"{rel}:{number}")
+    return gaps
+
+
+def ui_runtime_files() -> list[tuple[str, str]]:
+    """UI sources that can execute in a shipped build: no tests, no dev-mock."""
+    out: list[tuple[str, str]] = []
+    for scan_dir in UI_SCAN_DIRS:
+        base = REPO_ROOT / scan_dir
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if path.suffix not in (".ts", ".tsx"):
+                continue
+            if "__tests__" in path.parts or "dev-mock" in path.parts:
+                continue
+            try:
+                out.append((path.relative_to(REPO_ROOT).as_posix(),
+                            path.read_text(encoding="utf-8")))
+            except (OSError, UnicodeDecodeError):
+                continue
+    return out
+
+
 def extract_handlers(lib_path: Path) -> list[str]:
     """Return the command names registered in one shell's lib.rs."""
     text = lib_path.read_text(encoding="utf-8")
@@ -2784,6 +2851,34 @@ def self_test() -> int:
     case("call   a shim body calling the bridge twin is not a call of the command",
          "m.rs:8" not in call_sites and "m.rs:9" in call_sites)
 
+    # The no-session fallback leg: a shape, not a tree count. All three synthetic cases are
+    # load-bearing -- without the second and third, the first would pass for a detector that
+    # reports every ternary, which is the same vacuous-green failure the leg exists to catch.
+    fb_api = ("ui/src/api/hardware.ts",
+              "export const listScanners = (): Promise<number> =>\n"
+              "  loggedInvoke<number>('list_scanners');\n"
+              "export const listScannersScoped = (t: string): Promise<number> =>\n"
+              "  loggedInvoke<number>('list_scanners_scoped', { t });\n")
+    fb_hook = ("ui/src/features/sales/useBarcodeScanner.ts",
+               "const fetch = sessionToken ? () => listScannersScoped(sessionToken) : listScanners;\n")
+    fb_noise = ("ui/src/features/x/Noise.ts", "const n = sessionToken ? 1 : 0;\n")
+    case("fallback an unregistered else-arm wrapper is reported",
+         list(no_token_fallbacks([fb_api, fb_hook], {"list_scanners_scoped"})) == ["list_scanners"])
+    case("fallback the same shape is silent once the command is registered",
+         not no_token_fallbacks([fb_api, fb_hook], {"list_scanners", "list_scanners_scoped"}))
+    case("fallback a ternary whose else-arm is not a wrapper reports nothing",
+         no_token_fallbacks([fb_api, fb_noise], {"list_scanners_scoped"}) == {})
+    case("fallback and the same noise beside a real gap neither invents nor inflates one",
+         len(no_token_fallbacks([fb_api, fb_hook, fb_noise], {"list_scanners_scoped"})) == 1
+         and len(no_token_fallbacks([fb_api, fb_hook, fb_noise],
+                                    {"list_scanners_scoped"})["list_scanners"]) == 1)
+    # And the real tree, so a regex that matched only its own fixture cannot pass: if a future
+    # pass registers these doors and this case goes red, delete the case after reading the
+    # print, not before -- it is the only thing here that knows the shape was ever broken.
+    real_fb = no_token_fallbacks(ui_runtime_files(), set(extract_handlers(REPO_ROOT / SHELLS["tablet"])))
+    case("fallback the real tablet tree exposes the shape the leg was written for",
+         len(real_fb) >= 1 and "list_scanners" in real_fb)
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -3050,6 +3145,18 @@ def main() -> int:
             f"invokes (graded above) + {len(helper)} unreachable but called by this shell's own "
             f"code (helpers with a stale attribute, NOT dead) + {len(uncalled)} unreachable and "
             f"uncalled ({len(test_only)} of those still tested), i.e. deletion candidates"
+        )
+        # Informational, like every other F-006-adjacent leg: a fallback that cannot resolve is
+        # an owner question (register the door, or change the branch), not a red gate this run
+        # is entitled to call. But it must be named, because both of the instruments that could
+        # have caught it -- Vitest and the dev-mock -- answer as though the door exists.
+        fb = no_token_fallbacks(ui_runtime_files(), set(handlers[shell]))
+        print(
+            f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
+            f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
+            f"them, so nothing but a real build sees the miss)"
+            + (": " + ", ".join(f"{n} ({v[0]})" for n, v in sorted(fb.items())[:6]) if fb else "")
+            + (f" (+{len(fb) - 6} more)" if len(fb) > 6 else "")
         )
         print(
             f"info[{shell}-unreachable]: {len(unreachable)} of {len(allowed_names)} "
