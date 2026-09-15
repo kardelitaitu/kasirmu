@@ -30,7 +30,7 @@ call `oz_bridge`, against desktop's finished **61 of 70**; the vocabulary leak i
 
 | Item | Work | Effort | Gate |
 |---|---|---|---|
-| 1 | Lock the seam (2 rules + baseline) | **~1 day** | none — start here |
+| 1 | Lock the seam (1A purity now, 1B fixes now, 1C vocabulary last) | **~1 day** | none — start 1A/1B here |
 | 2 | ADR: embedded shell | ~0.5 day to draft | **owner decision** |
 | 3a | ADR #49 tablet half | **~6–10 days** | biggest item by far |
 | 3b | `verify-dto-parity.py` + manifest/docs | ~1.5–2 days | new-gate cost |
@@ -68,21 +68,19 @@ silently end the Slint option.
       inherits CI for free. Two new scripts would instead have to be added to `gates.json`
       **and** `check.sh` **and** `docs/operations/ci-pipeline.md`, because
       `verify-ci-docs-drift.py` fails a manifest gate no runner declares.
-- [ ] Rule `bridge-toolkit-purity`: fail if `crates/oz-bridge/Cargo.toml` gains `tauri`, `gtk`,
-      `webkit2gtk` or a `tauri-plugin-*`, or if `crates/oz-bridge/src/**` references them.
-      ADR #49's load-bearing claim, currently unguarded.
-- [ ] Rule `ui-framework-vocabulary`: fail when `crates/`, `modules/` or `platform/` name a UI
-      framework, a UI file or a UI concept (`React`, `.tsx`, `.css`, "component to render").
-      Baseline the hits that exist today — all **comments**, which is the good news: the
-      coupling is documentary, not typing. Two known false positives to exclude:
-      `crates/oz-bridge/src/settings_tests.rs:773` lists `.css`/`.ts`/`.tsx` as file
-      extensions in a fixture, and `oz-bridge/src/lib.rs:5` + `ctx.rs:8` name `tauri, gtk,
-      webkit` in the sentences that assert this very rule. Note the script's
-      `mask_comments_and_strings` helper *strips* comments — this rule needs the opposite.
-- [ ] Pick baseline expiries deliberately (existing entries run ~3 months). Deferred debt
-      expires into a red gate, and CI runs `--strict`, so a false positive is red for every
-      agent, not just the author.
-- [ ] Fix the measured leaks (all comment/doc level, all cheap):
+**Sequencing (agreed 2026-09-15).** Several agents commit to this checkout concurrently, and a
+`--strict` gate in `dev-ci.yml#static-gates` is a shared blast radius: one false positive is red
+for everyone, not just the author. So Item 1 is split by blast radius, not by effort — **1A and
+1B now, 1C last.**
+
+- [ ] **1A (now) — rule `bridge-toolkit-purity`.** Fail if `crates/oz-bridge/Cargo.toml` gains
+      `tauri`, `gtk`, `webkit2gtk` or a `tauri-plugin-*`, or if `crates/oz-bridge/src/**`
+      references them. Narrow scope, **zero findings expected today**, so no baseline and no
+      expiry debt. This is the one rule that protects the Slint option itself — a `tauri` import
+      into the bridge is unrecoverable cheaply later, and nobody is likely to trip it by accident.
+- [ ] **1B (now) — fix the measured leaks before the gate exists.** Comment-only, no behaviour
+      change, cannot block anyone, and it retires the debt *before* there is a rule to baseline
+      it. 37 lines across 19 files:
       - `crates/oz-core/src/session.rs:55` — *"Workspace type key — determines which React
         component to render."* The core should not know what a React component is.
       - `modules/{crm,inventory,loyalty,sales,settings}/src/lib.rs` — module docs describe
@@ -90,6 +88,19 @@ silently end the Slint option.
       - `crates/oz-bridge/src/{data.rs:286,331, pos.rs:918,1240}` and
         `crates/oz-core/src/db/regional.rs:7,20`, `ozpkg.rs:145-150` — caller references to
         `.tsx` paths that will not exist under another renderer.
+- [ ] **1C (last) — rule `ui-framework-vocabulary`.** Fail when `crates/`, `modules/` or
+      `platform/` name a UI framework, a UI file or a UI concept (`React`, `.tsx`, `.css`,
+      "component to render"). Repo-wide, comments-only hits, highest false-positive risk —
+      exactly the rule that should not be imposed on a busy shared tree. Two known false
+      positives to exclude when it lands: `crates/oz-bridge/src/settings_tests.rs:773` lists
+      `.css`/`.ts`/`.tsx` as file extensions in a fixture, and `oz-bridge/src/lib.rs:5` +
+      `ctx.rs:8` name `tauri, gtk, webkit` in the sentences that assert this very rule. Note the
+      script's `mask_comments_and_strings` helper *strips* comments — this rule needs the
+      opposite.
+- [ ] **Do 1C after 1B, and the baseline is empty.** Landing the fixes first means the rule can
+      ship with no baseline rows at all — no 3-month expiry clock (existing entries run
+      ~3 months), nothing to expire into someone else's red gate in November. That is the whole
+      argument for this order.
 - [ ] Keep the precedent: `crates/oz-core/src/ozpkg.rs:154` moved the ozpkg password rule out
       of a React component into the choke point every caller passes. That is the pattern —
       a rule that only a UI enforces is a rule the next UI must re-implement.
