@@ -69,6 +69,31 @@ def signature_index(lines: list[str], name: str) -> int | None:
     return hits[0] if len(hits) == 1 else None
 
 
+PROSE_LINE = re.compile(r"^\s*(?://[/*]?|\*)")
+
+
+def path_refs(name: str, sources: list[tuple[str, str]]) -> list[str]:
+    """Non-call, non-prose mentions of `name` -- the signal `fn_call_sites` cannot see.
+
+    `fn_call_sites` looks for `name(`. A path mention has no parenthesis: a
+    `generate_handler!` entry (`commands::hardware::print_sales_receipt,`), a function
+    pointer handed to something, a re-export list. Those are the forms that would make an
+    "uncalled" verdict wrong, so any survivor is reported and blocks the write -- deciding
+    what a bare path means is a human call, not a regex's. Prose is excluded (a comment
+    naming a retired fn is reported separately), as is the signature line itself.
+    """
+    word = re.compile(r"(?<![\w:])" + re.escape(name) + r"\b")
+    call = re.compile(re.escape(name) + r"\s*\(")
+    hits: list[str] = []
+    for label, text in sources:
+        for number, line in enumerate(text.splitlines(), 1):
+            if PROSE_LINE.match(line) or re.match(r"^\s*pub (?:async )?fn\b", line):
+                continue
+            if word.search(line) and not call.search(line):
+                hits.append(f"{label}:{number}: {line.strip()[:90]}")
+    return hits
+
+
 def span_of(lines: list[str], sig: int) -> tuple[int, int] | None:
     """(first, last) inclusive: attributes and docs above, body down to column-zero `}`."""
     end = sig
@@ -92,6 +117,9 @@ def main() -> int:
     ap.add_argument("--module", required=True, help="file name under commands/, no extension")
     ap.add_argument("--apply", action="store_true", help="write the file (default is dry run)")
     ap.add_argument("--force", action="store_true", help="allow a dirty file (not recommended)")
+    ap.add_argument("--only", default="", help="comma-separated subset of candidates to retire")
+    ap.add_argument("--allow-tests", action="store_true",
+                    help="permit retiring names that only a test still references")
     args = ap.parse_args()
 
     lib = REPO / vip.SHELLS[args.shell]
@@ -119,6 +147,15 @@ def main() -> int:
     names = sorted(vip.command_fns_in(text))
     cands = [n for n in names
              if n not in registered and n not in ui and not vip.fn_call_sites(n, prod)]
+    if args.only:
+        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
+        unknown = wanted - set(cands)
+        if unknown:
+            print(f"abort: --only names are not retirement candidates here: "
+                  f"{', '.join(sorted(unknown))} -- refusing to guess which of them are "
+                  f"registered, UI-named, or called by production code")
+            return 2
+        cands = [n for n in cands if n in wanted]
     if not cands:
         print(f"nothing to retire in {args.module}.rs: {len(names)} command fns, "
               f"all registered, UI-named, or called")
@@ -127,6 +164,8 @@ def main() -> int:
     print(f"{args.shell}/{args.module}.rs: {len(cands)} of {len(names)} command fns are "
           f"unregistered, unnamed in the UI, and uncalled by production code")
     spans: dict[str, tuple[int, int]] = {}
+    path_hits: list[tuple[str, str]] = []
+    test_hits: list[str] = []
     doomed = False
     for name in cands:
         sig = signature_index(lines, name)
@@ -140,11 +179,32 @@ def main() -> int:
             doomed = True
             continue
         spans[name] = sp
+        bare = path_refs(name, prod)
+        for b in bare:
+            print(f"    PATH MENTION (not a call, so a human reads it): {b}")
+        path_hits.extend((name, b) for b in bare)
         tref = vip.fn_call_sites(name, tests)
+        if tref:
+            test_hits.append(f"{name} ({','.join(sorted({t.split(':')[0] for t in tref}))})")
         in_ledger = bool(re.search(r'"{0}"'.format(re.escape(name)), ledger_text))
         print(f"  {name:34s} lines {sp[0] + 1}-{sp[1] + 1}  "
               f"tests={'yes:' + ','.join(sorted({t.split(':')[0] for t in tref})) if tref else 'no'}"
               f"  ledger={'YES (do not delete)' if in_ledger else 'no'}")
+    if path_hits and args.apply and not args.force:
+        print(f"abort: {len(path_hits)} path mention(s) of a candidate name -- a bare "
+              f"`::name` with no parenthesis is not a call, so the uncalled verdict rests "
+              f"on evidence that is not there. Read each one above; --force overrides once "
+              f"you have. Nothing written.")
+        return 2
+    if path_hits:
+        print(f"  note: {len(path_hits)} path mention(s) reported above; a dry run shows "
+              f"them and continues, --apply will refuse until --force says you read them")
+    if test_hits and args.apply and not args.allow_tests:
+        print(f"abort: {len(test_hits)} candidate(s) are still referenced by a test file, so "
+              f"deleting them means deleting or re-homing cases -- a decision, not a detail "
+              f"(T5-4 found the bridge already carried four identical cases under identical "
+              f"names; check before overriding):\n  " + "\n  ".join(test_hits))
+        return 2
     if doomed or len(spans) != len(cands):
         print("abort: span detection incomplete, nothing written")
         return 2
