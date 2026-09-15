@@ -174,7 +174,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | Command | Action |
 |---|---|
 | `npm run dev` | Development server |
-| `npm run check:all` | Chained validation: lint → typecheck → test → i18n → E2E* |
+| `npm run check:all` | One command — `node ../scripts/check-ui.mjs` (`ui/package.json:11`; no npm-level chaining) — chaining **eight** legs: ESLint → TypeScript → Unit tests → i18n lint → FTL dedupe → Bundle budget → E2E* → Perf smoke, then a `scripts/gates.json` self-audit* |
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
@@ -184,7 +184,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | `npm run e2e:api` | API integration tests only |
 | `npm run e2e:ui` | All UI E2E tests (excl. API) |
 
-> * E2E requires Docker; check:all skips it gracefully if unavailable. See [`ui/README.md`](./ui/README.md) and [`ui/e2e/README.md`](./ui/e2e/README.md) for details.
+> * Structure, named rather than located — `scripts/check-ui.mjs` is being edited concurrently, so its line numbers go stale faster than this row can be read: `grep -n "gate('" scripts/check-ui.mjs` prints the eight legs in run order (ESLint, TypeScript type check, Unit tests (vitest), i18n lint, FTL dedupe, Bundle budget, E2E tests, Perf smoke). Only the last two are conditional: `dockerAvailable()` — a `docker info` probe on a 10 s timeout — gates the E2E leg, which is recorded as a skip rather than a failure when Docker is absent, while `playwrightAvailable()` gates the Docker-free perf leg (`npm run test:e2e:perf`). The `gates.json` self-audit is not a UI check either: it compares every manifest `check:all` needle against the gate labels this runner declared and fails closed on drift, so `check:all` can be refused by the manifest itself rather than by any of the eight. See [`ui/README.md`](./ui/README.md) and [`ui/e2e/README.md`](./ui/e2e/README.md) for details.
 
 ### Backend (root)
 
