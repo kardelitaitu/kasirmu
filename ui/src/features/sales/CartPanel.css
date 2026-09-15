@@ -270,13 +270,19 @@
 }
 
 /* ── Empty cart state ────────────────────────────────── */
-/* Stacked column with decorative icon + headline + hint. */
+/* Stacked column with decorative icon + headline + hint. `min-height` fills the
+   lines area so the stack sits in the middle of the cart instead of piling up
+   under the header; `min-` rather than `height` so a long translation or a
+   short window can still scroll, and so the rule degrades to today's top-aligned
+   behaviour wherever the panel's height is content-driven. Retail's
+   `.retail-cart-empty` uses the same shape. */
 
 .pos-cart-empty-msg {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-height: 100%;
   gap: var(--space-2);
   padding: var(--space-12) var(--space-6);
   color: var(--color-fg-tertiary);

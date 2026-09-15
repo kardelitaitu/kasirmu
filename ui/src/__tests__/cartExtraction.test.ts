@@ -167,3 +167,41 @@ describe('PosScreen CSS class integrity', () => {
     }
   });
 });
+
+// ── Empty-cart geometry ───────────────────────────────────────────
+//
+// The one cart fact every other suite in this file cannot see: a rule's
+// DECLARATIONS. Class integrity proves `.pos-cart-empty-msg` has a rule; the
+// five sheet walkers prove it uses tokens. Neither notices if the declaration
+// that centres the empty state is dropped, because no jsdom test lays out CSS
+// and no linter reads a stylesheet. This is the pin, off the base rule only —
+// the reduced-motion block re-declares the same selector further down to add an
+// animation, and first-match is the base rule.
+
+describe('Empty cart is centered in the lines area', () => {
+  const cartCss = fs.readFileSync(path.join(SALES_DIR, 'CartPanel.css'), 'utf8');
+
+  function baseRule(selector: string): string {
+    const match = new RegExp(`\\.${selector}\\s*\{([^}]*)\}`).exec(cartCss);
+    const body = match?.[1];
+    // Throws before the caller can read an empty body as "the rule has no
+    // declarations", which would turn a missing rule into a false green.
+    expect(body, `no base rule for .${selector} in CartPanel.css`).toBeDefined();
+    return body ?? '';
+  }
+
+  it('the empty state fills the growable area it is centered in', () => {
+    const lines = baseRule('pos-cart-lines');
+    const empty = baseRule('pos-cart-empty-msg');
+
+    // The area has to be the one that grows, or "fill it" means nothing.
+    expect(lines).toMatch(/flex:\s*1/);
+    // And the stack has to be told to fill it: `justify-content: center` alone
+    // only centres inside a box the height of its own content, which is how the
+    // empty state ended up parked under the header instead of mid-panel.
+    expect(empty).toMatch(/min-height:\s*100%/);
+    expect(empty).toMatch(/flex-direction:\s*column/);
+    expect(empty).toMatch(/justify-content:\s*center/);
+    expect(empty).toMatch(/align-items:\s*center/);
+  });
+});
