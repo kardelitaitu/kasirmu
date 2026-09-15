@@ -11,6 +11,9 @@
  *   • CSS       — all .css files in dist/assets
  *   • max chunk — the largest single .js chunk (guards accidental
  *                 giant route chunks)
+ *   • woff2     — all .woff2 files in dist/assets (the font surface;
+ *                 this filter was previously blind to .woff2, so a
+ *                 font payload could grow without anything failing)
  *
  * Usage:
  *   cd ui && node ../scripts/check-bundle.mjs          # build + check
@@ -45,6 +48,7 @@ const budgets = {
   totalJs: Number(process.env.BUDGET_TOTAL_JS_KB ?? 3500), // all JS gzip KB
   css: Number(process.env.BUDGET_CSS_KB ?? 1000),          // all CSS gzip KB
   maxChunk: Number(process.env.BUDGET_MAX_CHUNK_KB ?? 600),// largest JS chunk
+  woff2: Number(process.env.BUDGET_WOFF2_KB ?? 400),       // all woff2 gzip KB
 };
 
 /* ── Args ───────────────────────────────────────────────────────────── */
@@ -110,6 +114,11 @@ function main() {
     const raw = statSync(join(assetsDir, f)).size;
     return { file: f, raw, gzip: gzipBytes(join(assetsDir, f)) };
   });
+  const woff2Files = files.filter((f) => f.endsWith('.woff2'));
+  const woff2Sizes = woff2Files.map((f) => {
+    const raw = statSync(join(assetsDir, f)).size;
+    return { file: f, raw, gzip: gzipBytes(join(assetsDir, f)) };
+  });
 
   // entry JS = referenced from the build output html. Vite preserves the
   // input html basename (index.html for desktop, index.tablet.html for the
@@ -136,6 +145,7 @@ function main() {
 
   const totalJsGzip = jsSizes.reduce((acc, s) => acc + s.gzip, 0);
   const totalCssGzip = cssSizes.reduce((acc, s) => acc + s.gzip, 0);
+  const totalWoff2Gzip = woff2Sizes.reduce((acc, s) => acc + s.gzip, 0);
   const maxChunk = jsSizes.reduce((acc, s) => Math.max(acc, s.gzip), 0);
 
   // ── Report ──────────────────────────────────────────────────────────
@@ -145,6 +155,7 @@ function main() {
     ['total JS', totalJsGzip, budgets.totalJs],
     ['CSS', totalCssGzip, budgets.css],
     ['largest chunk', maxChunk, budgets.maxChunk],
+    ['woff2', totalWoff2Gzip, budgets.woff2],
   ];
 
   let failures = 0;
