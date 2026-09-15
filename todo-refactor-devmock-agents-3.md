@@ -272,3 +272,78 @@ started from inside `ui/`. A run started at the repo root resolves a cached vite
 `ui/node_modules`, walks `website/` too, and prints a file count above the number of files under
 `ui/src/__tests__` alongside `Cannot find package jsdom` on every worker — that reading is a
 broken runner, and the tell is the denominator, not the red.
+
+### `check:all` ran and returned RED: 2026-09-15, HEAD interval `001351e0f` → `274ef0304`, row stays OPEN, and the lane is now named done-by-scope
+
+*Additive, appended below the last line so no number above shifts. No box is ticked, unticked,
+struck, reworded or renumbered — this note only settles the second command the acceptance row
+named and had never run.*
+
+The row `npm run test` and `npm run check:all` had, up to this section, exactly one leg that had
+never been run anywhere in this checkout: `npm run check:all`. It ran now (`cd ui && npm run
+check:all`, which is `node ../scripts/check-ui.mjs`), started against HEAD `001351e0f`, and the
+run itself took 249.4 s during which another lane committed `274ef0304` — so the tip the legs
+executed against is an interval, not a point. **Exit 1. The acceptance command was RUN and did
+NOT PASS**, and per the `AGENTS.md` §4 rule (`done-todo-` is earned only when the file's own
+acceptance command was run and passed) a red — even a wholly borrowed one — is disqualifying:
+**the file stays `todo-`.** What it does not stay is *in progress*, and that distinction is the
+point of this section.
+
+**Per leg, verbatim from the runner's own summary:** ESLint `PASS (37.0s)` · TypeScript type
+check `PASS (21.6s)` · **Unit tests (vitest) `FAIL (76.4s)`** · i18n lint `PASS (6.1s)` · FTL
+dedupe `PASS (0.4s)` · Bundle budget `PASS (7.8s)` · E2E (Playwright) `SKIP` (Docker daemon down,
+`docker info` fails — the skip this section predicted) · Perf smoke (Playwright) `PASS (22.7s)`.
+`6 passed · 1 skipped · 1 failed`. The failure is confined to one leg, vitest, and vitest is
+`npm run test` — the same command this file's previous section ran green at `580` files / `9948`
+cases; it now reads `Test Files 2 failed | 580 passed (582)` / `Tests 3 failed | 9972 passed | 24
+skipped | 3 todo (10002)`. Same command, different tree, three hours apart: the flip is a property
+of foreign edits landing underneath the walk, not of anything this lane changed.
+
+**The three reds, and why none of them belongs to this lane** (`grep` of every `AssertionError` in
+the run for a `dev-mock` path returns **0**, so this lane's extracted handlers are unimplicated the
+way the phase 3.1/3.2 typecheck caveats claimed — except that typecheck is now genuinely green
+whole-tree, which clears even the "exits 2 on a foreign KDS file" caveat those boxes carried):
+
+1. `themeTokenCompliance.test.ts:1641` — `--shadow-md @ ui/src/features/sales/CartPanelLineItem.css`,
+   a new literal tail on a value-varying token. `CartPanelLineItem.css` is **` M` in `git status`
+   right now** — an uncommitted edit by another session. This is the borrowed-red the `AGENTS.md`
+   CSS section documents by name for this exact file and this exact suite: the walker reads disk
+   with no channel to HEAD. Not a commit's red, not this lane's.
+2. `popoverSurfaceCompliance.test.ts:166` and `:187` — `features/restaurant/RestaurantMenu.css`,
+   `.restaurant-hamburger-dropdown` carries `var(--color-bg-surface)` where the gate wants
+   `var(--color-bg-popover)`. `RestaurantMenu.css` is **clean/committed** at this tip (`git status`
+   empty for it), so this one is a real red on HEAD — but on the restaurant lane's stylesheet,
+   categorically outside this file's fence (`handlers/{staff,workspaces,topology,settings}.ts` +
+   `tauri-api.ts`). A foreign lane's genuine failure, still not this lane's to fix.
+
+**Disposition, stated once so the next reader does not re-litigate it:** the file's owned scope —
+phases 3.1 and 3.2 (staff, workspaces, topology, settings extracted; the four handler modules exist,
+are tracked, are wired into the router, and the router is clean against HEAD) — is **complete and
+verified**. The three still-open boxes are router-consolidation items this file already handed to
+Agent 4's phase 4.5 on another fence, and the fourth, this acceptance row, is blocked by foreign
+working-tree and foreign-lane reds rather than by any code Agent 3 owns. So the accurate label for
+this file is neither `in progress` nor `done`: it is **done-by-scope, acceptance-blocked-externally**.
+Renaming it to `done-todo-` is off the table while `check:all` reads red for reasons that are not
+this lane's; the two paths that would legitimately close it are (a) an owner re-running `check:all`
+once the restaurant stylesheet and the `CartPanelLineItem.css` edit are green, or (b) the owner
+choosing to scope the acceptance row to this lane's surfaces — which is an owner decision, not a
+bookkeeping edit, and is deliberately not taken here. The run log is `ui/checkall.log` (23,191
+lines), itself a working-tree artifact of this interval.
+
+**Owner waiver, dated 2026-09-15 — recorded, NOT applied to the name:** on the disposition above
+the human owner directed that this lane be treated as closed and accepted the `check:all` red as
+foreign. That is a §4 **rename waiver**, not a §4 **rename trigger**: the acceptance command was
+RUN and did NOT PASS, so the `done-todo-` prefix is explicitly *not* earned and the file keeps the
+name `todo-refactor-devmock-agents-3.md` on purpose — a `done-` name would assert a green that does
+not exist. The sibling `todo-tools-agents-3.md` → `done-todo-tools-agents-3.md` (`346e9771a`, same
+day) is the counter-example that binds this: it renamed only because `check:all` exited 0. What the
+owner closed is the *lane's responsibility*, not the gate: phases 3.1 and 3.2 are complete and
+verified; the three router boxes remain Agent 4's phase 4.5 on its own fence; and the whole-tree
+`check:all` is **migrated to whoever drives that consolidation**, deliberately not re-run from this
+lane because it cannot turn green here — `RestaurantMenu.css` is a committed HEAD red and
+`CartPanelLineItem.css` is an uncommitted foreign edit, neither inside this file's fence
+(`handlers/{staff,workspaces,topology,settings}.ts` + `tauri-api.ts`). Net state, so a future reader
+stops here rather than re-running the command: **done-by-scope · owner-closed · §4 rename waived ·
+whole-tree acceptance gate handed to Agent 4.** No rename, no move, no reticked box — this dated
+line is exactly the record §4 prescribes ("the other reasons a plan is not accepted … belong in a
+dated header line, never in the filename").
