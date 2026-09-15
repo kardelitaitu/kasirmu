@@ -1,6 +1,5 @@
 //! Refund commands — process refund against a completed sale.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::db::Store;
@@ -44,18 +43,11 @@ use crate::state::AppState;
 /// is a `Vec` of the bridge's own line type while one business path
 /// ([`run_process_refund`]) serves both commands; the two copies were
 /// field-for-field identical, so nothing on the wire moves. The scoped and
-/// result structs below are still local copies — the next step, not this one.
-pub use oz_bridge::refunds::{ProcessRefundArgs, RefundLineArg};
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Processrefundresult.
-pub struct ProcessRefundResult {
-    /// ID of the associated refund.
-    pub refund_id: String,
-    /// Total amount in minor currency units.
-    pub total_minor: i64,
-}
+/// result structs WERE local copies too; they are re-exported on the same line now, so
+/// the tablet shell has exactly one declaration of every refund wire contract it serves.
+pub use oz_bridge::refunds::{
+    ProcessRefundArgs, ProcessRefundResult, ProcessRefundScopedArgs, RefundLineArg,
+};
 
 /// Process a refund against a completed sale.
 ///
@@ -76,20 +68,6 @@ pub async fn process_refund(
     );
     drop(db);
     result
-}
-
-/// Args for `process_refund_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProcessRefundScopedArgs {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Reason.
-    pub reason: String,
-    /// Note.
-    pub note: Option<String>,
-    /// Lines.
-    pub lines: Vec<RefundLineArg>,
 }
 
 /// Process a refund within the session scope. ADR #7.

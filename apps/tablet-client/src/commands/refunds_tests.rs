@@ -324,6 +324,72 @@ fn process_refund_scoped_args_deserialize_exact_ui_payload() {
 }
 
 #[test]
+fn refund_wire_types_are_bridge_reexports_graded_on_values() {
+    // Both remaining tablet copies are gone: ProcessRefundResult and
+    // ProcessRefundScopedArgs are now re-exports of the bridge types, exactly like
+    // ProcessRefundArgs before them. That makes a struct-vs-struct pair assertion
+    // VACUOUS - one type agrees with itself by construction - and it also removes
+    // the only proof this file had that the tablet wire shape still matches what
+    // the front-end reads. So the proof moves to the other side of the boundary:
+    // RESOLVED VALUES on the keys ui/src/api/sales.ts names.
+    //
+    // Read site, field by field: sales.ts:616-619 declares
+    //   ProcessRefundResult { refundId: string; totalMinor: number }
+    // and sales.ts:650-655 declares the scoped args as
+    //   { saleId: string; reason: string; note?: string | null; lines: RefundLineArg[] }
+    // both camelCase, which is what the bridge serde rename_all emits and accepts.
+    let result = ProcessRefundResult {
+        refund_id: "ref-1".into(),
+        total_minor: 1500,
+    };
+    // Fixture sanity FIRST (the a17b0ab61 lesson): a value pin over an empty
+    // fixture is decoration, so the input is graded before the output is.
+    assert!(
+        !result.refund_id.is_empty() && result.total_minor != 0,
+        "this case grades a POPULATED result; an empty one makes the key pins below vacuous"
+    );
+    let out = serde_json::to_value(&result).unwrap();
+    // The key the UI indexes, with the VALUE behind it. The older
+    // process_refund_result_serialize only asserts json.contains("refundId"), which
+    // passes on an object whose refundId holds nothing - the exact shape that read
+    // as a blank field on the page and got written back on the next save.
+    assert_eq!(
+        out["refundId"], "ref-1",
+        "tablet must send refundId carrying the id"
+    );
+    assert_eq!(
+        out["totalMinor"], 1500,
+        "tablet must send totalMinor carrying the amount"
+    );
+    assert!(
+        out.get("refund_id").is_none() && out.get("total_minor").is_none(),
+        "snake_case refund keys must not reach the UI: {out}"
+    );
+
+    // Inbound half, same rule: the payload RefundModal ships, graded on what it
+    // RESOLVES TO rather than on two declarations agreeing.
+    let json = r##"{"saleId":"sale-1","reason":"Damaged carton","note":null,"lines":[{"saleLineId":"sl-1","sku":"COFFEE","qty":2,"unitPriceMinor":350,"currency":"USD","lineTotalMinor":700}]}"##;
+    let args: ProcessRefundScopedArgs = serde_json::from_str(json)
+        .expect("re-exported ProcessRefundScopedArgs must accept the UI camelCase payload");
+    assert!(!args.sale_id.is_empty() && !args.reason.is_empty());
+    assert_eq!(args.sale_id, "sale-1");
+    assert_eq!(args.reason, "Damaged carton");
+    assert_eq!(args.lines.len(), 1);
+    assert_eq!(args.lines[0].sale_line_id, "sl-1");
+    assert_eq!(args.lines[0].qty, 2);
+    assert_eq!(args.lines[0].unit_price_minor, 350);
+    assert_eq!(args.lines[0].line_total_minor, 700);
+    // note: null is legitimate and must stay None, not Some("").
+    assert!(args.note.is_none());
+    // And the other direction, which no pair test can ever see: a snake_case
+    // payload must be REFUSED, not silently filled with defaults.
+    let snake = r#"{"sale_id":"sale-1","reason":"Damaged carton","note":null,"lines":[]}"#;
+    assert!(
+        serde_json::from_str::<ProcessRefundScopedArgs>(snake).is_err(),
+        "a snake_case payload must NOT deserialise - camelCase is the contract"
+    );
+}
+#[test]
 fn process_refund_args_deserialize_exact_ui_payload() {
     // The pin for the re-export: `ProcessRefundArgs` is no longer a tablet
     // copy, it IS `oz_bridge::refunds::ProcessRefundArgs`. A struct-vs-struct
