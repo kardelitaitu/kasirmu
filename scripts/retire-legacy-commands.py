@@ -21,6 +21,13 @@ What it refuses to do:
   decide about ledger rows, tests, or dev-mock handlers -- it reports them and stops short
   of deleting them, because a test that references a dying fn is a decision, not a detail.
 
+One limitation, because a tool that quietly cannot do something is worse: the prose audit
+below runs only when there is something to retire, so `--module customers` after the
+customers batch reports "nothing to retire" and says nothing about prose. It is a batch
+tool, not a stale-document scanner -- checking a whole tree for comments that name
+functions which no longer exist is a different question (which names to look for?) and
+belongs to a gate, not here.
+
 Every span is located by scanning back over attributes and doc comments from the function's
 own signature line, and forward to the first column-zero `}`. That is a shape, not a line
 number: line numbers move under concurrent commits, which is the reason this repo's own
