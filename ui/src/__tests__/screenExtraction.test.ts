@@ -491,7 +491,19 @@ const SCREENS: ScreenEntry[] = [
     name: 'OfflineQueueScreen',
     tsx: 'offline/OfflineQueueScreen.tsx',
     css: ['offline/OfflineQueueScreen.css'],
-    dynamicClassPrefixes: ['status-'],
+    // Three complete names, not an open family: statusClass() returns exactly
+    // 'status-pending', 'status-synced' and 'status-failed' at
+    // features/offline/OfflineQueueScreen.tsx:43,:45,:47 and the sheet defines exactly
+    // those three rules at offline/OfflineQueueScreen.css:380,:385,:390. The field read
+    // ['status-'] until 2026-09-15 · DSH · and the census says it was excusing nothing:
+    // this entry reports no prefix-rescued rule, because the resolver already reaches all
+    // three through the sink at :534. What a bare prefix does instead of naming them is
+    // grant on every future .status-* rule and on every used-but-undefined name that
+    // begins with those seven characters -- and it never even reached the
+    // offline-queue-status-* strings at :56,:58,:60,:62, which begin with 'offline-' and
+    // are Fluent label ids rather than classes, so the shape was wrong in both
+    // directions. A fourth variant in this sheet now reads dead instead of being waived.
+    dynamicClassPrefixes: ['status-pending', 'status-synced', 'status-failed'],
     knownDynamicFragments: ['free'],
   },
 
@@ -1027,13 +1039,28 @@ const SCREENS: ScreenEntry[] = [
     name: 'StockCountForm',
     tsx: 'inventory/StockCountForm.tsx',
     css: ['inventory/StockCountForm.css'],
-    dynamicClassPrefixes: ['sc-type-btn--'],
+    // One composed variant, named whole: the only ternary is
+    // `sc-type-btn ${countType === opt.value ? 'sc-type-btn--active' : ''}` at
+    // features/inventory/StockCountForm.tsx:74, and inventory/StockCountForm.css carries
+    // .sc-type-btn (:38), .sc-type-btn:focus-visible (:50) and .sc-type-btn--active
+    // (:55) -- no second variant, so the bare 'sc-type-btn--' struck 2026-09-15 · DSH ·
+    // excused a shape rather than a name: it would have waived a --pending or --done
+    // rule the day someone added one, and .sc-type-btn itself never needed it, since a
+    // name does not start with a longer prefix than itself.
+    dynamicClassPrefixes: ['sc-type-btn--active'],
   },
   {
     name: 'StockCountHistory',
     tsx: 'inventory/StockCountHistory.tsx',
     css: ['inventory/StockCountHistory.css'],
-    dynamicClassPrefixes: ['sc-hist-item--'],
+    // One composed variant, named whole: 'sc-hist-item--sel' is the only interpolation
+    // at features/inventory/StockCountHistory.tsx:157 and the only rule under the old
+    // prefix at inventory/StockCountHistory.css:60. The sheet's other three names are
+    // whole literals, not children of a family: .sc-hist-item at :47 (also :119, inside
+    // the media block) and :84, -number at :65 and :160, -date at :69 and :164 -- none
+    // of them was ever rescued by 'sc-hist-item--', which is why replacing it with one
+    // name costs nothing and struck 2026-09-15 · DSH · removes an open grant.
+    dynamicClassPrefixes: ['sc-hist-item--sel'],
   },
 
   // ── Stock Transfers ────────────────────────────────────
