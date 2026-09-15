@@ -402,4 +402,15 @@ archived lane's file; the owner directed it this round, so both were repointed t
 `agents-4` block — `:21` and `:22`, pointing at `./todo-refactor-devmock-agents-1.md` / `-2.md` — were
 also stale (broken earlier by those lanes' `done-todo-` rename + move into `archived/`, not by this one);
 recorded here first as another lane's cleanup, then repointed to `./done-todo-…` in **`80bafa27f`** on the
-owner's "continue" directive. All three back-links into `agents-3`/siblings now resolve.
+owner's "continue" directive. All four back-links in that `agents-4` sibling block now resolve
+(`:21`, `:22` into `-1`/`-2`; `:23`, `:167` into this file).
+
+**Dated update, 2026-09-15, HEAD `3aa02090f` — supersedes the "the two foreign CSS suites" wording in the
+"Keep two things distinct" note above, which stays verbatim as the record it was:** of those two, the
+`popoverSurfaceCompliance` red on `RestaurantMenu.css` has **cleared** — re-run scoped it prints
+`Tests 3 passed (3)`; another lane fixed it. So only `themeTokenCompliance` on the **still-uncommitted**
+`CartPanelLineItem.css` remains, and that is a working-tree read, not a fact about HEAD. This does not
+move this file's disposition: it is still `done-todo-` on the owner §4 waiver recorded above (an acceptance
+that was *run and did not pass*), still has no dev-mock failure to its name, and its closed scope is
+unchanged. The point of the update is only that the external blocker on the Agent 5 work order shrank from
+two suites to one — recorded in the work order itself, not here.
