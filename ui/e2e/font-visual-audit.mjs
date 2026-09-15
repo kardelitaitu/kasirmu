@@ -17,7 +17,7 @@
  * any report using these numbers names its own subject instead of implying one.
  *
  * Usage:
- *   node e2e/font-visual-audit.mjs [--dist ui/dist] [--out <dir>] [--keep-js]
+ *   node e2e/font-visual-audit.mjs [--dist ui/dist] [--out <dir, default ui/font-audit/<shell>/>] [--keep-js]
  *
  * Vitest never collects e2e/** (see ui/vite.config.ts's test.exclude), and this is
  * deliberately not a *.spec.ts: it asserts nothing, so it can never go red, and a
@@ -26,7 +26,9 @@
 import { chromium } from '@playwright/test';
 import http from 'node:http';
 import fs from 'node:fs';
-import os from 'node:os';
+// `node:os` was imported for os.tmpdir(), the first default output location; the import
+// is gone with it, because ui/eslint.config.js declares globals for this file but an
+// unused import is still an error, and `UI lint` in CI runs `eslint .` over e2e/.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ageHours, buildTimeOf, stylesheetsNewerThan, surfaceCommitsSince } from '../../scripts/font-freshness.mjs';
@@ -42,8 +44,6 @@ const flag = (name, dflt) => {
 // `node ui/e2e/font-visual-audit.mjs` are the same command to a human and were not
 // the same path here, which is the trap AGENTS.md tells every script to avoid.
 const distArg = path.resolve(flag('dist', path.join(HERE, '..', 'dist')));
-const outDir = path.resolve(flag('out', path.join(os.tmpdir(), 'ozpos-font-audit')));
-fs.mkdirSync(outDir, { recursive: true });
 
 /**
  * Which boot document the artifact actually contains. The two shipped apps build to
@@ -70,6 +70,17 @@ const pageName = pageArg ?? presentDocs[0];
 if (presentDocs.length > 1 && !pageArg) {
   console.log(`note: ${distArg} holds both boot documents; measuring ${presentDocs[0]}, pass --page to choose the other`);
 }
+
+// Output defaults to ui/font-audit/<shell>/ -- beside dist, never inside it. The first
+// version defaulted to os.tmpdir(), which made the artifacts this plan's visual box
+// depends on vanish on reboot; the second version wrote ui/dist/font-audit/, and a
+// sentinel planted there was DELETED by `npm run build`, because Vite empties outDir.
+// A review step whose evidence is destroyed by the command used to refresh it is not a
+// review step, so the location is now neither of those: build-safe and gitignored.
+const outDir = path.resolve(flag('out',
+  path.join(HERE, '..', 'font-audit', SHELL_OF[pageName].replace('-client', ''))));
+fs.mkdirSync(outDir, { recursive: true });
+console.log(`artifacts -> ${outDir}`);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
