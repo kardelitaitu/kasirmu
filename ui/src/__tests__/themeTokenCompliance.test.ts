@@ -984,14 +984,27 @@ function faceBlocks(text: string): number {
  * The @font-face blocks themselves, in source order. faceBlocks() is its own
  * length, so the count every other rule reports and the per-face text rule 13
  * needs cannot drift apart -- a second regex over the same text could.
+ *
+ * Comments are blanked HERE, at the single choke point every face-reading rule
+ * shares, because prose can spell a face. Measured the way it was found: a
+ * vendor-style comment declaring `@font-face { src: url('https://fonts.example.com/
+ * ghost.woff2') }` inside a block comment made rule 13 report a missing file for a
+ * face that exists only in a sentence, and rule 14 could count the same ghost as a
+ * bundled family. Rule 7 has carried the identical guard for @import since the day
+ * it was written; the asymmetry was an oversight, not a decision, and it sat in the
+ * newer half of the file. (Writing that example nearly broke this file: quoting a
+ * comment's closing two-character sequence inside a comment ends it early, esbuild
+ * reports `Expected ";" but found "rule"`, and vitest prints "no tests" while
+ * exiting 1 -- which is the correct loud failure, and worth knowing.)
  */
 function faceBlockTexts(text: string): string[] {
+  const source = blankComments(text);
   FONT_FACE_BLOCK_RE.lastIndex = 0;
   const out: string[] = [];
-  let m: RegExpExecArray | null = FONT_FACE_BLOCK_RE.exec(text);
+  let m: RegExpExecArray | null = FONT_FACE_BLOCK_RE.exec(source);
   while (m) {
     out.push(m[0]);
-    m = FONT_FACE_BLOCK_RE.exec(text);
+    m = FONT_FACE_BLOCK_RE.exec(source);
   }
   return out;
 }
@@ -1961,6 +1974,16 @@ describe('font-reference portability', () => {
     const sample = "@font-face { font-family: 'X'; src: url(a.woff2); }\n@font-face { font-family: 'Y'; src: url(b.woff2); }";
     expect(faceBlocks(sample)).toBe(faceBlockTexts(sample).length);
     expect(faceBlockTexts(sample)).toHaveLength(2);
+    // Prose cannot fake a face. This is the assertion the ghost plant earned: the same
+    // text with a commented face inside it must still grade TWO faces, not three.
+    const prose = '/* upstream emitted\n'
+      + "   @font-face { font-family: 'Ghost'; src: url(https://x.example/ghost.woff2); }\n"
+      + '   before self-hosting */\n' + sample;
+    expect(faceBlockTexts(prose)).toHaveLength(2);
+    expect(faceBlocks(prose)).toBe(2);
+    // And the raw regex really does see three, which is what makes the blanking
+    // load-bearing rather than decorative.
+    expect((prose.match(/@font-face\s*\{/gi) ?? []).length).toBe(3);
   });
 
   it('rule 14: a family an @import declares must be named by some stack in the app', () => {
