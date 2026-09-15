@@ -80,6 +80,21 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 > 681 as "re-derive, then diff."
 
 ### Phase 5.1 — Relocate the shared state
+
+> **IN FLIGHT under another session — do not touch `tauri-api.ts` (2026-09-15, HEAD `26ed71623`).**
+> A parallel lane is executing this exact phase right now: `ui/src/dev-mock/handlers/locationState.ts`
+> exists **untracked** with a header that names "todo-refactor-devmock-router-consolidation.md Phase 5.1"
+> as its reason, and `tauri-api.ts` is **` M`** with the `locationState` import block added at `:43-53`.
+> It is **mid-edit and does not compile** — the lane added the imports but has not yet deleted the local
+> duplicates, so `npx tsc --noEmit` returns exit 2 with TS2440 "Import declaration conflicts with local
+> declaration" for `unwrapArgs`/`listMockLocations`/`createMockLocation`/`getMockStores`(unused) and 9
+> others. **This lane must not touch the router or that new file while the tree holds edits that are not
+> ours** (AGENTS.md §3; this file's own rule "if it holds edits that are not yours, stop"). The boxes
+> below stay unchecked because 5.1 is neither complete nor ours to finish in their session. Re-inspect
+> `git status --porcelain -- ui/src/dev-mock/` before any move; when the lane commits a *compiling* 5.1,
+> re-derive the 681 snapshot (it will legitimately have changed if they also dropped `entryHandlers` keys)
+> and confirm TS2440 is gone before either of us claims the phase.
+
 - [ ] Move `mockStores` (+ `listMockLocations`/`getMockLocation`/`createMockLocation`/`updateMockLocation`/`setMockPrimaryLocation`/`deleteMockLocation` and `mockTicketPrefixes`/prefix helpers) out of the router into `handlers/locations.ts` (or a state module if that creates an import cycle — `mockDispatcher.ts:16` warns the dispatcher must not import the router).
 - [ ] Convert the location / receipt-format / brand-settings / device-binding entries in `entryHandlers` into a `createXHandlers({ … })` factory consuming the relocated state; register it; delete the corresponding `entryHandlers` keys.
 - [ ] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
