@@ -125,16 +125,37 @@ describe('PosScreen CSS class integrity', () => {
 
   const CARTS_DYNAMIC_PREFIXES: string[] = ['pos-cart-line-wrap--'];
 
+  // Exact-or-boundary, the convention scripts/verify-ftl-orphans.py:237 encodes
+  // (n == p or n.startswith(p + '-')). A prefix that already ends in a delimiter
+  // -- every entry in this ledger -- has no character left to demand, so its
+  // boundary IS the prefix; anything shorter or longer without one is not covered.
+  function cartsPrefixCovers(name: string, p: string): boolean {
+    if (name === p) return true;
+    if (name.startsWith(p + '-')) return true;
+    return p.endsWith('-') && name.startsWith(p) && name.length > p.length;
+  }
+
   it('every className defined in CSS is reachable from PosScreen.tsx (no dead classes)', () => {
     const dead: string[] = [];
+    // The waiver used to be mute: a name excused here vanished from a census whose
+    // entire job is to name things. This is the sibling file's credit census
+    // (screenExtraction :1767-1771) lifted to carts -- WHAT was credited, TO WHICH
+    // prefix, BY NAME -- so an unexplained longer sibling prints instead of
+    // disappearing. The waiver list itself is unchanged: nothing was added to it.
+    const credited: Array<[string, string]> = [];
     for (const [cls] of fileIndex) {
-      if (
-        !used.has(cls) &&
-        !CARTS_DYNAMIC_PREFIXES.some((p) => cls.startsWith(p))
-      ) {
-        dead.push(cls);
+      if (used.has(cls)) continue;
+      const by = CARTS_DYNAMIC_PREFIXES.find((p) => cartsPrefixCovers(cls, p));
+      if (by) {
+        credited.push([cls, by]);
+        continue;
       }
+      dead.push(cls);
     }
+    console.log(
+      `carts dead-class census: ${fileIndex.size} defined name(s), ${credited.length} credited away by a CARTS_DYNAMIC_PREFIXES entry, ${dead.length} dead`,
+    );
+    for (const [cls, by] of credited.sort()) console.log(`  credited: ${cls} -> prefix ${by}`);
     // Soft assertion — logs a warning rather than hard-failing,
     // because some classes may be shared with other components.
     if (dead.length > 0) {

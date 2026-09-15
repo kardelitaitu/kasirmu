@@ -2284,6 +2284,20 @@ function walkedSourceText(): string {
   return parts.join('|');
 }
 
+// Exact-or-boundary coverage, the convention scripts/verify-ftl-orphans.py:237
+// encodes (`n == p or n.startswith(p + '-')`), lifted to class names. A bare
+// startsWith lets a WHOLE NAME prefix its own longer siblings, so the ledger
+// entry 'sc-badge--draft' would be credited by 'sc-badge--drafting' -- a name
+// that was never an allowance -- and the entry would pay no debt while looking
+// live. The third clause is not new slack: a prefix that already ends in a
+// delimiter (the BEM '--' forms here) has no character left to demand, so its
+// boundary IS the prefix.
+function prefixCovers(name: string, p: string): boolean {
+  if (name === p) return true;
+  if (name.startsWith(p + '-')) return true;
+  return p.endsWith('-') && name.startsWith(p) && name.length > p.length;
+}
+
 it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () => {
   const index = allSheetIndex();
   const defined = new Set<string>();
@@ -2291,11 +2305,23 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   const names = [...defined];
   const sources = walkedSourceText();
   const inert: string[] = [];
+  const credited = new Map<string, string[]>();
   let graded = 0;
   for (const entry of SCREENS) {
+    // OWNED sheets only -- the same scoping the dead-class census already uses
+    // (:1738 iterates ownIndex, and ruling one at :2116 counts a parent-cited
+    // shared sheet as owned). A prefix credited by a class some other screen
+    // defined is collecting credit for a family this entry does not own.
+    const own = new Set([...entry.css, ...(entry.parentCss ?? [])]);
+    const ownClasses: string[] = [];
+    for (const [sheet, classes] of index) {
+      if (own.has(sheet)) for (const cls of classes) ownClasses.push(cls);
+    }
     for (const prefix of entry.dynamicClassPrefixes ?? []) {
       graded += 1;
-      const hasRule = names.some((cls) => cls.startsWith(prefix));
+      const hits = ownClasses.filter((cls) => prefixCovers(cls, prefix)).sort();
+      if (hits.length > 0) credited.set(entry.name + ' :: ' + prefix, hits);
+      const hasRule = hits.length > 0;
       const hasSite = sources.includes(prefix);
       if (!hasRule && !hasSite) {
         inert.push(entry.name + ': ' + prefix + ' (0 rules in ' + index.size + ' sheets, 0 composition sites in any walked source)');
@@ -2305,6 +2331,16 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   console.log(
     'inert-prefix arm: ' + graded + ' dynamicClassPrefixes values graded against ' + names.length + ' defined class names over ' + index.size + ' sheets; ' + inert.length + ' inert',
   );
+  // Extended, not replaced: the arm already printed graded/inert; it now also
+  // prints how many of those graded values are rescued by a credit, and WHICH
+  // prefix and names did the rescuing, so an entry that credits nothing is
+  // distinguishable from one that credits a family it does not own.
+  console.log(
+    'prefix credit: ' + credited.size + ' of ' + graded + ' graded values credit at least one class defined inside the sheets their own entry cites',
+  );
+  for (const [site, hits] of [...credited.entries()].sort()) {
+    console.log('  credit ' + site + ' x' + hits.length + (hits.length <= 6 ? ': ' + hits.join(', ') : ''));
+  }
   // Floors, so no green can come from an empty walk or a shrunk population.
   expect(index.size).toBeGreaterThan(100);
   expect(names.length).toBeGreaterThan(100);
