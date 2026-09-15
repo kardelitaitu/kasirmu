@@ -57,10 +57,17 @@ USAGE
 EXIT CODES
 ==========
 
-  0  — contract copies are byte-identical (or the UI copy is absent, which
-       is legal in a server-only build context — oz-core vendors its own)
-       AND the corpus is consistent with the contract.
-  1  — drift detected; the output names the files to reconcile.
+  0  — contract copies are byte-identical AND the corpus is consistent with
+       the contract — or there is no `ui/` tree at all, which is legal in a
+       server-only build context (oz-core vendors its own). The second case is
+       never silent: it prints `SKIP —` where the `OK —` would have been and
+       closes the run with `NOT FULLY VERIFIED`, so a comparison that did not
+       happen cannot be read as a comparison that passed.
+  1  — drift detected; the output names the files to reconcile. That includes
+       `ui/src` EXISTING while the expected contract path does not: a moved
+       file (this one went `features/stores/` -> `features/locations/`) is
+       exactly the drift this script exists to catch, so it fails instead of
+       skipping. Same rule the `oz-core` test now enforces.
 """
 
 from __future__ import annotations
@@ -83,20 +90,47 @@ for _stream in (sys.stdout, sys.stderr):
 
 VENDORED = Path("crates/oz-core/src/topologySemantics.json")
 UI = Path("ui/src/features/locations/topologySemantics.json")
+# The UI TREE, as distinct from the one contract file inside it. Those are two
+# different questions: no tree means a server-only checkout (legitimate), a
+# tree with no contract file means this path went stale or the file vanished
+# while its TypeScript importers stayed alive (drift).
+UI_ROOT = Path("ui/src")
 MATRIX = Path("crates/oz-core/src/topologySemantics.matrix.json")
 
 
-def check_contract_copies() -> int:
-    """Phase 1: the two contract copies must be byte-identical."""
+def check_contract_copies() -> tuple[int, bool]:
+    """Phase 1: the two contract copies must be byte-identical.
+
+    Returns `(exit_code, skipped)`. `skipped` is True in exactly one case —
+    no `ui/` tree at all — where nothing was compared and 0 is still honest.
+    """
     if not VENDORED.exists():
         print(f"verify-topology-parity: missing vendored contract {VENDORED}")
-        return 1
+        return 1, False
     if not UI.exists():
+        if UI_ROOT.exists():
+            print(
+                f"verify-topology-parity: DRIFT — {UI_ROOT} is present but the "
+                f"expected UI canonical contract {UI} is NOT. Phase 1 therefore "
+                "compared NOTHING and the two sides are UNVERIFIED — this is a "
+                "failure, not a server-only skip. A moved file reads exactly "
+                "like a deleted one here: the contract once lived at "
+                "ui/src/features/stores/topologySemantics.json and now lives "
+                "under locations/. If it moved again, repoint UI here AND the "
+                "twin path in crates/oz-core/src/topology_tests.rs::"
+                "vendored_contract_matches_ui_canonical; the TS importers "
+                "(ui/src/features/locations/topologyContract.ts) need the same "
+                "edit. If it was deleted, they are broken too."
+            )
+            return 1, False
         print(
-            "verify-topology-parity: ui/ absent (server-only build context) — "
-            "vendored copy is authoritative here; nothing to compare."
+            f"verify-topology-parity: SKIP — no UI tree in this checkout "
+            f"(neither {UI_ROOT} nor {UI}), so phase 1 was NOT RUN and the "
+            "vendored copy is UNCONFIRMED against the TypeScript side. Exit 0 "
+            "is honest only in a server-only build (.dockerignore excludes "
+            "ui/); in a full checkout this line IS the failure."
         )
-        return 0
+        return 0, True
 
     vendored = VENDORED.read_bytes()
     ui = UI.read_bytes()
@@ -105,7 +139,7 @@ def check_contract_copies() -> int:
             f"verify-topology-parity: OK — {VENDORED} and {UI} are "
             f"byte-identical ({len(vendored)} bytes)."
         )
-        return 0
+        return 0, False
 
     # Locate the first differing line for an actionable message.
     vendored_lines = vendored.splitlines()
@@ -127,7 +161,7 @@ def check_contract_copies() -> int:
         "crates/oz-core/src/topologySemantics.json\n"
         "  (or the reverse, depending on which side owns the change)."
     )
-    return 1
+    return 1, False
 
 
 def check_corpus(contract: dict) -> int:
@@ -224,7 +258,7 @@ def check_corpus(contract: dict) -> int:
 
 
 def main() -> int:
-    copies = check_contract_copies()
+    copies, copies_skipped = check_contract_copies()
     source = UI if UI.exists() else VENDORED
     try:
         contract = json.loads(source.read_text(encoding="utf-8"))
@@ -232,6 +266,15 @@ def main() -> int:
         print(f"verify-topology-parity: cannot read contract {source} — {exc}")
         return 1
     corpus = check_corpus(contract)
+    if copies_skipped:
+        # A skipped comparison must be the LAST thing a caller reads. Phase 2
+        # prints its own "OK — corpus covers …" line, and two lines above an
+        # OK is where a skip goes unnoticed.
+        print(
+            "verify-topology-parity: NOT FULLY VERIFIED — phase 1 (vendored vs "
+            "UI contract) was SKIPPED because this checkout has no ui/ tree; "
+            "only the corpus shape was checked."
+        )
     return copies or corpus
 
 
