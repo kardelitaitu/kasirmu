@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { buildTimeOf, surfaceCommitsSince, stylesheetsNewerThan, ageHours } from './font-freshness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -86,91 +86,52 @@ console.log('\n    Note: scripts/check-bundle.mjs filters to .js and .css and ca
 console.log('    the bytes above. That gap is recorded in todo-font-system.md and not fixed here.');
 console.log(`\n  subject: ${ASSETS} (gitignored; this is a build of whatever tree made it)`);
 
-// A walker has no channel to the revision it is being asked about -- this file's own
-// AGENTS.md says so of every CSS suite in the repo, and this tool is not exempt: it
-// graded a build four hours old last time it ran and printed nothing about it. The
-// newest asset mtime is the closest thing a gitignored directory has to a build stamp,
-// so compare the sources against it and say what that comparison can and cannot mean.
-const newestAsset = Math.max(...fs.readdirSync(ASSETS).map((f) => fs.statSync(path.join(ASSETS, f)).mtimeMs));
-const srcCss = [];
-(function walk(dir) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walk(p);
-    else if (e.name.endsWith('.css')) srcCss.push({ p, m: fs.statSync(p).mtimeMs });
-  }
-})(path.join(HERE, '..', 'ui', 'src'));
-const suspects = srcCss.filter((s) => s.m > newestAsset);
-const hours = (ms) => Math.round((ms / 3600000) * 10) / 10;
+// A walker has no channel to the revision it is being asked about -- AGENTS.md says so
+// of every CSS suite in the repo, and this tool is not exempt: it graded a build four
+// hours old and printed nothing about it. The definition of "how current is this
+// artifact" lives in scripts/font-freshness.mjs, shared with the audit probe so the two
+// tools cannot answer that question differently.
+const repo = path.join(HERE, '..');
+const newestAsset = buildTimeOf(ASSETS);
 console.log('\n  staleness');
-console.log(`    build time (newest asset)  ${new Date(newestAsset).toISOString()}   ${hours(Date.now() - newestAsset)} h before this run`);
-console.log(`    stylesheets newer than it  ${suspects.length} of ${srcCss.length} under ui/src`);
-if (suspects.length) {
+console.log(`    build time (newest asset)  ${new Date(newestAsset).toISOString()}   ${ageHours(newestAsset)} h before this run`);
+const fresh = stylesheetsNewerThan(repo, 'ui/src', newestAsset);
+console.log(`    stylesheets newer than it  ${fresh.suspects.length} of ${fresh.total} under ui/src`);
+if (fresh.suspects.length && fresh.gitAskable) {
   console.log('    These were last modified after the build, so the numbers above may not describe the');
   console.log('    tree you are reading them against: rebuild (cd ui && npm run build) before quoting');
-  console.log('    them. Suspicion, not proof -- a checkout or a branch switch rewrites mtimes too,');
-  console.log('    so each one is asked whether git thinks its bytes actually differ from HEAD:');
-  const repo = path.join(HERE, '..');
-  // Ask git about the whole tree once, rather than per displayed suspect: the first
-  // version counted dirty files INSIDE the slice(0,12) display loop and printed
-  // "0 differ from HEAD" for a 134-suspect list that genuinely contained a dirty
-  // stylesheet. A summary computed over what happened to be printed is not a summary.
-  const dirtySet = new Set();
-  try {
-    const por = execFileSync('git', ['--no-optional-locks', 'status', '--porcelain', '--', 'ui/src'],
-      { cwd: repo, encoding: 'utf-8' }).split('\n').filter(Boolean);
-    for (const line of por) {
-      const p = line.slice(3);
-      dirtySet.add(p.includes(' -> ') ? p.split(' -> ').pop() : p);
-    }
-  } catch { /* the mtime facts stand without git */ }
-  let dirtyCount = 0;
-  const withState = suspects.map((s) => {
-    const rel = path.relative(repo, s.p).replace(/\\/g, '/');
-    const isDirty = dirtySet.has(rel);
-    if (isDirty) dirtyCount++;
-    return { rel, isDirty };
-  });
+  console.log('    them. Suspicion, not proof -- a checkout or a branch switch rewrites mtimes too, so');
+  console.log('    each one is asked whether git thinks its bytes actually differ from HEAD:');
   // Dirty first: the display is a sample, and a sample that leads alphabetically can
   // spend all twelve slots on files that only have a moved mtime.
-  const ordered = withState.filter((s) => s.isDirty).concat(withState.filter((s) => !s.isDirty));
+  const ordered = fresh.suspects.filter((s) => s.dirty).concat(fresh.suspects.filter((s) => !s.dirty));
   for (const s of ordered.slice(0, 12)) {
-    const state = s.isDirty ? 'DIRTY vs HEAD -- the build cannot contain this edit'
+    const state = s.dirty ? 'DIRTY vs HEAD -- the build cannot contain this edit'
       : 'clean vs HEAD -- mtime moved, bytes did not';
     console.log(`      ${state.padEnd(46)} ${s.rel}`);
   }
-  if (suspects.length > 12) console.log(`      ... and ${suspects.length - 12} more (the count below covers all ${suspects.length}, not just what is shown)`);
-  console.log(`    of all ${suspects.length} suspects, ${dirtyCount} differ from HEAD; only those can make the build wrong rather than merely old.`);
+  if (ordered.length > 12) console.log(`      ... and ${ordered.length - 12} more (the count below covers all ${ordered.length}, not just what is shown)`);
+  console.log(`    of all ${fresh.suspects.length} suspects, ${fresh.dirtyCount} differ from HEAD; only those can make the build wrong rather than merely old.`);
+} else if (fresh.suspects.length) {
+  console.log(`    ${fresh.suspects.length} modified after the build, and git could not be asked whether they`);
+  console.log('    also differ in bytes. Reported as unaskable rather than as clean.');
 }
-
 // The sharper half: an entirely clean tree still moves under a build, because commits
-// land. "No file differs from HEAD" is not "the build matches HEAD" -- say how far
-// behind HEAD this artifact is, in commits that could actually change these numbers.
+// land. "No file differs from HEAD" is not "the build matches HEAD".
 try {
-  const since = new Date(newestAsset).toISOString();
-  const SURFACE = [':(glob)ui/src/**/*.css', 'ui/index.html', 'ui/index.tablet.html', 'ui/package.json'];
-  const commits = execFileSync('git', ['--no-optional-locks', 'log', '--format=%h %s', `--since=${since}`, '--', ...SURFACE],
-    { cwd: path.join(HERE, '..'), encoding: 'utf-8' }).trim();
-  const rows = commits === '' ? [] : commits.split('\n');
-  const headSha = execFileSync('git', ['--no-optional-locks', 'rev-parse', '--short', 'HEAD'],
-    { cwd: path.join(HERE, '..'), encoding: 'utf-8' }).trim();
-  // Narrow on purpose: the first version filtered on all of ui/src and reported 28
-  // commits since a build that could only have been changed by 1 of them. A warning
-  // that counts everything is a warning nobody acts on.
+  const { rows, headSha } = surfaceCommitsSince(repo, newestAsset);
   console.log(`    commits that could change these numbers since the build: ${rows.length}   (HEAD ${headSha})`);
   for (const r of rows.slice(0, 4)) console.log(`      ${r.slice(0, 96)}`);
   if (rows.length > 4) console.log(`      ... and ${rows.length - 4} more`);
-  // Printed even when the count is 0: a zero means nothing unless the reader knows
-  // what it was counted over. The advice is conditional; the definition is not.
-  console.log('    Filter: any .css under ui/src, the two boot documents, and ui/package.json (a');
-  console.log('    dependency move can add or drop a face).');
+  console.log('    Filter: any .css under ui/src, the two boot documents, and ui/package.json -- defined');
+  console.log('    once, in scripts/font-freshness.mjs, and shared with the audit probe.');
   if (rows.length) {
     console.log('    A build is not a checkout: these numbers describe the artifact, and the artifact was');
     console.log('    made before that much history existed. Rebuild before quoting them as a property of HEAD.');
   } else {
     console.log('    Nothing has landed that could move these figures: the artifact is current with HEAD.');
   }
-} catch { /* reported informationally; the tool is still correct without git */ }
+} catch { /* informational; the arithmetic above stands without git */ }
 
 
 
