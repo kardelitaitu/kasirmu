@@ -90,9 +90,8 @@ fn set_receipt_settings_persists() {
 
 /// Regression pin for the T4-2 finding in `todo-refactor-oz-pos-app-agents-3.md`.
 ///
-/// The restaurant POS card sends **ten** of the eleven receipt keys and omits
-/// `taxRoundingMode` (`ui/src/features/settings/workspace-cards/
-/// WorkspaceRestaurantPosSettings.tsx:100-111`). `#[serde(default =
+/// The restaurant POS settings card sends **ten** of the eleven receipt keys
+/// and omits `taxRoundingMode`. `#[serde(default =
 /// "default_tax_rounding_mode")]` turned that absence into `"half_up"`, and
 /// `run_set_receipt_settings` then stamped it unconditionally — so a merchant
 /// who had chosen `truncate` and afterwards saved anything from that card

@@ -153,8 +153,7 @@ pub struct ReceiptSettingsDto {
     ///
     /// `None` means the caller did not speak to this key, and the stored value
     /// must be left alone. It is deliberately **not** defaulted: the restaurant
-    /// POS card sends ten of these eleven keys
-    /// (`ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:100-111`),
+    /// POS settings card sends ten of these eleven keys and omits this one,
     /// so a serde default here silently rewrote a merchant's `truncate` back to
     /// `half_up` on every save from that card. The read path always answers
     /// `Some`.
@@ -198,8 +197,8 @@ pub struct CreditSettingsDto {
 /// emitted `sale_id` / `customer_name` / `total_minor` / `created_at` /
 /// `settled_at` / `cashier_name` while its only consumer — the retail credit
 /// list — reads the camelCase names its interface declares
-/// (`ui/src/api/settings.ts:74`, read at `features/retail/RetailModals.tsx:375-389`
-/// and filtered at `RetailPosScreen.tsx:1274`). Every field but `currency` was
+/// (`ui/src/api/settings.ts:74`; read at the retail credit modals and filtered
+/// in the retail POS screen). Every field but `currency` was
 /// therefore `undefined` against a real backend: em-dash customer, NaN amount,
 /// "Invalid Date", a Settle button that sent `sale_id: undefined`, and — the
 /// part that raised no error anywhere — a `!c.settledAt` filter that passed
