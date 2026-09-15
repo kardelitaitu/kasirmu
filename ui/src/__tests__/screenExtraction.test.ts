@@ -236,7 +236,19 @@ const SCREENS: ScreenEntry[] = [
     name: 'ProductManagementScreen',
     tsx: 'products/ProductManagementScreen.tsx',
     css: ['products/ProductManagementScreen.css'],
-    dynamicClassPrefixes: ['product-mgmt-type--'],
+    // Four variants exist, not an open family: the name is composed at
+    // features/products/ProductManagementScreen.tsx:448 as
+    // `product-mgmt-type--${p.productType}`, and productType is the closed union at
+    // src/types/domain.ts:106 -- retail | restaurant | both | service -- which is exactly
+    // the four rules in products/ProductManagementScreen.css:94 / :99 / :103 / :108. Each is
+    // named whole, so this entry now asserts which variants are real: a fifth rule in the
+    // sheet with no fifth union member reads dead instead of being excused by a catch-all.
+    dynamicClassPrefixes: [
+      'product-mgmt-type--retail',
+      'product-mgmt-type--restaurant',
+      'product-mgmt-type--both',
+      'product-mgmt-type--service',
+    ],
     // Classes used by child StockAlertPanel component rendered inside drawer
     externalClasses: ['stock-alert-panel'],
   },
