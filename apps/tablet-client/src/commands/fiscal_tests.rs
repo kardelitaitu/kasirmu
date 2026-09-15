@@ -1,5 +1,13 @@
 use super::*;
 
+// ADR #49: this suite's local `run_upsert` copy needs `Store` and `ResetPeriod`,
+// which the parent used to import and no longer does now that the doors delegate.
+// A `#[path]` test module inherits the parent's imports through `use super::*`, so
+// removing them there broke the build here; the fix is to import them here rather
+// than to keep dead imports above.
+use oz_core::db::Store;
+use oz_core::db::fiscal::ResetPeriod;
+
 fn upsert_args(
     entity: &str,
     kind: &str,

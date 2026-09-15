@@ -9,15 +9,29 @@
 //! management surface. Gated like sibling settings commands:
 //! `settings:read` for the read, `settings:edit` for the upsert — these
 //! are entity-scope resources, so no location-resource gate applies.
+//!
+//! ADR #49: all five bodies are the bridge's. This module is the scope-aware
+//! shape — the gate is `require_permission_for_session`, which is the same
+//! scope-aware check (ADR #35 D5) as the bridge's
+//! `BridgeCtx::require_session_permission`, and the order matches too:
+//! `resolve_session` → gate → open the store → lock. Note the shell resolves the
+//! session **twice** (`resolve_session` for the gate, then `resolve_scope`, which
+//! re-resolves it) and the bridge does exactly the same (`resolve_store` is
+//! `resolve_scope(..).map(|(_, conn)| conn)`), so the extra resolution is
+//! preserved rather than tidied away.
 
 use tauri::{State, command};
 
-use oz_core::db::Store;
-use oz_core::db::fiscal::{DocumentNumberSequence, FiscalScheme, ResetPeriod};
+use oz_core::db::fiscal::{DocumentNumberSequence, FiscalScheme};
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
+
+// ADR #49: the argument struct is the bridge's, re-exported rather than restated.
+// The two definitions were identical apart from the derive path
+// (`serde::Deserialize` vs `Deserialize`) — same five fields, same doc comments,
+// same `rename_all = "camelCase"` — so the wire is unchanged.
+pub use oz_bridge::fiscal::UpsertDocumentNumberSequenceArgs;
 
 /// Read the statutory number series for one legal entity and document kind,
 /// in the store resolved from a session token. ADR #7. Tablet mirror of the
@@ -26,6 +40,8 @@ use crate::state::AppState;
 /// `settings:read` on the backend; entity-scope resource, so no
 /// location-resource gate. `None` = the entity/kind pair is not configured,
 /// which is the honest "no statutory numbering" answer, not an error.
+///
+/// ADR #49: the body is the bridge's.
 #[command]
 pub async fn get_document_number_sequence_scoped(
     session_token: String,
@@ -33,33 +49,15 @@ pub async fn get_document_number_sequence_scoped(
     document_kind: String,
     state: State<'_, AppState>,
 ) -> Result<Option<DocumentNumberSequence>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    let _ = session;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.document_number_sequence(&legal_entity_id, &document_kind)?)
-}
-
-/// Arguments for upserting one statutory number series.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpsertDocumentNumberSequenceArgs {
-    /// The owning legal entity.
-    pub legal_entity_id: String,
-    /// The document kind this series numbers (e.g. `receipt`, `invoice`).
-    pub document_kind: String,
-    /// Statutory prefix, emitted verbatim before the number.
-    pub prefix: String,
-    /// Reset policy: `never` | `daily` | `monthly` | `yearly` (the core
-    /// parser validates the keyword).
-    pub reset_period: String,
-    /// Zero-pad width for the issued ordinal (0 = no padding, negative
-    /// refused by the core).
-    pub padding: i64,
+    let ctx = state.bridge_ctx();
+    oz_bridge::fiscal::get_document_number_sequence_scoped(
+        &ctx,
+        &session_token,
+        &legal_entity_id,
+        &document_kind,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Create or update the statutory number series for one legal entity and
@@ -70,30 +68,21 @@ pub struct UpsertDocumentNumberSequenceArgs {
 /// (legal_entity_id, document_kind) — the table's UNIQUE pair — so this one
 /// command covers both create and reconfiguration; the counter is NEVER
 /// reset by a reconfiguration (a statutory series must not gap).
+///
+/// ADR #49: the body is the bridge's. The RFC-3339 millisecond stamp that stood
+/// here now comes from the bridge's `run_upsert`, which computes the same
+/// `chrono::Utc::now()` value with the same `SecondsFormat::Millis` — the bridge
+/// owns the clock, and its module note says so.
 #[command]
 pub async fn upsert_document_number_sequence_scoped(
     session_token: String,
     args: UpsertDocumentNumberSequenceArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_EDIT).await?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    let _ = session;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let reset_period = ResetPeriod::parse(&args.reset_period)?;
-    store.upsert_document_number_sequence(
-        &args.legal_entity_id,
-        &args.document_kind,
-        &args.prefix,
-        reset_period,
-        args.padding,
-        &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-    )?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::fiscal::upsert_document_number_sequence_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// List every statutory number series configured for the tenant, ordered by
@@ -103,20 +92,17 @@ pub async fn upsert_document_number_sequence_scoped(
 /// `settings:read` on the backend; entity-scope resource, so no
 /// location-resource gate. `current_value` is the LIVE counter — it never
 /// resets on reconfiguration.
+///
+/// ADR #49: the body is the bridge's.
 #[command]
 pub async fn list_document_number_sequences_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<DocumentNumberSequence>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    let _ = session;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.list_document_number_sequences()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::fiscal::list_document_number_sequences_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// The configured series for ONE legal entity (the overview's per-entity
@@ -124,21 +110,22 @@ pub async fn list_document_number_sequences_scoped(
 /// Tablet mirror of the desktop command.
 ///
 /// `settings:read` on the backend; ordered by document kind.
+///
+/// ADR #49: the body is the bridge's.
 #[command]
 pub async fn list_document_number_sequences_for_entity_scoped(
     session_token: String,
     legal_entity_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<DocumentNumberSequence>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    let _ = session;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.document_number_sequences_for_entity(&legal_entity_id)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::fiscal::list_document_number_sequences_for_entity_scoped(
+        &ctx,
+        &session_token,
+        &legal_entity_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// List the tenant's fiscal schemes — the entity-level statutory
@@ -149,20 +136,17 @@ pub async fn list_document_number_sequences_for_entity_scoped(
 /// `settings:read` on the backend. INACTIVE schemes are included: the
 /// overview shows the full configuration surface; consumers filter by
 /// `is_active` per their own contract.
+///
+/// ADR #49: the body is the bridge's.
 #[command]
 pub async fn list_fiscal_schemes_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<FiscalScheme>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, oz_core::permissions::SETTINGS_READ).await?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    let _ = session;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.list_fiscal_schemes()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::fiscal::list_fiscal_schemes_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
