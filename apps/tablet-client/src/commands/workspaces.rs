@@ -6,8 +6,6 @@
 //! resolves the caller's REAL user + role from the global identity
 //! database — caller-supplied `role_id` / `user_id` are never trusted.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use hmac::{Hmac, Mac};
 use serde::Serialize;
 use sha2::Sha256;
@@ -17,21 +15,18 @@ use oz_core::db::Store;
 use oz_core::db::workspaces::WorkspaceDto;
 use platform_core::StoreDatabaseManager;
 
-use crate::commands::picker_ticket;
 use crate::commands::terminals::DEVICE_BINDING_KEYRING_NAME;
 use crate::error::AppError;
 use crate::state::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Screen within a workspace as seen by the front-end.
-#[derive(Debug, Serialize)]
-pub struct WorkspaceScreenDto {
-    /// Screen Key.
-    pub screen_key: String,
-    /// Display sort order.
-    pub sort_order: i32,
-}
+// ADR #49: `WorkspaceScreenDto` is the bridge's, re-exported rather than
+// restated. The two definitions were byte-identical — same two fields, same doc
+// comments, and **no `rename_all` on either**, so the wire stays snake_case and
+// the renderer sees no change at all. Keeping a second copy here is the
+// duplication ADR #49 exists to end.
+pub use oz_bridge::workspaces::WorkspaceScreenDto;
 
 /// List workspace instances for the pre-session workspace picker.
 ///
@@ -47,63 +42,23 @@ pub async fn list_workspaces(
     ticket: String,
     store_id: String,
 ) -> Result<Vec<WorkspaceDto>, AppError> {
-    // 1. Verify the ticket — uniform denial for forged/expired/malformed.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    let user_id = picker_ticket::verify_picker_ticket(&state.picker_ticket_secret, &ticket, now_ts)
-        .ok_or_else(|| AppError::PermissionDenied("invalid or expired picker session".into()))?;
-
-    // 2. Resolve the REAL user + role + assignment from the global identity
-    //    DB. The ticket binds the user; the role is derived from the DB,
-    //    never the claim. The assignment (ADR #35 D5 / spec 0048) is what
-    //    constrains a scoped user's picker below — legacy users without an
-    //    assignment row are not scope-restricted.
-    let (real_role_id, real_user_id, assignment) = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let user = store.get_user(&user_id)?.ok_or_else(|| {
-            AppError::PermissionDenied("picker session user no longer exists".into())
-        })?;
-        if !user.is_active {
-            return Err(AppError::PermissionDenied(
-                "picker session user is inactive".into(),
-            ));
-        }
-        let role = store
-            .get_role(&user.role_id)?
-            .ok_or_else(|| AppError::Internal(format!("role {} not found", user.role_id)))?;
-        let assignment = store.assignment_for_user(&user.id)?;
-        (role.id, user.id, assignment)
-    };
-
-    // 3. List instances in the requested store using the REAL role + user.
-    //    `list_workspaces` applies the owner bypass, `user_location_access`
-    //    (multi-store), explicit instance assignment, and role workspace types.
-    let conn = state
-        .db_manager
-        .open_store(&store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let rows = store.list_workspaces(&real_role_id, Some(&real_user_id), &store_id)?;
-    drop(db);
-
-    // 4. Scope-filter the listing through the user's assignment (ADR #35 D5
-    //    / spec 0048): global assignments and legacy users (no assignment)
-    //    pass everything; a scoped assignment keeps only instances whose
-    //    store (branch) and workspace type are in scope — fail closed, so an
-    //    out-of-scope store or workspace type lists nothing.
-    Ok(match assignment {
-        Some(assignment) => rows
-            .into_iter()
-            .filter(|d| assignment.matches_scope(Some(&store_id), Some(&d.type_key)))
-            .collect(),
-        None => rows,
-    })
+    // ADR #49: the body is the bridge's, and this delegation is a pure identity.
+    // `oz_bridge::workspaces::list_workspaces` verifies the same ticket against
+    // `ctx.picker_ticket_secret`, locks the global db through `ctx.lock_global()`
+    // (the same `state.db` — see `AppState::bridge_ctx`), opens the store through
+    // `ctx.db_manager` and drops the guard in the same order, and carries the
+    // same error strings through the `From<BridgeError> for AppError` seam.
+    //
+    // Ledger-neutral, measured rather than assumed: this door resolves no
+    // session (it presents a picker TICKET, which matches none of the sweep's
+    // markers), so `run_sweep`'s `gated` leg is false with or without an
+    // `oz_bridge::` call, and the ledger's own entry for it —
+    // `("workspaces::list_workspaces", "no_session_resolution")` — stays true.
+    // The ratchet is green before and after.
+    let ctx = state.bridge_ctx();
+    oz_bridge::workspaces::list_workspaces(&ctx, ticket, store_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// List screens (nav items) for a workspace type during boot/workspace
@@ -120,29 +75,18 @@ pub async fn list_workspace_screens(
     type_key: String,
     store_id: String,
 ) -> Result<Vec<WorkspaceScreenDto>, AppError> {
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    picker_ticket::verify_picker_ticket(&state.picker_ticket_secret, &ticket, now_ts)
-        .ok_or_else(|| AppError::PermissionDenied("invalid or expired picker session".into()))?;
-    let conn = state
-        .db_manager
-        .open_store(&store_id)
-        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let rows = store.list_workspace_type_screens(&type_key)?;
-    drop(db);
-    Ok(rows
-        .into_iter()
-        .map(|r| WorkspaceScreenDto {
-            screen_key: r.screen_key,
-            sort_order: r.sort_order,
-        })
-        .collect())
+    // ADR #49: pure identity, as for `list_workspaces` — the bridge verifies the
+    // same ticket against `ctx.picker_ticket_secret`, opens the store through
+    // `ctx.db_manager` and drops the guard in the same order, and returns the
+    // same `WorkspaceScreenDto` (now the re-export above, so the wire is
+    // unchanged). Ledger-neutral for the same measured reason: this door
+    // presents a picker ticket and resolves no session, so the sweep's `gated`
+    // leg cannot turn true, and the ledger's own entry —
+    // `("workspaces::list_workspace_screens", "no_session_resolution")` — holds.
+    let ctx = state.bridge_ctx();
+    oz_bridge::workspaces::list_workspace_screens(&ctx, ticket, type_key, store_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// DTO returned by `resolve_boot_store`.
