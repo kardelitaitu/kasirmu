@@ -239,22 +239,33 @@ def main() -> int:
     print(f"  twin doc lines rewritten: {rewritten} (of {len(spans)} retired fns)")
 
     # The prose the mechanical rewrite above cannot reach: a comment that still names a
-    # function this run deletes. Hand-written batch notes found three different shapes of
+    # function this run deletes. Hand-written batch notes found four different shapes of
     # this on 2026-09-16 -- a twin's `Session-scoped variant of` line (handled above), a
     # block comment arguing about the legacy variants (needs an author's sentence, not a
-    # template), and a quoted error string inside a test's doc comment (which changes only
-    # when the message itself changes). Reporting is deliberate: the tool does not invent
-    # prose it has no business writing.
+    # template), a quoted error string inside a test's doc comment (which changes only when
+    # the message itself changes), and a doc EXAMPLE in another module that used two
+    # retired command names as illustration (`offline.rs`: "The action to perform (e.g.
+    # \"complete_sale\", \"void_sale\")"). That last one is why the scan covers the whole
+    # crate and not just the file being edited: prose about a command survives in whichever
+    # comment found it interesting, and a per-module report cannot see across the seam.
+    # Reporting is deliberate -- the tool does not invent prose it has no business writing.
     residue: list[str] = []
+    scan: list[tuple[str, str]] = [(mod.name, out)]
+    scan += [(label, text) for label, text in prod + tests if label != mod.name]
     for name in spans:
-        for i, line in enumerate(out.splitlines(), 1):
-            if not re.match(r"^\s*(///|//)", line):
-                continue
-            if re.search(r"(?<![\w:])" + re.escape(name) + r"\b(?!_scoped)", line):
-                residue.append(f"    :{i}: {line.strip()}")
+        for label, text in scan:
+            for i, line in enumerate(text.splitlines(), 1):
+                if not re.match(r"^\s*(///|//|\*)", line):
+                    continue
+                if re.search(r"(?<![\w:])" + re.escape(name) + r"\b(?!_scoped)", line):
+                    residue.append(f"    {label}:{i}: {line.strip()[:110]}")
+    residue = sorted(set(residue))
     if residue:
-        print(f"  stale prose naming a retired fn, {len(residue)} line(s) -- rewrite by hand:")
-        print("\n".join(sorted(set(residue))))
+        print(f"  stale prose naming a retired fn, {len(residue)} line(s) across the crate "
+              f"-- rewrite by hand:")
+        print("\n".join(residue[:40]))
+        if len(residue) > 40:
+            print(f"    ... and {len(residue) - 40} more")
     else:
         print("  stale prose: none")
 
