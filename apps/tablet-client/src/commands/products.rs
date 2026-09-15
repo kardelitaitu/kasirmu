@@ -107,15 +107,6 @@ pub async fn list_products(state: State<'_, AppState>) -> Result<Vec<ProductDto>
     run_list_products(&db)
 }
 
-/// Fetch warehouse-tracked products only (excludes services).
-#[command]
-pub async fn list_warehouse_products(
-    state: State<'_, AppState>,
-) -> Result<Vec<ProductDto>, AppError> {
-    let db = state.db.lock().await;
-    run_list_warehouse_products(&db)
-}
-
 /// Business logic for listing products (extracted for testing).
 fn run_list_products(conn: &rusqlite::Connection) -> Result<Vec<ProductDto>, AppError> {
     let store = Store::new(conn);
@@ -486,27 +477,6 @@ fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec
 
 // ── Popularity search signal (ADR #37) ──────────────────────────────
 
-/// Record an acted-upon product search for the popularity index.
-///
-/// ADR #37 D2: only searches that end in an add-to-cart count. Fire
-/// and forget — failures are logged, never surfaced.
-#[command]
-pub async fn record_product_search(
-    sku: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    match store.record_product_search(&sku) {
-        Ok(()) => {}
-        Err(e) => {
-            tracing::warn!(sku = %sku, error = %e, "product search signal not recorded");
-        }
-    }
-    drop(db);
-    Ok(())
-}
-
 // ── Delete product ──────────────────────────────────────────────────
 
 #[command]
@@ -590,7 +560,7 @@ pub async fn list_products_scoped(
     run_list_products(&db)
 }
 
-/// Session-scoped variant of `list_warehouse_products`.
+/// Fetch warehouse-tracked products only (excludes services) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_warehouse_products_scoped(
@@ -833,7 +803,7 @@ pub async fn get_product_track_serial_batch_scoped(
     Ok(rows)
 }
 
-/// Session-scoped variant of `record_product_search`.
+/// Record an acted-upon product search for the popularity index resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn record_product_search_scoped(
