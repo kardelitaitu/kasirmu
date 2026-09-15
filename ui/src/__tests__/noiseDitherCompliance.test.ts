@@ -340,6 +340,15 @@ let shadowRules = 0;        // ...of those, the ones whose body names box-shadow
 let shadowRulesGraded = 0;  // ...and also names a --shadow-* token: the gate's reach
 let shadowRulesSkipped = 0; // hardcoded shadow, no token: the counted skip
 let sheetsRefused = 0;      // basenames the walk declines to open at all
+// -- The doors a shadowed selector leaves the waiver filter through, counted apart
+// (2026-09-15). The filter carried no denominator of its own: "0 uncovered" reads as
+// a claim about elevation, and every one of these four doors can produce that number
+// while grading nothing. Same lesson the counters above carry.
+let waiverCoveredByList = 0;   // exact match on KNOWN_NOISE_SELECTORS
+let waiverPrefix = 0;          // match on EXEMPT_SELECTOR_PREFIXES
+let waiverPseudoState = 0;     // selector names a state pseudo-class
+let waiverAttribute = 0;       // selector starts with an open bracket
+let surfacesSurvivingWaivers: { file: string; selector: string }[] = [];
 let unparseableSheets: string[] = [];  // sheets it tried and could not read
 // -- The doors a sheet can leave the walk through, counted apart (2026-09-15). --
 // A sheet the PARSE throws on was already recorded in `unparseableSheets` and is
@@ -438,7 +447,58 @@ function walkShadowPopulation(): void {
   }
 
 }
+/*
+ * Selector-boundary convention -- the same shape scripts/verify-ftl-orphans.py uses
+ * for composed-prefix matching (`n == p || n.startsWith(p + "-")`): a listed prefix
+ * matches EXACTLY, or as a prefix only where the remainder begins with a selector
+ * boundary character. A bare entry like '.btn' therefore no longer waives
+ * '.btnGhostPanel:hover', and '.card-header' no longer waives '.card-headerSticky'.
+ * A prefix that already ENDS in a namespace separator ('.card--padding-', '.toast__',
+ * '.input-') is a name stem, so a remainder continues it directly.
+ */
+const SELECTOR_BOUNDARY_CHARS = '_-.:[';
+function isExemptSelector(sel: string): boolean {
+  return EXEMPT_SELECTOR_PREFIXES.some((prefix) => {
+    if (sel === prefix) return true;
+    if (!sel.startsWith(prefix)) return false;
+    if (prefix.endsWith('-') || prefix.endsWith('_')) return true;
+    const first = sel.slice(prefix.length).charAt(0);
+    return first !== '' && SELECTOR_BOUNDARY_CHARS.includes(first);
+  });
+}
+
+/**
+ * Applies the four waivers ONCE, at module scope, for the same reason the shadow walk
+ * runs there (see the note above): the denominator is printed in a case TITLE, and a
+ * title is evaluated while the file is still being collected -- before any hook or
+ * test body runs. Counting inside the case would print four zeros as if they passed.
+ */
+function applySelectorWaivers(): void {
+  waiverCoveredByList = 0; waiverPrefix = 0; waiverPseudoState = 0; waiverAttribute = 0;
+  surfacesSurvivingWaivers = [];
+  for (const surface of uncoveredSurfaces) {
+    const sel = surface.selector;
+    if (KNOWN_NOISE_SELECTORS.includes(sel)) { waiverCoveredByList++; continue; }
+    if (isExemptSelector(sel)) { waiverPrefix++; continue; }
+    // NOTE, deliberately NOT tightened in this commit: this test reads the WHOLE
+    // selector, so '.a:hover .b' waives a state class that belongs to a different
+    // element. Restricting it to the tail compound is measured to move exactly one
+    // selector out of the waiver -- '.kds-slider-track:hover .kds-slider-knob'
+    // (features/kds/KdsScreen.css) -- and that surface needs an entry in the
+    // noise-dither block of ui/src/frontend/themes/components.css plus
+    // KNOWN_NOISE_SELECTORS to pass once it is graded. A stylesheet is outside this
+    // file's fence, so the door stays open here and its population is printed below.
+    if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) { waiverPseudoState++; continue; }
+    // Attribute selectors (state variants) -- inherit from the base class. Kept, with
+    // its count printed: measured 2026-09-15 ZERO selectors reach this door, so the
+    // waiver is real insurance and not a live leak -- and a printed zero is the only
+    // form in which an empty silent class can be seen growing.
+    if (sel.startsWith('[')) { waiverAttribute++; continue; }
+    surfacesSurvivingWaivers.push(surface);
+  }
+}
 walkShadowPopulation();
+applySelectorWaivers();
 
 describe('Noise-dither overlay coverage (P11-5)', () => {
   beforeAll(() => {
@@ -508,20 +568,9 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
   // ── Shadow-using selector coverage ─────────────────────────
 
   it('every elevated surface (uses --shadow-*) is covered by noise-dither', () => {
-    const uncovered = uncoveredSurfaces.filter(({ selector: sel }) => {
-      // Check if covered by KNOWN_NOISE_SELECTORS
-      if (KNOWN_NOISE_SELECTORS.includes(sel)) return false;
-      // Check if covered by exact match on the set
-      // Check if exempt
-      for (const prefix of EXEMPT_SELECTOR_PREFIXES) {
-        if (sel.startsWith(prefix)) return false;
-      }
-      // Hover/focus/active/disabled pseudo-classes — inherit from parent
-      if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) return false;
-      // Attribute selectors (state variants) — inherit from base class
-      if (sel.startsWith('[')) return false;
-      return true;
-    });
+    // The four waivers are applied once, at module scope, so their counts can be
+    // printed in the denominator case below. This is that same surviving set.
+    const uncovered = surfacesSurvivingWaivers;
 
     const msg = uncovered.length > 0
       ? `Found ${uncovered.length} elevated surface(s) without noise-dither:\n\n`
@@ -540,7 +589,7 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
 
   // ── Sanity checks ─────────────────────────────────────────
 
-  it(`the shadow walk reports its own denominator: ${shadowRulesGraded} rules graded of ${shadowRules} box-shadow rules, ${rulesExamined} rules examined, ${unparseableSheets.length} unparseable sheets`, () => {
+  it(`the shadow walk reports its own denominator: ${shadowRulesGraded} rules graded of ${shadowRules} box-shadow rules, ${rulesExamined} rules examined, ${unparseableSheets.length} unparseable sheets; shadowed selectors: ${uncoveredSurfaces.length} reached the waiver filter, ${surfacesSurvivingWaivers.length} graded after waiving ${waiverCoveredByList} on the known list + ${waiverPrefix} on an exempt prefix + ${waiverPseudoState} on a state pseudo-class + ${waiverAttribute} on an attribute selector`, () => {
     // The floor this suite was missing. `allCssFiles.length > 0` can be true while
     // the walk grades nothing; a relation cannot, because every rule the loop saw
     // has to land in exactly one bucket.
