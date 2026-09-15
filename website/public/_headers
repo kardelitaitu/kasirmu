@@ -13,10 +13,12 @@
   #   license-server web API (OTP auth, contact form, account page). The
   #   API host is resolved at RUNTIME via worker.ts [vars] LICENSE_API_URL
   #   (runbook §8); connect-src allows any *.code.run host so a Northflank
-  #   URL change needs no rebuild. Connect-src allows any *.code.run host so a
-  #   Northflank URL change needs no rebuild.
+  #   URL change needs no rebuild.
   # - fonts.googleapis.com (style-src) + fonts.gstatic.com (font-src) cover
-  #   the Google Fonts (Inter/JetBrains Mono) loaded by Base.astro.
+  #   the Google Fonts <link> tags in website/public/admin/*.html — standalone
+  #   pages with their own CDN stylesheet. The public site does NOT use them:
+  #   Base.astro self-hosts Inter/JetBrains Mono via fontsource (global.css),
+  #   so its faces are fetched from 'self' only.
   # - static.cloudflareinsights.com (script-src) covers the Cloudflare Web
   #   Analytics beacon auto-injected on the account/dashboard pages.
   #
