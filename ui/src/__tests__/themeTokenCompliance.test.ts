@@ -31,12 +31,14 @@
  * two earlier baselines kept as provenance -- a reader who takes 193 as an
  * allowance mis-grades this gate by 193 violations.
  *
- * Appended after that gate: TWELVE font-reference portability rules, grown from
- * Phase 1's three to twelve across todo-font-system.md, each shipped with its own
- * probe case (12 rules = 24 cases). They live HERE rather than in a new file
- * because this file is already the live font-family gate, and `dev-ci.yml#ui-test`
- * runs `cd ui && npm test` (`:277`) on any commit under `ui/` -- the changes router
- * matches `^ui/` at `:98` -- so a new file would need new wiring for no new reach.
+ * Appended after that gate: TWELVE font-reference portability rules. Four predate
+ * this plan -- blame gives rules 1-3 to `93c367b` and rule 4 to `6649571`, both
+ * earlier lanes -- and eight, rules 5 to 12, are todo-font-system.md's. Each rule
+ * ships with its own probe case (12 rules = 24 cases, 16 of them this plan's). They
+ * live HERE rather than in a new file because this file is already the live
+ * font-family gate, and `dev-ci.yml#ui-test` runs `cd ui && npm test` (`:277`) on any
+ * commit under `ui/` -- the changes router matches `^ui/` at `:98` -- so a new file
+ * would need new wiring for no new reach.
  *
  *   1  no remote font reference in a boot HTML document: link, preconnect or url()
  *   2  every --font-* family token's stack ends in a CSS generic keyword
@@ -57,12 +59,12 @@
  * node_modules ONLY by resolving an @import that first-party CSS declares --
  * nothing here enumerates node_modules.
  *
- * Not one of the twelve added a line to the original scanner: `git blame -L 1,600`
- * at `c614e5667` attributed all 600 of those lines to eight other commits, and to
- * none of this plan's. The header sentences that WERE wrong -- a two-directory
- * scope, a drift-guard figure, and "three rules" -- are the only pre-existing lines
- * this work has since edited, and each was a claim about the tree that the tree had
- * already moved past.
+ * None of the eight rules this plan wrote added a line to the original scanner:
+ * `git blame -L 1,600` at `c614e5667` attributed all 600 of those lines to eight
+ * other commits, and to none of this plan's. The header sentences that WERE wrong --
+ * a two-directory scope, a drift-guard figure, "three rules", and the provenance of
+ * rules 1 to 4 -- are the only pre-existing lines this work has since edited, and
+ * each was a claim about the tree that the tree had already moved past.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
