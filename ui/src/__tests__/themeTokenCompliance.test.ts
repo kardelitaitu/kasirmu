@@ -711,12 +711,24 @@ function absoluteFontFaceUrls(file: string, text: string): FontRefHit[] {
   return hits;
 }
 
+/**
+ * Directories the CSS walk could not open. Recorded, not swallowed. The first version
+ * had `catch { return out }`, which drops a whole subtree from every rule in this file
+ * and leaves the walk reading SMALLER rather than red -- a sheet nobody opened is a
+ * sheet nobody checks, and sixteen green rules say nothing about it. That is the same
+ * door noiseDitherCompliance carried until `c7b1034ce` named it (`dirsUnreadable`), and
+ * the same one rule 16's population floor was written to close: a check whose subject
+ * can vanish has no subject.
+ */
+const CSS_WALK_ABANDONED: { dir: string; reason: string }[] = [];
+
 function collectCssFiles(dir: string): string[] {
   const out: string[] = [];
-  let entries: Dirent[] = [];
+  let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
+  } catch (e) {
+    CSS_WALK_ABANDONED.push({ dir, reason: e instanceof Error ? e.message : String(e) });
     return out;
   }
   for (const entry of entries) {
@@ -2234,6 +2246,45 @@ describe('font-reference portability', () => {
     expect(shellFontSrc().map((r) => `${r.shell}.${r.key}`).sort()).toEqual([
       'desktop-client.csp', 'desktop-client.devCsp', 'tablet-client.csp', 'tablet-client.devCsp',
     ]);
+  });
+
+  // The gate's own subject, checked before any rule's verdict is read. Every rule above
+  // grades whatever CSS_SOURCES holds, so a walk that silently opened less would make
+  // sixteen checks pass over a population nobody measured. The count is in the title --
+  // the idiom the other four sheet-walkers use for the same reason -- so a shrinking
+  // walk is visible in CI output, not only when it crosses the floor below.
+  it(`the CSS walk opened every directory it was pointed at (${CSS_SOURCES.length} sheets in hand)`, () => {
+    expect(
+      CSS_WALK_ABANDONED,
+      'the stylesheet walk could not open a directory and carried on, which means some sheets were '
+        + 'graded by nothing at all. The population every rule above reports is only trustworthy '
+        + 'if the walk reached it. Fix the access, do not lower the floor:\n'
+        + CSS_WALK_ABANDONED.map((a) => `  ${a.dir} -- ${a.reason}`).join('\n'),
+    ).toEqual([]);
+    // Measured at 139 when this floor was written, floored at 120: enough headroom that
+    // a sheet or two appearing is not a failure, small enough that losing a whole
+    // directory (features/ has 106 alone) is.
+    expect(
+      CSS_SOURCES.length,
+      `the walk found ${CSS_SOURCES.length} stylesheets under ui/src, below the 120 it was measured at `
+        + 'when this floor was written. Either the tree shrank dramatically or the walk is reaching '
+        + 'somewhere other than what these rules claim to cover.',
+    ).toBeGreaterThanOrEqual(120);
+  });
+
+  it('scope floor probe: an unopenable directory is recorded, not read as empty', () => {
+    const before = CSS_WALK_ABANDONED.length;
+    expect(collectCssFiles(join(UI_SRC, 'no-such-directory-at-all'))).toEqual([]);
+    // The whole point: a returned [] and a recorded abandon are two different facts,
+    // and before this helper existed both looked identical to the caller.
+    expect(CSS_WALK_ABANDONED.length).toBe(before + 1);
+    expect(CSS_WALK_ABANDONED[before]?.dir).toContain('no-such-directory-at-all');
+    expect(CSS_WALK_ABANDONED[before]?.reason).toBeTruthy();
+    // Clean up the record this probe deliberately made: it proves the floor can fire,
+    // and leaving the entry behind would fire it for real on every later run. That is
+    // the correct behaviour for a genuine abandon, so the probe pays for its own plant.
+    CSS_WALK_ABANDONED.length = before;
+    expect(CSS_WALK_ABANDONED.length).toBe(before);
   });
 });
 
