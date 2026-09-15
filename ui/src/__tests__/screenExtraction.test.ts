@@ -355,16 +355,16 @@ const SCREENS: ScreenEntry[] = [
       'kds-column--',
       // `kds-ticket kds-ticket--${level}` in KdsTicketCard.tsx:271.
       'kds-ticket',
-      // Built in AppShell.tsx, outside this screen's own file -- which is why a
-      // KdsScreen-scoped search calls this stale and is wrong.
-      'kds-workspace',
-      // `status status--${order.status}` in KdsTicketCard.tsx:307.
-      'status--',
-      // `kds-main-track active-${activeTab}` in KdsScreen.tsx:627, resolving to
-      // .active-open / .active-completed, both defined. One template literal
-      // without this entry produces THREE findings: the fragment `active-` reads
-      // as unstyled, and both real rules read as dead.
-      'active-',
+      // Whole names, was the stem 'kds-workspace' (2026-09-15 · DSH): its 2 census
+      // credits were .kds-workspace-header and .kds-workspace-back, and
+      // git grep -rn kds-workspace -- ui/src names ONLY this sheet (:2134/:2141/:2149)
+      // -- not AppShell.tsx, the stale claim that stood here before.
+      'kds-workspace', 'kds-workspace-header', 'kds-workspace-back',
+      // Was stem 'status--'. The composition that comment cited (KdsTicketCard.tsx:307) no longer names a bare status-- in any .tsx, so these 2 rules are the whole family and a third variant must read dead.
+      'status--preparing', 'status--ready',
+      // `kds-main-track active-${activeTab}` at components/KdsMainContent.tsx:127 -- the old pointer,
+      // KdsScreen.tsx:627, is stale. Both real rules named whole, so a third variant reads dead:
+      'active-open', 'active-completed',
       // REMOVED, with the orphaned rules they were hiding:
       //   'kds-shortcut-', 'kds-shortcuts-'  -- the shortcuts popover was deleted
       //     from the markup in ccc932c4; nothing in ui/src names either prefix, so
@@ -389,7 +389,7 @@ const SCREENS: ScreenEntry[] = [
       // them `const [leaving, setLeaving] = useState(false)` in
       // features/sales/PaymentModal.tsx plus prose, none of them a className.
     ],
-    knownDynamicFragments: [
+    knownDynamicFragments: [ 'active-', // 2026-09-15 · DSH: the ONE live fragment here, from active-${activeTab} at components/KdsMainContent.tsx:127. 'status--' was tried and dropped: no .tsx composes a bare status-- (git grep -n status-- -- "ui/src/**/*.tsx" returns only longer families like po-status--/qris-status--/gift-card-status--), so shielding it would assert a composition that does not exist.
       'completed',
       'dark',
       'light',
@@ -624,7 +624,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'FeatureToggleScreen',
     tsx: 'settings/FeatureToggleScreen.tsx',
     css: ['settings/FeatureToggleScreen.css'],
-    dynamicClassPrefixes: [ 'feature-toggle-item', 'feature-toggle-item', 'feature-toggle-checkmark--enabled', 'feature-toggle-checkmark--disabled'],
+    dynamicClassPrefixes: [ 'feature-toggle-item', 'feature-toggle-item--flash-enabled', 'feature-toggle-item--flash-disabled', 'feature-toggle-checkmark--enabled', 'feature-toggle-checkmark--disabled' ], // 2026-09-15 · DSH: 'feature-toggle-item' stood here TWICE in one field -- a repeated value waives no extra rule and only made the field read wider than it is. What it hid: nothing. Both flash rules are named now (:258, :262 of FeatureToggleScreen.css), so the stem's 2 credits became 2 whole names and a third variant reads dead.
   },
 
   // ── Shifts ────────────────────────────────────────────
@@ -997,7 +997,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'GiftCardsScreen',
     tsx: 'gift-cards/GiftCardsScreen.tsx',
     css: ['gift-cards/GiftCardsScreen.css'],
-    dynamicClassPrefixes: [ 'gift-card-status--', 'gift-card-txn-type--issue', 'gift-card-txn-type--topup', 'gift-card-txn-type--redeem', 'gift-card-txn-type--refund'],
+    dynamicClassPrefixes: [ 'gift-card-txn-type--issue', 'gift-card-txn-type--topup', 'gift-card-txn-type--redeem', 'gift-card-txn-type--refund' ], // 2026-09-15 · DSH: struck the stem 'gift-card-status--' -- it credited 0 pairs and excused 0 dead names, because all four variants are written COMPLETE in the id map at features/gift-cards/GiftCardsScreen.tsx:24-27 and each owns a rule (:126/:131/:136/:142). A mute that waives nothing is not a claim, and it would have waived a fifth status silently.
     // The 11 gift-cards-modal-* values lived in externalClasses as another
     // component's work, and the file that does that work is real markup in this
     // feature: IssueGiftCardModal.tsx, which named none of the 11 in the screen file
