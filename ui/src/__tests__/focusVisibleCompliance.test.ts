@@ -10,6 +10,10 @@ const UI_SRC = resolve(__dirname, '..');
  */
 const S = { sheets: 0, interactive: 0, waivedExact: 0, waivedBoundary: 0, skipGroups: 0, skipSelectors: 0 };
 const SKIP_FIRES = new Map<RegExp, number>();
+/** Every selector excused by the compound/descendant boundary, by name. */
+const BOUNDARY_WAIVED = new Set<string>();
+/** Selector names that reached the graded population, by name. */
+const GRADED = new Set<string>();
 
 interface Violation {
   file: string;
@@ -36,17 +40,22 @@ function hasFocusVisibleRef(selectors: string, body: string): boolean {
   return /:focus-visible/.test(body) || /:focus-visible/.test(selectors);
 }
 
-/** Known non-interactive classes or visual children to skip. */
-const SKIP_PATTERNS = [
+/**
+ * Waivers naming a bare CONTAINER class (.skeleton, .empty-state, .card-header).
+ * These describe a non-interactive box, so they must never be the reason an
+ * INTERACTIVE selector leaves the population -- that was the ordering hole: a
+ * group reading `.empty-state-btn` is on the interactive list and was swallowed
+ * by /^\s*\.empty-state/ before anything asked whether it was interactive.
+ */
+const CONTAINER_SKIP_PATTERNS = [
   /^\s*\.skeleton/, /^\s*\.spinner/, /^\s*\.badge/, /^\s*\.toast/,
   /^\s*\.statusbar-dot/, /^\s*\.statusbar-divider/,
   /^\s*\.setup-step-dot/, /^\s*\.setup-step-line/,
   /^\s*\.confirm-dialog-icon/, /^\s*\.empty-state/, /^\s*\.error-state/,
   /^\s*\.payment-done/, /^\s*\.payment-done-/,
-  /::before|::after/, /:disabled/, /:hover/, /:active/,
-  /@keyframes/, /--exiting/, /--enter/,
   /^\s*\.modal-overlay/, /^\s*\.card-header/, /^\s*\.card-body/, /^\s*\.card-footer/,
   /^\s*\.modal-header/, /^\s*\.modal-body/, /^\s*\.modal-footer/,
+  // --- state / descendant waivers (below) still apply to interactive groups ---
   // Visual toggle parts — not interactive themselves
   /^\s*\.toggle-track/, /^\s*\.toggle-thumb/,
   /^\s*\.toggle-switch\s+input/,
@@ -56,8 +65,26 @@ const SKIP_PATTERNS = [
   /:checked/, /:focus-visible/,
 ];
 
-function isSkipSelector(selector: string): boolean {
-  const fired = SKIP_PATTERNS.find((re) => re.test(selector));
+/** Re-style-on-state and descendant-part waivers: legitimate for any group. */
+/**
+ * Waivers naming a STATE or a descendant PART rather than a container class: they
+ * legitimately excuse `.btn:hover`, `.x svg`, a `::before` decoration or a
+ * `:disabled` restyle from owning a focus contract, so they still apply to an
+ * interactive group after the ordering fix in scanCSS(). The CONTAINER list above
+ * deliberately does not.
+ */
+const STATE_SKIP_PATTERNS = [
+  /::before|::after/, /:disabled/, /:hover/, /:active/,
+  /@keyframes/, /--exiting/, /--enter/,
+  /\s+svg$/, /\s+\.icon/, /\s+img$/,
+  /:checked/, /:focus-visible/,
+];
+/** Every waiver, for the census a non-interactive group leaves through. */
+const ALL_SKIP_PATTERNS = [...CONTAINER_SKIP_PATTERNS, ...STATE_SKIP_PATTERNS];
+
+function isSkipSelector(selector: string, stateOnly = false): boolean {
+  const list = stateOnly ? STATE_SKIP_PATTERNS : ALL_SKIP_PATTERNS;
+  const fired = list.find((re) => re.test(selector));
   if (fired) SKIP_FIRES.set(fired, (SKIP_FIRES.get(fired) ?? 0) + 1);
   return fired !== undefined;
 }
@@ -150,7 +177,10 @@ function scanCSS(filePath: string): Violation[] {
     const boundary = [...covered].some(
       (base) => sel === base || /^[ >+~:.#[,]/.test(sel.slice(base.length)),
     );
-    if (boundary) S.waivedBoundary++;
+    if (boundary) {
+      S.waivedBoundary++;
+      if (!covered.has(sel)) BOUNDARY_WAIVED.add(sel);
+    }
     return boundary;
   }
 
@@ -161,16 +191,30 @@ function scanCSS(filePath: string): Violation[] {
     const body = rule.slice(braceIdx + 1, -1).trim();
 
     if (selectors.startsWith('@')) continue;
-    if (isSkipSelector(selectors)) {
+    // ORDERING FIX 2026-09-15: interactive membership is decided BEFORE the group
+    // skip gate, so a container-class waiver can no longer remove a selector that
+    // INTERACTIVE_SELECTORS itself names. Non-interactive groups still leave through
+    // the full gate, so the census keeps counting what it counted.
+    if (!isInteractiveSelector(selectors)) {
+      if (isSkipSelector(selectors)) {
+        S.skipGroups++;
+        S.skipSelectors += splitSelectors(selectors).length;
+      }
+      continue;
+    }
+    // An interactive group may still be excused by a STATE waiver (.btn:hover,
+    // :disabled, ::before, a descendant svg/img) -- those are not the base focus
+    // contract -- but not by a container-class waiver written for another element.
+    if (isSkipSelector(selectors, true)) {
       S.skipGroups++;
       S.skipSelectors += splitSelectors(selectors).length;
       continue;
     }
-    if (!isInteractiveSelector(selectors)) continue;
 
     // Split comma-separated groups and check each selector individually
     const individualSelectors = splitSelectors(selectors);
     S.interactive += individualSelectors.length;
+    for (const sel of individualSelectors) GRADED.add(sel);
     const uncoveredSelectors = individualSelectors.filter(
       (sel) => !selectorIsCovered(sel),
     );
@@ -310,8 +354,37 @@ describe('Focus-visible compliance', () => {
     // stopped looking.
     expect(
       S.interactive,
-      `interactive selectors reaching the covered check: ${S.interactive}, floor 15 (baseline 23 on 2026-09-15)`,
-    ).toBeGreaterThanOrEqual(15);
+      `interactive selectors reaching the covered check: ${S.interactive}, floor 20 (23 seen on 2026-09-15 before the ordering fix, 3 of headroom). This is the REACHABLE population: it counts only groups that passed the interactive test, so it can and does fall when a waiver widens.`,
+    ).toBeGreaterThanOrEqual(20);
+    // (2) THE TOTAL THE SELECTOR CAN SEE. A floor on the graded count alone was the
+    // hole: 23 members became 3 graded and 20 waived and no number moved. The union
+    // of what reaches the check and what a skip door swallowed is the input size, and
+    // it is the one figure that cannot be shuffled between doors.
+    expect(
+      INTERACTIVE_SELECTORS.length,
+      `INTERACTIVE_SELECTORS members: ${INTERACTIVE_SELECTORS.length}, floor 19 (19 measured 2026-09-15 -- a pattern deleted from the list shrinks the input at its source)`,
+    ).toBeGreaterThanOrEqual(19);
+    expect(
+      S.interactive + S.skipSelectors,
+      `selectors the walk could see at all: ${S.interactive} interactive + ${S.skipSelectors} inside skip rule-groups = ${S.interactive + S.skipSelectors}, floor 1490 (1,495 measured 2026-09-15, headroom 5)`,
+    ).toBeGreaterThanOrEqual(1490);
+    // (3) THE SKIP CENSUS IS NOW AN ASSERTION, NOT A DISPLAY. It is the largest door
+    // in this suite -- 986 rule-groups / 1,472 selectors on 2026-09-15, taken BEFORE
+    // any interactive test is reached -- and a pattern widened by accident was
+    // invisible. Bounds are on GROWTH with the headroom named in the message.
+    expect(
+      S.skipGroups,
+      `rule-groups swallowed by a skip pattern: ${S.skipGroups}, ceiling 1086 (baseline 986 on 2026-09-15, headroom 100 = a tenth of the door). A breach means a waiver pattern got wider, not that the tree got quieter.`,
+    ).toBeLessThanOrEqual(1086);
+    expect(
+      S.skipSelectors,
+      `individual selectors inside those rule-groups: ${S.skipSelectors}, ceiling 1620 (baseline 1,472 on 2026-09-15, headroom 148). A breach means the door widened; a drop is the container-class ordering fix taking groups back out of it.`,
+    ).toBeLessThanOrEqual(1620);
+    // (4) MEMBERSHIP, not size: the exact list of selectors excused by the
+    // compound/descendant boundary rule. Every count above can hold while this set
+    // grows by one name, which is what 402b11660 learned for popup -- a floor on
+    // size and a check on membership are different guards.
+    expect([...BOUNDARY_WAIVED].sort()).toEqual(BOUNDARY_WAIVED_BASELINE);
     expect(
       S.interactive - S.waivedExact - S.waivedBoundary,
       `interactive selectors actually graded: ${S.interactive - S.waivedExact - S.waivedBoundary}, floor 0 (3 on 2026-09-15 while the waiver was a raw prefix, 0 after 766fed704 cured them)`,
@@ -321,6 +394,23 @@ describe('Focus-visible compliance', () => {
       `sheets walked: ${S.sheets} of ${CSS_FILES.length}, floor 60`,
     ).toBeGreaterThanOrEqual(60);
   });
+
+/**
+ * The exact selectors excused by the compound/descendant boundary rule, as of
+ * 2026-09-15 at tip 198cd9cb0 (26 interactive selectors reached the covered check:
+ * 2 graded, 19 waived by exact name, 5 by this boundary). A size floor cannot see
+ * a waiver acquire one more name while every count holds; membership can, so this
+ * list is asserted as a set, not counted. Adding a name here is a decision a
+ * reviewer has to sign, and the only legitimate reason is that the boundary
+ * correctly reached a new compound of an already-covered base.
+ */
+const BOUNDARY_WAIVED_BASELINE: string[] = [
+  '.btn--icon-only.btn--lg',
+  '.btn--icon-only.btn--md',
+  '.btn--icon-only.btn--sm',
+  '.btn--success-state .btn__check',
+  '.toggle-switch input',
+];
 
   it('all interactive elements have :focus-visible styles with visible indicators', () => {
     const message =
