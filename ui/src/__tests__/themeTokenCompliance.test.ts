@@ -960,13 +960,69 @@ function resolveFaceSource(spec: string): FaceSource {
 }
 
 function faceBlocks(text: string): number {
-  FONT_FACE_BLOCK_RE.lastIndex = 0;
-  let n = 0;
-  while (FONT_FACE_BLOCK_RE.exec(text)) n++;
-  return n;
+  return faceBlockTexts(text).length;
 }
 
-/** The face files the shipped fonts.css pulls in. Shared by rules 7 and 9. */
+/**
+ * The @font-face blocks themselves, in source order. faceBlocks() is its own
+ * length, so the count every other rule reports and the per-face text rule 13
+ * needs cannot drift apart -- a second regex over the same text could.
+ */
+function faceBlockTexts(text: string): string[] {
+  FONT_FACE_BLOCK_RE.lastIndex = 0;
+  const out: string[] = [];
+  let m: RegExpExecArray | null = FONT_FACE_BLOCK_RE.exec(text);
+  while (m) {
+    out.push(m[0]);
+    m = FONT_FACE_BLOCK_RE.exec(text);
+  }
+  return out;
+}
+
+const FACE_URL_RE = /url\(\s*['"]?([^'")]+)/g;
+
+/** Every url() inside one @font-face block. */
+function faceUrls(block: string): string[] {
+  FACE_URL_RE.lastIndex = 0;
+  const out: string[] = [];
+  let m: RegExpExecArray | null = FACE_URL_RE.exec(block);
+  while (m) {
+    out.push((m[1] ?? '').trim());
+    m = FACE_URL_RE.exec(block);
+  }
+  return out;
+}
+
+/**
+ * The src entries of a face that are actually PRESENT.
+ *
+ * Rule 3 and rule 7 ask whether a face's url is SAME-ORIGIN; neither asks whether
+ * the file is there. A face whose four urls all name absent files ships nothing
+ * and satisfies every one of them -- and the failure is silent in the only sense
+ * that matters: the CSS parses, the build succeeds, the family is declared, and
+ * the browser falls back one tier down to the tail rule 10 pinned. Measured at
+ * the tip this rule was written: 13 imported faces, 13 urls, 0 absent.
+ *
+ * A data: url is self-contained and counts as present; a host-named url does not
+ * count either way -- rules 3 and 7 own it, and grading its absence here would
+ * report the same defect twice with two different messages.
+ */
+function presentFaceUrls(block: string, baseDir: string): string[] {
+  return faceUrls(block).filter((u) => {
+    if (/^data:/i.test(u)) return true;
+    if (/^(https?:)?\/\//i.test(u)) return false;
+    const noQuery = u.split('?')[0] ?? u;
+    let clean = noQuery.split('#')[0] ?? noQuery;
+    try {
+      clean = decodeURIComponent(clean);
+    } catch {
+      /* a malformed escape is a naming problem, not a missing file -- let it miss */
+    }
+    return existsSync(resolve(baseDir, clean));
+  });
+}
+
+/** The face files the shipped fonts.css pulls in. Shared by rules 7, 9 and 13. */
 function importedFaceSources(): FaceSource[] {
   if (!existsSync(FONTS_CSS)) return [];
   return cssImportSpecs(readFileSync(FONTS_CSS, 'utf-8')).map(resolveFaceSource);
@@ -1700,6 +1756,82 @@ describe('font-reference portability', () => {
     expect(bootTail("var(--font-sans,\n    -apple-system,  BlinkMacSystemFont,\n    'SF Pro Display', 'Segoe UI',\n    system-ui, sans-serif)")).toBe(BOOT_FALLBACK_TAIL);
     // A var() with no fallback yields '', which is neither the pin nor a silent pass.
     expect(bootTail('var(--font-sans)')).toBe('');
+  });
+
+  it('rule 13: every shipped @font-face names at least one src file that exists', () => {
+    let faces = 0;
+    let urls = 0;
+    const sources = importedFaceSources();
+    const graded = sources.filter((s) => s.kind === 'file');
+    expect(
+      graded.length,
+      'rule 13 has no imported stylesheet to read, so every face is ungraded. Rule 7 '
+        + 'fails on the same tree for the unresolvable @import; this floor exists so '
+        + 'the two cannot disagree about whether there is a population at all.',
+    ).toBeGreaterThanOrEqual(1);
+    for (const s of graded) {
+      const file = s.file;
+      if (!file) continue;
+      const baseDir = join(file, '..');
+      for (const block of faceBlockTexts(s.text)) {
+        faces++;
+        const fam = (/font-family\s*:\s*['"]?([^;'"]+)/i.exec(block)?.[1] ?? '?').trim();
+        const subset = (/unicode-range\s*:\s*([^;]+)/i.exec(block)?.[1] ?? 'no unicode-range').trim().slice(0, 48);
+        const found = faceUrls(block);
+        urls += found.length;
+        expect(
+          found.length,
+          `an @font-face declares no src url at all: ${s.spec} :: ${fam} (${subset})`,
+        ).toBeGreaterThan(0);
+        const present = presentFaceUrls(block, baseDir);
+        expect(
+          present.length,
+          `an @font-face names ${found.length} url()s and NOT ONE of them is a file that `
+            + 'exists, so this face ships nothing while rules 3 and 7 keep passing -- they ask '
+            + 'whether a url reaches a host, never whether the file is there:\n'
+            + `  source: ${s.spec} (${file})\n  family: ${fam}\n  subset: ${subset}\n`
+            + `  named : ${found.join(', ')}\n`
+            + 'The visible symptom is a fallback one tier down: the CSS parses, the build '
+            + 'succeeds, the family is declared, and the browser quietly paints the tail this '
+            + 'suite pins. A dependency that moves its files/ layout is the expected way to '
+            + 'fire this, and the correct response is to update the @import, not this rule.',
+        ).toBeGreaterThan(0);
+      }
+    }
+    // Magnitude, with headroom: 13 faces and 13 urls measured at 70578375b's
+    // successors (7 inter subsets + 6 jetbrains-mono subsets). A floor of 12 cannot
+    // be met by one package resolving, so a silently-half-loaded fonts.css fires.
+    expect(faces, `only ${faces} @font-face blocks resolved; 13 were measured in the tree`).toBeGreaterThanOrEqual(12);
+    expect(urls, `only ${urls} src urls were examined; a face with no url is not a face`).toBeGreaterThanOrEqual(12);
+  });
+
+  it('rule 13 probe: one present url is enough, data: is present, and a host url is neither', () => {
+    // An existing first-party file stands in for a woff2: fonts.css is already
+    // asserted to exist by rule 7, so this needs no planted artifact and leaves no
+    // residue behind.
+    const cssBase = join(FONTS_CSS, '..');
+    expect(presentFaceUrls("@font-face { src: url('fonts.css') format('woff2'); }", cssBase)).toEqual(['fonts.css']);
+    expect(presentFaceUrls("@font-face { src: url('./files/no-such-face.woff2'); }", cssBase)).toEqual([]);
+    // A multi-format src is saved by ANY entry that exists -- the deliberate design
+    // choice, because a package may ship woff2 without woff and be perfectly correct.
+    const mixed = presentFaceUrls(
+      "@font-face { src: url('./files/absent.woff') format('woff'), url('fonts.css') format('woff2'); }",
+      cssBase,
+    );
+    expect(mixed.length).toBe(1);
+    expect(mixed).toEqual(['fonts.css']);
+    // data: is self-contained; a host url is rules 3/7's business and counts as absent
+    // here so that a face carrying ONLY remote urls still fires something.
+    expect(presentFaceUrls("@font-face { src: url(data:font/woff2;base64,AAAA); }", cssBase)).toHaveLength(1);
+    expect(presentFaceUrls("@font-face { src: url(https://example.com/a.woff2); }", cssBase)).toHaveLength(0);
+    expect(presentFaceUrls("@font-face { src: url(//example.com/a.woff2); }", cssBase)).toHaveLength(0);
+    // A cache-busting query is not part of the filename.
+    expect(presentFaceUrls("@font-face { src: url('fonts.css?v=2'); }", cssBase)).toHaveLength(1);
+    // faceBlocks() and faceBlockTexts() agree, so the count other rules report is the
+    // same population this one walks.
+    const sample = "@font-face { font-family: 'X'; src: url(a.woff2); }\n@font-face { font-family: 'Y'; src: url(b.woff2); }";
+    expect(faceBlocks(sample)).toBe(faceBlockTexts(sample).length);
+    expect(faceBlockTexts(sample)).toHaveLength(2);
   });
 });
 
