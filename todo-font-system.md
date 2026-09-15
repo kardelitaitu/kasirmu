@@ -717,7 +717,7 @@ Fourteen rounds of this plan have spent most of their effort on numbers that wen
 |---|---|---|
 | the rules and their own denominators (sixteen as this line was written; the count is not the claim, the command is) | `cd ui && npx vitest run src/__tests__/themeTokenCompliance.test.ts` | at most one failure, and it names a dirty file — see the next row |
 | which walked paths are dirty right now | `git status --porcelain -- ui/src` | empty means the green is a claim about HEAD; non-empty means it is only a claim about the disk |
-| faces, files, `data:`, bytes in the build | `node scripts/check-font-bundle.mjs` | prints its own subject, and **exits 2 rather than printing zeros** when no build is present |
+| faces, files, `data:`, bytes in the build | `node scripts/check-font-bundle.mjs` | prints its own subject **and how far behind HEAD the artifact is**, and **exits 2 rather than printing zeros** when no build is present |
 | before/after rendering, budget, the type-scale table | `node ui/e2e/font-visual-audit.mjs` | two runs of one document differing only in whether woff2 responses are permitted |
 | remote hosts still named under `ui/` | `git grep -l -e 'fonts.googleapis.com' -e 'fonts.gstatic.com' -- ui/` | exactly **one** path: the compliance suite, where those strings exist only to fail on |
 | CSP clause in both shells, both keys | `git grep -o -e 'font-src [^;\"]*' -- apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json` | **four lines, all identical**, and rule 16 is the gated version of the same claim. An earlier draft of this row said `git grep -c -e 'font-src'` and expected **2** per file, which is not a check at all: with a host added to one clause the counts still read 2 and 2 |
