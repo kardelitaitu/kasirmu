@@ -11,6 +11,8 @@ import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import MemoBanner from '@/features/memo/MemoBanner';
 import type { WizardState } from '@/features/setup/SetupWizard';
+import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
+import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
@@ -19,6 +21,7 @@ const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
 const PosScreen = lazy(() => import('@/features/sales/PosScreen'));
 const KdsScreen = lazy(() => import('@/features/kds/KdsScreen'));
+const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceSettingsModal'));
 
 /**
  * Tablet-optimised application shell.
@@ -37,12 +40,14 @@ export default function TabletAppShell() {
   const [loading, setLoading] = useState(true);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
   const [currentRoute, setCurrentRoute] = useState('pos');
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
   // ADR #4 Phase 3b: use WorkspaceContext for device-bound auto-boot.
   const {
     activeWorkspace,
     workspaceScreens,
+    terminalId,
   } = useWorkspace();
 
   // Navigate to workspace-appropriate route on selection.
@@ -59,6 +64,28 @@ export default function TabletAppShell() {
       setCurrentRoute(workspaceRoute[activeWorkspace ?? ''] ?? 'pos');
     }
     prevWorkspaceRef.current = activeWorkspace;
+  }, [activeWorkspace]);
+
+  // ── F10 opens the WorkspaceSettingsModal — parity with the desktop shell ──
+  // Mirrors AppShell.tsx:~377. Without this the tablet had no keyboard route
+  // into workspace settings at all: RetailFnBar prints an "F10 / Options"
+  // hint, but RetailPosScreen deliberately does not handle the key itself
+  // (RetailPosScreen.tsx:1378) because the desktop shell owns it — and no
+  // shell owned it here. Guarded by isAnyAriaModalOpen so the shortcut cannot
+  // stack a second modal on top of one that is already open.
+  useEffect(() => {
+    if (!activeWorkspace) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'F10') {
+        e.preventDefault();
+        if (!isAnyAriaModalOpen()) {
+          consumeShortcut(e);
+          setSettingsModalOpen((p) => !p);
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [activeWorkspace]);
 
   // On mount, check if setup was already completed.
@@ -85,6 +112,22 @@ export default function TabletAppShell() {
 
   const userRole = session?.role_name ?? '';
   const userPermissions = session?.permissions;
+
+  // ── Shared settings modal, built once and dropped into every branch ──
+  // Same shape as AppShell: the card comes from the active workspace, and a
+  // type_key with no card (admin, inventory) renders nothing rather than
+  // defaulting to the wrong one.
+  const workspaceType: WorkspaceType | null = toWorkspaceType(activeWorkspace);
+  const settingsModal = settingsModalOpen && workspaceType ? (
+    <LazyBoundary>
+      <WorkspaceSettingsModal
+        open={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        workspaceType={workspaceType}
+        terminalId={terminalId}
+      />
+    </LazyBoundary>
+  ) : null;
 
   const handleNavigate = useCallback((route: string) => {
     const target = getPage(route);
@@ -161,6 +204,7 @@ export default function TabletAppShell() {
         <LazyBoundary>
           <PosScreen onNavigate={handleNavigate} />
         </LazyBoundary>
+        {settingsModal}
       </div>
     );
   }
@@ -172,6 +216,7 @@ export default function TabletAppShell() {
         <LazyBoundary>
           <RetailPosScreen onNavigate={handleNavigate} />
         </LazyBoundary>
+        {settingsModal}
       </div>
     );
   }
@@ -184,6 +229,7 @@ export default function TabletAppShell() {
           <LazyBoundary>
             <KdsScreen />
           </LazyBoundary>
+          {settingsModal}
         </div>
       </>
     );
@@ -215,6 +261,8 @@ export default function TabletAppShell() {
           <PageComponent />
         </LazyBoundary>
       ) : null}
+      {/* The modal portals itself, so it does not matter which branch hosts it. */}
+      {settingsModal}
     </TabletAppLayout>
   );
 }

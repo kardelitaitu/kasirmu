@@ -11,7 +11,7 @@
 // beforeEach).
 
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { act } from 'react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import TabletAppShell from '@/frontend/shell/tablet/TabletAppShell';
@@ -44,6 +44,20 @@ vi.mock('@/features/sales/PosScreen', () => ({
 
 vi.mock('@/features/kds/KdsScreen', () => ({
   default: () => <div data-testid="kds-screen">KDS</div>,
+}));
+
+// Workspace settings stub. TabletAppShell lazy-loads the real modal and only
+// on F10. The stub reports the card type it was handed so the type_key →
+// WorkspaceType mapping is assertable, and it declares aria-modal like the real
+// one does (WorkspaceSettingsModal.tsx:169) — that matters, because the shell's
+// handler is guarded by isAnyAriaModalOpen(), so an open modal suppresses the
+// shortcut. A stub without aria-modal would make a second F10 look like a
+// toggle when production cannot do that.
+vi.mock('@/features/settings/WorkspaceSettingsModal', () => ({
+  default: (props: { open: boolean; workspaceType?: string }) =>
+    props.open
+      ? <div data-testid="ws-settings-modal" aria-modal="true">{props.workspaceType}</div>
+      : null,
 }));
 
 // Memo banner surface stub: pins WHERE the banner mounts (the shell's job),
@@ -422,6 +436,99 @@ describe('TabletAppShell — routing', () => {
         expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── F10 workspace settings (parity with the desktop shell) ──────
+
+  describe('F10 workspace settings modal', () => {
+    function pressF10() {
+      fireEvent.keyDown(document, { key: 'F10' });
+    }
+
+    it('opens the settings modal on F10 with the active workspace card', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'restaurant-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId('ws-settings-modal')).not.toBeInTheDocument();
+
+      pressF10();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ws-settings-modal')).toBeInTheDocument();
+      });
+      // The card is derived from the workspace type_key, not hardcoded — this
+      // is the defect class PosScreen had before 3af8e2989.
+      expect(screen.getByTestId('ws-settings-modal')).toHaveTextContent('restaurant-pos');
+    });
+
+    it('derives the card from the active workspace, so store-pos is not restaurant-pos', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'store-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('retail-pos-screen')).toBeInTheDocument();
+      });
+
+      pressF10();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('ws-settings-modal')).toHaveTextContent('store-pos');
+      });
+    });
+
+    it('leaves a second F10 to the open modal rather than toggling it shut', async () => {
+      // Deliberate, and matching AppShell: once open, the modal's own
+      // aria-modal makes isAnyAriaModalOpen() true, so the shell stands down.
+      // Closing is the modal's job (its close button / focus trap).
+      mockWorkspaceValue({ activeWorkspace: 'restaurant-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+
+      pressF10();
+      await waitFor(() => {
+        expect(screen.getByTestId('ws-settings-modal')).toBeInTheDocument();
+      });
+
+      pressF10();
+
+      expect(screen.getByTestId('ws-settings-modal')).toBeInTheDocument();
+    });
+
+    it('renders no modal for a workspace that has no settings card (admin)', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'admin', workspaceScreens: ['pos'] });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('memo-banner-mount')).toBeInTheDocument();
+      });
+
+      pressF10();
+
+      // admin is a reachable type_key with no WorkspaceType card. The shell
+      // must render nothing rather than fall back to a wrong card.
+      expect(screen.queryByTestId('ws-settings-modal')).not.toBeInTheDocument();
+    });
+
+    it('ignores F10 while an unrelated modal already owns the screen', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'restaurant-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+
+      const blocker = document.createElement('div');
+      blocker.setAttribute('aria-modal', 'true');
+      document.body.appendChild(blocker);
+      try {
+        pressF10();
+        expect(screen.queryByTestId('ws-settings-modal')).not.toBeInTheDocument();
+      } finally {
+        blocker.remove();
+      }
     });
   });
 });

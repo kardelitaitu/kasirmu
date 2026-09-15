@@ -20,7 +20,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import type { WizardState } from '@/features/setup/SetupWizard';
-import type { WorkspaceType } from '@/features/settings/WorkspaceSettingsModal';
+import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { getLicenseStatus } from '@/api/license';
 import { hasUsers } from '@/api/staff';
 import LicenseActivationScreen from '@/features/auth/LicenseActivationScreen';
@@ -391,14 +391,9 @@ export default function AppShell() {
     return () => document.removeEventListener('keydown', handler);
   }, [activeWorkspace]);
 
-  // Map active workspace to the modal's WorkspaceType.
-  const WORKSPACE_TO_TYPE: Record<string, WorkspaceType> = {
-    'restaurant-pos': 'restaurant-pos',
-    'store-pos': 'store-pos',
-    kds: 'kds',
-    warehouse: 'warehouse',
-  };
-  const workspaceType: WorkspaceType | null = activeWorkspace ? (WORKSPACE_TO_TYPE[activeWorkspace] ?? null) : null;
+  // Map active workspace to the modal's WorkspaceType. Null for keys with no
+  // card (admin, inventory, unknown) — the modal is then not rendered at all.
+  const workspaceType: WorkspaceType | null = toWorkspaceType(activeWorkspace);
 
   // Shared settings modal extracted once to avoid duplicating JSX across 6+ branches.
   const settingsModal = settingsModalOpen && workspaceType ? (
