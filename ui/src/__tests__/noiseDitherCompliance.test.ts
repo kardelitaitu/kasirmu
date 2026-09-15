@@ -473,6 +473,40 @@ function isExemptSelector(sel: string): boolean {
  * title is evaluated while the file is still being collected -- before any hook or
  * test body runs. Counting inside the case would print four zeros as if they passed.
  */
+/*
+ * ESCAPE OF RECORD, dated 2026-09-15 -- a finding, not a fix. The waiver list below
+ * is deliberately UNCHANGED by this comment.
+ *
+ * The prefix door waives a selector because of its NAME and never asks whether that
+ * element carries a shadow of its own. Measured on the run that shipped with the
+ * exact-or-boundary matcher: 118 shadowed selectors reach the filter and 4 leave
+ * through the prefix door -- '.kds-slider-knob', '.memo-banner-close',
+ * '.memo-expanded-close' and one sibling -- and the census that counts them also
+ * finds them declaring their own box-shadow rather than inheriting one. So a sheet
+ * may put a real --shadow-* token on an exempt NAME and this gate will not look.
+ *
+ * A briefing sized the same escape far larger (48 badge/modal/panel selectors naming
+ * --shadow-*, 43 declaring box-shadow, 35 both, 47 of 48 descendants). Those counts
+ * are ATTRIBUTED, not reproduced: this walk refuses tokens.css and components.css by
+ * basename (sheetsRefused = 2) and a same-scope census found 0 DESCENDANT selectors
+ * among the exempt-matched. If the 48 is real, it is living in the two sheets this
+ * gate never opens -- which is the second finding, and both are checkable from the
+ * denominator print below rather than from this paragraph.
+ *
+ * The inverted incentive this file already records against itself stays open and is
+ * untouched here: 312 of 434 box-shadow rules are skipped for HARDCODING a shadow
+ * instead of tokenising one, so a sheet escapes by doing the wrong thing, and the
+ * exempt-with-real-shadow selectors sit on top of that.
+ *
+ * Two candidate remedies, named and NOT chosen -- each one changes what the gate
+ * demands of a stylesheet, which is an owner decision:
+ *   (1) grade through the name: drop from EXEMPT_SELECTOR_PREFIXES any entry whose
+ *       element declares its own --shadow-* token, and give those surfaces the dither
+ *       they were waived out of;
+ *   (2) keep the waiver and make it earned: require the small-area certificate the
+ *       note next to '.kds-slider-knob' already argues (banding needs a large, soft
+ *       gradient to be visible) per entry, so exemption follows geometry, not prefix.
+ */
 function applySelectorWaivers(): void {
   waiverCoveredByList = 0; waiverPrefix = 0; waiverPseudoState = 0; waiverAttribute = 0;
   surfacesSurvivingWaivers = [];
@@ -598,6 +632,14 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     expect(shadowRules, 'the box-shadow population exceeds the rules examined').toBeLessThanOrEqual(rulesExamined);
     expect(rulesExamined, 'not one rule was examined across ' + allCssFiles.length + ' sheets -- the splitter is dead').toBeGreaterThanOrEqual(1000);
     expect(unparseableSheets, 'a sheet the walk could not read is a silent blackout, not a pass:\n  ' + unparseableSheets.join('\n  ')).toEqual([]);
+    // The prefix door had NO ceiling, which is worse than an unfailable one: a bound
+    // of 100 over a population of 4 can never disagree, and an absent bound cannot be
+    // disagreed with at all. This one can. Measured on the shipped exact-or-boundary
+    // run: 4 selectors leave through the prefix door. Ceiling set at 8 -- twice the
+    // measured population, 4 of headroom -- so a real over-waiving growth fires while
+    // one new exempt family does not. If this goes red the answer is not to raise the
+    // number: it is to name what the extra prefix is swallowing (see ESCAPE OF RECORD).
+    expect(waiverPrefix, 'the exempt-prefix door waived ' + waiverPrefix + ' selector(s) of a measured population of 4 with 4 of headroom -- a breach means the waiver list grew past anything this gate has graded').toBeLessThanOrEqual(8);
     expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
   });
 
