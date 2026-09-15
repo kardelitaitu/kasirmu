@@ -54,9 +54,38 @@ CRATES = ["oz-cloud-server", "oz-api", "platform-sync"]
 # sandboxes, and a guard that cannot run is not a guard.
 SRC_TREES = ["apps", "crates", "platform", "modules", "foundation"]
 
-# An arm = an eprintln whose literal says "skip", case-insensitively at the word
-# start so "skipped"/"Skipping"/"SKIP" all land.
-ARM_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*[Ss][Kk][Ii][Pp]', re.IGNORECASE)
+# An arm = an `eprintln!` whose literal says "skip". IGNORECASE covers the case
+# folding; an earlier revision also spelled out [Ss][Kk][Ii][Pp], which is
+# redundant under the flag and was simplified only after --self-test confirmed the
+# census byte-identical at 64/12, not on the assumption that it was.
+ARM_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
+
+# ── The SOURCE channel is armed with TWO guards, not one, and both directions
+#    are planted in --self-test.
+#
+# A bare "arms > 0" check catches only total blindness. If a lane rewrites the
+# messages ("PG test unavailable, continuing") or a parser drifts, the census
+# quietly shrinks 64 -> 40 and a green still prints. This repo already learned
+# that lesson twice, and `AGENTS.md` records both cases: `402b11660` replaced
+# `popupBackgroundCompliance`'s five `toBeGreaterThan(0)` floors with "magnitude
+# floors set with headroom below the value each was measured from", each failure
+# naming the baseline it fell from, AND a graded-set identity check; and
+# `b65ced27a` gave `themeTokenCompliance` floors on nested reads (>= 60) and on
+# distinct inner names (>= 15) so "a harvest that stops descending reads red".
+# The plant that settles it, quoted from that page: with a gradable rule filtered
+# out of the graded door, "all four magnitude floors passed and only the identity
+# check fired -- a floor on size and a check on membership are different guards,
+# and this suite needs both." Same reasoning here: ARM_FLOOR bounds the size,
+# ARM_CRATES bounds the membership, and a partition that sums correctly can still
+# be walking a silently narrowed population.
+#
+# Measured baseline: 64 arms across 12 test files in 3 crates, 2026-09-15.
+ARM_FLOOR = 55  # headroom below 64: absorbs a legitimate conversion, fires on drift
+ARM_BASELINE = 64
+# Per-crate membership: each crate that owns arms today must keep at least one.
+# Renaming a file survives this; a whole crate's arms going uncounted does not,
+# which is the "fix landed in one crate, 17 left behind" failure in another form.
+ARM_CRATES = ("apps/cloud-server", "crates/oz-api", "platform/sync")
 
 # A skip EVENT in test output: the word "skip" as its own word, on a line that is
 # NOT a runner result line. The exclusion is the whole point --
@@ -169,7 +198,12 @@ def run_cargo(crates: list[str]) -> tuple[int, str]:
     chunks: list[str] = []
     rc = 0
     for krate in crates:
-        cmd = ["cargo", "test", "-p", krate, "--", "--nocapture"]
+        # `--all-features` because CI's own command is
+        # `cargo nextest run --workspace --all-features` (dev-ci.yml:244). Without
+        # it, a test module sitting behind a feature gate never compiles, so this
+        # runner would report fewer cases than the environment it is being compared
+        # to -- the same under-read, arriving from the opposite direction.
+        cmd = ["cargo", "test", "-p", krate, "--all-features", "--", "--nocapture"]
         print(f"$ {' '.join(cmd)}", file=sys.stderr)
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         chunks.append(proc.stdout or "")
@@ -179,21 +213,65 @@ def run_cargo(crates: list[str]) -> tuple[int, str]:
     return rc, "\n".join(chunks)
 
 
+def source_findings(arms: int, per_file: dict[str, int]) -> list[str]:
+    """The SOURCE channel's guards, as a function so both directions are plantable.
+
+    Three checks, deliberately of different kinds -- a magnitude floor and a
+    membership check are not substitutes for each other (see ARM_FLOOR's note):
+      1. total arms below the floor  -> parser drift or a mass message rewrite;
+      2. a crate that owns arms today contributing none -> a whole-crate loss;
+      3. census exactly zero         -> the vacuity case that makes LOG meaningless.
+    Returns [] when the census is healthy.
+    """
+    notes: list[str] = []
+
+    if arms == 0:
+        notes.append(
+            "SOURCE: zero skip arms found in the tree. The LOG channel is now\n"
+            "      vacuous: either the arms were genuinely converted to a mechanism\n"
+            "      that reports a number, or the eprintln! lines were deleted while\n"
+            "      the `return` stayed. Re-read this file's shape rules before\n"
+            "      believing any green it prints."
+        )
+        return notes
+
+    if arms < ARM_FLOOR:
+        notes.append(
+            f"SOURCE: {arms} arms is below the floor of {ARM_FLOOR} (baseline\n"
+            f"      {ARM_BASELINE} measured 2026-09-15 across 12 files in 3 crates).\n"
+            "      A silent shrink is the failure this floor exists for: if the\n"
+            "      messages were reworded, or a shape rule narrowed, the census\n"
+            "      drops and a green still prints. Diff\n"
+            "      `--census-only` against the table in todo-open-debt-program.md\n"
+            "      Phase 5 before proceeding."
+        )
+
+    for crate in ARM_CRATES:
+        if not any(rel.startswith(crate + "/") for rel in per_file):
+            notes.append(
+                f"SOURCE: no arms counted anywhere under `{crate}/`, though it owns\n"
+                "      arms at baseline. A magnitude floor can pass while one crate\n"
+                "      goes wholly uncounted -- that is the membership case, and it\n"
+                "      is what 'fixed in one crate, the rest left behind' looks like\n"
+                "      from the census side."
+            )
+    return notes
+
+
 def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool) -> int:
     report = parse_log(text)
     ok = True
 
-    if arms == 0:
-        print("FAIL  SOURCE: no print-then-abandon skip arms found in the tree.")
-        print("      Check 1 is now vacuous: either the arms were genuinely")
-        print("      converted to a mechanism that reports a number, or the")
-        print("      eprintln! lines were deleted while the `return` stayed.")
-        print("      Re-read scripts/verify-pg-tests-ran.py's shape rules before")
-        print("      believing a green here.")
+    findings = source_findings(arms, per_file)
+    if findings:
+        for note in findings:
+            print("FAIL  " + note)
         ok = False
     else:
-        files = len(per_file)
-        print(f"ok    SOURCE: {arms} skip arms across {files} test files (census only)")
+        print(f"ok    SOURCE: {arms} skip arms across {len(per_file)} test files in "
+              f"{len({r.split('/')[0] + '/' + r.split('/')[1] for r in per_file})} crates"
+              f" -- TREE-WIDE census, not the selected crate's (floor {ARM_FLOOR},"
+              f" baseline {ARM_BASELINE})")
 
     if not report["passed"] and not report["failed"]:
         print("FAIL  LOG: no `test result:` summary line found.")
@@ -300,7 +378,7 @@ def self_test() -> int:
     #      too, so there is no boundary to assert -- which made an early version
     #      of this census silently `return`-only while still printing a plausible
     #      total. Both directions are planted here so that bug cannot return.
-    def arms(src: str) -> int:
+    def arms_in(src: str) -> int:
         lines = src.splitlines()
         return sum(1 for i, ln in enumerate(lines)
                    if ARM_RE.search(ln) and arm_abandons(lines, i))
@@ -317,7 +395,7 @@ def self_test() -> int:
         '}\n'
     )
     expect("an arm that ends in panic! IS counted (the \\b macro bug cannot return)",
-           arms(panic_arm) == 1)
+           arms_in(panic_arm) == 1)
 
     neighbour_arm = (
         'fn t() {\n'
@@ -331,7 +409,7 @@ def self_test() -> int:
         '}\n'
     )
     expect("a panic! in the NEXT match arm is NOT read as this arm abandoning",
-           arms(neighbour_arm) == 0)
+           arms_in(neighbour_arm) == 0)
 
     helper_none = (
         'fn helper() -> Option<Pool> {\n'
@@ -345,9 +423,41 @@ def self_test() -> int:
         '}\n'
     )
     expect("a helper propagating a bare None IS counted (redis_backend_tests shape)",
-           arms(helper_none) == 1)
+           arms_in(helper_none) == 1)
 
-    # (4) grade() must fail on a zero census even with a clean log -- the
+    # (4) the SOURCE channel's own guards. A guard whose floor cannot fire is
+    #     itself decoration, so each is planted in both directions using the real
+    #     census as the "healthy" side.
+    expect("real census yields no SOURCE findings (floor + membership both satisfied)",
+           source_findings(arms, per_file) == [])
+    expect("a census below the floor FIRES (a silent shrink cannot read green)",
+           any("below the floor" in n for n in source_findings(40, per_file)))
+    expect("a census at the floor does NOT fire (headroom, not equality)",
+           source_findings(ARM_FLOOR, per_file) == []
+           or not any("below the floor" in n for n in source_findings(ARM_FLOOR, per_file)))
+
+    # Membership: keep the total healthy but delete one whole crate's rows.
+    two_crates = {k: v for k, v in per_file.items() if not k.startswith("platform/sync")}
+    reduced = sum(two_crates.values())
+    mfst = source_findings(reduced, two_crates)
+    floor_notes = [n for n in mfst if "below the floor" in n]
+    member_notes = [n for n in mfst if "no arms counted anywhere under" in n.lower()]
+    # The same shape as the plant AGENTS.md records for popupBackgroundCompliance:
+    # "all four magnitude floors passed and only the identity check fired". Here,
+    # dropping platform/sync's 4 arms leaves 60 counted, which is above the floor
+    # of 55 -- so size reads healthy and only membership can see the loss.
+    expect("dropping a whole crate keeps the TOTAL above the floor (size is blind to it)",
+           reduced >= ARM_FLOOR and floor_notes == [])
+    expect("membership fires on exactly that crate, once",
+           len(member_notes) == 1 and "platform/sync" in member_notes[0])
+
+    # A planted fake path must not satisfy membership (the rule is prefix-matched,
+    # so an unrelated tree cannot silently stand in for a missing crate).
+    fake = {f"vendor/thing/{c}_tests.rs": 20 for c in ("a", "b", "c")}
+    expect("a fake tree cannot satisfy the crate membership rule",
+           len(source_findings(60, fake)) == len(ARM_CRATES))
+
+    # (5) grade() must fail on a zero census even with a clean log -- the
     #     vacuity this guard exists to catch.
     import io
     from contextlib import redirect_stdout
