@@ -971,11 +971,6 @@
   font-weight: var(--font-weight-bold);
 }
 
-.wire-simulation-pulse {
-  fill: var(--color-info);
-  filter: drop-shadow(var(--shadow-sm));
-}
-
 /* Topology Node Component */
 .topology-node {
   position: absolute;

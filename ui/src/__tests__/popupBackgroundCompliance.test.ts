@@ -400,7 +400,7 @@ describe('popup surfaces have visible backgrounds', () => {
       ["features/kds/components/ModifierBadge.css",6],
       ["features/kiosk/KioskScreen.css",39],
       ["features/locations/MultiStoreDashboardScreen.css",34],
-      ["features/locations/NodeTopologyEditor.css",351],
+      ["features/locations/NodeTopologyEditor.css",350],
       ["features/locations/TerminalStatusPanel.css",19],
       ["features/locations/TopologyApplyConfirm.css",38],
       ["features/locations/TopologyRevisionBrowser.css",33],
