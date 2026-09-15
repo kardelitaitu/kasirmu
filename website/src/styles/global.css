@@ -1,7 +1,9 @@
-/* Self-hosted variable fonts (fontsource). Same family names as before
-   ('Inter', 'JetBrains Mono'), so the token stacks below keep resolving.
-   Serving from our own origin removes the render-blocking third-party
-   fonts.googleapis.com CSS + fonts.gstatic.com hops from the LCP chain. */
+/* Self-hosted variable fonts (fontsource). These packages register their faces
+   as 'Inter Variable' / 'JetBrains Mono Variable' — NOT the plain names — so the
+   token stacks below must name those first, or nothing self-hosted resolves and
+   the page silently falls through to the platform faces. Serving from our own
+   origin removes the render-blocking third-party fonts.googleapis.com CSS +
+   fonts.gstatic.com hops from the LCP chain. */
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
 
@@ -56,9 +58,12 @@
 
 :root {
   color-scheme: light;
-  /* Inter font stack */
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+  /* Font stacks — the self-hosted variable face first (see the import note at
+     the top of this file), then a locally-installed static copy, then the
+     platform faces. The tails below are byte-identical to the app's
+     --font-sans / --font-mono in ui/src/frontend/themes/tokens.css. */
+  --font: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
   /* Spacing (4px base) */
   --sp-1: 0.25rem;  /* 4px */
   --sp-2: 0.5rem;   /* 8px */
