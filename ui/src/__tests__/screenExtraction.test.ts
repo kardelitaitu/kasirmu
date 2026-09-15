@@ -600,7 +600,7 @@ const SCREENS: ScreenEntry[] = [
     // moved out of the screen in DataManagement slice 3; unregistered, the guard
     // reads those classes as dead CSS.
     additionalTsx: ['settings/components/BackupSection.tsx', 'settings/components/ImportSection.tsx', 'settings/components/ExportSection.tsx'],
-    dynamicClassPrefixes: ['data-mgmt-toast--'],
+    // dynamicClassPrefixes: ['data-mgmt-toast--'] struck 2026-09-15 · DSH · an inert allowance, retired with evidence rather than quietly deleted: the family it muted was removed by f16c7ead5 (2026-07-09, 0 inserted / 38 deleted on settings/DataManagementScreen.css), and today 0 rules match it in 137 sheets and 0 composition sites exist in any walked source. The strings that survive as data-mgmt-toast-* in useBackupStatus.ts, useExportWizard.ts, useImportWizard.ts and settings.ftl are Fluent message IDs with ONE dash, not class names. Re-derive: git grep -n data-mgmt-toast-- -- ui/src ui/e2e (1 hit, this comment). Graded by the prefix arm at the foot of this file.
     knownDynamicFragments: [
       // Template-literal parameters inside flashRows.has() that the
       // static class-name parser falsely extracts as class names.
@@ -685,7 +685,7 @@ const SCREENS: ScreenEntry[] = [
     // which it takes the single-declaration shape, and the register could not have landed without
     // that define because check (iii) grades a cite all-or-nothing.
     parentCss: ['settings/SettingsPage.css'],
-    dynamicClassPrefixes: [ 'settings-license-value--tier-free', 'settings-license-value--tier-plus', 'settings-license-value--tier-pro', 'settings-license-value--tier-premium', 'settings-license-value--tier-enterprise'],
+    dynamicClassPrefixes: [ 'settings-license-value--tier-free', 'settings-license-value--tier-pro', 'settings-license-value--tier-premium', 'settings-license-value--tier-enterprise'], // settings-license-value--tier-plus struck 2026-09-15 · DSH · 0 rules (LicenseSettings.css defines -free/-pro/-premium/-enterprise at :244/:249/:254/:259) and 0 composition sites; the name is built as settings-license-value--tier- plus payload.tier_key, so if a plus tier is ever real the missing piece is the CSS rule, not this mute. Graded by the prefix arm at the foot of this file.
     knownDynamicFragments: ['server-status'],
   },
 
@@ -967,7 +967,7 @@ const SCREENS: ScreenEntry[] = [
     // `card`/`card-body` belong to the global Card component stylesheet;
     // `dashboard-kpi-delta--` modifiers are built via template literal.
     externalClasses: ['card', 'card-body'],
-    dynamicClassPrefixes: [ 'dashboard-kpi-delta--down', 'dashboard-kpi-delta--up'],
+    dynamicClassPrefixes: [ 'dashboard-kpi-delta--down'], // dashboard-kpi-delta--up struck 2026-09-15 · DSH · 0 rules (DashboardScreen.css defines only --down at :212) and 0 composition sites; the three sites at DashboardScreen.tsx:494/:509/:516 append --down only, so an up-delta renders unstyled rather than excused. Graded by the prefix arm at the foot of this file.
   },
   {
     name: 'InventoryReportScreen',
@@ -2207,4 +2207,80 @@ describe('extractUsedClassNames', () => {
     const got = extractUsedClassNames('className={`a${cond}`}');
     expect(got.has('a')).toBe(true);
   });
+});
+
+// -- The allowlist grades itself -----------------------------------
+//
+// Every case above asks what a declared prefix EXCUSES. None asked whether the
+// prefix itself still reaches anything, and that is the door this arm closes: an
+// allowance matching no rule in any sheet and no site in any walked source is a
+// mute over a name family that no longer exists, and it fails quietly forever --
+// 'data-mgmt-toast--' sat here for 68 days after f16c7ead5 (2026-07-09, remove
+// stale toast CSS; 0 inserted / 38 deleted on settings/DataManagementScreen.css)
+// took away the .data-mgmt-toast family it was written to cover, and not one
+// printed number in this file moved: 137 sheets, 37 values graded, 4 violations,
+// 4 ledger members, 22 prefix-rescued -- all read the same with it or without it.
+//
+// FAILURE, not a printed count with a floor, on purpose. The census already prints
+// how many names a prefix SAVES, so a prefix that saves nothing adds zero to that
+// print and hides inside a healthy-looking number; that is the exact shape these
+// lines survived in. And the graded population is curated inside this file, so a
+// shrinking universe IS the symptom -- a floor over it would be scored by the same
+// list it is meant to police.
+//
+// Both halves are read over the whole walked tree rather than over the declaring
+// entry, so the arm cannot call a live stem inert merely because a screen failed to
+// register the file that writes it: 'kds-column--' matches no rule in any sheet
+// (its three names are carried by selectorOnlyClasses and located from ui/e2e
+// instead) and still PASSES here, because features/kds/KdsLayoutMasonry.tsx
+// composes the stem. That is the line between inert and out-of-scope, and it is why
+// the code half exists at all.
+//
+// This case sits outside the header formula at :53, which already under-counts
+// (3 x 86 entries + 4 extractor + 2 coverage = 264 against the 269 that ran at
+// af4b27238). It adds one.
+function walkedSourceText(): string {
+  const root = path.resolve(process.cwd(), 'src');
+  const parts: string[] = [];
+  const walk = (dir: string) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === '__tests__' || ent.name === 'node_modules') continue;
+        walk(full);
+      } else if (/\.tsx?$/.test(ent.name)) {
+        parts.push(fs.readFileSync(full, 'utf8'));
+      }
+    }
+  };
+  walk(root);
+  return parts.join('|');
+}
+
+it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () => {
+  const index = allSheetIndex();
+  const defined = new Set<string>();
+  for (const classes of index.values()) for (const cls of classes) defined.add(cls);
+  const names = [...defined];
+  const sources = walkedSourceText();
+  const inert: string[] = [];
+  let graded = 0;
+  for (const entry of SCREENS) {
+    for (const prefix of entry.dynamicClassPrefixes ?? []) {
+      graded += 1;
+      const hasRule = names.some((cls) => cls.startsWith(prefix));
+      const hasSite = sources.includes(prefix);
+      if (!hasRule && !hasSite) {
+        inert.push(entry.name + ': ' + prefix + ' (0 rules in ' + index.size + ' sheets, 0 composition sites in any walked source)');
+      }
+    }
+  }
+  console.log(
+    'inert-prefix arm: ' + graded + ' dynamicClassPrefixes values graded against ' + names.length + ' defined class names over ' + index.size + ' sheets; ' + inert.length + ' inert',
+  );
+  // Floors, so no green can come from an empty walk or a shrunk population.
+  expect(index.size).toBeGreaterThan(100);
+  expect(names.length).toBeGreaterThan(100);
+  expect(graded).toBeGreaterThan(50);
+  expect(inert, 'inert dynamicClassPrefixes allowances (each mutes a family nothing can reach): ' + inert.join(' | ')).toEqual([]);
 });
