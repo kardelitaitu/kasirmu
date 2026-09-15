@@ -14,8 +14,14 @@ fn sync_settings_serialize() {
     assert_eq!(json["serverUrl"], "https://sync.example.com");
     assert_eq!(json["hasApiKey"], true);
     assert_eq!(json["enabled"], true);
-    assert!(json.get("server_url").is_none(), "snake_case key must not reach the UI");
-    assert!(json.get("has_api_key").is_none(), "snake_case key must not reach the UI");
+    assert!(
+        json.get("server_url").is_none(),
+        "snake_case key must not reach the UI"
+    );
+    assert!(
+        json.get("has_api_key").is_none(),
+        "snake_case key must not reach the UI"
+    );
 }
 
 #[test]
@@ -81,14 +87,26 @@ fn update_sync_settings_wire_keys_match_bridge_twin() {
             serde_json::from_str(json).unwrap_or_else(|e| panic!("tablet must accept {json}: {e}"));
         let bridge: oz_bridge::sync::UpdateSyncSettingsArgs =
             serde_json::from_str(json).unwrap_or_else(|e| panic!("bridge must accept {json}: {e}"));
-        assert_eq!(tablet.server_url, bridge.server_url, "server_url casing drift on {json}");
-        assert_eq!(tablet.api_key, bridge.api_key, "api_key casing drift on {json}");
-        assert_eq!(tablet.enabled, bridge.enabled, "enabled casing drift on {json}");
+        assert_eq!(
+            tablet.server_url, bridge.server_url,
+            "server_url casing drift on {json}"
+        );
+        assert_eq!(
+            tablet.api_key, bridge.api_key,
+            "api_key casing drift on {json}"
+        );
+        assert_eq!(
+            tablet.enabled, bridge.enabled,
+            "enabled casing drift on {json}"
+        );
     }
 
     // And the UI's own shape must resolve to values, not to two matching Nones.
     let tablet: UpdateSyncSettingsArgs = serde_json::from_str(PAYLOADS[0]).unwrap();
-    assert_eq!(tablet.server_url.as_deref(), Some("https://sync.example.com"));
+    assert_eq!(
+        tablet.server_url.as_deref(),
+        Some("https://sync.example.com")
+    );
     assert_eq!(tablet.api_key.as_deref(), Some("sk-123"));
     assert!(tablet.enabled);
 }
@@ -110,7 +128,10 @@ fn sync_settings_dto_wire_keys_match_bridge_twin() {
         enabled: tablet_dto.enabled,
     })
     .unwrap();
-    assert_eq!(tablet, bridge, "tablet/bridge SyncSettingsDto wire keys drifted");
+    assert_eq!(
+        tablet, bridge,
+        "tablet/bridge SyncSettingsDto wire keys drifted"
+    );
 }
 
 #[test]
