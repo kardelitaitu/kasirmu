@@ -10,6 +10,19 @@ export interface OpenCashDrawerArgs {
   deviceId?: string;
 }
 
+/**
+ * Serialize [`OpenCashDrawerArgs`] for the wire. The Rust `OpenCashDrawerArgs`
+ * (`crates/oz-bridge/src/hardware.rs:46` and its tablet twin
+ * `apps/tablet-client/src/commands/hardware.rs:30`) carries no
+ * `#[serde(rename_all)]`, so its field is `device_id`. It is also
+ * `#[serde(default)] Option<String>`, which makes a camelCase `deviceId` key
+ * fail *silently*: serde drops the unknown field, the option stays `None` and
+ * the drawer registered as `"default"` opens instead of the requested one.
+ * Omitting the key when unset keeps the empty-args payload shape.
+ */
+const cashDrawerWireArgs = (args: OpenCashDrawerArgs): { device_id?: string } =>
+  args.deviceId === undefined ? {} : { device_id: args.deviceId };
+
 /** Result of attempting to open a cash drawer. */
 export interface OpenCashDrawerResult {
   opened: boolean;
@@ -17,7 +30,7 @@ export interface OpenCashDrawerResult {
 
 /** Open a cash drawer. */
 export const openCashDrawer = (args: OpenCashDrawerArgs = {}): Promise<OpenCashDrawerResult> =>
-  loggedInvoke<OpenCashDrawerResult>('open_cash_drawer', { args });
+  loggedInvoke<OpenCashDrawerResult>('open_cash_drawer', { args: cashDrawerWireArgs(args) });
 
 // ── Receipt Printing (raw) ───────────────────────────────────────
 
@@ -143,6 +156,20 @@ export interface DisplayShowArgs {
   line2: string;
 }
 
+/**
+ * Serialize [`DisplayShowArgs`] for the wire. The Rust `DisplayShowArgs`
+ * (`crates/oz-bridge/src/hardware.rs:397` and its tablet twin
+ * `apps/tablet-client/src/commands/hardware.rs:679`) carries no
+ * `#[serde(rename_all)]`, so its field is `display_id` — a required
+ * `String`, so a camelCase `displayId` key is a hard missing-field error on
+ * both shells rather than a silent default.
+ */
+const displayShowWireArgs = (args: DisplayShowArgs): {
+  display_id: string;
+  line1: string;
+  line2: string;
+} => ({ display_id: args.displayId, line1: args.line1, line2: args.line2 });
+
 // ── Weight Scale ────────────────────────────────────────────────────
 
 /** A weight reading from a connected scale. */
@@ -180,7 +207,7 @@ export interface UsbDeviceInfo {
 
 /** Open a cash drawer (scoped). */
 export const openCashDrawerScoped = (sessionToken: string, args: OpenCashDrawerArgs = {}): Promise<OpenCashDrawerResult> =>
-  loggedInvoke<OpenCashDrawerResult>('open_cash_drawer_scoped', { sessionToken, args });
+  loggedInvoke<OpenCashDrawerResult>('open_cash_drawer_scoped', { sessionToken, args: cashDrawerWireArgs(args) });
 
 /** Print a raw text receipt (scoped). */
 export const printReceiptScoped = (sessionToken: string, args: PrintReceiptArgs): Promise<PrintReceiptResult> =>
@@ -203,8 +230,8 @@ export const listDisplaysScoped = (sessionToken: string): Promise<string[]> =>
   loggedInvoke<string[]>('list_displays_scoped', { sessionToken });
 
 /** Show content on a customer-facing pole display (scoped). */
-export const displayShowScoped = (sessionToken: string, args: { displayId: string; line1: string; line2: string }): Promise<void> =>
-  loggedInvoke<void>('display_show_scoped', { sessionToken, args });
+export const displayShowScoped = (sessionToken: string, args: DisplayShowArgs): Promise<void> =>
+  loggedInvoke<void>('display_show_scoped', { sessionToken, args: displayShowWireArgs(args) });
 
 /** Clear a customer-facing pole display (scoped). */
 export const displayClearScoped = (sessionToken: string, displayId: string): Promise<void> =>

@@ -19,6 +19,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 import {
   openCashDrawer,
+  openCashDrawerScoped,
   printReceipt,
   printSalesReceiptScoped,
   listScanners,
@@ -42,10 +43,35 @@ describe('hardware.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: {} });
   });
 
-  it('openCashDrawer with deviceId → open_cash_drawer with args.deviceId', async () => {
+  // `OpenCashDrawerArgs` on the Rust side has no `#[serde(rename_all)]`, so the
+  // wire key is `device_id`. The field is `#[serde(default)] Option<String>`,
+  // so the camelCase key would NOT error — it would silently open the
+  // "default" drawer. Pin input-camelCase → invoke-snake_case (tax.ts shape).
+  it('openCashDrawer with deviceId → open_cash_drawer with args.device_id', async () => {
     mockInvoke.mockResolvedValue({ opened: true });
     await openCashDrawer({ deviceId: 'drawer-1' });
-    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: { deviceId: 'drawer-1' } });
+    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', {
+      args: {
+        device_id: 'drawer-1',
+      },
+    });
+  });
+
+  it('openCashDrawerScoped with deviceId → open_cash_drawer_scoped with args.device_id', async () => {
+    mockInvoke.mockResolvedValue({ opened: true });
+    await openCashDrawerScoped('tok', { deviceId: 'drawer-1' });
+    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+      sessionToken: 'tok',
+      args: {
+        device_id: 'drawer-1',
+      },
+    });
+  });
+
+  it('openCashDrawer with no deviceId omits device_id (Rust defaults to "default")', async () => {
+    mockInvoke.mockResolvedValue({ opened: true });
+    await openCashDrawer({});
+    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: {} });
   });
 
   // ── Receipt Printing ──────────────────────────────────────
@@ -90,10 +116,20 @@ describe('hardware.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('list_displays_scoped', { sessionToken: 'tok' });
   });
 
-  it('displayShowScoped → display_show_scoped with sessionToken + args', async () => {
+  // `DisplayShowArgs` on the Rust side has no `#[serde(rename_all)]` either,
+  // so the wire key is `display_id` — a required `String`, i.e. a hard
+  // missing-field error on both shells. Pin input-camelCase → invoke-snake_case.
+  it('displayShowScoped → display_show_scoped with args.display_id', async () => {
     mockInvoke.mockResolvedValue(undefined);
     await displayShowScoped('tok', { displayId: 'd1', line1: 'Total', line2: '$10.00' });
-    expect(mockInvoke).toHaveBeenCalledWith('display_show_scoped', { sessionToken: 'tok', args: { displayId: 'd1', line1: 'Total', line2: '$10.00' } });
+    expect(mockInvoke).toHaveBeenCalledWith('display_show_scoped', {
+      sessionToken: 'tok',
+      args: {
+        display_id: 'd1',
+        line1: 'Total',
+        line2: '$10.00',
+      },
+    });
   });
 
   it('displayClearScoped → display_clear_scoped with sessionToken + displayId', async () => {
