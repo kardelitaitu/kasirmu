@@ -37,100 +37,7 @@ pub struct CreateBundleItemArg {
     pub unit_price_minor: Option<i64>,
 }
 
-#[command]
-/// List bundles.
-pub async fn list_bundles(state: State<'_, AppState>) -> Result<Vec<BundleWithItems>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    Ok(store.list_bundles()?)
-}
-
-#[command]
-/// Get bundle.
-pub async fn get_bundle(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<BundleWithItems>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    Ok(store.get_bundle(&id)?)
-}
-
-#[command]
-/// Create bundle.
-pub async fn create_bundle(
-    args: CreateBundleArgs,
-    state: State<'_, AppState>,
-) -> Result<BundleWithItems, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    let id = uuid::Uuid::now_v7().to_string();
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    let bundle = ProductBundle {
-        id: id.clone(),
-        bundle_sku: args.bundle_sku,
-        name: args.name,
-        description: args.description.unwrap_or_default(),
-        bundle_price_minor: args.bundle_price_minor,
-        currency: args.currency.unwrap_or_else(|| "USD".into()),
-        active: true,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-
-    let items: Vec<BundleItem> = args
-        .items
-        .into_iter()
-        .map(|i| BundleItem {
-            id: uuid::Uuid::now_v7().to_string(),
-            bundle_id: id.clone(),
-            sku: i.sku,
-            qty: i.qty,
-            unit_price_minor: i.unit_price_minor,
-        })
-        .collect();
-
-    Ok(store.create_bundle(&bundle, &items)?)
-}
-
-#[command]
-/// Update bundle.
-pub async fn update_bundle(
-    bundle: BundleWithItems,
-    state: State<'_, AppState>,
-) -> Result<BundleWithItems, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    let mut updated = bundle.bundle;
-    updated.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    Ok(store.update_bundle(&updated, &bundle.items)?)
-}
-
-#[command]
-/// Delete bundle.
-pub async fn delete_bundle(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    store.delete_bundle(&id)?;
-    Ok(())
-}
-
-#[command]
-/// Lookup bundle by sku.
-pub async fn lookup_bundle_by_sku(
-    sku: String,
-    state: State<'_, AppState>,
-) -> Result<Option<BundleWithItems>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    Ok(store.get_bundle_by_sku(&sku)?)
-}
-
-/// Session-scoped variant of `list_bundles`.
+/// List bundles resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_bundles_scoped(
@@ -147,7 +54,7 @@ pub async fn list_bundles_scoped(
     Ok(store.list_bundles()?)
 }
 
-/// Session-scoped variant of `get_bundle`.
+/// Get one bundle resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_bundle_scoped(
@@ -165,7 +72,7 @@ pub async fn get_bundle_scoped(
     Ok(store.get_bundle(&id)?)
 }
 
-/// Session-scoped variant of `create_bundle`.
+/// Create a bundle resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_bundle_scoped(
@@ -211,7 +118,7 @@ pub async fn create_bundle_scoped(
     Ok(store.create_bundle(&bundle, &items)?)
 }
 
-/// Session-scoped variant of `update_bundle`.
+/// Update a bundle resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_bundle_scoped(
@@ -233,7 +140,7 @@ pub async fn update_bundle_scoped(
     Ok(store.update_bundle(&updated, &bundle.items)?)
 }
 
-/// Session-scoped variant of `delete_bundle`.
+/// Delete a bundle resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_bundle_scoped(
@@ -252,7 +159,7 @@ pub async fn delete_bundle_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `lookup_bundle_by_sku`.
+/// Look a bundle up by SKU, resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn lookup_bundle_by_sku_scoped(
