@@ -35,9 +35,11 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tokio::sync::{Mutex, oneshot};
 
+use oz_core::cache::{Cache, create_cache};
 use oz_core::migrations;
 use oz_core::session::SessionContext;
 use oz_hal::DriverRegistry;
+use oz_plugin::PluginManager;
 use platform_core::StoreDatabaseManager;
 use platform_kernel::Kernel;
 
@@ -47,13 +49,23 @@ use crate::error::AppError;
 pub struct AppState {
     /// SQLite connection for the local store. Wrapped in a `Mutex` so
     /// commands can borrow it across `.await` points safely.
-    pub db: Mutex<Connection>,
+    ///
+    /// `Arc`-wrapped because `BridgeCtx::db` borrows
+    /// `&Arc<Mutex<Connection>>`. The wrapper is invisible to call sites:
+    /// `state.db.lock()` and `&state.db` keep compiling through `Arc`'s
+    /// `Deref`, and every clone names the *same* connection — there is no
+    /// second handle here to fall out of sync with.
+    pub db: Arc<Mutex<Connection>>,
 
     /// HAL driver registry. Use `state.registry.scanner(id)` etc.
     pub registry: Arc<DriverRegistry>,
 
     /// Tauri app handle, used for emitting events to the front-end.
     /// `None` in test or headless contexts where no UI is attached.
+    ///
+    /// Also the source of the two legs `BridgeCtx` takes from the shell:
+    /// `media_cache_dir` (resolved here, since no tauri type may enter
+    /// `oz-bridge`) and `emitter` (boxed `TauriEventSink`).
     pub app: Option<AppHandle>,
 
     /// Path to the SQLite database file (for diagnostics + `oz-cli` reuse).
@@ -82,11 +94,51 @@ pub struct AppState {
     /// Set once at startup or via set_feature(MultiTerminal, true).
     /// Consumers (Redis pub/sub subscriber, inventory change publisher)
     /// read this field instead of calling std::env::var().
-    pub terminal_id: tokio::sync::Mutex<Option<String>>,
+    ///
+    /// `Arc`-wrapped for `BridgeCtx::terminal_id`, exactly as `db` above
+    /// (see that field's note for why the wrapper costs no call site).
+    pub terminal_id: Arc<tokio::sync::Mutex<Option<String>>>,
 
     /// Store-scoped database manager (ADR #4 Phase 2 / ADR #7).
     /// Each resolved store is opened in its own migrated SQLite database.
     pub db_manager: StoreDatabaseManager,
+
+    /// Cache layer handed to bridge bodies that build `Store::with_cache`.
+    ///
+    /// **The tablet runs uncached.** `cache-redis` is not in `oz-core`'s
+    /// default feature set and this shell does not enable it, so
+    /// `create_cache` always reaches its documented fallback: a `NoopCache`
+    /// that "always misses" and reports `is_healthy() == false`
+    /// (`crates/oz-core/src/cache.rs`). The URL passed at construction is
+    /// deliberately empty — this shell owns no Redis to point at. The field
+    /// exists because `BridgeCtx` requires the leg, **not** because a
+    /// working cache is wired: read "uncached" here, never "cached".
+    pub cache: Arc<dyn Cache>,
+
+    /// Plugin-manager slot, present to satisfy `BridgeCtx::plugins`
+    /// (`&Mutex<Option<PluginManager>>`).
+    ///
+    /// Always `None` on this shell, and the reason is *different from
+    /// desktop's*: there, `None` means "no `plugins/` directory exists or
+    /// loading failed" and a manager can appear later; here it means **this
+    /// shell has no plugin host at all** — nothing ever assigns one. A
+    /// bridge body that needs Lua business rules must treat that as
+    /// unsupported on tablet, not as a load failure to retry.
+    pub plugins: Mutex<Option<PluginManager>>,
+
+    /// Serialises topology Applies within this process, to satisfy
+    /// `BridgeCtx::topology_apply_lock`.
+    ///
+    /// Inert here for one checkable reason: this shell exposes **no
+    /// topology surface at all** — `commands/authz.rs` records that the
+    /// tablet `AppError` has no `TopologyValidation` variant — so nothing
+    /// takes this lock and it never contends.
+    /// **If a topology command is ever added to the tablet, this stops
+    /// being a placeholder and becomes a real serialisation guarantee: the
+    /// line must be revisited then** to confirm it guards the same
+    /// cross-database diff the desktop lock guards (and that no second
+    /// tablet-side lock has appeared beside it, which would guard nothing).
+    pub topology_apply_lock: Mutex<()>,
 
     /// Per-process secret for the pre-session picker ticket HMAC.
     ///
@@ -159,7 +211,7 @@ impl AppState {
         tracing::info!(?db_path, "AppState initialised");
 
         Ok(Self {
-            db: Mutex::new(conn),
+            db: Arc::new(Mutex::new(conn)),
             registry,
             app: Some(app.clone()),
             db_path,
@@ -167,7 +219,10 @@ impl AppState {
             kernel: Mutex::new(Kernel::new()),
             session_store: Arc::new(RwLock::new(HashMap::new())),
             session_ttl_seconds,
-            terminal_id: Mutex::new(None),
+            terminal_id: Arc::new(Mutex::new(None)),
+            cache: create_cache("", 300),
+            plugins: Mutex::new(None),
+            topology_apply_lock: Mutex::new(()),
             db_manager,
             picker_ticket_secret: uuid::Uuid::new_v4().as_bytes().to_vec(),
         })
@@ -323,6 +378,80 @@ fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("oz-pos.db"))
 }
 
+// ---------------------------------------------------------------------------
+// ADR #49 Slice 0 — the ctx seam.
+//
+// `bridge_ctx` is the single borrow point between the tablet shell's
+// `AppState` and the tauri-free `oz-bridge` crate: a shim builds one per
+// call, runs the extracted command body, and maps `BridgeError` back to
+// `AppError` at `commands/authz.rs` so the wire shape is untouched. The
+// error seam already existed; this is the half that was missing.
+// ---------------------------------------------------------------------------
+impl AppState {
+    /// Borrow a headless bridge context for command shims. Cheap: refs +
+    /// one `PathBuf` clone + one secret clone. Locks nothing (never
+    /// `blocking_lock` — it is called from inside async shims).
+    ///
+    /// Nine legs are real tablet services (`db`, `db_manager`, `sessions`
+    /// ← `session_store`, `session_ttl_seconds`, `kernel`, `terminal_id`,
+    /// `registry`, `scanner_cancel`, `picker_ticket_secret`) and two are
+    /// derived from `app` (`media_cache_dir`, `emitter`). Three are
+    /// tablet-private **placeholders with documented meaning** — a later
+    /// slice must read them as "this shell does not have it", never as
+    /// "wired, therefore working":
+    ///
+    /// - `cache`: the tablet runs **uncached** (`NoopCache`; see
+    ///   `AppState::cache`),
+    /// - `plugins`: `None` means **no plugin host on this shell**, which is
+    ///   a different claim from desktop's "failed to load" (see
+    ///   `AppState::plugins`),
+    /// - `topology_apply_lock`: never contended, because this shell has no
+    ///   topology surface; see `AppState::topology_apply_lock` for the
+    ///   condition that turns it into a real guarantee.
+    ///
+    /// `emitter` is never `None` while `app` holds a handle — a live shell
+    /// that swallowed its own UI events would be a silent-loss bug, not a
+    /// headless default. It is `None` only where `app` is `None`
+    /// (`for_test*`), matching the bridge's documented headless no-op.
+    #[allow(dead_code)] // consumed by the Slice 1+ shims (audit.rs, sync.rs)
+    pub(crate) fn bridge_ctx(&self) -> oz_bridge::ctx::BridgeCtx<'_> {
+        // The media root is a shell concern: `AppHandle`/`Manager` never
+        // enter oz-bridge, so `app_cache_dir()` is resolved here and
+        // injected as a plain PathBuf. `None` when this shell holds no
+        // handle, and a failed resolution degrades the same way.
+        let media_cache_dir = self
+            .app
+            .as_ref()
+            .and_then(|app| match app.path().app_cache_dir() {
+                Ok(dir) => Some(dir),
+                Err(e) => {
+                    tracing::warn!("resolving app cache dir: {e}");
+                    None
+                }
+            });
+
+        oz_bridge::ctx::BridgeCtx {
+            db: &self.db,
+            db_manager: &self.db_manager,
+            sessions: &self.session_store,
+            session_ttl_seconds: self.session_ttl_seconds,
+            cache: &self.cache,
+            kernel: &self.kernel,
+            terminal_id: &self.terminal_id,
+            media_cache_dir,
+            picker_ticket_secret: self.picker_ticket_secret.clone(),
+            registry: &self.registry,
+            plugins: &self.plugins,
+            emitter: self
+                .app
+                .as_ref()
+                .map(|app| crate::commands::authz::event_sink(app)),
+            scanner_cancel: &self.scanner_cancel,
+            topology_apply_lock: &self.topology_apply_lock,
+        }
+    }
+}
+
 impl Drop for AppState {
     fn drop(&mut self) {
         tracing::info!("stopping kernel modules");
@@ -360,7 +489,7 @@ impl AppState {
     /// Creates a lightweight Tauri app handle via `tauri::test::mock_builder`.
     pub fn for_test() -> Self {
         Self {
-            db: Mutex::new(Connection::open_in_memory().unwrap()),
+            db: Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
             registry: Arc::new(DriverRegistry::default()),
             app: None,
             db_path: ":memory:".into(),
@@ -368,7 +497,10 @@ impl AppState {
             kernel: Mutex::new(Kernel::new()),
             session_store: Arc::new(RwLock::new(HashMap::new())),
             session_ttl_seconds: 86400,
-            terminal_id: Mutex::new(None),
+            terminal_id: Arc::new(Mutex::new(None)),
+            cache: create_cache("", 300),
+            plugins: Mutex::new(None),
+            topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
         }
@@ -378,7 +510,7 @@ impl AppState {
     /// already run). Used by integration tests that need a seeded database.
     pub fn for_test_with_conn(conn: Connection) -> Self {
         Self {
-            db: Mutex::new(conn),
+            db: Arc::new(Mutex::new(conn)),
             registry: Arc::new(DriverRegistry::default()),
             app: None,
             db_path: ":memory:".into(),
@@ -386,7 +518,10 @@ impl AppState {
             kernel: Mutex::new(Kernel::new()),
             session_store: Arc::new(RwLock::new(HashMap::new())),
             session_ttl_seconds: 86400,
-            terminal_id: Mutex::new(None),
+            terminal_id: Arc::new(Mutex::new(None)),
+            cache: create_cache("", 300),
+            plugins: Mutex::new(None),
+            topology_apply_lock: Mutex::new(()),
             db_manager: StoreDatabaseManager::new(std::env::temp_dir(), oz_core::migrations::ALL),
             picker_ticket_secret: b"test-picker-ticket-secret".to_vec(),
         }
