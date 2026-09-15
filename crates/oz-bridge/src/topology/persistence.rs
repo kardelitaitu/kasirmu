@@ -260,11 +260,17 @@ pub fn sort_template_names(mut names: Vec<String>) -> Vec<String> {
 /// command would reject — the hazard M4 (`todo-topology-editor.md:407`) exists
 /// to close.
 ///
-/// It stayed `pub` under M4 for one reason: the desktop shell reaches it at
-/// `apps/desktop-client/src/commands/topology/persistence.rs:165`. That adapter
-/// is `#[allow(dead_code)]` and is itself reached only from the
-/// `#[cfg(test)]` wrapper at `:227` — a test shim, not a production need — so
-/// removing that wrapper and its adapter lets this become `pub(crate)`.
+/// STAYS `pub`, and the reason is a LIVE caller, not a shim: the desktop
+/// test build reaches it through a three-link chain —
+/// `apps/desktop-client/src/commands/topology/topology_command_tests.rs:55`,
+/// `:84`, `:92` call the `#[cfg(test)]` command harness
+/// `commands.rs:236 save_topology`, which calls
+/// `persistence.rs:221 save_topology_json_at_key` (also `#[cfg(test)]`), which
+/// calls the adapter at `:154`, which calls THIS function at `:165`. Its
+/// sibling `validate_warehouse_quota` had no such chain — that adapter was
+/// unreferenced and is now deleted, which let the quota helper go
+/// `pub(crate)`; this one cannot follow until the round-trip harness is
+/// rehomed, which is an `apps/**` change with its own owner.
 #[allow(clippy::too_many_arguments)]
 pub fn save_topology_json_at_key_with_revision(
     conn: &Connection,
@@ -707,14 +713,13 @@ pub(crate) fn validate_apply_gate(
 /// other gate on the path. Production calls it at `commands.rs:638`, after the
 /// apply gate and before any save.
 ///
-/// M4 (`todo-topology-editor.md:407`) NARROWED the sibling
-/// `validate_apply_gate` to `pub(crate)` and could not narrow this one: every
-/// other caller is in-crate, but
-/// `apps/desktop-client/src/commands/topology/persistence.rs:195` names this
-/// path. That wrapper is `#[allow(dead_code)]` and nothing in the desktop shell
-/// calls it, so the blocker is a shim another lane owns, not a live need —
-/// delete that adapter and this becomes `pub(crate)` in one line.
-pub fn validate_warehouse_quota(
+/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:407`, finished by
+/// the follow-up that deleted the desktop shell's `#[allow(dead_code)]`
+/// `validate_warehouse_quota` adapter — the only out-of-crate reference). Its
+/// remaining callers are all in this crate: `commands.rs:638` on the Apply path
+/// plus the mounted `persistence_tests.rs` and `topology_command_tests.rs`
+/// cases, so no client can reach a quota check that skipped the gates above it.
+pub(crate) fn validate_warehouse_quota(
     nodes: &[Value],
     tier: &oz_core::subscription::SubscriptionTier,
 ) -> Result<(), BridgeError> {

@@ -190,15 +190,6 @@ pub(crate) fn validate_semantic_ownership(
         .map_err(Into::into)
 }
 
-/// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_quota`].
-#[allow(dead_code)]
-pub(crate) fn validate_warehouse_quota(
-    nodes: &[Value],
-    tier: &oz_core::subscription::SubscriptionTier,
-) -> Result<(), AppError> {
-    oz_bridge::topology::persistence::validate_warehouse_quota(nodes, tier).map_err(Into::into)
-}
-
 /// Adapter over [`oz_bridge::topology::persistence::validate_warehouse_capacity`].
 #[allow(dead_code)]
 pub(crate) fn validate_warehouse_capacity(
