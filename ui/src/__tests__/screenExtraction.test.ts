@@ -351,8 +351,53 @@ const SCREENS: ScreenEntry[] = [
     // never grade the theme sheet through this entry.
     parentCss: ['../frontend/themes/components.css'],
     dynamicClassPrefixes: [
-      // Static array of complete names in KdsLayoutMasonry.tsx:70.
-      'kds-column--',
+      // 'kds-column--' STRUCK 2026-09-16 · DSH · it was the arm's last residual: 108 graded
+      // = 107 credited + 0 inert + 1 residual, and the one residual printed as
+      // `KdsScreen :: kds-column-- [own citation resolved to 441 class name(s) from 4 of 4
+      // cited path(s) — citation resolved, so this is a site-only pass, NOT a lookup miss]`.
+      // Read that label: a mute that credits NOTHING inside the entry's own reach and survives
+      // only because some source string contains it. That is not a pass; it is the ledger
+      // asserting a dynamic family that does not exist.
+      //
+      // Why it is fictional as a DYNAMIC prefix (three shapes checked, all three grepped):
+      //   1. no template literal — `grep -rn 'kds-column' ui/src --include='*.tsx'` finds no
+      //      `kds-column--${x}` anywhere. The names are written COMPLETE, as three whole
+      //      string literals in one array: `const statusClasses = ['kds-column--pending',
+      //      'kds-column--preparing', 'kds-column--ready']` at features/kds/KdsLayoutMasonry.tsx:74,
+      //      reaching className by INDEX — `kds-col kds-column ${statusClasses[ci] ?? ''}` at :79.
+      //      Nothing composes a modifier from a runtime value, so the field's own contract
+      //      ("modifiers constructed at runtime via template literals or returned from helper
+      //      functions") is false here. Same category as the struck 'gift-card-status--' in the
+      //      GiftCardsScreen entry ("written COMPLETE in the id map... a mute that waives nothing
+      //      is not a claim") and 'kds-main-pane--' in the REMOVED block of THIS entry ("both
+      //      uses are complete static literals, not dynamic"). Named rather than line-numbered:
+      //      this note moved every pointer below it by 45 lines.
+      //   2. not a sheet-citation gap — 0 rules match it in ANY of the 170 index keys, not
+      //      merely in the 4 this entry cites (re-derive: `grep -rn 'kds-column--' ui/src --include='*.css'`
+      //      returns only the comment text at kds/KdsScreen.css:1801-1805). So `parentCss`
+      //      cannot earn it and no cite can be added: there is nothing to cite.
+      //   3. not a dist-only name either — the bundle hits are the Fluent ID `kds-column-count`
+      //      and its message text, not a class.
+      //
+      // What it was excusing: nothing, in either direction. The dead-class census reads
+      // PREFIX-RESCUED 18 names and not one of them is a kds-column--* name, because the
+      // extractor cannot see a class arriving through an array index — blindness pinned on
+      // purpose at screenExtraction.utils.test.ts:267-268 — so the three names never entered
+      // `used` and never needed saving. Striking it therefore moves no finding: 270 passed
+      // before and after, with the same 2 pre-existing RestaurantMenu failures (another
+      // session's uncommitted features/restaurant edits, outside this fence).
+      //
+      // Why NOT the "earn it" route: defining the three variants in KdsScreen.css would buy
+      // the credit with empty rules. The sheet says the variants carry no extra visual rules
+      // BY DESIGN (they exist so Playwright can query a status bucket), and the graded case
+      // `no selectorOnlyClasses name is silently excusing a rule that still styles it` exists
+      // to reject exactly that — so earning it here means fabricating CSS that asserts a
+      // styling difference which does not exist. The honest record of these three names is
+      // already present and GRADED below, in `selectorOnlyClasses`.
+      //
+      // Effect: graded 108 -> 107, credited stays 107, inert stays 0, residual 1 -> 0;
+      // sum check 107 = 107 + 0 + 0. A credit gained by removing a debt would have left
+      // graded unchanged — this is a removal.
       // `kds-ticket kds-ticket--${level}` in KdsTicketCard.tsx:271.
       'kds-ticket',
       // Whole names, was the stem 'kds-workspace' (2026-09-15 · DSH): its 2 census
@@ -441,11 +486,13 @@ const SCREENS: ScreenEntry[] = [
     // extra visual difference. They are invisible to the used-vs-defined report today
     // because the extractor cannot see an array index (the blindness
     // `still does not see a class that arrives through an array variable` pins on
-    // purpose), which is also why the `kds-column--` prefix in
-    // dynamicClassPrefixes just above has been granting on a family nothing can see:
-    // that prefix is inert, and this declaration is the honest replacement for it once
-    // the extractor learns arrays — not before, because resolution is not what clears
-    // a finding here. Graded, not believed: drop any one of these three names and the
+    // purpose), which is why the `kds-column--` entry that used to stand in
+    // dynamicClassPrefixes above was STRUCK rather than left granting on a family nothing
+    // can see (the full measurement is on the strike note there). This declaration is its
+    // replacement, and it needed no extractor change to be the replacement: it grades the
+    // two things that are already true — a locator reads the name, a production literal
+    // builds it — which is the whole claim the mute was making on trust. Graded, not
+    // believed: drop any one of these three names and the
     // locator half or the markup half reports it against this entry.
     selectorOnlyClasses: ['kds-column--pending', 'kds-column--preparing', 'kds-column--ready'],
   },
