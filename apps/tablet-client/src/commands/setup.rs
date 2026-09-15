@@ -5,13 +5,13 @@
 //! complete. `get_setup_status` lets the front-end decide whether to show
 //! the wizard or go straight to the main app.
 //!
-//! `CompleteSetupArgs` is re-exported from `oz_bridge::setup`: the wire
-//! shape is one type shared with the desktop shell, so a key the wizard
-//! sends cannot exist on only one side.
+//! `CompleteSetupArgs`, `SetupStatus` and `EnabledFeaturesResult` are all
+//! re-exported from `oz_bridge::setup`: the wire shape is one type shared
+//! with the desktop shell, so a key the wizard sends — or a key the wizard
+//! reads back — cannot exist on only one side.
 
 use oz_core::{FeatureRegistry, Settings, features};
 use rusqlite::Connection;
-use serde::Serialize;
 use tauri::{State, command};
 
 use crate::error::AppError;
@@ -31,23 +31,19 @@ pub use oz_bridge::setup::CompleteSetupArgs;
 
 // ── Response types ───────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-/// Setupstatus.
-pub struct SetupStatus {
-    /// Whether the setup wizard has been completed.
-    pub completed: bool,
-    /// The store preset name, if set.
-    pub preset: Option<String>,
-}
-
-// ── Response types ───────────────────────────────────────────────────
-
-/// The enabled feature keys returned by `get_enabled_features`.
-#[derive(Debug, Serialize)]
-pub struct EnabledFeaturesResult {
-    /// Kebab-case feature keys (e.g. `"cash-payment"`, `"barcode-scanning"`).
-    pub features: Vec<String>,
-}
+/// Outbound wire shapes for `get_setup_status` and `get_enabled_features`.
+///
+/// Re-exported from `oz_bridge::setup` for the same reason
+/// [`CompleteSetupArgs`] is: both copies declared `completed` + `preset` and
+/// `features` with no `#[serde(rename_all)]`, so they had not drifted yet —
+/// which is only because each side is a single-word field list, the casing
+/// axis a rename cannot reach. A duplicated field list still drifts the next
+/// time the bridge gains a response key, and serde would drop it on one shell
+/// in silence exactly as it dropped `default_currency` on the way in.
+/// The desktop shell already re-exports both
+/// (`apps/desktop-client/src/commands/setup.rs:19`); the keys are pinned here
+/// against what `ui/src/api/settings.ts:155` and `:179` read.
+pub use oz_bridge::setup::{EnabledFeaturesResult, SetupStatus};
 
 // ── Commands ─────────────────────────────────────────────────────────
 

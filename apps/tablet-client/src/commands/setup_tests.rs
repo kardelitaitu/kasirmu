@@ -530,3 +530,75 @@ fn enabled_features_result_serialize() {
     assert_eq!(json["features"][0], "barcode-scanning");
     assert_eq!(json["features"].as_array().unwrap().len(), 1);
 }
+
+// ── Outbound wire pins (the tablet no longer owns a second copy) ────────
+//
+// `72b28d025` is the lesson these exist for: a duplicated response DTO drifts
+// on the way OUT, where no argument-side test can see it. Two things are
+// pinned here, and only the second one is new. Shape-only pair tests can pass
+// while both sides serialise to nothing — that is the hole
+// `sync_settings_dto_wire_keys_match_bridge_twin` still has — so these name
+// the key AND the value.
+//
+//   1. TYPE IDENTITY, asserted by assignment: `let bridge:
+//      oz_bridge::setup::SetupStatus = status;` compiles only while the tablet
+//      path is a re-export. A future local re-declaration stops compiling
+//      instead of quietly becoming a second opinion on the same wire.
+//   2. THE KEY THE UI READS, WITH ITS VALUE: `ui/src/api/settings.ts:155`
+//      declares `SetupStatus { completed: boolean; preset: string | null }`
+//      and `:179` declares `EnabledFeaturesResult { features: string[] }`. The
+//      key set is asserted exactly, so a rename (`isCompleted`,
+//      `setupComplete`) fires even though both shells now share one type.
+
+/// Sorted top-level JSON keys a response serialises to.
+fn wire_keys<T: serde::Serialize>(value: &T) -> Vec<String> {
+    let json = serde_json::to_value(value).unwrap();
+    let mut keys: Vec<String> = json
+        .as_object()
+        .expect("response must serialise to a JSON object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
+#[test]
+fn setup_status_wire_is_the_shared_bridge_type_with_the_ui_keys() {
+    let status = SetupStatus {
+        completed: true,
+        preset: Some("simple-retail".into()),
+    };
+    // Type identity: fails to compile if the tablet re-declares the struct.
+    let bridge: oz_bridge::setup::SetupStatus = status;
+    assert_eq!(
+        wire_keys(&bridge),
+        ["completed", "preset"],
+        "the UI reads exactly these two keys (ui/src/api/settings.ts:155)"
+    );
+    let json = serde_json::to_value(&bridge).unwrap();
+    assert_eq!(json["completed"], true, "completed must carry a value");
+    assert_eq!(json["preset"], "simple-retail", "preset must carry a value");
+}
+
+#[test]
+fn enabled_features_result_wire_is_the_shared_bridge_type_with_the_ui_key() {
+    let result = EnabledFeaturesResult {
+        features: vec!["cash-payment".into(), "barcode-scanning".into()],
+    };
+    let bridge: oz_bridge::setup::EnabledFeaturesResult = result;
+    assert_eq!(
+        wire_keys(&bridge),
+        ["features"],
+        "the UI reads exactly this key (ui/src/api/settings.ts:179)"
+    );
+    let json = serde_json::to_value(&bridge).unwrap();
+    let features = json["features"].as_array().unwrap();
+    assert_eq!(
+        features.len(),
+        2,
+        "an empty array would let a shape-only pin pass"
+    );
+    assert_eq!(features[0], "cash-payment");
+    assert_eq!(features[1], "barcode-scanning");
+}
