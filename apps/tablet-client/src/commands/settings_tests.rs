@@ -1801,47 +1801,52 @@ async fn set_settings_scoped_writes_every_entry_and_queues_on_the_session_store(
         .resolve_session("owner-token")
         .expect("the session resolves");
     assert_eq!(session.store_id, "store-a");
-    let conn_arc = state
-        .db_manager
-        .open_store(&session.store_id)
-        .expect("the session's store db opens");
-    let db = conn_arc.lock().unwrap();
 
-    // Every entry landed, on the session's store and not anywhere else.
-    assert_eq!(
-        run_get_setting(&db, "restaurant.course_firing")
-            .unwrap()
-            .as_deref(),
-        Some("true"),
-    );
-    assert_eq!(
-        run_get_setting(&db, "kds.auto_accept").unwrap().as_deref(),
-        Some("1"),
-    );
+    // The store guard is scoped so it is dropped before the `state.db` await
+    // below — a std MutexGuard held across an await is `await_holding_lock`.
+    {
+        let conn_arc = state
+            .db_manager
+            .open_store(&session.store_id)
+            .expect("the session's store db opens");
+        let db = conn_arc.lock().unwrap();
 
-    // …and both were offered to the network from the STORE queue.
-    let pending = Store::new(&db).list_pending_offline().unwrap();
-    let mut queued: Vec<String> = pending
-        .iter()
-        .filter(|i| i.action == "settings.update")
-        .filter_map(|i| {
-            serde_json::from_str::<serde_json::Value>(&i.payload)
-                .ok()?
-                .get("key")?
-                .as_str()
-                .map(str::to_string)
-        })
-        .collect();
-    queued.sort();
-    assert_eq!(
-        queued,
-        vec![
-            "kds.auto_accept".to_string(),
-            "restaurant.course_firing".to_string()
-        ],
-        "both entries must be offered to the network from the store queue the \
-         tablet's daemon drains (sync_run_scoped), not the global one",
-    );
+        // Every entry landed, on the session's store and not anywhere else.
+        assert_eq!(
+            run_get_setting(&db, "restaurant.course_firing")
+                .unwrap()
+                .as_deref(),
+            Some("true"),
+        );
+        assert_eq!(
+            run_get_setting(&db, "kds.auto_accept").unwrap().as_deref(),
+            Some("1"),
+        );
+
+        // …and both were offered to the network from the STORE queue.
+        let pending = Store::new(&db).list_pending_offline().unwrap();
+        let mut queued: Vec<String> = pending
+            .iter()
+            .filter(|i| i.action == "settings.update")
+            .filter_map(|i| {
+                serde_json::from_str::<serde_json::Value>(&i.payload)
+                    .ok()?
+                    .get("key")?
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+        queued.sort();
+        assert_eq!(
+            queued,
+            vec![
+                "kds.auto_accept".to_string(),
+                "restaurant.course_firing".to_string()
+            ],
+            "both entries must be offered to the network from the store queue the \
+             tablet's daemon drains (sync_run_scoped), not the global one",
+        );
+    }
 
     // The complement, so "the store queue has them" cannot be satisfied by
     // writing to BOTH: the global queue must be untouched. Mirroring the
