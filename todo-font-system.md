@@ -516,3 +516,39 @@ The section at the top of this file is headed **"What is actually true (each re-
 - **A units slip, caught in the act, and now written into the row it came from.** The first measurement of built CSS printed **1** `@font-face`, against the **13** recorded two rounds earlier in this file — because the counting tool reports **matching lines** and `ui/dist/assets/index-*.css` is **minified onto a single line**. Counting *occurrences* gives **13**, agreeing with the appendix. The repaired row now reads **"13 `@font-face` blocks (on one line, because it is minified)"** so the next reader who runs the naive command and gets 1 finds the reconciliation already sitting where the number is. **This is `:88`'s rule with its teeth in it: the unit of that number is a set, and the set was lines while the claim was about blocks.**
 - **`23` verify-gates is now `24`.** Re-measured with the command the row names; the next gate is **#25**. No cause is claimed for the delta, per this repo's own convention for moved counts — and the row's point is intact, indeed proved: a number quoted without its command rots on schedule, which is why every figure in this block carries the command or the commit that produced it.
 - **One row re-measured and left standing: `git ls-files *.woff2 *.woff *.ttf` still returns 0.** Untracked-by-design is the fact that keeps licensing out of the open-questions list, and it is the one load-bearing row in the section that Phase 3 did *not* move — worth saying, because a sweep that finds only change is usually a sweep with a broken matcher.
+
+---
+
+## Round 7, first pass: the gate's own header had three wrong sentences, and auditing them audited this file
+
+The font suite's header still read *"Appended at the bottom: **three** font-reference portability rules"*, in a file this plan has now edited nine times. Reading the top of it to fix that surfaced **two more live sentences the tree had passed** — repaired in `0a5f891e9`, `44 / −6` lines, **0 non-comment lines changed** (proved by filtering the diff for any changed line that is not a comment), suite unchanged at 40 tests, `eslint` exit 0:
+
+- **The scanner's scope named two directories; `SCAN_TARGETS` holds three** — `features`, `frontend`, **and `components`**. A reader of the old sentence would believe shared component CSS is ungraded by a gate that grades it.
+- **The drift-guard paragraph said "the test fails if the count exceeds 193" while the constant below it is `0`**, with `81` in a comment between them. **Three numbers, one authoritative, and the prose was the least true of the three.** Now stated as: the constant is the live number, 193 and 81 are earlier baselines kept as provenance. A reader who took 193 as an allowance would mis-grade the gate by 193 violations.
+
+### Then the header contradicted my own account of who wrote what
+
+The first version of the new sentence said the rules had "grown from **Phase 1's three** to twelve". **`git blame` on each rule's `it(` line says no:** rules 1-3 belong to `93c367b` and rule 4 to `6649571` — **two other lanes** — and this plan wrote rules **5 to 12**. That reconciles with the arithmetic exactly: **24 cases at `207cb1fd1^`, 40 now, +16 = 8 rules × a probe each**. The header now credits the four that predate the plan, and `b3db05303` is that correction. **The claim I had written was flattering without being deliberate: a plan that "grew" a gate from three rules to twelve sounds like more work than eight rules plus a fix.**
+
+- **Two instrument failures inside that one attribution, and they agreed with each other.** First, `git blame -L 1,2859 --line-porcelain` **errored to a usage message**, the variable came back empty, and the loop printed **twelve uniform "OTHER" rows** — an attribution table with zero variance, which should be the loudest possible tell and was not quite loud enough to stop me reading it. Second, after fixing the call, my commit list held **9-character** prefixes while blame prints **7**, so the membership test matched nothing and **my own eight rules still read as another lane's**. Both bugs pointed the same direction — *nothing here is yours* — and the correct answer is the only one that differed from both. A check that agrees with the previous check is not two confirmations; it may be one mistake measured twice.
+- **Independent corroboration of the starting state, unprompted:** `AGENTS.md`'s stylesheet section records this suite as *"**2,067 lines and 24 cases** at HEAD as of `37315dd53`"*, and `git show 207cb1fd1^` here measures **2,067 / 24**. Another lane's dated number and my revision lookup agree on the state this plan began from, which is the rarest kind of confirmation in a shared checkout.
+
+### The ten anchors this file points at that suite, re-derived
+
+The suite is **2,067 → 2,859 lines (+792)** across this plan's work, so **9 of the 10 anchors here no longer resolve to what their sentences claim**; the tenth is a note explaining one of them to be a regex false alarm. Live values, resolved **by content** rather than by arithmetic on the old numbers:
+
+| cited here as | content | live at `b3db05303` |
+|---|---|---|
+| `:677` | `const CSS_SOURCES` | **`:715`** |
+| `:656` | `function collectCssFiles` | **`:694`** |
+| `:905` | *"Insurance, not the finding"* comment | **`:1185`** (round 5 logged `:1065`; my own rules 10-12 moved it again) |
+| `:517` | `const HTML_ENTRIES` | **`:555`** |
+| `:932` | `it('rule 5: …declared exactly once tree-wide')` | **`:1245`** |
+| `:1399` | `const TAILED_TOKEN_REFS` | **`:2271`** |
+| `:1416` | the runtime-written colour-names caveat | **`:2209`** |
+| `:1039`→`:1106` | rule 4's probe plant, updated last round | **`:1226`** |
+
+- **The one that was not recoverable from its own number**: `:1416-:1420`, "the suite's own caveat block names the same runtime-written colour names". Nothing in that sentence says what to grep for; it took reading the file for the string *runtime* to find the block at `:2209`. **A moved anchor is a cost; an anchor whose target has no name is a dead end** — and the rows that carry the stale numbers above (doc lines `:40`, `:296`, `:349`, `:371`) are dated records, where this file's convention says the superseded number stays and the correction is appended. **The table above is that appended correction, not a replacement for those rows.**
+- **A comment-only commit moved an anchor that a test run had just reported.** The full-suite run printed the borrowed failure at `themeTokenCompliance.test.ts:2395:76`; four minutes and one non-code commit later the same assertion sits near `:2431`. **Even a run's own reported line number is only true until someone edits a comment above it**, which is why this file now cites cases by title and the header cites no line at all: `grep -n "it('rule " ui/src/__tests__/themeTokenCompliance.test.ts` returns all twelve, in order, at any tip.
+
+**Boxes: open 3, ticked 10 — unchanged.**
