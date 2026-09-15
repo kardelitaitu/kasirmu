@@ -11117,3 +11117,28 @@ on the runtime seed-row predicate. Every mechanical red is now gone.
 
 **Commit:** single pathspec commit `docs(journal): close the release-profile fixture campaign and record what it traded away`.
 
+
+## 2026-09-15 — Retraction: `refs/remotes/**` was described as unwritable for a day, and it is not (git/operational)
+
+**Context:**
+`todo-operational-integrity.md` Phase 3 was authored 2026-09-14 on a reproduction it printed in full: `git update-ref refs/remotes/origin/__probe <sha>` returning **exit 0 with no error** while `git rev-parse --verify` then failed `fatal: Needed a single revision`. `[carried]` It was reported 5/5 reproducible that day via three explicit-refspec fetches, one plain fetch and one `update-ref`, with `refs/probe-tmp` succeeding where `refs/remotes/origin/probe-tmp` did not, and filesystem, hooks and config each ruled out by direct test. The plan drew the natural conclusion — the remote-tracking namespace specifically was broken — warned that no new remote branch could be tracked by the normal mechanism, and asked for the cause. A read-only review at HEAD `5ca3cd5c0` on 2026-09-15 re-ran that exact reproduction instead of inheriting it, and it did not reproduce.
+
+**Changes:**
+1. Nothing was "fixed" in the repository, because there was no repository defect to fix — which is the finding, not a missing action. The Phase 3 claim was retracted in `todo-operational-integrity.md` by its own append-only convention (the dated correction landed as `docs(plans): re-derive operational-integrity claims and correct its own census`), so the failing symptom is recorded as a dated measurement that no longer holds rather than deleted.
+2. The review's single write into shared `.git/` state was the probe itself — `git update-ref refs/remotes/origin/__review_probe <HEAD>` — and it was reverted with `git update-ref -d` on both probe names. Verified by ref count rather than assumed: `git show-ref` back to **77**, `refs/remotes` **74**, zero `__probe|__review_probe` matches, `refs/heads/**` untouched at exactly `heads/0.0.39` and `heads/main`, no tracked file modified.
+3. `.git/refs/remotes/` exists, is empty, is a plain directory (not a reparse point), and its ACL is byte-identical to `refs/heads` and to `refs` itself — Administrators/SYSTEM FullControl, Users ReadAndExecute, Authenticated Users Modify, all inherited. Nothing in the directory's own metadata distinguishes it from the namespace that was already known to work.
+
+**What it means:**
+The write now **lands**: `update-ref` exits 0, `rev-parse --verify` returns the sha as a single revision, `for-each-ref` resolves it, and the loose ref file appears on disk under `refs/remotes/origin/`. A scratch repository (`git init` in `$env:TEMP`) created under `git version 2.50.0.windows.2` also creates `refs/remotes/origin/<name>` normally, so the git binary is healthy in general and this was never a git bug — which means the earlier 5/5 reading measured a state, not a mechanism, and the mechanism was never isolated.
+
+**What survives, and it is not a defect:** `origin/main` is still `ec2edf258` — by `git ls-remote --heads origin refs/heads/main` and by `git rev-parse origin/main`, which agree — while `git rev-list --left-right --count origin/main...HEAD` reads `0 544`. The remote-tracking ref is stale because **nobody has fetched or pushed**, not because the namespace rejects writes. Two consequences a future session should carry: (a) the plan fused a falsifiable claim with a true one, and only the stale-snapshot half is still owed; and (b) the parked instruction to "get it agreed first" before any ref write is defensible caution, but it froze a claim that a *reverted* probe settles in seconds — a probe with cleanup is the missing third option, and naming it would have cost less than a day of the plan asserting a defect that had gone away. The plan's remaining honest state is a **HEAD-sync gap**, not a ref-store failure, and **544 commits now exist on one machine**.
+
+**Verification:**
+- Reproduction, run in this checkout at HEAD `5ca3cd5c0`: `git update-ref refs/remotes/origin/__review_probe $(git rev-parse HEAD)` → exit 0; `git rev-parse --verify refs/remotes/origin/__review_probe` → the sha, exit 0; `git for-each-ref refs/remotes/origin/__review_probe` → `<sha> commit`. The plan's own triple, inverted.
+- Control: the same `update-ref` against a fresh `git init` repo in `$env:TEMP` also exits 0 and creates the ref, so the success is not specific to this checkout's history or config.
+- Cleanup verified, not assumed: `git show-ref | Measure-Object -Line` → 77 (pre-probe count restored); `git for-each-ref` namespace tally → `refs/heads` 2, `refs/remotes` 74, `refs/tags` 1; `git show-ref | Select-String '__probe|__review_probe'` → empty; `cmd /c dir /a /b .git\refs\remotes` → empty.
+- Stale-snapshot half re-measured the same pass: `origin/main` = `ec2edf258` from both `ls-remote` and `rev-parse`; `origin/main...HEAD` = `0 544`.
+- Environment facts the retraction depends on: `git version 2.50.0.windows.2`; no `GIT_DIR`/`GIT_WORK_TREE`/`GIT_COMMON_DIR`/`GIT_INDEX_FILE`/`GIT_OBJECT_DIRECTORY` set; `remote.origin.fetch` = `+refs/heads/*:refs/remotes/origin/*`; `.git/packed-refs` holds 74 `refs/remotes/origin` entries including `refs/remotes/origin/main`.
+
+**Commit:** the retraction is recorded inside `todo-operational-integrity.md` by the dated correction committed as `docs(plans): re-derive operational-integrity claims and correct its own census`; this entry is the separate journal record Phase 3's row asked for, so a future session finds the outcome where it looks for defects rather than re-deriving it from scratch — never push without a direct user order.
+
