@@ -664,7 +664,7 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // measured population, 4 of headroom -- so a real over-waiving growth fires while
     // one new exempt family does not. If this goes red the answer is not to raise the
     // number: it is to name what the extra prefix is swallowing (see ESCAPE OF RECORD).
-    expect(waiverPrefix, 'the exempt-prefix door waived ' + waiverPrefix + ' selector(s) of a measured population of 4 with 4 of headroom -- a breach means the waiver list grew past anything this gate has graded').toBeLessThanOrEqual(8);
+    expect(waiverPrefix, 'the exempt-prefix door waived ' + waiverPrefix + ' of 118 selectors; measured 4 with 4 of headroom above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(8);
     // -- The doors ASSERTED, not merely printed (2026-09-15). The headline these lines
     // replace is ugly and true: 118 shadowed selectors reached the filter and 0
     // survived it, so the case above named "every elevated surface has noise-dither"
@@ -675,13 +675,38 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // only honest while 118 is the real population, so the population itself is floored
     // (measured 118, floor 100, 18 of headroom) -- a narrowed walk now reads red.
     expect(uncoveredSurfaces.length, 'the waiver filter received ' + uncoveredSurfaces.length + ' shadowed selectors; measured 118 with 18 of headroom, so a breach means the walk or a waiver list changed the population behind this verdict').toBeGreaterThanOrEqual(100);
-    // Per-door bounds, each with its headroom named. The pair on each door matters:
-    // a CEILING fires when a lane grows what a door swallows, a FLOOR fires when a
-    // lane moves selectors sideways between doors to hide them.
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118; measured 93, 8 of headroom below the floor and 12 above the ceiling').toBeGreaterThanOrEqual(85);
-    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118; measured 93, 8 of headroom below the floor and 12 above the ceiling').toBeLessThanOrEqual(105);
-    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + '; measured 21, 6 of headroom below the floor and 7 above the ceiling -- a rise here is the door at :520 eating an exemption belonging to another element').toBeGreaterThanOrEqual(15);
-    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + '; measured 21, 6 of headroom below the floor and 7 above the ceiling -- a rise here is the door at :520 eating an exemption belonging to another element').toBeLessThanOrEqual(28);
+    // Per-door bounds, each measured from the shipped run with its headroom named, and
+    // each saying the same thing in its failure -- A BREACH MEANS A WAIVER GOT WIDER,
+    // NOT THAT THE TREE GOT QUIETER -- because that is the only reading that makes a
+    // ceiling on a waiver meaningful: the quietest possible tree still shows 93 and 21
+    // here, so anything above the ceiling was swallowed, not discovered.
+    //
+    // NOT a duplicate of the membership baseline below it, and deliberately aimed at a
+    // different edit. This file's own mutation found the split: reverting a MATCHER to
+    // the raw startsWith left every counter identical, so a count cannot witness a
+    // widened matcher and only the named SET catches that; an edited LIST (one more
+    // exempt family, one more surface added to KNOWN_NOISE_SELECTORS to dodge a grade)
+    // changes no matcher at all and is exactly what these ceilings are the tripwire
+    // for. Membership guards the mechanism, size guards the appetite.
+    //
+    // Known-list door: 93 of 118 selectors, the biggest door in the file and the one
+    // that can grow silently -- a lane that adds a surface to KNOWN_NOISE_SELECTORS
+    // without giving it a dither is over-waiving by definition. Floor 85 (8 below
+    // measured), ceiling 100 (7 above, tightened from the 12 this first shipped with
+    // because a 13 % allowance on a 93-selector door is not a tripwire).
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118 selectors; measured 93 with 8 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(85);
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118 selectors; measured 93 with 8 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(100);
+    // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
+    // A RISE is the :520 door crediting a state that belongs to a different element.
+    // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is
+    // right now teaching its own gate to credit the rightmost compound; if the same
+    // reading ever lands here the door does not collapse to 0 (measured: restricting it
+    // to the tail moves exactly 1 of these 21, to 20), but if it ever did, this floor
+    // firing would be the bound doing its job in the other direction -- the answer then
+    // is to re-baseline the pair with the tail restriction that caused it, never to
+    // lower the floor to make a real narrowing pass.
+    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + ' of 118 selectors; measured 21 with 6 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(15);
+    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + ' of 118 selectors; measured 21 with 6 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(28);
     // The attribute door is empty today (0 of 118), so the whole budget IS headroom:
     // 4 is a deliberate low ceiling on an unused door, not a measurement with margin.
     expect(waiverAttribute, 'the attribute door waived ' + waiverAttribute + ' selectors and measured 0 on 2026-09-15 -- any use of a door with no population has to be looked at').toBeLessThanOrEqual(4);
