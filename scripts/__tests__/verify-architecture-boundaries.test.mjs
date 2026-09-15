@@ -294,4 +294,57 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(result.code, 0, result.output);
     assert.match(result.output, /new\/expired blocking/);
   });
+
+  // Root-independence, 2026-09-15. The live defect: a finding keyed off a
+  // SIBLING checkout (<base>/0.0.35/oz-pos, the multi-root layout) had its "../"
+  // prefix destroyed by lstrip("./"), so it printed as a repo-relative path, all
+  // eight live suppressions read stale, and --strict exited 1 with nothing in the
+  // repo changed. Entry paths and finding paths now share one normalizer.
+  function baselineFor(dir, entries) {
+    writeFileSync(join(dir, 'scripts', 'architecture-boundaries-baseline.json'), JSON.stringify({ entries }, null, 2));
+    return dir;
+  }
+  const CORE_CRM = {
+    packages: [
+      { name: 'oz-core', dependencies: [{ name: 'modules-crm', path: 'crates/modules-crm' }] },
+      { name: 'modules-crm', manifest: 'crates/modules-crm/Cargo.toml' },
+    ],
+  };
+
+  it('tracks a suppression recorded under a different spelling of the same root', () => {
+    const dir = fixture(CORE_CRM);
+    // Same file, spelled through a redundant ".." and as an absolute path.
+    baselineFor(dir, [baselineEntry('core-upward-dependency', join(dir, 'crates', '..', 'crates', 'oz-core', 'Cargo.toml'), 'modules-crm')]);
+    const result = run(dir, ['--strict', '--json']);
+    assert.equal(result.code, 0, result.output);
+    const json = JSON.parse(result.output);
+    assert.equal(json.summary.tracked, 1, result.output);
+    assert.equal(json.summary.stale, 0, 'a differently-spelled root must not orphan a live suppression');
+    assert.equal(json.summary.blocking, 0, result.output);
+    assert.equal(json.tracked_transitional[0].path, 'crates/oz-core/Cargo.toml');
+  });
+
+  it('tracks a ./-prefixed suppression against an absolute finding', () => {
+    const dir = fixture(CORE_CRM);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', './crates/oz-core/Cargo.toml', 'modules-crm')]);
+    const result = run(dir, ['--strict', '--json']);
+    assert.equal(result.code, 0, result.output);
+    assert.equal(JSON.parse(result.output).summary.tracked, 1, result.output);
+  });
+
+  it('does NOT let an escaped ../ entry silence a repo-relative finding', () => {
+    // Before the repair this entry normalized to 'crates/oz-core/Cargo.toml' and
+    // matched the finding, so a suppression naming a file OUTSIDE the repo
+    // silenced a violation INSIDE it. Equality on normalized paths refuses it,
+    // and the entry stays visible as stale rather than vanishing.
+    const dir = fixture(CORE_CRM);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', '../crates/oz-core/Cargo.toml', 'modules-crm')]);
+    const result = run(dir, ['--strict', '--json']);
+    assert.equal(result.code, 1, 'an unmatched finding must still block: ' + result.output);
+    const json = JSON.parse(result.output);
+    assert.equal(json.summary.blocking, 1, result.output);
+    assert.equal(json.summary.tracked, 0, 'the escaped entry must not be reported as matching');
+    assert.equal(json.new_blocking[0].path, 'crates/oz-core/Cargo.toml');
+    assert.equal(json.summary.stale, 1, 'the foreign entry is reported stale, not silently useful');
+  });
 });

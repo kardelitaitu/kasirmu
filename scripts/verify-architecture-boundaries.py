@@ -58,12 +58,49 @@ def configure_streams() -> None:
 
 
 def normalize_path(value: str | Path) -> str:
-    return str(value).replace("\\", "/").lstrip("./")
+    """Portably slash a path WITHOUT destroying the marker that says where it lives.
+
+    The previous body ended in .lstrip("./"), which removes a leading RUN of any
+    of the "." and "/" characters. That is right for "./x" and wrong for
+    everything else: "../x" became "x", and "/abs/x" became "abs/x". Eating the
+    "../" is how a manifest living in a sibling checkout (the multi-root layout,
+    <base>/0.0.35/oz-pos/...) printed AS IF it were a repo-relative path, so a
+    foreign-worktree finding was rendered indistinguishable from a local one and
+    an absolute path arriving from cached cargo metadata lost its leading slash
+    too. Only an explicit "./" prefix is trimmed now.
+    """
+    text = str(value).replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return text
 
 
 def relative_path(path: Path, root: Path) -> str:
+    """THE canonical form for a path, used on BOTH sides of the baseline key.
+
+    Under the root: repo-relative posix. Not under it (another checkout, a bare
+    absolute path, an entry recorded with a prefix): the honest "../"-relative
+    form, so out-of-tree debt stays addressable instead of silently acquiring a
+    fake repo-relative spelling. This is equality on a normalized path and never
+    a substring or suffix test: two paths match only when they name the same file
+    from the same root, so a suppression recorded in one checkout cannot silence
+    a finding computed in another, and an escaped "../" path cannot collide with
+    a repo-relative entry in either direction.
+    """
     try:
-        return normalize_path(path.resolve().relative_to(root.resolve()))
+        resolved_root = root.resolve()
+    except OSError:
+        resolved_root = root
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    try:
+        return normalize_path(resolved.relative_to(resolved_root))
+    except ValueError:
+        pass
+    try:
+        return normalize_path(Path(os.path.relpath(resolved, resolved_root)))
     except ValueError:
         return normalize_path(path)
 
@@ -469,11 +506,15 @@ def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
             raise ValueError(f"baseline entry introduced date is after expiry: {entry}")
         if introduced > date.today():
             raise ValueError(f"baseline entry introduced date is in the future: {entry}")
-        key = normalize_path(entry["rule"]), normalize_path(entry["path"]), entry["target"]
+        # Canonicalize FIRST, then key. The recorded entry and the freshly
+        # computed finding must pass through the same function, or a suppression
+        # spelled against one checkout stops matching a finding computed from
+        # another and every live entry reads stale at once.
+        entry["path"] = relative_path(root / normalize_path(entry["path"]), root)
+        key = entry["rule"], entry["path"], entry["target"]
         if key in seen:
             raise ValueError(f"duplicate baseline entry: {key}")
         seen.add(key)
-        entry["path"] = normalize_path(entry["path"])
         # A missing source is handled as a stale baseline entry (exit 1), not
         # as malformed checker input (exit 2), so debt removal is visible and
         # actionable rather than reported as an infrastructure failure.
