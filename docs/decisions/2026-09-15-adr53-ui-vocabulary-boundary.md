@@ -100,6 +100,15 @@ All four are `///` doc comments citing a `.tsx` path — the exact shape Option 
 - `crates/oz-bridge/src/settings.rs:157` — `WorkspaceRestaurantPosSettings.tsx:100-111`
 - `crates/oz-bridge/src/settings_tests.rs:95` — `WorkspaceRestaurantPosSettings.tsx:100-111`
 
+> **Addendum, 2026-09-15 ~23:00 — the two extra sites are now committed.** The lane that wrote them
+> committed them as **`67cdf9b6d`** (`fix(bridge): stop set_receipt_settings resetting an omitted
+> taxRoundingMode`) at **22:55**, while this correction was being drafted. So the working-tree column
+> above is no longer a working-tree reading: at HEAD `86bca1e69` the comment-layer census is **4**,
+> and the "HEAD `ceaafae01` — 2" row is a fact about `ceaafae01` only. The consequence for the ruling
+> is unchanged in shape and sharper in fact: Option A adopted at this tip arrives with a **4-row
+> baseline**, and the regression it exists to catch now sits in history rather than in flight. This
+> addendum is itself the pattern — a reading timestamped minutes ago, outlived by the tree.
+
 **The two working-tree sites were written tonight, after 1B landed, by a lane that had no reason to
 know this ADR exists.** `93c1738fd` stripped the app-layer comments at **12:49**; by **22:51** a lane
 fixing `tax_rounding_mode` had added two new doc comments below the bridge citing `.tsx` files. That
