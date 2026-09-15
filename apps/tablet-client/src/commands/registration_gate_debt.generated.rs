@@ -363,22 +363,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "tables::list_tables_scoped",
         "resolves_session_names_no_permission",
     ),
-    (
-        "terminals::get_terminal_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "terminals::list_terminal_overrides_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "terminals::list_terminals_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "terminals::ping_terminal_scoped",
-        "resolves_session_names_no_permission",
-    ),
 ];
 
 /// Registered commands the sweep found today. The floor in
@@ -387,13 +371,20 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 pub const REGISTERED_TOTAL: usize = 318;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
-pub const DEBT_CEILING: usize = 125;
+///
+/// Lowered from 125 by the terminals F-017 pass: four `terminals::*` reads
+/// (`get_terminal_scoped`, `list_terminal_overrides_scoped`,
+/// `list_terminals_scoped`, `ping_terminal_scoped`) stopped being
+/// authenticate-then-assume when each gained the session-derived
+/// `TERMINALS_READ` gate its `oz_bridge` twin already enforced.
+pub const DEBT_CEILING: usize = 121;
 
 /// Names that never resolve a session at all.
 pub const NO_SESSION_RESOLUTION: usize = 47;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 78;
+/// 74 + 47 = 121 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 74;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

@@ -12,7 +12,8 @@ use oz_core::{Store, Terminal, TerminalFeatureOverride};
 
 use foundation::validate_not_empty;
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
+use oz_core::permissions;
 use crate::error::AppError;
 use crate::state::AppState;
 use oz_core::availability::UsageCounts;
@@ -472,13 +473,22 @@ pub async fn delete_terminal_override(
 }
 
 /// Session-scoped variant of `list_terminals`.
+///
+/// F-017 parity: the gate now matches `oz_bridge::terminals::list_terminals_scoped`,
+/// which this shell's command mirrors. The tablet's copy of this surface never
+/// picked the per-domain check up, so any authenticated session on a tablet —
+/// including a cashier with no terminals role — could enumerate every terminal
+/// in the store with its device id and metadata. It sat on this shell's own
+/// registration ledger the whole time.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_terminals_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TerminalDto>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // Checked before the store connection is locked: no await inside that lock.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -487,6 +497,10 @@ pub async fn list_terminals_scoped(
 }
 
 /// Session-scoped variant of `get_terminal`.
+///
+/// F-017 parity, as for `list_terminals_scoped`. The bridge validates the id
+/// after the gate; this shell has always validated first, which differs only in
+/// which error a caller with both a bad id and no permission sees.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_terminal_scoped(
@@ -496,7 +510,8 @@ pub async fn get_terminal_scoped(
 ) -> Result<Option<TerminalDto>, AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -513,7 +528,6 @@ pub async fn get_terminal_scoped(
 #[command]
 pub async fn register_terminal_scoped(
     session_token: String,
-    user_id: String,
     args: RegisterTerminalArgs,
     state: State<'_, AppState>,
 ) -> Result<RegisterTerminalResult, AppError> {
@@ -537,13 +551,20 @@ pub async fn register_terminal_scoped(
     };
     sub.verify_signature()?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::register_terminal_scoped`, and
+    // the settings T4-1 fix in shape: this command used to take
+    // `user_id: String` and check `require_permission_for_user(&store, &user_id,
+    // …)`. The shared wrapper (`ui/src/api/terminals.ts:55`) sends only
+    // `{ sessionToken, args }`, so Tauri rejected the call before the body ran —
+    // "missing required key user_id" — and the actor the caller could name was
+    // anyway a forgeable input. The session now supplies both.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_REGISTER).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_REGISTER)?;
     store.enforce_terminal_quota(
         &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
     )?;
@@ -559,13 +580,19 @@ pub async fn register_terminal_scoped(
 #[command]
 pub async fn update_terminal_scoped(
     session_token: String,
-    user_id: String,
     args: UpdateTerminalArgs,
     state: State<'_, AppState>,
 ) -> Result<UpdateTerminalResult, AppError> {
     validate_not_empty("id", &args.id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::update_terminal_scoped`, and the
+    // T4-1 shape again: `user_id: String` was a required argument the wrapper at
+    // `ui/src/api/terminals.ts:63` never sends, so the call was rejected before
+    // its body ran. Gating on the session also moves the check ahead of the
+    // store lock, which is why a not-found id now reports the permission result
+    // first when the caller lacks `terminals:edit`.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -595,7 +622,6 @@ pub async fn update_terminal_scoped(
         terminal.metadata = Some(meta);
     }
 
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_EDIT)?;
     store.update_terminal(&terminal)?;
     drop(db);
 
@@ -613,7 +639,10 @@ pub async fn ping_terminal_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::ping_terminal_scoped`: a ping
+    // touches the device, so it is gated at the read tier the bridge chose.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -631,19 +660,24 @@ pub async fn ping_terminal_scoped(
 #[command]
 pub async fn delete_terminal_scoped(
     session_token: String,
-    user_id: String,
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::delete_terminal_scoped`. This is
+    // the most destructive command on the surface, and it carried both halves of
+    // the settings T4-1 defect at once: `user_id: String` was required while
+    // `ui/src/api/terminals.ts:79` sends only `{ sessionToken, id }`, so the
+    // delete never reached its body on a tablet; and the actor whose permission
+    // was checked was whichever user id the caller chose to name.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_DELETE).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_DELETE)?;
     store.delete_terminal(&id)?;
     drop(db);
 
@@ -662,7 +696,9 @@ pub async fn list_terminal_overrides_scoped(
     validate_not_empty("terminal_id", &terminal_id)
         .map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::list_terminal_overrides_scoped`.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -679,7 +715,6 @@ pub async fn list_terminal_overrides_scoped(
 #[command]
 pub async fn set_terminal_override_scoped(
     session_token: String,
-    user_id: String,
     terminal_id: String,
     feature: String,
     enabled: bool,
@@ -689,13 +724,17 @@ pub async fn set_terminal_override_scoped(
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     validate_not_empty("feature", &feature).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::set_terminal_override_scoped`;
+    // `ui/src/api/terminals.ts` sends `{ sessionToken, terminalId, feature,
+    // enabled }`, so the dropped `user_id` was never supplied and the write was
+    // rejected before it ran.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_EDIT)?;
     store.set_terminal_override(&terminal_id, &feature, enabled)?;
     drop(db);
 
@@ -713,7 +752,6 @@ pub async fn set_terminal_override_scoped(
 #[command]
 pub async fn delete_terminal_override_scoped(
     session_token: String,
-    user_id: String,
     terminal_id: String,
     feature: String,
     state: State<'_, AppState>,
@@ -722,13 +760,14 @@ pub async fn delete_terminal_override_scoped(
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     validate_not_empty("feature", &feature).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017 parity with `oz_bridge::terminals::delete_terminal_override_scoped`.
+    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TERMINALS_EDIT)?;
     store.delete_terminal_override(&terminal_id, &feature)?;
     drop(db);
 
