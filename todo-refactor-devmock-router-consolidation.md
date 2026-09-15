@@ -241,6 +241,22 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 - [ ] `entryHandlers` empty or gone; `tauri-api.ts` reduced to: the vite-alias header, `export { convertFileSrc, invoke, isTauri }`, the `createXHandlers`/`registerHandlers` sequence, any documented residue, then the single `applyScopedAliases()`. Target: **`tauri-api.ts` < 200 lines** — `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l`.
 - [ ] No dead imports / unused local helpers left behind.
 
+> **Phase 5.5 progress (this session, 2026-09-16, commit `9caafa16e`): router 447 → 380 (−67).** Folded the
+> 11 scoped analytics-card stubs out of the router's in-place `handlers['x'] = …` patches into
+> `handlers/analytics.ts`'s `analyticsHandlers` map (their plan-correct domain home). Before moving I
+> `git grep`-confirmed each key is **single-defined** (one file) and its body is self-contained — so this is
+> a pure copy, not an override relocation, and folding into the map can't flip which body wins. The keys
+> moved from patch-order (`:333`, after `registerHandlers(analyticsHandlers)`) to map-order (`:285`) —
+> verified behaviour- AND identity-preserving: after-dump **681 / sha256 `105d29730df2…60681c`, identical**;
+> all **seven `dev-mock-*` suites (96 tests) green** (the audit/envelope/role-holder suites assert handler
+> output shapes, so they would catch a diverged body); `tsc` exit 0. **Remaining to `< 200`:** the
+> crm/sync/inventory patches (`search_customers_scoped` & `get_customer_history_scoped` → `crm.ts`;
+> `list_sync_conflicts_scoped`/`resolve_sync_conflict_scoped` → `sync.ts`; `list_in_transit_transfers_scoped`
+> & `get_sale_line_margins_scoped` → inventory; `suspend_surplus_workspace_instances_scoped`/`recover_…` →
+> `workspaces.ts`; `list_warehouse_products_at_location`) and trimming the entry-literal's stale banners.
+> Boxes stay UNTICKED — the end-state (`< 200`, `entryHandlers` gone) is not reached and `check:all` is
+> untouched this round.
+
 ### Acceptance
 - [ ] Before-snapshot registered-command set == after-snapshot set (no command dropped to the warn) — prove by diffing the two dispatcher key lists.
 - [ ] `cd ui && npx tsc --noEmit -p tsconfig.json` → exit 0.
