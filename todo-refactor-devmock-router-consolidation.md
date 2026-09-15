@@ -135,7 +135,17 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 > baseline before each move. No file outside this doc was touched by this verification.
 
 ### Phase 5.2 — Bundles
-- [ ] Move the 7 bundle command pairs (`create/delete/get/list/update/lookup_bundle_by_sku` ± `_scoped`) out of `entryHandlers` into `handlers/bundles.ts`; register; delete from the literal.
+- [x] **LANDED 2026-09-16 (this session, HEAD `ed75932bd`).** Moved the 12 bundle keys (`list_bundles`/
+  `get_bundle`/`create_bundle`/`update_bundle`/`delete_bundle`/`lookup_bundle_by_sku` ± `_scoped`,
+  `tauri-api.ts:511-546`) verbatim into new `ui/src/dev-mock/handlers/bundles.ts` as `bundlesHandlers`,
+  registered with `registerHandlers(bundlesHandlers)` immediately after the entry literal; router diff
+  **+6/−36**, no foreign hunks. These twelve are self-contained stubs (no `mockStores`/`unwrapArgs`
+  dependency), so unlike Phase 5.1 this needed no state seam. **Registration-identity proven, not
+  asserted:** dispatcher snapshot re-dumped via throwaway (run + deleted) after the move → **681 commands,
+  sha256 `105d29730df2…60681c` — identical to the Phase 5.0/5.1 before-snapshot**; `npx tsc --noEmit`
+  exit 0; `dev-mock-scoped-aliases.test.ts` 41 passed. Router now **767 → 737 lines**. `check:all`
+  whole-tree still gated by the foreign `CartPanelLineItem.css` red (Phase 5.0) — unchanged by this move,
+  which touches no CSS.
 
 ### Phase 5.3 — Sync / cash drawer / low-stock / local-ip
 - [ ] Move the sync family (`sync_run`, `sync_pull`, `pending_sync_count`, `retry_offline_sync`, `get/update_sync_settings` ± scoped, `test_sync_connection`, `request_sync_token`), `open_cash_drawer`, `get_low_stock_alerts`, `get_local_ip` into `handlers/sync.ts` / their existing domain module; register; delete from the literal.

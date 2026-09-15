@@ -59,6 +59,7 @@ import { topologyHandlers } from './handlers/topology';
 import { licenseHandlers, settingsHandlers, settingsWriteHandlers } from './handlers/settings';
 import { floorplanHandlers } from './handlers/floorplan';
 import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
+import { bundlesHandlers } from './handlers/bundles';
 
 // The mock's public surface is the three names the app actually imports through
 // the vite alias on `@tauri-apps/api/core`. They are defined by the dispatcher
@@ -508,42 +509,8 @@ const entryHandlers: Record<string, MockHandler> = {
   // BUNDLES
   // ═══════════════════════════════════════════════════════════════
 
-  'list_bundles': () => [
-    {
-      bundle: {
-        id: 'bundle-1', bundle_sku: 'BNDL-PC-1', name: 'PC Starter Bundle',
-        description: 'CPU + RAM + SSD combo', bundle_price_minor: 11500000, currency: 'IDR',
-        active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      },
-      items: [
-        { id: 'bundle-item-1', bundle_id: 'bundle-1', sku: 'CPU-R5-7600', qty: 1, unit_price_minor: 3150000 },
-        { id: 'bundle-item-2', bundle_id: 'bundle-1', sku: 'RAM-D5-32GB-CR', qty: 1, unit_price_minor: 1850000 },
-      ],
-    },
-  ],
-  'list_bundles_scoped': () => [
-    {
-      bundle: {
-        id: 'bundle-1', bundle_sku: 'BNDL-PC-1', name: 'PC Starter Bundle',
-        description: 'CPU + RAM + SSD combo', bundle_price_minor: 11500000, currency: 'IDR',
-        active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      },
-      items: [
-        { id: 'bundle-item-1', bundle_id: 'bundle-1', sku: 'CPU-R5-7600', qty: 1, unit_price_minor: 3150000 },
-        { id: 'bundle-item-2', bundle_id: 'bundle-1', sku: 'RAM-D5-32GB-CR', qty: 1, unit_price_minor: 1850000 },
-      ],
-    },
-  ],
-  'get_bundle': () => null,
-  'get_bundle_scoped': () => null,
-  'create_bundle': () => null,
-  'create_bundle_scoped': () => null,
-  'update_bundle': () => null,
-  'update_bundle_scoped': () => null,
-  'delete_bundle': () => null,
-  'delete_bundle_scoped': () => null,
-  'lookup_bundle_by_sku': () => null,
-  'lookup_bundle_by_sku_scoped': () => null,
+  // (the twelve bundle handlers moved verbatim to ./handlers/bundles.ts — Phase 5.2;
+  //  registered right below, so the registry position these keys held is unchanged)
 
   // ═══════════════════════════════════════════════════════════════
   // HARDWARE
@@ -577,6 +544,9 @@ const entryHandlers: Record<string, MockHandler> = {
 // `handlers/*`; until they land, the literal remains the registry's main
 // source, and everything below patches it in place.
 registerHandlers(entryHandlers);
+// Bundles (Phase 5.2) moved verbatim to `handlers/bundles.ts`; registered here so
+// the twelve keys keep the registry position they held inside the entry literal.
+registerHandlers(bundlesHandlers);
 // Topology handlers (the diagram read, the editor's atomic diff apply, and the
 // ADR #46 revision reads) live in `handlers/topology.ts`, which owns the
 // `mockTopology` diagram slice and mutates the `mockWorkspaces` list that
