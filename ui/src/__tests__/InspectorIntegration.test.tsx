@@ -51,7 +51,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-new-hardware': 'New Hardware',
   'topology-new-hardware-subtitle': 'Peripheral',
   'topology-new-ready': 'Ready',
-  'topology-inspector-title': 'Node Properties',
   'topology-inspector-node-name': 'Node Name',
   'topology-inspector-subtitle': 'Subtitle / Location',
   'topology-inspector-close-aria': 'Close properties panel',
