@@ -5,7 +5,7 @@ use tauri::{State, command};
 
 use oz_core::{Promotion, PromotionApplication, Store};
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -206,7 +206,6 @@ pub async fn get_promotion_scoped(
 #[command]
 pub async fn create_promotion_scoped(
     session_token: String,
-    user_id: String,
     args: CreatePromotionArgs,
     state: State<'_, AppState>,
 ) -> Result<Promotion, AppError> {
@@ -230,13 +229,14 @@ pub async fn create_promotion_scoped(
         updated_at: now,
     };
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_CREATE)
+        .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_CREATE)?;
     Ok(store.create_promotion(&promo)?)
 }
 
@@ -245,20 +245,19 @@ pub async fn create_promotion_scoped(
 #[command]
 pub async fn update_promotion_scoped(
     session_token: String,
-    user_id: String,
     promotion: Promotion,
     state: State<'_, AppState>,
 ) -> Result<Promotion, AppError> {
     let mut p = promotion;
     p.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_EDIT)?;
     Ok(store.update_promotion(&p)?)
 }
 
@@ -267,17 +266,17 @@ pub async fn update_promotion_scoped(
 #[command]
 pub async fn delete_promotion_scoped(
     session_token: String,
-    user_id: String,
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_DELETE)
+        .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_DELETE)?;
     Ok(store.delete_promotion(&id)?)
 }
 
@@ -286,20 +285,20 @@ pub async fn delete_promotion_scoped(
 #[command]
 pub async fn apply_promotion_scoped(
     session_token: String,
-    user_id: String,
     sale_id: String,
     promotion_id: String,
     state: State<'_, AppState>,
 ) -> Result<PromotionApplication, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, oz_core::permissions::PROMOTIONS_APPLY)
+        .await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_APPLY)?;
-
+    // The `Store` binding this line replaced existed only to serve the
+    // permission check; the gate now runs on the session before the lock is
+    // taken, and the apply itself goes through `run_apply_promotion_unchecked`.
     run_apply_promotion_unchecked(db, &sale_id, &promotion_id)
 }
 
