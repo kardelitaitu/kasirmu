@@ -1024,6 +1024,55 @@ function presentFaceUrls(block: string, baseDir: string): string[] {
   });
 }
 
+/** Every family name a value reaches for, generics and var() wrappers removed. */
+function familyRefsInValue(value: string): string[] {
+  const head = value.trim();
+  const list = head.startsWith('var(') ? (varFallback(head) ?? '') : head;
+  return list
+    .split(',')
+    .map((p) => p.trim().replace(/^['"]|['"]$/g, '').trim().toLowerCase())
+    .filter((p) => p !== '' && !p.startsWith('--') && !GENERIC_FONT_KEYWORDS.has(p));
+}
+
+/**
+ * Rule 14 -- rule 9's mirror.
+ *
+ * Rule 9 asks whether a stack that LEADS with a bundled face has that face
+ * declared. Nothing asked the other direction: a family that IS declared and is
+ * named by no stack in the app ships its woff2 to every customer and paints
+ * nothing. That is not hypothetical weight -- one variable subset family costs
+ * roughly 150 KB, `scripts/check-bundle.mjs:102-103` filters to `.js` and `.css`
+ * and cannot see a font file at all (recorded in this plan's out-of-fence notes),
+ * and an @import is one line to add in a commit whose subject is something else.
+ *
+ * Measured the day it was written: 2 families declared, 2 referenced, so the set
+ * this rule fails on is empty today. It is a guard, not a fix.
+ */
+function referencedFamilies(): Set<string> {
+  const out = new Set<string>();
+  for (const s of CSS_SOURCES) {
+    // A face's own `font-family:` line is a DECLARATION, not a reference. Without
+    // blanking these blocks the harvest contains every declared family, the set
+    // difference below is empty by construction, and the rule can never fire --
+    // which is exactly what the first version did, green, on a plant built to make
+    // it red. Written as a local literal, not FONT_FACE_BLOCK_RE, because that one
+    // is /g and shared lastIndex state has already bitten this file once.
+    const stripped = blankComments(s.text).replace(/@font-face\s*\{[^}]*\}/gi, ' ');
+    for (const m of stripped.matchAll(/font-family\s*:\s*([^;{}]+)/gi)) {
+      for (const n of familyRefsInValue(m[1] ?? '')) out.add(n);
+    }
+    for (const st of fontStacksFromCss(s.file, s.text)) {
+      for (const n of familyRefsInValue(st.value)) out.add(n);
+    }
+  }
+  for (const s of HTML_SOURCES) {
+    for (const d of bootFontDeclarations(s.file, s.text)) {
+      for (const n of familyRefsInValue(d.value)) out.add(n);
+    }
+  }
+  return out;
+}
+
 /** The face files the shipped fonts.css pulls in. Shared by rules 7, 9 and 13. */
 function importedFaceSources(): FaceSource[] {
   if (!existsSync(FONTS_CSS)) return [];
@@ -1850,6 +1899,55 @@ describe('font-reference portability', () => {
     const sample = "@font-face { font-family: 'X'; src: url(a.woff2); }\n@font-face { font-family: 'Y'; src: url(b.woff2); }";
     expect(faceBlocks(sample)).toBe(faceBlockTexts(sample).length);
     expect(faceBlockTexts(sample)).toHaveLength(2);
+  });
+
+  it('rule 14: a family an @import declares must be named by some stack in the app', () => {
+    const declared = bundledFamilies();
+    const refs = referencedFamilies();
+    // Both sides floored, because this rule fails on a SET DIFFERENCE: an empty
+    // declared set (a resolver that stopped working) and an empty reference set (a
+    // harvester that stopped reading) would both produce a clean zero here.
+    expect(declared.size, `only ${declared.size} families are declared by the imported stylesheets`).toBeGreaterThanOrEqual(2);
+    expect(refs.size, `only ${refs.size} family names were harvested from the tree`).toBeGreaterThanOrEqual(2);
+    const dead = [...declared].filter((f) => !refs.has(f)).sort();
+    expect(
+      dead,
+      `${dead.length} bundled font famil${dead.length === 1 ? 'y is' : 'ies are'} declared by an `
+        + '@import and named by no font stack anywhere in ui/ or the boot documents:\n'
+        + dead.map((f) => `  '${f}'`).join('\n')
+        + '\nEvery woff2 behind them is downloaded to the customer and never painted, and no other '
+        + 'rule sees it: rule 9 walks the other direction (a lead that is not declared), and '
+        + 'check-bundle.mjs cannot see a font file at all.\n'
+        + 'Two honest exits, and this rule is not one of them: name the family in a token stack, '
+        + 'or drop the @import. A face wired up next release is a fine reason to be red today.',
+    ).toEqual([]);
+  });
+
+  it('rule 14 probe: var() tails are reached, generics and bare tokens are not names', () => {
+    // A var() with a fallback contributes the fallback's names -- the token itself is
+    // harvested from its own declaration elsewhere.
+    expect(familyRefsInValue("var(--font-sans, -apple-system, 'Segoe UI', system-ui, sans-serif)"))
+      .toEqual(['-apple-system', 'segoe ui']);
+    // A var() with no fallback names no family at all, and a bare custom property is
+    // not a family name.
+    expect(familyRefsInValue('var(--font-sans)')).toEqual([]);
+    expect(familyRefsInValue('--font-mono')).toEqual([]);
+    // Quoted, unquoted and mixed case normalise to the same name rule 9 compares.
+    expect(familyRefsInValue("'Inter Variable', Inter, sans-serif")).toEqual(['inter variable', 'inter']);
+    // The harvester works on the REAL tree, so the case above cannot pass on an empty
+    // set difference produced by a parser that quietly stopped reading anything.
+    const refs = referencedFamilies();
+    expect(refs.has('inter variable'), `--font-sans's face is not in the harvest: ${[...refs].slice(0, 8).join(', ')}`).toBe(true);
+    expect(refs.has('jetbrains mono variable')).toBe(true);
+    // And generics never count as a reference, so a face named like a generic cannot
+    // satisfy rule 14 by accident.
+    expect(familyRefsInValue('serif, sans-serif, monospace, ui-monospace, system-ui')).toEqual([]);
+    // THE VACUITY, pinned: a face's own `font-family:` line must not count as a
+    // reference to it. This assertion is here because the first version of the rule
+    // passed, green, on a plant built to make it fail.
+    const lonely = "@font-face { font-family: 'Lonely Face'; src: url(x.woff2); }";
+    expect(/font-family/.test(lonely)).toBe(true);
+    expect(lonely.replace(/@font-face\s*\{[^}]*\}/gi, ' ').match(/font-family\s*:\s*[^;{}]+/gi)).toBeNull();
   });
 });
 
