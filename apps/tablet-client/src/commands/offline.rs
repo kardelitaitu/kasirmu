@@ -118,7 +118,7 @@ pub struct SyncResult {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnqueueOfflineArgs {
-    /// The action to perform (e.g. "complete_sale", "void_sale").
+    /// The action to perform (e.g. "complete_sale_scoped", "void_sale_scoped").
     pub action: String,
     /// JSON-serialized payload for the action.
     pub payload: String,
