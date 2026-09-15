@@ -102,6 +102,10 @@ SUMMARY_RE = re.compile(
 # Nextest prints a different summary shape; see the diagnosis in grade().
 NEXTEST_SUMMARY_RE = re.compile(r"^\s*Summary\s*\(\s*[\d,]+\s+tests?\s+run", re.MULTILINE)
 
+# libtest's per-test failure line, captured by group so the report can NAME the
+# failing test rather than only counting it.
+FAILED_TEST_RE = re.compile(r"^\s*test\s+(\S+)\s+\.\.\.\s+FAILED\s*$", re.MULTILINE)
+
 
 def _arm_body(lines: list[str], start: int) -> list[str]:
     """Lines of the skip arm's own block, from `start` up to where it closes.
@@ -330,6 +334,19 @@ def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool) -> in
 
     if report["failed"]:
         print(f"FAIL  LOG: {report['failed']} failed test(s) -- real failures, fix those first.")
+        # Name them. Without this the report said "1 failed" and stopped, which is
+        # strictly worse than `cargo test` itself: the guard captures cargo's stdout
+        # in memory, so the raw output -- and the failing names, and the panic text
+        # -- was discarded unless the caller passed --emit-log. Discovered by real
+        # use on 2026-09-15, when a container that had just come up turned a masked
+        # skip into a genuine failure this tool could report the COUNT of and not the
+        # IDENTITY of.
+        named = FAILED_TEST_RE.findall(text)
+        for name in named:
+            print(f"        FAILED  {name}")
+        if not named:
+            print("        (cargo reported failures but no `... FAILED` line was found")
+            print("         in the captured output -- re-run with --emit-log to keep it.)")
         ok = False
 
     if report["events"]:
@@ -601,6 +618,24 @@ def self_test() -> int:
     expect("an empty/build-only log fails", rc_empty == 1)
     expect("  ...without falsely blaming nextest", "nextest" not in out)
 
+    # (7) a real failure must be NAMED, not only counted. The guard captures cargo's
+    #     stdout in memory, so without this it reported "1 failed" and threw away the
+    #     identity of the failure -- worse than plain `cargo test`.
+    failed_log = (
+        "test a::pg_integration_one ... ok\n"
+        "test b::tenant_isolation ... FAILED\n"
+        "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out\n"
+    )
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_failed = grade(failed_log, arms, per_file, proven=True)
+    out = buf.getvalue()
+    expect("a failing run is graded FAIL", rc_failed == 1)
+    expect("  ...and the failing test is named, not merely counted",
+           "b::tenant_isolation" in out and "FAILED  b::tenant_isolation" in out)
+    expect("  ...and a skip count is reported alongside it",
+        "1 failed" in out)
+
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
@@ -613,6 +648,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--assume-nocapture", action="store_true",
                     help="assert that a supplied --log was captured with -- --nocapture; "
                          "without it, a log showing zero skips is UNPROVEN, not clean")
+    ap.add_argument("--emit-log", type=Path,
+                    help="write the raw combined cargo output here (the guard captures it "
+                         "in memory, so without this a real failure's panic text is discarded)")
     ap.add_argument("--self-test", action="store_true", help="prove both directions failable")
     ns = ap.parse_args(argv)
 
@@ -639,6 +677,10 @@ def main(argv: list[str] | None = None) -> int:
         # Made here, with the flag, so absence of skips is evidence of absence.
         _, text = run_cargo(ns.crates or CRATES)
         proven = True
+
+    if ns.emit_log:
+        ns.emit_log.write_text(text, encoding="utf-8")
+        print(f"note  raw cargo output written to {ns.emit_log}")
 
     return grade(text, arms, per_file, proven=proven)
 
