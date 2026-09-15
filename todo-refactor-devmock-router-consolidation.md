@@ -94,8 +94,29 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 > `git status --porcelain -- ui/src/dev-mock/` before any move; when the lane commits a *compiling* 5.1,
 > re-derive the 681 snapshot (it will legitimately have changed if they also dropped `entryHandlers` keys)
 > and confirm TS2440 is gone before either of us claims the phase.
+>
+> **RESOLVED 2026-09-16:** that session never committed — its untracked `locationState.ts` and its
+> ` M tauri-api.ts` are gone from the tree (the pre-move porcelain at `ui/src/dev-mock/` came back empty;
+> the same lane filed the checkout-as-undo hazard hours earlier at `ad21cbff5`). The phase was therefore
+> **re-derived from zero on a clean tree**, not resumed: the state-move half landed at `99a68348f` with
+> before/after snapshots re-measured at the then-current HEAD (681 / `105d29730df2` on both sides),
+> tsc exit 0, dev-mock suites 96/96. See the EXECUTED note on the first box.
 
 - [ ] Move `mockStores` (+ `listMockLocations`/`getMockLocation`/`createMockLocation`/`updateMockLocation`/`setMockPrimaryLocation`/`deleteMockLocation` and `mockTicketPrefixes`/prefix helpers) out of the router into `handlers/locations.ts` (or a state module if that creates an import cycle — `mockDispatcher.ts:16` warns the dispatcher must not import the router).
+  <!-- EXECUTED (state-move half only) 2026-09-16, HEAD 3aa02090f -> 99a68348f. The box names
+       handlers/locations.ts first and offers a state module as the escape; the state module was
+       taken — handlers/locationState.ts — because locations.ts's own header documents that it
+       DELIBERATELY abstained from this state ("mockStores ... stays in the router because it is
+       shared with receipt/workspace mocks", :8-10 written by agents-4), and pushing it there
+       would invert that file's stated scope. The helpers moved VERBATIM; the router's four
+       surviving regional/receipt readers call getMockStores(); the orphaned Legal-Entity comment
+       (left dangling by an earlier move) was deleted with the block. Measurements are run
+       properties of THIS pass, per the net-rule: before-snapshot 681/105d29730df2 re-derived at
+       this HEAD, after-snapshot identical (throwaway dump test run both sides and deleted);
+       `npx tsc --noEmit` 0; dev-mock-scoped-aliases + siblings 7 files / 96 tests; router
+       851 -> 767 lines. Box STAYS UNTICKED: the conversion sibling below has not run — the
+       location/receipt/brand/device keys still sit in entryHandlers, now referencing the
+       imported helpers. This lane claims the phase. -->
 - [ ] Convert the location / receipt-format / brand-settings / device-binding entries in `entryHandlers` into a `createXHandlers({ … })` factory consuming the relocated state; register it; delete the corresponding `entryHandlers` keys.
 - [ ] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
 
