@@ -895,8 +895,9 @@ export default function NodeTopologyEditor({
       const dx = Math.abs(x2 - x1) * 0.5;
       if (wire.bends && wire.bends.length > 0) {
         // User-authored bends take precedence over auto routing: the wire
-        // becomes a polyline through the bend points (the pulse rides the
-        // same polyline, so the simulation follows the bent path).
+        // becomes a polyline through the bend points, and the midpoint
+        // helpers read that same polyline — so a label pill or the rename
+        // input sits on the bent path, not on the straight chord.
         const pts: Array<[number, number]> = [
           [x1, y1],
           ...wire.bends.map((b) => [b.x, b.y] as [number, number]),
@@ -1079,7 +1080,7 @@ export default function NodeTopologyEditor({
    * (the three authoritative load-effect paths) must reset
    * the transient editor state that outlives a specific canvas — the
    * in-flight port connection, port-snap target, node/wire hover,
-   * simulation pulse, marquee, bend-drag, open context menu, and the
+   * marquee, bend-drag, open context menu, and the
    * inspector's first-edit guard. Kept in ONE helper so a new transient
    * state can never be added to some paths and forgotten in others
    * (rounds 124-132 each found exactly that drift). Call BEFORE the new

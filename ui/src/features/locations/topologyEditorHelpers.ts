@@ -210,11 +210,13 @@ export function isTopologyRevisionConflict(err: unknown): boolean {
     && (typed as { code?: string }).code === 'topology-revision-conflict';
 }
 
-/** True when the OS requests reduced motion (WCAG 2.3.3). The simulation
- *  pulse is JS-driven on a 30ms interval — CSS @media gates cannot stop
- *  the state churn — so the interval and the pulse position consult this
- *  directly. jsdom has no matchMedia: the safe default is false (animate),
- *  and the reduced-motion tests stub matchMedia to pin the gated path.
+/** True when the OS requests reduced motion (WCAG 2.3.3). It used to gate
+ *  the JS-driven simulation pulse — a 30ms interval whose state churn a CSS
+ *  `@media` rule cannot stop — and that pulse is gone, so no editor path
+ *  consults this today: the motion still on the canvas is transitions and
+ *  keyframes, which this sheet's own `@media (prefers-reduced-motion:`
+ *  blocks already gate. jsdom has no matchMedia: the safe default is false
+ *  (animate), and the unit tests stub it to pin the gated path.
  *  Exported for unit tests. */
 export function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined'

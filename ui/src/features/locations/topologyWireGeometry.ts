@@ -131,9 +131,10 @@ export function wireUnderCardSegments(
 }
 
 /** Point at fraction `t` along a polyline, weighted by Manhattan segment
- *  length so a simulation pulse crosses each segment at constant speed
- *  (matching the authored-bend visuals, where bends are always drawn as
- *  straight L segments). */
+ *  length so `t` measures distance travelled rather than vertex index —
+ *  both callers pass 0.5, anchoring the wire label pill and the rename
+ *  input at the middle of the drawn path (authored bends are always drawn
+ *  as straight L segments). */
 export function polylinePoint(pts: Array<[number, number]>, t: number): { x: number; y: number } {
   if (pts.length < 2) return { x: pts[0]?.[0] ?? 0, y: pts[0]?.[1] ?? 0 };
   let total = 0;
