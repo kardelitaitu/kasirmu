@@ -52,10 +52,13 @@ pub use oz_bridge::settings::{
 
 // ── Receipt settings DTO ─────────────────────────────────
 //
-// `ReceiptSettingsDto` and its `default_tax_rounding_mode` come from
-// `oz_bridge::settings` (see the re-export above); the eleven camelCase keys
-// they carry are pinned against `ui/src/api/settings.ts` by
+// `ReceiptSettingsDto` comes from `oz_bridge::settings` (see the re-export
+// above); the eleven camelCase keys it carries are pinned against
+// `ui/src/api/settings.ts` by
 // `wire_pin_receipt_settings_carries_every_key_the_renderer_declares`.
+// `taxRoundingMode` is the one key of the eleven that is optional on the wire:
+// absent means "leave the stored mode alone", because the restaurant POS card
+// sends ten of the eleven (T4-2 in `todo-refactor-oz-pos-app-agents-3.md`).
 
 // ── Get receipt settings ──────────────────────────────────
 

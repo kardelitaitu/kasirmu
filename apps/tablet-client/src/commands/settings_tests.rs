@@ -25,7 +25,7 @@ fn get_receipt_settings_returns_defaults() {
     assert_eq!(result.margin_bottom, 0);
     assert_eq!(result.margin_left, 0);
     assert_eq!(result.margin_right, 0);
-    assert_eq!(result.tax_rounding_mode, "half_up");
+    assert_eq!(result.tax_rounding_mode, Some("half_up".to_string()));
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn set_receipt_settings_persists() {
         margin_bottom: 5,
         margin_left: 1,
         margin_right: 2,
-        tax_rounding_mode: "truncate".into(),
+        tax_rounding_mode: Some("truncate".into()),
     };
 
     run_set_receipt_settings(&conn, &dto).unwrap();
@@ -58,7 +58,7 @@ fn set_receipt_settings_persists() {
     assert_eq!(result.margin_bottom, 5);
     assert_eq!(result.margin_left, 1);
     assert_eq!(result.margin_right, 2);
-    assert_eq!(result.tax_rounding_mode, "truncate");
+    assert_eq!(result.tax_rounding_mode, Some("truncate".to_string()));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 0,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -132,7 +132,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 2,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -209,7 +209,7 @@ fn receipt_settings_dto_debug() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 2,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let d = format!("{dto:?}");
     assert!(d.contains("comma"));
@@ -229,7 +229,7 @@ fn receipt_settings_dto_serialize() {
         margin_bottom: 0,
         margin_left: 0,
         margin_right: 0,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert!(!json["showCurrency"].as_bool().unwrap());
@@ -351,7 +351,7 @@ fn receipt_settings_dto_serde_roundtrip() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 1,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let json = serde_json::to_value(&dto).unwrap();
     let back: ReceiptSettingsDto = serde_json::from_value(json).unwrap();
@@ -1624,7 +1624,7 @@ fn wire_pin_receipt_settings_carries_every_key_the_renderer_declares() {
     // Two values from opposite ends of the object: a mis-ordered rename would
     // land one of these on the wrong field rather than dropping it.
     assert!(parsed.show_currency);
-    assert_eq!(parsed.tax_rounding_mode, "truncate");
+    assert_eq!(parsed.tax_rounding_mode, Some("truncate".to_string()));
     assert_eq!(parsed.margin_right, 2);
 }
 

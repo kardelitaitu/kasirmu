@@ -52,7 +52,7 @@ fn get_receipt_settings_returns_defaults() {
     assert_eq!(result.margin_bottom, 0);
     assert_eq!(result.margin_left, 0);
     assert_eq!(result.margin_right, 0);
-    assert_eq!(result.tax_rounding_mode, "half_up");
+    assert_eq!(result.tax_rounding_mode, Some("half_up".to_string()));
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn set_receipt_settings_persists() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 2,
-        tax_rounding_mode: "truncate".into(),
+        tax_rounding_mode: Some("truncate".into()),
     };
 
     run_set_receipt_settings(&conn, &dto).unwrap();
@@ -85,7 +85,60 @@ fn set_receipt_settings_persists() {
     assert_eq!(result.margin_bottom, 3);
     assert_eq!(result.margin_left, 2);
     assert_eq!(result.margin_right, 2);
-    assert_eq!(result.tax_rounding_mode, "truncate");
+    assert_eq!(result.tax_rounding_mode, Some("truncate".to_string()));
+}
+
+/// Regression pin for the T4-2 finding in `todo-refactor-oz-pos-app-agents-3.md`.
+///
+/// The restaurant POS card sends **ten** of the eleven receipt keys and omits
+/// `taxRoundingMode` (`ui/src/features/settings/workspace-cards/
+/// WorkspaceRestaurantPosSettings.tsx:100-111`). `#[serde(default =
+/// "default_tax_rounding_mode")]` turned that absence into `"half_up"`, and
+/// `run_set_receipt_settings` then stamped it unconditionally — so a merchant
+/// who had chosen `truncate` and afterwards saved anything from that card
+/// silently got `half_up` back, with no error and no visible field.
+///
+/// Absence has to mean "this caller does not speak to this key".
+#[test]
+fn set_receipt_settings_without_tax_rounding_mode_leaves_the_stored_mode_alone() {
+    let conn = fresh_conn();
+
+    // The merchant's choice, written the way a card that owns the field writes
+    // it (the store POS card sends all eleven keys).
+    Settings::set_tax_rounding_mode_str(&conn, "truncate").unwrap();
+    assert_eq!(
+        Settings::get_tax_rounding_mode(&conn).unwrap().wire_name(),
+        "truncate",
+    );
+
+    // The restaurant POS card's exact wire payload: ten keys, no
+    // `taxRoundingMode`.
+    let wire = r#"{
+        "showCurrency": true,
+        "decimalSeparator": "dot",
+        "showTax": true,
+        "footer": "Thanks",
+        "paperWidth": "standard",
+        "showTableNumber": true,
+        "marginTop": 0,
+        "marginBottom": 0,
+        "marginLeft": 0,
+        "marginRight": 0
+    }"#;
+    let dto: ReceiptSettingsDto = serde_json::from_str(wire).unwrap();
+
+    run_set_receipt_settings(&conn, &dto).unwrap();
+
+    assert_eq!(
+        Settings::get_tax_rounding_mode(&conn).unwrap().wire_name(),
+        "truncate",
+        "a payload that omits taxRoundingMode must not reset the stored mode",
+    );
+    // The ten keys it does carry were still written — the fix must not turn a
+    // partial save into a no-op.
+    let after = run_get_receipt_settings(&conn).unwrap();
+    assert!(after.show_table_number);
+    assert_eq!(after.footer, "Thanks");
 }
 
 #[test]
@@ -141,7 +194,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 0,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -159,7 +212,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 5,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -233,7 +286,7 @@ fn receipt_settings_dto_debug() {
         margin_bottom: 0,
         margin_left: 0,
         margin_right: 0,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let d = format!("{dto:?}");
     assert!(d.contains("Thanks"));
@@ -457,7 +510,7 @@ fn receipt_settings_dto_serde_roundtrip() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 1,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let json = serde_json::to_value(&dto).unwrap();
     let back: ReceiptSettingsDto = serde_json::from_value(json).unwrap();

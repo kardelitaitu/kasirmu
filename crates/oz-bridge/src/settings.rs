@@ -149,14 +149,16 @@ pub struct ReceiptSettingsDto {
     pub margin_left: i64,
     /// Right margin (mm).
     pub margin_right: i64,
-    /// Tax rounding mode: "half_up" or "truncate". Default "half_up".
-    #[serde(default = "default_tax_rounding_mode")]
-    pub tax_rounding_mode: String,
-}
-
-/// Default for ReceiptSettingsDto::tax_rounding_mode when the field is absent.
-pub fn default_tax_rounding_mode() -> String {
-    "half_up".to_string()
+    /// Tax rounding mode: "half_up" or "truncate".
+    ///
+    /// `None` means the caller did not speak to this key, and the stored value
+    /// must be left alone. It is deliberately **not** defaulted: the restaurant
+    /// POS card sends ten of these eleven keys
+    /// (`ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:100-111`),
+    /// so a serde default here silently rewrote a merchant's `truncate` back to
+    /// `half_up` on every save from that card. The read path always answers
+    /// `Some`.
+    pub tax_rounding_mode: Option<String>,
 }
 
 /// Store name, address, tax ID, currency, branch, and logo - shown on printed receipts.
@@ -405,9 +407,11 @@ pub fn run_get_receipt_settings(
         margin_bottom: Settings::get_receipt_margin_bottom(conn)?,
         margin_left: Settings::get_receipt_margin_left(conn)?,
         margin_right: Settings::get_receipt_margin_right(conn)?,
-        tax_rounding_mode: Settings::get_tax_rounding_mode(conn)?
-            .wire_name()
-            .to_string(),
+        tax_rounding_mode: Some(
+            Settings::get_tax_rounding_mode(conn)?
+                .wire_name()
+                .to_string(),
+        ),
     })
 }
 
@@ -1026,7 +1030,13 @@ pub fn run_set_receipt_settings(
     Settings::set_receipt_margin_bottom(&tx, args.margin_bottom)?;
     Settings::set_receipt_margin_left(&tx, args.margin_left)?;
     Settings::set_receipt_margin_right(&tx, args.margin_right)?;
-    Settings::set_tax_rounding_mode_str(&tx, &args.tax_rounding_mode)?;
+    // Absent means "leave the stored value alone" — see
+    // `ReceiptSettingsDto::tax_rounding_mode`. A value that IS present still
+    // goes through the validating setter, so an unknown mode is refused rather
+    // than written.
+    if let Some(mode) = &args.tax_rounding_mode {
+        Settings::set_tax_rounding_mode_str(&tx, mode)?;
+    }
 
     tx.commit()?;
 
