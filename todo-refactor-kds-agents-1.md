@@ -216,4 +216,12 @@ they were, and a green suite is not evidence about a path that does not exist.
 > Recorded 2026-09-15 by the owner-ruling lane, in the same sitting that landed `3df117977` and closed
 > the merged plan's checklist. Files touched by this pass: the two superseded plans,
 > `todo-refactor-kds-agents-merged.md`, and — for the ruling fix — the six files in `3df117977`.
+>
+> **Addendum, same evening, HEAD `b623227cc`:** the merged plan RAN its own `check:all` — 6 passed,
+> 1 skipped (E2E, no Docker), 1 failed with **3 tests, all foreign** (committed popover state in
+> restaurant CSS by `1fb8cc643` + an uncommitted sales-lane `--shadow-md` tail) and 9,977 passed
+> including every KDS suite — after which the owner applied a §4 waiver and renamed
+> `todo-refactor-kds-agents-merged.md` **in place** to `done-todo-refactor-kds-agents-merged.md`.
+> Every citation of the old name in this file is a dated record; the print and the attribution live in
+> that file's "Acceptance run" section.
 

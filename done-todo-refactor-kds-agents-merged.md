@@ -302,3 +302,56 @@ Nothing above is rewritten; the originals stand as dated records, and this block
 **Checkbox state after this block, anchored form** (the `:206` off-by-one trap applies to anyone re-counting): open **0**, ticked **23** — `grep -cE '^[[:space:]]*- \[ \]' todo-refactor-kds-agents-merged.md` → 0, `'- \[x\]'` → 23. Both source docs' own unticked glyphs (agents-1 `:74`/`:95`, agents-2 `:73`/`:80`/`:94`/`:102`/`:111`/`:118`) are left unticked deliberately: those files are superseded, and every disposition now lives here, once.
 
 **What this does NOT unlock, stated so nobody re-litigates it:** the `done-` rename still fails on the gate this file named for itself — **`npm run check:all` has never been executed in this checkout** (lint → typecheck → test → i18n → **E2E**, and the E2E leg has no backend here: Docker unreachable, port 15432 refuses). Zero open boxes is a bookkeeping fact about dispositions, not an acceptance run; the legs that DID run are the ones named above. If the owner wants to rename this file and archive all three (`todo-kds.md` included), the honest path is either an environment where `check:all` completes, or a dated owner ruling that retires the E2E leg as this plan's acceptance — a decision, again, not a drift.
+
+---
+
+## Acceptance run (2026-09-15 ~23:02, HEAD `b623227cc`) — check:all RUN, RED ON FOREIGN GROUNDS, §4 waiver applied
+
+> **First execution of this plan's own chained gate in this checkout.** Run: `npm run check:all` from
+> `ui/` (`node scripts/check-ui.mjs`), started after `6806d9ab0` and settled at HEAD `b623227cc` — the
+> movement during the run is other lanes' commits, and the working tree carried their in-flight edits
+> too, so this record is **a run of this working tree, not of any single revision** (the same walking-
+> guard discipline AGENTS.md binds on the CSS suites). Fresh probe, same facts as the claim this block
+> retires: Docker daemon down (npipe absent), port 15432 refuses.
+
+Print, verbatim from the summary table:
+
+```text
+  ✔ ESLint (60.0s) — Pass
+  ✔ TypeScript type check (34.5s) — Pass
+  ✘ Unit tests (vitest) (89.7s) — FAIL
+  ✔ i18n lint (6.4s) — Pass
+  ✔ FTL dedupe (0.4s) — Pass
+  ✔ Bundle budget (9.5s) — Pass
+  – E2E tests (Playwright) (0.0s) — Skip   ("SKIP (Docker not available)" — by the script's design, check-ui.mjs:164-168)
+  ✔ Perf smoke (Playwright) (24.8s) — Pass
+
+  Total: 317.8s  |  6 passed  1 skipped  1 failed
+  vitest rollup:  Test Files 2 failed | 580 passed (582) · Tests 3 failed | 9977 passed | 24 skipped | 3 todo (10007)
+```
+
+**All three failing tests are foreign, and this lane's innocence is command-provable:**
+
+1. `popoverSurfaceCompliance.test.ts` ×2 — `.restaurant-hamburger-dropdown` in `features/restaurant/RestaurantMenu.css`
+   carries `var(--color-bg-surface)` where the guard wants `--color-bg-popover`. The file is **clean at
+   HEAD** — the state is COMMITTED by the restaurant lane's popover series (`git log -- ui/src/features/restaurant/RestaurantMenu.css`
+   → `1fb8cc643 feat(restaurant): move the cart header buttons into the sidebar popover` + `20450716b` + `5f6f5ed61`).
+2. `themeTokenCompliance.test.ts` ×1 — "New tail on a value-varying token: `--shadow-md @ ui/src/features/sales/CartPanelLineItem.css`".
+   That file is **dirty** (` M`): `git show HEAD:...| rg -c shadow-md` → **1**, disk → **2** — the extra
+   tail is another session's uncommitted edit. This is the borrowed-red class AGENTS.md records verbatim
+   for this very suite and this very file ("a red can be borrowed from a stranger").
+3. `git show --stat 3df117977` and `6806d9ab0` together name **zero `.css` paths** (6 TS/TSX + 3 plan
+   docs). Every KDS suite — including the whole 956-case family re-checked at `3df117977` earlier this
+   evening — passed inside this same run; the 9,977 passing tests include them.
+
+**OWNER RULING (§4), 2026-09-15:** the acceptance state of this plan is no longer "never run" — it is
+**RUN and RED ON FOREIGN GROUNDS**, which is the exact shape the enterprise-mocks lane waived the same
+evening (`d316a0b5b`, same wording, same shape). The owner waives the foreign red for this plan's
+purposes; this file is renamed **in place at the root** to `done-todo-refactor-kds-agents-merged.md`
+(AGENTS.md §4: renames happen in place — `.agents/archived/` is not a naming substitute). The two
+superseded sources and the `todo-kds.md` stub **stay** `todo-`: superseded and stub are dated-header
+states, never filenames — and their "the work it plans is unfinished" lines now read as historical: the
+work finished, the documents were superseded, and this file carries the closure. **The fork named in the
+paragraph above this section is answered — neither branch taken:** the run happened, the print stands,
+and the E2E leg remains unexecuted in this plan's history by recorded choice on a machine that cannot
+execute it, not by silence.

@@ -226,4 +226,12 @@ each of the three ticks cites this same block, so the sharing is on the record r
 
 > Recorded 2026-09-15 by the owner-ruling lane, same sitting as `3df117977`. Files touched by this
 > pass: the two superseded plans, `todo-refactor-kds-agents-merged.md`, and the six in the fix commit.
+>
+> **Addendum, same evening, HEAD `b623227cc`:** the merged plan RAN its own `check:all` — 6 passed,
+> 1 skipped (E2E, no Docker), 1 failed with **3 tests, all foreign** (committed popover state in
+> restaurant CSS by `1fb8cc643` + an uncommitted sales-lane `--shadow-md` tail) and 9,977 passed
+> including every KDS suite — after which the owner applied a §4 waiver and renamed
+> `todo-refactor-kds-agents-merged.md` **in place** to `done-todo-refactor-kds-agents-merged.md`.
+> Citations of the old name here are dated records; print and attribution are in that file's
+> "Acceptance run" section.
 
