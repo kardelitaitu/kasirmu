@@ -4,8 +4,13 @@
 //! table writes were unreachable on a real tablet (each demanded a
 //! `user_id: String` that `ui/src/api/tables.ts` never sends, so Tauri rejected
 //! the call at `tauri-2.11.3/src/ipc/command.rs:100` before any body ran) and
-//! nothing in the repository noticed, because no test crossed the boundary and
-//! no test called the commands either.
+//! nothing in the repository noticed. Not from the Rust side — no test resolves
+//! command arguments (the `mock_ipc` / `handle_invoke` idioms match no file in
+//! either shell) — and not from the JS side either, where the suite that *does*
+//! pin this payload, `ui/src/__tests__/api-tables-contract.test.ts:47`, asserts
+//! `{ sessionToken, table }` and stayed green the whole time the signature these
+//! cases exercise refused it. A contract test written in the caller's language
+//! cannot see the callee's requirements; that asymmetry is T9 in the plan file.
 //!
 //! The permission split asserted here is not "staff may not touch tables".
 //! `platform/core/src/rbac_presets.rs:152-155` grants the built-in Staff role
