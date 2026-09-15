@@ -136,6 +136,25 @@ ABANDON_RE = re.compile(r"\breturn\b|(?:\bpanic!|\bfail!|\bunreachable!)\s*\(")
 PROPAGATE_RE = re.compile(r"^\s*None\s*,?\s*$", re.MULTILINE)
 
 
+def is_comment_line(line: str) -> bool:
+    s = line.lstrip()
+    return s.startswith("//") or s.startswith("/*") or s.startswith("*")
+
+
+def counts_as_arm(lines: list[str], i: int) -> bool:
+    """The single arm predicate, shared by the tree walk and the self-test.
+
+    Shared on purpose: `arm_abandons` already has a docstring promising one
+    implementation so a fixture cannot drift from the scan, and the comment rule
+    was about to be added to only one of the two call sites -- which would have
+    made the fixture prove something the census does not do.
+    """
+    line = lines[i]
+    if not ARM_RE.search(line) or is_comment_line(line):
+        return False
+    return arm_abandons(lines, i)
+
+
 def arm_abandons(lines: list[str], start: int) -> bool:
     """Does the skip at `lines[start]` actually give up on the test?
 
@@ -174,8 +193,13 @@ def count_source_arms() -> tuple[int, dict[str, int]]:
             except (OSError, UnicodeDecodeError):
                 continue
             hits = 0
-            for i, line in enumerate(lines):
-                if ARM_RE.search(line) and arm_abandons(lines, i):
+            for i in range(len(lines)):
+                # Comment exclusion lives inside counts_as_arm, shared with the
+                # self-test's fixture helper so the two cannot drift. Measured
+                # 2026-09-15: 0 of the 64 counted arms sit on a comment line, so
+                # the rule changes today's number by nothing -- it removes a way
+                # the number could be inflated later without anyone noticing.
+                if counts_as_arm(lines, i):
                     hits += 1
             if hits:
                 per_file[rel] = hits
@@ -399,9 +423,10 @@ def self_test() -> int:
     #      of this census silently `return`-only while still printing a plausible
     #      total. Both directions are planted here so that bug cannot return.
     def arms_in(src: str) -> int:
+        # Uses counts_as_arm, the same predicate the tree walk runs, so a fixture
+        # can never prove a rule the census does not actually apply.
         lines = src.splitlines()
-        return sum(1 for i, ln in enumerate(lines)
-                   if ARM_RE.search(ln) and arm_abandons(lines, i))
+        return sum(1 for i in range(len(lines)) if counts_as_arm(lines, i))
 
     panic_arm = (
         'fn t() {\n'
@@ -444,6 +469,50 @@ def self_test() -> int:
     )
     expect("a helper propagating a bare None IS counted (redis_backend_tests shape)",
            arms_in(helper_none) == 1)
+
+    # (3c) comment exclusion, both directions. The over-count this prevents is
+    #      real: a lane commenting out a PG arm while debugging would ADD to a
+    #      census that is supposed to measure live silent-pass sites.
+    commented = (
+        'fn t() {\n'
+        '    // let Some(p) = pool().await else {\n'
+        '    //     eprintln!("PG integration test skipped: no db");\n'
+        '    //     return;\n'
+        '    // };\n'
+        '}\n'
+    )
+    expect("a commented-out arm is NOT counted", arms_in(commented) == 0)
+
+    blocked = (
+        'fn t() {\n'
+        '    /*\n'
+        '     * eprintln!("PG integration test skipped");\n'
+        '     * return;\n'
+        '     */\n'
+        '}\n'
+    )
+    expect("an arm inside a /* */ block is NOT counted", arms_in(blocked) == 0)
+
+    url_string = (
+        'fn t() {\n'
+        '    match connect() {\n'
+        '        Err(e) => {\n'
+        '            eprintln!("PG test skipped: see http://example.test/x");\n'
+        '            return;\n'
+        '        }\n'
+        '    }\n'
+        '}\n'
+    )
+    expect("a // INSIDE the message string does not suppress a real arm",
+           arms_in(url_string) == 1)
+
+    # (3d) the baseline is asserted, not merely printed. When the tree legitimately
+    #      changes -- the `slow-tests` migration Phase 5 files, for instance, which
+    #      deletes these eprintln arms -- this case goes red and forces ARM_BASELINE
+    #      and ARM_FLOOR to be moved deliberately, in the same commit as the edit,
+    #      rather than leaving a stale floor silently firing or silently stale.
+    expect(f"tree census still equals the stated baseline ({ARM_BASELINE})",
+           arms == ARM_BASELINE)
 
     # (4) the SOURCE channel's own guards. A guard whose floor cannot fire is
     #     itself decoration, so each is planted in both directions using the real
