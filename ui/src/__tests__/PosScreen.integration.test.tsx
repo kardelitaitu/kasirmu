@@ -1841,17 +1841,6 @@ describe('PosScreen — Sub-screens (Stock Inquiry, Settings)', () => {
     expect(settingsBtn).toBeInTheDocument();
   });
 
-  it('shows Workspace Settings Modal when showWorkspaceSettings is true', async () => {
-    // This test would require setting internal state
-    // For integration test, we verify the modal component is imported
-    // and the state exists
-    await renderPosScreenWithShift();
-    
-    // The WorkspaceSettingsModal is conditionally rendered
-    // We can't easily trigger it without internal state access
-    // This is covered by WorkspaceSettingsModal's own tests
-    expect(true).toBe(true);
-  });
 });
 
 describe('PosScreen — FastPINOverlay + deduction location override', () => {
@@ -1997,41 +1986,6 @@ describe('PosScreen — Payment modal integration', () => {
 
   it('passes tableNumber for table management', async () => {
     // tableNumber is passed when table management is enabled
-    expect(true).toBe(true);
-  });
-});
-
-describe('PosScreen — Workspace Settings Modal (ADR #22)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    mockedBarcode.reset();
-  });
-
-  it('shows WorkspaceSettingsModal when showWorkspaceSettings is true', async () => {
-    // WorkspaceSettingsModal is rendered when showWorkspaceSettings state is true
-    // This is triggered by handleOpenSettings in restaurant-pos workspace
-    await renderPosScreenWithShift();
-    expect(true).toBe(true);
-  });
-
-  it('passes workspaceType="restaurant-pos" to modal', async () => {
-    // The modal receives workspaceType prop
-    expect(true).toBe(true);
-  });
-
-  it('passes presentation="slideover" to modal', async () => {
-    // The modal uses slideover presentation
-    expect(true).toBe(true);
-  });
-
-  it('calls onClose when modal is closed', async () => {
-    // onClose sets showWorkspaceSettings to false
-    expect(true).toBe(true);
-  });
-
-  it('is conditionally rendered at end of component', async () => {
-    // The modal is rendered after FastPINOverlay in the JSX
     expect(true).toBe(true);
   });
 });

@@ -11,7 +11,6 @@ import { useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
-import WorkspaceSettingsModal from '@/features/settings/WorkspaceSettingsModal';
 import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
@@ -59,7 +58,11 @@ import './CartPanelCourseBar.css';
  * desktop client. Rendered as a full-screen overlay above PosScreen;
  * the `onBack` callback returns to the main sales screen.
  */
-// SettingsSubScreen removed in Phase 6 (ADR #22) — replaced by WorkspaceSettingsModal.
+// SettingsSubScreen removed in Phase 6 (ADR #22) — superseded by the
+// WorkspaceSettingsModal that AppShell opens globally on F10 (AppShell.tsx),
+// which derives its card from the active workspace. This screen deliberately
+// does not host its own copy: a local instance would have to hardcode the
+// workspace type and would shadow the global shortcut.
 
 /**
  * POS sales screen — product lookup on the left, cart panel on the right.
@@ -165,7 +168,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
   const [showStockInquiry, setShowStockInquiry] = useState(false);
-  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
@@ -733,16 +735,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         onVerified={handleDeductionPinVerified}
       />
     </div>
-
-    {/* ── Workspace Settings Modal (ADR #22 Phase 5) ── */}
-    {showWorkspaceSettings && (
-      <WorkspaceSettingsModal
-        open={showWorkspaceSettings}
-        onClose={() => setShowWorkspaceSettings(false)}
-        workspaceType="restaurant-pos"
-        presentation="slideover"
-      />
-    )}
   </>
   );
 }
