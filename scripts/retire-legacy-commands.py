@@ -133,6 +133,17 @@ def main() -> int:
               f"would not match the tree that gets committed:\n  {dirty}", file=sys.stderr)
         return 2
 
+    # Rust comments in this tree carry em dashes and section signs, and a Windows console
+    # defaults to cp1252: printing one inside a residue report raised UnicodeEncodeError out
+    # of the middle of the tool's own diagnosis (`print("\n".join(residue[:40]))`, on a line
+    # naming `sync_run` whose comment carries a §). Re-open stdout as UTF-8 with replacement
+    # rather than sanitising the text -- the report is about real source lines and should
+    # show them as they are.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # exotic or already-closed streams
+        pass
+
     registered = set(vip.extract_handlers(lib))
     ui = set(vip.extract_ui_commands().keys())
     prod = [(p.relative_to(src).as_posix(), p.read_text(encoding="utf-8", errors="replace"))
@@ -230,8 +241,14 @@ def main() -> int:
 
     rewritten = 0
     for name, raw in doctext.items():
-        old = re.compile(r"^[ \t]*/// Session-scoped variant of `" + re.escape(name) + r"`\.[ \t]*$",
-                         re.M)
+        # Both shells' idioms, which differ in CASE as well as wording: the tablet writes
+        # "Session-scoped variant of `x`." and the desktop writes "Scoped variant of `x`
+        # (ADR #7)." The first widening here required a capital S and quietly stopped matching
+        # the tablet form -- a matcher got narrower while it was being made broader, and only
+        # a "rewritten: 0 (of 6)" line on a module that had always rewritten all of them made
+        # it visible. Count what a rewrite claims to have done, always.
+        old = re.compile(r"^[ \t]*/// (?:Session-)?[Ss]coped variant of `" + re.escape(name)
+                         + r"`(?: \(ADR #7\))?\.[ \t]*$", re.M)
         base = raw[0].upper() + raw[1:] if raw else name.replace("_", " ")
         new = f"/// {base} resolved from a session token. ADR #7."
         out, n = old.subn(new, out)
@@ -251,10 +268,20 @@ def main() -> int:
     # Reporting is deliberate -- the tool does not invent prose it has no business writing.
     residue: list[str] = []
     scan: list[tuple[str, str]] = [(mod.name, out)]
-    scan += [(label, text) for label, text in prod + tests if label != mod.name]
+    # `prod` labels are relative paths ("commands/purchasing.rs") while the entry above
+    # is a bare basename, so compare suffixes: without this the same file is reported
+    # twice, once with stale lines that are about to be deleted.
+    scan += [(label, txt) for label, txt in prod + tests
+               if not label.endswith(f"commands/{mod.name}") and label != mod.name]
     for name in spans:
-        for label, text in scan:
-            for i, line in enumerate(text.splitlines(), 1):
+        # `txt`, never `text`: the outer `text` holds this file's original contents and the
+        # attribute-count assertion below compares against it. Python has no block scope, so
+        # a loop that binds `text` here silently replaces it, and the run reported "fell by
+        # -10" while comparing an unrelated file's attributes to the result. Same family as
+        # the stale `lib_path` that made the F-006 leg grade the desktop's names against the
+        # tablet's sources on 2026-09-16: a name in an enclosing scope, reused.
+        for label, txt in scan:
+            for i, line in enumerate(txt.splitlines(), 1):
                 if not re.match(r"^\s*(///|//|\*)", line):
                     continue
                 if re.search(r"(?<![\w:])" + re.escape(name) + r"\b(?!_scoped)", line):
@@ -278,8 +305,9 @@ def main() -> int:
               "marker and would swallow the attributes below it):")
         print("\n".join(bare))
         return 2
-    attrs_before = len(re.findall(r"^\s*#\[command\]", text, re.M))
-    attrs_after = len(re.findall(r"^\s*#\[command\]", out, re.M))
+    ATTR = r"^\s*#\[(?:tauri::)?command\]"  # both spellings: the desktop qualifies, the tablet imports
+    attrs_before = len(re.findall(ATTR, text, re.M))
+    attrs_after = len(re.findall(ATTR, out, re.M))
     if attrs_before - attrs_after != len(spans):
         print(f"abort: attribute count fell by {attrs_before - attrs_after}, expected {len(spans)}")
         return 2
