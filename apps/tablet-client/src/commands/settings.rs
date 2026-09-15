@@ -571,7 +571,11 @@ pub async fn get_receipt_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -603,7 +607,11 @@ pub async fn get_store_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<StoreSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -631,7 +639,11 @@ pub async fn get_credit_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -672,7 +684,11 @@ pub async fn list_credit_sales_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CreditSaleDto>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -728,7 +744,11 @@ pub async fn get_hardware_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<HardwareSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -770,7 +790,11 @@ pub async fn get_setting_scoped(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

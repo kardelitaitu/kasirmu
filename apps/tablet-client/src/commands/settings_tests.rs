@@ -1928,3 +1928,160 @@ async fn set_settings_scoped_denies_a_session_without_settings_edit() {
         "a session without settings:edit must be denied, got {result:?}",
     );
 }
+
+// ── T10 · the six scoped reads that resolved a session and ignored it ─────
+//
+// `get_receipt_settings_scoped`, `get_store_settings_scoped`,
+// `get_credit_settings_scoped`, `get_hardware_settings_scoped`,
+// `get_setting_scoped` and `list_credit_sales_scoped` each did
+// `let (_session, …) = state.resolve_scope(&session_token)?` — the underscore is
+// the finding — and went to the database. Every one of their
+// `oz_bridge::settings` twins gates: five on `settings:read`, and
+// `list_credit_sales_scoped` on `sales:view` (`crates/oz-bridge/src/settings.rs:779`,
+// under an "F-017" comment that even records the exception: "This one keeps
+// sales:view, not settings:read — verbatim from the shell"). All six were already
+// on this shell's debt ledger as `resolves_session_names_no_permission`, which is
+// another way of noting that the ledger describes the hole and nothing closed it.
+//
+// These cases pin the SPLIT, not a blanket block, because a blanket block would be
+// wrong: `role-staff` holds `sales:view` and no `settings:*` key at all
+// (`platform/core/src/rbac_presets.rs:136-159`), so a cashier listing the store's
+// credit sales is authorized behavior while reading receipt formatting is not. The
+// session below therefore uses a hand-made role carrying exactly `["sales:view"]`
+// — so what decides each outcome is the grant, provable from the role row, rather
+// than a role name this file happens to like.
+
+/// An app with one session whose role holds exactly `sales:view` — enough for the
+/// credit-sale list, not enough for any of the five settings reads. The store
+/// databases live in the temp dir `store_state` creates, matching this file's
+/// existing tests.
+fn one_grant_app() -> tauri::App<tauri::test::MockRuntime> {
+    let conn = migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-view-only', 'View Only', 'holds sales:view and nothing else',
+                 '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-view-only', 'viewonly', 'hash', 'View Only', 'role-view-only', 1,
+                 '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let state = store_state(conn);
+    state.session_store.write().unwrap().insert(
+        "view-only-token".into(),
+        SessionContext::new(
+            "user-view-only".into(),
+            "role-view-only".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+/// The five settings reads the bridge gates on `settings:read`.
+#[tokio::test]
+async fn scoped_settings_reads_deny_a_session_without_settings_read() {
+    let app = one_grant_app();
+
+    for (label, result) in [
+        (
+            "get_receipt_settings_scoped",
+            matches!(
+                get_receipt_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_store_settings_scoped",
+            matches!(
+                get_store_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_credit_settings_scoped",
+            matches!(
+                get_credit_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_hardware_settings_scoped",
+            matches!(
+                get_hardware_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_setting_scoped",
+            matches!(
+                get_setting_scoped("view-only-token".into(), "store.name".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+    ] {
+        assert!(result, "{label} must refuse a session holding only sales:view");
+    }
+}
+
+/// The sixth is the exception the bridge documents, and it must stay open: this
+/// session holds `sales:view`, so the credit-sale list has to reach its body.
+/// Without this case, tightening the five into a block on everything settings-ish
+/// would still pass the file above.
+#[tokio::test]
+async fn scoped_credit_sale_list_stays_open_to_a_session_with_sales_view() {
+    let app = one_grant_app();
+
+    let result = list_credit_sales_scoped("view-only-token".into(), app.state()).await;
+    assert!(
+        !matches!(result, Err(AppError::PermissionDenied(_))),
+        "list_credit_sales_scoped gates on sales:view, which this session holds; \
+         got {:?}",
+        result
+    );
+    assert!(result.is_ok(), "an empty store should answer with an empty list");
+    assert_eq!(result.unwrap().len(), 0);
+}
+
+/// All six reach their bodies for a session that holds everything. Same shape as
+/// the denial cases, and the pair is what makes either one meaningful: the denial
+/// cannot be vacuous because the owner gets through, and the owner case cannot be
+/// vacuous because the restricted session is refused.
+#[tokio::test]
+async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    let app = owner_app(store_state(conn));
+
+    assert!(get_receipt_settings_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
+    assert!(get_store_settings_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
+    assert!(get_credit_settings_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
+    assert!(get_hardware_settings_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
+    assert!(!matches!(
+        get_setting_scoped("owner-token".into(), "store.name".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(list_credit_sales_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
+}
