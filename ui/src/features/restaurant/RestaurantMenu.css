@@ -184,6 +184,15 @@
   font-weight: var(--font-weight-bold);
 }
 
+/* Override marker on the relocated deduction row. Same signal as the cart
+   badge's own marker (.pos-cart-deduction-override in CartPanel.css), restated
+   here because a class a screen renders must be defined in that screen's sheet
+   — the claim `screenExtraction.test.ts` polices. */
+.restaurant-hamburger-override {
+  color: var(--color-danger-fg);
+  font-weight: var(--font-weight-semibold);
+}
+
 .restaurant-back-btn {
   display: inline-flex;
   align-items: center;

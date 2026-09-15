@@ -6,8 +6,9 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
+import type { RestaurantSidebarActions } from '@/features/restaurant/components/MenuPreferencesMenu';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useFeatures } from '@/hooks/useFeatures';
+import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
@@ -619,6 +620,25 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,
     ...cartLineRows, ...discountEditor, ...totalsRow, ...checkoutRow,
   };
+  // The cart header's buttons, handed to the restaurant sidebar popover instead
+  // (CartPanel renders no action cluster, no shift buttons and no deduction
+  // badge in that workspace). Same handlers, one extra home for them — the
+  // header's old lock button is NOT here, because the popover's "Lock Terminal"
+  // row replaced it: that one locks the session instead of logging the cashier
+  // out. Field names are `on*` because the popover owns no state.
+  const restaurantCartActions: RestaurantSidebarActions = {
+    shiftLoading,
+    hasActiveShift: activeShift !== null,
+    onOpenShift: handleOpenShiftClick,
+    onCloseShift: handleCloseShiftClick,
+    deductionLocationName,
+    deductionOverridden,
+    onOverrideDeduction: handleDeductionBadgeClick,
+    showTables: isEnabled(FEATURES.TABLE_MANAGEMENT),
+    onOpenTables: () => setShowTables(true),
+    onOpenHistory: () => setShowSalesHistory(true),
+    onOpenKitchenDisplay: () => onNavigate?.('kds'),
+  };
 
   return (
     <>
@@ -630,6 +650,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             onAddProduct={handleAddProduct}
             sidebarOpen={restaurantSidebarOpen}
             onSidebarOpenChange={setRestaurantSidebarOpen}
+            cartActions={restaurantCartActions}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />

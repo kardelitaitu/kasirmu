@@ -9,7 +9,7 @@ import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settin
 import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
-import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
+import { MenuPreferencesMenu, type RestaurantSidebarActions } from './components/MenuPreferencesMenu';
 import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
@@ -22,6 +22,13 @@ export interface RestaurantMenuProps {
   sidebarOpen?: boolean;
   /** Callback when sidebar open state changes. */
   onSidebarOpenChange?: (open: boolean) => void;
+  /**
+   * The cart header's terminal actions, relocated into the sidebar popover
+   * (shift, deduction override, tables, history, KDS). PosScreen owns the
+   * state and the modals; this screen only renders the rows. Absent = no
+   * group, which is what every test render and non-POS host gets.
+   */
+  cartActions?: RestaurantSidebarActions;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -138,6 +145,7 @@ export default function RestaurantMenu({
   onAddProduct,
   sidebarOpen: controlledSidebarOpen,
   onSidebarOpenChange,
+  cartActions,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { products, categoryMeta, loading } = useProducts();
@@ -417,6 +425,7 @@ export default function RestaurantMenu({
       {/* ── Header row: hamburger + back + search ── */}
       <div className="restaurant-header">
         <MenuPreferencesMenu
+          {...(cartActions ? { cartActions } : {})}
           open={menuOpen}
           onOpenChange={setMenuOpen}
           dropdownRef={hamburgerDropdownRef}

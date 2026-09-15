@@ -1,7 +1,8 @@
 // ── MenuPreferencesMenu component (todo-refactor-kds-agents-3.md) ───────
 //
 // The header's left cluster: the hamburger trigger and its dropdown popover
-// (sort options, menu-size stepper, font-size stepper, theme toggle, lock
+// (sort options, menu-size stepper, font-size stepper, the cart header's
+// terminal actions when the caller hands them in, theme toggle, lock
 // terminal, fullscreen). The parent keeps the open/closed flag because the
 // global search shortcuts must not steal focus while the popover is up, and
 // it owns the persisted preference callbacks; this component owns the
@@ -12,12 +13,15 @@
 // tests whether focus is inside it; sortMode + onSelectSort — current sort
 // and the pick handler (parent persists it); cardSize/onCardSizeStep and
 // fontSize/onFontSizeStep — stepper value and clamping handler owned by the
-// parent.
+// parent; cartActions — the relocated cart-header buttons (shift open/close,
+// deduction override, tables, history, KDS), optional so a bare
+// <RestaurantMenu /> renders no action group at all.
 //
 // Invariants: focus moves into the dropdown when opened by keyboard and
 // returns to the trigger on Escape; ArrowUp/Down/Home/End rove between the
 // dropdown buttons; Escape closes before the global search shortcut can see
-// it. The restaurant-hamburger-* class names are pinned by tests.
+// it; every action row closes the popover as it hands off. The
+// restaurant-hamburger-* class names are pinned by tests.
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Localized } from '@/components/Localized';
@@ -29,6 +33,30 @@ import { SORT_MODES } from '../RestaurantMenu';
 
 type SortMode = (typeof SORT_MODES)[number];
 
+/**
+ * The buttons that used to sit in the restaurant cart header
+ * (`CartPanel.tsx` `.pos-cart-header`), handed down by PosScreen so the
+ * popover is their only home in that workspace. Every field is a plain
+ * callback or a fact — the popover owns no state and knows nothing about
+ * modals, routes or the shift API.
+ */
+export interface RestaurantSidebarActions {
+  /** Shift lookup in flight: no shift row at all, same as the old header. */
+  shiftLoading: boolean;
+  hasActiveShift: boolean;
+  onOpenShift: () => void;
+  onCloseShift: () => void;
+  /** Locked deduction location; null = not deducting, so no row. */
+  deductionLocationName: string | null;
+  deductionOverridden: boolean;
+  onOverrideDeduction: () => void;
+  /** Table Management is feature-gated: render-and-hide is not an option. */
+  showTables: boolean;
+  onOpenTables: () => void;
+  onOpenHistory: () => void;
+  onOpenKitchenDisplay: () => void;
+}
+
 export interface MenuPreferencesMenuProps {
   open: boolean;
   onOpenChange: Dispatch<SetStateAction<boolean>>;
@@ -39,6 +67,8 @@ export interface MenuPreferencesMenuProps {
   onCardSizeStep: (delta: number) => void;
   fontSize: number;
   onFontSizeStep: (delta: number) => void;
+  /** Absent = no action group (retail, KDS, and every bare <RestaurantMenu />). */
+  cartActions?: RestaurantSidebarActions;
 }
 
 export function MenuPreferencesMenu({
@@ -51,6 +81,7 @@ export function MenuPreferencesMenu({
   onCardSizeStep,
   fontSize,
   onFontSizeStep,
+  cartActions,
 }: MenuPreferencesMenuProps) {
   const { l10n } = useLocalization();
   const { theme, toggleTheme } = useTheme();
@@ -224,6 +255,88 @@ export function MenuPreferencesMenu({
             </div>
           </div>
           <div className="restaurant-hamburger-divider" role="separator" />
+          {cartActions && (
+            <>
+              {/* The cart header's buttons, relocated: the restaurant cart is
+                  an order list, not a toolbar, and this popover is the only
+                  place in the workspace with room for the terminal chrome. Each
+                  row reuses the FTL key the header control already used, so the
+                  names an AT user hears did not change with the markup. */}
+              {cartActions.deductionLocationName && (
+                <button
+                  type="button"
+                  className="restaurant-hamburger-item"
+                  onKeyDown={handleHamburgerKeyDown}
+                  aria-label={l10n.getString('pos-cart-deduction-badge-aria', { name: cartActions.deductionLocationName })}
+                  onClick={() => { cartActions.onOverrideDeduction(); onOpenChange(false); }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="12" height="12" aria-hidden="true" style={{ pointerEvents: 'none' }}>
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <Localized id="pos-cart-deducting-label" vars={{ name: cartActions.deductionLocationName }}>
+                    <span>Deducting: {cartActions.deductionLocationName}</span>
+                  </Localized>
+                  {cartActions.deductionOverridden && (
+                    <span className="restaurant-hamburger-override" data-testid="deduction-override-indicator">
+                      {' '}(Override)
+                    </span>
+                  )}
+                </button>
+              )}
+              {!cartActions.shiftLoading && (cartActions.hasActiveShift ? (
+                <button
+                  type="button"
+                  className="restaurant-hamburger-item"
+                  onKeyDown={handleHamburgerKeyDown}
+                  aria-label={l10n.getString('pos-shift-close-aria')}
+                  onClick={() => { cartActions.onCloseShift(); onOpenChange(false); }}
+                >
+                  <Localized id="pos-shift-close-aria"><span>Close current shift</span></Localized>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="restaurant-hamburger-item"
+                  onKeyDown={handleHamburgerKeyDown}
+                  aria-label={l10n.getString('pos-shift-open-aria')}
+                  onClick={() => { cartActions.onOpenShift(); onOpenChange(false); }}
+                >
+                  <Localized id="pos-shift-open-aria"><span>Open a new shift</span></Localized>
+                </button>
+              ))}
+              {cartActions.showTables && (
+                <button
+                  type="button"
+                  className="restaurant-hamburger-item"
+                  onKeyDown={handleHamburgerKeyDown}
+                  aria-label={l10n.getString('tables-title')}
+                  onClick={() => { cartActions.onOpenTables(); onOpenChange(false); }}
+                >
+                  <Localized id="tables-title"><span>Table Management</span></Localized>
+                </button>
+              )}
+              <button
+                type="button"
+                className="restaurant-hamburger-item"
+                onKeyDown={handleHamburgerKeyDown}
+                aria-label={l10n.getString('retail-fn-history')}
+                onClick={() => { cartActions.onOpenHistory(); onOpenChange(false); }}
+              >
+                <Localized id="retail-fn-history"><span>History</span></Localized>
+              </button>
+              <button
+                type="button"
+                className="restaurant-hamburger-item"
+                onKeyDown={handleHamburgerKeyDown}
+                aria-label={l10n.getString('kds-title')}
+                onClick={() => { cartActions.onOpenKitchenDisplay(); onOpenChange(false); }}
+              >
+                <Localized id="kds-title"><span>Kitchen Display</span></Localized>
+              </button>
+              <div className="restaurant-hamburger-divider" role="separator" />
+            </>
+          )}
           <button
             type="button"
             className="restaurant-hamburger-item"

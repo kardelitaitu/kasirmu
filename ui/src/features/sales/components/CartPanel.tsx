@@ -261,6 +261,11 @@ export function CartPanel({
   openBills,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
+  // In the restaurant workspace the cart header's buttons do not live here at
+  // all: PosScreen hands them to the sidebar popover (MenuPreferencesMenu's
+  // `cartActions`) and this panel keeps only what identifies the order — title,
+  // count and shift status. Retail has no sidebar, so it keeps everything.
+  const sidebarOwnsTerminalActions = activeWorkspace === 'restaurant-pos';
   // Which line's course dropdown is open. Held here rather than per row so
   // opening one line's menu closes the other's.
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
@@ -351,8 +356,9 @@ export function CartPanel({
               )}
             </h2>
 
-            {/* ADR-19 §17: locked deduction location badge (clickable → FastPINOverlay override) */}
-            {deductionLocationName && (
+            {/* ADR-19 §17: locked deduction location badge (clickable → FastPINOverlay override).
+                Restaurant: the same control is a row in the sidebar popover. */}
+            {deductionLocationName && !sidebarOwnsTerminalActions && (
               <button
                 type="button"
                 className="pos-cart-deduction-badge"
@@ -389,58 +395,69 @@ export function CartPanel({
                     elapsedHoursMinutes(new Date(activeShift.openedAt).getTime(), shiftNow),
                   )}
                 </span>
-                <button
-                  type="button"
-                  className="pos-shift-close-btn"
-                  onClick={handleCloseShiftClick}
-                  aria-label={l10n.getString('pos-shift-close-aria')}
-                >
-                  {l10n.getString('pos-shift-close-btn')}
-                </button>
+                {!sidebarOwnsTerminalActions && (
+                  <button
+                    type="button"
+                    className="pos-shift-close-btn"
+                    onClick={handleCloseShiftClick}
+                    aria-label={l10n.getString('pos-shift-close-aria')}
+                  >
+                    {l10n.getString('pos-shift-close-btn')}
+                  </button>
+                )}
               </>
             ) : (
               <>
                 <span className="pos-shift-bar-indicator pos-shift-bar-indicator--closed" />
                 <span className="pos-shift-bar-label">{l10n.getString('pos-shift-no-active')}</span>
-                <button
-                  type="button"
-                  className="pos-shift-open-btn"
-                  onClick={handleOpenShiftClick}
-                  aria-label={l10n.getString('pos-shift-open-aria')}
-                >
-                  {l10n.getString('pos-shift-open-btn')}
-                </button>
+                {!sidebarOwnsTerminalActions && (
+                  <button
+                    type="button"
+                    className="pos-shift-open-btn"
+                    onClick={handleOpenShiftClick}
+                    aria-label={l10n.getString('pos-shift-open-aria')}
+                  >
+                    {l10n.getString('pos-shift-open-btn')}
+                  </button>
+                )}
               </>
             )}
           </div>
 
-          {/* ── Right: terminal action buttons ── */}
-          <div className="pos-cart-header-actions">
-            {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
+          {/* ── Right: terminal action buttons — the restaurant cart has none ──
+              The whole cluster is retail-only now. In the restaurant workspace
+              PosScreen hands these controls to the sidebar popover, so the two
+              buttons that were already restaurant-suppressed (stock inquiry,
+              settings) no longer need their own guard — being restaurant is what
+              excludes the cluster. The header's lock button is not relocated
+              either: the sidebar's "Lock Terminal" row replaced it, and the cart
+              it used to persist stays mounted behind the lock screen. */}
+          {!sidebarOwnsTerminalActions && (
+            <div className="pos-cart-header-actions">
+              {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
+                <button
+                  type="button"
+                  className="pos-cart-lock-btn"
+                  onClick={() => setShowTables(true)}
+                  aria-label={requiredLocalized(l10n, 'tables-title')}
+                  title={requiredLocalized(l10n, 'tables-title')}
+                >
+                  🪑
+                </button>
+              )}
+
               <button
                 type="button"
                 className="pos-cart-lock-btn"
-                onClick={() => setShowTables(true)}
-                aria-label={requiredLocalized(l10n, 'tables-title')}
-                title={requiredLocalized(l10n, 'tables-title')}
+                onClick={() => setShowSalesHistory(true)}
+                aria-label={requiredLocalized(l10n, 'retail-fn-history')}
+                title={requiredLocalized(l10n, 'retail-fn-history')}
               >
-                🪑
+                <HistoryIcon />
               </button>
-            )}
 
-            <button
-              type="button"
-              className="pos-cart-lock-btn"
-              onClick={() => setShowSalesHistory(true)}
-              aria-label={requiredLocalized(l10n, 'retail-fn-history')}
-              title={requiredLocalized(l10n, 'retail-fn-history')}
-            >
-              <HistoryIcon />
-            </button>
-
-            {/* Stock inquiry is a retail-POS concern — the restaurant POS
-                doesn't need it (kitchen flow goes through the KDS). */}
-            {activeWorkspace !== 'restaurant-pos' && (
+              {/* Stock inquiry is a retail-POS concern — the restaurant POS
+                  doesn't need it (kitchen flow goes through the KDS). */}
               <button
                 type="button"
                 className="pos-cart-lock-btn"
@@ -450,22 +467,20 @@ export function CartPanel({
               >
                 📦
               </button>
-            )}
 
-            <button
-              type="button"
-              className="pos-cart-lock-btn"
-              onClick={() => onNavigate?.('kds')}
-              aria-label={requiredLocalized(l10n, 'kds-title')}
-              title={requiredLocalized(l10n, 'kds-title')}
-            >
-              <KitchenDisplayIcon />
-            </button>
+              <button
+                type="button"
+                className="pos-cart-lock-btn"
+                onClick={() => onNavigate?.('kds')}
+                aria-label={requiredLocalized(l10n, 'kds-title')}
+                title={requiredLocalized(l10n, 'kds-title')}
+              >
+                <KitchenDisplayIcon />
+              </button>
 
-            {/* Settings is a manager/owner surface — not needed at the
-                restaurant cashier terminal (reachable from the workspace
-                picker); retail keeps it. */}
-            {activeWorkspace !== 'restaurant-pos' && (
+              {/* Settings is a manager/owner surface — not needed at the
+                  restaurant cashier terminal (reachable from the workspace
+                  picker); retail keeps it. */}
               <button
                 type="button"
                 className="pos-cart-lock-btn"
@@ -475,21 +490,21 @@ export function CartPanel({
               >
                 ⚙️
               </button>
-            )}
 
-            <button
-              type="button"
-              className="pos-cart-lock-btn"
-              onClick={handleLock}
-              aria-label={l10n.getString('pos-cart-lock')}
-              title={l10n.getString('pos-cart-lock')}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            </button>
-          </div>
+              <button
+                type="button"
+                className="pos-cart-lock-btn"
+                onClick={handleLock}
+                aria-label={l10n.getString('pos-cart-lock')}
+                title={l10n.getString('pos-cart-lock')}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Table number input (only when setting enabled) ── */}

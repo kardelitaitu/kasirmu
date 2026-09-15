@@ -1,11 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
 import settingsFtl from '@/locales/settings.ftl?raw';
+import tablesFtl from '@/locales/tables.ftl?raw';
+import kdsFtl from '@/locales/kds.ftl?raw';
 import PosScreen from '@/features/sales/PosScreen';
 import type { Product } from '@/types/domain';
 
@@ -117,6 +119,10 @@ vi.mock('@/api/hardware', async () => {
 describe('RestaurantPosSidebar', () => {
   beforeEach(() => {
     localStorage.clear();
+    // The retail cases below flip this, so the restaurant cases must not
+    // inherit whatever the previous test left behind.
+    mockActiveWorkspace.current = 'restaurant-pos';
+    mockLogout.mockClear();
   });
 
   it('hides the CartPanel when restaurant sidebar is toggled open and restores it when closed', async () => {
@@ -191,6 +197,58 @@ describe('RestaurantPosSidebar', () => {
     expect(mockLogout).not.toHaveBeenCalled();
     // The popover closes on the lock, like every other item in it.
     expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+  });
+
+  // The restaurant cart header is an order list now, not a toolbar: every
+  // button that used to sit in `.pos-cart-header` is either relocated into this
+  // popover (shift, deduction override, tables, history, KDS) or replaced by
+  // the "Lock Terminal" row. The shift STATUS stays in the panel — it is a fact
+  // about the order, not a control.
+  it('hosts the relocated cart-header buttons and leaves none of them in the cart panel', async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    await renderWithProviders(
+      <PosScreen onNavigate={onNavigate} />,
+      salesFtl, productsFtl, inventoryFtl, settingsFtl, tablesFtl, kdsFtl,
+    );
+
+    const cartPanel = document.querySelector('.pos-cart-panel') as HTMLElement;
+    expect(cartPanel.querySelector('.pos-cart-header-actions')).toBeNull();
+    expect(within(cartPanel).queryByRole('button', { name: 'Kitchen Display' })).toBeNull();
+    expect(within(cartPanel).queryByRole('button', { name: 'Open a new shift' })).toBeNull();
+    expect(within(cartPanel).queryByRole('button', { name: 'Lock' })).toBeNull();
+    await waitFor(() => {
+      expect(cartPanel.querySelector('.pos-cart-header-shift')?.textContent).toContain('No active shift');
+    });
+
+    await user.click(document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement);
+    const sidebar = document.querySelector('.restaurant-sidebar') as HTMLElement;
+    expect(within(sidebar).getByRole('button', { name: 'Open a new shift' })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('button', { name: 'History' })).toBeInTheDocument();
+    // Table Management is feature-gated and this harness enables no features, so
+    // the row is absent rather than rendered-and-disabled.
+    expect(within(sidebar).queryByRole('button', { name: 'Table Management' })).toBeNull();
+
+    // The row is the header's old button, not a stub: it drives the same
+    // navigation and closes the popover like every other item in it.
+    await user.click(within(sidebar).getByRole('button', { name: 'Kitchen Display' }));
+    expect(onNavigate).toHaveBeenCalledWith('kds');
+    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
+  });
+
+  it('keeps the cart header buttons in the cart panel for the retail workspace', async () => {
+    mockActiveWorkspace.current = 'store-pos';
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl, productsFtl, inventoryFtl, settingsFtl, tablesFtl, kdsFtl,
+    );
+
+    const cartPanel = document.querySelector('.pos-cart-panel') as HTMLElement;
+    expect(cartPanel.querySelector('.pos-cart-header-actions')).not.toBeNull();
+    expect(within(cartPanel).getByRole('button', { name: 'Kitchen Display' })).toBeInTheDocument();
+    expect(within(cartPanel).getByRole('button', { name: 'Lock' })).toBeInTheDocument();
+    // Retail has no sidebar to relocate them into.
+    expect(document.querySelector('.restaurant-hamburger-btn')).not.toBeInTheDocument();
   });
 
   it('keeps CartPanel visible in retail POS workspace', async () => {

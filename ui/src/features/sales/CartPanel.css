@@ -4,9 +4,11 @@
  * Owns ONLY the structural shell that holds the cart surface:
  *   .pos-resize-handle          separator that drives cart width
  *   .pos-cart-panel             right-side flex container
- *   .pos-cart-header            title + lock button row
+ *   .pos-cart-header            title + shift status + action button row
  *   .pos-cart-title             "Current Sale" title
- *   .pos-cart-lock-btn          header lock/logout button
+ *   .pos-cart-lock-btn          header action button (retail workspace only:
+ *                               the restaurant cart has no action cluster —
+ *                               those controls live in the sidebar popover)
  *   .pos-cart-count             line count badge beside title
  *   .pos-cart-lines             scrollable list container
  *   .pos-cart-empty-msg + children
