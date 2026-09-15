@@ -11,38 +11,41 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Refundlinearg.
-pub struct RefundLineArg {
-    /// ID of the associated sale line.
-    pub sale_line_id: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit Price Minor.
-    pub unit_price_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// Total amount in minor currency units.
-    pub line_total_minor: i64,
-}
-
-#[derive(Debug, Deserialize)]
-/// Processrefundargs.
-pub struct ProcessRefundArgs {
-    /// ID of the original completed sale.
-    pub sale_id: String,
-    /// Reason for the refund.
-    pub reason: String,
-    /// Optional internal note.
-    pub note: Option<String>,
-    /// User ID of the staff processing the refund.
-    pub user_id: String,
-    /// Lines being refunded.
-    pub lines: Vec<RefundLineArg>,
-}
+/// The refund wire contracts are owned by `oz-bridge`; the tablet re-exports
+/// them instead of declaring a copy.
+///
+/// The tablet's own `ProcessRefundArgs` was one of the three structs the
+/// 2026-09-15 tablet IPC wire audit named as declaring itself twice, and the
+/// only one whose copy had ALSO lost the `#[serde(rename_all = "camelCase")]`
+/// its bridge twin carries — same five fields (`sale_id`, `reason`, `note`,
+/// `user_id`, `lines`), one accepted key set on each shell. Because
+/// `sale_id` and `user_id` are required `String` and only `note` is an
+/// `Option`, the tablet copy answered the front-end's camelCase with a hard
+/// `missing field \`sale_id\`` error, not a silent `None`.
+///
+/// This is NOT a data-loss fix. `process_refund` is registered in neither
+/// shell (`grep -rn refunds::process_refund apps/*/src/lib.rs` returns the two
+/// `process_refund_scoped` lines only: tablet `lib.rs:609`, desktop
+/// `lib.rs:1120`), and nothing sends this struct a payload at all
+/// (`grep -rn process_refund ui/src/api` returns one hit, `sales.ts:657`, and
+/// it invokes the scoped command; the unscoped name exists only as a dev-mock
+/// handler and in `dev-mock-envelope-shapes.test.ts:63`, whose own comment
+/// says it has no caller). So what was removed is a latent trap exactly one
+/// `generate_handler!` line from live — the shape tonight's audit predicted.
+///
+/// The direction is not a coin flip either: the bridge is the type that agrees
+/// with the front-end, since `ui/src/api/sales.ts:606-613` declares
+/// `ProcessRefundArgs` as `{ saleId, reason, note?, userId, lines }` over
+/// camelCase line items. Re-exporting cannot break a working refund path —
+/// there is no path to this struct — and if one is ever registered, the keys
+/// that will arrive are the ones this type already accepts.
+///
+/// `RefundLineArg` comes along because the bridge's `ProcessRefundArgs.lines`
+/// is a `Vec` of the bridge's own line type while one business path
+/// ([`run_process_refund`]) serves both commands; the two copies were
+/// field-for-field identical, so nothing on the wire moves. The scoped and
+/// result structs below are still local copies — the next step, not this one.
+pub use oz_bridge::refunds::{ProcessRefundArgs, RefundLineArg};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
