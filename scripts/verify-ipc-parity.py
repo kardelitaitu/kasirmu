@@ -108,7 +108,16 @@ UI_INVOKE_RE = re.compile(
 HANDLER_BLOCK_RE = re.compile(r"generate_handler!\[", re.S)
 ENTRY_RE = re.compile(r"^(?:[a-z0-9_]+(?:::[a-z0-9_]+)+|[a-z0-9_]+)$")
 COMMAND_FN_RE = re.compile(
-    r"#\[tauri::command\]\s*pub (?:async )?fn ([a-z0-9_]+)"
+    # Both spellings of the attribute. `#[command]` is the short form of the same token, used
+    # wherever a file has `use tauri::command;` -- which is how this shell's tablet modules are
+    # written. Matching only the qualified form made this leg blind to nearly the whole tablet:
+    # measured 2026-09-16, 20 of the tablet's 326 command-shaped declarations matched, so the
+    # count below printed a confident 0 while 59 unregistered command fns sat under
+    # commands/. That 0 is quoted as evidence in this programme's own records (todo-refactor-
+    # oz-pos-app-agents-3.md leans on "0 unregistered tauri command fns" when arguing a
+    # deletion was safe), which is the reason the fix carries the two fixtures in
+    # self_test() rather than trusting this comment.
+    r"#\[(?:tauri::)?command\]\s*pub (?:async )?fn ([a-z0-9_]+)"
 )
 
 
@@ -157,7 +166,7 @@ def extract_handlers(lib_path: Path) -> list[str]:
 
 
 def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> list[str]:
-    """`#[tauri::command]` fns in the shell that are not registered."""
+    """Command fns in the shell that are not registered -- either attribute spelling."""
     unregistered: list[str] = []
     commands_dir = lib_path.parent / "commands"
     for path in sorted(commands_dir.rglob("*.rs")):
@@ -2572,6 +2581,20 @@ def self_test() -> int:
          find_unreachable_mock_keys(reach_src, {'alive_registered'}, {'alive_ui'})
          == {'x/handlers/a.ts': {'dead_one', 'dead_scoped', 'alive_seed'}})
 
+    # The F-006 leg's own eyes, both directions. Only the qualified attribute matched before
+    # 2026-09-16, and the tablet spells its commands with the imported short form -- so 20 of
+    # its 326 command declarations were visible and the leg printed a confident 0 unregistered
+    # fns for a shell that has 59. A pattern fix with no fixture behind it can be tightened
+    # back into blindness by anyone, which is exactly how this happened the first time.
+    case("f006   the qualified attribute is matched",
+         COMMAND_FN_RE.findall("#[tauri::command]\npub async fn list_staff(") == ['list_staff'])
+    case("f006   the imported short attribute is matched as well",
+         COMMAND_FN_RE.findall("#[command]\npub fn list_roles(") == ['list_roles'])
+    case("f006   a pub fn with no attribute is not a command",
+         COMMAND_FN_RE.findall("pub async fn helper(x: u8) -> u8 { x }") == [])
+    case("f006   a pub fn behind an unrelated attribute is not a command either",
+         COMMAND_FN_RE.findall("#[serde(rename_all = 'camelCase')]\npub async fn not_a_command()") == [])
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -2801,8 +2824,11 @@ def main() -> int:
         # this shell does not register (direction: ui -> shell), unregistered is Rust
         # #[tauri::command] FUNCTIONS defined under this shell's commands/ and absent from
         # its generate_handler (direction: shell -> registration). Different populations,
-        # different units, and the tree proves it apart: tablet reports 153 of the former
-        # and 0 of the latter, which one quantity printed twice cannot do.
+        # different units, and the tree proves them apart -- as of the attribute-spelling fix the tablet
+        # reports 154 UI names it does not register and 59 command fns registered nowhere, and
+        # before that fix the second figure read 0 for a reason that had nothing to do with the
+        # tree: the pattern saw 20 of the shell's 326 declarations. A zero from an instrument
+        # that cannot see its subject is the exact thing this leg exists to avoid being.
         unreachable = sorted(allowed_names - missing[shell] - set(handlers[shell]))
         print(
             f"info[{shell}]: {len(ui_commands)} UI command strings, "
