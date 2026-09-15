@@ -62,6 +62,7 @@ oz-reporting = { path = "crates/oz-reporting" }
 oz-logging = { path = "crates/oz-logging" }
 oz-media = { path = "crates/oz-media" }
 oz-cli = { path = "crates/oz-cli" }
+qris-core = { path = "crates/qris-core" }
 foundation = { path = "foundation" }
 platform-core = { path = "platform/core" }
 platform-kernel = { path = "platform/kernel" }
