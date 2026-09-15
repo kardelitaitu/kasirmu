@@ -39,6 +39,19 @@ import { loyaltyHandlers } from './handlers/loyalty';
 import { kdsDisplayCounter, kdsHandlers, mockKdsOrders, mockKdsLineItems, saveMockKdsState } from './handlers/kds';
 import { analyticsHandlers } from './handlers/analytics';
 import { createLocationsHandlers } from './handlers/locations';
+import {
+  createMockLocation,
+  deleteMockLocation,
+  getMockLocation,
+  getMockLocationTicketPrefix,
+  getMockPrimaryLocation,
+  getMockStores,
+  listMockLocations,
+  setMockLocationTicketPrefix,
+  setMockPrimaryLocation,
+  unwrapArgs,
+  updateMockLocation,
+} from './handlers/locationState';
 import { mockHandlerPayload, systemHandlers } from './handlers/system';
 import { staffHandlers } from './handlers/staff';
 import { workspaceHandlers } from './handlers/workspaces';
@@ -53,112 +66,13 @@ import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 export { convertFileSrc, invoke, isTauri };
 
 
-/** Mutable store-profile list backing the mock — renames/creates persist
- *  for the session exactly like the real DB (dev preview parity). */
-let mockStores: Array<typeof MOCK_STORE> = [{ ...MOCK_STORE }];
+// The location-profile list, the ticket-prefix pair and the unwrapArgs
+// envelope helper lived here as module-private `let`s — that sharing is why
+// -4:190 called this block the real blocker and deferred the consolidation.
+// Phase 5.1 moved it verbatim to `handlers/locationState.ts`; the imports
+// above are the only path in, and the regional / receipt reads below reach the
+// list through getMockStores() until their own phases inject it.
 
-/** Unwrap the `{ args }` envelope the API wrappers send, tolerating a
- *  bare payload for direct calls. The real commands take a named `args`
- *  argument, so the envelope is the wire shape. */
-function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>(args: unknown): T {
-  const boxed = (args ?? {}) as { args?: T };
-  return boxed.args ?? ((args as T | undefined) ?? ({} as T));
-}
-
-/** List the mutable location-profile rows served by the dev mock. */
-function listMockLocations(): Array<typeof MOCK_STORE> {
-  return mockStores.map((location) => ({ ...location }));
-}
-
-/** Resolve one location profile using the mock's historical fallback behavior. */
-function getMockLocation(args: unknown): typeof MOCK_STORE {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  return mockStores.find((location) => location.id === id) ?? MOCK_STORE;
-}
-
-/** Resolve the primary location profile from the mutable mock list. */
-function getMockPrimaryLocation(): typeof MOCK_STORE {
-  return mockStores.find((location) => location.is_primary) ?? mockStores[0] ?? MOCK_STORE;
-}
-
-/** Create a location profile and persist it in the session-local mock list. */
-function createMockLocation(args: unknown): typeof MOCK_STORE {
-  const payload = unwrapArgs<Partial<typeof MOCK_STORE>>(args);
-  const created = {
-    ...MOCK_STORE,
-    ...payload,
-    id: (payload.id as string | undefined) ?? `store-${Date.now()}`,
-    is_primary: mockStores.length === 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  mockStores.push(created);
-  return { ...created };
-}
-
-/** Update a location profile and persist it in the session-local mock list. */
-function updateMockLocation(args: unknown): typeof MOCK_STORE {
-  const { id, ...rest } = unwrapArgs<Partial<typeof MOCK_STORE> & { id?: string }>(args);
-  // id-mismatch falls back to the first profile (mock laxness — the real
-  // backend returns an error for unknown ids).
-  const existing = mockStores.find((location) => location.id === id) ?? mockStores[0] ?? MOCK_STORE;
-  const updated = { ...existing, ...rest, id: existing.id, updated_at: new Date().toISOString() };
-  mockStores = mockStores.map((location) => (location.id === updated.id ? updated : location));
-  if (!mockStores.some((location) => location.id === updated.id)) mockStores.push(updated);
-  return { ...updated };
-}
-
-/**
- * Session-local KDS ticket prefixes, keyed by location id. The mock profile
- * type is deliberately not widened (ui/src/api still exposes no such field);
- * an absent entry means '' — the core's no-prefix sentinel.
- */
-const mockTicketPrefixes = new Map<string, string>();
-
-/** Normalize exactly as oz_core's ticket-prefix setter does: trim + upper. */
-function normalizeMockTicketPrefix(raw: string | undefined): string {
-  return (raw ?? '').trim().toUpperCase();
-}
-
-/** Read a location's mock ticket prefix; '' resolves to null, as core does. */
-function getMockLocationTicketPrefix(args: unknown): string | null {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  return normalizeMockTicketPrefix(mockTicketPrefixes.get(id ?? '')) || null;
-}
-
-/**
- * Set a location's mock ticket prefix and echo the normalized value back,
- * mirroring the real command so the UI sees post-normalization text, not
- * what was typed. Unknown ids throw — the real IPC returns NotFound.
- */
-function setMockLocationTicketPrefix(args: unknown): string | null {
-  const { id, prefix } = unwrapArgs<{ id?: string; prefix?: string }>(args);
-  const key = id ?? '';
-  if (!mockStores.some((location) => location.id === key)) {
-    throw new Error(`location ${key} not found`);
-  }
-  const normalized = normalizeMockTicketPrefix(prefix);
-  mockTicketPrefixes.set(key, normalized);
-  return normalized || null;
-}
-
-
-/** Make a location primary and persist the choice in the mock list. */
-function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  mockStores = mockStores.map((location) => ({ ...location, is_primary: location.id === id }));
-  return { ...getMockLocation({ id }) };
-}
-
-/** Delete a location profile from the session-local mock list. */
-function deleteMockLocation(args: unknown): null {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  mockStores = mockStores.filter((location) => location.id !== id);
-  return null;
-}
-
-/** Mutable Legal Entity list backing the dev mock — creates and updates
- *  persist for the session exactly like the real DB (dev preview parity). */
 // ═══════════════════════════════════════════════════════════════
 // REGIONAL CONFIGURATION (regional slice 2, saas-2 design)
 // ═══════════════════════════════════════════════════════════════
@@ -201,7 +115,8 @@ let mockRegionalCountryCode: string | null = null;
  *  carries no regional fields. */
 function getMockRegionalConfig(args: unknown): MockRegionalConfig {
   const { locationId } = unwrapArgs<{ locationId?: string }>(args);
-  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
+  const stores = getMockStores();
+  const location = stores.find((loc) => loc.id === locationId) ?? stores[0] ?? MOCK_STORE;
   const axis = (value: string, fallback: string): MockRegionalValue =>
     value.trim() !== '' ? { value, scope: 'location' } : { value: fallback, scope: 'built_in' };
   const writtenLocale = mockRegionalLocale.get(location.id) ?? '';
@@ -225,7 +140,8 @@ function setMockRegionalConfig(args: unknown): MockRegionalConfig {
     locationId?: string;
     config?: { locale?: string; timezone?: string; currency?: string; country_code?: string };
   }>(args);
-  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
+  const stores = getMockStores();
+  const location = stores.find((loc) => loc.id === locationId) ?? stores[0] ?? MOCK_STORE;
   if (config?.locale !== undefined) mockRegionalLocale.set(location.id, config.locale);
   if (config?.timezone !== undefined) {
     updateMockLocation({ id: location.id, timezone: config.timezone });
@@ -292,7 +208,7 @@ function getMockReceiptFormat(args: unknown): {
     workspaceId?: string;
   }>(args);
   const location =
-    mockStores.find((loc) => loc.id === workspaceId) ?? mockStores[0] ?? MOCK_STORE;
+    getMockStores().find((loc) => loc.id === workspaceId) ?? getMockStores()[0] ?? MOCK_STORE;
   const terminalKey = terminalId ? `terminal:${terminalId}` : null;
   const workspaceKey = `workspace:${workspaceId ?? location.id}`;
   const terminal = terminalKey ? mockReceiptLayouts.get(terminalKey) : undefined;
@@ -352,7 +268,7 @@ function setMockReceiptLayout(args: unknown): {
     };
   }>(args);
   const location =
-    mockStores.find((loc) => loc.id === workspaceId) ?? mockStores[0] ?? MOCK_STORE;
+    getMockStores().find((loc) => loc.id === workspaceId) ?? getMockStores()[0] ?? MOCK_STORE;
   if (layout) {
     mockReceiptLayouts.set(`workspace:${location.id}`, {
       paper_width_mm: layout.paperWidthMm ?? null,
