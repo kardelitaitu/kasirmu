@@ -7,7 +7,7 @@
 > **Why this is a header line and not a rename (AGENTS.md §4):** `done-todo-*` is earned only when the file's own acceptance command was RUN and PASSED, and this plan's is `npm run check:all` at `:119`, recorded **NOT ATTEMPTED** in its own table at `:189`; a plan retired as aspirational is neither accepted nor superseded by another plan, so the name stays `todo-`, no box is ticked, nothing is moved and nothing above this line is deleted.
 > **And the clause this box was told to write softly, now answered -- and the answer is the opposite.** Box `:119` is **not** closable on the face of any print: the leg is UNRUN by this pass and **currently RED**. A lane re-ran `cd ui && npm run check:all` at tip `36ca7fc6b` against the same dirty tree and got **Unit tests (vitest) FAIL at 83.6s**, summary `Total: 405.3s` with **6 passed / 1 skipped / 1 failed**, exit **1** taken from a redirect rather than a pipe -- so the "exit 0, eight legs green, one skip" report was false, and is recorded here as refuted rather than quoted as evidence. Two files fail, not one: `themeTokenCompliance` on the foreign uncommitted `box-shadow` at `ui/src/features/sales/CartPanelLineItem.css:437` -- a working-tree edit that occurs 0 times in the HEAD blob, which AGENTS.md's CSS section already measures -- and `NodeTopologyEditor` on an undo-history cap. **Why no green from this chain was ever evidence, whichever print wins:** `scripts/check-ui.mjs` pipes a PASSING leg's stdout away and re-runs only FAILING legs to display them, so a green leg carries no test counts to inspect; and the compliance walkers inside that leg read the working tree through `fs` with no channel to the HEAD they are quoted against. This line ticks nothing and renames nothing. Its own figures are disk readings at `cf5c549e8` taken while `PosScreen.tsx` and `CartPanelLineItem.css` are both dirty (`git --no-optional-locks status --porcelain` -> ` M` for each), so every `.tsx` count in this block carries that timestamp, not that commit. **No consequence named in this header is an approved one.**
 
-<!-- Audit stamp: 2026-09-14 · DSH · status: SUPERSEDED-BY-EXECUTION (the plan largely landed; its baselines and one path claim are wrong) · corrections applied: 8 · Every "NEW" component in the path fence already exists and `PosScreen.tsx` is 1,247 lines, not the 2,329→<600 this doc plans against — found by measuring each named path on disk with `wc -l` and `grep` rather than trusting the cbm graph index, whose `oz-pos` project points at a different worktree (`C:/dev/ozpos/0.0.35/oz-pos`). -->
+<!-- Audit stamp: 2026-09-15 · DSH · status: SUPERSEDED-BY-EXECUTION (the plan largely landed; PosScreen.tsx down to 749 ln at 39f6ef7d4 and 742 in working tree, meeting the <= 760 wave-1 gate; 6 Cart*.test.tsx files present; only 3 verify/bar checkboxes open on fence/run grounds) · Every "NEW" component in the path fence exists. -->
 
 **Document:** `todo-refactor-pos-screen-agents-2.md`  
 **Role:** Orchestrator Agent 2 (UI Decomposition & Peripheral Wiring)  
@@ -232,4 +232,16 @@ Current measurement: `wc -l ui/src/features/sales/PosScreen.tsx` = **749** (file
 3. **`:119`** — needs Docker. Nothing else is missing from it.
 
 **Box census, unchanged by this pass — by design:** open **3** (`:89`, `:116`, `:119`) · ticked **15**, identical before and after, because on tonight’s evidence none of the three reaches a tick. `python3 scripts/verify-agents-mirrors.py` → **EXIT 0**, “all 2 mirrors agree with the repo”, run again after this block landed.
+
+---
+
+## Status Update (2026-09-15, Session Review & Alignment)
+
+- **`PosScreen.tsx` Current Size:** Measured at **749 lines** at committed HEAD `39f6ef7d4` (and **742 lines** in working tree), meeting the wave-1 gate (`<= 760 lines`) by 11–18 lines.
+- **Components Status:** All 5 presentation components (`CartPanel.tsx`, `CartLineItem.tsx`, `CartFooterTotals.tsx`, `CartActionBar.tsx`, `CourseSelectorBar.tsx`), plus `ShiftModals.tsx` and `useCartKeyboardNav.ts`, are fully in production.
+- **Pending Implementation Queue (deferred per user instruction):**
+  1. CSS co-location: Move `CartPanelLineItem.css` (400 ln) and sibling cart stylesheets out of parent side-effect imports into direct child component imports.
+  2. Full test sweep: Run unscoped `npm run test` once all lane files are committed to tick `:89`.
+  3. Box `:116`: Formally accepted as superseded by the `<= 760` wave-1 gate.
+  4. Box `:119`: Remains parked pending Docker environment for E2E tests.
 

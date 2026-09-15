@@ -1,6 +1,6 @@
 # Orchestrator Agent 3: `PaymentModal` & Split Tenders Deconstruction
 
-<!-- Audit stamp: 2026-09-14 · DSH · status: NOT-STARTED, AND MIS-BASELINED (the target grew ~500 lines since this plan was written; none of its 7 planned files exists) · corrections applied: 9 · The most consequential error is the baseline: `PaymentModal.tsx` is 2,436 lines (`wc -l`), not the 1,933 quoted four times — and 1,933 matches NO revision in the file's git history, so the number was never true here; found by re-measuring every path on disk and walking `git log` for the file, not trusting the cbm graph index (its `oz-pos` project points at `C:/dev/ozpos/0.0.35/oz-pos`, a different worktree). -->
+<!-- Audit stamp: 2026-09-15 · DSH · status: SUPERSEDED-BY-EXECUTION (15 payment/ files landed, 2,120 ln total; PaymentModal.tsx reduced from 2,436 to 1,810 lines (-626 ln); usePaymentStateMachine declined on processing invariant; useSplitTenders superseded by discrete math/state/currency/rows parts; both 3.1 seams landed: splitDistribution.ts in 8213cfa49 and useEdcTenderPhase.ts in 80afc7e02; no file in payment/ exceeds 450 lines) -->
 
 **Document:** `todo-refactor-pos-screen-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Payment & Checkout Architect)  
@@ -372,3 +372,23 @@ no box names at all**.
 - **And the directory this verdict points into keeps moving:** `wc -l ui/src/features/sales/payment/*.ts* | tail -1` = **1,937 total** across **14** files (`ls … | wc -l`) at this minute, where `:40`'s 2026-09-15 note recorded twelve files / 1,746 ln and `:91` recorded three extracts. Each was true at its own HEAD; only the command is durable.
 
 > **Length, with the boundary artifact named the way `:11` names it:** `wc -l < todo-refactor-pos-screen-agents-3.md` = **354** before this section and **373** after it; a `split('\n')` count of the same file reads **one higher** (355 for a 354-line file) because the file ends in a newline. Docs only — no `.tsx`, no `.css`, no test run, nothing pushed.
+
+---
+
+## Execution Update: Both Phase 3.1 Seams Shipped (2026-09-15, HEAD `2d7e411c2`)
+
+> **Appended at EOF to preserve all preceding line-number anchors.**
+
+- **Both Seams Landed:** The two seams reticketed above as the legitimate residue of Phase 3.1 have now shipped:
+  1. `payment/splitDistribution.ts` (70 ln) landed in **`8213cfa49`** (`refactor(sales): move the split distribution arithmetic into a pure module beside the money math`). Contains pure `distributeEvenly` minor-unit distribution without React dependencies.
+  2. `payment/useEdcTenderPhase.ts` (183 ln) landed in **`80afc7e02`** (`refactor(sales): move the EDC tender phase into its own hook behind the SaleFlow suite`), with preamble cleanup in **`2d7e411c2`**. Owns the three-phase EDC lifecycle (`preflight` | `waiting` | `declined`), cleanly respecting the invariant that no extracted hook may own `processing`.
+- **Live Directory Census:**
+  - `ui/src/features/sales/payment/` now contains **15 files, 2,120 lines total** (`wc -l ui/src/features/sales/payment/*.ts*`).
+  - **The per-file ceiling is MET across the entire directory:** max file size is `useAutoQr.ts` at 242 lines, well under the 450-line gate.
+- **Shell Status (`PaymentModal.tsx`):**
+  - Down from baseline 2,436 lines to **1,810 lines** (`wc -l < ui/src/features/sales/PaymentModal.tsx`), a net reduction of **−626 lines (−26%)**.
+- **Pending Implementation Queue (deferred per user instruction):**
+  1. `PaymentSummaryFooter.tsx`: Extraction of footer presentation component.
+  2. `open_bill` / `credit` panel extractions (currently inline in shell).
+  3. Registration of `payment/` components in `ui/src/__tests__/screenExtraction.test.ts`.
+  4. Full unscoped `npm run test` and `check:all` verification runs.
