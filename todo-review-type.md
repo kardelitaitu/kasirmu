@@ -4,15 +4,55 @@ Rewritten 2026-09-15 against branch `0.0.39` @ `9ac839264`. Supersedes the earli
 Tauri/React blueprint in this file's history; the appraisal that produced this list is
 `docs/records/2026-09-15-frontend-architecture-todo-appraisal.md`.
 
-**Standing direction:** a **Slint shell for embedded devices** is planned. That target calls
-`crates/oz-bridge` directly in Rust — no IPC, no JSON, no TypeScript — so the ordering below
-puts the shell-independent work first and defers anything that only serves the React shell.
+**Horizon (owner, 2026-09-15).** Years 1–3: **Tauri v2** on Windows, macOS, Linux, Android and
+iOS; **Slint** for embedded devices and Linux with no desktop environment. Years 4–5: possibly
+Slint everywhere, or another renderer. **The goal is separation between app and UI — the UI must
+be replaceable.**
+
+That goal, not any one framework, drives the ordering below. A Slint shell calls
+`crates/oz-bridge` directly in Rust — no IPC, no JSON, no TypeScript — so work splits into
+*spent once, used twice* (below the bridge) and *spent once, used once* (above it).
+
+**Mobile is already in flight, not new work.** `apps/tablet-client/tauri.conf.json` carries
+`bundle.targets: "all"`, `android.minSdkVersion: 26` and an `iOS` section, and
+`apps/tablet-client/gen/android` exists. The item is keeping that path green, not starting it.
 
 > last audited 15-09-26 by Budak-Korporat
 
 ---
 
-## Item 1 — ADR: the embedded shell (decision, no code)
+## Item 1 — Lock the seam before anything else
+
+**Invariant:** everything below `crates/oz-bridge` is the *application*; everything above it is
+an *adapter*. An adapter may be replaced; the application must not notice.
+
+The separation is already largely real — `BridgeCtx` carries `emitter: Option<Arc<dyn EventSink>>`
+with `pub trait EventSink` (`crates/oz-bridge/src/ctx.rs:45,84`), and ADR #49 removed the
+toolkit dependencies. **But nothing enforces either half**, measured: no script under `scripts/`
+mentions `oz-bridge`, and `scripts/gates.json` has no bridge entry. One `tauri` import would
+silently end the Slint option.
+
+- [ ] Add `scripts/verify-bridge-purity.py`: fail if `crates/oz-bridge/Cargo.toml` gains
+      `tauri`, `gtk`, `webkit2gtk` or any `tauri-plugin-*`, or if `crates/oz-bridge/src/**`
+      references them. Register it in `scripts/gates.json`. This is ADR #49's load-bearing
+      claim, currently unguarded.
+- [ ] Add `scripts/verify-ui-vocabulary.py`: fail when `crates/`, `modules/` or `platform/`
+      name a UI framework, a UI file or a UI concept (`React`, `.tsx`, `.css`, "component to
+      render"). Seed the allowlist with the hits that exist today — they are all **comments**,
+      which is the good news: the coupling is documentary, not typing.
+- [ ] Fix the measured leaks (all comment/doc level, all cheap):
+      - `crates/oz-core/src/session.rs:55` — *"Workspace type key — determines which React
+        component to render."* The core should not know what a React component is.
+      - `modules/{crm,inventory,loyalty,sales,settings}/src/lib.rs` — module docs describe
+        "frontend (React screens, API calls, Fluent locale)".
+      - `crates/oz-bridge/src/{data.rs:286,331, pos.rs:918,1240}` and
+        `crates/oz-core/src/db/regional.rs:7,20`, `ozpkg.rs:145-150` — caller references to
+        `.tsx` paths that will not exist under another renderer.
+- [ ] Keep the precedent: `crates/oz-core/src/ozpkg.rs:154` moved the ozpkg password rule out
+      of a React component into the choke point every caller passes. That is the pattern —
+      a rule that only a UI enforces is a rule the next UI must re-implement.
+
+## Item 2 — ADR: the embedded shell (decision, no code)
 
 Owner decision required before any `.slint` file is written.
 
@@ -31,7 +71,7 @@ Owner decision required before any `.slint` file is written.
       - `apps/*/src/commands/registration_gate_tests.rs` pins a registered-name floor —
         re-measure it at execution time, do not quote a remembered number.
 
-## Item 2 — Finish the headless seam, then kill DTO drift
+## Item 3 — Finish the headless seam, then kill DTO drift
 
 This is the surface Slint binds to. Do it before any UI-framework work.
 
@@ -69,19 +109,24 @@ export const listAuditLogScoped = (
   loggedInvoke<AuditLogPageDto>('list_audit_log_scoped', { sessionToken, args });
 ```
 
-## Item 3 — Second i18n pipeline (decide before the first `.slint` file)
+## Item 4 — i18n: one source of truth, two bindings
 
-Largest hidden cost in the Slint plan, and the previous draft omitted it.
+Revised. Earlier I called this the largest hidden cost and assumed a second pipeline. That was
+too pessimistic: **Fluent is a format, not a React feature.** The 54 `.ftl` files are the
+content; `@fluent/react` is only one reader. `fluent-bundle` (projectfluent/fluent-rs,
+Apache-2.0 OR MIT) is the Rust reader, and a Slint shell sets text from Rust like any other
+string. So one content set can serve both renderers.
 
-- [ ] Current state is React-bound: `@fluent/react`, **54 `.ftl` files** (27 bundles × ID/EN).
-- [ ] Choose: reuse the `.ftl` content through a Slint-side Fluent shim, or run a second
-      pipeline. Untranslated embedded UI is not acceptable for an ID+EN product.
-- [ ] Whichever is chosen needs its own parity check — `scripts/verify-bundle-parity.py` and
-      `scripts/verify-ftl-orphans.py` read TSX and will not see `.slint` files.
-- [ ] Remember the two-sided FTL rule: a key you add must be referenced, and a reference you
-      delete must not strand a key.
+- [ ] Decide now: `.ftl` is the single source of truth; the Slint shell resolves strings in
+      Rust via `fluent-bundle`. No second content pipeline, no duplicated ID/EN strings.
+- [ ] Prototype it before the first real screen: load one bundle in Rust, format one message,
+      push it into a Slint property. If that is awkward, the decision changes — find out cheap.
+- [ ] Extend `scripts/verify-bundle-parity.py` and `scripts/verify-ftl-orphans.py`: both read
+      TSX today and will not see `.slint` or Rust-side key usage.
+- [ ] Keep the two-sided FTL rule: a key you add must be referenced, and a reference you delete
+      must not strand a key.
 
-## Item 4 — Offline model: outbox-reconcile, not optimistic-rollback
+## Item 5 — Offline model: outbox-reconcile, not optimistic-rollback
 
 The previous draft's "optimistic insert, roll back on error" is the wrong failure model.
 The repo has a **durable outbox** (`ui/src/api/offline.ts`, ADR #6): an action is enqueued
@@ -100,7 +145,7 @@ sale that is about to be pushed successfully.
 - [ ] Do **not** add a global state library. State today is 12 Contexts under
       `ui/src/contexts/` plus ~36 hooks; `zustand` appears nowhere. Adding one is an ADR.
 
-## Item 5 — List rendering and perf: adopt what exists
+## Item 6 — List rendering and perf: adopt what exists
 
 Both the previous §3 and most of §4 are already decided, differently.
 
@@ -118,6 +163,20 @@ Both the previous §3 and most of §4 are already decided, differently.
       code splitting (PERF-01), bounded pages (PERF-07) and `loggedInvoke` telemetry.
 - [ ] Hard rules for any new UI code: strings come from Fluent (`scripts/lint-i18n.sh`),
       colours come from theme tokens (`ui/src/frontend/themes/tokens.css`) — never literals.
+
+## Item 7 — Year 4–5: renderer swap stays cheap
+
+The acceptance test for "the UI is replaceable" is a checklist, not a feeling. All of these
+should be true continuously, not at swap time:
+
+- [ ] No UI-framework vocabulary below `crates/oz-bridge` (Item 1's gate is green).
+- [ ] DTOs describe *data*, never presentation — no HTML, no colour, no layout, no route names.
+- [ ] Every business rule is enforced at a choke point every caller passes, not in a screen
+      (the `ozpkg.rs:154` precedent).
+- [ ] Events cross the seam through `EventSink`, so a new renderer subscribes rather than
+      re-implements publishing.
+- [ ] A new shell needs: a `BridgeCtx`, a registration of the commands it exposes, and a
+      locale reader. Nothing else. If it needs more, that is the finding.
 
 ---
 
