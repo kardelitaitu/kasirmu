@@ -915,7 +915,7 @@ pub struct CompleteSaleArgs {
 /// UI's `attemptId` vanish silently on the tablet while looking guarded.
 /// Every field the wire can carry is listed field-for-field against
 /// `ui/src/api/sales.ts::CompleteSaleScopedArgs` (15 fields) and both
-/// senders in `ui/src/features/sales/PaymentModal.tsx` (the main path and
+/// senders in the payment modal (the main path and
 /// the QRIS path, whose extra spread is `tenderSnapshot` — tip, service
 /// charge and the three CUR-02 fields, all present below). An unknown key
 /// now fails loudly instead of being dropped — on every shell.
@@ -1237,7 +1237,7 @@ pub fn shortfall_line_unit_price(
 /// [`CompleteSaleScopedArgs`]: enumerated field-for-field against
 /// `ui/src/api/sales.ts::CompleteSaleWithResolvedShortfallsArgs`
 /// (20 fields), whose only sender is
-/// `ui/src/features/sales/StockShortfallDialog.tsx`. Ported from the
+/// the stock-shortfall dialog. Ported from the
 /// tablet shell's copy (Phase 3.3 T4) so every shell fails loudly on an
 /// unknown key.
 #[derive(Debug, Deserialize)]

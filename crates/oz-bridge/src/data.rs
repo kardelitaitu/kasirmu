@@ -283,7 +283,7 @@ pub fn gate_import_user_batch(
 /// This command takes no session token, so there is no identity to check and
 /// permissions::DATA_EXPORT is not enforced here at all. That is a live path, not
 /// a theoretical one: see the reachability note in
-/// ui/src/features/settings/DataManagementScreen.tsx. One structured event is
+/// the data-management screen. One structured event is
 /// emitted per ungated call, so a bypass that cannot be closed quietly is at least
 /// visible to whoever reads a log. The event carries the operation name and nothing
 /// else: no value, no backup path, no token.
@@ -328,7 +328,7 @@ async fn backup_status_direct(db_path: &Path) -> Result<BackupStatus, BridgeErro
 /// create_backup_scoped, checks no permission whatsoever: no token is presented,
 /// so there is no identity to authorize. Reachable today from the Data screen
 /// with no workspace session; see the note in
-/// ui/src/features/settings/DataManagementScreen.tsx. One event per ungated call,
+/// the data-management screen. One event per ungated call,
 /// carrying the operation name only and never the backup path.
 pub async fn create_backup(
     ctx: &BridgeCtx<'_>,

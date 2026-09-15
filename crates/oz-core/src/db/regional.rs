@@ -4,7 +4,7 @@
 //! "Regional configuration — design"). Read-only by decision: the write path
 //! needs a UI and a settings-scope ruling, and the location row is a
 //! full-overwrite surface (update_location_profile_scoped takes every mutable
-//! field and TopologyScreen.tsx hand-lists them), so a regional column must
+//! field and the topology screen hand-lists them), so a regional column must
 //! never ride that path. This module reads the three scopes, assembles the
 //! inheritance chain, and hands the resolution to the pure
 //! [`RegionalConfig::resolve`].
@@ -17,7 +17,7 @@ use crate::regional::{ConfigScope, RegionalConfig, RegionalLayer};
 use crate::settings::{Settings, keys};
 
 /// The organization-level locale key, as written by the Settings → General
-/// language selector (`ui/src/features/settings/sections/GeneralSection.tsx`).
+/// language selector in the settings → general screen.
 ///
 /// Until this module read it, nothing in the repo did: the selector persisted
 /// the locale and no reader ever consulted it, which is why the organization
@@ -161,7 +161,7 @@ impl Store<'_> {
     /// - **Full-overwrite semantics, blank = inherit.** Every axis value is
     ///   validated and canonicalised by
     ///   `regional::validate_regional_axis_value` at this core boundary —
-    ///   the design's "validation lives in core, not React" rule — then
+    ///   the design's "validation lives in core, not the renderer" rule — then
     ///   written through one transaction (the repository-level convention:
     ///   all writes run inside a transaction). Blank clears the column so
     ///   the chain falls through to the next scope.

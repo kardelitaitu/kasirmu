@@ -257,7 +257,7 @@ fn process_refund_scoped_args_deserialize_frontend_camelcase() {
 fn process_refund_result_serializes_frontend_camelcase() {
     // Response-side half of Bug #13: the UI reads result.refundId /
     // result.totalMinor (ui/src/api/sales.ts ProcessRefundResult,
-    // RefundModal.tsx:32,154,157), so the serialized keys must be
+    // the refund modal), so the serialized keys must be
     // camelCase — snake_case here rendered an undefined amount on desktop
     // while the call itself succeeded (same class as the SaleDetail drift
     // fixed in bfe8b885, backend as the drift side).

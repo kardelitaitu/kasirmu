@@ -142,7 +142,7 @@ fn empty_password_is_refused_at_export() {
     // holding the file can derive it without guessing.
     //
     // Nothing is lost that the product ever offered: the desktop UI has
-    // required >= 8 characters all along (DataManagementScreen.tsx:280),
+    // required >= 8 characters all along (the data-management screen),
     // and no doc or setting describes an empty password as a mode. What
     // survived was the Rust API's accident, reachable via `oz-cli
     // export-ozpkg --password ""`.

@@ -16,7 +16,7 @@ next: none | perf: N/A
 //! The LoyaltyModule implements the [`Module`] trait and is registered
 //! with the kernel during application startup. The underlying backend
 //! (domain types, database access, Tauri commands) and frontend
-//! (React screens, API calls, Fluent locale) still live in their
+//! (screens, API calls, Fluent locale) still live in their
 //! original locations:
 //!
 //! - Domain: `crates/oz-core/src/loyalty.rs`

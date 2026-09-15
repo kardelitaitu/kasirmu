@@ -52,7 +52,9 @@ pub struct SessionContext {
     pub store_id: String,
     /// Active workspace instance ID.
     pub instance_id: String,
-    /// Workspace type key — determines which React component to render.
+    /// Workspace type key — determines which vertical shell the session
+    /// addresses (`store-pos`, `restaurant-pos`, `kds`, ...). The renderer
+    /// decides what to draw from this; the core only reports it.
     pub type_key: String,
     /// Unix timestamp (seconds) after which the session is considered
     /// expired. `None` means the session never expires (development mode).
