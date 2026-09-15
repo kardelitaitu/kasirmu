@@ -1,12 +1,17 @@
 //! Setup Wizard commands.
 //!
-//! `complete_setup` persists the chosen preset and enabled features to
-//! the settings table and marks the wizard as complete.
-//! `get_setup_status` lets the front-end decide whether to show the
-//! wizard or go straight to the main app.
+//! `complete_setup` persists the chosen preset, enabled features and
+//! default currency to the settings table and marks the wizard as
+//! complete. `get_setup_status` lets the front-end decide whether to show
+//! the wizard or go straight to the main app.
+//!
+//! `CompleteSetupArgs` is re-exported from `oz_bridge::setup`: the wire
+//! shape is one type shared with the desktop shell, so a key the wizard
+//! sends cannot exist on only one side.
 
 use oz_core::{FeatureRegistry, Settings, features};
-use serde::{Deserialize, Serialize};
+use rusqlite::Connection;
+use serde::Serialize;
 use tauri::{State, command};
 
 use crate::error::AppError;
@@ -14,14 +19,15 @@ use crate::state::AppState;
 
 // ── Args ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-/// Completesetupargs.
-pub struct CompleteSetupArgs {
-    /// Store preset name (e.g. `"simple-retail"`, `"restaurant"`).
-    pub preset: String,
-    /// Enabled feature keys (kebab-case, e.g. `"cash-payment"`).
-    pub features: Vec<String>,
-}
+/// Completesetupargs — the payload the setup wizard sends.
+///
+/// Re-exported from `oz_bridge::setup` instead of copied locally. The local
+/// copy of this struct carried only `preset` and `features`; serde ignores
+/// unknown keys, so the `default_currency` the wizard collects was dropped
+/// on tablet with no error on either side. A field list duplicated across
+/// two crates drifts again the next time the bridge gains a key — sharing
+/// the one type makes that class of loss impossible rather than unlikely.
+pub use oz_bridge::setup::CompleteSetupArgs;
 
 // ── Response types ───────────────────────────────────────────────────
 
@@ -64,17 +70,15 @@ pub async fn get_enabled_features(
     Ok(EnabledFeaturesResult { features })
 }
 
-/// Persist the chosen preset and features, then mark setup as complete.
+/// Write every row the setup wizard collects, into `conn`.
 ///
-/// Called by the front-end when the user clicks "Complete Setup" on
-/// the last step of the wizard.
-#[command]
-pub async fn complete_setup(
-    state: State<'_, AppState>,
-    args: CompleteSetupArgs,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-
+/// Split out of the `#[command]` so tests drive the real statement list
+/// with a plain `&Connection` instead of a mirrored copy of it — a copy is
+/// how "the body writes it" and "the test checks it" came to disagree.
+/// Legs and their order mirror `oz_bridge::setup::complete_setup`; the
+/// bridge's leading `seed_default_roles` is deliberately not mirrored here
+/// (that seeding is not this command's behaviour to take on today).
+fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppError> {
     // Convert feature key strings → Feature enum variants.
     let mut registry = FeatureRegistry::new();
     for key in &args.features {
@@ -85,30 +89,51 @@ pub async fn complete_setup(
         }
     }
 
-    // Save features + preset + completed flag in a single transaction.
-    let tx = db.unchecked_transaction()?;
-    {
-        // 1. Persist features.
-        // RUST-08: write feature rows directly into the outer transaction.
-        // `store.save_features` -> Settings::set_batch opens its OWN
-        // unchecked_transaction, which would be a nested BEGIN inside the
-        // tx above ("cannot start a transaction within a transaction").
-        for (key, value) in registry.to_settings_rows() {
-            Settings::set(&tx, &key, &value)?;
-        }
-
-        // 2. Prune stale feature rows that are no longer enabled.
-        Settings::prune_stale_features(&tx, &registry)?;
-
-        // 3. Save the preset name.
-        Settings::set(&tx, oz_core::settings::keys::STORE_PRESET, &args.preset)?;
-
-        // 4. Mark setup as complete.
-        Settings::set(&tx, oz_core::settings::keys::SETUP_COMPLETE, "1")?;
-
-        // 5. Dismiss the wizard so it doesn't show on next launch.
-        Settings::set(&tx, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+    // 1. Persist features.
+    // RUST-08: write feature rows directly into the caller's transaction.
+    // `store.save_features` -> Settings::set_batch opens its OWN
+    // unchecked_transaction, which would be a nested BEGIN inside the
+    // caller's ("cannot start a transaction within a transaction").
+    for (key, value) in registry.to_settings_rows() {
+        Settings::set(conn, &key, &value)?;
     }
+
+    // 2. Prune stale feature rows that are no longer enabled.
+    Settings::prune_stale_features(conn, &registry)?;
+
+    // 3. Save the preset name.
+    Settings::set(conn, oz_core::settings::keys::STORE_PRESET, &args.preset)?;
+
+    // 4. Mark setup as complete.
+    Settings::set(conn, oz_core::settings::keys::SETUP_COMPLETE, "1")?;
+
+    // 5. Save the currency the wizard collected. The tablet dropped this
+    // leg along with the struct field, so the choice never reached the
+    // `currency.default` row.
+    Settings::set_default_currency(conn, &args.default_currency)?;
+
+    // 6. Dismiss the wizard so it doesn't show on next launch.
+    Settings::set(conn, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+
+    Ok(())
+}
+
+/// Persist the chosen preset, features and default currency, then mark
+/// setup as complete.
+///
+/// Called by the front-end when the user clicks "Complete Setup" on
+/// the last step of the wizard.
+#[command]
+pub async fn complete_setup(
+    state: State<'_, AppState>,
+    args: CompleteSetupArgs,
+) -> Result<(), AppError> {
+    let db = state.db.lock().await;
+
+    // Save features + preset + currency + completed flag in a single
+    // transaction.
+    let tx = db.unchecked_transaction()?;
+    write_setup(&tx, &args)?;
     tx.commit()?;
 
     tracing::info!(

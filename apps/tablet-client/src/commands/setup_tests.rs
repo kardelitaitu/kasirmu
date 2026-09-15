@@ -7,31 +7,39 @@ fn fresh_conn() -> Connection {
     migrations::fresh_db()
 }
 
-/// Run the same logic as `complete_setup` but with a plain
-/// `&Connection` so tests don't need a Tauri runtime.
+/// Run the production `complete_setup` statement list against a plain
+/// `&Connection`, so tests need no Tauri runtime.
 ///
-/// Each individual operation (`save_features`, `prune_stale_features`,
-/// `set`) handles its own transaction internally. The production
-/// `complete_setup` command wraps them in a single outer transaction
-/// for atomicity; tests verify the operations individually.
+/// This delegates to `write_setup` — the very function the `#[command]`
+/// calls inside its transaction — rather than re-listing the operations.
+/// A re-listed copy passes while the command drops a leg, which is exactly
+/// how the currency write stayed invisible here.
 fn run_complete_setup(
     conn: &Connection,
     preset: &str,
     features: &[&str],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut registry = FeatureRegistry::new();
-    for &key in features {
-        if let Some(feat) = features::feature_from_key(key) {
-            registry.enable(feat);
-        }
-    }
+    run_complete_setup_args(
+        conn,
+        // Fed through the shared struct rather than built field-by-field,
+        // so the currency leg carries the struct's own `#[serde(default)]`
+        // value and not a literal restated here.
+        &deserialise(serde_json::json!({ "preset": preset, "features": features })),
+    )
+}
 
-    let store = Store::new(conn);
-    store.save_features(&registry)?;
-    Settings::prune_stale_features(conn, &registry)?;
-    Settings::set(conn, oz_core::settings::keys::STORE_PRESET, preset)?;
-    Settings::set(conn, oz_core::settings::keys::SETUP_COMPLETE, "1")?;
-    Settings::set(conn, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+/// Deserialise a wizard-shaped payload into the shared args type.
+fn deserialise(payload: serde_json::Value) -> CompleteSetupArgs {
+    serde_json::from_value(payload).expect("setup wizard payload must deserialize")
+}
+
+/// `run_complete_setup` for a caller that already holds the args — the
+/// deserialised wizard payload in the end-to-end case below.
+fn run_complete_setup_args(
+    conn: &Connection,
+    args: &CompleteSetupArgs,
+) -> Result<(), Box<dyn std::error::Error>> {
+    write_setup(conn, args)?;
     Ok(())
 }
 
@@ -412,11 +420,59 @@ fn complete_setup_args_deserialize() {
     assert_eq!(args.features[0], "cash-payment");
 }
 
+/// The exact shape `SetupWizard.tsx` builds and `TabletAppShell.tsx`
+/// forwards — all three keys, currency included — driven end to end.
+///
+/// This is the case that was missing: nothing in this file named
+/// `default_currency`, so the wizard currency could be (and was) dropped
+/// on tablet without a single red test. It reads a currency no fallback
+/// could produce, so it fails both if the shared struct loses the field and
+/// if `write_setup` stops writing the row.
+#[test]
+fn complete_setup_currency_survives_the_wizard_payload() {
+    let json = r#"{"preset":"simple-retail","features":["cash-payment","tax-engine"],"default_currency":"USD"}"#;
+    let args: CompleteSetupArgs = serde_json::from_str(json).unwrap();
+
+    // 1. The field survives deserialisation — the local copy had no such
+    // field, and serde ignores unknown keys rather than rejecting them.
+    assert_eq!(
+        args.default_currency, "USD",
+        "the currency the wizard collected was dropped by deserialisation"
+    );
+
+    // 2. It reaches the row the command writes.
+    let conn = fresh_conn();
+    run_complete_setup_args(&conn, &args).unwrap();
+    assert_eq!(
+        Settings::get_default_currency(&conn).unwrap().as_deref(),
+        Some("USD"),
+        "complete_setup did not persist the currency to `currency.default`"
+    );
+}
+
+/// An older client that sends no `default_currency` keeps working: the
+/// shared struct supplies its `#[serde(default)]` fallback and that is what
+/// lands in the row.
+#[test]
+fn complete_setup_currency_falls_back_when_key_absent() {
+    let args: CompleteSetupArgs =
+        serde_json::from_str(r#"{"preset":"simple-retail","features":["cash-payment"]}"#).unwrap();
+    assert_eq!(args.default_currency, "IDR");
+
+    let conn = fresh_conn();
+    run_complete_setup_args(&conn, &args).unwrap();
+    assert_eq!(
+        Settings::get_default_currency(&conn).unwrap().as_deref(),
+        Some("IDR")
+    );
+}
+
 #[test]
 fn complete_setup_args_debug() {
     let args = CompleteSetupArgs {
         preset: "restaurant".into(),
         features: vec!["cash-payment".into()],
+        default_currency: "IDR".into(),
     };
     let d = format!("{args:?}");
     assert!(d.contains("restaurant"));
