@@ -303,28 +303,16 @@ pub async fn set_hardware_settings(
 //
 // `UserPrefEntry` comes from `oz_bridge::settings` (two single-word keys; the
 // pin is `wire_pin_user_pref_entry_carries_every_key_the_renderer_declares`).
-
-#[command]
-/// Get user preferences.
-pub async fn get_user_preferences(
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<HashMap<String, String>, AppError> {
-    let conn = state.db.lock().await;
-    Ok(UserPreferences::get_all(&conn, &user_id)?)
-}
-
-#[command]
-/// Set user preferences.
-pub async fn set_user_preferences(
-    user_id: String,
-    prefs: Vec<UserPrefEntry>,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let pairs: Vec<(String, String)> = prefs.into_iter().map(|e| (e.key, e.value)).collect();
-    Ok(UserPreferences::set_batch(&conn, &user_id, &pairs)?)
-}
+//
+// The unscoped `get_user_preferences` / `set_user_preferences` pair used to sit
+// here. It was **dead surface**: registered in neither shell's
+// `generate_handler!` block, absent from the desktop crate altogether, and
+// called by nothing in the tree — only the dev-mock and the UI's test mocks
+// answered those names, which is what made them read as live. Both also took a
+// caller-supplied `user_id`, the forgeable shape the six scoped setters above
+// dropped the same day (T4-1), so *registering* them would have re-opened it.
+// Deleted under T4-4 of `todo-refactor-oz-pos-app-agents-3.md`; the scoped twins
+// below derive the user from the session and are what both shells register.
 
 #[command]
 /// Get user preferences resolved from a session token. ADR #7.
