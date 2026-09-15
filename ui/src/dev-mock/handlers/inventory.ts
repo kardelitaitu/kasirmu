@@ -110,6 +110,11 @@ export const inventoryHandlers: Record<string, MockHandler> = {
   'send_stock_transfer_scoped': () => null,
   'receive_stock_transfer_scoped': () => null,
   'cancel_stock_transfer_scoped': () => null,
+  // In-transit transfers — a stock-transfer read, so it lives with the transfer
+  // commands above (not residue). Moved verbatim from `tauri-api.ts`
+  // (Phase 5.5); single-defined (git grep). `() => []` matches the sibling
+  // transfer stubs — the mock models no in-transit rows, so the list is empty.
+  'list_in_transit_transfers_scoped': () => [],
 
   // Low-stock alerts — moved verbatim from `tauri-api.ts`'s entryHandlers
   // literal (Phase 5.5): a pure self-contained fixture array, single-defined
