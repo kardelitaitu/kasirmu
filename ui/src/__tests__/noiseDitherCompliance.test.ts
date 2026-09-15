@@ -349,6 +349,14 @@ let waiverPrefix = 0;          // match on EXEMPT_SELECTOR_PREFIXES
 let waiverPseudoState = 0;     // selector names a state pseudo-class
 let waiverAttribute = 0;       // selector starts with an open bracket
 let surfacesSurvivingWaivers: { file: string; selector: string }[] = [];
+// Membership, not just counts: a matcher can widen without changing a single count
+// (measured 2026-09-15 -- replacing the exact-or-boundary test with the raw
+// startsWith this file shipped before moved NOTHING on this tree, because the names
+// it would newly swallow do not exist yet). A baseline of WHO each door excused is the
+// only witness that survives a matcher edit, so each door records its own list.
+const waivedByPrefixNames: string[] = [];
+const waivedByPseudoNames: string[] = [];
+const waivedByAttributeNames: string[] = [];
 let unparseableSheets: string[] = [];  // sheets it tried and could not read
 // -- The doors a sheet can leave the walk through, counted apart (2026-09-15). --
 // A sheet the PARSE throws on was already recorded in `unparseableSheets` and is
@@ -448,15 +456,31 @@ function walkShadowPopulation(): void {
 
 }
 /*
- * Selector-boundary convention -- the same shape scripts/verify-ftl-orphans.py uses
- * for composed-prefix matching (`n == p || n.startsWith(p + "-")`): a listed prefix
- * matches EXACTLY, or as a prefix only where the remainder begins with a selector
- * boundary character. A bare entry like '.btn' therefore no longer waives
- * '.btnGhostPanel:hover', and '.card-header' no longer waives '.card-headerSticky'.
- * A prefix that already ENDS in a namespace separator ('.card--padding-', '.toast__',
- * '.input-') is a name stem, so a remainder continues it directly.
+ * BOUNDARY CONVENTION -- AND A DOCUMENTED FORK WITH THE SISTER FILE, dated 2026-09-15.
+ * This file and ui/src/__tests__/focusVisibleCompliance.test.ts (cc7111fa8) both cite
+ * scripts/verify-ftl-orphans.py:237 -- n == p or n.startswith(p + a hyphen) -- and
+ * reach OPPOSITE answers, because that rule was written for Fluent KEY names, where a
+ * hyphen is not a modifier boundary: the prefix topology-shortcuts legitimately
+ * continues into topology-shortcuts-help. In CSS the same character means the opposite
+ * -- .btn and .btn-primary are two variants, and BEM writes .toast__title for a CHILD.
+ * One citation therefore cannot settle a CSS question, so the family rule has to be
+ * stated on its own terms: A WAIVER MUST NAME THE ELEMENT IT WAIVES. Attaching a state,
+ * an attribute or a combinator to a class still names that class; appending characters
+ * to its name does not. That puts the boundary set at the attach points, and it puts
+ * this file on the sister's side of the fork:
+ *   a hyphen and an underscore are NOT boundaries -- .btn must not waive .btn-primary
+ *   -- and prefixes that genuinely continue that way are listed AS STEMS (.card--
+ *   padding-, .toast__, .input-, .payment-), which the endsWith branch still honours;
+ *   combinators, ., #, : and [ ARE boundaries, so .btn:focus, .btn .x,
+ *   .status-indicator.online and .btn[aria-pressed] stay waived by a .btn entry.
+ * Measured blast radius of narrowing the set from the four characters this line first
+ * shipped with (_ - . :) to the set below: 0 of the 4 selectors the prefix door waives
+ * depends on a hyphen or an underscore, so on this tree the change costs nothing and
+ * the fork is the only thing at stake. Neither file should keep citing the python rule
+ * as the tie-breaker; if the owner reconciles the pair, this is the shape to reconcile
+ * toward, and focusVisibleCompliance is already there.
  */
-const SELECTOR_BOUNDARY_CHARS = '_-.:[';
+const SELECTOR_BOUNDARY_CHARS = ' >+~:.#,';
 function isExemptSelector(sel: string): boolean {
   return EXEMPT_SELECTOR_PREFIXES.some((prefix) => {
     if (sel === prefix) return true;
@@ -510,10 +534,11 @@ function isExemptSelector(sel: string): boolean {
 function applySelectorWaivers(): void {
   waiverCoveredByList = 0; waiverPrefix = 0; waiverPseudoState = 0; waiverAttribute = 0;
   surfacesSurvivingWaivers = [];
+  waivedByPrefixNames.length = 0; waivedByPseudoNames.length = 0; waivedByAttributeNames.length = 0;
   for (const surface of uncoveredSurfaces) {
     const sel = surface.selector;
     if (KNOWN_NOISE_SELECTORS.includes(sel)) { waiverCoveredByList++; continue; }
-    if (isExemptSelector(sel)) { waiverPrefix++; continue; }
+    if (isExemptSelector(sel)) { waiverPrefix++; waivedByPrefixNames.push(sel); continue; }
     // NOTE, deliberately NOT tightened in this commit: this test reads the WHOLE
     // selector, so '.a:hover .b' waives a state class that belongs to a different
     // element. Restricting it to the tail compound is measured to move exactly one
@@ -522,12 +547,12 @@ function applySelectorWaivers(): void {
     // noise-dither block of ui/src/frontend/themes/components.css plus
     // KNOWN_NOISE_SELECTORS to pass once it is graded. A stylesheet is outside this
     // file's fence, so the door stays open here and its population is printed below.
-    if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) { waiverPseudoState++; continue; }
+    if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) { waiverPseudoState++; waivedByPseudoNames.push(sel); continue; }
     // Attribute selectors (state variants) -- inherit from the base class. Kept, with
     // its count printed: measured 2026-09-15 ZERO selectors reach this door, so the
     // waiver is real insurance and not a live leak -- and a printed zero is the only
     // form in which an empty silent class can be seen growing.
-    if (sel.startsWith('[')) { waiverAttribute++; continue; }
+    if (sel.startsWith('[')) { waiverAttribute++; waivedByAttributeNames.push(sel); continue; }
     surfacesSurvivingWaivers.push(surface);
   }
 }
@@ -623,7 +648,7 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
 
   // ── Sanity checks ─────────────────────────────────────────
 
-  it(`the shadow walk reports its own denominator: ${shadowRulesGraded} rules graded of ${shadowRules} box-shadow rules, ${rulesExamined} rules examined, ${unparseableSheets.length} unparseable sheets; shadowed selectors: ${uncoveredSurfaces.length} reached the waiver filter, ${surfacesSurvivingWaivers.length} graded after waiving ${waiverCoveredByList} on the known list + ${waiverPrefix} on an exempt prefix + ${waiverPseudoState} on a state pseudo-class + ${waiverAttribute} on an attribute selector`, () => {
+  it(`the shadow walk reports its own denominator: ${shadowRulesGraded} rules graded of ${shadowRules} box-shadow rules, ${rulesExamined} rules examined, ${unparseableSheets.length} unparseable sheets; shadowed selectors: ${uncoveredSurfaces.length} reached the waiver filter, ${surfacesSurvivingWaivers.length} graded after waiving ${waiverCoveredByList} on the known list + ${waiverPrefix} on an exempt prefix + ${waiverPseudoState} on a state pseudo-class + ${waiverAttribute} on an attribute selector; prefix door waived exactly [${[...waivedByPrefixNames].sort().join(', ')}]`, () => {
     // The floor this suite was missing. `allCssFiles.length > 0` can be true while
     // the walk grades nothing; a relation cannot, because every rule the loop saw
     // has to land in exactly one bucket.
@@ -640,6 +665,37 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     // one new exempt family does not. If this goes red the answer is not to raise the
     // number: it is to name what the extra prefix is swallowing (see ESCAPE OF RECORD).
     expect(waiverPrefix, 'the exempt-prefix door waived ' + waiverPrefix + ' selector(s) of a measured population of 4 with 4 of headroom -- a breach means the waiver list grew past anything this gate has graded').toBeLessThanOrEqual(8);
+    // -- The doors ASSERTED, not merely printed (2026-09-15). The headline these lines
+    // replace is ugly and true: 118 shadowed selectors reached the filter and 0
+    // survived it, so the case above named "every elevated surface has noise-dither"
+    // was a claim about an empty set, and nothing in either compliance file asserted
+    // anything about what its waivers SWALLOW. Measured on this run: known list 93,
+    // exempt prefix 4, state pseudo-class 21, attribute 0, graded 0.
+    // Population floor first: a filter that receives 118 selectors and grades 0 is
+    // only honest while 118 is the real population, so the population itself is floored
+    // (measured 118, floor 100, 18 of headroom) -- a narrowed walk now reads red.
+    expect(uncoveredSurfaces.length, 'the waiver filter received ' + uncoveredSurfaces.length + ' shadowed selectors; measured 118 with 18 of headroom, so a breach means the walk or a waiver list changed the population behind this verdict').toBeGreaterThanOrEqual(100);
+    // Per-door bounds, each with its headroom named. The pair on each door matters:
+    // a CEILING fires when a lane grows what a door swallows, a FLOOR fires when a
+    // lane moves selectors sideways between doors to hide them.
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118; measured 93, 8 of headroom below the floor and 12 above the ceiling').toBeGreaterThanOrEqual(85);
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118; measured 93, 8 of headroom below the floor and 12 above the ceiling').toBeLessThanOrEqual(105);
+    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + '; measured 21, 6 of headroom below the floor and 7 above the ceiling -- a rise here is the door at :520 eating an exemption belonging to another element').toBeGreaterThanOrEqual(15);
+    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + '; measured 21, 6 of headroom below the floor and 7 above the ceiling -- a rise here is the door at :520 eating an exemption belonging to another element').toBeLessThanOrEqual(28);
+    // The attribute door is empty today (0 of 118), so the whole budget IS headroom:
+    // 4 is a deliberate low ceiling on an unused door, not a measurement with margin.
+    expect(waiverAttribute, 'the attribute door waived ' + waiverAttribute + ' selectors and measured 0 on 2026-09-15 -- any use of a door with no population has to be looked at').toBeLessThanOrEqual(4);
+    // The witness a count cannot be. Proven in /tmp the same day: reverting the
+    // exact-or-boundary matcher to the raw startsWith this file shipped with moved NO
+    // counter at all (prefix stayed 4, pseudo 21, attribute 0, graded 0), because the
+    // longer names a widened door would swallow do not exist in the tree yet. A
+    // widened matcher does move THIS list the moment one appears, so the names each
+    // door excused are baselined here, in sorted order, exactly as the title prints
+    // them. Adding an exempt family legitimately means editing this list and saying
+    // which element it waives -- which is the point of naming it.
+    expect([...waivedByPrefixNames].sort(), 'the exempt-prefix door excuses a different SET than measured on 2026-09-15 (counts alone cannot catch a widened matcher -- see this comment)').toEqual([
+      '.kds-slider-knob', '.memo-banner-close', '.memo-expanded-close', '.payment-customer-search-modal',
+    ]);
     expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
   });
 
