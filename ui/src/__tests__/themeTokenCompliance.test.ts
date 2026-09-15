@@ -1,9 +1,13 @@
 /**
  * Theme Token Compliance Test
  *
- * Scans every CSS file in ui/src/features/ and ui/src/frontend/ for
- * hardcoded colour, font-size, border-radius, box-shadow, and spacing
- * values that should reference design tokens via `var(--token)`.
+ * Scans every CSS file under ui/src/features/, ui/src/frontend/ and
+ * ui/src/components/ for hardcoded colour, font-size, border-radius,
+ * box-shadow, and spacing values that should reference design tokens via
+ * `var(--token)`.  Three walk targets, per SCAN_TARGETS below -- this sentence
+ * named two of them until the font work re-read it.  `tokens.css` and
+ * `components.css` are excluded inside findFeatureCssFiles: they DEFINE the
+ * tokens, so grading them against themselves is circular.
  *
  * Exempts legitimate exceptions:
  *   - Gradient colour stops (radial/linear-gradient)
@@ -22,9 +26,43 @@
  * being added without also fixing an equal number of old ones.  Reduce
  * this baseline as CSS files are refactored to use design tokens.
  *
- * Appended at the bottom: three font-reference portability rules (Phase 1 of
- * todo-font-system.md). They live HERE rather than in a new file because this
- * file is already the live font-family gate. Nothing above was changed.
+ * THE LIVE NUMBER IS THE CONSTANT, NOT THIS PARAGRAPH: the baseline below is 0,
+ * so NOTHING is allowed today.  The 193 here and the 81 beside the constant are
+ * two earlier baselines kept as provenance -- a reader who takes 193 as an
+ * allowance mis-grades this gate by 193 violations.
+ *
+ * Appended after that gate: TWELVE font-reference portability rules, grown from
+ * Phase 1's three to twelve across todo-font-system.md, each shipped with its own
+ * probe case (12 rules = 24 cases). They live HERE rather than in a new file
+ * because this file is already the live font-family gate, and `dev-ci.yml#ui-test`
+ * runs `cd ui && npm test` (`:277`) on any commit under `ui/` -- the changes router
+ * matches `^ui/` at `:98` -- so a new file would need new wiring for no new reach.
+ *
+ *   1  no remote font reference in a boot HTML document: link, preconnect or url()
+ *   2  every --font-* family token's stack ends in a CSS generic keyword
+ *   3  every @font-face src url() is same-origin (relative path or data:)
+ *   4  no font-named property is one quoted comma-list, nor chained through var()
+ *   5  every font-family token is declared exactly once tree-wide
+ *   6  the two boot documents agree on one splash font-family
+ *   7  faces arriving through an @import are graded same-origin as well
+ *   8  no first-party stylesheet imports a stylesheet from a host at all
+ *   9  a stack that LEADS with a bundled face has that face actually declared
+ *  10  a theme font token's pinned fallback tail may not drop, add or reorder one
+ *  11  a boot document stack ends in a generic keyword once var() is unwrapped
+ *  12  the boot documents' fallback SEQUENCE is pinned: two rules that each read
+ *      one end of a list cannot see the list, and agreement is not correctness
+ *
+ * Their scope is deliberately wider than the gate above. The font rules walk every
+ * stylesheet under ui/src (collectCssFiles), both boot HTML documents, and reach
+ * node_modules ONLY by resolving an @import that first-party CSS declares --
+ * nothing here enumerates node_modules.
+ *
+ * Not one of the twelve added a line to the original scanner: `git blame -L 1,600`
+ * at `c614e5667` attributed all 600 of those lines to eight other commits, and to
+ * none of this plan's. The header sentences that WERE wrong -- a two-directory
+ * scope, a drift-guard figure, and "three rules" -- are the only pre-existing lines
+ * this work has since edited, and each was a claim about the tree that the tree had
+ * already moved past.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
