@@ -231,24 +231,37 @@ def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> li
 PROSE_LINE_RE = re.compile(r"^\s*(?://[/*]?|\*)")
 DEF_LINE_RE = re.compile(r"^\s*pub (?:async )?fn\b")
 TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
+# Path prefixes that name somebody else's function. This is the shape the whole sharing
+# programme produces, so it is not an edge case: a desktop shim whose own body reads
+#     oz_bridge::settings::get_receipt_settings(&ctx)
+# inside `pub async fn get_receipt_settings`. A name search sees a call to
+# `get_receipt_settings` and grades the command as load-bearing, when what it found is the
+# shim reaching the bridge's version of the same name. `crate::` is deliberately absent -- a
+# same-crate path call really is this shell's function.
+FOREIGN_PATH_ROOTS = {
+    "oz_bridge", "oz_core", "oz_lan", "oz_local_api", "tauri", "std", "core", "alloc",
+}
 
 
 def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
     """Lines in `sources` that call the free function `name`, as ["label:line", ...].
 
-    Four exclusions, and every one of them was paid for. A probe written for this leg on
+    Five exclusions, and every one of them was paid for. A probe written for this leg on
     2026-09-16 counted none of them and reported 78 of 101 unreachable command fns as "live
     helpers wearing a stale `#[command]` attribute" -- a conclusion that would have stopped
     the thinning on a false premise. The calls it saw were `store.create_bundle(&bundle,
     &items)`: a `Store` method that shares the command's spelling, which is the same
-    collision direction as the sweep-marker error recorded in T13, one layer over.
+    collision direction as the sweep-marker error recorded in T13, one layer over. The fifth
+    exclusion was earned after the first commit of this leg shipped, when its "32 desktop
+    helpers" turned out to be mostly shim bodies.
 
     * preceded by `.`  -> a method call on a value, not this function.
-    * preceded by `::` -> a path call. Kept only when the qualifier is a module path
-      (`super::x`, `crate::commands::auth::x`) and dropped when it is a type (`Store::x`,
-      `Self::x`), which is a heuristic, not a parser: it reads the segment before the `::`
-      and asks whether it is capitalised. The false-negative it accepts is a module named
-      like a type, and this tree has none.
+    * preceded by `::` -> a path call. Kept only when the qualifier is a module path inside
+      this crate (`super::x`, `crate::commands::auth::x`) and dropped when it is a type
+      (`Store::x`, `Self::x`) or another crate in the workspace (FOREIGN_PATH_ROOTS). Whether
+      the qualifier is a module or a type is read off the capitalisation of the segment before
+      the `::`, which is a heuristic and not a parser: the false negative it accepts is a
+      module named like a type, and this tree has none.
     * a `///`, `//` or `*` line -> prose. Two earlier probes in this programme were
       contaminated exactly that way.
     * a line starting `pub fn` / `pub async fn` -> the definition itself.
@@ -268,8 +281,10 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
                 if before.endswith("."):
                     continue
                 if before.endswith("::"):
-                    tail = re.findall(r"[A-Za-z0-9_]+::", before)
-                    last = tail[-1][:-2] if tail else ""
+                    chain = [s[:-2] for s in re.findall(r"[A-Za-z0-9_]+::", before)]
+                    if any(seg in FOREIGN_PATH_ROOTS for seg in chain):
+                        continue
+                    last = chain[-1] if chain else ""
                     if TYPE_QUALIFIER_RE.search(last):
                         continue
                 hits.append(f"{label}:{number}")
@@ -2749,6 +2764,8 @@ def self_test() -> int:
             "/// see create_bundle(&x) above",
             "pub async fn create_bundle(",
             "    .create_bundle;",
+            "    oz_bridge::bundles::create_bundle(&ctx);",
+            "    crate::commands::bundles::create_bundle(&x);",
         ]))])
     case("call   a free call is counted", "m.rs:1" in call_sites)
     case("call   a same-named method is NOT (this is the bug the census had)",
@@ -2757,8 +2774,15 @@ def self_test() -> int:
          "m.rs:3" not in call_sites and "m.rs:4" in call_sites)
     case("call   prose is not a call", "m.rs:5" not in call_sites)
     case("call   the signature itself is not a call", "m.rs:6" not in call_sites)
-    case("call   the whole answer is exactly the two real calls",
-         call_sites == ["m.rs:1", "m.rs:4"])
+    case("call   the whole answer is exactly the three real calls",
+         call_sites == ["m.rs:1", "m.rs:4", "m.rs:9"])
+
+    # The shim shape, which is what this programme keeps producing and therefore what the leg
+    # will keep meeting: a command whose body calls the bridge's same-named function. That is
+    # not the command being used, and grading it as such would hide every legacy fn behind its
+    # own replacement. A crate:: path IS this shell's function, so it stays counted.
+    case("call   a shim body calling the bridge twin is not a call of the command",
+         "m.rs:8" not in call_sites and "m.rs:9" in call_sites)
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
