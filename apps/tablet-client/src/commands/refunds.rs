@@ -22,7 +22,7 @@ use crate::state::AppState;
 /// `Option`, the tablet copy answered the front-end's camelCase with a hard
 /// `missing field \`sale_id\`` error, not a silent `None`.
 ///
-/// This is NOT a data-loss fix. `process_refund` is registered in neither
+/// This is NOT a data-loss fix. `process_refund` was registered in neither
 /// shell (`grep -rn refunds::process_refund apps/*/src/lib.rs` returns the two
 /// `process_refund_scoped` lines only: tablet `lib.rs:609`, desktop
 /// `lib.rs:1120`), and nothing sends this struct a payload at all
@@ -31,6 +31,13 @@ use crate::state::AppState;
 /// handler and in `dev-mock-envelope-shapes.test.ts:63`, whose own comment
 /// says it has no caller). So what was removed is a latent trap exactly one
 /// `generate_handler!` line from live — the shape tonight's audit predicted.
+///
+/// The fn itself was retired from this shell on 2026-09-16 (T19), which is what turns
+/// "a latent trap exactly one `generate_handler!` line from live" into a closed door.
+/// The reasoning above stays, because it is why the DTO direction was chosen, and the
+/// greps it cites answer the same way now: the scoped command is the only refund path,
+/// and the unscoped name survives only in the dev-mock and in
+/// `dev-mock-envelope-shapes.test.ts`, whose own comment already said it has no caller.
 ///
 /// The direction is not a coin flip either: the bridge is the type that agrees
 /// with the front-end, since `ui/src/api/sales.ts:606-613` declares
@@ -48,27 +55,6 @@ use crate::state::AppState;
 pub use oz_bridge::refunds::{
     ProcessRefundArgs, ProcessRefundResult, ProcessRefundScopedArgs, RefundLineArg,
 };
-
-/// Process a refund against a completed sale.
-///
-/// Requires `sales:refund` permission.
-#[command]
-pub async fn process_refund(
-    args: ProcessRefundArgs,
-    state: State<'_, AppState>,
-) -> Result<ProcessRefundResult, AppError> {
-    let db = state.db.lock().await;
-    let result = run_process_refund(
-        &db,
-        &args.user_id,
-        &args.sale_id,
-        &args.reason,
-        args.note.as_deref(),
-        &args.lines,
-    );
-    drop(db);
-    result
-}
 
 /// Process a refund within the session scope. ADR #7.
 ///
@@ -172,19 +158,6 @@ fn run_process_refund(
     })
 }
 
-/// Look up a sale by its receipt barcode for quick return.
-#[command]
-pub async fn lookup_sale_by_receipt_barcode(
-    barcode: String,
-    state: State<'_, AppState>,
-) -> Result<Option<Sale>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let sale = store.lookup_sale_by_receipt_barcode(&barcode)?;
-    drop(db);
-    Ok(sale)
-}
-
 /// Look up a sale by receipt barcode in the session scope. ADR #7.
 #[command]
 pub async fn lookup_sale_by_receipt_barcode_scoped(
@@ -203,19 +176,6 @@ pub async fn lookup_sale_by_receipt_barcode_scoped(
     let sale = store.lookup_sale_by_receipt_barcode(&barcode)?;
     drop(db);
     Ok(sale)
-}
-
-/// List all refunds for a sale.
-#[command]
-pub async fn list_refunds(
-    sale_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<Refund>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let refunds = store.list_refunds_for_sale(&sale_id)?;
-    drop(db);
-    Ok(refunds)
 }
 
 /// List refunds in the session scope. ADR #7.
