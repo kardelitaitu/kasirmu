@@ -1186,7 +1186,8 @@ checks) remain in `## Open questions`.
 > R5 is *Resilience cluster (fallback chain, breaker, reconciliation job)*. The ordering hazard is real and
 > local to PaymentModal; cite the four call sites above, not a heading that does not say it.
 >
-> last audited 14-09-26 by docs-auditor · re-audited same day (2nd pass, HEAD `ec2edf258`) by DSH — see the audit stamp at the top
+> last audited 14-09-26 by docs-auditor
+> re-audited same day (2nd pass, HEAD `ec2edf258`) by DSH — see the audit stamp at the top
 
 ---
 

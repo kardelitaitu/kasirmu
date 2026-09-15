@@ -171,7 +171,8 @@
 
 > ⚠️ **2026-09-14 · this file's `wc -l ui/src/features/sales/PosScreen.tsx` = 1,247 is a HEAD reading, not the working tree.** Three reads of that file taken minutes apart inside this same audit pass reported **1,247 → 972 → 899** lines, and `PaymentModal.tsx` reported 2,404 then 2,435, with a new `components/ShiftModals.tsx` (417 ln) appearing mid-pass: concurrent agents are landing the extractions this plan describes **while these notes are being written**. Every `:NNNN` anchor above is into the 1,247-line file. Re-run `wc -l ui/src/features/sales/PosScreen.tsx` and re-derive each anchor with `grep -n` before cutting anything, and re-test the `<= 760` gate against whatever number comes back — on the reading above (899) the gate is already met and `< 600` is the live question again.
 >
-> last audited 2026-09-14 by DSH (docs-auditor)
+> last audited 14-09-26 by DSH
+> (docs-auditor)
 
 ---
 

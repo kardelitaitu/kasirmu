@@ -176,7 +176,8 @@
 rather than something removed — this audit has **no git access**, so no commit, rename or deletion can be
 confirmed or denied for any claim above. What is asserted is only the tree as measured on 2026-09-14.
 
-> last audited 2026-09-14 by DSH (docs subagent); every path, count and symbol re-measured with read/grep against C:/dev/ozpos. No git command was available to this session, so no commit-level claim is made.
+> last audited 14-09-26 by DSH
+> (docs subagent); every path, count and symbol re-measured with read/grep against C:/dev/ozpos. No git command was available to this session, so no commit-level claim is made.
 
 ---
 

@@ -222,7 +222,8 @@ Dispositions: **OPEN** (real work), **ALREADY SHIPPED**, **DECISION NOT WORK**, 
 4. **Neighbour, not in this fence:** `ExpoScreen.tsx` (recall, station selector, per-user station key) is a different screen in the same directory and has its own shadow risk.
 5. **Run `npm run typecheck` as the PROP ENUMERATOR, not as a final form.** Today's evidence, in the mover's own numbers: a worker's hand-rolled identifier scan **under-reported `KdsHeaderLeft`'s props by five** and **guessed one prop's type wrong**; `npm run typecheck` from `ui/` caught all of it, because `noUnusedLocals` / `noUnusedParameters` make an unused or mistyped prop an error rather than a shrug. So write the component with the props you think the markup needs, then let the compiler's complaints **be** the prop list, and only then run it once more for the green. Scanning identifiers by eye is how a 16-prop interface gets recorded as 11 — and 11 is what the plan would have inherited.
 
-> last audited 2026-09-14 by DSH (docs-auditor) · merged from agents-1 + agents-2 + todo-kds.md · the three sources stay in place, undeleted and NOT renamed `done-`: the work they plan is unfinished.
+> last audited 14-09-26 by DSH
+> (docs-auditor) · merged from agents-1 + agents-2 + todo-kds.md · the three sources stay in place, undeleted and NOT renamed `done-`: the work they plan is unfinished.
 
 ---
 

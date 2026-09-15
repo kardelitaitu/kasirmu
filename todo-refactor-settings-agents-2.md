@@ -518,7 +518,8 @@ found outside the hook, and `ui/src/features/setup/SetupWizard.tsx` imports no `
 wizard can clobber these rows" is NOT measured and must not be repeated as fact. Cost side: the read-back is
 ~5 extra IPC reads per Save — the last paragraph of that same `SAFETY:` header block — bounded by that one file.
 
-> last audited 2026-09-14 by DSH (docs subagent); counts re-measured with read/grep against C:/dev/ozpos
+> last audited 14-09-26 by DSH
+> (docs subagent); counts re-measured with read/grep against C:/dev/ozpos
 
 ---
 
@@ -571,7 +572,8 @@ allowlist, which is a separate decision the plan owner signs — also not writte
 
 > **ANSWERED-BY-MEASUREMENT (2026-09-15, HEAD f7872bd9a4): STILL OPEN — but now with a named constraint.** A mount-reachability check must NOT be satisfiable by an entry whose companion css is shared across >= 2 entries, because such a case can never fail: `screens/screens-placeholder.css` is the css of **14** entries (`grep -c 'screens-placeholder.css' ui/src/__tests__/screenExtraction.test.ts`) and defines exactly 3 classes (`.settings-screen-placeholder`, `-title`, `-note`), all three used by every one of the 13 placeholder screens — delete 12 of the 13 files and their 13 no-dead-class cases still pass. A check that can only be satisfied by guaranteed-present markup certifies the scaffolds as covered while grading nothing.
 
-> last audited 2026-09-15 by DSH (settings lane) · every figure above re-measured against C:/dev/ozpos at f0ad9b170e by the command named in its own row.
+> last audited 15-09-26 by DSH
+> (settings lane) · every figure above re-measured against C:/dev/ozpos at f0ad9b170e by the command named in its own row.
 
 ---
 

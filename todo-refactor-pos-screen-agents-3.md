@@ -163,7 +163,8 @@
 
 > ⚠️ **2026-09-14 · anchor drift is live in this file.** `wc -l ui/src/features/sales/PaymentModal.tsx` = **2,436** was the day's first reading; three reads minutes later returned **2,404** and **2,435** while slice S1 landed, and every `:NNNN` above is anchored below the moved `PaymentModalProps` interface — the shift so far is a uniform **−32** for lines under `:56` (`processing` `:134`→`:102`, `id-ID` locale `:1958`→`:1926`, `<PaymentModal` in `PosScreen.tsx` `:800`→`:794`). Re-derive each anchor with `grep -n` against the file you are about to cut, and re-check `ls ui/src/features/sales/payment/` before assuming a planned file is absent.
 >
-> last audited 2026-09-14 by DSH (docs-auditor)
+> last audited 14-09-26 by DSH
+> (docs-auditor)
 
 ---
 
