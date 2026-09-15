@@ -102,7 +102,7 @@
   > "passes" is not "ran". Tick only on a run against a live `oz-pg-test-15432` whose captured output
   > contains **zero `skipped:` lines**. With the container down, 7 of the 20 cases `return` as a pass,
   > so on a default developer machine this box is greenest exactly when it has verified least. <!-- CORRECTED 2026-09-15 fourth pass: the grep above cannot see a skip without `-- --nocapture`, and the count is 12 across three files, not 7 in one — see §5 at EOF. Box stays open: it needs the container, which is an owner action (`scripts/reset-dev-pg.sh:19`-`:21`), not a lane action. -->
-- [ ] **Commit Milestone:**
+> ~~**Commit Milestone:**~~ — **VOID · STRUCK FROM THE CENSUS, 2026-09-15 fourth pass. NOT WORK, and not ticked, because a tick claims a completion and this row was never completable.** Three reasons, in the order a reader will ask them. (1) *Its subject can never be earned:* the work it names landed as `230642b64` (*feat(sync-cloud): classify concurrent sync mutations and persist conflict rows*, the classifier) and `7a310e013` (the PG adapters), under two other prefixes, before this milestone was ever exercised — `git log --format=%s | grep -c 'decouple conflict resolution from sync storage backend'` = **0**. (2) *Its command text is a rule violation:* the line at `:107` carries **no pathspec**, which `AGENTS.md` §3 forbids — "the only permitted commit form is ONE line with an explicit pathspec" — so a milestone written to be pasted is a milestone that teaches the violation. (3) *A row that can be neither done nor undone is not a debt:* this is the disposition `todo-open-debt-program.md:115` already applies to its own "Commit milestones" box ("NOT WORK … it restates a rule that already binds every worker … counted here as not-work rather than as a debt"), and the same page's `:378` records the discipline that makes it safe — a retired row stays **un-ticked with its reason**, "exactly so a later reader cannot mistake a retired row for a paid one." That is why this row lost its checkbox rather than gaining an `[x]`, and why it is excluded from the census at §8/§9. **The fenced command at `:106`-`:108` and the note at `:109`-`:111` are left verbatim below, per this file's own rule at `:184`-`:186`:** a stale command inside a milestone is evidence of how the plan drifted, and rewriting it destroys the only trace of the mistake.
   ```bash
   git commit -m "refactor(cloud-sync): decouple conflict resolution from sync storage backend"
   ```
@@ -302,16 +302,19 @@
 
 ---
 
-## Fourth pass — 2026-09-15 (measured at HEAD `503591a10`; **two ticks, one owner ruling, and NO rename — `AGENTS.md` §4 blocks it**)
+## Fourth pass — 2026-09-15 (measured at HEAD `503591a10`; **two ticks, one ruling, one strike — and NO rename, because `AGENTS.md` §4 blocks it**)
 
 > Provenance: every figure below was measured in this checkout at HEAD `503591a10`
 > (*fix(sales): center the empty cart state in the cart lines area*, 2026-09-15 21:00 +0700,
 > branch `0.0.39`), each quoted with the command that re-derives it. In-place edits made by
-> this pass were **character-level only** — two `[ ]`→`[x]` ticks, and dated `<!-- -->` clauses on
+> this pass were **line-count-neutral only** — two `[ ]`→`[x]` ticks, dated `<!-- -->` clauses on
 > **six** existing lines (`:13`, `:44`, `:64`, `:99`, `:104`, `:126` — seven clauses, since `:64`
-> carries two) — so the checklist region is byte-for-byte the same height: the file
-> stood at **301 ln after every in-place edit**, the drift map at `:5`-`:9` and the box
-> lines `:59` `:67` `:76` `:94` `:100` `:105` all still resolve to what they name (re-checked),
+> carries two), and one box line **converted to a struck non-box row** at `:105`, which retires it
+> from the census without claiming a completion — so the checklist region kept its height exactly:
+> it still occupies **`:1`-`:301`**, which is where the third pass left it, so no pointer above this
+> block moved an inch, and the drift map at `:5`-`:9` and the box
+> lines `:59` `:67` `:76` `:94` `:100` all still resolve to what they name, with `:105` now
+> resolving to its own strike (each re-checked after every edit),
 > and this block sits at EOF, below every pointer in the file. The working tree was NOT clean
 > while this pass ran (`crates/oz-payment/*` and three sibling plan docs carried other sessions'
 > uncommitted edits), so code figures are a read of a dirty tree — except that
@@ -532,13 +535,29 @@ beside its two siblings.
 | `:76` tx chunks | open | **CLOSED BY OWNER RULING** | retired as done-by-perf; the safety case is §9 |
 | `:94` split adapters | open ("half shipped") | **TICKED `[x]`** | both halves out, parent 408 ln, 0 adapter definitions |
 | `:100` verify passes | open | **open; same rewritten condition** | exit 0 but 12 vacuous passes; port 15432 refused |
-| `:105` milestone | open | **open and void** | 4 `refactor(cloud-sync)` commits, none with this subject — and the command at `:106`-`:108` carries **no pathspec**, which `AGENTS.md` §3 forbids; a milestone a lane may paste is a milestone that teaches the violation |
+| `:105` milestone | open | **STRUCK — void, deliberately NOT ticked** | unsatisfiable: its subject has 0 hits in `git log --format=%s`, and its command at `:106`-`:108` carries **no pathspec**, which `AGENTS.md` §3 forbids. Reasoning and precedent at the row itself |
 
-Open/ticked, both grep forms (`grep -cE '^[[:space:]]*- \[ \]'` and `…'\[[xX]\]'`): at the start of
-this pass **open 5 / ticked 1**; on the first tick below, **open 4 / ticked 2**; after the §9
-ruling, **open 3 / ticked 3** (`:59`, `:100`, `:105` remain open — two need Docker, one is void).
-Two ticks were made here, `:94` and `:76`, and they are the first and second in this document's
-history — every prior pass recorded "ZERO ticks".
+Open/ticked, by the canonical pair this tree names at `todo-open-debt-program.md:360`-`:361`
+(`grep -cE '^[[:space:]]*[-*][[:space:]]+\[[[:space:]]\]'` for open, `…\[[xX]\]` for ticked — the
+bracket-escaped forms, because an unescaped `[ ]` in ERE is a bracket expression matching one space
+and silently returns 0): at the start of this pass **open 5 / ticked 1 / total 6**; after ticking
+`:94`, **4 / 2 / 6**; after the §9 ruling on `:76`, **3 / 3 / 6**; after striking `:105`, **2 / 3 /
+5**. Two ticks were made here, `:94` and `:76`, and they are the first and second in this document's
+history — every prior pass recorded "ZERO ticks". **The strike is a different arithmetic from a
+tick, and the difference is the whole point of §4's one-axis rule:** a tick moves open −1 / ticked
++1 / total unchanged, a strike moves open −1 / ticked +0 / total −1, so a completion and a
+retirement look identical in an open count and cannot be confused in a census that prints its
+denominator. `todo-open-debt-program.md:371` states the tick case; this row is the strike beside it.
+  - **And that canonical pair is a BASH command — running it through a Windows shell is the next trap
+    in this family, measured here rather than warned about generically.** PowerShell's
+    `Select-String -Pattern '^[[:space:]]*[-*][[:space:]]+\[[[:space:]]\]'` returns **0** on this
+    file, which holds **2** open boxes, because `[[:space:]]` is a POSIX class the .NET engine reads
+    as a bracket expression over the literal characters `[:space]` — so it asks for a hyphen plus one
+    of *those* characters and finds none. The `\s` form I ran beside it
+    (`'^\s*[-*]\s+\[\s\]'` and `'…\[[xX]\]'`) reproduces the bash pair exactly: **2 open / 3 ticked**.
+    Same silent zero, different cause from the unescaped-bracket artifact
+    `todo-open-debt-program.md:364` documents — that one is escaping, this one is regex dialect — so a
+    census from a PowerShell lane needs the engine named beside it, not just the pattern.
 
 ### 9. Rulings applied, the rename refused by §4, and the one repair that outgrew this plan
 
@@ -571,22 +590,41 @@ lines: under the 1,000 ceiling (no policy pressure), 200 over the `AGENTS.md:181
 buys no better sync — so opening a phase to split `sync_api.rs` would contradict the one conclusion
 this plan earned. If it is ever split, let it be pulled by a behaviour change that needs the seam.
 
-**The durable repair, which is deliberately NOT filed here.** While sizing §5's fix, the sweep came
-back much bigger than this plan. **Forty-seven** invisible-skip arms — `else { eprintln!("… test
+**The durable repair, found here and filed elsewhere.** While sizing §5's fix, the sweep came
+back much bigger than this plan. **Forty-seven** silent-skip arms — `else { eprintln!("… test
 skipped …"); return; }`, the shape that reports a pass to cargo and hides its own message — across
 **nine** files in `apps/cloud-server/src`: `email_pg_tests` 12, `db_tests` 9, `sync_store_tests` 7,
 `prune_tests` 5, `sync_api_tests` 5, `webhooks_tests` 3, `main_tests` 2, `redis_backend_tests` 2,
 `migrate_sqlite_to_pg_tests` 2. Only 12 of the 47 sit inside Agent 1's fence.
 
-And the repo already owns the right mechanism: `platform/sync/tests/pg_integration.rs:112` and
-`:146` use `#[ignore = "requires a disposable PostgreSQL instance"]`, which is why
-`todo-topology-editor.md:200` could honestly cite `0 ignored` as proof a run was not vacuous. An
-`#[ignore]`d test is *countable in the summary*; a `return`ed one is not, in either runner — CI runs
-`cargo nextest run --workspace --all-features` (`dev-ci.yml:244`) and nextest draws the same
-distinction. So `apps/cloud-server` has two skip conventions and the worse one is what every
-verification box in this crate inherits. Converting the 47 is a cross-owner change to test
-semantics with a CI surface, not a docs edit, and it belongs to no plan here — this one closes its
-decomposition mandate having *found* it, which is the useful leftover.
+And **the repair this pass first proposed was wrong in a harmful direction, which is why it was not
+filed until it had been checked.** The draft claim was: *"the repo already owns the right mechanism
+— `platform/sync/tests/pg_integration.rs:112`,`:146` use `#[ignore = "requires a disposable
+PostgreSQL instance"]` — so convert the 47."* Two measurements killed it:
+
+- **CI has a Postgres service.** `dev-ci.yml:205`-`:218` declares `postgres:17-alpine` with
+  `ports: 5432:5432` and a `pg_isready` healthcheck, and `:219`-`:220` sets `OZ_TEST_PG_URL` at
+  **job level**, reaching `cargo nextest run --workspace --all-features` at `:244`. The arms' own
+  guard prefers that variable (`sync_store_tests.rs:15`-`:16`), so **in CI those arms connect and
+  those tests run.** "Invisible" above is therefore a property of *this machine*, not of the
+  repository, and every count in §5 and here is a local count.
+- **`#[ignore]`ing them would delete them from CI.** `git grep -n -e '--run-ignored' -e
+  'run-ignored' -- scripts .github` → **0**: nothing opts ignored tests back in, so the conversion is
+  **−45 PG cases in the only environment that executes them** — including
+  `pg_integration_conflict_tables_enforce_tenant_isolation` and the email/webhook RLS cases. A change
+  that reads as tidiness and removes the crate's Postgres tenant-isolation surface is precisely the
+  failure this file's own `:15` honesty clause exists to prevent: buying a better-looking report and
+  selling behaviour.
+
+So the filed item is narrower, and the defect is an **asymmetry** rather than the arms: Redis is
+honestly `#[ignore]`d with the reason string "disabled in dev CI" (`redis_backend_tests.rs:96`,
+`:127`,`:141`) because `dev-ci.yml` genuinely has no Redis service, while PG runs in CI and is
+labelled nowhere. Converting the 47 is a cross-owner change to test semantics with a CI surface, not a
+docs edit, and it belongs to no plan here — this one closes its decomposition mandate having *found*
+it, and filed it where a lane can be dispatched against it: **Phase 5 of
+`todo-open-debt-program.md`**, which carries the corrected premise, the crate-wide local measurement
+(354 ok lines / 36 printed skips / 318 real), and the explicit instruction not to reach for
+`#[ignore]`.
 
 **Disposition — NOT a rename, on the convention, and this is the correction of this pass's own
 recommendation.** The fourth pass first recommended retiring this file to
@@ -617,12 +655,21 @@ measurement, `:76` closed on the owner's ruling (§9), the vacuous skip-grep ins
 `:64`/`:102` rewritten to `-- --nocapture`, and the state declared in the header. `:59`/`:100`
 stay open pending one owner action — bring up `oz-pg-test-15432` (`scripts/reset-dev-pg.sh:19`-`:21`)
 and re-run with `-- --nocapture` until the log shows no `test skipped` line; that is the whole
-distance to a renameable plan. `:105` stays open and void: 4 `refactor(cloud-sync)` commits exist,
-none with its subject, and its command text carries no pathspec, which `AGENTS.md` §3 forbids —
-left verbatim as the evidence the third pass's §3 says stale milestone text should be.
+distance to a renameable plan. `:105` has been **struck rather than ticked** — its milestone subject
+has 0 hits in `git log --format=%s`, and the command at `:106`-`:108` carries no pathspec, which
+`AGENTS.md` §3 forbids — so the box line no longer holds a checkbox; its stale command and its
+`2026-09-14` note stand verbatim beneath the strike as the evidence the third pass's §3 says a stale
+milestone should be. Striking it is what makes the remaining census honest: after it, **every open
+box left in this plan is the same leg**, the one an owner clears with a container.
 
-What this pass touched: no code, no test file, no other document. It ticked two boxes (`:94` on
-measurement, `:76` on the owner's ruling), left dated clauses on six checklist lines, rewrote one live
-instruction to `-- --nocapture`, ran one `cargo check`, four `cargo test` invocations — the fourth a
-malformed `--lib` request that errored, since this package has no library target and its unit tests
-live in the binary — one `git grep` sweep over nine test files, and one TCP probe run twice.
+What this file gained, and what it did not touch. **No code, no test file, no build.** Two boxes
+ticked (`:94` on measurement, `:76` on the owner's ruling), one box struck (`:105`), dated clauses on
+six checklist lines, one live instruction rewritten to require `-- --nocapture`, and the state
+declared in the header line at `:11` instead of in the filename. Measured with: one `cargo check`,
+four `cargo test` invocations — the fourth a malformed `--lib` request that errored, since this
+package has no library target and its unit tests live in the binary — a `git grep` sweep that became
+the 47-arm finding in §9, a re-read of that sweep at the later tip `8eec36261` after another lane's
+commit moved `HEAD` mid-pass, the canonical census pair run twice (once wrong, in §8's sub-bullet),
+and one TCP probe run twice. **The one thing this plan could not retire by itself — §9's 47 invisible
+skip arms — was filed where a lane can be dispatched against it: Phase 5 of
+`todo-open-debt-program.md`**, in its own commit, which is the only other document this work touched.
