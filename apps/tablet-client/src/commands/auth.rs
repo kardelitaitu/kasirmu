@@ -55,13 +55,28 @@ pub use oz_bridge::auth::{
 /// site already holds the global DB lock; re-entering it would deadlock the
 /// tokio mutex.
 ///
-/// `debug_upgrade: false` — the tablet never mirrors the desktop's dev
-/// Free→Premium promotion (the per-client invariant from dfbc41b2), so a dev
-/// tablet on a Free row records nothing, exactly like a production one.
+/// `debug_upgrade: false` is the tablet's side of a per-client policy that
+/// `Store::record_security_event` documents at
+/// `crates/oz-core/src/db/audit_security.rs:369-373`: the flag is the caller's and is
+/// passed through unchanged, the desktop's dev Free→Premium promotion applies only under
+/// `cfg!(debug_assertions)`, and "tablet passes `false` so it never mirrors the desktop
+/// divergence". This comment used to cite commit `dfbc41b2` for that invariant; the hash
+/// does not exist in this repository (`git cat-file -t dfbc41b2` → "Not a valid object
+/// name"), so the live citation is the one above, plus `06dcc61f4`, whose message records
+/// the same divergence as preserved on purpose.
 ///
-/// `pub(crate)` so the staff commands share this one definition: the
-/// per-client tier-promotion policy is then stated exactly once and cannot
-/// drift between the auth and staff-management paths.
+/// What the flag does NOT decide on its own: the skip needs a CONFIRMED Free row
+/// (`ent.loaded && tier.audit_retention_days().is_none()`, audit_security.rs:389), and a
+/// missing, tampered or unverifiable subscription row fails OPEN and records anyway
+/// (audit_security.rs:357-367). So "a dev tablet records nothing, exactly like a
+/// production one" — the sentence this comment used to end with — was true only of a
+/// verified Free tenant, and is false for the release case it implied.
+///
+/// `pub(crate)` so the staff commands share this one definition: the per-client
+/// tier-promotion policy is then stated exactly once and cannot drift between the auth and
+/// staff-management paths. That the two SHELLS differ is the documented design, not drift;
+/// `the_debug_upgrade_policy_is_per_client_by_design` in `auth_tests.rs` is what stops a
+/// future consolidation from collapsing it quietly.
 pub(crate) fn record_security_event(store: &Store, event: &SecurityEvent) {
     match store.record_security_event(event, false) {
         Ok(true) => {}
