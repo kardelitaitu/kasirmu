@@ -170,13 +170,8 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("history::export_sales_by_hour", "no_session_resolution"),
     ("history::export_eod_report", "no_session_resolution"),
     ("settings::get_receipt_settings", "no_session_resolution"),
-    ("settings::set_receipt_settings", "no_session_resolution"),
     ("settings::get_store_settings", "no_session_resolution"),
-    ("settings::set_store_settings", "no_session_resolution"),
     ("settings::get_credit_settings", "no_session_resolution"),
-    ("settings::set_credit_settings", "no_session_resolution"),
-    ("settings::list_credit_sales", "no_session_resolution"),
-    ("settings::settle_credit", "no_session_resolution"),
     ("settings::get_hardware_settings", "no_session_resolution"),
     ("settings::set_hardware_settings", "no_session_resolution"),
     (
@@ -323,7 +318,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "scale::read_scale_weight_scoped",
         "resolves_session_names_no_permission",
     ),
-                            (
+    (
         "sync::get_sync_settings_scoped",
         "resolves_session_names_no_permission",
     ),
@@ -353,13 +348,13 @@ pub const REGISTERED_TOTAL: usize = 318;
 /// `list_terminals_scoped`, `ping_terminal_scoped`) stopped being
 /// authenticate-then-assume when each gained the session-derived
 /// `TERMINALS_READ` gate its `oz_bridge` twin already enforced.
-pub const DEBT_CEILING: usize = 115;
+pub const DEBT_CEILING: usize = 110;
 
 /// Names that never resolve a session at all.
-pub const NO_SESSION_RESOLUTION: usize = 47;
+pub const NO_SESSION_RESOLUTION: usize = 42;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 68 + 47 = 115 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+/// 68 + 42 = 110 = `DEBT_CEILING`, as the class counts must sum to the ledger.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 68;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

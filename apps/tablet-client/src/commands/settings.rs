@@ -91,20 +91,7 @@ fn run_get_receipt_settings(conn: &rusqlite::Connection) -> Result<ReceiptSettin
 
 // ── Set receipt settings ──────────────────────────────────
 
-#[command]
-/// Set receipt settings.
-pub async fn set_receipt_settings(
-    args: ReceiptSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_receipt_settings(&conn, &args)
-}
-
-/// Business logic for `set_receipt_settings` (extracted for testing). Body is
+/// Business logic behind `set_receipt_settings_scoped` (extracted for testing). Body is
 /// the bridge's; see `run_get_receipt_settings` for why a forwarder stays.
 fn run_set_receipt_settings(
     conn: &rusqlite::Connection,
@@ -141,20 +128,7 @@ fn run_get_store_settings(conn: &rusqlite::Connection) -> Result<StoreSettingsDt
 
 // ── Set store settings ────────────────────────────────────────
 
-#[command]
-/// Set store settings.
-pub async fn set_store_settings(
-    args: StoreSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_store_settings(&conn, &args)
-}
-
-/// Business logic for `set_store_settings` (extracted for testing).
+/// Business logic behind `set_store_settings_scoped` (extracted for testing).
 fn run_set_store_settings(
     conn: &rusqlite::Connection,
     args: &StoreSettingsDto,
@@ -182,78 +156,12 @@ pub async fn get_credit_settings(
         .map_err(Into::into)
 }
 
-#[command]
-/// Set credit settings.
-pub async fn set_credit_settings(
-    args: CreditSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
-    Settings::set_credit_enabled(&tx, args.enabled)?;
-    Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
-    Settings::set_credit_max_limit(&tx, args.max_limit_minor)?;
-    tx.commit()?;
-    Ok(())
-}
-
 // ── Credit sale DTO ──────────────────────────────────────────────
 //
 // `CreditSaleDto` comes from `oz_bridge::settings`. Its wire keys are camelCase
 // as of the 2026-09-15 T4 repair, because the retail credit list reads
 // `saleId`/`customerName`/`totalMinor`/`createdAt`/`settledAt`; the pin lives in
 // `settings_tests.rs::wire_pin_credit_sale_carries_every_key_the_renderer_declares`.
-
-#[command]
-/// List credit sales.
-///
-/// ADR #49: the SQL body is now the bridge's, measured byte-identical to
-/// `oz_bridge::settings::run_list_credit_sales` — same statement text, same
-/// `query_map`, same field mapping — which removes the second copy of a query
-/// ADR #49 exists to keep single.
-///
-/// **The gap is PRESERVED, deliberately.** This door resolves no session, so it
-/// asks for no permission, and neither does the pure-query helper it now calls.
-/// That is precisely why this delegation is ledger-neutral while the scoped
-/// twin's is not.
-///
-/// A note here previously said delegating would flip
-/// `settings::list_credit_sales_scoped` from "ungated debt" to "gated".
-/// **Measured 2026-09-16, that does not reproduce:** `fn_sources` in
-/// `registration_gate_tests.rs` keys its hits by EXACT fn name (`:275`), so this
-/// door's text cannot decide the scoped name's verdict — and the ratchet stays
-/// green 7/7 with this delegation in place. What remains true is the real gap:
-/// this shell's scoped twin has never asked for `sales:view` the way the
-/// bridge's `list_credit_sales_scoped` does. The repair is to gate it, not to
-/// delegate it; see the 2026-09-15 T4 record in
-/// `todo-refactor-oz-pos-app-agents-3.md`.
-pub async fn list_credit_sales(state: State<'_, AppState>) -> Result<Vec<CreditSaleDto>, AppError> {
-    let conn = state.db.lock().await;
-    Ok(oz_bridge::settings::run_list_credit_sales(&conn)?)
-}
-
-#[command]
-/// Settle credit.
-pub async fn settle_credit(
-    sale_id: String,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
-    let now = chrono::Utc::now().to_rfc3339();
-    tx.execute(
-        "UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'",
-        rusqlite::params![now, sale_id],
-    )?;
-    tx.commit()?;
-    Ok(())
-}
 
 // ── Hardware settings (printer + scanner) ───────────────────────
 
