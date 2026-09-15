@@ -81,7 +81,6 @@
   width: 18rem;
   height: 100%;
   box-sizing: border-box;
-  background: var(--color-bg-surface);
   opacity: 1;
   border: none;
   border-right: 1px solid var(--color-border);
@@ -94,6 +93,21 @@
   padding: var(--space-3) var(--space-2);
   overflow-y: auto;
   gap: var(--space-1);
+}
+
+/* THM-08 (popoverSurfaceCompliance): the guard walks EVERY rule that names a
+ * floating selector, so a later override cannot pass while the shared rule
+ * above still carries a non-popover background. The background therefore left
+ * the shared geometry rule entirely: the sidebar is a docked panel and keeps
+ * --color-bg-surface; the hamburger dropdown floats over the menu and takes
+ * the same opaque popover token as ContextMenu.css, StoreSwitcher.css and
+ * LocationPicker.css. */
+.restaurant-sidebar {
+  background: var(--color-bg-surface);
+}
+
+.restaurant-hamburger-dropdown {
+  background: var(--color-bg-popover);
 }
 
 @media (prefers-reduced-motion: no-preference) {
