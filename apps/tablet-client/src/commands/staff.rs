@@ -43,10 +43,9 @@ use crate::state::AppState;
 // modules call directly. Command bodies stay tablet-native.
 pub use oz_bridge::staff::{
     AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
-    CreateStaffArgs, CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto,
-    RoleHolderDto, RoleHoldersDto, StaffMemberDto, UpdateRoleArgs, UpdateStaffArgs,
-    UpdateStaffScopedArgs, assignment_dto, assignment_spec, enforce_role_assignment_policy,
-    parse_scope_mode, to_staff_dto,
+    CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto, RoleHolderDto,
+    RoleHoldersDto, StaffMemberDto, UpdateRoleArgs, UpdateStaffScopedArgs, assignment_dto,
+    assignment_spec, enforce_role_assignment_policy, parse_scope_mode, to_staff_dto,
 };
 
 /// Serialize a grant set into the JSON array roles.permissions stores.
@@ -66,66 +65,6 @@ fn grants_json(keys: &[String]) -> Result<String, AppError> {
 /// from a shell-held `Store` (mirrors the desktop staff.rs adapter).
 fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
     oz_bridge::staff::role_dto(store, role).map_err(AppError::from)
-}
-
-// ── List staff ─────────────────────────────────────────────────────
-
-#[command]
-/// List staff.
-///
-/// **Deprecated for multi-store (ADR #7):** Use [`list_staff_scoped`] so the
-/// caller identity is resolved from the session token instead of a
-/// client-supplied `caller_user_id`.
-pub async fn list_staff(_state: State<'_, AppState>) -> Result<Vec<StaffMemberDto>, AppError> {
-    Err(AppError::PermissionDenied(
-        "legacy unscoped staff commands are disabled; use list_staff_scoped".into(),
-    ))
-}
-
-// ── List roles ─────────────────────────────────────────────────────
-
-#[command]
-/// List roles.
-///
-/// **Deprecated for multi-store (ADR #7):** Use [`list_roles_scoped`].
-pub async fn list_roles(_state: State<'_, AppState>) -> Result<Vec<RoleDto>, AppError> {
-    Err(AppError::PermissionDenied(
-        "legacy unscoped staff commands are disabled; use list_roles_scoped".into(),
-    ))
-}
-
-// ── Create staff member ────────────────────────────────────────────
-
-#[command]
-/// Create staff.
-///
-/// **Deprecated for multi-store (ADR #7):** Use [`create_staff_scoped`]. The
-/// legacy `caller_user_id` argument is forgeable — never call this from a
-/// session-bound UI path.
-pub async fn create_staff(
-    _args: CreateStaffArgs,
-    _state: State<'_, AppState>,
-) -> Result<StaffMemberDto, AppError> {
-    Err(AppError::PermissionDenied(
-        "legacy unscoped staff commands are disabled; use create_staff_scoped".into(),
-    ))
-}
-
-// ── Update staff member ────────────────────────────────────────────
-
-#[command]
-/// Update staff.
-///
-/// **Deprecated for multi-store (ADR #7):** Use [`update_staff_scoped`]. The
-/// legacy `caller_user_id` argument is forgeable — never call this from a
-/// session-bound UI path.
-pub async fn update_staff(
-    _args: UpdateStaffArgs,
-    _state: State<'_, AppState>,
-) -> Result<StaffMemberDto, AppError> {
-    Err(AppError::PermissionDenied(
-        "legacy unscoped staff commands are disabled; use update_staff_scoped".into(),
-    ))
 }
 
 // ── Session-scoped staff commands (ADR #7 · audit-open-findings STAFF-01) ────────
