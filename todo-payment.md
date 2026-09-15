@@ -478,6 +478,36 @@ graph TD
 > the split-row method radio, not the tab list. **Do not read the claim above as evidence
 > that the derivation does not exist.** And do not tick `:713` from this line either:
 > `:713` stays open, and the authority doc's R-list — not this file — decides when it closes.
+> ⚠️ **SUPERSEDED FOR CITATION (2026-09-15, HEAD `d29ebd535`) — the CORRECTION immediately above is
+> true and still stands; what has rotted is ITS pointers, and a supersession clause that cannot be
+> found is as useless as the claim it repairs.** It says it corrects "the claim at `:322`". At this tip
+> `:322` reads "EDC device list + merchant QRIS string." — the claim it means is at **`:453`**
+> (`grep -n "visibleMethods" todo-payment.md` prints `453`, `467`, `471` and the box at `:446`).
+> What `:453` now means, restated so no reader has to open code: the derivation **exists** —
+> `visibleMethods()` exported at `ui/src/features/sales/useLocalPaymentRails.ts:76`, imported at
+> `PaymentModal.tsx:20`, called at `:1514`, shipped by `994c0e364` — and its own doc comment at
+> `useLocalPaymentRails.ts:61-62` says verbatim "Subscription caps are deliberately absent too:
+> `caps.supportsQris` gates what the QRIS panel lets you DO, not whether the tab is listed." So the
+> `entitled` term of `:446` is not missing work, it is a **recorded decision against gating the tab
+> list on entitlement**, made in a file another session owns. `:446` therefore stays open for a
+> different reason than this block states: not "un-started" but **parked on a human ruling** —
+> whether to reverse `:61-62` — and only its `online-capable` term is genuinely unimplemented.
+> Re-derive at any tip with `grep -n "Deliberately absent\|deliberately absent" ui/src/features/sales/useLocalPaymentRails.ts`
+> rather than trusting this line number.
+>
+> ⚠️ **THE "Affected:" POINTER LIST at `:459`-`:463` IS A SNAPSHOT OF A MOVED FILE AND FIVE OF ITS
+> NINE TARGETS NO LONGER LAND WHERE THEY SAY (2026-09-15, HEAD `d29ebd535`).** Checked with
+> `sed -n '290p;298p;300p;302p;304p;634p;636p' todo-payment.md`: `:290` still holds the Phase-0
+> `qris_manual` table row, but `:298` and `:300` are now the ADR-39 blockquote, `:302` is a
+> "**Reframe:**" line, `:304` is **blank**, `:634` is prose about QR poll loops and `:636` is the
+> string `"Pay with GoPay".`. Two of them are cited for their CONTENT and the content has moved:
+> "no new table needed" — quoted at `:457` as living at `:298` — is at **`:440`**, and the phrase
+> "replace the hardcoded" — quoted at `:460` as `:634`'s own wording — now appears **nowhere in this
+> file except in `:460`'s citation of it** (`grep -n "replace the hardcoded" todo-payment.md` → 1 hit,
+> the citing line), so that pointer is content-dead and not merely drifted. Nothing is being unticked
+> or re-sequenced by this clause: the list's claim is that those Phase-0 and Phase-5 boxes depend on
+> the rails work, and every one of those boxes is still open and unticked in place. The defect is that a reader
+> following the pointers lands on prose and concludes the boxes are gone.
 
 ### Phase 1 — Cash (always available)
 - [ ] Confirm cash is a constant with no config/flag. (Likely no code change.) **CLOSED AS NOT-A-TASK 2026-09-15, unticked** — no acceptance can run against an absence: `git grep -i "payment:cash" -- crates ui/src` returns **0**, so the answer was already "yes, a constant, no flag" and the box's own parenthetical says "(Likely no code change.)".
@@ -1321,6 +1351,25 @@ because the currency, the remaining-balance math and the quick-cash presets have
 has just been moved, which leaves the split-row state plus its four handlers and the id allocator as a small,
 real, **guard-touching** job that must run with `PaymentModal.tsx` free of every other lane (agents-3 `:182`:
 the whole pos lane is one sequenced coder).
+> ⚠️ **SUPERSEDED FOR CITATION (2026-09-15, HEAD `d29ebd535`) — this sentence asks for work that has
+> already shipped, under a name this file itself records. The paragraph immediately above it (§2 "ALIAS
+> note — what landed instead of `useSplitTenders.ts`", `:1242`, with the NOT TICKED ruling at `:1238`)
+> is the authority and it was not read from here.** Measured: `useSplitTenders` has **zero hits under
+> `ui/`** (`grep -rl useSplitTenders ui/ | wc -l` → 0) because it was never committed, while the split
+> state it describes lives at `ui/src/features/sales/payment/useSplitTenderState.ts` — **121 lines,
+> `export function useSplitTenderState()` at its `:86`, imported by `PaymentModal.tsx:33`** and shipped
+> by `95799c127 refactor(sales): hoist the split-tender state into …`. So "the only un-started,
+> money-adjacent extraction left on this modal" is **started and landed**; what is left, if anything, is
+> whatever the modal still holds that the hoist did not take, and that is a fresh census, not this box.
+> Box not ticked — a citation repair is not an acceptance run.
+>
+> ⚠️ **AND ALL THREE `agents-3` POINTERS IN THE SENTENCE ABOVE IT AND TWO LINES LATER POINT PAST THE
+> END OF THE FILE THEY NAME (2026-09-15, HEAD `d29ebd535`).** `wc -l
+> `.agents/archived/done-todo-payment-agents-3.md` → **72**, so agents-3 `:99`, `:103` and `:182` land
+> beyond EOF, and `grep -c useSplitTenders` on that file returns **0** — the named target was never
+> specified there either. That plan is also no longer a live root todo: it sits under `.agents/archived/
+>` with a `done-` prefix, so a reader cannot open the doc the sentence expects by its root name. Read
+> those three as *the archived payment plan's split-tender item*, never as coordinates.
 
 ## Append-only record (2026-09-15, HEAD `d70026499`) — three boxes for the customer-search surface `b024da46e` measured
 
