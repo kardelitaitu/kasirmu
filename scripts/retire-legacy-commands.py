@@ -99,6 +99,35 @@ def prose_flags(lines: list[str]) -> list[bool]:
     return flags
 
 
+def plan_mentions(name: str) -> list[str]:
+    """Lines in the repo's work-order files that name `name` -- the decision gate.
+
+    A test reference is not the only reason a dead command is owed an argument. On
+    2026-09-16 this tool retired the desktop's `create_exchange_rate` inside a batch, and
+    the only thing standing in its way was that no desktop test happened to call it: the
+    reason to keep it is written in the plan file (T20: ADR #48's global path exists in
+    three unreachable copies and the owner has not ruled). A census cannot see a pending
+    decision, so the work orders are read as a fourth signal. Top-level `todo-*.md` only --
+    the durable records this programme writes its deferrals into.
+    """
+    hits: list[str] = []
+    for path in sorted(REPO.glob("todo-*.md")):  # REPO, the module constant; `vip` is a local import
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # A plan file writes command names in backticks (`create_exchange_rate`), and a
+        # dotted form (repo.create_exchange_rate) is the *repository* method, not the
+        # command, so allow the backtick and reject the dot and the path separator. The
+        # first version of this pattern excluded backticks, which made the whole gate
+        # match nothing in the only file it reads -- a refusal that never refuses.
+        pat = re.compile(r"(?<![\w:.])" + re.escape(name) + r"\b(?!_scoped)")
+        for number, line in enumerate(text.splitlines(), 1):
+            if pat.search(line):
+                hits.append(f"{path.name}:{number}")
+    return hits
+
+
 def path_refs(name: str, sources: list[tuple[str, str]]) -> list[str]:
     """Non-call, non-prose mentions of `name` -- the signal `fn_call_sites` cannot see.
 
@@ -187,8 +216,8 @@ def main() -> int:
     names = sorted(vip.command_fns_in(text))
     cands = [n for n in names
              if n not in registered and n not in ui and not vip.fn_call_sites(n, prod)]
+    wanted: set[str] = {s.strip() for s in args.only.split(",") if s.strip()}
     if args.only:
-        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
         unknown = wanted - set(cands)
         if unknown:
             print(f"abort: --only names are not retirement candidates here: "
@@ -206,6 +235,7 @@ def main() -> int:
     spans: dict[str, tuple[int, int]] = {}
     path_hits: list[tuple[str, str]] = []
     test_hits: list[str] = []
+    decision_hits: list[str] = []
     doomed = False
     for name in cands:
         sig = signature_index(lines, name)
@@ -223,6 +253,11 @@ def main() -> int:
         for b in bare:
             print(f"    PATH MENTION (not a call, so a human reads it): {b}")
         path_hits.extend((name, b) for b in bare)
+        plan = plan_mentions(name)
+        for pl in plan[:4]:
+            print(f"    PLAN MENTION (a written decision may hang on this name): {pl}")
+        if plan and not (args.only and name in wanted):
+            decision_hits.append(f"{name} -> {', '.join(plan[:4])}")
         tref = vip.fn_call_sites(name, tests)
         if tref:
             test_hits.append(f"{name} ({','.join(sorted({t.split(':')[0] for t in tref}))})")
@@ -239,6 +274,12 @@ def main() -> int:
     if path_hits:
         print(f"  note: {len(path_hits)} path mention(s) reported above; a dry run shows "
               f"them and continues, --apply will refuse until --force says you read them")
+    if decision_hits and args.apply:
+        print("abort: these candidates are named in a work-order file, so a written decision "
+              "may be waiting on them; a census cannot see a deferral. Pass --only with the "
+              "names you have actually read the decision for (that IS the human act), or "
+              "update the plan file first:\n  " + "\n  ".join(decision_hits))
+        return 2
     if test_hits and args.apply and not args.allow_tests:
         print(f"abort: {len(test_hits)} candidate(s) are still referenced by a test file, so "
               f"deleting them means deleting or re-homing cases -- a decision, not a detail "
