@@ -307,21 +307,15 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 > untouched this round.
 
 ### Acceptance
-- [ ] Before-snapshot registered-command set == after-snapshot set (no command dropped to the warn) — prove by diffing the two dispatcher key lists.
-- [ ] `cd ui && npx tsc --noEmit -p tsconfig.json` → exit 0.
-- [ ] `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts` (+ any `invoke-coverage`/`dev-mock-*` suites found in 5.0) → exit 0.
-  > **Milestone (this session, 2026-09-16 05:49, HEAD `5748f8262`; dev-mock tip `93ed08fc5`).** All
-  > seven `dev-mock-*` suites run together against a **clean** working tree (porcelain for
-  > `ui/src/dev-mock/` empty before and after, so the green is attributable to HEAD's dev-mock
-  > content, not a stranger's mid-run edit): **7 files / 96 tests passed, `vitest exit 0`**. Complements
-  > the identity re-derivation at this HEAD (**681 commands, sha256 `105d29730df2…60681c`, byte-identical**
-  > to the 5.0–5.4 baseline) and `tsc` exit 0. Together the three measurements say the *landed*
-  > state — my 5.2 / 5.3 / 5.4 (each verified applied at HEAD, keys absent from `entryHandlers`,
-  > each `registerHandlers(...)` call appearing exactly once) plus the peer's `55a71106d` regional /
-  > `ca08178ae` terminals / `93ed08fc5` conversion burst — is **sound at the commit**, not just on
-  > the working tree. Box stays **UNTICKED**: Phase 5.5 (router 447 → <200) is open, the whole-tree
-  > `check:all` gate is untouched this round, and the re-home could regress any of it — a
-  > milestone is not an acceptance.
+- [x] **Before-snapshot registered-command set == after-snapshot set — MET (2026-09-16, final state HEAD `a2742d1ea`).** The dispatcher snapshot is **681 commands, sha256 `105d29730df2…60681c`, byte-identical** to the 5.0 baseline, re-derived through every one of the ~15 extraction moves (5.2/5.3/5.4, the 5.1 conversion-half, and all of 5.5 incl. the final `list_in_transit_transfers_scoped` re-home). No command dropped to the `invoke()` warn at any step.
+- [x] **`npx tsc --noEmit -p tsconfig.json` → exit 0 — MET (re-run 2026-09-16 at HEAD `a2742d1ea`).** 0 errors on the fully-extracted router (368 lines).
+- [x] **All `dev-mock-*` suites → exit 0 — MET (2026-09-16, HEAD `a2742d1ea`).** Ran all seven `dev-mock-*` suites together against a clean `ui/src/dev-mock/` tree (porcelain empty before/after → attributable to HEAD content): **7 files / 96 tests passed, `vitest exit 0`** — this closes the round-15 gap where the in-transit move was only spot-checked on a 4-file subset.
+  > **Milestone (this session, 2026-09-16 05:49, HEAD `5748f8262`; dev-mock tip `93ed08fc5`).** The same
+  > seven-suite green was first proven mid-refactor (96 tests, 681 identical, tsc 0) on a clean tree, then
+  > re-confirmed at the FINAL state above. The three boxes this note sat under are the "did the refactor
+  > break anything?" gates — all now ticked. They are NOT the whole-tree acceptance: `npm run check:all`
+  > and the Phase 5.5 `< 200` line-count remain open below, so the file stays `todo-` (see the two
+  > following boxes and the §4 reminder).
 - [ ] `cd ui && npm run check:all` → exit 0. **Update 2026-09-15:** the gate is now **one** red, not two —
   the `popoverSurfaceCompliance` blocker self-cleared (see Phase 5.0); only `themeTokenCompliance` on the
   **uncommitted** `CartPanelLineItem.css` remains, and it is a working-tree read another lane must resolve
