@@ -36,7 +36,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
 - **Secure by default** — Encrypted `.ozpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
-- **Enterprise-grade code quality** — 8,252 Rust `#[test]` functions and 572 front-end test files (measured 2026-09-14: `grep -rno --include=*.rs '#\[test\]' . | wc -l`; `find ui/src/__tests__ -type f | wc -l`), strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI), typed Money, transactional DB. The Vitest **case** total is not measured — it exists only in a test run, and no command here re-derives it.
+- **Enterprise-grade code quality** — 8,280 Rust `#[test]` functions and 589 front-end test files (measured 2026-09-15: `grep -rno --include=*.rs '#\[test\]' . | wc -l`; `find ui/src/__tests__ -type f | wc -l`), strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI), typed Money, transactional DB. The Vitest **case** total is not measured — it exists only in a test run, and no command here re-derives it.
 
 ---
 
@@ -127,9 +127,9 @@ oz-pos/
 │   └── src/
 │       ├── api/            # Per-domain invoke() wrappers — no invoke() in components
 │       ├── frontend/       # Shared components, shell layout, design tokens
-│       ├── features/       # 277 .tsx files across the domain feature dirs
-│       ├── locales/        # Fluent (.ftl) — 54 files (27 en + 27 id), 9,825 message definitions (4,875 en + 4,950 id), 4,950 distinct IDs; 75 of them have NO English definition
-│       └── __tests__/      # Vitest + testing-library (572 files: 303 .tsx, 268 .ts, 1 .json; case total not measured)
+│       ├── features/       # 299 .tsx files across the domain feature dirs
+│       ├── locales/        # Fluent (.ftl) — 54 files (27 en + 27 id), 9,809 message definitions (4,867 en + 4,942 id), 4,942 distinct IDs; 75 of them have NO English definition
+│       └── __tests__/      # Vitest + testing-library (589 files: 317 .tsx, 271 .ts, 1 .json; case total not measured)
 ├── docs/                   # guides/ (QUICKSTART, ROADMAP, ARCHITECTURE, API, WHITEPAPER), decisions/ (ADRs), specs/, plans/, records/, operations/
 ├── scripts/                # Example Lua business rule scripts, coverage scripts
 └── packaging/              # Linux .deb maintainer scripts + .desktop entry, mobile build guide (MSI/AppImage/DMG come from the Tauri bundler, not this dir)
@@ -178,7 +178,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
-| `npm run test` | Vitest — 572 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f \| wc -l`). No case total: that number exists only in a run, and none is recorded here. |
+| `npm run test` | Vitest — 589 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f \| wc -l`). No case total: that number exists only in a run, and none is recorded here. |
 | `npm run e2e` | Full E2E suite: Docker → Vite → Playwright → cleanup |
 | `npm run e2e:headed` | E2E with browser visible |
 | `npm run e2e:api` | API integration tests only |
@@ -192,7 +192,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 |---|---|
 | `cargo fmt --all` | Format Rust code (CI checks it: `dev-ci.yml:195` runs `cargo fmt --all -- --check`) |
 | `cargo clippy --all-targets -- -D warnings` | Lint — **local only**: `grep -c clippy` over the two live workflows (`dev-ci.yml`, `release.yml`) returns 0, so this gate is run by `scripts/check.sh:44` and `scripts/release.sh`, never by CI |
-| `cargo test --workspace` | Run tests (8,252 `#[test]` fns — `grep -rno --include=*.rs '#\[test\]' . \| wc -l`, 2026-09-14) |
+| `cargo test --workspace` | Run tests (8,280 `#[test]` fns — `grep -rno --include=*.rs '#\[test\]' . \| wc -l`, 2026-09-15) |
 | `bash scripts/check.sh` | Full local pre-push gate (Rust + UI + migrations) |
 | `bash scripts/coverage.sh` | Rust + UI coverage reports |
 | `bash scripts/reset-dev-pg.sh` | Reset the dev PostgreSQL container to the committed PG_INIT schema (`.ps1` twin on Windows) |
@@ -213,7 +213,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Phase 4 (CRM, Restaurant, Accounting) in progress.** Measured 2026-09-14 against this checkout: 59 migration files (`ls crates/oz-core/migrations/*.sql | wc -l`), 453 desktop / 322 tablet IPC commands registered — 297 in both, 478 distinct (re-check with `python scripts/verify-ipc-parity.py`), 277 feature `.tsx` files (`find ui/src/features -name '*.tsx' | wc -l`), 572 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f | wc -l`), 8,252 Rust `#[test]` functions (`grep -rno --include=*.rs '#\[test\]' . | wc -l`), and 16 crates (`ls -d crates/*/ | wc -l`). Earlier readings of these same facts are dated history, not current: the 08-09-26 stamp above records 450 distinct IPC (425 / 297 / 272), 183 feature `.tsx`, 8,709 tests and 13 crates, and each has moved since.
+**Phase 4 (CRM, Restaurant, Accounting) in progress.** Measured 2026-09-15 against this checkout: 59 migration files (`ls crates/oz-core/migrations/*.sql | wc -l`), 453 desktop / 322 tablet IPC commands registered — 297 in both, 478 distinct (re-check with `python scripts/verify-ipc-parity.py`), 299 feature `.tsx` files (`find ui/src/features -name '*.tsx' | wc -l`), 589 files under `ui/src/__tests__` (`find ui/src/__tests__ -type f | wc -l`), 8,280 Rust `#[test]` functions (`grep -rno --include=*.rs '#\[test\]' . | wc -l`), and 16 crates (`ls -d crates/*/ | wc -l`). Earlier readings of these same facts are dated history, not current: the 08-09-26 stamp above records 450 distinct IPC (425 / 297 / 272), 183 feature `.tsx`, 8,709 tests and 13 crates, and each has moved since.
 
 | Phase | Status | Focus |
 |---|---|---|
