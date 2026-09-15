@@ -99,12 +99,17 @@ console.log(`    js gzipped             ${kb(jsGz)} KB (${share(jsGz, jsRaw)} % 
 console.log(`    css gzipped            ${kb(cssGz)} KB across ${cssFiles.length} files`);
 console.log(`    fonts as share of js   ${share(fontGz, jsGz)} % gzip   <-- a budget speaks gzip, and that is `
   + `${(jsRaw && jsGz ? (fontGz / jsGz) / (fontRaw / jsRaw) : 0).toFixed(1)}x the raw figure printed above`);
-console.log('\n    Note: scripts/check-bundle.mjs filters to .js and .css and cannot see any of');
-console.log('    the bytes above. That gap is recorded in todo-font-system.md and not fixed here.');
-console.log('    And that gate is not run by CI either: it is reachable as `cd ui && npm run');
-console.log('    check:all` (scripts/check-ui.mjs), and its own header credits scripts/check.sh,');
-console.log('    which has no such step. Re-derive both facts with');
-console.log("    `git grep -n 'endsWith' scripts/check-bundle.mjs` and `git grep -c 'bundle budget' scripts/check.sh`.");
+console.log('\n    Budget: scripts/check-bundle.mjs DOES price these bytes now -- a .woff2 line');
+console.log('    was added by `dd12da524`, so the gap this tool reported for several rounds is');
+console.log('    closed. Its own report prints the threshold it enforces; run it rather');
+console.log("    than trusting this sentence: `cd ui && node ../scripts/check-bundle.mjs`.");
+console.log('    What has NOT changed is enforcement: no live workflow invokes that gate, and');
+console.log('    scripts/check.sh has no such step, whatever its header promises. The one');
+console.log('    runner is `cd ui && npm run check:all` (scripts/check-ui.mjs) -- and it runs');
+console.log('    `bundle:check` only, never `bundle:check:tablet`, so the tablet artifact\'s');
+console.log('    fonts are priced by a script nobody calls. Re-derive with -i, because the step');
+console.log('    is capitalised and a case-sensitive grep reads an absent file:');
+console.log("    `git grep -in 'bundle budget' scripts/check-ui.mjs scripts/check.sh`.");
 console.log(`\n  subject: ${ASSETS} (gitignored; this is a build of whatever tree made it)`);
 
 // A walker has no channel to the revision it is being asked about -- AGENTS.md says so
