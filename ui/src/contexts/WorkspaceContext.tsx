@@ -363,8 +363,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const refreshed = await refreshPickerTicket(prev);
             ticket = refreshed.picker_ticket;
             updatePickerTicketFn(ticket);
-          } catch {
-            // Refresh failed — use the existing ticket.
+          } catch (err) {
+            // Refresh failed — use the existing ticket, which is the LOGIN-TIME one:
+            // `pickerTicketRef.current` above holds the ticket minted at staff_login, and
+            // its TTL is five minutes (crates/oz-bridge/src/auth.rs, PICKER_TICKET_TTL_SECS,
+            // which is why this call exists at all). So a silent fallback here can hand
+            // create_session a ticket that has already aged out.
+            //
+            // The catch used to be empty, and that is how the defect below survived six
+            // rounds of green tests: this shell had no `refresh_picker_ticket` command until
+            // 683c9f2b9, so every hot-swap on a tablet threw into this branch and looked
+            // exactly like a healthy swap. The suite even documents the blind spot from its
+            // own side (ui/src/__tests__/WorkspaceContext.test.tsx:209-213).
+            console.warn(
+              "WorkspaceContext: picker-ticket refresh failed, reusing the login-time ticket",
+              err,
+            );
           }
 
           await destroySession(prev).catch(() => {});

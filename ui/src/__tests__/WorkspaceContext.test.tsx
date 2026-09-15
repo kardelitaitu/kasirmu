@@ -630,4 +630,68 @@ describe('WorkspaceContext', () => {
       expect(sent).toBe('ticket-second-user');
     });
   });
+
+  // The suite-wide default makes the refresh REJECT (the note at :209-213 explains why), so
+  // every hot-swap case in this file has always taken the fallback branch. The branch that
+  // ASSIGNS the refreshed ticket had no coverage at all -- and that is precisely the branch a
+  // tablet could not reach either, until `refresh_picker_ticket` was registered (683c9f2b9).
+  // One case per side of the `try`, so the next change to the fallback is a decision rather
+  // than an accident.
+  describe('swapSessionToken picker-ticket refresh', () => {
+    async function swapWithPriorSession() {
+      const { result } = renderWorkspaceHook();
+      await waitForLoaded(result);
+      act(() => {
+        result.current.workspace.setActiveWorkspace('restaurant-pos');
+      });
+      await waitFor(() => {
+        expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+      mocks.createSession.mockResolvedValue(makeSessionResult({ session_token: 'tok-swapped' }));
+      return result;
+    }
+
+    it('sends the refreshed ticket, not the login-time one, when the refresh succeeds', async () => {
+      const result = await swapWithPriorSession();
+      mocks.refreshPickerTicket.mockResolvedValue({ picker_ticket: 'ticket-refreshed' });
+
+      await act(async () => {
+        await result.current.workspace.swapSessionToken('user-2', 'role-manager');
+      });
+
+      // Refreshed against the token being replaced, not against the new identity: holding a
+      // valid session is what proves the caller may have a ticket re-minted (ADR #4).
+      expect(mocks.refreshPickerTicket).toHaveBeenCalledWith('tok-abc-123');
+      const call = mocks.createSession.mock.calls.at(-1);
+      const sent = (call?.[0] as { picker_ticket?: string } | undefined)?.picker_ticket;
+      expect(sent).toBe('ticket-refreshed');
+    });
+
+    it('keeps the login-time ticket and says so when the refresh fails', async () => {
+      const result = await swapWithPriorSession();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        await act(async () => {
+          await result.current.workspace.swapSessionToken('user-2', 'role-manager');
+        });
+
+        const call = mocks.createSession.mock.calls.at(-1);
+        const sent = (call?.[0] as { picker_ticket?: string } | undefined)?.picker_ticket;
+        expect(sent).toBe(DEFAULT_TICKET);
+        // The swap still proceeds. Whether a stale ticket should ABORT it is the question
+        // T15 deliberately leaves open, so no test here may freeze the answer either way --
+        // this one pins only that the fallback is what runs, and that it announces itself.
+        expect(result.current.workspace.sessionToken).toBe('tok-swapped');
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('picker-ticket refresh failed'),
+          expect.anything(),
+        );
+      } finally {
+        // afterEach only clearAllMocks(), which does not restore spies; leaking a silenced
+        // console.warn would mute the rest of this file's diagnostics.
+        warn.mockRestore();
+      }
+    });
+  });
 });
