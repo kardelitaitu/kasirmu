@@ -388,3 +388,23 @@ Mid-round, `feat(ui): bundle Inter and JetBrains Mono as same-origin variable fa
 
 **Boxes: open 5, ticked 8 — unchanged.** Nothing here ticks `:66` or `:67`: the browser evidence closes the *"could it fire"* question for the app and the *"does the splash depend on it"* question for both shells, and the visual review and the packaged-webview check are still a human and a device.
 - **THE LIMIT, stated because a comparison rule invites the opposite reading.** Rule 6 catches **divergence between** boot documents. It cannot tell whether the *shared* value is satisfiable — delete `'Inter'` from both and the rule stays green while the fallback list names a face nothing can provide. That is the same class as `:16`-`:18`: verifying a reference needs the face inventory, and the inventory hole recorded above (rule 3's `collectCssFiles` skips `node_modules` at `:665`, so **0** of the 13 shipped `@font-face` rules are graded) means **no rule here can yet answer "can this family resolve at all."** What the suite now holds is the stack-shape rules (2, 4), the same-origin rule for first-party CSS (3), the single-declaration rule (5) and the cross-document rule (6). **Six rules, none of them an existence proof for a named face** — and that gap is the honest shape of what is left, independent of the ruling.
+
+---
+
+## Dense-surface reflow measured (2026-09-15, HEAD `85f2e7adc`) — the design risk this plan kept deferring, sized at last
+
+- **Read the census by TIP, not by position.** The `open 5, ticked 8 — unchanged` two blocks up was true when written and is superseded: `70578375b` ticked `:64` and `:66`, so the live census is **3 open / 10 ticked**. The Phase 3 block sits *above* that one only because its append anchored mid-file; nothing was reordered, and neither block is edited.
+- **THE COMPARISON THAT MATTERS IS NOT THE ONE THIS MACHINE SHOWS.** `'Inter'` is installed locally here, so a before/after on this box moves the 16px probe **174 → 175.25 px, +0.7%** — which is exactly why the divergence survived unnoticed. A customer has no such face, so *their* real change is **system-ui 164.25 → Inter Variable 175.25 px, +6.7%**. Same probe, same bogus-family baseline **156.22**, both figures measured.
+- **AT EVERY TERMINAL WIDTH IT CHANGES NO OVERFLOW.** One DOM, three stacks forced at runtime via `style.setProperty('--font-sans'|'--font-mono')` on `:root`, after logging in through the dev-mock (`owner`/`1234`) and selecting the **Store POS** workspace — the densest shipped surface: 18 product rows with SKU, stock and right-aligned prices, plus the cart panel. Elements with `scrollWidth > clientWidth`:
+
+  | viewport | system-ui | Inter Variable | of which non-memo |
+  |---|---|---|---|
+  | 1600x1000 | 5 | 5 | 0 |
+  | 1440x900 | 6 | 6 | 1 |
+  | 1366x768 | 6 | 6 | 1 |
+  | 1280x800 | 6 | 6 | 1 |
+  | 1024x768 | 6 | 6 | 1 |
+
+  Identical at every width, and the single non-memo case is `div.retail-categories`, which overflows in **both** stacks at ≤1440 px — pre-existing and font-independent. **0** truncated elements, and `documentElement.scrollWidth == clientWidth` throughout, so no horizontal page overflow in either stack.
+- **WHAT THIS SETTLES, AND WHAT IT DOES NOT.** It settles the surface carrying the most type per pixel, at every realistic terminal width down to 1024 px: a **+6.7%** advance does not break it. It does **not** clear the other 84 sheets that mention `font-family` — the metric is overflow, not appearance, and a surface can reflow into something worse-looking without overflowing anything. Screenshots of all three states are at `.workbuddy-ai/artifacts/font-system-phase3/03`–`05` (gitignored, deliberately uncommitted); `:67`'s visual review remains the owner's.
+- **AND IT MAKES THE INVENTORY HOLE LOAD-BEARING RATHER THAN THEORETICAL.** The block above is right that rule 3's `collectCssFiles` skips `node_modules` (`:665`), so **0** of the 13 shipped `@font-face` rules are graded. Before `70578375b` that was a gap about a face nobody used; now the stacks name a family registered **only** by a dependency's generated CSS, so "may first-party CSS be graded against a dependency's CSS" is the question standing between the shipped stack and any existence proof. That is still the two-decision blocker recorded above, not a defect.
