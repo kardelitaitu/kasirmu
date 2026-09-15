@@ -329,6 +329,14 @@ describe('popup surfaces have visible backgrounds', () => {
     // an appearance. Refresh is one line -- paste the walked-now pairs the failure prints
     // over SHEETS_BASELINE, and never delete a floor to make a failure go away.
     //
+    // AND THE LIMIT OF THAT REFRESH, written down not fixed: the walked-now pairs come off a working
+    // tree other lanes are editing, so one clipboard trip pastes a disappeared sheet away and every
+    // floor, band and ceiling then re-reads the shrunken walk as its own baseline -- permanently green,
+    // permanently smaller, with nothing tying the set to a revision. What would close it is data this
+    // literal does not carry: a committed tip on the baseline, or a per-entry expiry, the introduced /
+    // expires shape scripts/architecture-boundaries-baseline.json already uses. That choice is above
+    // this box, so nothing is chosen here and the paste stays one unguarded motion.
+    //
     // PATH EQUALITY, stated because the sibling guards in this repo match SELECTOR names and
     // their rules do not transfer: an entry is the WHOLE sheet path as the walk sees it --
     // relative(UI_SRC, file) with every platform separator folded to '/' -- and membership is
@@ -475,6 +483,11 @@ describe('popup surfaces have visible backgrounds', () => {
       ["frontend/themes/responsive.css",4],
       ["frontend/themes/tokens.css",5],
     ];
+    // FLOOR THE BASELINE ITSELF, mirroring the graded-identity floor below: goneSheets is a filter
+    // over this literal, so deleting all 137 entries is ONE motion that turns the membership guard
+    // green forever while appearedSheets stays report-only and nothing else notices. 100, not 137:
+    // a legitimate sheet coming or going must still read clean, and an emptied list must not.
+    expect(SHEETS_BASELINE.length, 'membership over nothing is not membership').toBeGreaterThan(100);
     const walkedSheets = cssFiles.map((f) => relative(UI_SRC, f).split(sep).join('/')).sort();
     const goneSheets = SHEETS_BASELINE.filter(([p]) => !walkedSheets.includes(p));
     const appearedSheets = walkedSheets.filter((p) => !SHEETS_BASELINE.some(([b]) => b === p));
