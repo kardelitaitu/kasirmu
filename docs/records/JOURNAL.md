@@ -11142,3 +11142,22 @@ The write now **lands**: `update-ref` exits 0, `rev-parse --verify` returns the 
 
 **Commit:** the retraction is recorded inside `todo-operational-integrity.md` by the dated correction committed as `docs(plans): re-derive operational-integrity claims and correct its own census`; this entry is the separate journal record Phase 3's row asked for, so a future session finds the outcome where it looks for defects rather than re-deriving it from scratch — never push without a direct user order.
 
+
+
+## 2026-09-15 — KDS refactor lane: closed by owner rulings, one clamp ruling fixed, and the plan's own check:all run (kds/docs)
+
+**Context:**
+`todo-refactor-kds-agents-1/2.md`, superseded 2026-09-14, were reviewed at the user's request; their successor `todo-refactor-kds-agents-merged.md` still carried seven open boxes, all dispositions, plus one filed-but-unfixed finding: the SLA clamp disagreement — the settings UI offered 30/60-minute yellow/red ceilings while `hooks/useTicketSla.ts` silently capped 14/15 (840/900 s), so a saved red of 60 min honored at 15 with no feedback.
+
+**Changes:**
+1. Owner rulings (one sitting, all four questions, recommendations accepted): `KdsTicketLineItem` and `KdsTimerBadge` relocations REJECTED permanently (the markup and the SLA view stay in `KdsTicketCard.tsx`; the rule stays single-sited in `useTicketSla.ts`); `KdsHeaderToolbar` REFUSED as a pass-through (the header is already decomposed into KdsHeaderLeft/Tabs/Right + ZoneChips); reduce-to-composition-root ruled ACHIEVED at 634 ln; both commit milestones CANCELLED / closed as the `refactor(kds)` series; the `todo-kds.md` global-saas precondition retired as UNBLOCKED.
+2. The clamp ruling landed TDD-first as `3df117977`: minute ceilings now DERIVE from the engine ceiling — `useTicketSla.ts` exports `SLA_YELLOW_MAX_SEC`/`SLA_RED_MAX_SEC`, `kdsThresholdMinutes.ts` gains `YELLOW_MAX_MIN` (14) / `RED_MAX_MIN` (15), the hamburger sliders no longer offer 30/60, and `WorkspaceKdsSettings` clamps legacy persisted values at hydration so a pre-ruling `45` cannot display or re-save as if honored. Board behavior: unchanged, zero. Three new cross-surface cases pin UI-minutes x 60 == engine-seconds for every raw minute 1..120, written Red first — they failed against the pre-fix code at exactly the filed numbers (3600 s vs 900 s).
+3. Plan docs synced and the merged checklist closed to 0 open / 23 ticked at `6806d9ab0`, every flip carrying a dated `OWNER RULING` comment.
+
+**Verification:**
+KDS scoped surface 74 files / 956 tests green, re-run twice during the session; clamp/SLA/hamburger neighbors 121/121; workspace-card suites 62/62; `npm run check:all` RUN for this plan the first time at HEAD `b623227cc`: 6 passed, E2E `SKIP (Docker not available)` by the script's design, vitest FAIL with 3 tests — ALL foreign (committed `RestaurantMenu.css` popover state from `1fb8cc643` + the sales lane's uncommitted `--shadow-md` tail in a dirty `CartPanelLineItem.css`; `git show --stat` of both lane commits: zero `.css` paths). §4 waiver applied on that record — same shape as the enterprise-mocks `d316a0b5b` earlier tonight — and the plan renamed IN PLACE to `done-todo-refactor-kds-agents-merged.md` at `273b0a455`.
+
+**What it means:**
+The KDS decomposition lane is closed — code, docs and acceptance record. The superseded sources stay `todo-` by rule (superseded is not done); their final-sync blocks tell the story from the old names. The only open item is the push, which awaits an explicit user order.
+
+**Commit:** this entry rides its own single pathspec commit `docs(journal): record the KDS lane closure, fix and §4 waiver`, following the lane's `3df117977`, `6806d9ab0` and `273b0a455` -- never push without a direct user order.
