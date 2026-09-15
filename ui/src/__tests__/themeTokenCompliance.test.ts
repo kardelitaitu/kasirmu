@@ -979,12 +979,14 @@ const UNDECLARED_LEAD_FAMILIES: Array<{ name: string; file: string; reason: stri
     name: '--brand-font-family',
     file: 'ui/src/features/design/brand-tokens.css',
     reason: 'per-tenant branding slot, emitted at scripts/sync-branding.ps1:385 from '
-      + 'assets/branding/*/manifest.json "fontFamily", and its own first line says DO NOT '
-      + 'EDIT BY HAND. The four manifests shipped today name Inter (default), DM Sans '
-      + '(acme-tenant), Plus Jakarta Sans (beta-retail) and Outfit (whitelabel/'
-      + 'example-tenant) -- none of which the app bundles, so every tenant brand falls '
-      + 'back to its generic tail in a packaged build. Whether to bundle tenant faces or '
-      + 'stop claiming them is a branding decision (docs/decisions/'
+      + 'assets/branding/*/manifest.json themeTokens.fontFamily, and its own first line '
+      + 'says DO NOT EDIT BY HAND. The four manifests shipped today name Inter (default), '
+      + 'DM Sans (acme-tenant), Plus Jakarta Sans (beta-retail) and Outfit (whitelabel/'
+      + 'example-tenant) -- none of which the app bundles. Whether that costs anything is '
+      + 'an open question this rule does NOT answer: `var(--brand-font-family)` has 0 '
+      + 'references anywhere in ui, apps, crates or website, so the slot is currently '
+      + 'written and never read -- see docs/plans/notes.md item 32. Bundling tenant faces '
+      + 'or deleting the slot is a branding decision (docs/decisions/'
       + '2026-07-15-whitelabel-branding-system.md), not this plan\'s.',
   },
 ];
