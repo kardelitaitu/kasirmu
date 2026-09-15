@@ -11193,3 +11193,19 @@ Before-snapshot re-derived at THIS HEAD, not quoted from memory: 681 keys / sha 
 Two findings generalise. First: the measurement discipline paid off immediately — the digest is a timestamp, and the plan's own net-rule (re-derive, never trust 681) is what made the vanished-lane overlap safe instead of destructive. Second: minutes after the state-move landed, another session began executing Phases 5.2 and 5.3 ON TOP of it (`48c3f8027` bundles, `f0b2dc312` sync) and was editing the router for 5.4 (`kds-devices.ts` at 05:25, router mtime 05:26:15) — the guard claims were released rather than racing a live editor. In a shared checkout the right move when someone is writing your next file is to hand them the foundation you verified and keep the measurement history — the reduction lands either way; only its proof needs an owner, and right now that owner is this lane.
 
 **Commit:** `99a68348f` + `4c81455b4`, this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — the conversion half landed; the two devmock lanes stood down from each other and the invariant held (dev-mock)
+
+**Context:**
+The journal entry above recorded the state-move and said the factory-conversion half "has not run". It has now run — superseded here, that entry kept as the dated record it is. What happened around the landing is the notable part: the sibling lane that had executed Phases 5.2/5.3/5.4 WHILE this lane worked, watched this lane's conversion sitting uncommitted in the shared tree, correctly identified it as another session's in-flight work (it found even this lane's throwaway probe by name), measured it, and STOOD DOWN — and this lane, seeing their commits land mid-round, released its own router claims rather than racing them. Neither lane ever edited the router while the other's edits were uncommitted; the plan file became the message queue.
+
+**Changes:**
+`55a71106d` opens `handlers/regional.ts` (the regional pair + receipt-format trio — the regional keys joined because no later phase owned them and they would have stranded past 5.5); `ca08178ae` opens `handlers/terminals.ts` (the six device-binding stubs whose "properly-named home" `handlers/workspaces.ts:17-19` had declined them into asking for); `93ed08fc5` wires the router: 22 keys out of `entryHandlers`, the four maps registered, router **710 → 447 lines**, literal keys **54 → 4** across the five Phase 5.x moves. The brand twins landing in `settings.ts` broke `dev-mock-scoped-aliases` "settings twins were NOT overwritten" (9 vs a frozen 8) — the guard's own "Re-measured, not copied" doctrine was the update path: re-measured with dated attribution inside the wiring commit, non-clobbering re-verified.
+
+**Verification:**
+The Sibling's stated condition — land it, then re-dump at HEAD — executed: committed-state dump prints **681 / sha256 `105d29730df2`…, byte-identical to the Phase 5.0 before-snapshot and to every checkpoint of all five phases** (throwaway, run, deleted); tsc exit 0; dev-mock/regional/receipt filters 13 files / 146 green; whole-tree 1 failed | 582 passed, the one red the unchanged foreign CSS tail.
+
+**What it means:**
+Two lanes can now be cited as the protocol model for this checkout: claims released mid-flight when the other side is writing, frozen-guard populations updated only by re-measurement inside the commit that legitimately moved them, and a registration-invariant digest held across 54 keys' relocation by five different moves. What remains on the router is the lane's own inventory: two deferred singletons (`get_local_ip` → system, `get_low_stock_alerts` → inventory), the ~20 cross-domain patches, the two spreads, `pushKdsOrderFromCart`, and the <200-line 5.5 target.
+
+**Commit:** `55a71106d` + `ca08178ae` + `93ed08fc5` + the docs(plans) tick commit; this entry rides its own docs(journal) commit -- never push without a direct user order.
