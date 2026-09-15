@@ -3,7 +3,7 @@ use crate::picker;
 use crate::testing::TestBridge;
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
-/// The release leg for a command this file drives through the subscription gate.
+// The release leg for a command this file drives through the subscription gate.
 //-- The release leg for these sessions lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 
 /// The picker-ticket HMAC key the desktop's AppState::for_test_with_conn seeds

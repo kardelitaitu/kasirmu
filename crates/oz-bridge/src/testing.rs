@@ -646,6 +646,9 @@ mod tests {
             SubscriptionLifecycleState::Unavailable.as_str()
         );
         assert_eq!(FAIL_CLOSED_TIER, SubscriptionTier::Free.tier_key());
-        assert!(!FAIL_CLOSED_GATES_LOCKED, "a locked gate reads false");
+        // `const`, not `assert!`: a runtime assertion on a const folds to
+        // `assert!(true)` and pins nothing (clippy::assertions_on_constants),
+        // whereas this form fails the BUILD if the const is ever flipped.
+        const _: () = assert!(!FAIL_CLOSED_GATES_LOCKED, "a locked gate reads false");
     }
 }
