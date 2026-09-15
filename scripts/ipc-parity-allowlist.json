@@ -156,7 +156,6 @@
     "resolve_kds_targets_scoped",
     "resume_subscription",
     "resume_subscription_scoped",
-    "rotate_encryption_key",
     "save_kds_routing_rules_scoped",
     "save_report_schedule",
     "save_topology_template",

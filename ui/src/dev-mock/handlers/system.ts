@@ -465,7 +465,21 @@ export const systemHandlers: Record<string, MockHandler> = {
     key_algorithm: 'aes-256-gcm',
     can_rotate: true,
   }),
-  'rotate_encryption_key': () => ({
+
+  // Key rotation is answerable ONLY under its gated name. The unscoped
+  // `rotate_encryption_key` command was deleted (it was an ungated write -- see
+  // `ui/src/api/security.ts:31` and the three closed cases at
+  // `ui/src/__tests__/api-security-contract.test.ts:38-44`), but this file still
+  // carried a handler for it, which the scoped-alias rule then copied onto
+  // `rotate_encryption_key_scoped` -- the name the desktop actually registers
+  // (`apps/desktop-client/src/lib.rs:1151`). Answering the dead name is what kept
+  // the live one working in dev, so the handler moves here instead of being dropped:
+  // a mock that fakes success for a command deleted as a bypass is a resurrection
+  // hazard, and a mock that goes silent on the surviving gated command is the T5-5
+  // failure all over again. No UI code names either yet ("key rotation has no front
+  // door, which is the point"), so nothing regresses either way -- the shape chosen
+  // here is the one that is true about which command exists.
+  'rotate_encryption_key_scoped': () => ({
     success: true,
     rotated_at: new Date().toISOString(),
     key_algorithm: 'aes-256-gcm',
