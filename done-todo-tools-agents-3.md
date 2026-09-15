@@ -13,7 +13,7 @@
 > triage reads. The state of a closed-but-unaccepted plan belongs in a **dated header line**, never
 > in the filename — which is what this blockquote is.
 
-**Document:** `todo-tools-agents-3.md`  
+**Document:** `done-todo-tools-agents-3.md`  
 **Role:** Orchestrator Agent 3 (Access Boundary & Upgrade UX Architect)  
 **Goal:** Implement route-level access protection, render lock/upgrade badges on plan-restricted tools, and display the contextual upgrade modal when an expired or non-entitled tool is clicked.
 
@@ -147,7 +147,7 @@ above the boxes moves those numbers, and the 14-09 pass moved them twice — onc
 text, once by adding the header blockquote at the top. Both times they were re-derived by grep after
 the last edit rather than assumed, and both times the earlier number was left visible in the prose so
 the drift is auditable. If you edit this file, re-run
-`grep -n '^- \[x\]\|^- \[ \]' todo-tools-agents-3.md` and re-check every `:NN` before committing.
+`grep -n '^- \[x\]\|^- \[ \]' done-todo-tools-agents-3.md` and re-check every `:NN` before committing.
 
 **Disposition of every box** (six, not five — the 14-09 pass originally wrote "all five" and the
 baseline-audit box below was the one it had overlooked; corrected on re-read rather than left as a
