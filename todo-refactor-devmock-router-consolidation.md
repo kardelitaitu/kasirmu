@@ -132,7 +132,16 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
        pathspec commit on tauri-api.ts would have swept their untracked regional.ts into my message
        (the AGENTS.md §3 incident verbatim). This session stands down from the router this round; no
        code was written or committed here. Box stays UNTICKED (not ours to close while their edits are
-       uncommitted); re-derive the 681 baseline and re-check porcelain before either lane moves. -->
+       uncommitted); re-derive the 681 baseline and re-check porcelain before either lane moves. ROUND-7 (HEAD 2387c0fe3): same 5 files still uncommitted and
+        the lane is LIVE (their own `__tests__/zz-dump-registered-b.test.ts` probe was 2 min old at read;
+        the alias test went dirty) — so I again touched zero router files and left their probe alone. My
+        one safe contribution: I MEASURED their pending conversion, which no box had ever checked. On their
+        working tree `tsc` is exit 0 and a throwaway dump (mine, run+deleted) reads **681 / sha256
+        `105d29730df2…60681c`, byte-identical to the 5.0–5.4 baseline** → their `createLocationProfileHandlers()`
+        + `createRegionalHandlers({unwrapArgs,getMockStores,updateMockLocation})` refactor is
+        registration-identity preserving. LABELLED AS A RUN-PROPERTY OF THEIR UNCOMMITTED TREE (a working-tree
+        green proves nothing about a commit, per repo rule) — box stays UNTICKED until they actually land it,
+        then re-dump at HEAD. My 5.2/5.3/5.4 remain the latest dev-mock commits, intact. -->
 - [ ] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
 
 > **Independent verification at clean HEAD `e16499e67` (this session, 2026-09-16) — supersedes my
