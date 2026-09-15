@@ -99,6 +99,12 @@ export default ts.config(
         getComputedStyle: 'readonly',
         matchMedia: 'readonly',
         process: 'readonly',
+        // Added with the mono-sheet stage, which resolves the artifact's own linked
+        // stylesheet hrefs against the served origin through the WHATWG URL global.
+        // This block has now absorbed the `no-undef` surprise three times: the globals
+        // a Node-side probe touches are not the globals the in-page evaluate touches,
+        // and nothing short of running `eslint .` says which is which.
+        URL: 'readonly',
       },
     },
   },

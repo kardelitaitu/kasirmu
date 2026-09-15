@@ -290,6 +290,153 @@ async function forceLoad(page) {
   });
 }
 
+/** The boot document's own linked stylesheets. Read at runtime because the filename is
+ * content-hashed and changes with every build: a remembered carrier name is already wrong
+ * once (this plan's notes carried `index-DxyJyJkO.css` while the tablet build now emits
+ * `index-DxyXyJkO.css` -- caught by looking, not by recalling). */
+function linkedStylesheets(docPath) {
+  const html = fs.readFileSync(docPath, 'utf-8');
+  const found = new Set();
+  for (const re of [
+    /<link\b[^>]*?rel=["']stylesheet["'][^>]*?href=["']([^"']+)["']/gi,
+    /<link\b[^>]*?href=["']([^"']+)["'][^>]*?rel=["']stylesheet["']/gi,
+  ]) {
+    let m;
+    while ((m = re.exec(html))) found.add(m[1]);
+  }
+  return [...found].filter((h) => h.endsWith('.css'));
+}
+
+/**
+ * Render text in the mono token using the artifact's real stylesheet, shoot it, and report
+ * whether the bundled face actually painted. The sheet and the page CSS are both served
+ * same-origin so the shell's CSP is honoured rather than defeated: under `style-src 'self'`
+ * an inline `style=` attribute is dropped without an error anyone would see in a PNG, and a
+ * probe that did not notice would print "the face never reached this page" about a page
+ * whose instructions were never read. So the block count is part of the result.
+ */
+async function monoSheet(page, baseUrl, csp, mode, net) {
+  const SHEET_CSS_URL = new URL('/__font-audit-mono-sheet.css', baseUrl).href;
+  const SHEET_URL = new URL('/__font-audit-mono-sheet', baseUrl).href;
+  const sheets = linkedStylesheets(path.join(distArg, pageName));
+
+  const sheetCss = [
+    '.mono { font-family: var(--font-mono); white-space: pre; }',
+    '.sans { font-family: var(--font-sans); white-space: pre; }',
+    ...SCALE_TOKENS.map((tk) => `.${tk.slice(2)} { font-size: var(${tk}); }`),
+  ].join('\n');
+
+  const sheetHtml = [
+    '<!doctype html>',
+    '<html lang="en"><head><meta charset="utf-8">',
+    ...sheets.map((h) => `<link rel="stylesheet" href="${new URL(h, baseUrl).href}">`),
+    `<link rel="stylesheet" href="${SHEET_CSS_URL}">`,
+    '</head><body>',
+    `<div class="mono">${SAMPLE}</div>`,
+    `<div class="sans">${SAMPLE}</div>`,
+    ...SCALE_TOKENS.map((tk) => `<div class="mono ${tk.slice(2)}">${tk} ${SAMPLE}</div>`),
+    '</body></html>',
+  ].join('\n');
+
+  const blocked = [];
+  page.on('console', (msg) => {
+    const x = msg.text();
+    if (/content security policy|refused to|blocked by/i.test(x)) blocked.push(x.slice(0, 160));
+  });
+
+  await page.route(SHEET_CSS_URL, (r) => r.fulfill({
+    status: 200, contentType: 'text/css; charset=utf-8',
+    headers: csp ? { 'content-security-policy': csp } : {}, body: sheetCss,
+  }));
+  await page.route(SHEET_URL, (r) => r.fulfill({
+    status: 200, contentType: 'text/html; charset=utf-8',
+    headers: csp ? { 'content-security-policy': csp } : {}, body: sheetHtml,
+  }));
+
+  const before = { count: net.count, bytes: net.bytes };
+  await page.goto(SHEET_URL, { waitUntil: 'load' });
+  await page.evaluate(() => document.fonts.ready.catch(() => undefined));
+  const m = await page.evaluate((sample) => {
+    // Width of the sample under an explicit family. `cls` alone is NOT enough: an unknown
+    // class inherits the body stack, which is how the first version of this measurement
+    // produced a "baseline" that was really the sans line.
+    const widthUnder = (family) => {
+      const s = document.createElement('span');
+      s.textContent = sample;
+      s.style.whiteSpace = 'pre';
+      if (family) s.style.fontFamily = family;
+      document.body.appendChild(s);
+      const w = s.getBoundingClientRect().width;
+      s.remove();
+      return Math.round(w * 10000) / 10000;
+    };
+    const cls = (name) => {
+      const s = document.createElement('span');
+      s.className = name;
+      s.textContent = sample;
+      document.body.appendChild(s);
+      const w = s.getBoundingClientRect().width;
+      s.remove();
+      return Math.round(w * 10000) / 10000;
+    };
+    const stack = getComputedStyle(document.querySelector('.mono')).fontFamily;
+    const parts = stack.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map((x) => x.trim()).filter(Boolean);
+    const first = parts[0] ?? '';
+    const tail = parts.slice(1).join(', ');
+    let loaded = 0;
+    document.fonts.forEach((f) => {
+      if (f.status === 'loaded' && first && f.family.replace(/^["']|["']$/g, '') === first.replace(/^["']|["']$/g, '')) loaded += 1;
+    });
+    // Attribute the tail render: measure each candidate on its own and keep the names that
+    // produce exactly the width the whole tail produced. The browser resolves a stack to
+    // the first installed member, so a tie means two members share metrics -- said as a
+    // tie below rather than reported as a single confident name.
+    const tailOnly = widthUnder(tail);
+    const attrib = [];
+    for (const fam of parts.slice(1)) {
+      const bare = fam.replace(/^["']|["']$/g, '');
+      attrib.push({ fam: bare, w: widthUnder(fam), generic: /^(ui-monospace|monospace|system-ui|sans-serif|serif)$/.test(bare) });
+    }
+    return {
+      mono: cls('mono'),
+      sans: cls('sans'),
+      tailOnly,
+      uaDefault: widthUnder(null),
+      first,
+      tail,
+      loaded,
+      matches: attrib.filter((a) => a.w === tailOnly).map((a) => a.fam),
+      candidates: attrib.map((a) => `${a.fam}${a.generic ? '*' : ''}=${a.w}`).join(' '),
+    };
+  }, SAMPLE);
+  const file = path.join(outDir, `mono-sheet-${mode}.png`);
+  await page.screenshot({ path: file, fullPage: true });
+  const dCount = net.count - before.count;
+  const dKb = Math.round(((net.bytes - before.bytes) / 1024) * 10) / 10;
+
+  console.log('\n--- the mono token, rendered by the artifact\'s own stylesheet ---');
+  console.log(`  document           ${SHEET_URL}`);
+  console.log(`  sheets linked      ${sheets.join(', ') || 'NONE -- the boot document links no stylesheet'}`);
+  console.log(`  CSP applied        ${csp ? 'yes (the same value the shell sends)' : 'no CSP on this shell -- this sheet is not testing the packaged path'}`);
+  console.log(`  stack in use       ${m.first} , then ${m.tail}`);
+  console.log(`  width of the line  bundled ${m.mono}   stack-minus-first ${m.tailOnly}   sans ${m.sans}   UA default ${m.uaDefault}`);
+  const painting = m.loaded > 0 && m.mono !== m.tailOnly;
+  if (!painting && m.matches.length) {
+    console.log(`  painted by           ${m.matches.join(', ')}${m.matches.length > 1 ? ' (a tie: these share metrics, so the name is not certain)' : ''}`);
+    console.log(`  per-family widths    ${m.candidates}`);
+  }
+  console.log(`  -> ${painting
+    ? `the bundled face IS painting: ${m.loaded} loaded face(s) for ${m.first}, and removing it changes the width by ${Math.round(((m.mono - m.tailOnly) / m.tailOnly) * 10000) / 100} %`
+    : m.loaded > 0
+      ? `the bundled face is loaded but the width matches the stack-minus-first arm -- ${m.first} is metrically indistinguishable from the tail here, so this page cannot tell them apart`
+      : `${m.first} did NOT load, so whatever painted this line came from the tail${m.tailOnly !== m.uaDefault ? ' -- and the tail differs from the UA default, meaning a LOCALLY INSTALLED family is what the eye sees' : ''}`}`);
+  console.log(`  woff2 this page asked for, unprompted  +${dCount} request(s), +${dKb} KB`);
+  console.log(`  CSP blocked ${blocked.length} message(s)${blocked.length ? ' -- the render is NOT what the tokens ask for:' : ''}`);
+  for (const b of blocked.slice(0, 3)) console.log(`                     ${b}`);
+  console.log(`  artifact           ${file}`);
+  return { mono: m.mono, tailOnly: m.tailOnly, loaded: m.loaded, first: m.first, matches: m.matches, file, sheets: sheets.length, blocked: blocked.length };
+}
+
 function banner(title, o, net, force, bootNet) {
   console.log(`\n--- ${title} ---`);
   console.log(`  element              ${o.element}  "${o.text}"  font-size ${o.usedFontSize}`);
@@ -351,6 +498,7 @@ async function run() {
 
   const browser = await chromium.launch();
   const results = {};
+  const sheetShots = {};
   for (const mode of ['with-fonts', 'no-fonts']) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', reducedMotion: 'reduce' });
     const net = { count: 0, bytes: 0, kb: 0 };
@@ -417,6 +565,7 @@ async function run() {
     } else {
       clipBytes = -1;
     }
+    sheetShots[mode] = await monoSheet(page, server.url, csp, mode, net);
     banner(mode === 'with-fonts' ? 'AFTER -- the bundled faces are allowed' : 'BEFORE -- every woff2 request aborted, so only the fallback tails remain', o, net, force, bootNet);
     console.log(`  screenshot           ${shot}`);
     console.log(`  text-clip bytes      ${clipBytes < 0 ? 'unavailable (no label box found)' : `${clipBytes} of ${clipSource}`}`);
@@ -437,6 +586,18 @@ async function run() {
   }
   console.log(`  declared stack identical in both runs: ${a.declaredStack === b.declaredStack}`);
   printBench(a.bench, b.bench);
+  const sm = sheetShots['with-fonts'];
+  const sn = sheetShots['no-fonts'];
+  console.log('\n--- the mono pair, side by side ---');
+  console.log(`  with faces   ${sm.mono}   ${sm.file}`);
+  console.log(`  no faces     ${sn.mono}   ${sn.file}`);
+  console.log(`  bundled run:  ${sm.mono} px  (${sm.loaded} loaded face(s) for ${sm.first})`);
+  console.log(`  aborted run:  ${sn.mono} px against a stack-minus-first arm of ${sn.tailOnly} px, ${sn.mono === sn.tailOnly ? 'equal, so the tail painted it' : 'different, so something else did'}${sn.loaded === 0 ? ` -- with 0 bundled faces loaded, that tail resolves to ${sn.matches.length ? sn.matches.join(' or ') : 'an unnamed installed family'}, which is the masking rule 15 exists to prevent` : ''}`);
+  console.log(`  the two renders ${sm.mono === sn.mono ? 'are the same width, so the bundled face changed nothing visible on this page' : `differ by ${Math.round(((sm.mono - sn.mono) / sn.mono) * 10000) / 100} %`}`);
+  console.log(`  CSP blocked ${sm.blocked} message(s) with faces, ${sn.blocked} without`);
+  console.log('  CAVEAT: a token-level render built for this purpose, not a screen of the running');
+  console.log('          app. It shows the bundled mono face at the shipped scale in the app\'s');
+  console.log('          own stylesheet; it says nothing about layout, which is what a receipt is.');
   console.log('\nRead this as the bundle-budget half of the box too: the woff2 numbers above');
   console.log('are what a customer downloads before the first pixel of type is theirs.');
   console.log('\nWhat this tool cannot do: decide whether either rendering is the one the');
