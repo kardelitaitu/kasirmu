@@ -298,3 +298,38 @@ on which shell registers the command, not on the token.
   nothing) — so §1's nineteen sites are still policed only by the React ternary at each call site.
 - **Do not delete a fallback without proving the tokenless state unreachable.** Deleting one converts a
   *recorded* bypass into a broken feature, which is the worse outcome of the two.
+
+---
+
+## ERRATA — 2026-09-15 · every row above re-read against the tree
+
+<!-- 2026-09-15 · DSH · a movement table appended by a lane that re-read all 25 coordinates at HEAD `aae6d43ad` and re-read at `30c2470e9`, both with identical results. §1, §2 and §5 above are left exactly as written, per this file's own convention: a dated coordinate that has rotted is answered by a second dated coordinate, never by editing the first. This block is the live part; the text above it is the record of 2026-09-12. -->
+
+**The command.** For a row `path:N` with wrapper `w`, ask whether `N` is in the output of `grep -nE "(^|[^A-Za-z0-9_.])w\(" <path>` — §4's detector shape, turned on this page. **18 of the 25 coordinates still hold; seven moved**: §1 loses 6 of 19 (13 hold), §2 loses 1 of 6 (5 hold). A briefing tonight circulated *twelve hold of nineteen, eight drifted*, which does not close over a nineteen-row table (12 + 6 + 2 = 20); the command prints 13 + 6 and 5 + 1, so the table is the run and not the briefing.
+
+| as recorded above | where that call is on 2026-09-15 | kind of move |
+|---|---|---|
+| `EodReportScreen.tsx:402` | `:431` — `sessionToken ? exportEodReportScoped(sessionToken) : exportEodReport(),` | same file, +29 |
+| `PaymentModal.tsx:748` | `:675` — `: await getSale(saleResult.saleId);` | same file, −73 |
+| `PaymentModal.tsx:1021` | `:987` — the same text | same file, −34 |
+| `PaymentModal.tsx:1258` | `:1269` — `: await getSale(result.saleId);` | same file, +11 |
+| `DataManagementScreen.tsx:244` | **`features/settings/hooks/useBackupStatus.ts:60`** — `: () => getBackupStatus();` | **changed file** |
+| `DataManagementScreen.tsx:276` | **`useBackupStatus.ts:92`** — `: await createBackup();` | **changed file** |
+| `useGatewayStatus.ts:23` | no call there at all | **retired**, below |
+
+Two things the table cannot carry. The `PaymentModal` mapping is **positional, not proven**: the three recorded rows and the three live sites keep their relative order, and nothing in the file labels which is which; the sweep also hits `:1262`, which is a **comment** quoting the literal `getSale(saleResult.saleId)` — §4's lesson that a paren-and-colon scan counts prose, re-enacted against this page four days later. And `DataManagementScreen.tsx` is now **164 lines**, so both recorded coordinates are past the end of the file rather than one line away from a moved call: a reader who follows the record lands on nothing.
+
+**The two that changed file are the two that matter, because one of them is the privileged write.** Located by content rather than by number, at `ui/src/features/settings/hooks/useBackupStatus.ts:86`–`:89`:
+
+> `// create_backup writes a full copy of the database to disk and, unscoped, checks no`
+> `// permission whatsoever. create_backup_scoped (added in 62e30fd7 for F-017) enforces`
+> `// permissions::DATA_EXPORT; until this line called it, that check existed only in code`
+> `// nothing reached.`
+
+That last clause is the thing an owner is being asked about, and it sits four lines above the call the record points at with a deleted coordinate. The hook's own header at `:55`–`:57` keeps §5 intact: the fallback is now *loud* — `event backup_ungated_no_session in crates/oz-bridge/src/data.rs` — and *pinned by a known-hazard test in ui/src/__tests__/DataManagementBackup.test.tsx*. **The live count for this file's tables is 24 rows, not 25**: 19 in §1 plus 5 in §2.
+
+**The retirement, marked and not deleted.** §2 lists `ui/src/hooks/useGatewayStatus.ts:23` as a `getSetting('stripe.api_key')` call that could only ever return null. There is no call at `:23` today; the file records why at `:21`–`:25` — *"Reads the booleans the backend already computes (`gateway_status`, through `getGatewayStatus`) — never the credential itself. This hook used to ask `get_setting('stripe.api_key')`, and that read is refused"*. The gap closed by shipping a different read, so the row retires; §2's argument that `run_get_setting` short-circuits `is_secret_key` before touching a connection stands above as the reason it was never a leak.
+
+**Several live rows are already ruled at the command layer, and §1's `class` column does not say so.** `scripts/verify-scoped-coverage.sh` carries an `ALLOWLIST` at `:100` and argues it in the comments above it: `pause_subscription`, `resume_subscription` and `version` fall under **category 1, PRE-AUTH / BOOTSTRAP** (`:33`–`:37`, reasoning verbatim — *"no session exists yet, so a session_token cannot be required"*), while `pick_logo_file`, `list_all_features`, `get_report_schedule`, `create_backup` and `get_backup_status` are placed under **category 2, GENUINELY GLOBAL** (`:38`–`:56`) — the same category that holds the whole topology group, global and branch-keyed, **on purpose**. So `LicenseSettings.tsx:249` and `:272`, `UpdateBanner.tsx:140`, `AppearanceSettings.tsx:162`, `FeatureToggleScreen.tsx:172`, `EmailReportSettings.tsx:120` and the moved backup pair are call sites whose commands already carry a recorded ruling this page never mentions. **And that script's green means less than its title suggests**: it greps `pub async fn *_scoped` under `apps/desktop-client/src/commands` at `:103` and `commands::x::y,` in `apps/desktop-client/src/lib.rs` at `:106` — it enumerates *registered Rust commands needing a scoped twin or an allowlist row* and never opens the UI at all (`grep -c ui/src scripts/verify-scoped-coverage.sh` → **0**). A pass there is not a claim about any call site listed above.
+
+**Why 19 + 6 is arithmetic over a set that is not one kind of thing.** One class in this file, at least five in the tree: the privileged whole-database write whose scoped twin really does enforce a permission (`useBackupStatus.ts:92`, `create_backup_scoped`, `permissions::DATA_EXPORT`); three reads the record flags as shell-constrained because on one shell the **scoped** call is the one that fails (`EodReportScreen:402`, `usePosCartActions:103`, `useTerminalHardware:239` — and §1's own reconciliation at `:94`–`:97` adds `CurrencyContext.tsx:71` as a fourth, so "three" and "four" are both in this file and belong to different passes); the already-ruled set immediately above, decided at the command layer rather than at the call site; and the §2 rows, which have **no ternary at all** and are therefore invisible to the detector by construction, exactly as `:106` already states. Summing them is fair for a sweep and misleading for a decision — which is the only claim this block adds.
