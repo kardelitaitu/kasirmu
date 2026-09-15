@@ -11,7 +11,7 @@ next: none | perf: single index pass per validation
 //! ADR #34 typed-connection gates. The contract is VENDORED here in
 //! `crates/oz-core/src/topologySemantics.json` (embedded via `include_str!`)
 //! so server builds never depend on the UI tree; the UI copy in
-//! `ui/src/features/stores/` is kept byte-identical by a parity test and
+//! `ui/src/features/locations/` is kept byte-identical by a parity test and
 //! `scripts/verify-topology-parity.py`. This module is the domain-level core
 //! of the validation engine: it is Tauri-free and value-level, so any client
 //! (desktop Apply, tablet preview, tooling) can run the same gates.
@@ -191,7 +191,7 @@ pub fn node_kind_token(node: &Value) -> String {
 /// Location row means "any workspace", the Operation row means "this one" —
 /// and one prefix rule keeps the comparison a line long in each language
 /// instead of an expression language in JSON. Rust twin of `kindTokenAdmits`
-/// in `ui/src/features/stores/topologyCard.ts`.
+/// in `ui/src/features/locations/topologyCard.ts`.
 fn kind_token_admits(endpoint_token: &str, node_kind: &str) -> bool {
     endpoint_token == node_kind || node_kind.starts_with(&format!("{endpoint_token}:"))
 }
@@ -200,7 +200,7 @@ fn kind_token_admits(endpoint_token: &str, node_kind: &str) -> bool {
 /// admitting `(from_kind, to_kind)`.
 ///
 /// This is the Rust twin of `pairingAdmitsKinds` in
-/// `ui/src/features/stores/topologyCard.ts`: same checked-in JSON, same
+/// `ui/src/features/locations/topologyCard.ts`: same checked-in JSON, same
 /// comparison, no expression language. Unknown kinds and unknown `@`-tokens
 /// fail closed, and a row with no `endpoints` list admits nothing — a payload
 /// that lost its endpoints degrades to "no wire may be authored" rather than
