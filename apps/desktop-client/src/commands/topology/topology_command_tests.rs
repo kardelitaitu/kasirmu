@@ -1185,9 +1185,12 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     .unwrap();
     assert_eq!(first.revision, 1);
 
-    // Second Apply replays the STALE base revision (0) while the document
-    // is already at 1 — the save rejects AFTER the store transaction
-    // commits, so the live error path must compensate and restore.
+    // Second Apply replays the STALE base revision (0) while the document is
+    // already at 1, and the revision gate rejects it at the FRONT of
+    // apply_topology_diff (crates/oz-bridge/src/topology/commands.rs:527-541):
+    // that return runs before the recovery journal is written (:646) and before
+    // the store transaction opens (:674-905), so this call commits nothing and
+    // there is nothing here for the live error path to compensate.
     let second = apply_topology_diff(
         token.clone(),
         vec![],
@@ -1210,6 +1213,12 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
 
     let app_state = app.state::<AppState>();
     let db = app_state.db.lock().await;
+    // What this assertion actually grades, since the wording below it has long
+    // suggested a compensation: this Apply wrote no journal at all (it returned
+    // at the revision gate). The journal it finds gone is the FIRST, successful
+    // Apply's, finalized by recover_pending_topology_apply at commands.rs:526
+    // through the "apply completed, just finalize" branch. So this is a
+    // recovery-finalization check, not a compensation check.
     assert!(
         oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
@@ -1228,11 +1237,16 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     );
 
     // ADR #46 Verification: "a test forcing Apply compensation asserts no
-    // revision row survives it." This test already forces exactly that path —
-    // the stale Apply fails AFTER the store transaction commits, so it is
-    // compensated — which makes it the right place to pin the §3 claim that
-    // the revision INSERT lives inside the committing transaction. A row here
-    // would mean history recorded a deploy that was rolled back.
+    // revision row survives it." This test does NOT force that path — the stale
+    // Apply returns at the revision gate above, before any store commit — so
+    // what the count below pins is the narrower and still real claim that a
+    // refused Apply writes no revision row of its own (the single row is the
+    // first, successful Apply's, whose envelope assertion above holds it at 1).
+    // The §3 claim that the revision INSERT lives inside the committing
+    // transaction is owned by the two tests that do land after a commit:
+    // crash_after_store_commit_compensates_both_databases and
+    // recovery_finalizes_without_compensating_a_completed_apply. No duplicate
+    // belongs here.
     let revisions: i64 = db
         .query_row(
             "SELECT COUNT(*) FROM topology_revisions WHERE branch_id = ''",
