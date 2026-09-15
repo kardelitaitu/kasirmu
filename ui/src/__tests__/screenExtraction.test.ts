@@ -1022,7 +1022,24 @@ const SCREENS: ScreenEntry[] = [
     name: 'StockCountDetail',
     tsx: 'inventory/StockCountDetail.tsx',
     css: ['inventory/StockCountDetail.css'],
-    dynamicClassPrefixes: [ 'sc-badge--draft', 'sc-badge--in_progress', 'sc-badge--completed', 'sc-badge--cancelled', 'sc-add-line-item--', 'sc-diff-'],
+    // Four sc-badge--* values struck 2026-09-16 · DSH · they were a copy of the sibling
+    // screen's claim, not this entry's own. Evidence, all three citation shapes tried:
+    // (a) inventory/StockCountDetail.css defines .sc-badge at :14 and ZERO sc-badge--* rules
+    // (grep 'sc-badge' on that sheet returns the one line), so in the dead-class walk — which
+    // reads ownIndex only, :1738 — the four prefixes excused nothing and the resolveComposed
+    // call at :1680 could not compose them, since it composes against own sheet keys;
+    // (b) citing inventory/StockCountsScreen.css as parentCss went RED at :2053 with
+    // "citation is vacuous — nothing this entry uses needs it", because every name the detail
+    // uses statically resolves in its own sheet (42 used, 37 own, 0 leaners);
+    // (c) citing it in css went RED twice over — .sc-badge is then defined in two cited files
+    // (case 2) and 17 of that sheet's list-screen rules became dead classes of this entry.
+    // And the reach the prefix claimed is not there either: StockCountDetail.tsx:22 imports
+    // './StockCountDetail.css' and nothing else; the family lives in StockCountsScreen.css
+    // :116-119, imported by StockCountsScreen.tsx:14, credited by THAT entry above. So these
+    // four muted another screen's classes — a hole in the ledger, not a finding about the tree.
+    // What survives is what this sheet actually owns: sc-add-line-item-- (x1) and sc-diff- (x2).
+    // Graded moves 108 -> 104; the floor at :2421 is untouched and 104 > 100.
+    dynamicClassPrefixes: ['sc-add-line-item--', 'sc-diff-'],
     knownDynamicFragments: [
       // String-interpolated fragments in the skeleton table header that
       // the static class-name parser falsely extracts as CSS classes.
@@ -2329,8 +2346,11 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   const noSheets: string[] = [];
   const credited = new Map<string, string[]>();
   // Graded values that passed ONLY because some source string contains the prefix, with no
-  // class of their own inside the entry's cited sheets. Printed by name: 108 = 103 + 4 + N
-  // only means something if N is named.
+  // class of their own inside the entry's cited sheets. Printed by name: the identity this
+  // line exists to keep auditable is graded = credited + inert + residual, and every term
+  // of it is named. It read 108 = 103 + 4 + 1 while the four struck StockCountDetail
+  // sc-badge--* mutes stood; the same run now reads 104 = 103 + 0 + 1, and the four that
+  // left are named in the entry at :1025 rather than being absorbed into a smaller total.
   const uncreditedLive: string[] = [];
   let graded = 0;
   for (const entry of SCREENS) {
@@ -2374,7 +2394,13 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
         // ui/src/features/inventory/StockCountsScreen.css, one of the 137. It told a reader to
         // edit a stylesheet when the gap is a citation in this ledger. So: report the count
         // inside the sheets THIS entry owns, and name the sibling sheet when the family is
-        // found there. Same push condition, so the standing population stays 4.
+        // found there. Same push condition; the population it described is gone. That message
+      // stood for exactly four findings, all of them the StockCountDetail sc-badge--* copy of
+      // StockCountsScreen's family, and all four were STRUCK AT THE SOURCE 2026-09-16 · DSH —
+      // the ledger entry, not the tree (see the note at :1025: 0 rules in this entry's own
+      // sheet, a parentCss cite refused as vacuous at :2070, a css cite refused as duplicate+
+      // 17 dead). Graded fell 108 -> 104 with this branch now printing 0, which is the point:
+      // a mute that credits nothing in the citing entry's own reach is a hole, not a finding.
         const elsewhere: string[] = [];
         for (const [sheet, classes] of index) {
           // Canonical spelling only: since 5cdfcd601 every shared sheet is in the map twice
