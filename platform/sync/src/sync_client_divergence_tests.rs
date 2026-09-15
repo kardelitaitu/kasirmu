@@ -435,6 +435,15 @@ fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
 /// docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md, "Activation
 /// and Ownership" (appended in 1c6949975), which names it as the only divergence
 /// in the dossier with a plausible non-foreign trigger.
+///
+/// A SECOND such consumer was found 09-16-26 and appended to that same ADR
+/// section: platform/sync/src/lib.rs:561, the SyncEngine run_sync_cycle push
+/// loop, has no duplicate-id arm either — SyncQueue::mark_failed
+/// (platform/sync/src/queue.rs:268) is a bare delegate to
+/// store.mark_offline_failed, so the prefix is never consulted on that path and
+/// the row lands Failed rather than Synced. It has no in-repo production caller
+/// (lib_tests.rs and tests/integration_test.rs only), so its blast radius is an
+/// embedder rather than a shipped path.
 #[test]
 fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
     let store = setup_store();
