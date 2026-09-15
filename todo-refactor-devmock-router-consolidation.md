@@ -268,7 +268,7 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
   > numeric target to "code lines < 200" (already true at ~133), or (b) an owner decision to compress
   > banners. NOT more stub-shuffling into shared modules for ~5 lines at rising collision risk.
 
-- [ ] No dead imports / unused local helpers left behind.
+- [x] **No dead imports / unused local helpers left behind — VERIFIED (2026-09-16, at HEAD `4b53fd215`, router 368).** `tsc` here does not enable `noUnusedLocals` (that is exactly how the one genuinely-dead import, `MOCK_CUSTOMERS`, sat undetected until I removed it by hand in `758c72020`), so this was checked by explicit audit, not by a green typecheck: (1) every named import (`convertFileSrc…kdsDeviceHandlers`) counted ≥ 2 occurrences in the file → all live (each `*Handlers` reaches a `registerHandlers`, each dep symbol a factory call, `MOCK_PRODUCTS` the warehouse stub); (2) the only module-level `function`/`const`/`let` defs are `entryHandlers` (registered) and `pushKdsOrderFromCart` (in the `createSalesHandlers` deps); `courseForSku` is a nested local inside the KDS seed builder, used there. No orphans. (Re-audit after every future move.)
 
   > **Round 12 (`c0a15224f`): workspace pair re-homed.** The §J quota-remediation stubs
   > (`suspend_surplus_workspace_instances_scoped`, `recover_workspace_instances_scoped`, both `() => 0`)
