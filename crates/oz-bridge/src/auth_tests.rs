@@ -842,13 +842,54 @@ async fn staff_login_records_an_unknown_account_against_the_attempted_name() {
     assert!(details.contains("unknown_user"), "got {details}");
 }
 
+/// Run the recorder itself over a confirmed-Free tenant, once WITH the desktop's
+/// dev promotion and once without, and return each verdict (`true` = written).
+///
+/// A side database, so neither call pollutes the audit rows of the app under
+/// test. This is the narrow function behind
+/// `staff_login_on_free_records_only_because_a_debug_build_promotes_it`: the
+/// command reaches it through `record_security_event` (auth.rs:159-169).
+fn free_tenant_recorder_verdicts() -> (bool, bool) {
+    let conn = crate::testing::temp_conn();
+    set_tier(&conn, "free");
+    let store = Store::new(&conn);
+    let promoted = store
+        .record_security_event(
+            &SecurityEvent::login_success("user-x", "x", None::<String>),
+            true,
+        )
+        .unwrap();
+    let plain = store
+        .record_security_event(
+            &SecurityEvent::login_success("user-y", "y", None::<String>),
+            false,
+        )
+        .unwrap();
+    (promoted, plain)
+}
+
 #[tokio::test]
 async fn staff_login_on_free_records_only_because_a_debug_build_promotes_it() {
     // The desktop passes debug_upgrade: true to its tier reads, matching
     // require_audit_tier. apply_debug_upgrade is cfg!(debug_assertions)-gated,
-    // so this row records in a test/dev build while a production Free tenant
-    // writes nothing. Pinned as an equality so flipping either half — the
-    // client flag or the core gate — fails one of the two branches.
+    // so the promotion only exists in a test/dev build.
+    //
+    // The row count is 1 in BOTH profiles, and the assertion used to read
+    // `usize::from(cfg!(debug_assertions))` — i.e. 0 in release. That prediction
+    // was wrong about the product, not merely about the profile:
+    // `Store::record_security_event` skips only on `ent.loaded &&
+    // tier.audit_retention_days().is_none()` (db/audit_security.rs:386-389), so the
+    // skip needs a CONFIRMED Free row. In release the migration-seeded
+    // BOOTSTRAP_FREE signature never verifies, `loaded` is false, and the recorder
+    // writes ON PURPOSE — the asymmetry is documented at db/audit_security.rs:
+    // 360-366 ("an attacker who corrupts one row" must not be able to switch the
+    // security trail off, and "a stray audit row costs nothing, while a missing
+    // security event costs the evidence"). Debug reaches 1 by the other route: the
+    // verified Active Free row is promoted to Premium, which carries 365 days.
+    //
+    // So the count cannot separate the two reasons; the promotion flag can, and
+    // asserting it is what keeps this case's name honest instead of pinning a
+    // debug-only rendering of a number that release also produces.
     let app = login_app(Some("free"));
     staff_login(
         &app.ctx(),
@@ -862,9 +903,36 @@ async fn staff_login_on_free_records_only_because_a_debug_build_promotes_it() {
     .unwrap();
     assert_eq!(
         audit_rows(&app).await.len(),
-        usize::from(cfg!(debug_assertions)),
-        "Free records only through the dev promotion"
+        1,
+        "a Free tenant's login is recorded in both profiles — the fork below is \
+         about WHY, not about WHETHER"
     );
+
+    let (promoted, plain) = free_tenant_recorder_verdicts();
+    if seeded_row_loads() {
+        // Debug: the row verifies, so the promotion is load-bearing — with the
+        // flag off the confirmed Free row is refused, which is the whole claim
+        // in this test's name.
+        assert!(
+            promoted,
+            "with debug_upgrade the verified Free row must reach the table: {promoted}"
+        );
+        assert!(
+            !plain,
+            "without the promotion a CONFIRMED Free row must be skipped — that is \
+             what the dev upgrade is buying: {plain}"
+        );
+    } else {
+        // Release: the flag is inert, because nothing is confirmed. Assert that
+        // rather than the old invented skip, so this leg names the reason the
+        // row exists here.
+        assert!(
+            promoted && plain,
+            "an unverifiable row is never a confirmed Free row, so the recorder \
+             writes with the promotion off too — the fail-closed asymmetry, not a \
+             tier grant: promoted={promoted} plain={plain}"
+        );
+    }
 }
 
 #[tokio::test]
