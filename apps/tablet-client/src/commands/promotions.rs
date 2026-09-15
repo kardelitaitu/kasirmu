@@ -5,7 +5,7 @@ use tauri::{State, command};
 
 use oz_core::{Promotion, PromotionApplication, Store};
 
-use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -47,87 +47,6 @@ fn default_true() -> bool {
     true
 }
 
-#[command]
-/// List promotions.
-pub async fn list_promotions(state: State<'_, AppState>) -> Result<Vec<Promotion>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    Ok(store.list_promotions()?)
-}
-
-#[command]
-/// Get promotion.
-pub async fn get_promotion(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<Promotion>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    Ok(store.get_promotion(&id)?)
-}
-
-#[command]
-/// Create promotion.
-pub async fn create_promotion(
-    user_id: String,
-    args: CreatePromotionArgs,
-    state: State<'_, AppState>,
-) -> Result<Promotion, AppError> {
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let promo = Promotion {
-        id: uuid::Uuid::now_v7().to_string(),
-        name: args.name,
-        description: args.description,
-        promo_type: args.promo_type,
-        value_minor: args.value_minor,
-        min_qty: args.min_qty,
-        trigger_sku: args.trigger_sku,
-        reward_sku: args.reward_sku,
-        reward_qty: args.reward_qty,
-        starts_at: args.starts_at,
-        ends_at: args.ends_at,
-        min_order_minor: args.min_order_minor,
-        category_id: args.category_id,
-        active: args.active,
-        created_at: now.clone(),
-        updated_at: now,
-    };
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_CREATE)?;
-    Ok(store.create_promotion(&promo)?)
-}
-
-#[command]
-/// Update promotion.
-pub async fn update_promotion(
-    user_id: String,
-    promotion: Promotion,
-    state: State<'_, AppState>,
-) -> Result<Promotion, AppError> {
-    let mut p = promotion;
-    p.updated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_EDIT)?;
-    Ok(store.update_promotion(&p)?)
-}
-
-#[command]
-/// Delete promotion.
-pub async fn delete_promotion(
-    user_id: String,
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_DELETE)?;
-    Ok(store.delete_promotion(&id)?)
-}
-
 /// Shared promotion-application pipeline: engine-computed discount, dedup
 /// guard, application row, and the sale-total reduction — one transaction
 /// in oz-core (single source of truth, PROMO-3/4/7).
@@ -141,34 +60,7 @@ fn run_apply_promotion_unchecked(
         .map_err(AppError::from)
 }
 
-#[command]
-/// Apply promotion.
-pub async fn apply_promotion(
-    user_id: String,
-    sale_id: String,
-    promotion_id: String,
-    state: State<'_, AppState>,
-) -> Result<PromotionApplication, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &user_id, oz_core::permissions::PROMOTIONS_APPLY)?;
-
-    run_apply_promotion_unchecked(&db, &sale_id, &promotion_id)
-}
-
-#[command]
-/// Get sale promotions.
-pub async fn get_sale_promotions(
-    sale_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<PromotionApplication>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    Ok(store.get_promotion_applications_for_sale(&sale_id)?)
-}
-
-/// Session-scoped variant of `list_promotions`.
+/// List promotions resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_promotions_scoped(
@@ -184,7 +76,7 @@ pub async fn list_promotions_scoped(
     Ok(store.list_promotions()?)
 }
 
-/// Session-scoped variant of `get_promotion`.
+/// Get promotion resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_promotion_scoped(
@@ -201,7 +93,7 @@ pub async fn get_promotion_scoped(
     Ok(store.get_promotion(&id)?)
 }
 
-/// Session-scoped variant of `create_promotion`.
+/// Create promotion resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_promotion_scoped(
@@ -240,7 +132,7 @@ pub async fn create_promotion_scoped(
     Ok(store.create_promotion(&promo)?)
 }
 
-/// Session-scoped variant of `update_promotion`.
+/// Update promotion resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_promotion_scoped(
@@ -261,7 +153,7 @@ pub async fn update_promotion_scoped(
     Ok(store.update_promotion(&p)?)
 }
 
-/// Session-scoped variant of `delete_promotion`.
+/// Delete promotion resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_promotion_scoped(
@@ -280,7 +172,7 @@ pub async fn delete_promotion_scoped(
     Ok(store.delete_promotion(&id)?)
 }
 
-/// Session-scoped variant of `apply_promotion`.
+/// Apply promotion resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn apply_promotion_scoped(
@@ -302,7 +194,7 @@ pub async fn apply_promotion_scoped(
     run_apply_promotion_unchecked(db, &sale_id, &promotion_id)
 }
 
-/// Session-scoped variant of `get_sale_promotions`.
+/// Get sale promotions resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_sale_promotions_scoped(
