@@ -248,190 +248,6 @@ pub struct UpdatePoStatusArgs {
     pub status: String,
 }
 
-#[command]
-/// List suppliers.
-pub async fn list_suppliers(state: State<'_, AppState>) -> Result<Vec<SupplierDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let suppliers = store.list_suppliers()?;
-    drop(db);
-    Ok(suppliers.into_iter().map(SupplierDto::from).collect())
-}
-
-#[command]
-/// Get supplier.
-pub async fn get_supplier(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<SupplierDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let supplier = store.get_supplier(&id)?;
-    drop(db);
-    Ok(supplier.map(SupplierDto::from))
-}
-
-#[command]
-/// Create supplier.
-pub async fn create_supplier(
-    args: CreateSupplierArgs,
-    state: State<'_, AppState>,
-) -> Result<SupplierDto, AppError> {
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("code", &args.code).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let supplier = store.create_supplier(
-        args.code.trim(),
-        args.name.trim(),
-        args.contact_person.as_deref().unwrap_or_default(),
-        args.phone.as_deref().unwrap_or_default(),
-        args.email.as_deref().unwrap_or_default(),
-        args.address.as_deref().unwrap_or_default(),
-        args.tax_id.as_deref().unwrap_or_default(),
-        args.payment_terms.as_deref().unwrap_or_default(),
-        args.notes.as_deref().unwrap_or_default(),
-    )?;
-    drop(db);
-    Ok(SupplierDto::from(supplier))
-}
-
-#[command]
-/// Update supplier.
-pub async fn update_supplier(
-    args: UpdateSupplierArgs,
-    state: State<'_, AppState>,
-) -> Result<SupplierDto, AppError> {
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("code", &args.code).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let supplier = store.update_supplier(
-        &args.id,
-        args.code.trim(),
-        args.name.trim(),
-        args.contact_person.as_deref().unwrap_or_default(),
-        args.phone.as_deref().unwrap_or_default(),
-        args.email.as_deref().unwrap_or_default(),
-        args.address.as_deref().unwrap_or_default(),
-        args.tax_id.as_deref().unwrap_or_default(),
-        args.payment_terms.as_deref().unwrap_or_default(),
-        args.notes.as_deref().unwrap_or_default(),
-        args.status.as_deref().unwrap_or("active"),
-    )?;
-    drop(db);
-    Ok(SupplierDto::from(supplier))
-}
-
-#[command]
-/// List purchase orders.
-pub async fn list_purchase_orders(
-    state: State<'_, AppState>,
-) -> Result<Vec<PurchaseOrderDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let pos = store.list_purchase_orders()?;
-    drop(db);
-    Ok(pos.into_iter().map(PurchaseOrderDto::from).collect())
-}
-
-#[command]
-/// Get purchase order.
-pub async fn get_purchase_order(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<PurchaseOrderDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let po = store.get_purchase_order(&id)?;
-    drop(db);
-    Ok(po.map(PurchaseOrderDto::from))
-}
-
-#[command]
-/// Create purchase order.
-pub async fn create_purchase_order(
-    args: CreatePurchaseOrderArgs,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    validate_not_empty("po_number", &args.po_number)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let lines: Vec<CreatePoLineInput> = args
-        .lines
-        .into_iter()
-        .map(|l| CreatePoLineInput {
-            sku: l.sku,
-            product_name: l.product_name,
-            qty: l.qty,
-            unit_cost_minor: l.unit_cost_minor,
-        })
-        .collect();
-    let po = store.create_purchase_order(
-        args.po_number.trim(),
-        &args.supplier_id,
-        args.expected_date.as_deref().unwrap_or_default(),
-        args.notes.as_deref().unwrap_or_default(),
-        None,
-        &lines,
-    )?;
-    drop(db);
-    Ok(PurchaseOrderDto::from(po))
-}
-
-#[command]
-/// Update po status.
-pub async fn update_po_status(
-    args: UpdatePoStatusArgs,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let po = store.update_po_status(&args.id, &args.status)?;
-    drop(db);
-    Ok(PurchaseOrderDto::from(po))
-}
-
-#[command]
-/// Receive purchase order.
-pub async fn receive_purchase_order(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let po = store.receive_purchase_order(&id)?;
-    drop(db);
-    Ok(PurchaseOrderDto::from(po))
-}
-
-#[command]
-/// Receive a purchase order with per-line received/damaged quantities
-/// (warehouse Phase 2 — damage marking).
-pub async fn receive_purchase_order_with_lines(
-    id: String,
-    lines: Vec<ReceivePoLineDto>,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let input: Vec<ReceivePoLineInput> = lines
-        .into_iter()
-        .map(|l| ReceivePoLineInput {
-            line_id: l.line_id,
-            received_qty: l.received_qty,
-            damaged_qty: l.damaged_qty,
-        })
-        .collect();
-    let po = store.receive_purchase_order_with_lines(&id, &input)?;
-    drop(db);
-    Ok(PurchaseOrderDto::from(po))
-}
-
 /// Input for receiving one PO line with damage accounting (IPC DTO).
 #[derive(Debug, serde::Deserialize)]
 pub struct ReceivePoLineDto {
@@ -445,7 +261,7 @@ pub struct ReceivePoLineDto {
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-/// Session-scoped variant of `list_suppliers`.
+/// List suppliers resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_suppliers_scoped(
@@ -464,7 +280,7 @@ pub async fn list_suppliers_scoped(
     Ok(suppliers.into_iter().map(SupplierDto::from).collect())
 }
 
-/// Session-scoped variant of `get_supplier`.
+/// Get one supplier resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_supplier_scoped(
@@ -484,7 +300,7 @@ pub async fn get_supplier_scoped(
     Ok(supplier.map(SupplierDto::from))
 }
 
-/// Session-scoped variant of `create_supplier`.
+/// Create a supplier resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_supplier_scoped(
@@ -517,7 +333,7 @@ pub async fn create_supplier_scoped(
     Ok(SupplierDto::from(supplier))
 }
 
-/// Session-scoped variant of `update_supplier`.
+/// Update a supplier resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_supplier_scoped(
@@ -552,7 +368,7 @@ pub async fn update_supplier_scoped(
     Ok(SupplierDto::from(supplier))
 }
 
-/// Session-scoped variant of `list_purchase_orders`.
+/// List purchase orders resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_purchase_orders_scoped(
@@ -571,7 +387,7 @@ pub async fn list_purchase_orders_scoped(
     Ok(pos.into_iter().map(PurchaseOrderDto::from).collect())
 }
 
-/// Session-scoped variant of `get_purchase_order`.
+/// Get one purchase order resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_purchase_order_scoped(
@@ -591,7 +407,7 @@ pub async fn get_purchase_order_scoped(
     Ok(po.map(PurchaseOrderDto::from))
 }
 
-/// Session-scoped variant of `create_purchase_order`.
+/// Create a purchase order resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_purchase_order_scoped(
@@ -631,7 +447,7 @@ pub async fn create_purchase_order_scoped(
     Ok(PurchaseOrderDto::from(po))
 }
 
-/// Session-scoped variant of `update_po_status`.
+/// Update a purchase order's status resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_po_status_scoped(
@@ -651,7 +467,7 @@ pub async fn update_po_status_scoped(
     Ok(PurchaseOrderDto::from(po))
 }
 
-/// Session-scoped variant of `receive_purchase_order`.
+/// Receive a purchase order resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn receive_purchase_order_scoped(
@@ -671,7 +487,7 @@ pub async fn receive_purchase_order_scoped(
     Ok(PurchaseOrderDto::from(po))
 }
 
-/// Session-scoped variant of `receive_purchase_order_with_lines`.
+/// Receive a purchase order with per-line received/damaged quantities resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn receive_purchase_order_with_lines_scoped(
