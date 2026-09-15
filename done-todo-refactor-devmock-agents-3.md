@@ -353,3 +353,10 @@ and *why* the owner renamed anyway. Net state, and stop here rather than re-runn
 this lane: **done-by-scope · owner-closed · renamed under an explicit §4 waiver (green NOT present) ·
 whole-tree `check:all` handed to whoever drives Agent 4's router consolidation.** No box reticked, no
 line above this rewritten — only this dated note and the `**Document:**` self-reference at the header.
+
+**Re-run, 2026-09-15, HEAD `f7e2a0e42`:** `npm run check:all` ran a second time from inside `ui/`
+(log `ui/checkall-rerun.log`) and reproduced the identical foreign red — `6 passed · 1 skipped ·
+1 failed`, the single failed leg being vitest at `Tests 3 failed | 9975 passed (10005)`, all three on
+`RestaurantMenu.css` (clean/committed, restaurant lane) and `CartPanelLineItem.css` (still ` M`, an
+uncommitted foreign edit), with `dev-mock`-named assertion errors **0**. Two independent runs, same
+not-ours failure; the waiver disposition above stands and the lane stays closed as done-by-scope.
