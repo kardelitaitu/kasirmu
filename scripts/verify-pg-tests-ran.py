@@ -99,6 +99,9 @@ SUMMARY_RE = re.compile(
     r"test result: (?:ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;\s+(\d+) ignored"
 )
 
+# Nextest prints a different summary shape; see the diagnosis in grade().
+NEXTEST_SUMMARY_RE = re.compile(r"^\s*Summary\s*\(\s*[\d,]+\s+tests?\s+run", re.MULTILINE)
+
 
 def _arm_body(lines: list[str], start: int) -> list[str]:
     """Lines of the skip arm's own block, from `start` up to where it closes.
@@ -275,8 +278,25 @@ def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool) -> in
 
     if not report["passed"] and not report["failed"]:
         print("FAIL  LOG: no `test result:` summary line found.")
-        print("      A run with no summary proves nothing; if you piped a log,")
-        print("      check it is a cargo-test capture and not a build log.")
+        if NEXTEST_SUMMARY_RE.search(text):
+            # Diagnosed, not guessed: CI's own command is `cargo nextest run
+            # --workspace --all-features` (dev-ci.yml:244), so a lane grabbing the
+            # nearest green will hand this tool a nextest log. It must not be read
+            # as libtest output, and the two are NOT interchangeable in meaning:
+            # nextest's "N skipped" counts tests it deliberately did not run
+            # (filters, `#[ignore]`), whereas this tool's skip EVENT is a test that
+            # DID run, printed, and returned as a pass. Reparsing one as the other
+            # would manufacture exactly the false clean this file exists to refuse.
+            print("      This looks like `cargo nextest` output (a `Summary (N tests")
+            print("      run: …)` line). The two formats are not interchangeable:")
+            print("      nextest's `skipped` counts tests deliberately NOT run, while")
+            print("      the skip EVENT counted here is a test that ran, printed, and")
+            print("      returned as a pass. Grading nextest output would need its own")
+            print("      parser and its own semantics -- not a relabel of this one.")
+            print("      Re-capture with `cargo test -p <crate> --all-features -- --nocapture`.")
+        else:
+            print("      A run with no summary proves nothing; if you piped a log,")
+            print("      check it is a cargo-test capture and not a build log.")
         return 1
 
     print(
@@ -488,6 +508,29 @@ def self_test() -> int:
            rc_unproven == 1)
     expect("the unproven verdict says UNPROVEN rather than PASS",
            "UNPROVEN" in buf.getvalue() and "PASS\n" not in buf.getvalue())
+
+    # (6) a nextest log must be diagnosed as nextest, and a mere empty log must
+    #     NOT be -- the two share the property "no libtest summary line", and
+    #     conflating them would send someone to re-run a capture that was fine.
+    nextest_log = (
+        "    SYNC apps/cloud-server::sync_store::tests pg_integration_one ... PASSED\n"
+        "   Summary (4313 tests run: 4270 passed, 43 skipped)\n"
+    )
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_nextest = grade(nextest_log, arms, per_file, proven=True)
+    out = buf.getvalue()
+    expect("a nextest log fails AND is named as nextest",
+           rc_nextest == 1 and "nextest" in out)
+    expect("  ...and explains that nextest `skipped` is not this tool's skip EVENT",
+           "deliberately NOT run" in out)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_empty = grade("Compiling oz-cloud-server v0.0.39\n", arms, per_file, proven=True)
+    out = buf.getvalue()
+    expect("an empty/build-only log fails", rc_empty == 1)
+    expect("  ...without falsely blaming nextest", "nextest" not in out)
 
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
