@@ -515,7 +515,7 @@ stored in the local DB (never compiled in).
 > * `.github/workflows/deploy.yml` **does not exist** — `23c963303` retired it to
 >   `deploy.yml.bak` on 2026-09-02, and the file named in this heading has not run since.
 > * The deploy logic moved **into** `dev-ci.yml` as the `northflank-deploy` job, and that
->   job's condition still reads
+>   job's condition read
 >   `(github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/0.0.'))) || github.event_name == 'workflow_dispatch'`.
 >   But `dev-ci.yml`'s own `on:` block declares only `pull_request` and
 >   `workflow_dispatch` — **there is no `push` trigger** (AGENTS.md says the same). The
@@ -527,6 +527,17 @@ stored in the local DB (never compiled in).
 > A merge to `main` triggers nothing deploy-related, and a PR run never deploys either
 > (the condition excludes `pull_request`). The consequence is the mirror image of what
 > this page promised: a stale deploy cannot hide, but neither can it happen by itself.
+>
+> **Corrected 2026-09-15 — three of the four statements above are now false, and the
+> fourth has changed shape.** `dev-ci.yml` *does* declare `push: branches: [main]`
+> (`:6-7`; the "no `push` trigger" line and the AGENTS.md it cites were both corrected on
+> 2026-09-14), so a merge to `main` **does** deploy, and the "code-level finding" below
+> was carried out rather than merely flagged. The condition has been tightened to
+> `(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'`,
+> which closes the hole that was live until that date: `workflow_dispatch` declares **no**
+> branch filter, so a dispatch off a `0.0.*` branch reached the deploy job and shipped to
+> production with no workflow edit at all. A release branch no longer deploys by either
+> route. The paragraph below is kept as the dated record it is.
 >
 > **Code-level finding, flagged not fixed.** Adding `push: branches: [main]` to
 > `dev-ci.yml` would make the old claim true again. That reinstates automatic production
