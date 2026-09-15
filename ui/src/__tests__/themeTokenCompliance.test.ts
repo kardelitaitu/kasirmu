@@ -1000,6 +1000,23 @@ function faceUrls(block: string): string[] {
 }
 
 /**
+ * The local() entries of a src list -- faces taken from the machine, not the
+ * bundle. The regex is built per call rather than shared, so no lastIndex can be
+ * inherited from a previous walk.
+ */
+function localFaceNames(block: string): string[] {
+  const re = /local\(([^)]*)\)/gi;
+  const out: string[] = [];
+  let m: RegExpExecArray | null = re.exec(block);
+  while (m) {
+    const n = (m[1] ?? '').trim().replace(/^['"]|['"]$/g, '');
+    if (n) out.push(n);
+    m = re.exec(block);
+  }
+  return out;
+}
+
+/**
  * The src entries of a face that are actually PRESENT.
  *
  * Rule 3 and rule 7 ask whether a face's url is SAME-ORIGIN; neither asks whether
@@ -1868,24 +1885,35 @@ describe('font-reference portability', () => {
         const fam = (/font-family\s*:\s*['"]?([^;'"]+)/i.exec(block)?.[1] ?? '?').trim();
         const subset = (/unicode-range\s*:\s*([^;]+)/i.exec(block)?.[1] ?? 'no unicode-range').trim().slice(0, 48);
         const found = faceUrls(block);
+        const locals = localFaceNames(block);
         urls += found.length;
-        expect(
-          found.length,
-          `an @font-face declares no src url at all: ${s.spec} :: ${fam} (${subset})`,
-        ).toBeGreaterThan(0);
-        const present = presentFaceUrls(block, baseDir);
-        expect(
-          present.length,
-          `an @font-face names ${found.length} url()s and NOT ONE of them is a file that `
-            + 'exists, so this face ships nothing while rules 3 and 7 keep passing -- they ask '
-            + 'whether a url reaches a host, never whether the file is there:\n'
-            + `  source: ${s.spec} (${file})\n  family: ${fam}\n  subset: ${subset}\n`
-            + `  named : ${found.join(', ')}\n`
-            + 'The visible symptom is a fallback one tier down: the CSS parses, the build '
-            + 'succeeds, the family is declared, and the browser quietly paints the tail this '
-            + 'suite pins. A dependency that moves its files/ layout is the expected way to '
-            + 'fire this, and the correct response is to update the @import, not this rule.',
-        ).toBeGreaterThan(0);
+        if (locals.length === 0) {
+          expect(
+            found.length,
+            `an @font-face declares no src at all -- neither a url() nor a local(): `
+              + `${s.spec} :: ${fam} (${subset})`,
+          ).toBeGreaterThan(0);
+        }
+        // A face whose src list is ONLY local() has no file to look for, so this rule
+        // stands down and rule 15 owns it -- where the finding is named correctly as a
+        // dependency on the customer's installed fonts rather than a missing file.
+        // Failing it here would deliver a true verdict with a false reason, and a lane
+        // that can see the file is fine starts muting the gate.
+        if (found.length > 0) {
+          const present = presentFaceUrls(block, baseDir);
+          expect(
+            present.length,
+            `an @font-face names ${found.length} url()s and NOT ONE of them is a file that `
+              + 'exists, so this face ships nothing while rules 3 and 7 keep passing -- they ask '
+              + 'whether a url reaches a host, never whether the file is there:\n'
+              + `  source: ${s.spec} (${file})\n  family: ${fam}\n  subset: ${subset}\n`
+              + `  named : ${found.join(', ')}\n`
+              + 'The visible symptom is a fallback one tier down: the CSS parses, the build '
+              + 'succeeds, the family is declared, and the browser quietly paints the tail this '
+              + 'suite pins. A dependency that moves its files/ layout is the expected way to '
+              + 'fire this, and the correct response is to update the @import, not this rule.',
+          ).toBeGreaterThan(0);
+        }
       }
     }
     // Magnitude, with headroom: 13 faces and 13 urls measured at 70578375b's
@@ -1971,6 +1999,76 @@ describe('font-reference portability', () => {
     const lonely = "@font-face { font-family: 'Lonely Face'; src: url(x.woff2); }";
     expect(/font-family/.test(lonely)).toBe(true);
     expect(lonely.replace(/@font-face\s*\{[^}]*\}/gi, ' ').match(/font-family\s*:\s*[^;{}]+/gi)).toBeNull();
+  });
+
+  it('rule 15: no shipped @font-face may take glyphs from the machine instead of the bundle', () => {
+    const hits: string[] = [];
+    let walked = 0;
+    const scan = (label: string, text: string) => {
+      for (const block of faceBlockTexts(text)) {
+        walked++;
+        const names = localFaceNames(block);
+        if (names.length > 0) {
+          const fam = (/font-family\s*:\s*['"]?([^;'"]+)/i.exec(block)?.[1] ?? '?').trim();
+          hits.push(`  ${label} :: ${fam} -> ${names.map((x) => `local('${x}')`).join(', ')}`);
+        }
+      }
+    };
+    // Both halves of the chain: what arrives through fonts.css, and anything a
+    // first-party sheet declares itself. Comments are blanked first, because prose
+    // that mentions local() must not be able to fake a face -- the same hazard rule
+    // 7's harvest guard exists for on @import.
+    // The second loop must skip files the first already graded: an @import that
+    // points back INTO ui/src reaches the same sheet through both halves, and the
+    // first run of this rule reported 4 entries where the tree had 2.
+    const scanned = new Set<string>();
+    for (const s of importedFaceSources()) {
+      if (s.kind !== 'file' || !s.file) continue;
+      scanned.add(resolve(s.file));
+      scan(s.spec, blankComments(s.text));
+    }
+    for (const s of CSS_SOURCES) {
+      if (scanned.has(resolve(s.file))) continue;
+      scan(shortFile(s.file), blankComments(s.text));
+    }
+    expect(
+      walked,
+      `rule 15 walked ${walked} @font-face blocks; 13 arrive through the imports and the `
+        + 'first-party sheets add any hand-written face. A walk this small means the '
+        + 'population, not the faces, went away.',
+    ).toBeGreaterThanOrEqual(12);
+    expect(
+      hits,
+      `rule 15: ${hits.length} @font-face ${hits.length === 1 ? 'block sources' : 'blocks source'} `
+        + 'glyphs from the machine rather than from a file this app ships:\n'
+        + hits.join('\n')
+        + '\n\nThis is the defect the whole plan is about, one tier down from the CDN link: with a '
+        + 'local() entry the app renders with whatever the customer happens to have installed, so '
+        + 'dev and shipped disagree by construction and no measurement taken on a developer box '
+        + 'means anything for them. Measured on this machine: an installed Inter moved one width '
+        + 'metric 174 -> 175.25 px (+0.7%), which is exactly how an unbundled name survives '
+        + 'contact with a developer.\n'
+        + 'A src list that names local() ALONGSIDE a url is rejected too -- that ordering is the '
+        + 'download-saving pattern, and it is the one that makes rendering depend on the '
+        + 'customer having the font. Ship the file, or drop the face.',
+    ).toEqual([]);
+  });
+
+  it('rule 15 probe: quoted and bare local() both count, and a comment cannot fake one', () => {
+    expect(localFaceNames("@font-face { src: local('Arial'); }")).toEqual(['Arial']);
+    expect(localFaceNames('@font-face { src: local(Arial); }')).toEqual(['Arial']);
+    // The download-saving chain, which is the case a permissive reading would let
+    // through: it still renders from the installed face when there is one.
+    const chain = "@font-face { src: local('Inter'), url('./files/inter.woff2') format('woff2'); }";
+    expect(localFaceNames(chain)).toEqual(['Inter']);
+    expect(faceUrls(chain)).toEqual(['./files/inter.woff2']);
+    // A face with only a url is clean, and prose about local() is not a face.
+    expect(localFaceNames("@font-face { src: url('./files/a.woff2'); }")).toEqual([]);
+    const commented = blankComments("/* prefer local('Inter') when present */\n@font-face { src: url(a.woff2); }");
+    expect(faceBlockTexts(commented)).toHaveLength(1);
+    expect(localFaceNames(commented)).toEqual([]);
+    // And the walk of the real tree sees the imported population, not nothing.
+    expect(importedFaceSources().filter((s) => s.kind === 'file').length).toBeGreaterThanOrEqual(1);
   });
 });
 
