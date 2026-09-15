@@ -2150,3 +2150,143 @@ async fn a_different_request_id_carrying_the_same_content_is_not_treated_as_a_re
     );
     let _ = dir;
 }
+
+// The other two arms of the same idempotency block, one test each:
+//   * a reused request_id carrying a DIFFERENT payload is refused by name --
+//     "topology request id was already used for a different Apply"
+//     (crates/oz-bridge/src/topology/commands.rs:502-507), and
+//   * a ledger entry with no fingerprint field is REMOVED, not answered from
+//     and not treated as an idempotent success (commands.rs:516-519).
+// Both were first written to assert the WRONG promise and shown to fail: the
+// first printed  got Err(Invalid("topology request id was already used for a
+// different Apply"))  where a plain replay was claimed, and the second read
+// back  left: None, right: Some("{\"revision\":7}")  where survival was claimed.
+
+#[tokio::test]
+async fn a_reused_request_id_carrying_a_different_payload_is_refused_by_name() {
+    let store_id = "store-replay-idreuse";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+
+    let first = replay_apply(&app, &token, store_id, "ws-reuse-a", "req-reuse-payload", 0)
+        .await
+        .expect("the first Apply must succeed");
+    assert_eq!(first.revision, 1, "a first Apply must reach revision 1");
+    let audit_after_first = char_audit_count(state, store_id);
+    let request_key = topology_apply_request_key("req-reuse-payload").unwrap();
+    let ledger_after_first = {
+        let db = state.db.lock().await;
+        oz_core::Settings::get(&db, &request_key)
+            .unwrap()
+            .expect("a successful Apply must write a request ledger")
+    };
+
+    // Same request id, a DIFFERENT payload (a second workspace instance), and
+    // the same stale base_revision 0. The ledger is read before the revision
+    // gate, so the stale revision never gets to speak.
+    let reuse = replay_apply(&app, &token, store_id, "ws-reuse-b", "req-reuse-payload", 0).await;
+    // The refusal must NAME itself. base_revision 0 is stale against the
+    // committed revision 1, so a call reaching the generic replay answer would
+    // return Ok(1), and one reaching the revision gate would return
+    // topology-revision-conflict. Either fails this assertion; only the id-reuse
+    // branch produces the string below.
+    const ID_REUSE: &str = "topology request id was already used for a different Apply";
+    assert!(
+        matches!(&reuse, Err(AppError::Invalid(m)) if m.as_str() == ID_REUSE),
+        "a reused request id carrying a different payload must be refused by the id-reuse \
+         branch naming itself; got {reuse:?}"
+    );
+    assert!(
+        matches!(&reuse, Err(e) if e.to_string().contains(ID_REUSE)),
+        "the refusal must carry that message through Display into the IPC payload; \
+         got {reuse:?}"
+    );
+
+    // Read the ledger back unchanged, and prove the refused payload created
+    // nothing: the refusal is graded on state, not on its return value.
+    let db = state.db.lock().await;
+    assert_eq!(
+        oz_core::Settings::get(&db, &request_key)
+            .unwrap()
+            .as_deref(),
+        Some(ledger_after_first.as_str()),
+        "a refused id reuse must not overwrite the ledger it is refusing"
+    );
+    assert_eq!(
+        current_topology_revision(&db, TOPOLOGY_SETTING_KEY).unwrap(),
+        1,
+        "a refused id reuse must not advance the document"
+    );
+    drop(db);
+    assert!(
+        !store_has_instance(state, store_id, "ws-reuse-b"),
+        "the refused payload's workspace instance must not exist"
+    );
+    assert!(
+        store_has_instance(state, store_id, "ws-reuse-a"),
+        "the refused Apply must leave the committed instance intact"
+    );
+    assert_eq!(
+        char_audit_count(state, store_id),
+        audit_after_first,
+        "a refused id reuse must write no second audit row"
+    );
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn a_pre_fingerprint_ledger_entry_is_removed_rather_than_replayed() {
+    let store_id = "store-replay-prefp";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+    let request_id = "req-prefingerprint";
+    let request_key = topology_apply_request_key(request_id).unwrap();
+    // Exactly the shape an interrupted development build left behind: a ledger
+    // entry carrying a revision and no fingerprint at all.
+    let seeded = r#"{"revision":7}"#;
+
+    {
+        let db = state.db.lock().await;
+        oz_core::Settings::set(&db, &request_key, seeded).unwrap();
+        assert_eq!(
+            oz_core::Settings::get(&db, &request_key)
+                .unwrap()
+                .as_deref(),
+            Some(seeded),
+            "the seeded pre-fingerprint ledger must round-trip before the Apply"
+        );
+    }
+
+    // base_revision 9 against a fresh document (current 0): the revision gate
+    // is what refuses this call either way, so the ONLY thing this run grades is
+    // whether the branch ahead of it cleared the unbound key.
+    let res = replay_apply(&app, &token, store_id, "ws-prefp-1", request_id, 9).await;
+    assert!(
+        matches!(&res, Err(AppError::TopologyValidation { code, .. })
+            if code == "topology-revision-conflict"),
+        "an unbound request id must not be excused as an idempotent success; got {res:?}"
+    );
+    let db = state.db.lock().await;
+    // The branch deletes it -- read back, not inferred. With the remove line
+    // absent this call still fails on the revision gate above and the key stays
+    // on disk holding the seeded value; that was the first form of this
+    // assertion, and it failed with left: None.
+    assert!(
+        oz_core::Settings::get(&db, &request_key).unwrap().is_none(),
+        "the pre-fingerprint ledger entry must be removed by the branch ahead of the \
+         revision gate, not left for the next caller"
+    );
+    assert_eq!(
+        current_topology_revision(&db, TOPOLOGY_SETTING_KEY).unwrap(),
+        0,
+        "a refused Apply must not have advanced the document"
+    );
+    drop(db);
+    assert!(
+        !store_has_instance(state, store_id, "ws-prefp-1"),
+        "the refused Apply must have created no workspace instance"
+    );
+    let _ = dir;
+}
