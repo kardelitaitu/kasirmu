@@ -2027,12 +2027,16 @@ async fn scoped_settings_reads_deny_a_session_without_settings_read() {
         (
             "get_setting_scoped",
             matches!(
-                get_setting_scoped("view-only-token".into(), "store.name".into(), app.state()).await,
+                get_setting_scoped("view-only-token".into(), "store.name".into(), app.state())
+                    .await,
                 Err(AppError::PermissionDenied(_))
             ),
         ),
     ] {
-        assert!(result, "{label} must refuse a session holding only sales:view");
+        assert!(
+            result,
+            "{label} must refuse a session holding only sales:view"
+        );
     }
 }
 
@@ -2051,7 +2055,10 @@ async fn scoped_credit_sale_list_stays_open_to_a_session_with_sales_view() {
          got {:?}",
         result
     );
-    assert!(result.is_ok(), "an empty store should answer with an empty list");
+    assert!(
+        result.is_ok(),
+        "an empty store should answer with an empty list"
+    );
     assert_eq!(result.unwrap().len(), 0);
 }
 
@@ -2065,23 +2072,33 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
     seed_owner_user(&conn);
     let app = owner_app(store_state(conn));
 
-    assert!(get_receipt_settings_scoped("owner-token".into(), app.state())
-        .await
-        .is_ok());
-    assert!(get_store_settings_scoped("owner-token".into(), app.state())
-        .await
-        .is_ok());
-    assert!(get_credit_settings_scoped("owner-token".into(), app.state())
-        .await
-        .is_ok());
-    assert!(get_hardware_settings_scoped("owner-token".into(), app.state())
-        .await
-        .is_ok());
+    assert!(
+        get_receipt_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(
+        get_store_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(
+        get_credit_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(
+        get_hardware_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
     assert!(!matches!(
         get_setting_scoped("owner-token".into(), "store.name".into(), app.state()).await,
         Err(AppError::PermissionDenied(_))
     ));
-    assert!(list_credit_sales_scoped("owner-token".into(), app.state())
-        .await
-        .is_ok());
+    assert!(
+        list_credit_sales_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
 }
