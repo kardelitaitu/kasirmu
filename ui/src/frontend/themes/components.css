@@ -120,6 +120,13 @@
 .btn--icon-only.btn--lg {
   padding: var(--space-3);
 }
+/* Icon-only carries .btn too, so the base ring at :34 already reaches it; restated here on
+   purpose, exactly as .btn--unstyled:focus-visible does at :145, so the modifier
+   names its own focus treatment instead of relying on a co-occurring class. */
+.btn--icon-only:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
 
 /* Unstyled escape hatch — keeps base reset, focus ring, and disabled behaviour,
    but drops variant/size styling so consumers can apply custom CSS. */
@@ -178,6 +185,13 @@
   color: var(--color-success-fg) !important;
   border-color: var(--color-success) !important;
   pointer-events: none;
+}
+
+/* Success state is reachable by keyboard — pointer-events: none stops hit-testing,
+   not focusability — so it carries the same ring as every other .btn variant. */
+.btn--success-state:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .btn__check {
