@@ -312,7 +312,7 @@ Recorded because each one is still live in some document a worker might read, an
 
 - `todo-font-system.md` (5 open) · `todo-refactor-kds-agents-merged.md` (18 open) · `todo-refactor-pos-screen-agents-3.md` (21 open) · `todo-refactor-settings-agents-3.md` (11 open) — any-depth box counts, measured this pass. Each is its own plan; none is covered here.
 - `todo-kds.md` is **superseded** by `todo-refactor-kds-agents-merged.md` and carries 0 boxes — do not treat its absence of boxes as completion.
-- `todo-tools.md` and `todo-tools-agents-3.md` each hold one open box that their own retirement notes assign elsewhere: the org/terminal scope is Phase 3b here; `check:all` is Phase 4's acceptance surface.
+- `todo-tools.md` and `done-todo-tools-agents-3.md` each hold one open box that their own retirement notes assign elsewhere: the org/terminal scope is Phase 3b here; `check:all` is Phase 4's acceptance surface.
 - Anything requiring a push, a branch, or a version bump.
 
 ---

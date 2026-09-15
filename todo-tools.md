@@ -25,8 +25,8 @@ entries as dedicated operational/admin pages.
 > it was reverted. `AGENTS.md` §4 earns the `done-` prefix only when the file's own acceptance command
 > has been **run and passed**, and §4's own words place this file in the category that belongs in a
 > **dated header line, never in the filename**: an *audit whose verdicts keep items open*. It does keep
-> one open — see below — and its sibling `todo-tools-agents-3.md` additionally failed `check:all`, so
-> neither name was earned. §4 `:255` also fixes the location: renames happen **in place at the root**,
+> one open — see below — and its sibling `todo-tools-agents-3.md` additionally failed `check:all`, so neither name was earned **(that clause is the 14-09 state of a sibling that has since moved: its own `check:all` ran GREEN at `8639f492e` on 2026-09-15, recorded at `done-todo-tools-agents-3.md:84`, and `346e9771a` renamed it in place at the root to `done-todo-tools-agents-3.md` that same day — so the two files are no longer in one category, and the name earned there does not transfer to this one)**;
+> §4 `:255` also fixes the location: renames happen **in place at the root**,
 > not in `.agents/archived/`, which that paragraph records as "measured, not approved" and which also
 > removes the file from the root glob a triage pass reads. This blockquote is the dated header line §4
 > asks for.
@@ -769,8 +769,8 @@ violated by that attempt: the `done-` prefix is earned only when the file's own 
 been **run and passed** (`:253`), and renames happen **in place at the repo root**, never into
 `.agents/archived/` (`:255`). §4 `:253` also names this file's category explicitly — an *audit whose
 verdicts keep items open* belongs in a dated header line, never in the filename — and this audit does
-keep one item open. The sibling `todo-tools-agents-3.md` is the case §4 names by name, and its
-`check:all` came back red, so its name is unearned too. The dated header line §4 asks for is the
+keep one item open. The sibling `todo-tools-agents-3.md` **was** the case §4 named by name in 14-09, and its `check:all` came back red, so its name was unearned **then** — that is the tense this line needs, because on 2026-09-15 the gate exited 0 at `8639f492e` (recorded at `done-todo-tools-agents-3.md:84`) and `346e9771a` renamed the file in place to `done-todo-tools-agents-3.md`, while §4's own live text now carries that as a dated supersession. This file's stamp is unchanged by it, and nothing here re-argues it.
+The dated header line §4 asks for is the
 blockquote at the top of this file.
 
 **What this stamp is.** The last pass over this audit record before it leaves the open list. Every
