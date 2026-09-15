@@ -151,7 +151,6 @@
     "products_set_image_scoped",
     "publish_memo_scoped",
     "recover_workspace_instances_scoped",
-    "refresh_picker_ticket",
     "register_kds_device_scoped",
     "renew_license",
     "resolve_kds_targets_scoped",
@@ -230,7 +229,6 @@
     "products_clear_image_scoped",
     "products_list_images_scoped",
     "products_set_image_scoped",
-    "refresh_picker_ticket",
     "save_topology_template"
   ]
 }

@@ -459,6 +459,7 @@ pub fn run() {
                 commands::auth::staff_check_username,
                 commands::auth::create_session,
                 commands::auth::destroy_session,
+                commands::auth::refresh_picker_ticket,
                 commands::auth::session_keepalive,
                 commands::auth::impersonate_user_scoped,
                 // SaaS-3 L194: multi-organization user switching.

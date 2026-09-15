@@ -1023,6 +1023,32 @@ pub async fn session_keepalive(
     Ok(SessionKeepaliveResult { expires_at })
 }
 
+/// Re-mint the picker ticket for the caller's own live session (ADR #4 / STAFF-01).
+///
+/// The ticket is signed at login with a five-minute TTL, so a user who lingers on
+/// the workspace picker longer than that cannot re-enter a store: `create_session`
+/// rejects the expired ticket. This command is the way back. It checks no role, and
+/// does not need to -- holding a valid, unexpired session token already proves the
+/// caller authenticated, and the ticket minted is bound to `session.user_id`, not to
+/// anything the caller sent.
+///
+/// A pure shim over `oz_bridge::auth::refresh_picker_ticket`, which is verbatim the
+/// body the desktop registers (`apps/desktop-client/src/commands/auth.rs:294`). Before
+/// this existed the name was in `scripts/ipc-parity-allowlist.json` **twice** in the
+/// tablet's own array (:154 and :233) with no implementation behind either copy, so
+/// `ui/src/api/staff.ts:569` had a wrapper this shell could never answer, and the
+/// duplicate entry made the exemption look like coverage. Both entries are gone with
+/// this command. What the renderer does with the rejection on a tablet that had no
+/// such command is a separate question, recorded as T5-5 in
+/// `todo-refactor-oz-pos-app-agents-3.md`.
+#[command]
+pub async fn refresh_picker_ticket(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<oz_bridge::auth::RefreshPickerTicketResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
+}
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;

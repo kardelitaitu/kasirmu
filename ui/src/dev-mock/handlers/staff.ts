@@ -325,6 +325,12 @@ export const staffHandlers: Record<string, MockHandler> = {
 
   'destroy_session': () => null,
 
+  // The picker-ticket refresh. The key is `picker_ticket` (snake) on purpose:
+  // `RefreshPickerTicketResult` in `crates/oz-bridge/src/auth.rs` carries no
+  // `rename_all`, and `ui/src/api/staff.ts:556` declares the same snake key --
+  // a camelCase mock here would agree with itself and disagree with both shells.
+  'refresh_picker_ticket': () => ({ picker_ticket: 'mock-picker-ticket' }),
+
 
   'impersonate_user_scoped': (args) => {
     const a = args as { sessionToken: string; targetUserId: string };
