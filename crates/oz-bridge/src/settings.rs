@@ -190,7 +190,29 @@ pub struct CreditSettingsDto {
 }
 
 /// A credit sale for the reminders list.
+///
+/// Wire contract (fixed 2026-09-15, Phase 3.3 T4): camelCase. This struct
+/// carried no `rename_all` from the Wave E extraction until tonight, so it
+/// emitted `sale_id` / `customer_name` / `total_minor` / `created_at` /
+/// `settled_at` / `cashier_name` while its only consumer — the retail credit
+/// list — reads the camelCase names its interface declares
+/// (`ui/src/api/settings.ts:74`, read at `features/retail/RetailModals.tsx:375-389`
+/// and filtered at `RetailPosScreen.tsx:1274`). Every field but `currency` was
+/// therefore `undefined` against a real backend: em-dash customer, NaN amount,
+/// "Invalid Date", a Settle button that sent `sale_id: undefined`, and — the
+/// part that raised no error anywhere — a `!c.settledAt` filter that passed
+/// every row, so a settled tab stayed on the unpaid list. Nothing caught it
+/// because `ui/src/dev-mock/handlers/payment.ts:231-232` answers both
+/// `list_credit_sales` variants with `[]`, and no test in the repo serialized
+/// this type before the two that landed with the repair
+/// (`settings_tests.rs::credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads`
+/// and the tablet's
+/// `settings_tests.rs::wire_pin_credit_sale_carries_every_key_the_renderer_declares`).
+/// Outbound is the direction that crosses the boundary, so camelCase is the
+/// only form accepted; there was no inbound snake_case caller to keep an alias
+/// for.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreditSaleDto {
     /// ID of the associated sale.
     pub sale_id: String,

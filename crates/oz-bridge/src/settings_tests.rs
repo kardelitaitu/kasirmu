@@ -1923,3 +1923,57 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
         "the refusal leaked the value it was handed: {desktop_message}"
     );
 }
+
+/// Pin [`CreditSaleDto`]'s outbound key set against the only consumer it has.
+///
+/// Until 2026-09-15 this type serialized snake_case while the retail credit
+/// list read camelCase, so six of its seven fields arrived `undefined` — and
+/// the failure raised no error anywhere: the row rendered an em-dash, NaN and
+/// "Invalid Date", `!c.settledAt` passed every row so a settled tab stayed on
+/// the unpaid list, and Settle sent `sale_id: undefined`. It survived because
+/// `ui/src/dev-mock/handlers/payment.ts:231-232` answers this command with an
+/// empty array, so no UI test could see a field at all. See the doc comment on
+/// the struct for the full record.
+#[test]
+fn credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads() {
+    let dto = CreditSaleDto {
+        sale_id: "s-1".into(),
+        customer_name: "Bagus".into(),
+        total_minor: 25_000,
+        currency: "IDR".into(),
+        created_at: "2026-09-15T00:00:00Z".into(),
+        settled_at: None,
+        cashier_name: "Rina".into(),
+    };
+    let json = serde_json::to_value(&dto).expect("CreditSaleDto must serialize");
+    let mut keys: Vec<String> = json
+        .as_object()
+        .expect("the wire shape is an object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    let mut want = [
+        "cashierName",
+        "createdAt",
+        "currency",
+        "customerName",
+        "saleId",
+        "settledAt",
+        "totalMinor",
+    ];
+    want.sort_unstable();
+    assert_eq!(
+        keys,
+        want.iter().map(|k| k.to_string()).collect::<Vec<String>>(),
+        "both shells read this type out of the bridge, so the camelCase wire is pinned here as well as on the tablet"
+    );
+    // Names are not the whole contract: the values must land under them.
+    assert_eq!(json["saleId"], "s-1");
+    assert_eq!(json["totalMinor"], 25_000);
+    assert_eq!(json["customerName"], "Bagus");
+    assert!(
+        json["settledAt"].is_null(),
+        "an open tab must emit settledAt: null rather than omitting the key"
+    );
+}
