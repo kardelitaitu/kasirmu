@@ -131,6 +131,49 @@ def resolve_cargo() -> str:
     return "cargo"
 
 
+def cached_metadata(cache_file: Path, root: Path, code: Any) -> dict[str, Any]:
+    """Return the fallback cargo metadata ONLY if it describes this checkout.
+
+    The tracked cache at scripts/architecture-cargo-metadata.json shipped with
+    workspace_root pointing at a sibling release worktree, so on any transient
+    cargo failure the gate scored this tree against ANOTHER checkout's package
+    graph: every path mismatched, eight live baseline entries printed as stale,
+    and --strict exited 1 while nothing in the repo had changed. A silently
+    borrowed graph is worse than no graph, so refuse it, name the two roots, and
+    exit non-zero. Same-root reuse is still allowed, but announced on stderr.
+    """
+    try:
+        cached = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            f"cargo metadata failed ({code}) and the fallback cache is unreadable: {exc}"
+        ) from exc
+    if not isinstance(cached, dict):
+        raise ValueError(f"cargo metadata failed ({code}) and the fallback cache is not an object")
+    cached_root = cached.get("workspace_root")
+    actual_root = root.resolve()
+    same_root = False
+    if isinstance(cached_root, str) and cached_root:
+        try:
+            same_root = Path(cached_root).resolve() == actual_root
+        except OSError:
+            same_root = False
+    if not same_root:
+        raise ValueError(
+            f"cargo metadata failed ({code}) and the fallback cache is UNUSABLE: it records "
+            f"workspace_root={cached_root!r} while this checkout is {str(actual_root)!r}. "
+            "Refusing to score findings from a different worktree: that would report this "
+            "tree's live baseline entries as stale. Fix cargo metadata, or pass "
+            "--metadata-file with a real fixture.",
+        )
+    print(
+        f"verify-architecture-boundaries: NOTE cargo metadata failed ({code}); using the "
+        f"fallback cache, which does describe this root ({actual_root}).",
+        file=sys.stderr,
+    )
+    return cached
+
+
 def metadata_from_cargo(root: Path) -> dict[str, Any]:
     cargo_cmd = resolve_cargo()
     manifest_path = (root / "Cargo.toml").resolve()
@@ -141,12 +184,10 @@ def metadata_from_cargo(root: Path) -> dict[str, Any]:
     except OSError:
         pass
     if result is None or result.returncode != 0:
+        code = "unavailable" if result is None else result.returncode
         cache_file = root / "scripts" / "architecture-cargo-metadata.json"
         if cache_file.is_file():
-            try:
-                return json.loads(cache_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                pass
+            return cached_metadata(cache_file, root, code)
         if result is not None and result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             raise ValueError(f"cargo metadata failed ({result.returncode}): {detail}")

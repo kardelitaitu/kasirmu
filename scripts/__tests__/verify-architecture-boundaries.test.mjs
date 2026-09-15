@@ -332,6 +332,38 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(JSON.parse(result.output).summary.tracked, 1, result.output);
   });
 
+  // Fallback-cache guard, 2026-09-15: the tracked
+  // scripts/architecture-cargo-metadata.json carried workspace_root from a
+  // sibling checkout, so ANY transient cargo failure made the gate score this
+  // tree against another worktree and call eight live suppressions stale.
+  function runWithoutMetadataFile(dir, args = []) {
+    try {
+      const stdout = execFileSync(
+        process.platform === 'win32' ? 'python' : 'python3',
+        ['scripts/verify-architecture-boundaries.py', ...args],
+        { cwd: dir, encoding: 'utf8', stdio: 'pipe', timeout: 60_000 },
+      );
+      return { code: 0, output: stdout };
+    } catch (error) {
+      return { code: error.status ?? 1, output: `${error.stdout ?? ''}${error.stderr ?? ''}` };
+    }
+  }
+
+  it('refuses a fallback cargo-metadata cache recorded for a different checkout', () => {
+    const dir = fixture({ packages: [{ name: 'oz-core' }] });
+    // A manifest cargo cannot read, plus a cache that names ANOTHER root.
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = \"broken this is not valid toml\n');
+    writeFileSync(
+      join(dir, 'scripts', 'architecture-cargo-metadata.json'),
+      JSON.stringify({ workspace_root: join(dir, '..', 'some-other-checkout'), packages: [], version: 1 }, null, 2),
+    );
+    const result = runWithoutMetadataFile(dir, ['--strict']);
+    assert.equal(result.code, 2, 'must fail closed, not score the foreign graph: ' + result.output);
+    assert.match(result.output, /UNUSABLE|different worktree|workspace_root/, result.output);
+    assert.doesNotMatch(result.output, /stale baseline entry/, 'it must not report stale entries it never verified');
+    assert.doesNotMatch(result.output, /^verify-architecture-boundaries: 0 tracked/m, result.output);
+  });
+
   it('does NOT let an escaped ../ entry silence a repo-relative finding', () => {
     // Before the repair this entry normalized to 'crates/oz-core/Cargo.toml' and
     // matched the finding, so a suppression naming a file OUTSIDE the repo
