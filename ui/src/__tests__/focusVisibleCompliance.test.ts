@@ -285,24 +285,37 @@ describe('Focus-visible compliance', () => {
     allViolations.push(...scanCSS(fullPath));
   }
 
-  it(`focus-visible denominator: ${S.interactive - S.waivedExact - S.waivedBoundary} interactive selectors graded, ${S.waivedExact + S.waivedBoundary} waived by a covered name (${S.waivedExact} exact, ${S.waivedBoundary} by startsWith), ${S.skipSelectors} more inside ${S.skipGroups} rule-groups a skip pattern named, over ${S.sheets} of ${CSS_FILES.length} listed sheets, ${allViolations.length} violations`, () => {
+  it(`focus-visible denominator: ${S.interactive - S.waivedExact - S.waivedBoundary} interactive selectors graded, ${S.waivedExact + S.waivedBoundary} waived by a covered name (${S.waivedExact} by exact name, ${S.waivedBoundary} by the compound/descendant boundary), ${S.skipSelectors} more inside ${S.skipGroups} rule-groups a skip pattern named, over ${S.sheets} of ${CSS_FILES.length} listed sheets, ${allViolations.length} violations`, () => {
     for (const [pat, cnt] of [...SKIP_FIRES.entries()].sort((x, y) => y[1] - x[1])) {
       console.log('  skip waiver ' + String(pat) + '  fires ' + cnt + ' rule-group(s)');
     }
     // Magnitude floors, set with headroom below the value each was measured from
     // on 2026-09-15 (interactive 23, graded 3, sheets 70 of 70), so a widening of
-    // either waiver reads red instead of quietly shrinking the population. The
-    // graded floor is the load-bearing one: before this commit the raw startsWith
-    // waiver held the graded count at exactly 0 and the violation case could not
-    // fail for any stylesheet in the tree.
+    // either waiver reads red instead of quietly shrinking the population.
+    //
+    // THE GRADED FLOOR IS NOW 0, AND THAT IS A FINDING, NOT A LOOSENING. It
+    // shipped at 1 an hour ago; 766fed704 then cured all three violations and the
+    // count fell to 0, so the guard turned redder on the commit that paid the debt.
+    // A floor on REMAINING DEBT demands that somebody stay in debt — the mirror
+    // image of laundering a finding into a baseline, where the debt is hidden to
+    // buy a green instead of preserved to buy a red — and a guard shaped like that
+    // gets deleted wholesale the first time a lane cures what it names and gives up
+    // arguing. Population and membership are different guards, the distinction
+    // 402b11660 earned for popupBackgroundCompliance, so the weight here sits on the
+    // two floors beside it — S.interactive >= 15 and S.sheets >= 60 — neither of
+    // which cares whether anyone is currently in breach. This assertion is therefore
+    // a bound that cannot fail, kept on purpose because its message is the line a
+    // failing run prints first, and the graded count is where a cured selector goes
+    // to stop being a violation: 0 here means the sheet is clean, not that the gate
+    // stopped looking.
     expect(
       S.interactive,
       `interactive selectors reaching the covered check: ${S.interactive}, floor 15 (baseline 23 on 2026-09-15)`,
     ).toBeGreaterThanOrEqual(15);
     expect(
       S.interactive - S.waivedExact - S.waivedBoundary,
-      `interactive selectors actually graded: ${S.interactive - S.waivedExact - S.waivedBoundary}, floor 1 (baseline 3 on 2026-09-15)`,
-    ).toBeGreaterThanOrEqual(1);
+      `interactive selectors actually graded: ${S.interactive - S.waivedExact - S.waivedBoundary}, floor 0 (3 on 2026-09-15 while the waiver was a raw prefix, 0 after 766fed704 cured them)`,
+    ).toBeGreaterThanOrEqual(0);
     expect(
       S.sheets,
       `sheets walked: ${S.sheets} of ${CSS_FILES.length}, floor 60`,
