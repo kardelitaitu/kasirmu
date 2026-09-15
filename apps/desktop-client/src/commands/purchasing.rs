@@ -25,129 +25,11 @@ pub use oz_bridge::purchasing::{
 
 // ── Supplier commands ───────────────────────────────────────────────
 
-/// List suppliers.
-#[tauri::command]
-pub async fn list_suppliers(state: State<'_, AppState>) -> Result<Vec<SupplierDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::list_suppliers(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
-/// Get supplier.
-#[tauri::command]
-pub async fn get_supplier(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<SupplierDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::get_supplier(&ctx, &id)
-        .await
-        .map_err(Into::into)
-}
-
-/// Create supplier.
-#[tauri::command]
-pub async fn create_supplier(
-    args: CreateSupplierArgs,
-    state: State<'_, AppState>,
-) -> Result<SupplierDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::create_supplier(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
-
-/// Update supplier.
-#[tauri::command]
-pub async fn update_supplier(
-    args: UpdateSupplierArgs,
-    state: State<'_, AppState>,
-) -> Result<SupplierDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::update_supplier(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
-
 // ── Purchase Order commands ─────────────────────────────────────────
-
-/// List purchase orders.
-#[tauri::command]
-pub async fn list_purchase_orders(
-    state: State<'_, AppState>,
-) -> Result<Vec<PurchaseOrderDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::list_purchase_orders(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
-/// Get purchase order.
-#[tauri::command]
-pub async fn get_purchase_order(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<PurchaseOrderDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::get_purchase_order(&ctx, &id)
-        .await
-        .map_err(Into::into)
-}
-
-/// Create purchase order.
-#[tauri::command]
-pub async fn create_purchase_order(
-    args: CreatePurchaseOrderArgs,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::create_purchase_order(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
-
-/// Update po status.
-#[tauri::command]
-pub async fn update_po_status(
-    args: UpdatePoStatusArgs,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::update_po_status(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
-
-/// Receive purchase order.
-#[tauri::command]
-pub async fn receive_purchase_order(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::receive_purchase_order(&ctx, &id)
-        .await
-        .map_err(Into::into)
-}
-
-/// Receive a purchase order with per-line received/damaged quantities
-/// (warehouse Phase 2 — damage marking).
-#[tauri::command]
-pub async fn receive_purchase_order_with_lines(
-    id: String,
-    lines: Vec<ReceivePoLineDto>,
-    state: State<'_, AppState>,
-) -> Result<PurchaseOrderDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::purchasing::receive_purchase_order_with_lines(&ctx, &id, &lines)
-        .await
-        .map_err(Into::into)
-}
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────────
 
-/// Scoped variant of `list_suppliers` (ADR #7).
+/// List suppliers resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn list_suppliers_scoped(
     session_token: String,
@@ -159,7 +41,7 @@ pub async fn list_suppliers_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `get_supplier` (ADR #7).
+/// Get supplier resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn get_supplier_scoped(
     id: String,
@@ -172,7 +54,7 @@ pub async fn get_supplier_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `create_supplier` (ADR #7).
+/// Create supplier resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn create_supplier_scoped(
     args: CreateSupplierArgs,
@@ -185,7 +67,7 @@ pub async fn create_supplier_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `update_supplier` (ADR #7).
+/// Update supplier resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn update_supplier_scoped(
     args: UpdateSupplierArgs,
@@ -198,7 +80,7 @@ pub async fn update_supplier_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `list_purchase_orders` (ADR #7).
+/// List purchase orders resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn list_purchase_orders_scoped(
     session_token: String,
@@ -210,7 +92,7 @@ pub async fn list_purchase_orders_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `get_purchase_order` (ADR #7).
+/// Get purchase order resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn get_purchase_order_scoped(
     id: String,
@@ -223,7 +105,7 @@ pub async fn get_purchase_order_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `create_purchase_order` (ADR #7).
+/// Create purchase order resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn create_purchase_order_scoped(
     args: CreatePurchaseOrderArgs,
@@ -236,7 +118,7 @@ pub async fn create_purchase_order_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `update_po_status` (ADR #7).
+/// Update po status resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn update_po_status_scoped(
     args: UpdatePoStatusArgs,
@@ -249,7 +131,7 @@ pub async fn update_po_status_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `receive_purchase_order` (ADR #7).
+/// Receive purchase order resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn receive_purchase_order_scoped(
     id: String,
@@ -262,7 +144,7 @@ pub async fn receive_purchase_order_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `receive_purchase_order_with_lines` (ADR #7).
+/// Receive a purchase order with per-line received/damaged quantities resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn receive_purchase_order_with_lines_scoped(
     id: String,
