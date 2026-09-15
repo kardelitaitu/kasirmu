@@ -72,7 +72,7 @@ interface CssRule {
   line: number;
 }
 
-function extractRules(css: string): CssRule[] {
+function extractRules(css: string, stats?: { atBlocks: string[]; nestedRules: string[] }): CssRule[] {
   // Masked, never deleted (see maskComments): rule.line is a file address.
   const clean = maskComments(css);
   const rules: CssRule[] = [];
@@ -87,10 +87,11 @@ function extractRules(css: string): CssRule[] {
       let depth = 1;
       let pos = braceStart + 1;
       while (pos < clean.length && depth > 0) {
-        if (clean[pos] === '{') depth++;
+        if (clean[pos] === '{') { if (depth === 1) stats?.nestedRules.push(selector.trim().slice(0, 60)); depth++; }
         else if (clean[pos] === '}') depth--;
         pos++;
       }
+      stats?.atBlocks.push(selector.trim().slice(0, 60));
       i = pos;
       continue;
     }
@@ -131,27 +132,28 @@ function primaryClass(selector: string): string | null {
 describe('popup surfaces have visible backgrounds', () => {
   const cssFiles = collectCssFiles(UI_SRC);
   const failures: string[] = [];
+  const stats = { atBlocks: [] as string[], nestedRules: [] as string[], parsed: 0, pseudo: 0, notRoot: 0, boundary: 0, boundaryNoBg: 0, graded: 0 };
 
   for (const filePath of cssFiles) {
     const content = readFileSync(filePath, 'utf-8');
-    const rules = extractRules(content);
+    const rules = extractRules(content, stats);
     const relPath = relative(UI_SRC, filePath);
 
-    for (const rule of rules) {
+    for (const rule of rules) { stats.parsed++;
       // Skip pseudo-elements
-      if (IS_PSEUDO.test(rule.selector)) continue;
+      if (IS_PSEUDO.test(rule.selector)) { stats.pseudo++; continue; }
 
       // Must contain a popup-like class
-      if (!POPUP_ROOT.test(rule.selector)) continue;
+      if (!POPUP_ROOT.test(rule.selector)) { stats.notRoot++; continue; }
 
       // Get the primary class — skip child/state/overlay classes
       const cls = primaryClass(rule.selector);
-      if (!cls) continue;
-      if (IS_OVERLAY.test(cls)) continue;
-      if (IS_CHILD.test(cls)) continue;
-      if (IS_STATE.test(cls)) continue;
+      if (!cls) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
+      if (IS_OVERLAY.test(cls)) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
+      if (IS_CHILD.test(cls)) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
+      if (IS_STATE.test(cls)) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
 
-      const bg = getBackground(rule.body);
+      const bg = getBackground(rule.body); stats.graded++;
 
       // No background at all
       if (bg === null) {
@@ -181,7 +183,7 @@ describe('popup surfaces have visible backgrounds', () => {
     }
   }
 
-  it(`every popup container has an opaque background (${cssFiles.length} CSS files scanned)`, () => {
+  it(`every popup container has an opaque background (graded ${stats.graded} of ${stats.parsed} top-level rules parsed across ${cssFiles.length} sheets; ${stats.nestedRules.length} rules hidden inside ${stats.atBlocks.length} at-blocks the extractor skips wholesale; ${stats.boundary} rejected by the primary-class boundary, ${stats.boundaryNoBg} of them declaring no background; ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped)`, () => {
     expect(failures, `\n${failures.join('\n\n')}`).toEqual([]);
   });
 
@@ -243,4 +245,31 @@ describe('popup surfaces have visible backgrounds', () => {
     expect(behindComments, 'the sweep covered no sheet whose comments span lines').toBeGreaterThan(0);
     expect(misaddressed, '\n' + misaddressed.length + ' rule(s) report a line that is not the line their block opens on:\n' + misaddressed.slice(0, 15).join('\n')).toEqual([]);
   });
+
+  /* ── Population floor + counter arithmetic: the print must be alive ─────── */
+  it(`the walk itself: ${cssFiles.length} sheets opened, ${stats.parsed} top-level rules parsed, ${stats.graded} graded, ${stats.nestedRules.length} hidden inside ${stats.atBlocks.length} at-blocks skipped wholesale, ${stats.boundary} refused by the primary-class boundary (${stats.boundaryNoBg} of them carrying no background), ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped`, () => {
+    // A green on an empty walk would be the same vacuity the bare file count
+    // hid, so the harvest is asserted too, not only the verdict it feeds.
+    expect(cssFiles.length, 'the walk opened no stylesheets').toBeGreaterThan(0);
+    expect(stats.parsed, 'the extractor parsed no top-level rule anywhere').toBeGreaterThan(0);
+    expect(stats.graded, 'no rule ever reached the background check').toBeGreaterThan(0);
+    expect(stats.atBlocks.length, 'no at-block was skipped, so the hidden count is untested').toBeGreaterThan(0);
+    expect(stats.nestedRules.length, 'nothing was lost inside an at-block').toBeGreaterThan(0);
+    // The three reject paths must have run: on today's tree the primary-class
+    // boundary itself refuses nothing (POPUP_ROOT turns selectors away first),
+    // so the floor is on the reject set as a whole, never on one door.
+    expect(stats.pseudo + stats.notRoot + stats.boundary, 'no selector was ever refused, so the reject counters are untested').toBeGreaterThan(0);
+    // Every parsed rule leaves the walk through exactly one door, so the four
+    // door counters must add up to the total that entered it. A counter that
+    // cannot be falsified by arithmetic is a decoration, not a measurement.
+    expect(
+      stats.pseudo + stats.notRoot + stats.boundary + stats.graded,
+      "the exit counters do not sum to the parsed total -- a counter is counting " +
+        "something the walk does not do: " +
+        stats.pseudo + " + " + stats.notRoot + " + " + stats.boundary + " + " + stats.graded +
+        " != " + stats.parsed,
+    ).toBe(stats.parsed);
+    expect(stats.boundaryNoBg <= stats.boundary, 'a subset counter exceeded its parent set').toBe(true);
+  });
+
 });
