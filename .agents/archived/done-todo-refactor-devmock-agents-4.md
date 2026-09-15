@@ -18,8 +18,8 @@ analytics) while 4.3 and the payment half of 4.2 landed as `refactor(devmock-ser
 (`de174f09b`). A grep for `refactor(devmock-services):` alone under-reports this lane's work
 and can make landed phases look missing. Grep both: `git log --oneline --grep="dev-mock"`.
 **Sibling Documents:**
-- [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
-- [`todo-refactor-devmock-agents-2.md`](./todo-refactor-devmock-agents-2.md) (Agent 2 — Operational Mocks: Sales, Inventory & Catalog)
+- [`done-todo-refactor-devmock-agents-1.md`](./done-todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
+- [`done-todo-refactor-devmock-agents-2.md`](./done-todo-refactor-devmock-agents-2.md) (Agent 2 — Operational Mocks: Sales, Inventory & Catalog)
 - [`done-todo-refactor-devmock-agents-3.md`](../../done-todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
 
 ---
