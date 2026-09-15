@@ -45,6 +45,33 @@ const distArg = path.resolve(flag('dist', path.join(HERE, '..', 'dist')));
 const outDir = path.resolve(flag('out', path.join(os.tmpdir(), 'ozpos-font-audit')));
 fs.mkdirSync(outDir, { recursive: true });
 
+/**
+ * Which boot document the artifact actually contains. The two shipped apps build to
+ * different directories with different filenames -- desktop-client serves ui/dist with
+ * index.html, tablet-client serves ui/dist-tablet with index.tablet.html -- so a probe
+ * that hardcoded one could not measure the other, and until this block existed it did
+ * not: every figure in this file's history came from the desktop artifact.
+ */
+const BOOT_DOCS = ['index.html', 'index.tablet.html'];
+const SHELL_OF = { 'index.html': 'desktop-client', 'index.tablet.html': 'tablet-client' };
+const presentDocs = BOOT_DOCS.filter((f) => fs.existsSync(path.join(distArg, f)));
+const pageArg = flag('page', null);
+if (pageArg && !presentDocs.includes(pageArg)) {
+  console.error(`--page ${pageArg} is not in ${distArg} (found: ${presentDocs.join(', ') || 'nothing'})`);
+  process.exit(2);
+}
+if (!presentDocs.length) {
+  console.error(`no boot document in ${distArg} -- looked for ${BOOT_DOCS.join(', ')}.`);
+  console.error('Build first: cd ui && npm run build (desktop) or npm run build:tablet (tablet).');
+  console.error('Refusing to measure a directory that does not contain the thing under test.');
+  process.exit(2);
+}
+const pageName = pageArg ?? presentDocs[0];
+if (presentDocs.length > 1 && !pageArg) {
+  console.log(`note: ${distArg} holds both boot documents; measuring ${presentDocs[0]}, pass --page to choose the other`);
+}
+const shell = SHELL_OF[pageName] ?? 'unknown-shell';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -59,21 +86,26 @@ const MIME = {
 };
 
 /**
- * The desktop shell's own CSP, read from its config rather than restated here,
- * because font-src is one of the things under test and a copy of it in a probe would
- * be a claim about the shipped policy that could drift from it.
+ * The CSP of the shell whose document is being measured, read from its config rather
+ * than restated here, because font-src is one of the things under test and a copy of it
+ * in a probe would be a claim about the shipped policy that could drift from it. The
+ * shell is chosen from the boot document: the first version of this tool always read
+ * desktop-client's config, so pointing --dist at the tablet artifact served the tablet
+ * build under the desktop policy -- identical strings in this repo today, which is
+ * exactly the situation in which a mis-aimed instrument stays unnoticed.
  */
-function shellCsp() {
-  const confPath = path.join(HERE, '..', '..', 'apps', 'desktop-client', 'tauri.conf.json');
+function shellCsp(doc) {
+  const shellName = SHELL_OF[doc] ?? 'desktop-client';
+  const confPath = path.join(HERE, '..', '..', 'apps', shellName, 'tauri.conf.json');
   const conf = JSON.parse(fs.readFileSync(confPath, 'utf-8'));
-  return conf?.app?.security?.csp ?? null;
+  return { csp: conf?.app?.security?.csp ?? null, confPath, shellName };
 }
 
-function serve(root, csp) {
+function serve(root, csp, doc) {
   return new Promise((resolveReady, reject) => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent((req.url || '/').split('?')[0]);
-      const file = path.join(root, rel === '/' ? 'index.html' : rel);
+      const file = path.join(root, rel === '/' ? doc : rel);
       const abs = path.resolve(file);
       if (!abs.startsWith(path.resolve(root)) || !fs.existsSync(abs) || fs.statSync(abs).isDirectory()) {
         res.writeHead(404).end('not found');
@@ -205,14 +237,13 @@ function banner(title, o, net) {
 }
 
 async function run() {
-  if (!fs.existsSync(path.join(distArg, 'index.html'))) {
-    console.error(`no ui/dist/index.html at ${distArg} -- build first (cd ui && npm run build), or pass --dist <dir>`);
-    process.exit(2);
-  }
-  const csp = shellCsp();
-  const server = await serve(distArg, csp);
+  const { csp, confPath, shellName } = shellCsp(pageName);
+  const buildCmd = pageName === 'index.tablet.html' ? 'npm run build:tablet' : 'npm run build';
+  const server = await serve(distArg, csp, pageName);
+  console.log(`document      ${pageName} in ${distArg}  (the ${shellName} shell; build with: cd ui && ${buildCmd})`);
   console.log(`serving ${distArg} at ${server.url}`);
-  console.log(`CSP from apps/desktop-client/tauri.conf.json: ${csp ? (csp.match(/font-src[^;]*/)?.[0] ?? 'no font-src clause') : 'none'}`);
+  console.log(`CSP from ${path.relative(path.join(HERE, '..', '..'), confPath).replace(/\\/g, '/')}: ${csp ? (csp.match(/font-src[^;]*/)?.[0] ?? 'no font-src clause') : 'none'}`);
+
 
   // Everything printed below is a measurement of an ARTIFACT, not of this checkout:
   // ui/dist is gitignored and carries no revision stamp, which is the AGENTS.md walker
