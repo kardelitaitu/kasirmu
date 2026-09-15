@@ -1886,3 +1886,182 @@ describe("leading-token freeze (line-height literals)", () => {
     ).toBe(LINE_HEIGHT_LITERAL_BASELINE.reduce((a, t) => a + t[2], 0));
   });
 });
+
+/* ── Appended at the bottom 2026-09-15 (tip af4b27238): three closes a reviewer
+ * constructed against the block above. All three were GREEN against edits that
+ * change what renders -- a redefinition, a fourth step, a declaration the
+ * collector never parsed. Each is now red on the shape named in its own case.
+ *
+ * HOLE ONE, the biggest: the token half had no value check. Redefining
+ *   --leading-normal from 1.5 to 1.85 in ui/src/frontend/themes/tokens.css left
+ *   all 75 references reading the same text, left every literal untouched and
+ *   left the harvest sum unchanged, and the second case above never opens a
+ *   token definition at all. The definitions are now harvested the way the
+ *   literals were -- collectCssFiles skips tokens.css (:424), so they are read
+ *   straight from TOKENS_CSS -- and frozen as name -> value.
+ *
+ * HOLE TWO: a fourth step inside the frozen namespace was green, because the
+ *   off-scale test at :1843 matches the PREFIX var(--leading- . The definition
+ *   freeze closes the naming half: --leading-comfortable is now a step the
+ *   guard forces into the open instead of a silent widening. It rules no
+ *   direction: notes.md item 10 (:1360) parks which steps should exist, and
+ *   this block pins spellings and values, not the scale's future.
+ *
+ * HOLE THREE: lineHeightDeclsFromCss above is PER-LINE, so a declaration whose
+ *   value sits on the FOLLOWING line matched nothing -- the plant rendered a
+ *   hard leading while moving no count, no key and no floor. The collector
+ *   below is the whitespace-aware sibling; the second case carries its own
+ *   in-repo plant (a synthetic sheet, so no shared stylesheet is written) and
+ *   compares the two harvests key by key, so a multiline literal that the
+ *   per-line harvest cannot see now reads red. Its recovered count ON THIS TREE
+ *   is printed in that case title every run.
+ *
+ * NOT closed, on purpose: the net-zero swap of two values between two keys in
+ *   one sheet. The key is right for a ratchet and BLIND AS A CENSUS -- a
+ *   line-keyed or selector-keyed freeze reports phantom removals on unrelated
+ *   churn and gets deleted rather than read, and the price of (value @ sheet)
+ *   is that a count cannot say WHICH rule holds a value. Do not read this
+ *   freeze as a site-level record. Nor is the font shorthand parsed: 0
+ *   occurrences of `font:` carrying a bare number in ui/src were measured, so
+ *   that one is honestly latent and stays a comment, not a parser.
+ */
+
+interface LeadingStepDef {
+  name: string;
+  value: string;
+  line: number;
+}
+
+/** The --leading-* DEFINITIONS themselves, name -> declared value, line by line. */
+function leadingStepDefsFromTokens(text: string): LeadingStepDef[] {
+  const lines = blankComments(text).split(/\r?\n/);
+  const hits: LeadingStepDef[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const m = /^\s*(--leading-[A-Za-z0-9-]+)\s*:\s*([^;}]+?)\s*[;}]\s*$/.exec(line);
+    if (!m) continue;
+    hits.push({ name: m[1] ?? "", value: m[2] ?? "", line: i + 1 });
+  }
+  return hits;
+}
+
+const LEADING_STEP_DEFS: LeadingStepDef[] = existsSync(TOKENS_CSS)
+  ? leadingStepDefsFromTokens(readFileSync(TOKENS_CSS, "utf-8"))
+  : [];
+
+/** Measured at tip af4b27238 by the collector above: three steps, three values. */
+const LEADING_STEP_BASELINE: Array<[string, string]> = [
+  ["--leading-tight", "1.25"],
+  ["--leading-normal", "1.5"],
+  ["--leading-relaxed", "1.625"],
+];
+
+/** name -> every distinct value it is declared with, across every theme block. */
+const LEADING_STEP_VALUES = new Map<string, Set<string>>();
+for (const d of LEADING_STEP_DEFS) {
+  const seen = LEADING_STEP_VALUES.get(d.name) ?? new Set<string>();
+  seen.add(d.value);
+  LEADING_STEP_VALUES.set(d.name, seen);
+}
+
+/**
+ * Whitespace-aware sibling of lineHeightDeclsFromCss: runs the SAME property
+ * test over the whole sheet instead of one line at a time, so a value carried
+ * onto the next line is still a declaration. A line-height value never contains
+ * a colon, so a capture is cut at the first one to keep an unsemicolon'd rule
+ * from pulling the next property into its value.
+ */
+function lineHeightDeclsAcrossLines(file: string, text: string): LineHeightDecl[] {
+  const blanked = blankComments(text);
+  const re = /(?:^|[;{}\s])line-height\s*:\s*([^;}]+)/g;
+  const hits: LineHeightDecl[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(blanked))) {
+    const value = ((m[1] ?? "").split(":")[0] ?? "").trim().replace(/\s+/g, " ");
+    if (!value) continue;
+    const line = blanked.slice(0, m.index).split("\n").length;
+    hits.push({ file: shortFile(file), line, value, token: isDesignToken(value) });
+  }
+  return hits;
+}
+
+const LH_ACROSS_LINES: LineHeightDecl[] = ALL_CSS_SOURCES.map((s) =>
+  lineHeightDeclsAcrossLines(s.file, s.text),
+).flat();
+const LH_RECOVERED_COUNT = LH_ACROSS_LINES.length - LINE_HEIGHT_HARVEST.length;
+const LH_ACROSS_KEYS = new Map<string, number>();
+for (const d of LH_ACROSS_LINES.filter((x) => !x.token)) {
+  const key = d.value + " @ " + d.file;
+  LH_ACROSS_KEYS.set(key, (LH_ACROSS_KEYS.get(key) ?? 0) + 1);
+}
+
+describe("leading-token freeze -- appended closes (definition values, a fourth step, the multiline harvest)", () => {
+  it(
+    "the " +
+      LEADING_STEP_VALUES.size +
+      " --leading-* definitions hold their frozen values (" +
+      LEADING_STEP_BASELINE.map(([n, v]) => n + ": " + v).join(", ") +
+      ") -- redefining a step, adding one or dropping one is a decision the guard forces into the open",
+    () => {
+      expect(
+        LEADING_STEP_DEFS.length,
+        "no --leading-* definition parsed from tokens.css -- the definition collector is dead, and a freeze that harvests nothing is a green that checks nothing",
+      ).toBeGreaterThanOrEqual(LEADING_STEP_BASELINE.length);
+      const frozenNames = LEADING_STEP_BASELINE.map(([n]) => n).sort();
+      const nowNames = [...LEADING_STEP_VALUES.keys()].sort();
+      expect(
+        nowNames,
+        "the --leading-* namespace gained or lost a step. A FOURTH step is not drift and is not this guard's to rule on: item 10 (docs/plans/notes.md :1360) parks the scale question with the owner, so a new spelling has to be said out loud and restated here WITH that decision:",
+      ).toEqual(frozenNames);
+      for (const [name, values] of LEADING_STEP_VALUES) {
+        const frozen = LEADING_STEP_BASELINE.find(([n]) => n === name)?.[1] ?? "(unfrozen)";
+        expect(
+          [...values],
+          name + " is declared with more than one value, or its value changed: every one of the 75 line-height references in ui/src now renders something other than what the " + frozen + " this freeze records, and the literal half cannot see it:",
+        ).toEqual([frozen]);
+      }
+    },
+  );
+
+  it(
+    "a line-height whose value sits on the next line is harvested (" +
+      LH_RECOVERED_COUNT +
+      " recovered on this tree, " +
+      LH_ACROSS_LINES.length +
+      " aware vs " +
+      LINE_HEIGHT_HARVEST.length +
+      " per-line)",
+    () => {
+      // The plant, in-repo: a synthetic sheet the harvesters are run over so no
+      // shared stylesheet is ever written. The per-line collector cannot see it;
+      // the aware one must.
+      const plant = ".p {\n  line-height:\n    1.7;\n  color: red;\n}\n";
+      expect(lineHeightDeclsFromCss("PLANT.css", plant).length, "a multiline line-height is no longer invisible to the per-line collector -- this plant is the hole, so the sibling case comparing the two harvests is what needs restating, not the collector").toBe(0);
+      const aware = lineHeightDeclsAcrossLines("PLANT.css", plant);
+      expect(aware.length, "the aware collector missed the multiline declaration it exists to catch").toBe(1);
+      expect(aware[0]?.value, "the aware collector harvested the wrong value").toBe("1.7");
+      expect(aware[0]?.token, "1.7 is a literal, not a token").toBe(false);
+
+      expect(
+        LH_ACROSS_LINES.length,
+        "the aware harvest saw FEWER declarations than the per-line one -- it regressed rather than widened, so nothing here is trustworthy",
+      ).toBeGreaterThanOrEqual(LINE_HEIGHT_HARVEST.length);
+      // Key by key, the two harvests must agree on the FROZEN population: any
+      // multiline literal the per-line harvest cannot see lands in `extra` and
+      // reads red, naming the value at the sheet.
+      const extra = [...LH_ACROSS_KEYS]
+        .filter(([k, n]) => (LH_HARVESTED.get(k) ?? -1) !== n)
+        .sort()
+        .map(([k]) => k);
+      const missing = [...LH_HARVESTED.keys()].filter((k) => !LH_ACROSS_KEYS.has(k)).sort();
+      expect(
+        extra,
+        "the per-line freeze above is blind to these: a (value @ sheet) count the aware collector harvests differently. A multiline line-height used to move no number at all -- if this is a NEW literal, item 10 is parked and it needs a human to pick a step; if it is an existing one the freeze has to restate:",
+      ).toEqual([]);
+      expect(
+        missing,
+        "a frozen key the aware harvest cannot see at all -- the collector was narrowed, or the sheet was rewritten:",
+      ).toEqual([]);
+    },
+  );
+});
