@@ -775,6 +775,29 @@ function describeStacks(stacks: FontStack[]): string {
   return stacks.map((s) => '  ' + s.file + ':' + s.line + '  ' + s.name + ': ' + s.value).join('\n');
 }
 
+interface DuplicateFontDeclaration {
+  name: string;
+  sites: string[];
+}
+
+/**
+ * Rule 5's detector: a font-family token NAME declared in more than one place.
+ * fontStacksFromCss already skips scalar values (so --font-weight-* and friends
+ * drop out) and already does NOT deduplicate, so grouping its output by name is
+ * the entire check. No second CSS parser is warranted for one sentence of law.
+ */
+function duplicateFontDeclarations(stacks: FontStack[]): DuplicateFontDeclaration[] {
+  const byName = new Map<string, string[]>();
+  for (const s of stacks) {
+    const sites = byName.get(s.name);
+    if (sites) sites.push(`${s.file}:${s.line}`);
+    else byName.set(s.name, [`${s.file}:${s.line}`]);
+  }
+  return [...byName.entries()]
+    .filter(([, sites]) => sites.length > 1)
+    .map(([name, sites]) => ({ name, sites }));
+}
+
 describe('font-reference portability', () => {
   it('scanned the boot documents and the ui/src CSS tree', () => {
     expect(HTML_SOURCES.length).toBeGreaterThanOrEqual(1);
@@ -904,6 +927,58 @@ describe('font-reference portability', () => {
       '--brand-font-family:2:wrapped list',
       '--fallback-stack:9:var() chain',
     ]);
+  });
+
+  it('rule 5: every font-family token is declared exactly once tree-wide', () => {
+    // Why this rule exists: the bare var(--font-*) sites -- 129 mono and 69 sans
+    // by `git grep -oE 'var\(--font-(mono|sans)\)' -- ui/src` -- resolve to a
+    // single face today ONLY because no second declaration of those names exists
+    // anywhere. That is the whole factual basis on which todo-font-system.md :79
+    // defers their fallback work, and until now nothing in this repo held it.
+    // Rule 2 grades a stack's SHAPE and passes a per-theme restatement of it
+    // (`Georgia, serif` is a perfectly good generic tail), and the value-identity
+    // freeze at the bottom of this file judges TAILED refs, which these sites are
+    // not. So a `[data-theme] { --font-sans: ... }` would move the typeface of
+    // most of the UI with no gate firing and, in that file's own words, "the file
+    // that changes is not the file that decides".
+    const stacks = CSS_SOURCES.flatMap(({ file, text }) => fontStacksFromCss(file, text));
+    // Floor, load-bearing: --font-sans, --font-mono and --brand-font-family today.
+    // Without it a moved token file or a regex that stopped matching would make
+    // the toBe(0) below pass by having found nothing at all.
+    expect(stacks.length).toBeGreaterThanOrEqual(3);
+    const dupes = duplicateFontDeclarations(stacks);
+    expect(
+      dupes.length,
+      'A font-family token is declared more than once across ui/src. The later '
+        + 'declaration wins by cascade, so every BARE var(--font-*) site -- the '
+        + 'majority of them -- resolves per theme instead of per token. Declare '
+        + 'each family once, or give the theme-specific stack its own name and '
+        + 'choose it at the use site where a reader can see the choice:\n'
+        + dupes.map((d) => `  ${d.name} x${d.sites.length}: ${d.sites.join(', ')}`).join('\n'),
+    ).toBe(0);
+  });
+
+  it('rule 5 probe: a per-theme restatement is caught, a distinct new name is not', () => {
+    const probe = [
+      ':root {',
+      "  --font-sans: 'Inter', system-ui, sans-serif;",
+      "  --font-mono: 'JetBrains Mono', ui-monospace, monospace;",
+      '}',
+      '[data-theme="light"] {',
+      '  --font-sans: Georgia, serif;',
+      "  --font-kiosk: 'Inter', system-ui, sans-serif;",
+      '  --font-weight-normal: 400;',
+      '}',
+    ].join('\n');
+    const stacks = fontStacksFromCss('probe.css', probe);
+    // 4 family declarations over 3 names: --font-sans on lines 2 and 6, --font-mono
+    // and --font-kiosk once each. The scalar --font-weight-normal on line 8 must be
+    // skipped by the existing parser, and --font-kiosk must NOT be reported: this
+    // rule counts redeclarations of a name, never uses of a font.
+    expect(stacks.length).toBe(4);
+    const dupes = duplicateFontDeclarations(stacks);
+    expect(dupes.map((d) => `${d.name} x${d.sites.length}`)).toEqual(['--font-sans x2']);
+    expect(dupes[0]?.sites).toEqual(['probe.css:2', 'probe.css:6']);
   });
 });
 
