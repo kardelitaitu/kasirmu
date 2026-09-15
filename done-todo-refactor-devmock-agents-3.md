@@ -360,3 +360,36 @@ line above this rewritten — only this dated note and the `**Document:**` self-
 `RestaurantMenu.css` (clean/committed, restaurant lane) and `CartPanelLineItem.css` (still ` M`, an
 uncommitted foreign edit), with `dev-mock`-named assertion errors **0**. Two independent runs, same
 not-ours failure; the waiver disposition above stands and the lane stays closed as done-by-scope.
+
+**Correction of a claim in the two notes above — 2026-09-15, HEAD `f7e2a0e42`: the "handed to Agent 4's
+fence" line is stale; the router consolidation is orphaned.** Both prior notes (and the earlier phase-3.3
+blockquote) said the remaining work was "handed to whoever drives Agent 4's router consolidation." That
+was inherited from the doc chain without opening the file it points at — the exact "a value received is
+not a value verified" error this repo warns about. Opened now, it is not what the sentence implies:
+
+- The file is `.agents/archived/done-todo-refactor-devmock-agents-4.md` — renamed to `done-todo-` **and**
+  archived. A closed lane, not an open owner.
+- Its **phase 4.5** ("OWNS the router consolidation", `:166`) never consolidated. Every box is a deferral:
+  `:174` reduce the router "**as far as Agent 4's fence permits**"; `:177` "zero literal entries … Achieved:
+  the 9 `a4_locations` entries … **will move once Agent 3** extracts its fence"; the final cleanup commit is
+  "**held until Agent 2 and Agent 3 complete their fences. At that point the router WILL be reduced to**
+  [dispatcher form]" (`:182`-`:184`, future tense, never executed); and **`Run full UI tests: npm run test`
+  and `npm run check:all` is left `[ ]`** (`:181`, unchecked) while `:203` declares "Agent 4's fence is complete."
+- The artifact matches the deferral, not the tick: **`tauri-api.ts` is still 851 lines**, last touched by
+  **our own `b27fad9ba`** (nobody consolidated after this lane), and still carries **54 inline quoted command
+  keys + 22 `handlers[…]` additions** — sibling-owned domains (Agent 2's bundles / cash-drawer / low-stock;
+  Agent 4's locations / device-binding / kds / sync / receipt), each deferred to a lane that has since archived
+  `done-todo-`.
+- All four `refactor-devmock-agents-*` lanes are now `done-todo-` (`-1`/`-2`/`-4` archived, `-3` this file).
+  **So the router's final reduction has no live owner — it is open debt, not a closed handoff.**
+
+**Keep two things distinct, because conflating them would be the next wrong claim:** this orphaned
+consolidation is **not** why `check:all` is red. That red is, and remains, the two foreign CSS suites
+(popover on `RestaurantMenu.css`, theme on the uncommitted `CartPanelLineItem.css`); an un-reduced router
+fails no test. The fat router is ownerless quality debt, orthogonal to this file's acceptance.
+
+**Blast radius of the rename, recorded:** the new name broke two links inside `agents-4` — `:23` and `:167`
+point at `../../todo-refactor-devmock-agents-3.md`, which no longer resolves. Factually dead, though inert to
+the dead-ref checker (`check-dead-refs.py` `is_historical_doc()` is a `todo-` substring test and agents-4's own
+name carries it). Repointing them is a small edit to another, archived lane's file, so it is **not taken here**
+— flagged as an owner decision.
