@@ -22,120 +22,7 @@ pub struct BalanceResult {
     pub status: String,
 }
 
-#[command]
-/// Issue gift card.
-pub async fn issue_gift_card(
-    input: IssueGiftCardInput,
-    state: State<'_, AppState>,
-) -> Result<GiftCardWithTransactions, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.issue_gift_card(input)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// Get gift card.
-pub async fn get_gift_card(
-    card_number_or_id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<GiftCardWithTransactions>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.get_gift_card_detail(&card_number_or_id)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// List gift cards.
-pub async fn list_gift_cards(
-    filter: GiftCardFilter,
-    state: State<'_, AppState>,
-) -> Result<Vec<GiftCardWithTransactions>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.list_gift_cards(filter)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// Get gift card balance.
-pub async fn get_gift_card_balance(
-    card_number_or_id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<BalanceResult>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.get_gift_card_balance(&card_number_or_id)?;
-    drop(db);
-    Ok(
-        result.map(|(balance_minor, currency, status)| BalanceResult {
-            balance_minor,
-            currency,
-            status,
-        }),
-    )
-}
-
-#[command]
-/// Redeem gift card.
-pub async fn redeem_gift_card(
-    card_number_or_id: String,
-    amount_minor: i64,
-    sale_id: String,
-    state: State<'_, AppState>,
-) -> Result<RedeemGiftCardResult, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.redeem_gift_card(&card_number_or_id, amount_minor, &sale_id)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// Top_up gift card.
-pub async fn top_up_gift_card(
-    card_number_or_id: String,
-    amount_minor: i64,
-    state: State<'_, AppState>,
-) -> Result<GiftCardWithTransactions, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.top_up_gift_card(&card_number_or_id, amount_minor)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// Freeze gift card.
-pub async fn freeze_gift_card(
-    card_number_or_id: String,
-    state: State<'_, AppState>,
-) -> Result<GiftCard, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.freeze_gift_card(&card_number_or_id)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// Unfreeze gift card.
-pub async fn unfreeze_gift_card(
-    card_number_or_id: String,
-    state: State<'_, AppState>,
-) -> Result<GiftCard, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let result = store.unfreeze_gift_card(&card_number_or_id)?;
-    drop(db);
-    Ok(result)
-}
-
-/// Session-scoped variant of `issue_gift_card`.
+/// Issue a gift card resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn issue_gift_card_scoped(
@@ -155,7 +42,7 @@ pub async fn issue_gift_card_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `get_gift_card`.
+/// Get one gift card resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_gift_card_scoped(
@@ -175,7 +62,7 @@ pub async fn get_gift_card_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `list_gift_cards`.
+/// List gift cards resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_gift_cards_scoped(
@@ -195,7 +82,7 @@ pub async fn list_gift_cards_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `get_gift_card_balance`.
+/// Read a gift card balance resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_gift_card_balance_scoped(
@@ -221,7 +108,7 @@ pub async fn get_gift_card_balance_scoped(
     )
 }
 
-/// Session-scoped variant of `redeem_gift_card`.
+/// Redeem a gift card resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn redeem_gift_card_scoped(
@@ -243,7 +130,7 @@ pub async fn redeem_gift_card_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `top_up_gift_card`.
+/// Top up a gift card resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn top_up_gift_card_scoped(
@@ -264,7 +151,7 @@ pub async fn top_up_gift_card_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `freeze_gift_card`.
+/// Freeze a gift card resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn freeze_gift_card_scoped(
@@ -284,7 +171,7 @@ pub async fn freeze_gift_card_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `unfreeze_gift_card`.
+/// Unfreeze a gift card resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn unfreeze_gift_card_scoped(
