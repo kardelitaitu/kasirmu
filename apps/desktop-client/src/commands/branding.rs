@@ -52,50 +52,6 @@ pub async fn get_brand_settings(state: State<'_, AppState>) -> Result<BrandSetti
         .map_err(Into::into)
 }
 
-/// Set the primary brand colour.
-#[tauri::command]
-pub async fn set_brand_primary_colour(
-    colour: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::branding::set_brand_primary_colour(&ctx, &colour)
-        .await
-        .map_err(Into::into)
-}
-
-/// Set the filesystem path to the store logo.
-///
-/// The path is validated to ensure it:
-/// - Is empty (clears the logo) or points to an accessible file
-/// - Resides inside the application data directory (H-3)
-/// - Has an allowed image file extension (png, jpg, jpeg, gif, svg, webp)
-///
-/// An empty string clears the stored logo path.
-#[tauri::command]
-pub async fn set_brand_logo_path(path: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    let app_data = state
-        .app
-        .as_ref()
-        .map(|app_handle| app_handle.path().app_data_dir().map_err(|e| e.to_string()));
-    oz_bridge::branding::set_brand_logo_path(&ctx, &path, app_data)
-        .await
-        .map_err(Into::into)
-}
-
-/// Set the brand store display name.
-#[tauri::command]
-pub async fn set_brand_store_name(
-    name: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::branding::set_brand_store_name(&ctx, &name)
-        .await
-        .map_err(Into::into)
-}
-
 /// Open a native file picker filtered to image files and return the
 /// chosen path, or `None` if the user cancelled.
 #[tauri::command]
@@ -116,7 +72,7 @@ pub async fn pick_logo_file(app_handle: tauri::AppHandle) -> Result<Option<Strin
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
 
-/// Scoped variant of `set_brand_primary_colour` (ADR #7).
+/// Set the primary brand colour resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn set_brand_primary_colour_scoped(
     colour: String,
@@ -129,7 +85,7 @@ pub async fn set_brand_primary_colour_scoped(
         .map_err(Into::into)
 }
 
-/// Scoped variant of `set_brand_store_name` (ADR #7).
+/// Set the brand store display name resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn set_brand_store_name_scoped(
     name: String,

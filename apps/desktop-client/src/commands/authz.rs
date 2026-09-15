@@ -93,7 +93,7 @@ pub fn require_permission_for_user_scoped(
 /// Authorize the session user against the GLOBAL identity database.
 ///
 /// Users + roles live ONLY in the global identity DB: staff CRUD
-/// (`bootstrap_owner`, `create_staff`, `update_staff_scoped`) writes there,
+/// (`bootstrap_owner`, `create_staff_scoped`, `update_staff_scoped`) writes there,
 /// and per-store databases never receive user rows — they run the same
 /// migrations but the `users` table stays empty by design.
 ///
