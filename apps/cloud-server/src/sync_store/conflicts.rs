@@ -12,11 +12,11 @@
 //! single edge back into the parent’s `push_batch`; it is `pub`, so the seam
 //! needs no widened visibility.
 
-use rusqlite::params;
 use crate::conflict_resolution::{
-    ConflictCandidate, Decision, SyncConflictRow, build_conflict_row, classify, extract_terminal,
+    build_conflict_row, classify, extract_terminal, ConflictCandidate, Decision, SyncConflictRow,
 };
 use platform_sync::crdt::VersionVector;
+use rusqlite::params;
 
 use super::SyncStore;
 // ── Conflict rows (sync_conflicts) ────────────────────────────────────────
