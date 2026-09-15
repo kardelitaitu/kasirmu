@@ -472,6 +472,58 @@
   .pos-cart-table-input {
     transition: border-color var(--duration-150) var(--ease-out);
   }
+
+  /* Cart entry animation: slides from right with overshoot jiggle */
+  .pos-cart-panel--entering {
+    animation: pos-cart-slide-in 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes pos-cart-slide-in {
+    0% {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    55% {
+      opacity: 1;
+      transform: translateX(-14px);
+    }
+    75% {
+      transform: translateX(6px);
+    }
+    88% {
+      transform: translateX(-2px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Cart exit animation: slides to right */
+  @keyframes pos-cart-slide-out {
+    0% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-6px);
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+  }
+
+  .pos-cart-panel--exiting {
+    animation: pos-cart-slide-out 0.25s var(--ease-out) both;
+    pointer-events: none;
+  }
+
+  .pos-resize-handle--exiting {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-200) var(--ease-out);
+  }
 }
 
 @media (max-width: 1023px) {

@@ -1,7 +1,8 @@
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useLocalization } from '@fluent/react';
+import { animDuration } from '@/utils/animation';
 import { Localized } from '@/components/Localized';
 import { requiredLocalized } from '@/frontend/shared';
 import type { Toast } from '@/frontend/shared/Toast';
@@ -264,22 +265,74 @@ export function CartPanel({
   // opening one line's menu closes the other's.
   const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
+  // Animation state for sliding out/in when hidden prop toggles
+  const [cartExiting, setCartExiting] = useState(false);
+  const [cartEntering, setCartEntering] = useState(false);
+  const [isFullyHidden, setIsFullyHidden] = useState(Boolean(hidden));
+  const hasEverBeenHiddenRef = useRef(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const enterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (hidden) {
+      hasEverBeenHiddenRef.current = true;
+      if (enterTimerRef.current !== null) {
+        clearTimeout(enterTimerRef.current);
+        enterTimerRef.current = null;
+      }
+      setCartEntering(false);
+      setCartExiting(true);
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+      }
+      exitTimerRef.current = setTimeout(() => {
+        setCartExiting(false);
+        setIsFullyHidden(true);
+        exitTimerRef.current = null;
+      }, animDuration(250));
+    } else {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+      setCartExiting(false);
+      setIsFullyHidden(false);
+      if (hasEverBeenHiddenRef.current) {
+        setCartEntering(true);
+        if (enterTimerRef.current !== null) {
+          clearTimeout(enterTimerRef.current);
+        }
+        enterTimerRef.current = setTimeout(() => {
+          setCartEntering(false);
+          enterTimerRef.current = null;
+        }, animDuration(380));
+      }
+    }
+  }, [hidden]);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) clearTimeout(exitTimerRef.current);
+      if (enterTimerRef.current !== null) clearTimeout(enterTimerRef.current);
+    };
+  }, []);
+
   return (
     <>
       <div
-        className="pos-resize-handle"
+        className={`pos-resize-handle${cartExiting ? ' pos-resize-handle--exiting' : ''}`}
         onMouseDown={startResize}
         aria-hidden="true"
-        style={hidden ? { display: 'none' } : undefined}
+        style={isFullyHidden ? { display: 'none' } : undefined}
       />
 
       {/* ── Right: Cart panel (resizable, keyboard-nav) */}
       <aside
-        className="pos-cart-panel"
+        className={`pos-cart-panel${cartExiting ? ' pos-cart-panel--exiting' : ''}${cartEntering ? ' pos-cart-panel--entering' : ''}`}
         ref={cartPanelRef}
         aria-label={l10n.getString('pos-cart-panel-aria')}
         role="region"
-        style={{ width: cartWidth, ...(hidden ? { display: 'none' } : {}) }}
+        style={{ width: cartWidth, ...(isFullyHidden ? { display: 'none' } : {}) }}
         tabIndex={-1}
         onKeyDown={handleCartPanelKeyDown}
         {...cartSwipe}

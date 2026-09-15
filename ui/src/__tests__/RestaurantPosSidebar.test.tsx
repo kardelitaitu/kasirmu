@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
 import salesFtl from '@/locales/sales.ftl?raw';
@@ -142,8 +142,11 @@ describe('RestaurantPosSidebar', () => {
     expect(sidebar).toBeInTheDocument();
     expect(screen.getByText('Manual')).toBeInTheDocument();
 
-    // CartPanel and resize handle are hidden
-    expect(cartPanel.style.display).toBe('none');
+    // CartPanel plays exit animation then is hidden
+    expect(cartPanel).toHaveClass('pos-cart-panel--exiting');
+    await waitFor(() => {
+      expect(cartPanel.style.display).toBe('none');
+    });
     expect(resizeHandle.style.display).toBe('none');
 
     // Click toggle button again to close sidebar
@@ -153,7 +156,8 @@ describe('RestaurantPosSidebar', () => {
     expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
     expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
 
-    // CartPanel and resize handle are visible again
+    // CartPanel plays entering animation and is visible again
+    expect(cartPanel).toHaveClass('pos-cart-panel--entering');
     expect(cartPanel.style.display).not.toBe('none');
     expect(resizeHandle.style.display).not.toBe('none');
   });
