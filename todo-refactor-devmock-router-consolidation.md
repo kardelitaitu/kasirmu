@@ -148,7 +148,17 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
   which touches no CSS.
 
 ### Phase 5.3 — Sync / cash drawer / low-stock / local-ip
-- [ ] Move the sync family (`sync_run`, `sync_pull`, `pending_sync_count`, `retry_offline_sync`, `get/update_sync_settings` ± scoped, `test_sync_connection`, `request_sync_token`), `open_cash_drawer`, `get_low_stock_alerts`, `get_local_ip` into `handlers/sync.ts` / their existing domain module; register; delete from the literal.
+- [x] **LANDED (sync/hardware half) 2026-09-16, HEAD `b49c1259b`.** Moved the 11 self-contained sync /
+  cash-drawer / receipt-hardware stubs (`open_cash_drawer`, `print_receipt`, `retry_offline_sync`,
+  `get_sync_settings` ± `_scoped`, `update_sync_settings`, `sync_run`, `pending_sync_count`, `sync_pull`
+  incl. its SYNC-03 destructive-consent `throw`, `test_sync_connection`, `request_sync_token`) verbatim into
+  new `ui/src/dev-mock/handlers/sync.ts`, registered right after `bundlesHandlers`. **Registration-identity
+  proven:** after-snapshot dump (throwaway, run+deleted) → **681 commands, sha256 `105d29730df2…60681c`,
+  identical**; `npx tsc --noEmit` exit 0; `dev-mock-scoped-aliases.test.ts` 41 passed. Router 737 → **723**
+  (the 11 keys span 21 physical lines → 7, net −14).
+- [ ] **Partial, deliberate:** `get_local_ip` (`:400`, a system singleton) and `get_low_stock_alerts`
+  (`:499`, an inventory singleton) are in this phase's old list but were **left in the router on purpose** —
+  filing them under a "sync" module would misname it; they want their own home (system.ts / inventory.ts).
 
 ### Phase 5.4 — KDS devices & the 22 patches
 - [ ] Move `list/register/get/update_status/deactivate_kds_device` into `handlers/kds.ts`.

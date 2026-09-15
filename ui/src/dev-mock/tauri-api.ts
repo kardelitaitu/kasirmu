@@ -60,6 +60,7 @@ import { licenseHandlers, settingsHandlers, settingsWriteHandlers } from './hand
 import { floorplanHandlers } from './handlers/floorplan';
 import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 import { bundlesHandlers } from './handlers/bundles';
+import { syncHandlers } from './handlers/sync';
 
 // The mock's public surface is the three names the app actually imports through
 // the vite alias on `@tauri-apps/api/core`. They are defined by the dispatcher
@@ -516,27 +517,9 @@ const entryHandlers: Record<string, MockHandler> = {
   // HARDWARE
   // ═══════════════════════════════════════════════════════════════
 
-  'open_cash_drawer': () => ({ opened: true }),
-  'print_receipt': () => ({ printedLines: 3 }),
-  'retry_offline_sync': () => ({ syncedCount: 0, failedCount: 0, totalCount: 0 }),
-
-  'get_sync_settings': () => ({ serverUrl: null, hasApiKey: false, enabled: false }),
-  'get_sync_settings_scoped': () => ({ serverUrl: null, hasApiKey: false, enabled: false }),
-  'update_sync_settings': () => null,
-  'sync_run': () => ({ synced: 0, failed: 0, error: null }),
-
-  'pending_sync_count': () => 0,
-  'sync_pull': (args: unknown) => {
-    // SYNC-03: reject without explicit destructive consent, mirroring the
-    // backend command contract so dev-mode behaviour matches production.
-    const a = (args ?? {}) as { confirmDestructive?: boolean };
-    if (!a.confirmDestructive) {
-      throw new Error('confirmDestructive must be true to proceed with sync pull');
-    }
-    return { productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: null };
-  },
-  'test_sync_connection': () => ({ ok: true, status: 'connected', latencyMs: 12 }),
-  'request_sync_token': () => ({ ok: true, token: 'mock-jwt-token', status: 'issued', expiresAt: new Date(Date.now() + 86400000).toISOString() }),
+  // (the sync / cash-drawer / receipt hardware stubs moved verbatim to
+  //  ./handlers/sync.ts — Phase 5.3; registered right below. `get_local_ip` and
+  //  `get_low_stock_alerts` stay here pending properly-named homes — see sync.ts)
 };
 
 // Merge this file's handlers into the registry the dispatcher routes through.
@@ -547,6 +530,9 @@ registerHandlers(entryHandlers);
 // Bundles (Phase 5.2) moved verbatim to `handlers/bundles.ts`; registered here so
 // the twelve keys keep the registry position they held inside the entry literal.
 registerHandlers(bundlesHandlers);
+// Sync / cash-drawer / receipt hardware stubs (Phase 5.3) moved verbatim to
+// `handlers/sync.ts`; registered here so the eleven keys keep their registry position.
+registerHandlers(syncHandlers);
 // Topology handlers (the diagram read, the editor's atomic diff apply, and the
 // ADR #46 revision reads) live in `handlers/topology.ts`, which owns the
 // `mockTopology` diagram slice and mutates the `mockWorkspaces` list that
