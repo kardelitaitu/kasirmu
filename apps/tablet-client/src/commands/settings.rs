@@ -247,12 +247,16 @@ pub async fn set_hardware_settings(
 /// by design, because a caller's own UI preferences need no `settings:read`.
 /// So the delegation would flip `settings::get_user_preferences_scoped` from
 /// "ungated debt on the ledger" to "gated" without a permission being added,
-/// i.e. it would erase a real entry from the ratchet — the same mechanism
-/// `list_credit_sales` above refuses. §4 of the ADR forbids exactly this:
-/// an extraction must not widen a gate. Measured: delegating this pair turned
+/// i.e. it would erase a real entry from the ratchet. §4 of the ADR forbids
+/// exactly this: an extraction must not widen a gate. Measured: delegating this
+/// pair turned
 /// `registration_gate_tests::drift_pin_three_way_partition_is_complete_and_sums`
 /// red with "on the ledger but no longer ungated: settings::get_user_preferences_scoped,
-/// settings::set_user_preferences_scoped".
+/// settings::set_user_preferences_scoped". Re-confirmed 2026-09-17: both entries
+/// are still on `registration_gate_debt.generated.rs` (as
+/// `resolves_session_names_no_permission`) and the bridge twin still documents
+/// itself as *"nothing here is gated beyond the session either"*, so the refusal
+/// stands rather than being an artifact of a stale comment.
 pub async fn get_user_preferences_scoped(
     session_token: String,
     state: State<'_, AppState>,
@@ -582,11 +586,27 @@ pub async fn set_credit_settings_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `list_credit_sales`. Its body stays inline for the
-/// same registration-gate reason spelled out on `list_credit_sales`, and it is
-/// the command that carries the real gap: this path resolves a session and then
-/// drops it (`_session`) without asking for `sales:view`, which the bridge's own
-/// `list_credit_sales_scoped` does require.
+/// Session-scoped variant of `list_credit_sales`.
+///
+/// ADR #49: the **query** is the bridge's; the door is not. `run_list_credit_sales`
+/// below is byte-identical to the twenty-two lines of SQL that stood here — same
+/// statement text, same seven columns, same `unwrap_or_default` on the cashier
+/// name — so collapsing them removes a duplicate without touching behaviour.
+///
+/// The door itself deliberately keeps its own gate and lock order rather than
+/// delegating to `oz_bridge::settings::list_credit_sales_scoped`. That twin opens
+/// the store *after* its gate (`resolve_session` → gate → `resolve_store`), while
+/// this shell's `resolve_scope` opens it *before* the gate, so whole-door
+/// delegation would change which side effects a **denied** request performs. §4
+/// pins lock and gate order, so the difference is preserved, not smoothed over.
+///
+/// Two claims that stood here are retired by measurement (2026-09-17):
+/// - the comment cited *"the same registration-gate reason spelled out on
+///   `list_credit_sales`"* — but that function no longer exists; `613d72f12`
+///   deleted it along with four other legacy settings commands.
+/// - it said this path *"resolves a session and then drops it (`_session`)
+///   without asking for `sales:view`"* — the gate below was added by `4bdb4b4d7`,
+///   which is why the body can be a read at all. The gap it described is closed.
 #[command]
 pub async fn list_credit_sales_scoped(
     session_token: String,
@@ -600,28 +620,7 @@ pub async fn list_credit_sales_scoped(
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let mut stmt = db_guard.prepare(
-        "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
-                p.settled_at, COALESCE(u.display_name, '')
-         FROM sales s
-         JOIN payments p ON p.sale_id = s.id
-         LEFT JOIN users u ON u.id = s.user_id
-         WHERE s.status = 'completed'
-           AND p.method = 'credit'
-         ORDER BY s.created_at DESC",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CreditSaleDto {
-            sale_id: row.get(0)?,
-            customer_name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-            total_minor: row.get(2)?,
-            currency: row.get(3)?,
-            created_at: row.get(4)?,
-            settled_at: row.get(5)?,
-            cashier_name: row.get(6)?,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    Ok(oz_bridge::settings::run_list_credit_sales(&db_guard)?)
 }
 
 /// Session-scoped variant of `settle_credit`.
