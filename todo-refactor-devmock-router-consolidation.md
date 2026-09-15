@@ -102,7 +102,12 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 > before/after snapshots re-measured at the then-current HEAD (681 / `105d29730df2` on both sides),
 > tsc exit 0, dev-mock suites 96/96. See the EXECUTED note on the first box.
 
-- [ ] Move `mockStores` (+ `listMockLocations`/`getMockLocation`/`createMockLocation`/`updateMockLocation`/`setMockPrimaryLocation`/`deleteMockLocation` and `mockTicketPrefixes`/prefix helpers) out of the router into `handlers/locations.ts` (or a state module if that creates an import cycle — `mockDispatcher.ts:16` warns the dispatcher must not import the router).
+- [x] Move `mockStores` (+ `listMockLocations`/`getMockLocation`/`createMockLocation`/`updateMockLocation`/`setMockPrimaryLocation`/`deleteMockLocation` and `mockTicketPrefixes`/prefix helpers) out of the router into `handlers/locations.ts` (or a state module if that creates an import cycle — `mockDispatcher.ts:16` warns the dispatcher must not import the router).
+  <!-- TICKED 2026-09-16 by the SAME lane, once the conversion box below landed (`93ed08fc5`):
+       this box was always move-then-convert, and the half-open state it insisted on ("Box STAYS
+       UNTICKED: the conversion sibling below has not run") is now closed — the state exists in
+       exactly one module outside the router, and the router registers it. Evidence rides both
+       notes below. -->
   <!-- EXECUTED (state-move half only) 2026-09-16, HEAD 3aa02090f -> 99a68348f. The box names
        handlers/locations.ts first and offers a state module as the escape; the state module was
        taken — handlers/locationState.ts — because locations.ts's own header documents that it
@@ -117,7 +122,7 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
        851 -> 767 lines. Box STAYS UNTICKED: the conversion sibling below has not run — the
        location/receipt/brand/device keys still sit in entryHandlers, now referencing the
        imported helpers. This lane claims the phase. -->
-- [ ] Convert the location / receipt-format / brand-settings / device-binding entries in `entryHandlers` into a `createXHandlers({ … })` factory consuming the relocated state; register it; delete the corresponding `entryHandlers` keys.
+- [x] Convert the location / receipt-format / brand-settings / device-binding entries in `entryHandlers` into a `createXHandlers({ … })` factory consuming the relocated state; register it; delete the corresponding `entryHandlers` keys.
   <!-- IN FLIGHT (this session's round-6 live observation, 2026-09-16, HEAD 04c1e56d0). A parallel
        lane is executing exactly this conversion-half on an UNCOMMITTED working tree, built on top of
        my intact 5.2/5.3/5.4 (their WIP still calls registerHandlers(bundlesHandlers/syncHandlers/
@@ -142,7 +147,38 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
         registration-identity preserving. LABELLED AS A RUN-PROPERTY OF THEIR UNCOMMITTED TREE (a working-tree
         green proves nothing about a commit, per repo rule) — box stays UNTICKED until they actually land it,
         then re-dump at HEAD. My 5.2/5.3/5.4 remain the latest dev-mock commits, intact. -->
-- [ ] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
+  <!-- EXECUTED 2026-09-16 (the lane whose uncommitted WIP the note above observed and — correctly —
+       stood down from; the observation was mutual: this lane saw the 5.2/5.3/5.4 commits land
+       mid-round and released its own claims rather than racing them). Landed as three commits per
+       the :35 one-new-module rule: `55a71106d` opens handlers/regional.ts, `ca08178ae` opens
+       handlers/terminals.ts, `93ed08fc5` wires the router (−307 lines of literal and local state,
+       +94 of imports/registrations; 710 -> 447 lines; entryHandlers literal keys 26 -> 4). The 22:
+       NINE location/prefix keys became createLocationProfileHandlers() INSIDE handlers/
+       locationState.ts (pure bindings of the relocated helpers — a factory for state that already
+       owns its module needs no new file); the TWO regional + THREE receipt-format keys became
+       createRegionalHandlers({ unwrapArgs, getMockStores, updateMockLocation }) — the regional pair
+       joined the receipt trio on the router's own section-banner grouping, because NO later phase
+       owned them and they would have stranded past 5.5; the SIX device-binding and TWO brand
+       entries are stateless and moved verbatim into named static maps (deviceBindingHandlers in
+       terminals.ts — the properly-named home workspaces.ts:17-19 had declined and thereby asked
+       for; brandHandlers in settings.ts) rather than zero-arg factories: the box's factory FORM
+       exists to consume the relocated state, which these never had, and the sibling's
+       kdsDeviceHandlers static map is the precedent for stateless sixes. GUARD HIT AND HONESTLY
+       RE-MEASURED: the brand twins grew settings.ts's explicit-_scoped population and
+       dev-mock-scoped-aliases "settings twins were NOT overwritten" failed 9-vs-frozen-8 — the
+       guard's own comment ("Re-measured, not copied") is the update path; the list and its line
+       citations were re-measured with dated attribution INSIDE the wiring commit, non-clobbering
+       re-verified (both twins explicit, distinct objects). Verification at the COMMITTED state,
+       closing the sibling's condition: re-dump after `93ed08fc5` → 681 commands / sha256
+       105d29730df2… — byte-identical through ALL five Phase 5.x moves (throwaway, run + deleted);
+       tsc exit 0; dev-mock/invoke-coverage/regional/receipt 13 files / 146 green; whole-tree
+       vitest 1 failed | 582 passed — the sole red still the sales lane's UNCOMMITTED --shadow-md
+       tail, unchanged by this commit (touches no CSS). -->
+- [x] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
+  <!-- DONE at the wired state, both commands this lane: tsc exit 0; dev-mock-scoped-aliases 41/41
+       green AFTER the documented re-measure (its one legitimately moved frozen figure), and the
+       suites above re-run once everything was committed — the whole-tree print 1 red is the
+       foreign CSS tail named in Acceptance, not this order's surface. -->
 
 > **Independent verification at clean HEAD `e16499e67` (this session, 2026-09-16) — supersedes my
 > own earlier "does not compile / TS2440" note.** After the parallel lane finished the dedup and
