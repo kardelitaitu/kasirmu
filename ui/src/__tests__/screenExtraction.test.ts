@@ -1864,6 +1864,14 @@ it('dead-class census: what the guard calls dead, and what a prefix rescues', ()
 // and friends). This is the universe the externalClasses case grades against, because a
 // mute makes a claim about a sheet and a sheet outside the entry can only be found by
 // walking sheets rather than by believing the list.
+// Keys, not files: every sheet outside src/features sits in the map TWICE (bare key and
+// parent-relative key), so any print that says "N sheets" must say which of the two it means.
+function indexFileCount(index: Map<string, Set<string>>): number {
+  let n = 0;
+  for (const key of index.keys()) if (!key.startsWith('../')) n += 1;
+  return n;
+}
+
 function allSheetIndex(): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   const root = path.resolve(process.cwd(), 'src');
@@ -1876,7 +1884,16 @@ function allSheetIndex(): Map<string, Set<string>> {
       } else if (ent.name.endsWith('.css')) {
         const rel = path.relative(root, full).replace(/\\/g, '/');
         const key = rel.startsWith('features/') ? rel.slice('features/'.length) : rel;
-        out.set(key, new Set(extractClassSelectors(fs.readFileSync(full, 'utf8'))));
+        const classes = new Set(extractClassSelectors(fs.readFileSync(full, 'utf8')));
+        out.set(key, classes);
+        // SAME FILE, BOTH SPELLINGS, ONE SET OBJECT. A cite for a sheet outside src/features is
+        // written '../frontend/themes/<sheet>.css' — the grammar the citation case resolves at
+        // :1653 and :2050 — while the key above is 'frontend/themes/<sheet>.css'. Two grammars
+        // naming one file, and an equality lookup could only ever see one of them, so the prefix
+        // arm graded those entries WITHOUT the shared sheet they had cited. Rewriting the DATA is
+        // not safe: probeB proved the bare form throws ENOENT in the extractor case. So the index
+        // resolves both, and the drift case at the foot of this file holds the two identical.
+        if (!rel.startsWith('features/')) out.set('../' + rel, classes);
       }
     }
   };
@@ -2135,7 +2152,7 @@ describe('stylesheet coverage', () => {
     // comment without data or as a census of zero.
     const graded = SCREENS.reduce((n, e) => n + (e.externalClasses?.length ?? 0), 0);
     console.log(
-      `externalClasses ledger case: ${index.size} sheets indexed, ${graded} values graded, ${violations.length} violation(s), ${EXTERNAL_CLASS_LEDGER.length} ledger member(s)`,
+      `externalClasses ledger case: ${indexFileCount(index)} sheet files indexed (${index.size} keys), ${graded} values graded, ${violations.length} violation(s), ${EXTERNAL_CLASS_LEDGER.length} ledger member(s)`,
     );
     expect(index.size).toBeGreaterThan(100);
     expect(graded).toBeGreaterThan(0);
@@ -2365,7 +2382,7 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
     }
   }
   console.log(
-    'inert-prefix arm: ' + graded + ' dynamicClassPrefixes values graded against ' + names.length + ' defined class names over ' + index.size + ' sheets; ' + inert.length + ' inert; ' + noSheets.length + ' entries cite no indexed sheet; floor 100 of baseline 108',
+    'inert-prefix arm: ' + graded + ' dynamicClassPrefixes values graded against ' + names.length + ' defined class names over ' + indexFileCount(index) + ' sheet FILES (' + index.size + ' index keys: shared sheets are spelled two ways on purpose); ' + inert.length + ' inert; ' + noSheets.length + ' entries cite no indexed sheet; floor 100 of baseline 108',
   );
   // Extended, not replaced: the arm already printed graded/inert; it now also
   // prints how many of those graded values are rescued by a credit, and WHICH
@@ -2428,8 +2445,65 @@ it('every sheet a ledger entry cites is an allSheetIndex key the prefix arm can 
     }
   }
   console.log(
-    'cited-key arm: ' + SCREENS.length + ' entries, ' + cited + ' cited sheet path(s), ' + unresolvable.length + ' that never match an index key',
+    'cited-key arm: ' + SCREENS.length + ' entries, ' + cited + ' cited sheet path(s), ' + unresolvable.length + ' that never match an index key (over ' + indexFileCount(index) + ' sheet files / ' + index.size + ' keys)',
   );
   for (const u of unresolvable) console.log('  uncited ' + u);
   expect(unresolvable, unresolvable.length + ' ledger citation(s) cannot be graded by the prefix arm because the path is not an allSheetIndex key: ' + unresolvable.join(' | ')).toEqual([]);
+});
+
+// ── Anti-drift for the two spellings ─────────────────────────────
+//
+// The citation finding above was closed by making the INDEX resolvable from both spellings,
+// not by rewriting the ledger — the data is a cite grammar two other cases depend on, and
+// probeB showed the bare form dies on ENOENT in the extractor case. A fix that lives in one
+// function is a fix one refactor can undo: dropping the alias line takes the citation case
+// back to green-with-4-ungradeable-entries and moves nothing else. So this case derives the
+// shared-sheet population from DISK, independently of allSheetIndex, and requires every one of
+// them to be present under BOTH keys carrying the SAME class names, plus the same distinct-name
+// population whichever spelling a reader walks. 32 shared sheets is the measured count at
+// 2026-09-15 (`find src -name '*.css' | grep -vc '^src/features/'` from ui/), so the floor is
+// 20 with headroom named from that.
+it('every shared sheet is indexed under both its bare key and its parent-relative key', () => {
+  const index = allSheetIndex();
+  const root = path.resolve(process.cwd(), 'src');
+  const shared: string[] = [];
+  const collect = (dir: string) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === '__tests__' || ent.name === 'node_modules') continue;
+        collect(full);
+      } else if (ent.name.endsWith('.css')) {
+        const rel = path.relative(root, full).replace(/\\/g, '/');
+        if (!rel.startsWith('features/')) shared.push(rel);
+      }
+    }
+  };
+  collect(root);
+  const missing: string[] = [];
+  const drifted: string[] = [];
+  const bareNames = new Set<string>();
+  const parentNames = new Set<string>();
+  for (const rel of shared) {
+    const bare = index.get(rel);
+    const parent = index.get('../' + rel);
+    if (!bare || !parent) {
+      missing.push(rel + ' (bare key ' + (bare ? 'present x' + bare.size : 'ABSENT') + ', parent key ' + (parent ? 'present x' + parent.size : 'ABSENT') + ')');
+      continue;
+    }
+    for (const n of bare) bareNames.add(n);
+    for (const n of parent) parentNames.add(n);
+    if (bare !== parent) {
+      const x = [...bare].sort().join(',');
+      const y = [...parent].sort().join(',');
+      if (x !== y) drifted.push(rel + ' (' + bare.size + ' names via bare key vs ' + parent.size + ' via parent key)');
+    }
+  }
+  console.log(
+    'dual-spelling arm: ' + shared.length + ' sheet(s) outside src/features indexed under both spellings, ' + missing.length + ' missing one, ' + drifted.length + ' whose two keys disagree; population ' + bareNames.size + ' distinct class names via bare keys = ' + parentNames.size + ' via parent keys',
+  );
+  expect(shared.length, 'only ' + shared.length + ' shared sheets found on disk — the walk that defines this population changed, so a two-spelling index cannot be graded against it (baseline 32, floor 20)').toBeGreaterThanOrEqual(20);
+  expect(missing, missing.length + ' shared sheet(s) indexed under only ONE spelling, so a cite written the other way resolves to nothing: ' + missing.join(' | ')).toEqual([]);
+  expect(drifted, drifted.length + ' shared sheet(s) whose bare and parent keys carry DIFFERENT class names: ' + drifted.join(' | ')).toEqual([]);
+  expect(parentNames.size, 'the same sheets read through the two spellings gave different distinct-name populations (bare ' + bareNames.size + ' vs parent ' + parentNames.size + ')').toBe(bareNames.size);
 });
