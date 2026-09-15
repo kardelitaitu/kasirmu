@@ -228,6 +228,84 @@ def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> li
     return sorted(set(unregistered))
 
 
+PROSE_LINE_RE = re.compile(r"^\s*(?://[/*]?|\*)")
+DEF_LINE_RE = re.compile(r"^\s*pub (?:async )?fn\b")
+TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
+
+
+def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
+    """Lines in `sources` that call the free function `name`, as ["label:line", ...].
+
+    Four exclusions, and every one of them was paid for. A probe written for this leg on
+    2026-09-16 counted none of them and reported 78 of 101 unreachable command fns as "live
+    helpers wearing a stale `#[command]` attribute" -- a conclusion that would have stopped
+    the thinning on a false premise. The calls it saw were `store.create_bundle(&bundle,
+    &items)`: a `Store` method that shares the command's spelling, which is the same
+    collision direction as the sweep-marker error recorded in T13, one layer over.
+
+    * preceded by `.`  -> a method call on a value, not this function.
+    * preceded by `::` -> a path call. Kept only when the qualifier is a module path
+      (`super::x`, `crate::commands::auth::x`) and dropped when it is a type (`Store::x`,
+      `Self::x`), which is a heuristic, not a parser: it reads the segment before the `::`
+      and asks whether it is capitalised. The false-negative it accepts is a module named
+      like a type, and this tree has none.
+    * a `///`, `//` or `*` line -> prose. Two earlier probes in this programme were
+      contaminated exactly that way.
+    * a line starting `pub fn` / `pub async fn` -> the definition itself.
+    """
+    # `\w` only -- a preceding `.` or `::` is rejected in the loop below, where the reason can
+    # be written out and a fixture can reach it. That rejection used to ALSO sit in this
+    # pattern's lookbehind, which made the branch dead code, and a mutation aimed at the
+    # branch came back green on 2026-09-16 for no other reason. One mechanism, one test.
+    pattern = re.compile(r"(?<!\w)" + re.escape(name) + r"\s*\(")
+    hits: list[str] = []
+    for label, text in sources:
+        for number, line in enumerate(text.splitlines(), 1):
+            if PROSE_LINE_RE.match(line) or DEF_LINE_RE.match(line):
+                continue
+            for match in pattern.finditer(line):
+                before = line[:match.start()]
+                if before.endswith("."):
+                    continue
+                if before.endswith("::"):
+                    tail = re.findall(r"[A-Za-z0-9_]+::", before)
+                    last = tail[-1][:-2] if tail else ""
+                    if TYPE_QUALIFIER_RE.search(last):
+                        continue
+                hits.append(f"{label}:{number}")
+    return hits
+
+
+def classify_unregistered(
+    lib_path: Path, unregistered: list[str], ui_missing: set[str]
+) -> dict[str, tuple[list[str], list[str]]]:
+    """Split unregistered command fns by whether anything in the shell still calls them.
+
+    Returns {name: (production_call_sites, test_call_sites)}. The F-006 leg counts fns that
+    are defined and not registered; that is a *claim* the source makes and the registry
+    refuses, and on its own it does not say whether the fn does anything. Three populations
+    answer differently:
+
+    * named by the UI as well -> a real IPC gap (the renderer invokes it, nobody answers);
+      graded by the UI->shell direction, not by this leg, and already carried by the
+      allowlist count on the same line.
+    * unreachable and called by production code -> a helper wearing a stale `#[command]`;
+      the attribute is the lie, the fn is load-bearing, and deleting it breaks the build.
+    * unreachable and called by nothing -> a deletion candidate, one name at a time, after
+      reading the body AND the comment above it (T5-3 nearly collapsed a documented
+      per-client policy; T12 nearly deleted a command another shell's fallback needs).
+    """
+    src = lib_path.parent
+    prod: list[tuple[str, str]] = []
+    tests: list[tuple[str, str]] = []
+    for path in sorted(src.rglob("*.rs")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        (tests if path.name.endswith("_tests.rs") else prod).append((path.name, text))
+    return {
+        fn: (fn_call_sites(fn, prod), fn_call_sites(fn, tests)) for fn in unregistered
+    }
+
+
 # The dev-mock surface is a TREE, not a file. ce8666604 moved the scoped-aliasing pass
 # out of ui/src/dev-mock/tauri-api.ts into ui/src/dev-mock/core/mockDispatcher.ts, and the
 # refactor work orders after it extracted roughly 320 handler names into
@@ -2655,6 +2733,33 @@ def self_test() -> int:
     case("f006   an attribute over a non-function is not a command",
          not command_fns_in("#[command]\nconst LIMIT: u32 = 4;\n"))
 
+    # What counts as a call of an unregistered fn. The middle line is the one that fooled a
+    # probe written for this leg on 2026-09-16: `store.create_bundle(&x)` is `Store::
+    # create_bundle`, a different function sharing a spelling, and counting it turned 101
+    # unreachable fns into 78 "live helpers" -- a conclusion that would have frozen the
+    # thinning. A module path (super::) IS a call, a type path (Store::) is not, prose is not,
+    # and the signature is the definition.
+    call_sites = fn_call_sites(
+        "create_bundle",
+        [("m.rs", "\n".join([
+            "let a = create_bundle(&x);",
+            "store.create_bundle(&x);",
+            "Store::create_bundle(&x);",
+            "let b = super::create_bundle(&x);",
+            "/// see create_bundle(&x) above",
+            "pub async fn create_bundle(",
+            "    .create_bundle;",
+        ]))])
+    case("call   a free call is counted", "m.rs:1" in call_sites)
+    case("call   a same-named method is NOT (this is the bug the census had)",
+         "m.rs:2" not in call_sites)
+    case("call   a type path is not a call but a module path is",
+         "m.rs:3" not in call_sites and "m.rs:4" in call_sites)
+    case("call   prose is not a call", "m.rs:5" not in call_sites)
+    case("call   the signature itself is not a call", "m.rs:6" not in call_sites)
+    case("call   the whole answer is exactly the two real calls",
+         call_sites == ["m.rs:1", "m.rs:4"])
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -2884,11 +2989,13 @@ def main() -> int:
         # this shell does not register (direction: ui -> shell), unregistered is Rust
         # #[tauri::command] FUNCTIONS defined under this shell's commands/ and absent from
         # its generate_handler (direction: shell -> registration). Different populations,
-        # different units, and the tree proves them apart -- as of the attribute-spelling fix the tablet
-        # reports 154 UI names it does not register and 59 command fns registered nowhere, and
-        # before that fix the second figure read 0 for a reason that had nothing to do with the
-        # tree: the pattern saw 20 of the shell's 326 declarations. A zero from an instrument
-        # that cannot see its subject is the exact thing this leg exists to avoid being.
+        # different units, and the tree proves them apart -- as of the attribute fixes the tablet
+        # reports 154 UI names it does not register and 118 command fns registered nowhere (441
+        # declarations visible to the leg, 43 for the desktop), and before them the second figure
+        # read 0 for a reason that had nothing to do with the tree: the pattern saw 20 of the
+        # shell's command declarations. A zero from an instrument that cannot see its subject is
+        # the exact thing this leg exists to avoid being -- which is also why the classification
+        # on the next line is printed rather than left to whoever reads the number.
         unreachable = sorted(allowed_names - missing[shell] - set(handlers[shell]))
         print(
             f"info[{shell}]: {len(ui_commands)} UI command strings, "
@@ -2896,6 +3003,29 @@ def main() -> int:
             f"{len(missing[shell])} unregistered UI command names "
             f"({len(unregistered)} unregistered tauri command fns - F-006 tracker) "
             f"({len(allowed_names)} allowlisted)"
+        )
+        # Being unregistered is what the source CLAIMS and the registry REFUSES. Whether the fn
+        # does anything is a different question, and the two answers route to opposite actions:
+        # keep-and-strip-the-attribute versus delete. Printed so a future pass cannot confuse
+        # them, which a probe for this leg did on 2026-09-16 when it counted `store.x(` as a
+        # call to `x()` and reported 78 unreachable fns as live helpers (see fn_call_sites).
+        #
+        # The explicit path below is not redundancy: the first version passed the loop's outer
+        # `lib_path`, which is left over from an earlier section and still pointed at the other
+        # shell, so the desktop's line was graded against the tablet's sources and printed 3
+        # helpers where the tree has 32. The number looked plausible and was cross-checked by
+        # accident, which is the same lesson as the vacuous zero above it.
+        cls = classify_unregistered(REPO_ROOT / SHELLS[shell], unregistered, set(missing[shell]))
+        ui_named = [n for n in unregistered if n in missing[shell]]
+        unreachable_fns = [n for n in unregistered if n not in missing[shell]]
+        helper = [n for n in unreachable_fns if cls[n][0]]
+        uncalled = [n for n in unreachable_fns if not cls[n][0]]
+        test_only = [n for n in uncalled if cls[n][1]]
+        print(
+            f"info[{shell}-f006]: {len(unregistered)} unregistered fns = {len(ui_named)} the UI "
+            f"invokes (graded above) + {len(helper)} unreachable but called by this shell's own "
+            f"code (helpers with a stale attribute, NOT dead) + {len(uncalled)} unreachable and "
+            f"uncalled ({len(test_only)} of those still tested), i.e. deletion candidates"
         )
         print(
             f"info[{shell}-unreachable]: {len(unreachable)} of {len(allowed_names)} "
