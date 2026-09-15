@@ -179,8 +179,13 @@ async fn scoped_table_service_writes_reach_the_body_for_a_cashier() {
 /// pass none of it could be attempted on a tablet.
 ///
 /// `cleaning` rather than `occupied` because the store refuses that transition
-/// without an active sale (`crates/oz-core/src/db/tables.rs:256-263`: "occupied
-/// requires an active sale — use assign_table_order"). The first draft of this
+/// without an active sale — `Store::set_table_status` in
+/// `crates/oz-core/src/db/tables.rs` answers "occupied requires an active sale —
+/// use assign_table_order_scoped". The tail of that message used to name the bare
+/// `assign_table_order`, a command registered in neither shell and since deleted
+/// from this one, which is advice with nowhere to go; it is quoted here in its
+/// corrected form, and the fn is named rather than a line range because lines move
+/// and names do not. The first draft of this
 /// test learned that the hard way, which is worth recording: a scoped write that
 /// now reaches its body can still be refused by the body, and only a functional
 /// test tells those two failures apart.

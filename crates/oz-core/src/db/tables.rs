@@ -260,7 +260,13 @@ impl Store<'_> {
                 Some(_) => {
                     return Err(CoreError::Validation {
                         field: "status",
-                        message: "occupied requires an active sale — use assign_table_order".into(),
+                        // The command name here is advice a cashier's device acts on, so it
+                        // has to be one a shell actually registers. `assign_table_order` never
+                        // was: absent from both `generate_handler!` lists, and its tablet
+                        // definition was deleted on 2026-09-16 (T19). The scoped form is
+                        // registered in both shells.
+                        message: "occupied requires an active sale — use assign_table_order_scoped"
+                            .into(),
                     });
                 }
                 None => {
