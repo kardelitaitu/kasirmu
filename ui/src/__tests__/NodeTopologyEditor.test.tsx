@@ -156,13 +156,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-empty-state-body':
     'Drag tools from the palette onto the canvas, or press 1–4 to add a node. Connect nodes with the port sockets on each card.',
   'topology-unsaved': 'Unsaved changes',
-  'topology-shortcuts-pan': 'Pan the canvas',
-  'topology-shortcuts-duplicate-drag': 'Duplicate by dragging',
-  'topology-shortcuts-additive-marquee': 'Add to the selection',
-  'topology-shortcuts-spawn': 'Spawn a node from the palette slot',
-  'topology-shortcuts-nudge': 'Move selected nodes (Shift = snap to grid)',
-  'topology-shortcuts-esc': 'Deselect or cancel the in-flight action',
-  'topology-shortcuts-inspector': 'Focus the inspector name field',
   'topology-context-add-title': 'Add Node',
   'topology-context-select-all': 'Select All',
   'topology-context-selection-title': '{count} selected',
