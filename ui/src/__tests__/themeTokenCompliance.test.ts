@@ -924,6 +924,71 @@ function faceBlocks(text: string): number {
   return n;
 }
 
+/** The face files the shipped fonts.css pulls in. Shared by rules 7 and 9. */
+function importedFaceSources(): FaceSource[] {
+  if (!existsSync(FONTS_CSS)) return [];
+  return cssImportSpecs(readFileSync(FONTS_CSS, 'utf-8')).map(resolveFaceSource);
+}
+
+/**
+ * Family names a stylesheet DECLARES via @font-face, normalised the same way
+ * genericTail normalises a name a stylesheet REFERENCES: unquoted, whitespace
+ * collapsed, lower case. CSS family names are case-insensitive, so comparing
+ * 'Inter Variable' against "inter variable" must not read as a missing face.
+ */
+function declaredFamilies(text: string): string[] {
+  const stripped = blankComments(text);
+  const out: string[] = [];
+  FONT_FACE_BLOCK_RE.lastIndex = 0;
+  let m: RegExpExecArray | null = FONT_FACE_BLOCK_RE.exec(stripped);
+  while (m) {
+    const fam = /font-family\s*:\s*([^;}]+)/i.exec(m[1] ?? '');
+    const raw = (fam?.[1] ?? '').replace(/\s+/g, ' ').trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+    if (raw) out.push(raw);
+    m = FONT_FACE_BLOCK_RE.exec(stripped);
+  }
+  return [...new Set(out)];
+}
+
+/** The bundled face inventory: every family the imported files declare. */
+function bundledFamilies(): Set<string> {
+  const set = new Set<string>();
+  for (const s of importedFaceSources()) {
+    if (s.kind === 'file') for (const f of declaredFamilies(s.text)) set.add(f);
+  }
+  return set;
+}
+
+/** Mirror of genericTail for the FRONT of a stack -- see rule 9. */
+function leadFamily(value: string): string {
+  const first = (value.split(',')[0] ?? '').trim().replace(/^['"]|['"]$/g, '');
+  return first.toLowerCase();
+}
+
+/**
+ * Font-family tokens whose FIRST name is exempt from the bundled-face requirement.
+ *
+ * Keyed on token + file, deliberately NOT on the value: --brand-font-family is a
+ * white-label slot whose contents are generated per tenant, so a lane running
+ * `sync-branding.ps1 -Brand acme-tenant` must not trip a gate about font bundling.
+ * What the row DOES hold is the exemption itself: a NEW font stack anywhere else
+ * that leads with an unbundled face still fires.
+ */
+const UNDECLARED_LEAD_FAMILIES: Array<{ name: string; file: string; reason: string }> = [
+  {
+    name: '--brand-font-family',
+    file: 'ui/src/features/design/brand-tokens.css',
+    reason: 'per-tenant branding slot, emitted at scripts/sync-branding.ps1:385 from '
+      + 'assets/branding/*/manifest.json "fontFamily", and its own first line says DO NOT '
+      + 'EDIT BY HAND. The four manifests shipped today name Inter (default), DM Sans '
+      + '(acme-tenant), Plus Jakarta Sans (beta-retail) and Outfit (whitelabel/'
+      + 'example-tenant) -- none of which the app bundles, so every tenant brand falls '
+      + 'back to its generic tail in a packaged build. Whether to bundle tenant faces or '
+      + 'stop claiming them is a branding decision (docs/decisions/'
+      + '2026-07-15-whitelabel-branding-system.md), not this plan\'s.',
+  },
+];
+
 describe('font-reference portability', () => {
   it('scanned the boot documents and the ui/src CSS tree', () => {
     expect(HTML_SOURCES.length).toBeGreaterThanOrEqual(1);
@@ -1186,7 +1251,7 @@ describe('font-reference portability', () => {
         + 'and an ungraded face is worse than a failing one.',
     ).toBe(countAtImports(fontsCss));
     expect(specs.length).toBeGreaterThanOrEqual(1);
-    const sources = specs.map(resolveFaceSource);
+    const sources = importedFaceSources();
     const remote = sources.filter((s) => s.kind === 'remote');
     expect(
       remote.length,
@@ -1282,6 +1347,90 @@ describe('font-reference portability', () => {
     expect(remoteCssImports('probe.css', "@import '@fontsource-variable/inter';").length).toBe(0);
     expect(remoteCssImports('probe.css', '/* @import url(https://cdn.example.com/d.css); */').length).toBe(0);
     expect(remoteCssImports('probe.css', '.x { color: red; }').length).toBe(0);
+  });
+
+  it('rule 9: a stack that leads with a bundled face must have that face bundled', () => {
+    // The existence question todo-font-system.md has circled since :16, answered for
+    // the one position where it IS answerable statically. A stack's FIRST name is a
+    // claim about what the app looks like; every name after it is a claim about what
+    // the machine happens to have installed, which no static rule can grade from a
+    // developer box -- that is why rules 2-4 police a stack's SHAPE and stop there,
+    // and why :66 could only be settled in a browser. So this grades position one
+    // and only position one, against the inventory rule 7 already resolves.
+    const stacks = CSS_SOURCES.flatMap(({ file, text }) => fontStacksFromCss(file, text));
+    expect(stacks.length, 'no font-family token parsed, so rule 9 would excuse every name').toBeGreaterThanOrEqual(3);
+    const declared = bundledFamilies();
+    // The floor on the OTHER side of the comparison. A rule that checks claims
+    // against an inventory is vacuous when the inventory is empty: it reports zero
+    // offenders because nothing can fail to be found in nothing.
+    expect(declared.size, 'the bundled face inventory parsed empty, which would excuse every claim').toBeGreaterThanOrEqual(2);
+    const offenders = stacks.filter((s) => {
+      const lead = leadFamily(s.value);
+      return lead !== '' && !GENERIC_FONT_KEYWORDS.has(lead) && !declared.has(lead);
+    });
+    const key = (name: string, file: string) => `${name}|${file}`;
+    const found = new Set(offenders.map((o) => key(o.name, o.file)));
+    const frozen = new Set(UNDECLARED_LEAD_FAMILIES.map((r) => key(r.name, r.file)));
+    const unexpected = offenders.filter((o) => !frozen.has(key(o.name, o.file)));
+    expect(
+      unexpected.length,
+      'A font stack now leads with a family nothing bundles, and its token is not on '
+        + 'the exemption list. Either bundle the face (see fonts.css), put it in '
+        + 'position two and lead with something generic, or add a row here explaining '
+        + 'why the exemption is structural rather than accidental:\n'
+        + unexpected.map((o) => `  ${o.name} at ${o.file}:${o.line} leads with '${leadFamily(o.value)}'`).join('\n'),
+    ).toBe(0);
+    const stale = [...frozen].filter((k) => !found.has(k));
+    expect(
+      stale.length,
+      'A grandfathered undeclared-lead row no longer matches anything, which is GOOD '
+        + 'news being reported as a failure on purpose: the defect was fixed and the '
+        + 'row must be deleted, or the list stops being a census of real debt.\n'
+        + stale.map((k) => `  ${k}`).join('\n'),
+    ).toBe(0);
+    // Positive, not merely excused: the two theme stacks the design tokens ARE must
+    // each be satisfied by a bundled face, so a Phase 3 regression that dropped a
+    // dependency fires here rather than landing as an excused divergence.
+    const theme = stacks.filter((s) => s.name === '--font-sans' || s.name === '--font-mono');
+    expect(theme.map((t) => t.name).sort(), 'the two theme font stacks are not both present').toEqual(['--font-mono', '--font-sans']);
+    for (const t of theme) {
+      expect(
+        declared.has(leadFamily(t.value)),
+        `${t.name} at ${t.file}:${t.line} leads with '${leadFamily(t.value)}', which no `
+          + '@font-face in the bundled set declares. The name in position one is the one '
+          + 'the design language promises, so this is the exact divergence :62 was about:\n'
+          + `  value: ${t.value}`,
+      ).toBe(true);
+    }
+  });
+
+  it('rule 9 probe: normalisation both ways, generic exemption, and sizes never entering the population', () => {
+    const declared = new Set(['inter variable', 'jetbrains mono variable']);
+    // A declared lead, spelled with quotes and different case, still matches: CSS
+    // family names are case-insensitive and a quoted name is the same name.
+    expect(leadFamily("'Inter Variable', system-ui, sans-serif")).toBe('inter variable');
+    expect(declared.has(leadFamily('"INTER variable", serif'))).toBe(true);
+    // A generic in position one claims nothing to bundle, so it is exempt.
+    expect(GENERIC_FONT_KEYWORDS.has(leadFamily('system-ui, sans-serif'))).toBe(true);
+    // Size and weight tokens share the --font- name shape and must NOT be graded as
+    // stacks: without fontStacksFromCss's scalar test this rule would demand that
+    // '11px' and '700' be faces somewhere in the bundle.
+    const mixed = fontStacksFromCss(
+      'probe.css',
+      "--kds-font-xs: 11px;\n--font-weight-bold: 700;\n--tablet-font-lg: 1.125rem;\n--probe-font-stack: 'Grotesk No. 1', sans-serif;\n",
+    );
+    expect(mixed.map((s) => s.name)).toEqual(['--probe-font-stack']);
+    const bad = mixed.find((s) => s.name === '--probe-font-stack');
+    expect(bad, 'the synthetic undeclared lead did not survive the scalar filter').toBeTruthy();
+    expect(declared.has(leadFamily(bad?.value ?? ''))).toBe(false);
+    expect(GENERIC_FONT_KEYWORDS.has(leadFamily(bad?.value ?? ''))).toBe(false);
+    // THE NAME BOUNDARY, asserted rather than left implicit: the harvest is keyed on
+    // a token whose NAME contains font|family, so a real family stack named after
+    // its role instead -- --display-type below -- is invisible to rules 2, 4, 5 and 9
+    // alike. This case records the reach limit instead of letting it read as coverage.
+    expect(fontStacksFromCss('probe.css', "--display-type: 'Grotesk No. 1', sans-serif;\n").length).toBe(0);
+    // And the real inventory is not empty by accident of a resolver that stopped working.
+    expect([...bundledFamilies()].sort()).toEqual(['inter variable', 'jetbrains mono variable']);
   });
 });
 
