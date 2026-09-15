@@ -495,21 +495,21 @@ graph TD
 > Re-derive at any tip with `grep -n "Deliberately absent\|deliberately absent" ui/src/features/sales/useLocalPaymentRails.ts`
 > rather than trusting this line number.
 >
-> ⚠️ **THE "Affected:" POINTER LIST at `:459`-`:463` IS A SNAPSHOT OF A MOVED FILE AND FIVE OF ITS
-> NINE TARGETS NO LONGER LAND WHERE THEY SAY (2026-09-15, HEAD `d29ebd535`).** Checked with
-> `sed -n '290p;298p;300p;302p;304p;634p;636p' todo-payment.md`: `:290` still holds the Phase-0
-> `qris_manual` table row, but `:298` and `:300` are now the ADR-39 blockquote, `:302` is a
-> "**Reframe:**" line, `:304` is **blank**, and the two Phase-5 targets are prose inside the Midtrans
-> block — `:664` and `:666` as measured at `c6c22d905`, where an insertion above a number moves it, so
->`grep -n "poll loop are identical" todo-payment.md` gives the live home. Two targets are cited by CONTENT:
-> "replace the hardcoded" — quoted at `:460` as `:634`'s own wording — now appears **nowhere in this
-> file except in a citation of it — `grep -n "replace the hardcoded" todo-payment.md` returns only the
-> Nothing is being unticked
-> or re-sequenced by this clause: the list's claim is that those Phase-0 and Phase-5 boxes depend on
-> the rails work, and every one of those boxes is still open and unticked in place. The defect is that a reader
-> following the pointers lands on prose and concludes the boxes are gone.
-
-### Phase 1 — Cash (always available)
+> ⚠️ **THE "Affected:" POINTER LIST at `:459`-`:463` IS A SNAPSHOT OF A MOVED FILE, AND FIVE OF
+> NINE TARGETS NO LONGER LAND WHERE THEY SAY (2026-09-15, HEAD `d29ebd535`; the coordinates below and
+> the §2 numbers two clauses further down both read at THIS commit — `grep -n "ALIAS note" todo-payment.md`
+> is the durable form).** Check with `sed -n '290p;298p;300p;302p;304p' todo-payment.md`: `:290` still
+> holds the Phase-0 `qris_manual` row; `:298` and `:300` are the ADR-39 blockquote; `:302` is a
+> "**Reframe:**" line; `:304` is **blank**. Both Phase-5 targets are named here by CONTENT rather than
+> by number, because an insertion above a number moves it and this clause is such an insertion:
+> `grep -n "poll loop are identical" todo-payment.md` / `grep -n "Pay with GoPay" todo-payment.md` print
+> the live homes, and both land on prose, not on a box. Two entries cite a phrase that has since moved:
+> "no new table needed" — quoted at `:457` as living at `:298` — sits at **`:440`**, where a dated clause
+> was later inserted BETWEEN the two words, so `grep "no new table"` lands while `grep "no new table
+> needed"` returns only `:457` itself: right pointer, unfindable quote. And "replace the hardcoded" —
+> quoted at `:460` as `:634`'s wording — has no target box left, `grep -n "replace the hardcoded"`
+> printing citing lines only, this clause among them. Nothing is unticked or re-sequenced here: the
+> dependency `:459`-`:463` records — those boxes wait on the rails work — is untouched by this repair.
 - [ ] Confirm cash is a constant with no config/flag. (Likely no code change.) **CLOSED AS NOT-A-TASK 2026-09-15, unticked** — no acceptance can run against an absence: `git grep -i "payment:cash" -- crates ui/src` returns **0**, so the answer was already "yes, a constant, no flag" and the box's own parenthetical says "(Likely no code change.)".
 
 ### Phase 2 — QRIS manual
@@ -1353,7 +1353,7 @@ real, **guard-touching** job that must run with `PaymentModal.tsx` free of every
 the whole pos lane is one sequenced coder).
 > ⚠️ **SUPERSEDED FOR CITATION (2026-09-15, HEAD `d29ebd535`) — this sentence asks for work that has
 > already shipped, under a name this file itself records. The paragraph immediately above it (§2 "ALIAS
-> note — what landed instead of `useSplitTenders.ts`", at `:1272` as measured at `c6c22d905`, and its
+> note — what landed instead of `useSplitTenders.ts`", at `:1272` as measured at this commit, and its
 > NOT TICKED ruling at `:1268` directly above) is the authority and was not read from here.** Measured:
 > `ui/`** (`grep -rl useSplitTenders ui/ | wc -l` → 0) because it was never committed, while the split
 > state it describes lives at `ui/src/features/sales/payment/useSplitTenderState.ts` — **121 lines,
