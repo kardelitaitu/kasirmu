@@ -25,7 +25,8 @@ const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
 // When a new shadow-using component is added, its CSS class selector
 // must be added to the ::after list in components.css AND to this set.
 //
-// Current count: 124 selectors (4 added for the 0.0.37 KDS expo / routing
+// Current count: 126 selectors (2 added for the restaurant sidebar and the POS
+// course dropdown, both named by the coverage case; 4 added for the 0.0.37 KDS expo / routing
 // surfaces, on top of the org selector / org switcher trio; then -1 when
 // .kds-settings-popover retired with the unreachable KdsSettingsPanel in
 // todo-kds-agents-6). The original
@@ -185,6 +186,11 @@ const KNOWN_NOISE_SELECTORS = [
   '.kds-expo-ticket-slot--ready',
   '.kds-expo-modal',
   '.kds-routing-confirm',
+  // Elevated surfaces named by the coverage case: the restaurant
+  // slide-out sidebar (20450716b) and the POS course dropdown. Both are wired
+  // to ::after in components.css (main list + both @media parity blocks).
+  '.restaurant-sidebar',
+  '.pos-cart-course-dropdown',
 ];
 
 /** CSS selectors that are exempt from noise-dither even though they use --shadow-* */

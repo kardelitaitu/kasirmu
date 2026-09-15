@@ -454,6 +454,11 @@
   .kds-expo-ticket-slot--ready::after,
   .kds-expo-modal::after,
   .kds-routing-confirm::after,
+  /* The restaurant slide-out sidebar (20450716b) and the POS course
+     dropdown, both named by this guard's coverage case. Each is already
+     positioned in its own feature sheet, so the ::after anchors on it. */
+  .restaurant-sidebar::after,
+  .pos-cart-course-dropdown::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -596,6 +601,8 @@
   .kds-expo-ticket-slot--ready::after,
   .kds-expo-modal::after,
   .kds-routing-confirm::after,
+  .restaurant-sidebar::after,
+  .pos-cart-course-dropdown::after,
   :global(.dark) .panel::after { display: none; }
 }
 
@@ -725,6 +732,8 @@
 .kds-expo-ticket-slot--ready::after,
 .kds-expo-modal::after,
 .kds-routing-confirm::after,
+.restaurant-sidebar::after,
+.pos-cart-course-dropdown::after,
 :global(.dark) .panel::after { display: none; }
 }
 
