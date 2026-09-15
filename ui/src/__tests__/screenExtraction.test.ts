@@ -229,7 +229,7 @@ const SCREENS: ScreenEntry[] = [
     // cardClass gains ' product-card--disabled' when the product is out of stock and
     // ' product-card--added' when it was just added. One prefix states the composition
     // rule where two mutes stated two guesses about somebody else's sheet.
-    dynamicClassPrefixes: ['product-card--'],
+    dynamicClassPrefixes: [ 'product-card--added', 'product-card--disabled'],
     externalClasses: ['product-card'],
   },
   {
@@ -291,7 +291,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'InventoryAdjustmentScreen',
     tsx: 'inventory/InventoryAdjustmentScreen.tsx',
     css: ['inventory/InventoryAdjustmentScreen.css'],
-    dynamicClassPrefixes: ['inv-adjust-stock--'],
+    dynamicClassPrefixes: [ 'inv-adjust-stock--ok', 'inv-adjust-stock--low', 'inv-adjust-stock--out'],
   },
 
   // ── Auth ──────────────────────────────────────────────
@@ -299,7 +299,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'StaffLoginScreen',
     tsx: 'auth/StaffLoginScreen.tsx',
     css: ['auth/StaffLoginScreen.css'],
-    dynamicClassPrefixes: ['staff-login-logo', 'staff-login-card'],
+    dynamicClassPrefixes: [ 'staff-login-logo--small', 'staff-login-logo-img', 'staff-login-card--pin', 'staff-login-card--shake'],
     // Cited, not muted: .skeleton is defined in frontend/themes/components.css:1296,
     // a sheet both entry points import (main.tsx:7, main.tablet.tsx:20). The mute
     // claimed a runtime-composed name; the cite says what is true.
@@ -322,7 +322,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'AuditLogScreen',
     tsx: 'audit/AuditLogScreen.tsx',
     css: ['audit/AuditLogScreen.css'],
-    dynamicClassPrefixes: ['audit-log-badge--'],
+    dynamicClassPrefixes: [ 'audit-log-badge--success', 'audit-log-badge--failure', 'audit-log-badge--info'],
   },
 
   // ── Categories ────────────────────────────────────────
@@ -482,7 +482,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'LoyaltyManagementScreen',
     tsx: 'loyalty/LoyaltyManagementScreen.tsx',
     css: ['loyalty/LoyaltyManagementScreen.css'],
-    dynamicClassPrefixes: ['loyalty-txn-type--'],
+    dynamicClassPrefixes: [ 'loyalty-txn-type--earn', 'loyalty-txn-type--redeem', 'loyalty-txn-type--adjust'],
   },
 
   // ── Offline ───────────────────────────────────────────
@@ -589,7 +589,7 @@ const SCREENS: ScreenEntry[] = [
     // case 3 sees three defined rules with no reference and needs SOME shield; any
     // shield states the wrong thing, and this is the one that can be checked by
     // deleting it.
-    dynamicClassPrefixes: ['settings-sync-expiry-badge--'],
+    dynamicClassPrefixes: [ 'settings-sync-expiry-badge--good', 'settings-sync-expiry-badge--warn', 'settings-sync-expiry-badge--critical'],
   },
   {
     name: 'DataManagementScreen',
@@ -611,13 +611,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'FeatureToggleScreen',
     tsx: 'settings/FeatureToggleScreen.tsx',
     css: ['settings/FeatureToggleScreen.css'],
-    dynamicClassPrefixes: [
-      // Flash + checkmark classes constructed via template literals.
-      // 'feature-toggle-item' covers both the base item class and
-      // the --flash-enabled/--flash-disabled modifier variants.
-      'feature-toggle-item',
-      'feature-toggle-checkmark--',
-    ],
+    dynamicClassPrefixes: [ 'feature-toggle-item', 'feature-toggle-item', 'feature-toggle-checkmark--enabled', 'feature-toggle-checkmark--disabled'],
   },
 
   // ── Shifts ────────────────────────────────────────────
@@ -625,7 +619,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'ShiftManagementScreen',
     tsx: 'shifts/ShiftManagementScreen.tsx',
     css: ['shifts/ShiftManagementScreen.css'],
-    dynamicClassPrefixes: ['shift-mgmt-status-badge--', 'shift-mgmt-close-info'],
+    dynamicClassPrefixes: [ 'shift-mgmt-status-badge--open', 'shift-mgmt-status-badge--closed', 'shift-mgmt-close-info'],
   },
 
   {
@@ -690,7 +684,7 @@ const SCREENS: ScreenEntry[] = [
     // which it takes the single-declaration shape, and the register could not have landed without
     // that define because check (iii) grades a cite all-or-nothing.
     parentCss: ['settings/SettingsPage.css'],
-    dynamicClassPrefixes: ['settings-license-value--tier-'],
+    dynamicClassPrefixes: [ 'settings-license-value--tier-free', 'settings-license-value--tier-plus', 'settings-license-value--tier-pro', 'settings-license-value--tier-premium', 'settings-license-value--tier-enterprise'],
     knownDynamicFragments: ['server-status'],
   },
 
@@ -711,7 +705,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'TableManagementScreen',
     tsx: 'tables/TableManagementScreen.tsx',
     css: ['tables/TableManagementScreen.css'],
-    dynamicClassPrefixes: ['tables-table--'],
+    dynamicClassPrefixes: [ 'tables-table--circle', 'tables-table--rectangle', 'tables-table--available', 'tables-table--occupied', 'tables-table--cleaning', 'tables-table--reserved'],
   },
 
   // ── Tax ───────────────────────────────────────────────
@@ -741,7 +735,7 @@ const SCREENS: ScreenEntry[] = [
       'workspaces/components/ToolsCategoryGrid.tsx',
       'workspaces/components/ToolCard.tsx',
     ],
-    dynamicClassPrefixes: ['ws-color-', 'role-badge--'],
+    dynamicClassPrefixes: [ 'ws-color-admin', 'ws-color-kds', 'ws-color-restaurant-pos', 'ws-color-store-pos', 'ws-color-warehouse', 'role-badge--owner', 'role-badge--manager', 'role-badge--staff', 'role-badge--auditor', 'role-badge--custom', 'role-badge--default'],
     externalClasses: [
       'workspace-card--active',
       'workspace-card-ripple',
@@ -785,7 +779,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'PriceOverrideModal',
     tsx: 'sales/PriceOverrideModal.tsx',
     css: ['sales/PriceOverrideModal.css'],
-    dynamicClassPrefixes: ['price-override-pin-dot--'],
+    dynamicClassPrefixes: [ 'price-override-pin-dot--filled'],
   },
   {
     // Item modifier modal — a self-contained stylesheet closure, the same
@@ -841,7 +835,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'PaymentModal',
     tsx: 'sales/PaymentModal.tsx',
     css: ['sales/PaymentModal.css'],
-    dynamicClassPrefixes: ['payment-overlay--', 'payment-modal--'],
+    dynamicClassPrefixes: [ 'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit'],
     additionalTsx: [
       'sales/payment/CashTenderPanel.tsx',
       'sales/payment/CardTenderPanel.tsx',
@@ -972,7 +966,7 @@ const SCREENS: ScreenEntry[] = [
     // `card`/`card-body` belong to the global Card component stylesheet;
     // `dashboard-kpi-delta--` modifiers are built via template literal.
     externalClasses: ['card', 'card-body'],
-    dynamicClassPrefixes: ['dashboard-kpi-delta--'],
+    dynamicClassPrefixes: [ 'dashboard-kpi-delta--down', 'dashboard-kpi-delta--up'],
   },
   {
     name: 'InventoryReportScreen',
@@ -990,7 +984,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'GiftCardsScreen',
     tsx: 'gift-cards/GiftCardsScreen.tsx',
     css: ['gift-cards/GiftCardsScreen.css'],
-    dynamicClassPrefixes: ['gift-card-status--', 'gift-card-txn-type--'],
+    dynamicClassPrefixes: [ 'gift-card-status--', 'gift-card-txn-type--issue', 'gift-card-txn-type--topup', 'gift-card-txn-type--redeem', 'gift-card-txn-type--refund'],
     // The 11 gift-cards-modal-* values lived in externalClasses as another
     // component's work, and the file that does that work is real markup in this
     // feature: IssueGiftCardModal.tsx, which named none of the 11 in the screen file
@@ -1008,14 +1002,14 @@ const SCREENS: ScreenEntry[] = [
     name: 'StockCountsScreen',
     tsx: 'inventory/StockCountsScreen.tsx',
     css: ['inventory/StockCountsScreen.css'],
-    dynamicClassPrefixes: ['sc-badge--'],
+    dynamicClassPrefixes: [ 'sc-badge--draft', 'sc-badge--in_progress', 'sc-badge--completed', 'sc-badge--cancelled'],
     externalClasses: ['sc-badge'],
   },
   {
     name: 'StockCountDetail',
     tsx: 'inventory/StockCountDetail.tsx',
     css: ['inventory/StockCountDetail.css'],
-    dynamicClassPrefixes: ['sc-badge--', 'sc-add-line-item--', 'sc-diff-'],
+    dynamicClassPrefixes: [ 'sc-badge--draft', 'sc-badge--in_progress', 'sc-badge--completed', 'sc-badge--cancelled', 'sc-add-line-item--', 'sc-diff-'],
     knownDynamicFragments: [
       // String-interpolated fragments in the skeleton table header that
       // the static class-name parser falsely extracts as CSS classes.
@@ -1046,7 +1040,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'StockTransfersScreen',
     tsx: 'stock-transfers/StockTransfersScreen.tsx',
     css: ['stock-transfers/StockTransfersScreen.css'],
-    dynamicClassPrefixes: ['stock-transfers-badge--'],
+    dynamicClassPrefixes: [ 'stock-transfers-badge--draft', 'stock-transfers-badge--pending', 'stock-transfers-badge--in_transit', 'stock-transfers-badge--received', 'stock-transfers-badge--cancelled'],
 
   },
 
@@ -1055,13 +1049,13 @@ const SCREENS: ScreenEntry[] = [
     name: 'SuppliersScreen',
     tsx: 'purchasing/SuppliersScreen.tsx',
     css: ['purchasing/SuppliersScreen.css'],
-    dynamicClassPrefixes: ['suppliers-badge--'],
+    dynamicClassPrefixes: [ 'suppliers-badge--active', 'suppliers-badge--inactive'],
   },
   {
     name: 'PurchaseOrdersScreen',
     tsx: 'purchasing/PurchaseOrdersScreen.tsx',
     css: ['purchasing/PurchaseOrdersScreen.css'],
-    dynamicClassPrefixes: ['po-status--'],
+    dynamicClassPrefixes: [ 'po-status--draft', 'po-status--pending', 'po-status--approved', 'po-status--received', 'po-status--cancelled'],
   },
   {
     name: 'PurchaseOrderForm',
@@ -1264,7 +1258,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'MemosScreen',
     tsx: 'memo/MemosScreen.tsx',
     css: ['memo/MemosScreen.css'],
-    dynamicClassPrefixes: ['memos-badge--'],
+    dynamicClassPrefixes: [ 'memos-badge--draft', 'memos-badge--published', 'memos-badge--muted', 'memos-badge--stopped'],
   },
 
   // ── Landed from the array: each entry below is one sheet that no check
@@ -1335,7 +1329,7 @@ const SCREENS: ScreenEntry[] = [
     name: 'KdsDeviceStatusIndicator',
     tsx: 'kds/components/KdsDeviceStatusIndicator.tsx',
     css: ['kds/components/KdsDeviceStatusIndicator.css'],
-    dynamicClassPrefixes: ['kds-device-status--'],
+    dynamicClassPrefixes: [ 'kds-device-status--connected', 'kds-device-status--disconnected', 'kds-device-status--stale'],
   },
   {
     // Locations apply-confirmation panel; imports its own sheet at :30. Mounted
