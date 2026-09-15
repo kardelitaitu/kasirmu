@@ -175,8 +175,11 @@ function stripInterpolations(body: string): string {
  * there. Context, not token shape, is the only discriminator available: a
  * Fluent id and a BEM class are both lowercase kebab. The helper names are the
  * three this repo actually has; `formatMessage` returns 0 hits tree-wide and is
- * deliberately not listed. Every rule here only ever REMOVES a candidate, so
- * the change is narrowing by construction and cannot widen `used`.
+ * deliberately not listed. Every rule in that helper still only ever REMOVES a
+ * candidate, so quoteIsClassOperand itself remains narrowing by construction.
+ * What it no longer describes is the whole extractor: resolveComposedClassNames
+ * below ADDS names to what the dead-class case credits, and what confines that
+ * widening to case 3 is the sheet predicate and the call site, not this sentence.
  */
 function quoteIsClassOperand(expr: string, at: number): boolean {
   const before = expr.slice(0, at).replace(/\s+$/, '');
@@ -290,19 +293,24 @@ export function extractUsedClassNames(tsx: string): Set<string> {
  * The 44 zero-evidence names are out of reach by the same construction: no literal
  * anywhere names them, so nothing here can excuse them.
  *
- * WAVE ONE: nothing calls this yet. Until the dead-class case in
- * screenExtraction.test.ts threads its ownIndex in, the used set is unchanged and
- * so is every finding -- which is why the narrowing-by-construction note above
- * quoteIsClassOperand still reads true on this commit.
+ * WIRED, AND WHAT THAT COSTS: the dead-class case in screenExtraction.test.ts now
+ * calls this with the own sheet's class set and tests composed.has(cls) in that
+ * case only. Nothing is added to `used`, so the used-but-not-defined case is
+ * untouched and can still go red. What changed is that a name a broad prefix was
+ * excusing may now be excused for a reason -- a literal in the same file reaching
+ * a className sink. This is a PERMISSIVE change: it can only remove dead-class
+ * findings and never create one, and every name it frees is counted in the
+ * census recorded in that commit.
  */
 export function resolveComposedClassNames(
   tsx: string,
   definedInSheet: ReadonlySet<string>,
 ): Set<string> {
   const found = new Set<string>();
-  // No predicate, no credits. An empty sheet set means the caller never scoped
-  // this, and the safe answer then is silence rather than a guess.
-  if (definedInSheet.size === 0) return found;
+  // An empty sheet credits nothing on its own, because every credit below is
+  // gated on definedInSheet.has(). A size === 0 branch could not be reached by
+  // any test that distinguishes it from the predicate, so none is claimed here;
+  // the branch that was here is gone rather than kept as decoration.
 
   const CLASS_TOKEN = /[a-z][A-Za-z0-9_-]*/g;
   const creditTokens = (src: string): void => {
@@ -379,7 +387,10 @@ export function resolveComposedClassNames(
       if (!value.startsWith(APOS)) continue; // not a plain literal: refused by shape
       const close = value.indexOf(APOS, 1);
       if (close < 0) continue;
-      if (!/[,\s]*$/.test(value.slice(close + 1))) continue;
+      // Anchored at BOTH ends. Unanchored, [\s,]*$ matches any tail, so a value
+      // like 'ws-color-admin' + suffix passed as a plain literal -- found by the
+      // synthetic map case going red on the first run after it was written.
+      if (!/^[,\s]*$/.test(value.slice(close + 1))) continue;
       creditTokens(value.slice(1, close));
     }
   }

@@ -392,12 +392,12 @@ describe('resolveComposedClassNames', () => {
     // missed; requiring the brace right after the name loses every annotated const.
     // A value that is a reference, or a concatenation, is refused by shape.
     expect(got.has('ws-color-kds')).toBe(false);
-    // WHAT THE TEST FOUND, recorded rather than wished away: a value whose literal is
-    // followed by a concatenation IS credited, because the shipped tail check is
-    // anchored only at its end and so matches any tail. A bare reference value (kds)
-    // is still refused by shape. The helper is frozen at ddbddde54, so this case
-    // describes the code that shipped and wave two owns the fix.
-    expect(got.has('ws-color-admin')).toBe(true);
+    // THE ASSERTION THAT REVERSED. Written against the frozen helper this read
+    // true, because the tail check had no caret and so accepted any tail: a
+    // concatenation was passing as a plain literal. The guard is anchored now, so
+    // a value that is not a single quoted literal is refused alongside the bare
+    // reference above, which is what the shape was always meant to do.
+    expect(got.has('ws-color-admin')).toBe(false);
   });
 
   it('refusal: the className prop pass-through credits nothing, even when the sheet holds the word', () => {
@@ -485,7 +485,7 @@ describe('resolveComposedClassNames', () => {
     expect(got.size).toBe(1);
   });
 
-  it('an empty sheet credits nothing, which is the short circuit and not a pass', () => {
+  it('an empty sheet credits nothing, which the predicate does with no special case', () => {
     const tsx = src([
       'let cardClass = "product-card";',
       'export const Card = () => <div className={cardClass} />;',

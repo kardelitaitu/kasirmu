@@ -91,6 +91,7 @@ import path from 'path';
 import {
   extractClassSelectors,
   extractUsedClassNames,
+  resolveComposedClassNames,
 } from './screenExtraction.utils';
 
 // ── File layout ───────────────────────────────────────────────────
@@ -1616,6 +1617,16 @@ describe.each(SCREENS)(
       index(definedIndex, cssPath);
     }
 
+    // Class names the two readers cannot see because the value is composed first
+    // and applied second -- an accumulator local, a conditional in a template held
+    // in a local, a function returning literals, a map indexed in a template. Its
+    // predicate is THIS entry's own sheet, never the parent union, and the result
+    // is deliberately kept out of `used` below: a name only this resolver reaches
+    // must not be able to satisfy the used-but-not-defined case. That confines the
+    // widening to the dead-class case, where it can only REMOVE a finding. It is
+    // still a permissive change, and the count it moves is in this commit body.
+    const composed = resolveComposedClassNames(tsxContent, new Set(ownIndex.keys()));
+
     it(`every className used in ${name} has a CSS rule defined`, () => {
       const fragments = new Set(knownDynamicFragments ?? []);
       // The selector-only contract withholds a name from THIS report only when both
@@ -1664,8 +1675,20 @@ describe.each(SCREENS)(
       const dead: string[] = [];
       // Own css ONLY — grading this over the union would make every shared
       // parent sheet unsatisfiable. See the two maps above.
+      //
+      // `composed` joins the excusal list here and nowhere else. Before it, a name
+      // like role-badge--owner survived only because the prefix `role-badge--`
+      // covered it -- a whole family excused by a string prefix, which is the same
+      // shape as the file-wide reduced-motion amnesty. After it, the name survives
+      // because a literal in this file reaches a className sink. Nothing is added to
+      // `used`, so a name the resolver cannot see stays exactly as dead as it was.
       for (const [cls] of ownIndex) {
-        if (!used.has(cls) && !external.has(cls) && !prefixes.some((p) => cls.startsWith(p))) {
+        if (
+          !used.has(cls) &&
+          !composed.has(cls) &&
+          !external.has(cls) &&
+          !prefixes.some((p) => cls.startsWith(p))
+        ) {
           dead.push(cls);
         }
       }
