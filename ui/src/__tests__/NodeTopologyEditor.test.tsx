@@ -74,7 +74,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-wire-label-transfer': 'Transfer',
   'topology-toast-fallback-warehouse': 'Multi-warehouse stock deduction fallback wires require a Pro Tier license.',
   'topology-toast-load-error': 'Failed to load topology',
-  'topology-toast-selection-dropped': 'The selected element is not part of this preset and was deselected.',
   'topology-confirm-delete-node-title': 'Delete Node',
   'topology-confirm-delete-wire-title': 'Delete Wire',
   'topology-confirm-delete-node-msg':
@@ -104,8 +103,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-port-location-out-aria': 'Location port',
   'topology-port-location-in-aria': 'Location port',
   'topology-port-aria': 'Topology port',
-  'topology-wire-flip-hint-connecting':
-    'Flip direction? Clicking keeps your connection in progress.',
   'topology-port-workspace-out': 'Operation',
   'topology-port-stock-in': 'Stock In',
   'topology-port-stock-out': 'Stock Out',
