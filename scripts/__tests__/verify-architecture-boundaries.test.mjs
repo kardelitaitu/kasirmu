@@ -263,6 +263,31 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(json.tracked_transitional[0].path, 'ui/src/hooks/useKnown.ts');
   });
 
+  it('accepts a toolkit-free oz-bridge and ignores the crate own purity comments', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\nserde = "1"\n',
+        'crates/oz-bridge/src/lib.rs': '// depends on no tauri, gtk or webkit type\npub struct Ctx;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 0, result.output);
+  });
+
+  it('reports a UI toolkit dependency or reference inside oz-bridge', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\ntauri = "2"\n',
+        'crates/oz-bridge/src/lib.rs': '// no tauri here\nuse tauri::Manager;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /bridge-toolkit-purity/);
+    assert.match(result.output, /Cargo\.toml:5/);
+    assert.match(result.output, /lib\.rs:2/);
+  });
+
   it('report-only returns zero for blocking findings', () => {
     const dir = fixture({ uiFiles: { 'ui/src/hooks/useBad.ts': "await invoke('bad');" } });
     const result = run(dir, ['--report-only']);

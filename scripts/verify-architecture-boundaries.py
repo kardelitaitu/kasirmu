@@ -39,8 +39,11 @@ RULES = {
     "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep oz-core below business modules; move shared contracts/models to a lower layer."},
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
+    "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/oz-bridge toolkit-free (ADR #49): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
 }
 BUSINESS_PREFIX = "modules-"
+BRIDGE_TOOLKIT_SECTIONS = ("[dependencies]", "[dev-dependencies]", "[build-dependencies]")
+BRIDGE_TOOLKIT_PATTERN = re.compile(r"tauri|webkit|gtk", re.IGNORECASE)
 ALLOWED_PLATFORM_COMPOSER = "platform-startup"
 UI_API_PREFIX = "ui/src/api/"
 UI_INFRASTRUCTURE_ADAPTERS = {"ui/src/utils/logged-invoke.ts"}
@@ -371,6 +374,60 @@ def ui_findings(root: Path) -> list[dict[str, Any]]:
     return dedupe_findings(findings)
 
 
+def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
+    """Report UI-toolkit coupling inside `crates/oz-bridge` (ADR #49).
+
+    ADR #49 makes the bridge headless *by dependency*: it carries no `tauri`,
+    `gtk`, `webkit2gtk` or `tauri-plugin-*`, so command bodies can be driven
+    without a shell and a second renderer can call them directly. That claim is
+    currently asserted only in prose and by a comment in the crate itself.
+
+    Comments and string contents are masked before scanning, so the crate's own
+    "depends on no tauri, gtk or webkit type" assertions do not self-report.
+    A fixture repository without `crates/oz-bridge` yields no findings.
+    """
+    crate = root / "crates" / "oz-bridge"
+    if not crate.is_dir():
+        return []
+    findings: list[dict[str, Any]] = []
+    manifest = crate / "Cargo.toml"
+    if manifest.is_file():
+        try:
+            raw_manifest = manifest.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"cannot read bridge manifest: {manifest}: {exc}") from exc
+        section = ""
+        for number, line in enumerate(raw_manifest.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("["):
+                section = stripped
+                continue
+            if section not in BRIDGE_TOOLKIT_SECTIONS:
+                continue
+            key = re.match(r"[\"']?([A-Za-z0-9_.\-]+)[\"']?\s*=", stripped)
+            if not key:
+                continue
+            match = BRIDGE_TOOLKIT_PATTERN.search(key.group(1))
+            if match:
+                findings.append(make_finding("bridge-toolkit-purity", relative_path(manifest, root), f"{key.group(1)} ({section})", number))
+    for path in sorted((crate / "src").rglob("*.rs")):
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"cannot read bridge source: {path}: {exc}") from exc
+        code = mask_comments_and_strings(raw)
+        for match in BRIDGE_TOOLKIT_PATTERN.finditer(code):
+            findings.append(
+                make_finding(
+                    "bridge-toolkit-purity",
+                    relative_path(path, root),
+                    match.group(0).lower(),
+                    code.count("\n", 0, match.start()) + 1,
+                )
+            )
+    return dedupe_findings(findings)
+
+
 def make_finding(rule: str, path: str, target: str, line: int | None) -> dict[str, Any]:
     policy = RULES[rule]
     return {"rule": rule, "category": policy["category"], "severity": policy["severity"], "path": normalize_path(path), "line": line, "target": target, "baseline_status": "new", "remediation": policy["hint"]}
@@ -494,7 +551,7 @@ def main() -> int:
     try:
         metadata = load_json(metadata_path, "Cargo metadata fixture") if metadata_path else metadata_from_cargo(root)
         baseline = load_baseline(baseline_path, root)
-        findings = dedupe_findings(cargo_findings(metadata, root) + ui_findings(root))
+        findings = dedupe_findings(cargo_findings(metadata, root) + ui_findings(root) + bridge_toolkit_findings(root))
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)
     except (ValueError, OSError) as exc:
         return fail(str(exc))
