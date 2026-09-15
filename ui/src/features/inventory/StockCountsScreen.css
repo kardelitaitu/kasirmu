@@ -105,6 +105,19 @@
   font-size: var(--text-md);
 }
 
+.sc-badge {
+  display: inline-block;
+  padding: var(--space-0_5) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.sc-badge--draft { background: var(--color-bg-surface); color: var(--color-fg); border: 1px solid var(--color-border); }
+.sc-badge--in_progress { background: var(--color-accent-dim); color: var(--color-fg); }
+.sc-badge--completed { background: var(--color-success-bg); color: var(--color-fg); }
+.sc-badge--cancelled { background: var(--color-danger-bg); color: var(--color-fg); }
+
 .sc-card-meta {
   display: flex;
   gap: var(--space-3);

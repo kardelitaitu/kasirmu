@@ -1014,20 +1014,9 @@ const SCREENS: ScreenEntry[] = [
   {
     name: 'StockCountsScreen',
     tsx: 'inventory/StockCountsScreen.tsx',
-    // 2026-09-16 · DSH · the badge family moved to inventory/StockCountBadge.css and THIS entry
-    // cites it in `css`, not as parentCss: it is the family's owner, and it has no static leaner to
-    // earn a parent cite -- its only use of the base is the class-builder local at
-    // features/inventory/StockCountsScreen.tsx:56 (`const cls = \`sc-badge sc-badge--${status}\``),
-    // applied bare at :142, a shape extractUsedClassNames cannot reach, so a trial parentCss here
-    // was refused RED by the citation case with "citation is vacuous -- nothing this entry uses needs
-    // it". Ownership says what is true instead: the four prefixes stay credited inside this entry's
-    // own reach, and the base is still seen by the dead walk -- not through externalClasses, which is
-    // struck here because the rule is now IN this citation, so the mute would claim the opposite --
-    // but through resolveComposedClassNames, which credits the literal on the assigning line.
-    // Detail and History, whose markup really does carry 'sc-badge' statically, cite the same sheet
-    // as parentCss instead of borrowing it through StockCountsFlow.tsx's static import of the list.
-    css: ['inventory/StockCountsScreen.css', 'inventory/StockCountBadge.css'],
+    css: ['inventory/StockCountsScreen.css'],
     dynamicClassPrefixes: [ 'sc-badge--draft', 'sc-badge--in_progress', 'sc-badge--completed', 'sc-badge--cancelled'],
+    externalClasses: ['sc-badge'],
   },
   {
     name: 'StockCountDetail',
@@ -1050,13 +1039,7 @@ const SCREENS: ScreenEntry[] = [
     // four muted another screen's classes — a hole in the ledger, not a finding about the tree.
     // What survives is what this sheet actually owns: sc-add-line-item-- (x1) and sc-diff- (x2).
     // Graded moves 108 -> 104; the floor at :2421 is untouched and 104 > 100.
-    // The four sc-badge--* values are BACK at 2026-09-16 · DSH, and they are back as an OWNED
-    // credit rather than a borrowed mute: the family now lives in inventory/StockCountBadge.css,
-    // which this entry cites, so all four resolve inside this entry's own reach (css UNION
-    // parentCss) and `sc-badge` is a real static leaner on that cite at StockCountDetail.tsx:243
-    // -- the vacuous-citation guard has nothing to refuse. Graded climbs 104 -> 108.
-    parentCss: ['inventory/StockCountBadge.css'],
-    dynamicClassPrefixes: [ 'sc-badge--draft', 'sc-badge--in_progress', 'sc-badge--completed', 'sc-badge--cancelled', 'sc-add-line-item--', 'sc-diff-'],
+    dynamicClassPrefixes: ['sc-add-line-item--', 'sc-diff-'],
     knownDynamicFragments: [
       // String-interpolated fragments in the skeleton table header that
       // the static class-name parser falsely extracts as CSS classes.
@@ -1094,10 +1077,6 @@ const SCREENS: ScreenEntry[] = [
     // the media block) and :84, -number at :65 and :160, -date at :69 and :164 -- none
     // of them was ever rescued by 'sc-hist-item--', which is why replacing it with one
     // name costs nothing and struck 2026-09-15 · DSH · removes an open grant.
-    // This screen paints the same family at StockCountHistory.tsx:161 and declared none of
-    // it -- a silent borrower whose badges were styled only through the flow's static import of
-    // the list screen. The cite makes that dependency named; 'sc-badge' is its static leaner.
-    parentCss: ['inventory/StockCountBadge.css'],
     dynamicClassPrefixes: ['sc-hist-item--sel'],
   },
 
