@@ -44,6 +44,9 @@ import {
   pgSyncStartScoped,
   pgSyncStopScoped,
   type OfflineQueueItemDto,
+  type OfflineQueueSummaryDto,
+  type PingResult,
+  type TokenResult,
   type PullResult,
   type RemoteSyncFailureDto,
   type SyncAttemptResult,
@@ -121,13 +124,15 @@ describe('offline.ts IPC contract', () => {
   });
 
   it('testSyncConnection invokes "test_sync_connection" with no args (pre-auth login check)', async () => {
-    mockInvoke.mockResolvedValue({ ok: true, status: 'Connected', latencyMs: 12 });
+    const ping: PingResult = { ok: true, status: 'Connected', latencyMs: 12 };
+    mockInvoke.mockResolvedValue(ping);
     await testSyncConnection();
     expect(mockInvoke).toHaveBeenCalledWith('test_sync_connection', undefined);
   });
 
   it('requestSyncTokenScoped invokes "request_sync_token_scoped"', async () => {
-    mockInvoke.mockResolvedValue({ ok: true, token: 'jwt', status: 'issued', expiresAt: null });
+    const token: TokenResult = { ok: true, token: 'jwt', status: 'issued', expiresAt: null };
+    mockInvoke.mockResolvedValue(token);
     await requestSyncTokenScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('request_sync_token_scoped', { sessionToken: 'tok' });
   });
@@ -135,7 +140,21 @@ describe('offline.ts IPC contract', () => {
   // ── offline queue (scoped) ───────────────────────────────────
 
   it('getOfflineQueueStatusSummaryScoped invokes "offline_queue_status_summary_scoped"', async () => {
-    mockInvoke.mockResolvedValue({ pendingCount: 0, syncedCount: 0, failedCount: 0, conflictCount: 0 });
+    // The fixture was short of its own DTO: OfflineQueueSummaryDto requires
+    // lastSyncedAt and oldestPendingAt, and this literal supplied neither. Both
+    // are `string | null`, so null is the inert value for THIS case -- it asserts
+    // only on the command name and args, never on the payload -- and the two
+    // fields are added to make the mock name the shape the boundary returns, not
+    // to change any assertion.
+    const summary: OfflineQueueSummaryDto = {
+      pendingCount: 0,
+      syncedCount: 0,
+      failedCount: 0,
+      conflictCount: 0,
+      lastSyncedAt: null,
+      oldestPendingAt: null,
+    };
+    mockInvoke.mockResolvedValue(summary);
     await getOfflineQueueStatusSummaryScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('offline_queue_status_summary_scoped', { sessionToken: 'tok' });
   });
