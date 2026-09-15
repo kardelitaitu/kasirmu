@@ -3,136 +3,11 @@ use tauri::{State, command};
 use oz_core::Table;
 use oz_core::db::Store;
 
-use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[command]
-/// List tables.
-pub async fn list_tables(
-    section: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<Table>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let tables = store.list_tables(section.as_deref())?;
-    drop(db);
-    Ok(tables)
-}
-
-#[command]
-/// Get table.
-pub async fn get_table(id: String, state: State<'_, AppState>) -> Result<Option<Table>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let table = store.get_table(&id)?;
-    drop(db);
-    Ok(table)
-}
-
-#[command]
-/// Create table.
-pub async fn create_table(
-    user_id: String,
-    args: Table,
-    state: State<'_, AppState>,
-) -> Result<Table, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TABLES_CREATE)?;
-    let table = store.create_table(&args)?;
-    drop(db);
-    Ok(table)
-}
-
-#[command]
-/// Update table.
-pub async fn update_table(
-    user_id: String,
-    table: Table,
-    state: State<'_, AppState>,
-) -> Result<Table, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TABLES_EDIT)?;
-    let result = store.update_table(&table)?;
-    drop(db);
-    Ok(result)
-}
-
-#[command]
-/// Delete table.
-pub async fn delete_table(
-    user_id: String,
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TABLES_DELETE)?;
-    store.delete_table(&id)?;
-    drop(db);
-    Ok(())
-}
-
-#[command]
-/// Update table status.
-pub async fn update_table_status(
-    user_id: String,
-    id: String,
-    status: String,
-    state: State<'_, AppState>,
-) -> Result<Table, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TABLES_CLOSE)?;
-    let table = store.update_table_status(&id, &status)?;
-    drop(db);
-    Ok(table)
-}
-
-#[command]
-/// Assign table order.
-pub async fn assign_table_order(
-    user_id: String,
-    table_id: String,
-    sale_id: String,
-    state: State<'_, AppState>,
-) -> Result<Table, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TABLES_ASSIGN)?;
-    let table = store.assign_table_order(&table_id, &sale_id)?;
-    drop(db);
-    Ok(table)
-}
-
-#[command]
-/// Release table.
-pub async fn release_table(
-    user_id: String,
-    table_id: String,
-    state: State<'_, AppState>,
-) -> Result<Table, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &user_id, oz_core::permissions::TABLES_CLOSE)?;
-    let table = store.release_table(&table_id)?;
-    drop(db);
-    Ok(table)
-}
-
-#[command]
-/// List sections.
-pub async fn list_sections(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let sections = store.list_sections()?;
-    drop(db);
-    Ok(sections)
-}
-
-/// Session-scoped variant of `list_tables`.
+/// List tables resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_tables_scoped(
@@ -151,7 +26,7 @@ pub async fn list_tables_scoped(
     Ok(tables)
 }
 
-/// Session-scoped variant of `get_table`.
+/// Get one table resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_table_scoped(
@@ -188,11 +63,15 @@ pub async fn get_table_scoped(
 // the session and calls `require_session_permission(&session, TABLES_CREATE)`),
 // and the check is awaited before the store lock rather than inside it.
 //
-// The six unscoped variants above still take `user_id` — they are registered in
-// neither shell (see T7-4 for the same dead surface in terminals) and touching
-// them would re-open the caller-named-actor door the scoped forms just closed.
+// The six unscoped variants that used to sit above took a caller-named `user_id`
+// and were registered in neither shell (see T7-4 for the same dead surface in
+// terminals). They are now deleted rather than merely left alone, which is the
+// stronger form of the same conclusion: the caller-named-actor door cannot be
+// re-opened through a function that no longer exists. Recovered 2026-09-16 in the
+// T19 thinning, which is also why `require_permission_for_user` is no longer
+// imported here -- other modules still gate on it, this one no longer can.
 
-/// Session-scoped variant of `create_table`.
+/// Create a table resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_table_scoped(
@@ -212,7 +91,7 @@ pub async fn create_table_scoped(
     Ok(table)
 }
 
-/// Session-scoped variant of `update_table`.
+/// Update a table resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_table_scoped(
@@ -232,7 +111,7 @@ pub async fn update_table_scoped(
     Ok(result)
 }
 
-/// Session-scoped variant of `delete_table`.
+/// Delete a table resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_table_scoped(
@@ -252,7 +131,7 @@ pub async fn delete_table_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `update_table_status`.
+/// Update a table status resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_table_status_scoped(
@@ -273,7 +152,7 @@ pub async fn update_table_status_scoped(
     Ok(table)
 }
 
-/// Session-scoped variant of `assign_table_order`.
+/// Assign an order to a table, resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn assign_table_order_scoped(
@@ -294,7 +173,7 @@ pub async fn assign_table_order_scoped(
     Ok(table)
 }
 
-/// Session-scoped variant of `release_table`.
+/// Release a table resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn release_table_scoped(
@@ -314,7 +193,7 @@ pub async fn release_table_scoped(
     Ok(table)
 }
 
-/// Session-scoped variant of `list_sections`.
+/// List sections resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_sections_scoped(
