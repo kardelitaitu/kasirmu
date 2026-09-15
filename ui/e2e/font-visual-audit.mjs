@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ageHours, buildTimeOf, stylesheetsNewerThan, surfaceCommitsSince } from '../../scripts/font-freshness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -212,6 +213,31 @@ async function run() {
   const server = await serve(distArg, csp);
   console.log(`serving ${distArg} at ${server.url}`);
   console.log(`CSP from apps/desktop-client/tauri.conf.json: ${csp ? (csp.match(/font-src[^;]*/)?.[0] ?? 'no font-src clause') : 'none'}`);
+
+  // Everything printed below is a measurement of an ARTIFACT, not of this checkout:
+  // ui/dist is gitignored and carries no revision stamp, which is the AGENTS.md walker
+  // caveat in its sharpest form. The age of the build is therefore part of the result,
+  // stated once here rather than assumed by whoever reads the table.
+  const repoRoot = path.join(HERE, '..', '..');
+  const assetsDir = path.join(distArg, 'assets');
+  try {
+    const built = buildTimeOf(assetsDir);
+    const { rows, headSha } = surfaceCommitsSince(repoRoot, built);
+    console.log(`artifact      built ${new Date(built).toISOString()}  ${ageHours(built)} h before this run`);
+    console.log(`              ${rows.length} commit(s) on the font surface since, HEAD ${headSha}`
+      + (rows.length ? '  <-- STALE: rebuild before quoting these numbers as a property of HEAD'
+        : '  <-- the artifact is current with HEAD'));
+    for (const r of rows.slice(0, 3)) console.log(`                ${r.slice(0, 92)}`);
+    if (rows.length > 3) console.log(`                ... and ${rows.length - 3} more`);
+    const fresh = stylesheetsNewerThan(repoRoot, 'ui/src', built);
+    if (fresh.gitAskable && fresh.dirtyCount) {
+      console.log(`              ${fresh.dirtyCount} stylesheet(s) differ from HEAD right now and cannot be in this build:`);
+      for (const s of fresh.suspects.filter((x) => x.dirty).slice(0, 4)) console.log(`                ${s.rel}`);
+    }
+  } catch (e) {
+    console.log(`artifact      could not be dated (${e.message}) -- treat every number below as unanchored`);
+  }
+
 
   const browser = await chromium.launch();
   const results = {};
