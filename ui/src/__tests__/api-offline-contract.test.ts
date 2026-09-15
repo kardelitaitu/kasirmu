@@ -43,7 +43,12 @@ import {
   pgSyncStatusScoped,
   pgSyncStartScoped,
   pgSyncStopScoped,
+  type OfflineQueueItemDto,
+  type PullResult,
+  type RemoteSyncFailureDto,
+  type SyncAttemptResult,
   type SyncResult,
+  type SyncSettingsDto,
 } from '@/api/offline';
 
 describe('offline.ts IPC contract', () => {
@@ -52,7 +57,8 @@ describe('offline.ts IPC contract', () => {
   // ── SYNC-03: destructive pull consent contract ──────────────
 
   it('syncPullScoped invokes "sync_pull_scoped" with confirmDestructive: true', async () => {
-    mockInvoke.mockResolvedValue({ productsPulled: 3, taxRatesPulled: 1, usersPulled: 0, error: null });
+    const pulled: PullResult = { productsPulled: 3, taxRatesPulled: 1, usersPulled: 0, error: null };
+    mockInvoke.mockResolvedValue(pulled);
     await syncPullScoped('tok', { confirmDestructive: true });
     expect(mockInvoke).toHaveBeenCalledWith('sync_pull_scoped', {
       sessionToken: 'tok',
@@ -64,7 +70,8 @@ describe('offline.ts IPC contract', () => {
     // The TS signature requires the flag, but the wire contract must still
     // forward the value as-is so the backend's consent gate is the source of
     // truth (false/missing is rejected server-side).
-    mockInvoke.mockResolvedValue({ productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: 'no consent' });
+    const refused: PullResult = { productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: 'no consent' };
+    mockInvoke.mockResolvedValue(refused);
     await syncPullScoped('tok', { confirmDestructive: false });
     expect(mockInvoke).toHaveBeenCalledWith('sync_pull_scoped', {
       sessionToken: 'tok',
@@ -75,13 +82,15 @@ describe('offline.ts IPC contract', () => {
   // ── SYNC-04: retry delegates to the real sync pipeline ──────
 
   it('retryOfflineSyncScoped invokes "retry_offline_sync_scoped"', async () => {
-    mockInvoke.mockResolvedValue({ syncedCount: 2, failedCount: 1, totalCount: 3 });
+    const attempt: SyncResult = { syncedCount: 2, failedCount: 1, totalCount: 3 };
+    mockInvoke.mockResolvedValue(attempt);
     await retryOfflineSyncScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('retry_offline_sync_scoped', { sessionToken: 'tok' });
   });
 
   it('retryOfflineSyncScoped returns the camelCase SyncResult DTO shape', async () => {
-    mockInvoke.mockResolvedValue({ syncedCount: 2, failedCount: 1, totalCount: 3 });
+    const attempt: SyncResult = { syncedCount: 2, failedCount: 1, totalCount: 3 };
+    mockInvoke.mockResolvedValue(attempt);
     const result: SyncResult = await retryOfflineSyncScoped('tok');
     expect(result).toEqual({ syncedCount: 2, failedCount: 1, totalCount: 3 });
   });
@@ -89,13 +98,15 @@ describe('offline.ts IPC contract', () => {
   // ── sync_run / settings / connection helpers ─────────────────
 
   it('syncRunScoped invokes "sync_run_scoped"', async () => {
-    mockInvoke.mockResolvedValue({ synced: 1, failed: 0, error: null });
+    const run: SyncAttemptResult = { synced: 1, failed: 0, error: null };
+    mockInvoke.mockResolvedValue(run);
     await syncRunScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('sync_run_scoped', { sessionToken: 'tok' });
   });
 
   it('getSyncSettingsScoped invokes "get_sync_settings_scoped"', async () => {
-    mockInvoke.mockResolvedValue({ serverUrl: null, hasApiKey: false, enabled: false });
+    const settings: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false };
+    mockInvoke.mockResolvedValue(settings);
     await getSyncSettingsScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('get_sync_settings_scoped', { sessionToken: 'tok' });
   });
@@ -136,20 +147,31 @@ describe('offline.ts IPC contract', () => {
   });
 
   it('OfflineQueueItemDto carries payload (SYNC-11 — matches the Rust serializer)', async () => {
-    mockInvoke.mockResolvedValue([
-      {
-        id: 'oq-1',
-        action: 'complete_sale',
-        payload: '{"sale_id":"s-1"}',
-        status: 'pending',
-        retryCount: 0,
-        lastError: null,
-        createdAt: '2026-01-01T00:00:00Z',
-        syncedAt: null,
-        tenantId: 'store-a',
-        priority: 'critical',
-      },
-    ]);
+    // TYPED ON PURPOSE. mockInvoke is an untyped vi.fn(), so mockResolvedValue
+    // grades nothing: an unannotated literal here is a shape in a void slot, and
+    // all 23 cases stayed green through any change to how this field is produced
+    // on the TS side of the boundary — the round trip this file tests was
+    // wrapper-to-mock, not mock-to-producer. Annotating the payload against the
+    // DTO it stands for moves the disagreement into tsc. Values and assertions are
+    // untouched; only the type moved into place.
+    //
+    // HONEST LIMIT: a typed mock grades the FIXTURE against the DTO. It does NOT
+    // grade the DTO against the Rust serializer, and no tool on this board
+    // certifies that wire — no specta, no codegen, no dto-parity checker (the
+    // script the plan row names does not exist). The wire is still uncertified.
+    const queuedItem: OfflineQueueItemDto = {
+      id: 'oq-1',
+      action: 'complete_sale',
+      payload: '{"sale_id":"s-1"}',
+      status: 'pending',
+      retryCount: 0,
+      lastError: null,
+      createdAt: '2026-01-01T00:00:00Z',
+      syncedAt: null,
+      tenantId: 'store-a',
+      priority: 'critical',
+    };
+    mockInvoke.mockResolvedValue([queuedItem]);
     const items = await listAllOfflineScoped('tok');
     expect(items).toHaveLength(1);
     // The payload field must survive the IPC round-trip — the Rust
@@ -187,16 +209,17 @@ describe('offline.ts IPC contract', () => {
   });
 
   it('listRemoteFailuresScoped returns the camelCase RemoteSyncFailureDto shape', async () => {
-    mockInvoke.mockResolvedValue([
-      {
-        itemId: 'remote-sale-1',
-        action: 'upsert_sale',
-        payload: '{"id":"remote-sale-1"}',
-        attempts: 3,
-        lastError: 'missing product sku-X',
-        deadLettered: true,
-      },
-    ]);
+    // Same typing, same limit: this is the second payload-carrying DTO in the
+    // file, and it stands for a Rust serializer nothing checks.
+    const failure: RemoteSyncFailureDto = {
+      itemId: 'remote-sale-1',
+      action: 'upsert_sale',
+      payload: '{"id":"remote-sale-1"}',
+      attempts: 3,
+      lastError: 'missing product sku-X',
+      deadLettered: true,
+    };
+    mockInvoke.mockResolvedValue([failure]);
     const failures = await listRemoteFailuresScoped('tok');
     expect(failures).toHaveLength(1);
     const first = failures[0]!;
