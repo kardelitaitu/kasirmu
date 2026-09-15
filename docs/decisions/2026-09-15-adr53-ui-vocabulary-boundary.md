@@ -2,7 +2,7 @@
 num: 53
 area: architecture
 title: ADR #53: The UI Vocabulary Boundary — what the application layer may say about a renderer
-status: Proposed (2026-09-15) — measurements recorded, rule NOT written, owner decision pending; the Option A premise was corrected ~22:55, see Correction
+status: Adopted (2026-09-15) — Option A implemented as rule `ui-framework-vocabulary` at `0ca2c0f27`, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction
 ---
 # ADR #53: The UI Vocabulary Boundary
 
@@ -152,6 +152,54 @@ grep -nE '\.tsx|\.css|component to render' crates/oz-bridge/src/settings.rs crat
 for p in $(grep -rhoE 'ui/[A-Za-z0-9_./-]+\.(tsx|css|ts)' crates modules platform foundation --include='*.rs' | sort -u); do git cat-file -e HEAD:$p 2>/dev/null || echo "DEAD: $p"; done
 ```
 
+## Resolution — Option A landed, at zero findings, with no baseline (2026-09-15 ~23:55)
+
+**Option A is implemented.** Rule `ui-framework-vocabulary` now lives in
+`scripts/verify-architecture-boundaries.py`, registered in the `RULES` dict beside
+`bridge-toolkit-purity`, and it runs inside the existing `architecture-boundaries` gate — so it
+inherits that gate's CI wiring with no `gates.json` change and no new pre-commit step.
+
+The order the Correction called for was the order followed, as two commits:
+
+1. **`0af76d329 docs(bridge): drop the renderer filenames from three app-layer comments`** — the four
+   comment-layer sites (`crates/oz-bridge/src/settings.rs:157`, `:201-202`,
+   `crates/oz-bridge/src/settings_tests.rs:95`) reworded to cite the caller by its role rather than
+   by its `.tsx` filename. Every comment keeps the evidence it carried; only the renderer token went.
+2. **`0ca2c0f27 feat(gates): enforce that the application layer's comments stay renderer-free`** —
+   the helper, the rule, and four tests.
+
+**The rule arrives at `0 new/expired blocking finding(s)` and the baseline is still 8 entries, every
+one `core-upward-dependency`** — so no vocabulary row, no `introduced`/`expires` pair, no November
+expiry into another lane's red gate. That is the property the Recommendation claimed and the
+Correction showed was not yet true; it is true now, and it is true *because* the cleanup landed
+first. Census over the shipped scope reads **0 comment-layer hits in 902 `.rs` files**.
+
+**The helper is the inverse, and it is not a copy of the masking one.** `mask_code_preserving_comments`
+keeps prose and blanks code and string contents. Two deliberate departures from
+`mask_comments_and_strings`: block comments **nest** in Rust, so depth is counted rather than a
+boolean toggled; and a `'` opens a char literal only when it closes within one character, so a
+lifetime (`&'static str`) does not open a string that swallows every comment after it. Both were
+**proved load-bearing by mutation**, in a throwaway copy under `%TEMP%` rather than in the tree:
+reverting the `'` handling to the naive form silences `crates/oz-core/src/lifetime.rs:2`, and
+replacing the depth counter with a boolean silences `crates/oz-core/src/block.rs:1`. Each mutation
+removed exactly one of the two findings, so the tests discriminate the two properties they name.
+
+**The known gap is unchanged and is now the rule's only one.** A `.tsx` citation inside a **string
+literal** stays invisible: the twelve evidence citations at `platform/sync/src/queue_tests.rs:1694-1738`
+and the extension array at `crates/oz-bridge/src/settings_tests.rs:825` are unreported. That is
+correct for the extension list — flagging it would be a false positive — and it is the path-shape
+question (Option B) for the twelve, which remains open and is not settled by this landing.
+
+**Scope is one root wider than the plan row asked for:** `crates/`, `modules/`, `platform/` **and
+`foundation/`**. Foundation sits lower in the stack than any of the three, so a rule that binds them
+and spares it would be arbitrary. Both halves census at zero, so the widening costs nothing tonight.
+
+**What this record still refuses to say.** Nothing here asserts that Option B is wrong — only that
+its motivating example (`topologyCard.ts`) has been repaired and that it would also land at zero.
+Nor is any claim made about CI status: no run was opened, and `dev-ci.yml`'s use of the checker is
+unchanged. The rule grades **prose**, and a green from it means the application layer's comments are
+renderer-free — not that the layer is replaceable.
+
 ### The alternative: a path-shape rule
 
 Keyed on a `ui/**` token ending `.tsx`, `.css` or `.ts` inside Rust text:
@@ -212,7 +260,7 @@ strengthened; the "no baseline, no expiry debt" half of this paragraph does not.
 
 ```bash
 python scripts/verify-architecture-boundaries.py --strict     # gate, expect exit 0
-node --test scripts/__tests__/verify-architecture-boundaries.test.mjs
+node --test scripts/__tests__/verify-architecture-boundaries.test.mjs   # 25 tests, expect 0 fail
 grep -rn "\bReact\b\|\.tsx\b" --include="*.rs" crates modules platform foundation | grep -v "reactivate"
 grep -rnE '\bReact\b|\.tsx|\.css|component to render' --include='*.rs' crates modules platform foundation | wc -l
 ```
