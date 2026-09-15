@@ -1932,8 +1932,8 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
 // Two promises, one test each, both stated so they can FAIL:
 //   * a retried `request_id` is answered from the request ledger and repeats
 //     no workspace mutation (it must also be distinguishable from a first
-//     application, which is why the third call below uses a NEW id and is
-//     allowed to advance the document), and
+//     application, which is why a NEW id at the stale base revision is
+//     refused with topology-revision-conflict and does not advance), and
 //   * a DIFFERENT `request_id` carrying the SAME content is not a retry at all
 //     — the id, not the payload, is the replay key.
 // The ledger is written by `apply_topology_diff` via

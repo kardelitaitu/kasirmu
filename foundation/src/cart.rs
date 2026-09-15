@@ -266,8 +266,8 @@ impl Cart {
     /// In debug builds, panics if any line's effective currency (unit_price
     /// or overridden_price) does not match the cart's currency.
     ///
-    /// Returns `None` on overflow or currency mismatch (the latter is
-    /// caught by [`Money::checked_add`] in release builds).
+    /// Returns `None` on overflow or currency mismatch (both are
+    /// caught by [`Money::checked_add`] in every profile).
     #[must_use]
     pub fn total(&self) -> Option<Money> {
         let mut acc = Money::zero(self.currency);

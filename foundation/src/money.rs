@@ -261,7 +261,7 @@ impl Money {
     /// Negate the amount. Positive becomes negative and vice versa.
     /// Same currency.
     ///
-    /// ⚠️ **Panics on `i64::MIN` in debug mode** (wraps in release) —
+    /// ⚠️ **Panics on `i64::MIN` in release builds** (wraps in dev) —
     /// same behaviour as `i64::neg`. Prefer
     /// [`checked_negate`](Self::checked_negate) when the amount could be
     /// `i64::MIN`.
@@ -275,7 +275,7 @@ impl Money {
 
     /// Absolute value of the amount. Same currency.
     ///
-    /// ⚠️ **Panics on `i64::MIN` in debug mode** (wraps in release) —
+    /// ⚠️ **Panics on `i64::MIN` in release builds** (wraps in dev) —
     /// same behaviour as [`i64::abs`]. Prefer
     /// [`checked_abs`](Self::checked_abs) when the amount could be
     /// `i64::MIN`.
