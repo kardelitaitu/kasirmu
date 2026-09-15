@@ -20,6 +20,7 @@
  * Exit:   0 read and reported | 2 no build to read
  */
 import fs from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTimeOf, surfaceCommitsSince, stylesheetsNewerThan, ageHours } from './font-freshness.mjs';
@@ -77,13 +78,33 @@ const fontFiles = fs.readdirSync(ASSETS).filter((f) => /\.(woff2?|ttf|otf|eot)$/
 const bytesOf = (list) => list.reduce((a, f) => a + fs.statSync(path.join(ASSETS, f)).size, 0);
 const kb = (n) => Math.round((n / 1024) * 10) / 10;
 const jsFiles = fs.readdirSync(ASSETS).filter((f) => f.endsWith('.js'));
+const cssFiles = fs.readdirSync(ASSETS).filter((f) => f.endsWith('.css'));
 
 console.log('\n  budget');
 console.log(`    font bytes in build    ${kb(bytesOf(fontFiles))} KB across ${fontFiles.length} files`);
 console.log(`    js bytes in build      ${kb(bytesOf(jsFiles))} KB across ${jsFiles.length} files`);
-console.log(`    fonts as share of js   ${jsFiles.length ? Math.round((bytesOf(fontFiles) / bytesOf(jsFiles)) * 1000) / 10 : 0} %`);
+// `bytesOf` sums statSync sizes of BASENAMES joined to ASSETS; the gzip helper below has
+// to do the same join, because these lists are not paths.
+const gzOf = (list) => list.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(ASSETS, f))).length, 0);
+const fontRaw = bytesOf(fontFiles);
+const jsRaw = bytesOf(jsFiles);
+const fontGz = gzOf(fontFiles);
+const jsGz = gzOf(jsFiles);
+const cssGz = gzOf(cssFiles);
+const share = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+console.log(`    fonts as share of js   ${share(fontRaw, jsRaw)} % raw`);
+console.log('\n    the same payload in gzip -- the unit scripts/check-bundle.mjs budgets in');
+console.log(`    fonts gzipped          ${kb(fontGz)} KB (${share(fontGz, fontRaw)} % of raw: woff2 is already compressed)`);
+console.log(`    js gzipped             ${kb(jsGz)} KB (${share(jsGz, jsRaw)} % of raw)`);
+console.log(`    css gzipped            ${kb(cssGz)} KB across ${cssFiles.length} files`);
+console.log(`    fonts as share of js   ${share(fontGz, jsGz)} % gzip   <-- a budget speaks gzip, and that is `
+  + `${(jsRaw && jsGz ? (fontGz / jsGz) / (fontRaw / jsRaw) : 0).toFixed(1)}x the raw figure printed above`);
 console.log('\n    Note: scripts/check-bundle.mjs filters to .js and .css and cannot see any of');
 console.log('    the bytes above. That gap is recorded in todo-font-system.md and not fixed here.');
+console.log('    And that gate is not run by CI either: it is reachable as `cd ui && npm run');
+console.log('    check:all` (scripts/check-ui.mjs), and its own header credits scripts/check.sh,');
+console.log('    which has no such step. Re-derive both facts with');
+console.log("    `git grep -n 'endsWith' scripts/check-bundle.mjs` and `git grep -c 'bundle budget' scripts/check.sh`.");
 console.log(`\n  subject: ${ASSETS} (gitignored; this is a build of whatever tree made it)`);
 
 // A walker has no channel to the revision it is being asked about -- AGENTS.md says so
