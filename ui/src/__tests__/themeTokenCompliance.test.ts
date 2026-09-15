@@ -1077,7 +1077,10 @@ function referencedFamilies(): Set<string> {
   return out;
 }
 
-/** The face files the shipped fonts.css pulls in. Shared by rules 7, 9 and 13. */
+/**
+ * The face files the shipped fonts.css pulls in. Shared by rules 7, 9, 13 and 14
+ * (the last two through bundledFamilies(), which calls this).
+ */
 function importedFaceSources(): FaceSource[] {
   if (!existsSync(FONTS_CSS)) return [];
   return cssImportSpecs(readFileSync(FONTS_CSS, 'utf-8')).map(resolveFaceSource);
