@@ -14,12 +14,14 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, command};
 use tokio::sync::oneshot;
 
+use oz_core::permissions;
 use oz_core::{Currency, Money, Settings};
 use oz_hal::BarcodeScanner;
 use oz_hal::DisplayContent;
 use oz_hal::drivers::receipt;
 use oz_hal::transport::usb::{UsbDeviceInfo, probe_all};
 
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -295,7 +297,14 @@ pub async fn open_cash_drawer_scoped(
     args: OpenCashDrawerArgs,
     state: State<'_, AppState>,
 ) -> Result<OpenCashDrawerResult, AppError> {
-    let _session = state.resolve_session(&session_token)?;
+    // F-017: the `oz_bridge::hardware` twin of this command gates it, and the
+    // bridge's own comment names the same finding. This shell resolved the
+    // session and then discarded it as `_session`, so the drawer opened for
+    // any authenticated caller. Gated here with the permission the bridge
+    // uses — `PAYMENTS_CASH` — and before the drawer is looked up, so a denied
+    // caller never reaches the device.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PAYMENTS_CASH).await?;
     let id = args.device_id.as_deref().unwrap_or("default");
     let drawer = state
         .registry

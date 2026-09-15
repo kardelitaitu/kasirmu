@@ -147,10 +147,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "resolves_session_names_no_permission",
     ),
     (
-        "hardware::open_cash_drawer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
         "hardware::stop_scanner_scoped",
         "resolves_session_names_no_permission",
     ),
@@ -268,14 +264,21 @@ pub const REGISTERED_TOTAL: usize = 319;
 /// `list_terminals_scoped`, `ping_terminal_scoped`) stopped being
 /// authenticate-then-assume when each gained the session-derived
 /// `TERMINALS_READ` gate its `oz_bridge` twin already enforced.
-pub const DEBT_CEILING: usize = 90;
+///
+/// Lowered from 90 by the hardware F-017 pass: `hardware::open_cash_drawer_scoped`
+/// stopped being authenticate-then-assume when it gained the `PAYMENTS_CASH`
+/// gate its `oz_bridge::hardware` twin already enforced under the same finding
+/// number. It is the only one of the seven `hardware::*` rows with a gate to
+/// copy — the other six are ungated in the bridge too, so they stay as debt
+/// until an owner rules on what permission they should carry.
+pub const DEBT_CEILING: usize = 89;
 
 /// Names that never resolve a session at all.
 pub const NO_SESSION_RESOLUTION: usize = 42;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 48 + 42 = 90 = `DEBT_CEILING`, as the class counts must sum to the ledger.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 48;
+/// 47 + 42 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 47;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;
