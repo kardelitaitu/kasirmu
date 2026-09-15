@@ -53,16 +53,6 @@ impl From<Customer> for CustomerDto {
 
 // ── List customers ──────────────────────────────────────────────────
 
-#[command]
-/// List customers.
-pub async fn list_customers(state: State<'_, AppState>) -> Result<Vec<CustomerDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let customers = store.list_customers()?;
-    drop(db);
-    Ok(customers.into_iter().map(CustomerDto::from).collect())
-}
-
 /// List customers for the store resolved from a session token. ADR #7.
 ///
 /// CRM-02: gated on `customers:view` like every other customer read — the
@@ -87,24 +77,7 @@ pub async fn list_customers_scoped(
 
 // ── Get single customer ─────────────────────────────────────────────
 
-#[command]
-/// Get customer.
-///
-/// **Deprecated:** NOT registered — use `get_customer_scoped`, which
-/// enforces the session, the `customers:view` permission and the
-/// store scope. This reads the global db with no checks at all.
-pub async fn get_customer(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<CustomerDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let customer = store.get_customer(&id)?;
-    drop(db);
-    Ok(customer.map(CustomerDto::from))
-}
-
-/// Scoped variant of `get_customer` (ADR #7) — CRM-02 residual.
+/// Get one customer, resolved from the session token (ADR #7) — the CRM-02 residual.
 ///
 /// The legacy command above was the only customer read still registered
 /// without a session/permission/scope gate on the tablet (the desktop
@@ -159,38 +132,6 @@ pub struct CreateCustomerArgs {
     pub notes: Option<String>,
 }
 
-#[command]
-/// Create customer.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`create_customer_scoped`] so the session selects the store and user.
-pub async fn create_customer(
-    args: CreateCustomerArgs,
-    state: State<'_, AppState>,
-) -> Result<CustomerDto, AppError> {
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    if let Some(ref email) = args.email {
-        foundation::Email::new(email).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-    if let Some(ref phone) = args.phone {
-        foundation::Phone::new(phone).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::CUSTOMERS_CREATE)?;
-
-    let customer = store.create_customer(
-        args.name.trim(),
-        args.email.as_deref(),
-        args.phone.as_deref(),
-        args.notes.as_deref(),
-    )?;
-    drop(db);
-    Ok(CustomerDto::from(customer))
-}
-
 // ── Update customer ─────────────────────────────────────────────────
 
 /// Arguments for updating a customer in the session's store.
@@ -226,39 +167,6 @@ pub struct UpdateCustomerArgs {
     pub notes: Option<String>,
 }
 
-#[command]
-/// Update customer.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`update_customer_scoped`] so the session selects the store and user.
-pub async fn update_customer(
-    args: UpdateCustomerArgs,
-    state: State<'_, AppState>,
-) -> Result<CustomerDto, AppError> {
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    if let Some(ref email) = args.email {
-        foundation::Email::new(email).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-    if let Some(ref phone) = args.phone {
-        foundation::Phone::new(phone).map_err(|e| AppError::Invalid(e.to_string()))?;
-    }
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::CUSTOMERS_EDIT)?;
-
-    let customer = store.update_customer(
-        &args.id,
-        args.name.trim(),
-        args.email.as_deref(),
-        args.phone.as_deref(),
-        args.notes.as_deref(),
-    )?;
-    drop(db);
-    Ok(CustomerDto::from(customer))
-}
-
 // ── Delete customer ─────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -268,26 +176,6 @@ pub struct DeleteCustomerArgs {
     pub user_id: String,
     /// Unique identifier.
     pub id: String,
-}
-
-#[command]
-/// Delete customer.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`delete_customer_scoped`] so the session selects the store and user.
-///
-pub async fn delete_customer(
-    args: DeleteCustomerArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::CUSTOMERS_DELETE)?;
-
-    store.delete_customer(&args.id)?;
-    drop(db);
-    Ok(())
 }
 
 // ── Store-scoped mutations (ADR #7) ─────────────────────────────────
