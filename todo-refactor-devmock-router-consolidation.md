@@ -239,6 +239,29 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 
 ### Phase 5.5 — Reduce the router
 - [ ] `entryHandlers` empty or gone; `tauri-api.ts` reduced to: the vite-alias header, `export { convertFileSrc, invoke, isTauri }`, the `createXHandlers`/`registerHandlers` sequence, any documented residue, then the single `applyScopedAliases()`. Target: **`tauri-api.ts` < 200 lines** — `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l`.
+
+  > **Phase 5.5 progress (this session, 2026-09-16, commits `758c72020` CRM pair + `584bb5c59` sync-conflict
+  > pair). Two more self-contained stub groups re-homed to plan-correct homes (crm.ts, sync.ts); router
+  > 380 → 364 (−16), plus a now-dead `MOCK_CUSTOMERS` import dropped. Each verified: **681 / sha256
+  > `105d29730df2…60681c` identical**, all 7 `dev-mock-*` suites (96 tests) green, `tsc` 0 — throwaway dumps
+  > run+deleted, both files uncontested pre-commit, no foreign hunks.**
+  >
+  > **Decisive structural finding for the `< 200` target — this line-count is now documentation, not code.**
+  > Measuring the committed router at HEAD `584bb5c59`: **364 total lines = 195 comment-only + 36 blank +
+  > only ~133 actual code lines.** The dispatcher code has been substantially extracted already: the
+  > `entryHandlers` literal (`:158-234`) is now almost entirely stale banners of *completed* moves; the
+  > real remaining handler code is ~5 one-line stubs (`list_in_transit_transfers_scoped`,
+  > `get_sale_line_margins_scoped` → inventory; `suspend/recover_workspace_instances_scoped` → workspaces;
+  > `list_warehouse_products_at_location`, which reads `MOCK_PRODUCTS`) plus the live stateful seeds (KDS
+  > orders, lockout, date helpers) the peer's Phase 5.1 kept. **So `git … | wc -l` < 200 is NOT achievable
+  > by further pure-copy code moves — the code mass is ~133 lines and the gap is explanatory documentation
+  > the repo deliberately keeps (the scoped-alias rationale at `:292-302`, the §J count-type correction at
+  > `:327-339`, etc.). Reaching the literal < 200 would mean *deleting rationale*, which is a judgment call
+  > outside the safe/owned scope here and would regress the documentation these very moves were adding.**
+  > Recommend: either (a) treat the substantive goal — dispatcher code extracted — as met and relax the
+  > numeric target to "code lines < 200" (already true at ~133), or (b) an owner decision to compress
+  > banners. NOT more stub-shuffling into shared modules for ~5 lines at rising collision risk.
+
 - [ ] No dead imports / unused local helpers left behind.
 
 > **Phase 5.5 progress (this session, 2026-09-16, commit `9caafa16e`): router 447 → 380 (−67).** Folded the
