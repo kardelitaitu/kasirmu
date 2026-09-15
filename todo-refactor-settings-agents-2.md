@@ -613,4 +613,25 @@ and 1,415 unreachable section lines (`205+156+257+567+176`) sit on opposite side
 > reachability answers 2026-09-15 · DSH · re-measured at f7872bd9a4 with static commands only; no
 > ui/** file touched, no test runner invoked, both open questions left as written with the answers
 > appended beside them rather than over them.
+> 62-of-63 settled 2026-09-15 · DSH · re-measured at 26f34f888 against the two prints in this
+> window (`:52` and `:65`). They are the SAME command — `:64` and `:52` name the identical
+> four files — so this was never a wording artifact; it is one stale print and one live print,
+> and the live one is `:52`. What ran, from `ui/`: `npx vitest run src/__tests__/SettingsPage.test.tsx src/__tests__/SettingsContext.test.tsx src/__tests__/SettingsDeepLink.test.tsx src/__tests__/a11y/SettingsPage.a11y.test.tsx --reporter=verbose`
+> → `Test Files 4 passed (4)` · `Tests 63 passed (63)` · `Duration 2.76s` · exit 0, on a tree
+> with 5 paths dirty under `ui/` — none of the four among them; each of those four read `CLEAN`
+> to `git status --porcelain` when the run started. The arithmetic closes without a runner too:
+> the four files declare 22 + 31 + 9 + 1 = **63** `it(`/`test(` cases and carry **no** `it.skip`,
+> `test.todo`, `fixme` or `skipIf` marker anywhere, and they declared the same **63** at
+> `e455e9d13`, the tip `:65` was recorded against; the only commit between those two tips that
+> touches this set (`a715a2d10`, retiring vacuous assertions) edited `SettingsContext.test.tsx`
+> without moving its case count. That rules out the third state -- a genuinely
+> collected-but-not-run 63rd case, which would have made `:65` the interesting record and needed
+> a test named for it -- at BOTH tips, so there is no skipped case to route to anyone. The
+> `62 green of 63 collected` figure stays exactly what it is: a print from one run that no state
+> this repository holds reproduces, and `:52`'s claim that it retires the 62-of-63 ambiguity is
+> now backed by a re-run rather than by assertion. What this does not change is the plan's state:
+> the file self-rules `todo-` at `:3` (`status: SUPERSEDED (the goal was met, but not by this
+> plan)`), the two Phase 2.0 ticks stand as earned, neither retired row was touched, nothing was
+> renamed or re-ticked. 63 green is an arithmetic repair; a resolved count does not accept a plan.
+
 
