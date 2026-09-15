@@ -281,6 +281,49 @@ def answerable_sets(
     return registered, aliasable
 
 
+# Identical to MOCK_LITERAL_KEY_RE except that it demands a non-space character before the
+# quote instead of the start of the line. The tail is the same value-shape test on purpose:
+# what separates a registrar entry from an arbitrary quoted-key literal here is that its
+# value is a function or a shorthand identifier, and narrowing the difference to POSITION
+# alone is the whole point -- anything else this reports would be a new claim, not a
+# measurement of the blindness.
+MOCK_MIDLINE_KEY_RE = re.compile(
+    r"""\S[ \t]*['"]([a-z0-9_]+)['"][ \t]*:[ \t]*(?:\(|async\b|=>|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*,?[ \t]*$)"""
+)
+
+
+def find_midline_handler_keys(sources: list[tuple[str, str]]) -> dict[str, set[str]]:
+    """Handler-shaped keys the registrar parse cannot see, by file.
+
+    `MOCK_LITERAL_KEY_RE` is anchored (`^[ \\t]*`, `re.M`) and the anchoring is load-bearing:
+    without it the scanner would also collect quoted keys nested inside handler return
+    payloads. The cost of that anchoring is that a key sharing a line with anything else is
+    not a handler as far as this gate is concerned, while TypeScript still sees it as one --
+    a splice, a merge, or a formatter decision can therefore move a name out of the
+    answerable set without any code changing meaning.
+
+    That is not hypothetical: on 2026-09-16 a string splice in this programme's own work left
+    `}),  'set_brand_primary_colour': () => null,` on one line of `handlers/system.ts`, and
+    the gate went red asserting that "no unscoped twin exists for the alias rule to reach"
+    about a twin sitting on the same line as its predecessor. The verdict was the one the
+    tree deserved (line-anchored or not, the parse should not be fooled), but the REASON it
+    printed was false, and a false reason is how a formatting artifact gets "fixed" by
+    allowlisting a gap that does not exist.
+
+    Measured the same day: this returns `{}` for the whole current tree, so nothing here
+    pre-existing is being reported. The function exists to make the blind spot sayable.
+    """
+    found: dict[str, set[str]] = {}
+    for rel, raw in sources:
+        text = _mock_code(raw)
+        visible = set(MOCK_LITERAL_KEY_RE.findall(text))
+        midline = {n for n in MOCK_MIDLINE_KEY_RE.findall(text) if n not in visible}
+        if midline:
+            found[rel] = midline
+    return found
+
+
+
 def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
     """Names the browser dev-mock can serve.
 
@@ -2442,6 +2485,37 @@ def self_test() -> int:
          planted_run(None, json.dumps(probe_clean))[0] in (0, 1)
          and "no-such-allowlist-schema" not in planted_run(None, json.dumps(probe_clean))[1], )
 
+    # The registrar parse's blind spot has to be measurable in both directions. A key the
+    # anchored regex misses must be reported -- and the SAME key sitting at the start of its
+    # line must NOT be, or the scan is just "everything not on a fresh line" and proves
+    # nothing. Both fixtures also pin the anchored parse's own behaviour, so if someone
+    # widens MOCK_LITERAL_KEY_RE the second case is the one that says so.
+    glued = [("x/handlers/a.ts",
+              "export const h = {\n"
+              "  'get_key_rotation_info': () => ({}),\n"
+              "  }),  'set_brand_primary_colour': () => null,\n"
+              "};\n")]
+    unwrapped = [("x/handlers/a.ts",
+                  "export const h = {\n"
+                  "  'get_key_rotation_info': () => ({}),\n"
+                  "  'set_brand_primary_colour': () => null,\n"
+                  "};\n")]
+    commented = [("x/handlers/a.ts",
+                  "export const h = {\n"
+                  "  // callers used to pass { 'set_brand_primary_colour': () => null }\n"
+                  "  'get_key_rotation_info': () => ({}),\n"
+                  "};\n")]
+    case("glue   the anchored parse really does miss a mid-line key",
+         'set_brand_primary_colour' not in set().union(*parse_dev_mock(glued)[0].values()))
+    case("glue   the blind-spot scan reports exactly that key, and only it",
+         find_midline_handler_keys(glued) == {
+             'x/handlers/a.ts': {'set_brand_primary_colour'}})
+    case("glue   the same key unwrapped is visible to the parse and not flagged",
+         'set_brand_primary_colour' in set().union(*parse_dev_mock(unwrapped)[0].values())
+         and not find_midline_handler_keys(unwrapped))
+    case("glue   a key-shaped thing inside a comment is not a key",
+         not find_midline_handler_keys(commented))
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -2609,8 +2683,34 @@ def main() -> int:
 
     mock_entries = allowlist_section(allowlist, "dev_mock")
     mock_allow = {name for name, _ in mock_entries}
+    # A second read of the mock tree in this run. Ten small files, and the note below has to
+    # describe the same bytes the answerable set was parsed from, which a shared variable
+    # threaded across this function would buy at the cost of a longer reach.
+    midline_keys = find_midline_handler_keys(read_dev_mock_sources())
+    midline_paths = {
+        name: sorted(path for path, names in midline_keys.items() if name in names)
+        for name in {n for names in midline_keys.values() for n in names}
+    }
     for command in sorted(set(mock_gaps) - mock_allow):
         refs = ", ".join(sorted(set(ui_commands[command]))[:3])
+        # The alias rule can only copy a name it can see, so a gap on `x_scoped` has two
+        # possible causes: no unscoped handler anywhere, or one this parse cannot read. Say
+        # which, because the sentence below asserts the first and the first is not always the
+        # reason the set is empty.
+        suspects = [command]
+        if command.endswith("_scoped"):
+            suspects.append(command[: -len("_scoped")])
+        hidden = [s for s in suspects if s in midline_paths]
+        note = ""
+        if hidden:
+            where = "; ".join(
+                f"'{s}' sits mid-line in {', '.join(midline_paths[s])}" for s in hidden
+            )
+            note = (
+                f" NOTE: {where} -- the key exists, and it is THIS PARSE that is line-anchored. "
+                f"Unwrap it onto its own line and re-run before accepting the gap as a missing "
+                f"handler."
+            )
         failures.append(
             f"dev-mock: UI invokes '{command}' but no handler anywhere under "
             f"{DEV_MOCK_DIR_REL} registers it (the router and every extracted module "
@@ -2619,6 +2719,7 @@ def main() -> int:
             f"failure path (e.g. {refs}). An allowlist entry may carry why the gap was "
             f"accepted -- rewrite it as {{\"name\": \"{command}\", \"reason\": \"...\"}} "
             f"-- and the count of entries that do not is printed on every run."
+            f"{note}"
         )
     for command in sorted(mock_allow - set(mock_gaps)):
         failures.append(
@@ -2739,6 +2840,21 @@ def main() -> int:
         f"info[dev-mock]: {len(mock_gaps)} of {len(ui_commands)} UI commands unanswerable "
         f"({len(mock_allow)} allowlisted)"
     )
+    # The parse's own blind spot, printed on the same terms as every other number this run
+    # reports. A key TypeScript can see and MOCK_LITERAL_KEY_RE cannot is neither a handler
+    # gap nor an invisible thing; naming it here means the count is on the record even on a
+    # run with no violations to explain. Informational rather than blocking, because with the
+    # NOTE above attached to the message it can no longer produce a false reason, and
+    # promoting it to a failure would make a formatter opinion a build break.
+    if midline_keys:
+        detail = "; ".join(
+            f"{path}: {', '.join(sorted(names))}"
+            for path, names in sorted(midline_keys.items())
+        )
+        print(
+            f"info[dev-mock]: {sum(len(v) for v in midline_keys.values())} handler-shaped "
+            f"key(s) sit mid-line and are INVISIBLE to the registrar parse -- {detail}"
+        )
     # Reason state, printed whether or not anything is wrong, because the count of entries
     # nobody explained is the number an owner has to act on and it is invisible in a list of
     # bare names. Informational only: it appends nothing to `failures`, so a run that was
