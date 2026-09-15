@@ -230,12 +230,7 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
   unscoped base → `applyScopedAliases` has nothing to mirror). **Registration-identity proven:** after-dump
   (throwaway, run+deleted) → **681 commands, sha256 `105d29730df2…60681c`, identical**; `tsc` exit 0;
   `dev-mock-scoped-aliases.test.ts` 41 passed. Router 723 → **710** (−13).
-- [ ] **22 `handlers['x'] = …` patches re-home: REMAINING.** These are the analytics/inventory cross-domain
-  stubs (e.g. `get_sales_by_payment_method_scoped`, `get_inventory_trend_scoped`,
-  `suspend_surplus_workspace_instances_scoped`…) plus the two `entryHandlers` singletons `get_local_ip` /
-  `get_low_stock_alerts` deferred from 5.3. They fold into existing `handlers/{analytics,inventory,...}.ts`
-  or a documented `entryHandlers` residue — **re-derive the 681 baseline first and clean-guard the router
-  per move** (a peer lane edited this same file earlier today).
+- [x] **22 `handlers['x'] = …` patches — RE-HOMED or documented as sanctioned residue (this session, through HEAD `c92d0efea`, 2026-09-16).** The analytics/inventory cross-domain stubs were folded into their plan-correct domain modules this session and last, each verified single-defined (`git grep`) + 681-identity-held + 96 dev-mock tests green before commit: 11 analytics cards → `analytics.ts` (`9caafa16e`), 2 customer handlers → `crm.ts` (`758c72020`, plus the now-dead `MOCK_CUSTOMERS` import removed), 2 sync-conflict → `sync.ts` (`584bb5c59`), 2 workspace §J remediation (+ their rationale comment) → `workspaces.ts` (`c0a15224f`). The 3 that genuinely have no single home — `list_in_transit_transfers_scoped`, `get_sale_line_margins_scoped`, `list_warehouse_products_at_location` — are **cross-domain patches** that `agents-4:193` permits to remain, and now each carries the plan's required **per-stub "why no other home" comment** (`c92d0efea`, comment-only; registry proven inert at 681/`105d29730df2…`, tsc 0). The two `entryHandlers` singletons `get_local_ip` / `get_low_stock_alerts` remain as documented literal entries (the file notes their pending homes). **Residue clause satisfied.**
 
 ### Phase 5.5 — Reduce the router
 - [ ] `entryHandlers` empty or gone; `tauri-api.ts` reduced to: the vite-alias header, `export { convertFileSrc, invoke, isTauri }`, the `createXHandlers`/`registerHandlers` sequence, any documented residue, then the single `applyScopedAliases()`. Target: **`tauri-api.ts` < 200 lines** — `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l`.
