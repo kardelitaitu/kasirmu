@@ -2,9 +2,19 @@
 # .githooks/pre-push — parallelized path-aware local gate, run once per push.
 #
 # WHY THIS EXISTS
-# dev-ci.yml is the only live workflow and it re-runs the whole matrix on every
-# push to an open PR. Locally, running static gates and language suites concurrently
-# across CPU cores drops pre-push validation time from ~2.5 minutes to ~15-60s.
+# dev-ci.yml re-runs the whole matrix on every push to an open PR. Locally, running
+# static gates and language suites concurrently across CPU cores drops pre-push
+# validation time from ~2.5 minutes to ~15-60s.
+#
+# (Corrected 2026-09-15: this comment used to read "dev-ci.yml is the only live
+# workflow". It is not, and had not been since release.yml was restored on 09-04 by
+# 3b10ea3a2 — .github/workflows/ holds two live workflows, dev-ci.yml and
+# release.yml, alongside 11 .bak files. The claim was inert here, but this is the
+# header a reader trusts when deciding which workflow a `push` will run, so it is
+# corrected rather than left as a dated record: it is live prose, not a stamp.
+# Note also that release.yml is tag-triggered only (`on.push.tags: ['v*']`), which
+# is why it does not re-run the matrix on a branch push and why the rationale above
+# still holds with dev-ci.yml named as the workflow it is about.)
 #
 # Escape hatch: `git push --no-verify` skips this entirely, silently.
 
