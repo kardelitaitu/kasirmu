@@ -88,25 +88,15 @@ interface StatusItemProps {
   tone: StatusTone;
   label: string;
   tooltip: string;
-  /** Second tooltip line: what clicking this pill will do. */
-  hint?: string | undefined;
   onClick?: () => void;
   align?: 'center' | 'left' | 'right';
 }
 
 /** One colored icon button with a hover tooltip + click toast. */
-function StatusItem({ kind, tone, label, tooltip, hint, onClick, align = 'center' }: StatusItemProps) {
+function StatusItem({ kind, tone, label, tooltip, onClick, align = 'center' }: StatusItemProps) {
   const Icon = ICONS[kind];
-  const content = (
-    <>
-      {tooltip}
-      {hint && (
-        <span className="tooltip-hint">{hint}</span>
-      )}
-    </>
-  );
   return (
-    <Tooltip content={content} position="top" showDelay={300} portal nowrap align={align}>
+    <Tooltip content={tooltip} position="top" showDelay={300} portal nowrap align={align}>
       <button
         type="button"
         className={`statusbar-item statusbar-tone--${tone}`}
@@ -148,7 +138,6 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
   const paymentLabel = requiredLocalized(l10n, 'statusbar-payment-label');
   const devicesLabel = requiredLocalized(l10n, 'statusbar-devices-label');
   const versionLabel = requiredLocalized(l10n, 'statusbar-version-label');
-  const retryHint = requiredLocalized(l10n, 'statusbar-retry-hint');
 
   // ── Manual retry (the box's user-triggered action) ─────────────
   // Re-probe now and say so. While a probe is already running there is
@@ -231,7 +220,6 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
         tone={authTone}
         label={authLabel}
         tooltip={authTooltip}
-        hint={auth.state === 'checking' ? undefined : retryHint}
         onClick={() => handleRetry(authLabel, auth.state, authTooltip, auth.retryNow)}
       />
       <StatusItem
@@ -239,7 +227,6 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
         tone={syncTone}
         label={syncLabel}
         tooltip={syncTooltip}
-        hint={sync.state === 'checking' ? undefined : retryHint}
         onClick={() => handleRetry(syncLabel, sync.state, syncTooltip, sync.retryNow)}
       />
       <StatusItem
@@ -247,7 +234,6 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
         tone={paymentTone}
         label={paymentLabel}
         tooltip={paymentTooltip}
-        hint={payment.state === 'checking' ? undefined : retryHint}
         onClick={() => handleRetry(paymentLabel, payment.state, paymentTooltip, payment.retryNow)}
       />
       <StatusItem
@@ -255,7 +241,6 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
         tone={devicesTone}
         label={devicesLabel}
         tooltip={devicesTooltip}
-        hint={devices.state === 'checking' ? undefined : retryHint}
         onClick={() => handleRetry(devicesLabel, devices.state, devicesTooltip, devices.retryNow)}
       />
       <StatusItem kind="download" tone={versionTone} label={versionLabel} tooltip={versionTooltip} onClick={() => notify(versionTooltip)} align="right" />

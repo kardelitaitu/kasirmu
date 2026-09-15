@@ -74,8 +74,6 @@ statusbar-version-update-msg = Pembaruan tersedia
 # Kontrak kesehatan layanan (saas-3): pill pembayaran + konektivitas perangkat
 statusbar-payment-label = Pembayaran
 statusbar-devices-label = Perangkat
-# Mengklik pill layanan langsung memeriksa ulang; petunjuk itu muncul saat hover.
-statusbar-retry-hint = Klik untuk mencoba lagi
 statusbar-retry-queued = Mencoba ulang { $name }…
 statusbar-payment-gateway-msg = { $name } · { $count } gateway aktif
 statusbar-payment-unconfigured-msg = { $name } · Tidak ada gateway terkonfigurasi

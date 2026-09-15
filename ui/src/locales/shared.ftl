@@ -389,8 +389,6 @@ statusbar-version-update-msg = Update available
 # Service-health contracts (saas-3): payment + device-connectivity pills
 statusbar-payment-label = Payment
 statusbar-devices-label = Devices
-# Clicking a service pill re-probes it now; the hint says so on hover.
-statusbar-retry-hint = Click to retry
 statusbar-retry-queued = Retrying { $name }…
 statusbar-payment-gateway-msg = { $name } · { $count } gateway(s) active
 statusbar-payment-unconfigured-msg = { $name } · No gateway configured
