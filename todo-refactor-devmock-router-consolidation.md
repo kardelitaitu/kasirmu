@@ -118,6 +118,21 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
        location/receipt/brand/device keys still sit in entryHandlers, now referencing the
        imported helpers. This lane claims the phase. -->
 - [ ] Convert the location / receipt-format / brand-settings / device-binding entries in `entryHandlers` into a `createXHandlers({ … })` factory consuming the relocated state; register it; delete the corresponding `entryHandlers` keys.
+  <!-- IN FLIGHT (this session's round-6 live observation, 2026-09-16, HEAD 04c1e56d0). A parallel
+       lane is executing exactly this conversion-half on an UNCOMMITTED working tree, built on top of
+       my intact 5.2/5.3/5.4 (their WIP still calls registerHandlers(bundlesHandlers/syncHandlers/
+       kdsDeviceHandlers) — no clobber of my work; f73756c09..HEAD has ZERO dev-mock commits, so my
+       phases are the latest on the router). Evidence read off their dirty files: new untracked
+       `handlers/regional.ts` (createRegionalHandlers factory) and `handlers/terminals.ts`; modified
+       `tauri-api.ts` now WIRES them — registerHandlers(createLocationProfileHandlers()) :258 and
+       registerHandlers(createRegionalHandlers({ unwrapArgs, getMockStores, updateMockLocation }))
+       :259 — plus modified locationState.ts / settings.ts (they are re-homing the device/terminal
+       family, so this session must NOT duplicate that). The line numbers I "read" as the router's
+       state earlier this round were the peer's WORKING tree, not HEAD: git-clean ≠ free, and a
+       pathspec commit on tauri-api.ts would have swept their untracked regional.ts into my message
+       (the AGENTS.md §3 incident verbatim). This session stands down from the router this round; no
+       code was written or committed here. Box stays UNTICKED (not ours to close while their edits are
+       uncommitted); re-derive the 681 baseline and re-check porcelain before either lane moves. -->
 - [ ] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
 
 > **Independent verification at clean HEAD `e16499e67` (this session, 2026-09-16) — supersedes my
