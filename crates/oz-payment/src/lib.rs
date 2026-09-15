@@ -60,12 +60,14 @@ pub mod drivers;
 pub mod error;
 pub mod processor;
 pub mod registry;
+pub mod resilience;
 pub mod types;
 pub mod webhook;
 
-pub use error::PaymentError;
+pub use error::{ErrorClass, PaymentError};
 pub use processor::PaymentProcessor;
 pub use registry::PaymentProcessorRegistry;
+pub use resilience::{CircuitBreaker, CircuitState, ResilientProcessor, ResilientProcessorConfig};
 pub use types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult};
 pub use webhook::{UnverifiedWebhookGuard, WebhookEvent, WebhookVerifier};
 

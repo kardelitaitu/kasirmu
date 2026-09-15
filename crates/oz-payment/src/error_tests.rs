@@ -95,3 +95,55 @@ fn variants_are_distinct() {
     assert_ne!(d, f);
     assert_ne!(e, f);
 }
+
+#[test]
+fn classify_transient_errors() {
+    assert_eq!(
+        PaymentError::Network("conn dropped".into()).classify(),
+        ErrorClass::Transient
+    );
+    assert_eq!(
+        PaymentError::Timeout(3000).classify(),
+        ErrorClass::Transient
+    );
+}
+
+#[test]
+fn classify_deferred_errors() {
+    assert_eq!(
+        PaymentError::Expired("QR expired".into()).classify(),
+        ErrorClass::Deferred
+    );
+}
+
+#[test]
+fn classify_terminal_errors() {
+    assert_eq!(
+        PaymentError::Declined("no funds".into()).classify(),
+        ErrorClass::Terminal
+    );
+    assert_eq!(
+        PaymentError::InvalidResponse("bad json".into()).classify(),
+        ErrorClass::Terminal
+    );
+    assert_eq!(
+        PaymentError::InvalidCard("bad cvc".into()).classify(),
+        ErrorClass::Terminal
+    );
+    assert_eq!(
+        PaymentError::Duplicate("key exists".into()).classify(),
+        ErrorClass::Terminal
+    );
+    assert_eq!(
+        PaymentError::Unsupported("not ready".into()).classify(),
+        ErrorClass::Terminal
+    );
+}
+
+#[test]
+fn error_class_serialization() {
+    let json = serde_json::to_string(&ErrorClass::Transient).unwrap();
+    assert_eq!(json, "\"Transient\"");
+    let decoded: ErrorClass = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded, ErrorClass::Transient);
+}

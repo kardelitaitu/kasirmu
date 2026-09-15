@@ -13,17 +13,19 @@ next: implement build_from_config when registry wiring lands | perf: N/A
 //! (see the `payment_gateways` table), not a code change.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
 use crate::PaymentProcessor;
-use crate::error::PaymentError;
+use crate::error::{ErrorClass, PaymentError};
 
 /// Shared, mutable catalogue of payment processors.
 #[derive(Default)]
 pub struct PaymentProcessorRegistry {
     processors: RwLock<HashMap<String, Arc<dyn PaymentProcessor>>>,
+    method_fallbacks: RwLock<HashMap<String, Vec<Arc<dyn PaymentProcessor>>>>,
 }
 
 impl PaymentProcessorRegistry {
@@ -50,6 +52,70 @@ impl PaymentProcessorRegistry {
     /// Snapshot of registered processor names.
     pub async fn processor_names(&self) -> Vec<String> {
         self.processors.read().await.keys().cloned().collect()
+    }
+
+    /// Register an ordered list of fallback processors for a payment method / rail
+    /// (e.g. `"qris"` -> `[midtrans_qris, qris_manual]`).
+    pub async fn register_method_fallback(
+        &self,
+        method: &str,
+        chain: Vec<Arc<dyn PaymentProcessor>>,
+    ) {
+        self.method_fallbacks
+            .write()
+            .await
+            .insert(method.to_owned(), chain);
+    }
+
+    /// Get the ordered list of fallback processors registered for `method`.
+    pub async fn method_processors(&self, method: &str) -> Vec<Arc<dyn PaymentProcessor>> {
+        self.method_fallbacks
+            .read()
+            .await
+            .get(method)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Execute a payment operation across the configured fallback chain for `method`.
+    ///
+    /// Tries each processor in order. If a processor encounters a transient error
+    /// or failure, moves to the next processor in the chain.
+    pub async fn execute_with_fallback<T, F, Fut>(
+        &self,
+        method: &str,
+        operation: F,
+    ) -> Result<T, PaymentError>
+    where
+        F: Fn(Arc<dyn PaymentProcessor>) -> Fut,
+        Fut: Future<Output = Result<T, PaymentError>>,
+    {
+        let chain = self.method_processors(method).await;
+        if chain.is_empty() {
+            return Err(PaymentError::Unsupported(format!(
+                "no payment processors configured for method '{method}'"
+            )));
+        }
+
+        let mut last_error = None;
+        for processor in chain {
+            match operation(processor).await {
+                Ok(val) => return Ok(val),
+                Err(err) => {
+                    let class = err.classify();
+                    // On terminal decline or bad card, do not silently switch processor
+                    if class == ErrorClass::Terminal && !matches!(err, PaymentError::Unsupported(_))
+                    {
+                        return Err(err);
+                    }
+                    last_error = Some(err);
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            PaymentError::Unsupported(format!("all fallback processors failed for '{method}'"))
+        }))
     }
 
     /// Build a processor from a gateway configuration.
