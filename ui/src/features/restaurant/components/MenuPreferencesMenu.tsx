@@ -122,7 +122,7 @@ export function MenuPreferencesMenu({
     <div className="restaurant-header-left" ref={hamburgerRef}>
       <button
         type="button"
-        className="restaurant-hamburger-btn"
+        className={`restaurant-hamburger-btn${open ? ' restaurant-hamburger-btn--active' : ''}`}
         ref={hamburgerButtonRef}
         onPointerDown={() => {
           hamburgerOpenedWithKeyboardRef.current = false;
@@ -138,18 +138,17 @@ export function MenuPreferencesMenu({
         aria-controls="restaurant-hamburger-menu"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" style={{ pointerEvents: 'none' }}>
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
+          <rect width="18" height="18" x="3" y="3" rx="4" />
+          <line x1="9" y1="3" x2="9" y2="21" />
         </svg>
       </button>
 
       {open && (
-        <div
+        <aside
           ref={dropdownRef}
           id="restaurant-hamburger-menu"
-          className="restaurant-hamburger-dropdown"
-          role="group"
+          className="restaurant-hamburger-dropdown restaurant-sidebar"
+          role="region"
           tabIndex={-1}
           aria-label={l10n.getString('restaurant-menu-hamburger-aria')}
         >
@@ -256,7 +255,7 @@ export function MenuPreferencesMenu({
           >
             <Localized id="restaurant-toggle-fullscreen"><span>Toggle Fullscreen</span></Localized>
           </button>
-        </div>
+        </aside>
       )}
     </div>
   );

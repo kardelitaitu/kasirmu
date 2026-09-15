@@ -100,6 +100,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     updateLinePrice,
     fireCourse,
     fireAllCourses,
+    assignCourse,
     setDiscount,
     setTipPercent,
     setServiceCharge,
@@ -175,6 +176,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
+  const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
 
   // ── Cart panel resize ──────────────────────────────────
   // Width state, the isResizing latch, both window listeners and the drag
@@ -593,7 +595,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   };
   const tableNumberRow = { showTableNumberSetting, tableNumber, setTableNumber };
   const cartLineRows = {
-    lines, fireCourse, fireAllCourses, setCartLineRef,
+    lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     isManager, setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
@@ -624,14 +626,21 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       {/* ── Left: Product lookup ─────────────────── */}
       <div className="pos-products">
         {activeWorkspace === 'restaurant-pos' ? (
-          <RestaurantMenu onAddProduct={handleAddProduct} />
+          <RestaurantMenu
+            onAddProduct={handleAddProduct}
+            sidebarOpen={restaurantSidebarOpen}
+            onSidebarOpenChange={setRestaurantSidebarOpen}
+          />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
         )}
       </div>
 
-      {/* ── Resize handle ───────────────────────── */}
-      <CartPanel {...cartPanelProps} />
+      {/* ── Resize handle & Cart panel ─────────────── */}
+      <CartPanel
+        {...cartPanelProps}
+        hidden={activeWorkspace === 'restaurant-pos' && restaurantSidebarOpen}
+      />
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
       <CartTaxWatcher

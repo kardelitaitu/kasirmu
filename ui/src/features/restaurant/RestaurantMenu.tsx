@@ -18,6 +18,10 @@ import './RestaurantMenu.css';
 export interface RestaurantMenuProps {
   /** Called when the user clicks "Add" on a product. */
   onAddProduct?: (product: Product) => void;
+  /** Controlled sidebar open state (synced with PosScreen to hide cart). */
+  sidebarOpen?: boolean;
+  /** Callback when sidebar open state changes. */
+  onSidebarOpenChange?: (open: boolean) => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -130,14 +134,28 @@ function sortPinnedFirst(items: Product[], pinned: Set<string>): Product[] {
  * and a responsive product grid. Right-click any item to pin it to
  * the top of the grid.
  */
-export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
+export default function RestaurantMenu({
+  onAddProduct,
+  sidebarOpen: controlledSidebarOpen,
+  onSidebarOpenChange,
+}: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { products, categoryMeta, loading } = useProducts();
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { session } = useAuth();
   const { sessionToken } = useWorkspace();
   const userId = session?.user_id ?? 'default';
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [internalMenuOpen, setInternalMenuOpen] = useState(false);
+  const isControlled = controlledSidebarOpen !== undefined;
+  const menuOpen = isControlled ? controlledSidebarOpen : internalMenuOpen;
+  const setMenuOpen = useCallback((action: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof action === 'function' ? action(menuOpen) : action;
+    if (isControlled) {
+      onSidebarOpenChange?.(nextVal);
+    } else {
+      setInternalMenuOpen(nextVal);
+    }
+  }, [isControlled, menuOpen, onSidebarOpenChange]);
   const contextMenuOpenRef = useRef(false);
   // The dropdown element ref is owned here (not in MenuPreferencesMenu)
   // because the global app-search gate — which moved into MenuSearchBar with
@@ -392,7 +410,10 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
   }, [effectiveCategory, restaurantProducts, searchQuery, pinned, sortMode, popularityCounts]);
 
   return (
-    <div className="restaurant-menu" style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}>
+    <div
+      className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}`}
+      style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
+    >
       {/* ── Header row: hamburger + back + search ── */}
       <div className="restaurant-header">
         <MenuPreferencesMenu

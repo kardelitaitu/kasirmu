@@ -1,4 +1,5 @@
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
+import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useLocalization } from '@fluent/react';
 import { Localized } from '@/components/Localized';
@@ -91,6 +92,7 @@ function KitchenDisplayIcon() {
 }
 
 export interface CartPanelProps {
+  hidden?: boolean;
   startResize: (e: React.MouseEvent) => void;
   cartPanelRef: React.RefObject<HTMLElement>;
   cartWidth: number;
@@ -120,6 +122,12 @@ export interface CartPanelProps {
   closeShiftError: string | null;
   fireCourse: (courseId: CourseId) => void;
   fireAllCourses: () => void;
+  /**
+   * Assign a course to a single line (restaurant coursing). Optional: when it
+   * is omitted the per-line course chip is not rendered, so the retail path
+   * and every caller without coursing are unaffected.
+   */
+  assignCourse?: (lineId: LineId, courseId: CourseId) => void;
   handleRemoveLine: (line: CartLine) => void;
   handleDecreaseQty: (line: CartLine) => void;
   handleIncreaseQty: (line: CartLine) => void;
@@ -171,6 +179,7 @@ export interface CartPanelProps {
 }
 
 export function CartPanel({
+  hidden,
   startResize,
   cartPanelRef,
   cartWidth,
@@ -200,6 +209,7 @@ export function CartPanel({
   closeShiftError,
   fireCourse,
   fireAllCourses,
+  assignCourse,
   handleRemoveLine,
   handleDecreaseQty,
   handleIncreaseQty,
@@ -250,6 +260,9 @@ export function CartPanel({
   openBills,
 }: CartPanelProps) {
   const { l10n } = useLocalization();
+  // Which line's course dropdown is open. Held here rather than per row so
+  // opening one line's menu closes the other's.
+  const [courseMenuLine, setCourseMenuLine] = useState<LineId | null>(null);
 
   return (
     <>
@@ -257,6 +270,7 @@ export function CartPanel({
         className="pos-resize-handle"
         onMouseDown={startResize}
         aria-hidden="true"
+        style={hidden ? { display: 'none' } : undefined}
       />
 
       {/* ── Right: Cart panel (resizable, keyboard-nav) */}
@@ -265,7 +279,7 @@ export function CartPanel({
         ref={cartPanelRef}
         aria-label={l10n.getString('pos-cart-panel-aria')}
         role="region"
-        style={{ width: cartWidth }}
+        style={{ width: cartWidth, ...(hidden ? { display: 'none' } : {}) }}
         tabIndex={-1}
         onKeyDown={handleCartPanelKeyDown}
         {...cartSwipe}
@@ -499,6 +513,11 @@ export function CartPanel({
                     setOverrideTarget(l);
                     ensureCart(l.unit_price.currency);
                   },
+                } : {})}
+                {...(assignCourse && activeWorkspace === 'restaurant-pos' ? {
+                  onAssignCourse: assignCourse,
+                  courseMenuLine,
+                  onCourseMenuLineChange: setCourseMenuLine,
                 } : {})}
               />
             ))
