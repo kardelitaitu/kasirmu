@@ -1,4 +1,5 @@
 # Local-First & Frontend Architecture — work queue
+> **2026-09-15 · 11:45 · DSH · the 17 decision-required rows in the triage section at the foot of this file now live on the owner page: `docs/plans/notes.md` item 25 -- rulings R1-R10 plus one refused work order. Read item 25 before asking anyone to rule on any of them. Nothing here was ticked, moved or renamed: the rows stay as the evidence behind those rulings, and this file still has no acceptance command, so it is not renameable.**
 
 Rewritten 2026-09-15 against branch `0.0.39` @ `9ac839264`. Supersedes the earlier generic
 Tauri/React blueprint in this file's history; the appraisal that produced this list is
