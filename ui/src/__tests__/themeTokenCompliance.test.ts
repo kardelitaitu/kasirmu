@@ -831,6 +831,67 @@ function describeBootDecls(decls: BootFontDecl[]): string {
   return decls.map((d) => `  ${d.file}:${d.line}  font-family: ${d.value}`).join('\n');
 }
 
+/* ── Rule 7 -- faces that arrive through an @import ─────────────────────── */
+
+const FONTS_CSS = join(UI_SRC, 'frontend', 'themes', 'fonts.css');
+const CSS_IMPORT_RE = /@import\s+(?:url\(\s*)?(['"])([^'"]+)\1/gi;
+
+interface FaceSource {
+  spec: string;
+  kind: 'file' | 'remote' | 'missing';
+  file: string | null;
+  text: string;
+  faces: number;
+}
+
+/** The specs of every `@import` in a stylesheet, comments already blanked. */
+function cssImportSpecs(text: string): string[] {
+  const stripped = blankComments(text);
+  const specs: string[] = [];
+  CSS_IMPORT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null = CSS_IMPORT_RE.exec(stripped);
+  while (m) {
+    const spec = (m[2] ?? '').trim();
+    if (spec) specs.push(spec);
+    m = CSS_IMPORT_RE.exec(stripped);
+  }
+  return specs;
+}
+
+/**
+ * Count of `@import` keywords, used to prove cssImportSpecs did not UNDER-read:
+ * an @import written without quotes (`url(x.css)`) matches nothing above, and a
+ * resolver that quietly harvests fewer specs than the file contains would pass by
+ * finding nothing. A missing face is never a zero.
+ */
+function countAtImports(text: string): number {
+  return (blankComments(text).match(/@import/gi) ?? []).length;
+}
+
+/** Map one bare package specifier to the CSS the bundler would actually read. */
+function resolveFaceSource(spec: string): FaceSource {
+  const base: FaceSource = { spec, kind: 'missing', file: null, text: '', faces: 0 };
+  if (/^(https?:)?\/\//i.test(spec)) return { ...base, kind: 'remote' };
+  if (spec.startsWith('.')) {
+    const rel = resolve(UI_SRC, 'frontend', 'themes', spec);
+    if (!existsSync(rel)) return base;
+    const text = readFileSync(rel, 'utf-8');
+    return { spec, kind: 'file', file: rel, text, faces: faceBlocks(text) };
+  }
+  let p = join(UI_ROOT, 'node_modules', spec);
+  if (!p.endsWith('.css')) p = join(p, 'index.css');
+  if (!existsSync(p)) return base;
+  const text = readFileSync(p, 'utf-8');
+  return { spec, kind: 'file', file: p, text, faces: faceBlocks(text) };
+}
+
+function faceBlocks(text: string): number {
+  FONT_FACE_BLOCK_RE.lastIndex = 0;
+  let n = 0;
+  while (FONT_FACE_BLOCK_RE.exec(text)) n++;
+  return n;
+}
+
 describe('font-reference portability', () => {
   it('scanned the boot documents and the ui/src CSS tree', () => {
     expect(HTML_SOURCES.length).toBeGreaterThanOrEqual(1);
@@ -1070,6 +1131,81 @@ describe('font-reference portability', () => {
       doc(shared, '  <!-- font-family: Georgia, serif; -->'),
     );
     expect(commented.length).toBe(1);
+  });
+
+  it('rule 7: faces arriving through an @import are same-origin too', () => {
+    // Why this rule exists at all: collectCssFiles skips node_modules on purpose
+    // (:665), so rule 3 -- the gate whose whole sentence is "no @font-face may
+    // name a host" -- grades 0 of the 13 @font-face rules that ship since Phase 3.
+    // The declarations moved one tier down, into a dependency, and the gate stayed
+    // green because it never looks there. That is :92's layering lesson one level
+    // further out: the file that decides is not the file that is checked.
+    if (!existsSync(FONTS_CSS)) {
+      expect(FONTS_CSS, 'fonts.css is gone, so rule 7 has nothing to resolve').toBeTruthy();
+    }
+    const fontsCss = readFileSync(FONTS_CSS, 'utf-8');
+    const specs = cssImportSpecs(fontsCss);
+    // Harvest guard: fewer specs than @import keywords means the parser missed
+    // one (an unquoted url form, say), and a silent under-read would read clean.
+    expect(
+      specs.length,
+      `rule 7 harvested ${specs.length} import specs but fonts.css contains `
+        + `${countAtImports(fontsCss)} @import keywords -- the parser is under-reading `
+        + 'and an ungraded face is worse than a failing one.',
+    ).toBe(countAtImports(fontsCss));
+    expect(specs.length).toBeGreaterThanOrEqual(1);
+    const sources = specs.map(resolveFaceSource);
+    const remote = sources.filter((s) => s.kind === 'remote');
+    expect(
+      remote.length,
+      'An @font-face source is being imported from a host. The packaged app blocks it '
+        + "(font-src 'self' data:) while a bare-browser dev session would happily load "
+        + 'it, which is the exact dev/prod split this whole plan was written about:\n'
+        + remote.map((s) => `  @import '${s.spec}'`).join('\n'),
+    ).toBe(0);
+    const missing = sources.filter((s) => s.kind === 'missing');
+    expect(
+      missing.length,
+      'An @import names a stylesheet that cannot be resolved, so its faces ship as '
+        + 'nothing while every other rule still passes -- the failure mode fonts.css '
+        + 'warns about in its own comment:\n'
+        + missing.map((s) => `  @import '${s.spec}'`).join('\n'),
+    ).toBe(0);
+    for (const s of sources) {
+      expect(
+        s.faces,
+        `@import '${s.spec}' resolved to a file with 0 @font-face blocks -- either the `
+          + 'package changed shape or the block regex stopped matching. Rule 7 would '
+          + 'otherwise pass on a population of none.',
+      ).toBeGreaterThanOrEqual(1);
+    }
+    const totalFaces = sources.reduce((n, s) => n + s.faces, 0);
+    // Measured 13 (7 Inter subsets + 6 JetBrains Mono subsets) at the commit that
+    // added this rule; the floor sits below it with headroom for a dependency that
+    // drops a subset, not for one that stops being read at all.
+    expect(totalFaces, 'the imported face population collapsed').toBeGreaterThanOrEqual(10);
+    const hits = sources.flatMap((s) => absoluteFontFaceUrls(s.file ?? s.spec, s.text));
+    expect(
+      hits.length,
+      'A bundled @font-face names a host instead of a same-origin file. Relative and '
+        + "data: are both fine -- 'self' and data: are what the CSP already allows:\n"
+        + describeHits(hits),
+    ).toBe(0);
+  });
+
+  it('rule 7 probe: the resolver classifies each import shape, and a comment cannot fake one', () => {
+    const quoted = cssImportSpecs("@import 'a.css';\n@import url(\"https://cdn.example.com/x.css\");");
+    expect(quoted).toEqual(['a.css', 'https://cdn.example.com/x.css']);
+    expect(quoted.length).toBe(countAtImports("@import 'a.css';\n@import url(\"https://cdn.example.com/x.css\");"));
+    // The trap this file keeps re-meeting: a mention inside a comment is not a use.
+    expect(cssImportSpecs('/* @import "not-real.css"; */\n// @import nope;')).toEqual([]);
+    expect(countAtImports('/* @import "not-real.css"; */')).toBe(0);
+    // Both failure classes must be reported, never skipped.
+    expect(resolveFaceSource('@fontsource-variable/inter').kind).toBe('file');
+    expect(resolveFaceSource('@fontsource-variable/no-such-package-xyz').kind).toBe('missing');
+    expect(resolveFaceSource('https://fonts.googleapis.com/css2?family=Inter').kind).toBe('remote');
+    // And a real resolution must actually carry faces, or the rule above is vacuous.
+    expect(resolveFaceSource('@fontsource-variable/inter').faces).toBeGreaterThanOrEqual(1);
   });
 });
 
