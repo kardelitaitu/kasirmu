@@ -1069,6 +1069,60 @@ function presentFaceUrls(block: string, baseDir: string): string[] {
   });
 }
 
+/**
+ * Rule 16's subject: the two shells' own build configs. This is the first time the
+ * suite reads anything above ui/, and that is a decision rather than a slip. The CSP
+ * is the premise the other fifteen rules rest on -- the whole argument for bundling
+ * is that a remote face cannot load in a shipped build -- yet nothing mechanical has
+ * ever read it: the only other consumers of these files are a Rust window test and
+ * two PowerShell scripts, and `font-src` is named by no test in the repository. The
+ * obvious alternative home, a checker under scripts/, is not gated either:
+ * `scripts/__tests__` appears only in `ci.yml.bak` and `e2e-pr.yml.bak`, both retired,
+ * so a CSP rule has to sit in the one suite CI actually blocks on. Paths are built
+ * from __dirname, the same idiom every other root here uses.
+ */
+// __dirname is ui/src/__tests__, so the repo root is three levels up, not two. The
+// floor in rule 16 caught this by itself: the first run of this file read 0 of 4
+// configs and went red instead of passing on an empty population.
+const APPS_ROOT = resolve(__dirname, '..', '..', '..', 'apps');
+const SHELL_CONFIGS = [
+  { shell: 'desktop-client', file: join(APPS_ROOT, 'desktop-client', 'tauri.conf.json') },
+  { shell: 'tablet-client', file: join(APPS_ROOT, 'tablet-client', 'tauri.conf.json') },
+];
+const CSP_KEYS = ['csp', 'devCsp'];
+/** Measured identically in all four clauses when this rule was written. */
+const FONT_SRC_PIN = "'self' data:";
+
+interface ShellFontSrc { shell: string; key: string; clause: string | null }
+
+/** One directive out of a CSP string, by name, or null if the policy has none. */
+function cspDirective(csp: string, name: string): string | null {
+  for (const raw of csp.split(';')) {
+    const d = raw.trim();
+    if (d.split(/\s+/)[0] === name) return d.slice(name.length).trim();
+  }
+  return null;
+}
+
+/** The font-src clause of every (shell, csp-key) pair that could be read. */
+function shellFontSrc(): ShellFontSrc[] {
+  const out: ShellFontSrc[] = [];
+  for (const s of SHELL_CONFIGS) {
+    if (!existsSync(s.file)) continue;
+    let sec: Record<string, unknown> = {};
+    try {
+      sec = (JSON.parse(readFileSync(s.file, 'utf-8'))?.app?.security ?? {}) as Record<string, unknown>;
+    } catch {
+      out.push({ shell: s.shell, key: '(unparseable)', clause: null });
+      continue;
+    }
+    for (const key of CSP_KEYS) {
+      const v = sec[key];
+      out.push({ shell: s.shell, key, clause: typeof v === 'string' ? cspDirective(v, 'font-src') : null });
+    }
+  }
+  return out;
+}
 /** Every family name a value reaches for, generics and var() wrappers removed. */
 function familyRefsInValue(value: string): string[] {
   const head = value.trim();
@@ -2121,6 +2175,60 @@ describe('font-reference portability', () => {
     // which is the misattribution bootFontDeclarations used to make.
     expect(bootFontDeclarations('probe.html', inline)).toHaveLength(0);
     expect(bootFontDeclarations('probe.html', '<style>.a { font-family: Inter, sans-serif; }</style>')).toHaveLength(1);
+  });
+
+  it('rule 16: both shells pin font-src to self plus data in csp AND devCsp', () => {
+    const rows = shellFontSrc();
+    // Two shells x two keys, exactly. A missing file, a renamed key, or a config that
+    // stops parsing reduces this number, and a reduced population must not read clean.
+    expect(
+      rows.length,
+      `only ${rows.length} of the 4 (shell, CSP-key) pairs could be read. A shell config that `
+        + 'is missing, renamed, or no longer parses leaves this rule grading nothing, so it fails '
+        + 'here rather than reporting a quiet pass.\n'
+        + rows.map((r) => `  read: ${r.shell}.${r.key}`).join('\n'),
+    ).toBe(4);
+    const drift = rows
+      .filter((r) => r.clause !== FONT_SRC_PIN)
+      .map((r) => `  ${r.shell}.${r.key} -> ${r.clause === null ? 'NO font-src CLAUSE at all' : r.clause}`);
+    expect(
+      drift,
+      `font-src is not '${FONT_SRC_PIN}' in every shell policy:\n`
+        + drift.join('\n')
+        + '\n\nThis is the premise the other fifteen rules stand on, so the pin is exact in both '
+        + 'directions, and both directions have a named cost:\n'
+        + `  * WIDENING it -- adding any host -- means a remote face can load in a shipped build. `
+        + 'Rules 1, 3, 7 and 8 are justified by "dead in production, live in dev"; the moment '
+        + 'font-src allows a host, that justification is gone and a CDN link becomes a working '
+        + 'reference rather than a broken one.\n'
+        + `  * NARROWING it -- dropping data: while keeping 'self' -- breaks a face that actually `
+        + 'ships: one of the thirteen @font-face blocks in the built CSS is an inline data: URI '
+        + '(the JetBrains Mono cyrillic-ext subset), and rule 13 counts data: as present precisely '
+        + 'because the artifact does.\n'
+        + 'devCsp is pinned alongside csp because the divergence this plan exists to end is exactly '
+        + 'the one where a policy is fixed in the key the developer sees and not the one that ships, '
+        + 'or the other way round.\n'
+        + 'If this change is deliberate, update FONT_SRC_PIN in the same commit as the config and '
+        + 're-read Phase 1 of todo-font-system.md, because the argument there changes with it.',
+    ).toEqual([]);
+  });
+
+  it('rule 16 probe: a directive is read by name, and a host in another clause is not a font host', () => {
+    const csp = "default-src 'self'; script-src 'self' https://cdn.example.com; font-src 'self' data:; img-src https://images.example.com";
+    expect(cspDirective(csp, 'font-src')).toBe("'self' data:");
+    expect(cspDirective(csp, 'img-src')).toBe('https://images.example.com');
+    expect(cspDirective(csp, 'connect-src')).toBeNull();
+    // The trap this parsing exists to avoid: scanning the whole string for 'https://'
+    // would call this policy a font host, when its font clause has none.
+    expect(csp.includes('://')).toBe(true);
+    expect((cspDirective(csp, 'font-src') ?? '').includes('://')).toBe(false);
+    // Whitespace and the trailing semicolon are policy style, not meaning.
+    expect(cspDirective("font-src   'self'   data: ;", 'font-src')).toBe("'self'   data:");
+    // And the real population is named, so a rule that quietly stopped finding a shell
+    // is visible even though the case above already counts it.
+    expect(shellFontSrc().map((r) => `${r.shell}.${r.key}`).sort()).toEqual([
+      'desktop-client.csp', 'desktop-client.devCsp', 'tablet-client.csp', 'tablet-client.devCsp',
+    ]);
   });
 });
 
