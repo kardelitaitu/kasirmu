@@ -20,7 +20,9 @@
 // look wrong in dev. ui/package.json is bumped by scripts/bump-version.ps1
 // alongside Cargo.toml/tauri.conf.json, so importing it keeps mock and app in
 // lockstep.
-import { MOCK_STORE } from './core/mockSeedData';
+// MOCK_STORE fed the location list and the regional/receipt fallbacks; all
+// of that state now lives in handlers/locationState.ts and handlers/regional.ts
+// (Phase 5.1), which import it themselves — the router no longer names it.
 import {
   applyScopedAliases,
   convertFileSrc,
@@ -40,23 +42,18 @@ import { kdsDisplayCounter, kdsHandlers, mockKdsOrders, mockKdsLineItems, saveMo
 import { analyticsHandlers } from './handlers/analytics';
 import { createLocationsHandlers } from './handlers/locations';
 import {
-  createMockLocation,
-  deleteMockLocation,
-  getMockLocation,
-  getMockLocationTicketPrefix,
-  getMockPrimaryLocation,
+  createLocationProfileHandlers,
   getMockStores,
-  listMockLocations,
-  setMockLocationTicketPrefix,
-  setMockPrimaryLocation,
   unwrapArgs,
   updateMockLocation,
 } from './handlers/locationState';
+import { createRegionalHandlers } from './handlers/regional';
 import { mockHandlerPayload, systemHandlers } from './handlers/system';
 import { staffHandlers } from './handlers/staff';
 import { workspaceHandlers } from './handlers/workspaces';
 import { topologyHandlers } from './handlers/topology';
-import { licenseHandlers, settingsHandlers, settingsWriteHandlers } from './handlers/settings';
+import { brandHandlers, licenseHandlers, settingsHandlers, settingsWriteHandlers } from './handlers/settings';
+import { deviceBindingHandlers } from './handlers/terminals';
 import { floorplanHandlers } from './handlers/floorplan';
 import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 import { bundlesHandlers } from './handlers/bundles';
@@ -72,247 +69,12 @@ export { convertFileSrc, invoke, isTauri };
 // The location-profile list, the ticket-prefix pair and the unwrapArgs
 // envelope helper lived here as module-private `let`s — that sharing is why
 // -4:190 called this block the real blocker and deferred the consolidation.
-// Phase 5.1 moved it verbatim to `handlers/locationState.ts`; the imports
-// above are the only path in, and the regional / receipt reads below reach the
-// list through getMockStores() until their own phases inject it.
-
-// ═══════════════════════════════════════════════════════════════
-// REGIONAL CONFIGURATION (regional slice 2, saas-2 design)
-// ═══════════════════════════════════════════════════════════════
-// Read model mirroring oz_core::RegionalConfig, which the command returns
-// directly — snake_case fields, ConfigScope serde scope names ("location",
-// "legal_entity", "organization", "built_in"). ADR #48: timezone.value is
-// the STORED IANA name; offsets are derived at display/report time, never
-// here.
-
-/** One resolved regional axis as the dev mock serves it. */
-interface MockRegionalValue {
-  value: string;
-  scope: 'location' | 'legal_entity' | 'organization' | 'built_in';
-}
-
-/** The effective regional configuration as the dev mock serves it. */
-interface MockRegionalConfig {
-  location_id: string;
-  legal_entity_id: string | null;
-  country_code: string | null;
-  locale: MockRegionalValue;
-  timezone: MockRegionalValue;
-  currency: MockRegionalValue;
-}
-
-/** Written locale overrides per location id (slice 3 write model): the mock
- *  location rows predate the locale column, so writes land here instead of
- *  on the row. Blank = cleared (inherit). */
-const mockRegionalLocale = new Map<string, string>();
-
-/** The written market anchor (slice 3): the mock has no entity rows, so the
- *  entity-layer country_code is one module-level value. */
-let mockRegionalCountryCode: string | null = null;
-
-/** Resolve the regional config for a mock location: the location's own
- *  columns (plus slice-3 write overrides) first, then the built-in defaults
- *  — the same narrowest-first precedence the core resolver applies. The real
- *  backend also walks the legal-entity layer for its blank regional columns,
- *  which the mock cannot model: its LegalEntityDto (like the real one)
- *  carries no regional fields. */
-function getMockRegionalConfig(args: unknown): MockRegionalConfig {
-  const { locationId } = unwrapArgs<{ locationId?: string }>(args);
-  const stores = getMockStores();
-  const location = stores.find((loc) => loc.id === locationId) ?? stores[0] ?? MOCK_STORE;
-  const axis = (value: string, fallback: string): MockRegionalValue =>
-    value.trim() !== '' ? { value, scope: 'location' } : { value: fallback, scope: 'built_in' };
-  const writtenLocale = mockRegionalLocale.get(location.id) ?? '';
-  return {
-    location_id: location.id,
-    // The migration seed links every location to this entity id; the mock
-    // has no entity rows to walk, so it is surfaced verbatim.
-    legal_entity_id: 'default:default-legal-entity',
-    country_code: mockRegionalCountryCode,
-    locale: axis(writtenLocale, 'en-US'),
-    timezone: axis(location.timezone, 'UTC'),
-    currency: axis(location.currency, 'USD'),
-  };
-}
-
-/** The slice-3 write: validate nothing here (the real backend validates in
- *  core; the mock's job is only to answer non-null), mutate the mock rows,
- *  and return the re-resolved config read-after-write. */
-function setMockRegionalConfig(args: unknown): MockRegionalConfig {
-  const { locationId, config } = unwrapArgs<{
-    locationId?: string;
-    config?: { locale?: string; timezone?: string; currency?: string; country_code?: string };
-  }>(args);
-  const stores = getMockStores();
-  const location = stores.find((loc) => loc.id === locationId) ?? stores[0] ?? MOCK_STORE;
-  if (config?.locale !== undefined) mockRegionalLocale.set(location.id, config.locale);
-  if (config?.timezone !== undefined) {
-    updateMockLocation({ id: location.id, timezone: config.timezone });
-  }
-  if (config?.currency !== undefined) {
-    updateMockLocation({ id: location.id, currency: config.currency });
-  }
-  if (config?.country_code !== undefined) {
-    mockRegionalCountryCode = config.country_code.trim() !== '' ? config.country_code : null;
-  }
-  return getMockRegionalConfig(args);
-}
-
-
-
-// ── Receipt format (regional receipt-format axis) ───────────────────
-// One closed record per scope: content on the entity (statutory),
-// layout on workspace/terminal (presentational, terminal over
-// workspace over legacy). Session-local maps — the mock mirrors the
-// core `Store::effective_receipt_format` semantics loosely, enough
-// for the card's states.
-interface MockReceiptLayout {
-  paper_width_mm: number | null;
-  margin_top_mm: number | null;
-  margin_bottom_mm: number | null;
-  margin_left_mm: number | null;
-  margin_right_mm: number | null;
-  show_logo: boolean | null;
-  print_copies: number | null;
-  show_table_number: boolean | null;
-  footer_note: string | null;
-}
-interface MockReceiptContent {
-  requiredFields: string[];
-  footerText: string;
-  showTax: boolean;
-  showCurrency: boolean;
-  decimalSeparator: string;
-}
-const mockReceiptLayouts = new Map<string, MockReceiptLayout>();
-let mockReceiptContent: MockReceiptContent | null = null;
-
-/** The effective read: content is unset in the mock (entity-layer
- *  authoring is a management surface), layout resolves terminal →
- *  workspace → built-in defaults with the same provenance names. */
-function getMockReceiptFormat(args: unknown): {
-  content: MockReceiptContent | null;
-  content_source: string;
-  layout: {
-    paperWidthMm: number | null;
-    marginTopMm: number | null;
-    marginBottomMm: number | null;
-    marginLeftMm: number | null;
-    marginRightMm: number | null;
-    showLogo: boolean | null;
-    printCopies: number | null;
-    showTableNumber: boolean | null;
-    footerNote: string | null;
-  };
-  layout_source: string;
-} {
-  const { terminalId, workspaceId } = unwrapArgs<{
-    terminalId?: string;
-    workspaceId?: string;
-  }>(args);
-  const location =
-    getMockStores().find((loc) => loc.id === workspaceId) ?? getMockStores()[0] ?? MOCK_STORE;
-  const terminalKey = terminalId ? `terminal:${terminalId}` : null;
-  const workspaceKey = `workspace:${workspaceId ?? location.id}`;
-  const terminal = terminalKey ? mockReceiptLayouts.get(terminalKey) : undefined;
-  const workspace = mockReceiptLayouts.get(workspaceKey);
-  const layer = terminal ?? workspace;
-  const source = terminal ? 'terminal' : workspace ? 'workspace' : 'unset';
-  const pick = <T,>(terminalValue: T | null | undefined, workspaceValue: T | null | undefined): T | null =>
-    terminal ? (terminalValue ?? null) : (workspaceValue ?? null);
-  return {
-    content: mockReceiptContent,
-    content_source: mockReceiptContent ? 'entity' : 'unset',
-    layout: {
-      paperWidthMm: layer ? pick(terminal?.paper_width_mm, workspace?.paper_width_mm) : null,
-      marginTopMm: pick(terminal?.margin_top_mm, workspace?.margin_top_mm),
-      marginBottomMm: pick(terminal?.margin_bottom_mm, workspace?.margin_bottom_mm),
-      marginLeftMm: pick(terminal?.margin_left_mm, workspace?.margin_left_mm),
-      marginRightMm: pick(terminal?.margin_right_mm, workspace?.margin_right_mm),
-      showLogo: pick(terminal?.show_logo, workspace?.show_logo),
-      printCopies: pick(terminal?.print_copies, workspace?.print_copies),
-      showTableNumber: pick(terminal?.show_table_number, workspace?.show_table_number),
-      footerNote: pick(terminal?.footer_note, workspace?.footer_note),
-    },
-    layout_source: source,
-  };
-}
-
-/** The card's write: replace the workspace-layer layout record (the card
- *  edits the whole record) and return the fresh effective read. */
-function setMockReceiptLayout(args: unknown): {
-  content: MockReceiptContent | null;
-  content_source: string;
-  layout: {
-    paperWidthMm: number | null;
-    marginTopMm: number | null;
-    marginBottomMm: number | null;
-    marginLeftMm: number | null;
-    marginRightMm: number | null;
-    showLogo: boolean | null;
-    printCopies: number | null;
-    showTableNumber: boolean | null;
-    footerNote: string | null;
-  };
-  layout_source: string;
-} {
-  const { workspaceId, layout } = unwrapArgs<{
-    workspaceId?: string;
-    layout?: {
-      paperWidthMm?: number | null;
-      marginTopMm?: number | null;
-      marginBottomMm?: number | null;
-      marginLeftMm?: number | null;
-      marginRightMm?: number | null;
-      showLogo?: boolean | null;
-      printCopies?: number | null;
-      showTableNumber?: boolean | null;
-      footerNote?: string | null;
-    };
-  }>(args);
-  const location =
-    getMockStores().find((loc) => loc.id === workspaceId) ?? getMockStores()[0] ?? MOCK_STORE;
-  if (layout) {
-    mockReceiptLayouts.set(`workspace:${location.id}`, {
-      paper_width_mm: layout.paperWidthMm ?? null,
-      margin_top_mm: layout.marginTopMm ?? null,
-      margin_bottom_mm: layout.marginBottomMm ?? null,
-      margin_left_mm: layout.marginLeftMm ?? null,
-      margin_right_mm: layout.marginRightMm ?? null,
-      show_logo: layout.showLogo ?? null,
-      print_copies: layout.printCopies ?? null,
-      show_table_number: layout.showTableNumber ?? null,
-      footer_note: layout.footerNote ?? null,
-    });
-  }
-  return getMockReceiptFormat(args);
-}
-
-/** The statutory-content write (W2-C): replaces the one content record
- *  and returns the fresh effective read. The mock mirrors the core
- *  upsert semantics session-locally — exactly one content row per
- *  entity, so a second write replaces the first. */
-function setMockReceiptContent(args: unknown): ReturnType<typeof getMockReceiptFormat> {
-  const { content } = unwrapArgs<{
-    content?: {
-      requiredFields?: string[];
-      footerText?: string;
-      showTax?: boolean;
-      showCurrency?: boolean;
-      decimalSeparator?: string;
-    };
-  }>(args);
-  if (content) {
-    mockReceiptContent = {
-      requiredFields: content.requiredFields ?? [],
-      footerText: content.footerText ?? '',
-      showTax: content.showTax ?? true,
-      showCurrency: content.showCurrency ?? false,
-      decimalSeparator: content.decimalSeparator ?? 'dot',
-    };
-  }
-  return getMockReceiptFormat(args);
-}
+// Phase 5.1 moved them verbatim to `handlers/locationState.ts`, and the
+// regional configuration pair plus the receipt-format trio that read the
+// list — together with their session-local override state — to
+// `handlers/regional.ts`. Both domains register below through their own
+// factories; nothing in this file touches that state except through the
+// injected deps.
 
 /** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
  *  (camelCase wire shape). */
@@ -404,51 +166,25 @@ const entryHandlers: Record<string, MockHandler> = {
   ...licenseHandlers,
 
   // ═══════════════════════════════════════════════════════════════
-  // LOCATIONS / DEPRECATED STORE PROFILE ALIASES
-  // ═══════════════════════════════════════════════════════════════
-  // Location is the canonical site-unit term. The old command names stay
-  // available while clients migrate, but both families share the same
-  // stateful mock list so browser-mode behavior matches the real IPC surface.
-
-  'list_locations_scoped': listMockLocations,
-  'get_location_profile_scoped': getMockLocation,
-  'get_primary_location_scoped': getMockPrimaryLocation,
-  'create_location_profile_scoped': createMockLocation,
-  'update_location_profile_scoped': updateMockLocation,
-  'set_primary_location_scoped': setMockPrimaryLocation,
-  'delete_location_profile_scoped': deleteMockLocation,
-  'get_location_ticket_prefix_scoped': getMockLocationTicketPrefix,
-  'set_location_ticket_prefix_scoped': setMockLocationTicketPrefix,
-
-  // Legal Entity (Organization-level, Phase 1 §G). Registered here because
-  // scripts/verify-ipc-parity.py treats a missing dev-mock handler as a hard
-  // violation: invoke() would return null and the caller would silently render
-  // its failure path instead of erroring.
-
-  // Regional configuration read model (regional slice 2). Registered here
+  // LOCATIONS / REGIONAL CONFIG / RECEIPT FORMAT — Phase 5.1 conversion.
+  // The nine location/prefix commands (Location is the canonical site-unit
+  // term; the old store-profile names stay registered while clients
+  // migrate) now come from createLocationProfileHandlers(), and the
+  // regional pair plus the receipt-format trio from createRegionalHandlers()
+  // — both registered straight below the literal. They all stay registered
   // because scripts/verify-ipc-parity.py treats a missing dev-mock handler
   // as a hard violation: invoke() would return null and the caller would
-  // silently render its failure path instead of erroring.
-  'get_regional_config_scoped': getMockRegionalConfig,
-
-  // Regional configuration write path (regional slice 3) — same parity rule.
-  'set_regional_config_scoped': setMockRegionalConfig,
-
-  // Receipt format (regional receipt-format axis) — same parity rule.
-  'get_receipt_format_scoped': getMockReceiptFormat,
-  'set_receipt_layout_scoped': setMockReceiptLayout,
-  'set_receipt_content_scoped': setMockReceiptContent,
+  // silently render its failure path instead of erroring. (Legal Entity,
+  // Organization-level Phase 1 §G, lives in handlers/locations.ts.)
+  // ═══════════════════════════════════════════════════════════════
 
   // ═════════════════════════════════════════════════════════
   // WORKSPACES (ADR #4 / #7)
   // ═══════════════════════════════════════════════════════════════
-
-  'get_device_binding': () => ({ bounded: true, boundStoreId: 'store-1', boundInstanceId: 'ws-1', signatureValid: true }),
-  'get_device_binding_scoped': () => ({ bounded: true, boundStoreId: 'store-1', boundInstanceId: 'ws-1', signatureValid: true }),
-  'set_device_binding': () => null,
-  'set_device_binding_scoped': () => null,
-  'clear_device_binding': () => null,
-  'clear_device_binding_scoped': () => null,
+  // The six device-binding entries moved verbatim to handlers/terminals.ts
+  // (Phase 5.1 conversion); that file's header records why this banner was
+  // never their home — handlers/workspaces.ts:17-19 declined them as a
+  // separate (terminals) command family. Registered below.
 
   // ═══════════════════════════════════════════════════════════════
   // SETTINGS
@@ -459,19 +195,9 @@ const entryHandlers: Record<string, MockHandler> = {
   // ═══════════════════════════════════════════════════════════════
   // BRANDING
   // ═══════════════════════════════════════════════════════════════
-
-  'get_brand_settings': () => ({
-    primary_colour: '#147EFB',
-    logo_path: null,
-    store_name: 'OZ-POS Demo',
-    colour_hover: null,
-  }),
-  'get_brand_settings_scoped': () => ({
-    primary_colour: '#147EFB',
-    logo_path: null,
-    store_name: 'OZ-POS Demo',
-    colour_hover: null,
-  }),
+  // (the two static brand-settings entries moved verbatim to
+  //  handlers/settings.ts as brandHandlers — Phase 5.1 conversion;
+  //  registered below)
 
   'print_sales_receipt': () => ({ printed: true }),
   'print_sales_receipt_scoped': () => ({ printed: true }),
@@ -512,6 +238,17 @@ const entryHandlers: Record<string, MockHandler> = {
 // `handlers/*`; until they land, the literal remains the registry's main
 // source, and everything below patches it in place.
 registerHandlers(entryHandlers);
+// Phase 5.1 conversions, registered in the slots their keys held inside the
+// literal: the nine location/prefix commands of handlers/locationState.ts,
+// and the regional pair + receipt-format trio of handlers/regional.ts —
+// the latter receives the relocated state as deps (the catalog/sales/
+// payment/locations factory precedent) rather than importing the list.
+registerHandlers(createLocationProfileHandlers());
+registerHandlers(createRegionalHandlers({ unwrapArgs, getMockStores, updateMockLocation }));
+// The two stateless Phase 5.1 moves: the terminals family and branding,
+// registered as their own named maps for the same slot their entries held.
+registerHandlers(deviceBindingHandlers);
+registerHandlers(brandHandlers);
 // Bundles (Phase 5.2) moved verbatim to `handlers/bundles.ts`; registered here so
 // the twelve keys keep the registry position they held inside the entry literal.
 registerHandlers(bundlesHandlers);

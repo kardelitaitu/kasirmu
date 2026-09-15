@@ -19,6 +19,7 @@
  * subtleties after the move.
  */
 import { MOCK_STORE } from '../core/mockSeedData';
+import type { MockHandler } from '../core/mockDispatcher';
 
 /** Unwrap the `{ args }` envelope the API wrappers send, tolerating a
  *  bare payload for direct calls. The real commands take a named `args`
@@ -127,4 +128,25 @@ export function setMockLocationTicketPrefix(args: unknown): string | null {
   const normalized = normalizeMockTicketPrefix(prefix);
   mockTicketPrefixes.set(key, normalized);
   return normalized || null;
+}
+
+/**
+ * The nine location/prefix commands as `entryHandlers` held them (Phase 5.1
+ * conversion, todo-refactor-devmock-router-consolidation.md). Key names and
+ * handler identities are unchanged — only the registration site moved out of
+ * the router's literal, so the file now registers this state's own commands
+ * instead of naming them one by one.
+ */
+export function createLocationProfileHandlers(): Record<string, MockHandler> {
+  return {
+    'list_locations_scoped': listMockLocations,
+    'get_location_profile_scoped': getMockLocation,
+    'get_primary_location_scoped': getMockPrimaryLocation,
+    'create_location_profile_scoped': createMockLocation,
+    'update_location_profile_scoped': updateMockLocation,
+    'set_primary_location_scoped': setMockPrimaryLocation,
+    'delete_location_profile_scoped': deleteMockLocation,
+    'get_location_ticket_prefix_scoped': getMockLocationTicketPrefix,
+    'set_location_ticket_prefix_scoped': setMockLocationTicketPrefix,
+  };
 }

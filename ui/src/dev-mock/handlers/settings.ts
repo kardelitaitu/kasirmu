@@ -105,3 +105,28 @@ export const settingsWriteHandlers: Record<string, MockHandler> = {
   'pg_sync_stop': () => true,
 };
 
+// ═══════════════════════════════════════════════════════════════
+// BRANDING — Phase 5.1 conversion (todo-refactor-devmock-router-
+// consolidation.md): the two static brand-settings entries the router's
+// entryHandlers literal held, moved verbatim under the banner that already
+// named them. A named map, not folded into settingsHandlers, so nothing
+// else's key set moves with it; this file has carried three domains since
+// the enterprise lane's settings move — branding is a settings sibling,
+// not a fourth one.
+// ═══════════════════════════════════════════════════════════════
+
+export const brandHandlers: Record<string, MockHandler> = {
+  'get_brand_settings': () => ({
+    primary_colour: '#147EFB',
+    logo_path: null,
+    store_name: 'OZ-POS Demo',
+    colour_hover: null,
+  }),
+  'get_brand_settings_scoped': () => ({
+    primary_colour: '#147EFB',
+    logo_path: null,
+    store_name: 'OZ-POS Demo',
+    colour_hover: null,
+  }),
+};
+

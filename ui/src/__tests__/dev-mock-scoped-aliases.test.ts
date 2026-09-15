@@ -226,13 +226,16 @@ describe("dev-mock registry alias integrity (real registry, not a fixture)", () 
   });
 
   it("the explicitly registered settings twins were NOT overwritten", () => {
-    // Re-measured, not copied: handlers/settings.ts carries 8 explicit _scoped twins
-    // (:52 :56 :63 :70 :72 :79 :83 :93), reaching the registry through the
-    // ...settingsHandlers spread at :538 and registerHandlers(settingsWriteHandlers)
-    // at :810. The :485 license spread carries no _scoped key at all.
+    // Re-measured, not copied: handlers/settings.ts carries 9 explicit _scoped
+    // twins, reaching the registry through the ...settingsHandlers spread, the
+    // settingsWriteHandlers registration, and — since the router consolidation's
+    // Phase 5.1 conversion (2026-09-16) — the brandHandlers map: get_brand_settings
+    // and its explicit _scoped twin moved here from the router's entryHandlers
+    // literal verbatim. The license spread carries no _scoped key at all.
     const settingsTwins = SITES.filter((s) => s.file === "handlers/settings.ts" && s.name.endsWith("_scoped"))
       .map((s) => s.name).sort();
     expect(settingsTwins).toEqual([
+      "get_brand_settings_scoped",
       "get_receipt_settings_scoped", "get_store_settings_scoped", "set_credit_settings_scoped",
       "set_hardware_settings_scoped", "set_receipt_settings_scoped", "set_setting_scoped",
       "set_settings_scoped", "set_store_settings_scoped",
