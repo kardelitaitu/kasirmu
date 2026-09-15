@@ -1611,8 +1611,24 @@ describe('font-reference portability', () => {
     // its role instead -- --display-type below -- is invisible to rules 2, 4, 5 and 9
     // alike. This case records the reach limit instead of letting it read as coverage.
     expect(fontStacksFromCss('probe.css', "--display-type: 'Grotesk No. 1', sans-serif;\n").length).toBe(0);
-    // And the real inventory is not empty by accident of a resolver that stopped working.
-    expect([...bundledFamilies()].sort()).toEqual(['inter variable', 'jetbrains mono variable']);
+    // And the real inventory is not empty by accident of a resolver that stopped
+    // working. This one is deliberately EXACT rather than a floor, so it must carry
+    // its own instructions: an array diff that says "expected [a, b, c] to deeply
+    // equal [a, b]" teaches nobody that they just bundled a third face, and a lane
+    // that cannot read the failure will mute the rule that caught it.
+    const BUNDLED_FACE_CENSUS = ['inter variable', 'jetbrains mono variable'];
+    const census = [...bundledFamilies()].sort();
+    expect(
+      census,
+      'the families the @import resolver finds changed: ' + JSON.stringify(census)
+        + '\n  was: ' + JSON.stringify(BUNDLED_FACE_CENSUS) + '\n'
+        + 'If a font package was deliberately added or dropped, update BUNDLED_FACE_CENSUS in the '
+        + 'same commit -- rule 9 reads it as what a stack may lead with, and rule 13 walks the '
+        + 'identical population to check the files exist.\n'
+        + 'If nothing was added on purpose, the resolver lost a source: check the @import specs in '
+        + shortFile(FONTS_CSS) + '\n'
+        + 'and rule 7, which fails separately on an @import that resolves to no file at all.',
+    ).toEqual(BUNDLED_FACE_CENSUS);
   });
 
   it('rule 10: a theme font token may not drop, add or reorder a fallback name', () => {
