@@ -225,7 +225,7 @@ def parse_log(text: str) -> dict:
     return {"passed": passed, "failed": failed, "ignored": ignored, "events": events}
 
 
-def run_cargo(crates: list[str]) -> tuple[int, str]:
+def run_cargo(crates: list[str], serialize: bool = False) -> tuple[int, str]:
     chunks: list[str] = []
     rc = 0
     for krate in crates:
@@ -235,6 +235,13 @@ def run_cargo(crates: list[str]) -> tuple[int, str]:
         # runner would report fewer cases than the environment it is being compared
         # to -- the same under-read, arriving from the opposite direction.
         cmd = ["cargo", "test", "-p", krate, "--all-features", "--", "--nocapture"]
+        if serialize:
+            # See the harness note in main(): one base-DB-writing test in
+            # apps/cloud-server skips under the default parallel harness on every
+            # run and never under this one, so "0 events" means different things
+            # depending on which was used, and the flag has to be declared, not
+            # inferred from context.
+            cmd.append("--test-threads=1")
         print(f"$ {' '.join(cmd)}", file=sys.stderr)
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         chunks.append(proc.stdout or "")
@@ -289,9 +296,11 @@ def source_findings(arms: int, per_file: dict[str, int]) -> list[str]:
     return notes
 
 
-def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool) -> int:
+def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool,
+          harness: str = "parallel (default harness)") -> int:
     report = parse_log(text)
     ok = True
+    print(f"      harness: {harness}")
 
     findings = source_findings(arms, per_file)
     if findings:
@@ -381,6 +390,17 @@ def grade(text: str, arms: int, per_file: dict[str, int], *, proven: bool) -> in
         ok = False
     else:
         print("ok    LOG: zero skip events; every gated case actually executed.")
+        if harness.startswith("serialized"):
+            # The honest cost of the flag that makes this reachable: a serialized
+            # run proves the cases ran, but proves nothing about behaviour under
+            # the harness CI and `check.sh` actually use, which is the one that
+            # reproduces the base-DB contention. Say it in the PASS, not after it.
+            print("      note: this is a SERIALIZED run. It proves every case executed;")
+            print("      it cannot show whether they interfere under the default")
+            print("      parallel harness, which is what CI and scripts/check.sh use.")
+        elif harness.startswith("parallel"):
+            print("      note: parallel run -- a zero here is the strong result, since")
+            print("      it means no case lost the base-DB contention.")
 
     print("\n" + ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
@@ -636,6 +656,22 @@ def self_test() -> int:
     expect("  ...and a skip count is reported alongside it",
         "1 failed" in out)
 
+    # (8) harness provenance: a serialized zero must not read like a parallel zero.
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_ser = grade(CLEAN_LOG, arms, per_file, proven=True,
+                       harness="serialized (--test-threads=1)")
+    out = buf.getvalue()
+    expect("a serialized clean run still PASSes", rc_ser == 0)
+    expect("  ...and says so, rather than passing as the stronger parallel result",
+           "SERIALIZED" in out and "harness: serialized" in out)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        grade(CLEAN_LOG, arms, per_file, proven=True)
+    expect("the default harness is named too, never left implicit",
+           "harness: parallel" in buf.getvalue())
+
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
@@ -651,6 +687,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--emit-log", type=Path,
                     help="write the raw combined cargo output here (the guard captures it "
                          "in memory, so without this a real failure's panic text is discarded)")
+    ap.add_argument("--serialize", action="store_true",
+                    help="run with --test-threads=1; one cloud-server base-DB test skips "
+                         "under the default parallel harness on every run, so a zero-event "
+                         "result is only meaningful once the harness that produced it is named")
     ap.add_argument("--self-test", action="store_true", help="prove both directions failable")
     ns = ap.parse_args(argv)
 
@@ -666,6 +706,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.log:
         text = ns.log.read_text(encoding="utf-8", errors="replace")
+        harness = "unknown (log supplied with --log; the harness that made it is not visible here)"
         # The flag's own text only counts if whoever captured the log echoed the
         # command; it is a hint, so it is reported, never silently trusted.
         echoed = "--nocapture" in text
@@ -675,14 +716,16 @@ def main(argv: list[str] | None = None) -> int:
                   " as proven. If that is the wrong read, this result is meaningless.")
     else:
         # Made here, with the flag, so absence of skips is evidence of absence.
-        _, text = run_cargo(ns.crates or CRATES)
+        _, text = run_cargo(ns.crates or CRATES, serialize=ns.serialize)
         proven = True
+        harness = ("serialized (--test-threads=1)" if ns.serialize
+                   else "parallel (default harness)")
 
     if ns.emit_log:
         ns.emit_log.write_text(text, encoding="utf-8")
         print(f"note  raw cargo output written to {ns.emit_log}")
 
-    return grade(text, arms, per_file, proven=proven)
+    return grade(text, arms, per_file, proven=proven, harness=harness)
 
 
 if __name__ == "__main__":
