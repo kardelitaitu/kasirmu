@@ -1,8 +1,15 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
 const UI_SRC = resolve(__dirname, '..');
+
+/**
+ * Denominator for this gate. Unit: individual selectors after comma-splitting, except
+ * skipGroups/skipSelectors, which are counted where the check actually sits.
+ */
+const S = { sheets: 0, interactive: 0, waivedExact: 0, waivedBoundary: 0, skipGroups: 0, skipSelectors: 0 };
+const SKIP_FIRES = new Map<RegExp, number>();
 
 interface Violation {
   file: string;
@@ -31,18 +38,18 @@ function hasFocusVisibleRef(selectors: string, body: string): boolean {
 
 /** Known non-interactive classes or visual children to skip. */
 const SKIP_PATTERNS = [
-  /\.skeleton/, /\.spinner/, /\.badge/, /\.toast/,
-  /\.statusbar-dot/, /\.statusbar-divider/,
-  /\.setup-step-dot/, /\.setup-step-line/,
-  /\.confirm-dialog-icon/, /\.empty-state/, /\.error-state/,
-  /\.payment-done/, /\.payment-done-/,
+  /^\s*\.skeleton/, /^\s*\.spinner/, /^\s*\.badge/, /^\s*\.toast/,
+  /^\s*\.statusbar-dot/, /^\s*\.statusbar-divider/,
+  /^\s*\.setup-step-dot/, /^\s*\.setup-step-line/,
+  /^\s*\.confirm-dialog-icon/, /^\s*\.empty-state/, /^\s*\.error-state/,
+  /^\s*\.payment-done/, /^\s*\.payment-done-/,
   /::before|::after/, /:disabled/, /:hover/, /:active/,
   /@keyframes/, /--exiting/, /--enter/,
-  /\.modal-overlay/, /\.card-header/, /\.card-body/, /\.card-footer/,
-  /\.modal-header/, /\.modal-body/, /\.modal-footer/,
+  /^\s*\.modal-overlay/, /^\s*\.card-header/, /^\s*\.card-body/, /^\s*\.card-footer/,
+  /^\s*\.modal-header/, /^\s*\.modal-body/, /^\s*\.modal-footer/,
   // Visual toggle parts — not interactive themselves
-  /\.toggle-track/, /\.toggle-thumb/,
-  /\.toggle-switch\s+input/,
+  /^\s*\.toggle-track/, /^\s*\.toggle-thumb/,
+  /^\s*\.toggle-switch\s+input/,
   // SVG/icon children inside interactive parents
   /\s+svg$/, /\s+\.icon/, /\s+img$/,
   // Pseudo selectors that re-style on state
@@ -50,7 +57,9 @@ const SKIP_PATTERNS = [
 ];
 
 function isSkipSelector(selector: string): boolean {
-  return SKIP_PATTERNS.some((re) => re.test(selector));
+  const fired = SKIP_PATTERNS.find((re) => re.test(selector));
+  if (fired) SKIP_FIRES.set(fired, (SKIP_FIRES.get(fired) ?? 0) + 1);
+  return fired !== undefined;
 }
 
 /** Check if a CSS body declares focus-visible with a visible indicator. */
@@ -130,7 +139,19 @@ function scanCSS(filePath: string): Violation[] {
 
   /** Check if an individual selector is covered by an existing :focus-visible rule. */
   function selectorIsCovered(sel: string): boolean {
-    return covered.has(sel) || [...covered].some((base) => sel.startsWith(base));
+    if (covered.has(sel)) { S.waivedExact++; return true; }
+    // A waiver must name the selector it waives. A covered base legitimately
+    // reaches a compound (.btn:focus), a descendant (.btn .x) or a sibling of it,
+    // but it must NOT reach a longer name that merely begins with it: GLOBAL_COVERED
+    // seeds the bare '.btn', '.card', '.modal-panel' and '.toast', so the raw
+    // startsWith this line carried waived every .btn-* class in the tree whether or
+    // not it had a focus style. Exact-or-boundary is the convention this repo already
+    // chose at scripts/verify-ftl-orphans.py:237, n == p or n.startswith(p + "-").
+    const boundary = [...covered].some(
+      (base) => sel === base || /^[ >+~:.#[,]/.test(sel.slice(base.length)),
+    );
+    if (boundary) S.waivedBoundary++;
+    return boundary;
   }
 
   // Second pass: find interactive selectors that DON'T have :focus-visible
@@ -140,11 +161,16 @@ function scanCSS(filePath: string): Violation[] {
     const body = rule.slice(braceIdx + 1, -1).trim();
 
     if (selectors.startsWith('@')) continue;
-    if (isSkipSelector(selectors)) continue;
+    if (isSkipSelector(selectors)) {
+      S.skipGroups++;
+      S.skipSelectors += splitSelectors(selectors).length;
+      continue;
+    }
     if (!isInteractiveSelector(selectors)) continue;
 
     // Split comma-separated groups and check each selector individually
     const individualSelectors = splitSelectors(selectors);
+    S.interactive += individualSelectors.length;
     const uncoveredSelectors = individualSelectors.filter(
       (sel) => !selectorIsCovered(sel),
     );
@@ -247,17 +273,40 @@ const CSS_FILES = [
 ];
 
 describe('Focus-visible compliance', () => {
-  let allViolations: Violation[];
+  // The walk runs at collection, not in a hook, because a case TITLE can carry its
+  // own denominator only if the harvest already happened when the title was built
+  // — the convention popupBackgroundCompliance and noiseDitherCompliance use.
+  // Nothing about the walk itself changed.
+  const allViolations: Violation[] = [];
+  for (const file of CSS_FILES) {
+    const fullPath = resolve(UI_SRC, file);
+    if (!existsSync(fullPath)) continue;
+    S.sheets++;
+    allViolations.push(...scanCSS(fullPath));
+  }
 
-  beforeAll(() => {
-    allViolations = [];
-
-    for (const file of CSS_FILES) {
-      const fullPath = resolve(UI_SRC, file);
-      if (!existsSync(fullPath)) continue;
-      const result = scanCSS(fullPath);
-      allViolations.push(...result);
+  it(`focus-visible denominator: ${S.interactive - S.waivedExact - S.waivedBoundary} interactive selectors graded, ${S.waivedExact + S.waivedBoundary} waived by a covered name (${S.waivedExact} exact, ${S.waivedBoundary} by startsWith), ${S.skipSelectors} more inside ${S.skipGroups} rule-groups a skip pattern named, over ${S.sheets} of ${CSS_FILES.length} listed sheets, ${allViolations.length} violations`, () => {
+    for (const [pat, cnt] of [...SKIP_FIRES.entries()].sort((x, y) => y[1] - x[1])) {
+      console.log('  skip waiver ' + String(pat) + '  fires ' + cnt + ' rule-group(s)');
     }
+    // Magnitude floors, set with headroom below the value each was measured from
+    // on 2026-09-15 (interactive 23, graded 3, sheets 70 of 70), so a widening of
+    // either waiver reads red instead of quietly shrinking the population. The
+    // graded floor is the load-bearing one: before this commit the raw startsWith
+    // waiver held the graded count at exactly 0 and the violation case could not
+    // fail for any stylesheet in the tree.
+    expect(
+      S.interactive,
+      `interactive selectors reaching the covered check: ${S.interactive}, floor 15 (baseline 23 on 2026-09-15)`,
+    ).toBeGreaterThanOrEqual(15);
+    expect(
+      S.interactive - S.waivedExact - S.waivedBoundary,
+      `interactive selectors actually graded: ${S.interactive - S.waivedExact - S.waivedBoundary}, floor 1 (baseline 3 on 2026-09-15)`,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      S.sheets,
+      `sheets walked: ${S.sheets} of ${CSS_FILES.length}, floor 60`,
+    ).toBeGreaterThanOrEqual(60);
   });
 
   it('all interactive elements have :focus-visible styles with visible indicators', () => {
