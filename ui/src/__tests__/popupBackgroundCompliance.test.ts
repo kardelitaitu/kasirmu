@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
-import { resolve, relative, join } from 'path';
+import { resolve, relative, join, sep } from 'path';
 
 const UI_SRC = resolve(__dirname, '..');
 
@@ -133,6 +133,10 @@ describe('popup surfaces have visible backgrounds', () => {
   const cssFiles = collectCssFiles(UI_SRC);
   const failures: string[] = [];
   const stats = { atBlocks: [] as string[], nestedRules: [] as string[], parsed: 0, pseudo: 0, notRoot: 0, boundary: 0, boundaryNoBg: 0, graded: 0 };
+  // Every rule that reaches the background check, by address. The count of this
+  // set is what stats.graded is; the set itself is what the graded floor needs, so
+  // a rule can be seen LEAVING even when a second rule arrives to hold the number up.
+  const gradedAt: string[] = [];
 
   for (const filePath of cssFiles) {
     const content = readFileSync(filePath, 'utf-8');
@@ -154,6 +158,9 @@ describe('popup surfaces have visible backgrounds', () => {
       if (IS_STATE.test(cls)) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
 
       const bg = getBackground(rule.body); stats.graded++;
+      // Identity, not address: a line number would make this baseline fail when an
+      // unrelated edit above it moves the rule, which is not a rule leaving the door.
+      gradedAt.push(relPath.split(sep).join('/') + ' { ' + rule.selector.trim().replace(/\s+/g, ' ').slice(0, 80));
 
       // No background at all
       if (bg === null) {
@@ -250,11 +257,41 @@ describe('popup surfaces have visible backgrounds', () => {
   it(`the walk itself: ${cssFiles.length} sheets opened, ${stats.parsed} top-level rules parsed, ${stats.graded} graded, ${stats.nestedRules.length} hidden inside ${stats.atBlocks.length} at-blocks skipped wholesale, ${stats.boundary} refused by the primary-class boundary (${stats.boundaryNoBg} of them carrying no background), ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped`, () => {
     // A green on an empty walk would be the same vacuity the bare file count
     // hid, so the harvest is asserted too, not only the verdict it feeds.
-    expect(cssFiles.length, 'the walk opened no stylesheets').toBeGreaterThan(0);
-    expect(stats.parsed, 'the extractor parsed no top-level rule anywhere').toBeGreaterThan(0);
-    expect(stats.graded, 'no rule ever reached the background check').toBeGreaterThan(0);
-    expect(stats.atBlocks.length, 'no at-block was skipped, so the hidden count is untested').toBeGreaterThan(0);
-    expect(stats.nestedRules.length, 'nothing was lost inside an at-block').toBeGreaterThan(0);
+// MAGNITUDE FLOORS. Each `toBeGreaterThan(0)` above is an existence check: it
+// holds while the walk loses nine tenths of its population. The partition sum
+// below cannot help either -- every rule leaves through exactly one door and
+// increments that door's counter on the same statement that continues, so the
+// sum closes for ANY extractor, including one that returns a single rule from a
+// single sheet. It is a check on control flow, not on the tree. Only a floor on
+// magnitude turns a silently shrinking walk red. Thresholds are set with
+// headroom BELOW the measurement, never at it: a floor equal to today's value
+// fails on any improvement and teaches people to delete guards instead of
+// reading them. Baselines below were measured 2026-09-15 at tip `af4b27238` by
+// `npx vitest run src/__tests__/popupBackgroundCompliance.test.ts --reporter=verbose`.
+    const FLOORS = { sheets: 120, parsed: 5200, atBlocks: 280, nestedRules: 650 };
+    expect(cssFiles.length, `sheets opened ${cssFiles.length}, floor ${FLOORS.sheets} (baseline 137) -- the walk lost stylesheets, so every other number here is about a smaller tree`).toBeGreaterThan(FLOORS.sheets);
+    expect(stats.parsed, `top-level rules parsed ${stats.parsed}, floor ${FLOORS.parsed} (baseline 6078) -- the harvest shrank; check what stopped being read`).toBeGreaterThan(FLOORS.parsed);
+    expect(stats.atBlocks.length, `at-blocks skipped ${stats.atBlocks.length}, floor ${FLOORS.atBlocks} (baseline 347) -- fewer containers are being abandoned wholesale`).toBeGreaterThan(FLOORS.atBlocks);
+    expect(stats.nestedRules.length, `rules hidden inside at-blocks ${stats.nestedRules.length}, floor ${FLOORS.nestedRules} (baseline 816) -- content moved behind the door that skips it`).toBeGreaterThan(FLOORS.nestedRules);
+
+    // THE GRADED DOOR. Baseline today is exactly one rule, so `graded > 0` is
+    // arithmetically `graded === 1`: the moment a second rule becomes gradable it
+    // stops distinguishing anything, and one rule can then leave through the graded
+    // door taking its check with it while the floor never blinks. Pinning it to 1
+    // would block legitimate improvement, so the floor says what it actually
+    // protects: the population behind this door is bounded by the sheet and rule
+    // floors around it (137 sheets, 6,078 parsed, and 816 hidden), and what must
+    // never happen is a rule that used to be checked ceasing to be checked. So the
+    // assertion is a SUBSET check on identity -- a new gradable rule passes, a rule
+    // that leaves fails, and the size of the set is never pinned.
+    // Measured at af4b27238: the only rule reaching this door today. A prefix, so
+    // the rule gaining a descendant selector still matches and only a rule
+    // genuinely no longer graded can fail it.
+    const GRADED_BASELINE = ['frontend/themes/components.css { .toast'];
+    const lostGraded = GRADED_BASELINE.filter((id) => !gradedAt.some((g) => g.startsWith(id)));
+    expect(lostGraded, `rules that were graded and no longer reach the background check: ${JSON.stringify(lostGraded)} (graded set now ${stats.graded}: ${JSON.stringify(gradedAt)})`).toEqual([]);
+
+    expect(stats.graded, `no rule reached the background check at all (graded set empty; ${stats.parsed} parsed, ${cssFiles.length} sheets)`).toBeGreaterThan(0);
     // The three reject paths must have run: on today's tree the primary-class
     // boundary itself refuses nothing (POPUP_ROOT turns selectors away first),
     // so the floor is on the reject set as a whole, never on one door.
