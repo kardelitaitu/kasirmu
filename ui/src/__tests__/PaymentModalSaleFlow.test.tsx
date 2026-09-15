@@ -1280,7 +1280,7 @@ describe('PaymentModal — local payment rails gating', () => {
   // each asserts the exact ordered set of `payment-method` radios the
   // operator sees for one named rail configuration, read from the DOM in
   // document order. They exist as the equivalence harness for the
-  // `visibleMethods` derivation (todo-payment.md :315) that replaces the
+  // `visibleMethods` derivation (todo-payment.md :446) that replaces the
   // hardcoded literal at PaymentModal.tsx:1501. If any of them changes
   // when the literal is replaced, the derivation and what rendered before
   // disagree — that is a product ruling, not a refactor.
