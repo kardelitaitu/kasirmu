@@ -1892,8 +1892,16 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
     // No row landed in either store, so the residual-state assertions are the
     // point: whatever the ruling on item 20 turns out to be, today the divergence
     // does not reach the databases in this configuration.
-    let legacy_msg = legacy.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
-    let scoped_msg = scoped.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+    let legacy_msg = legacy
+        .as_ref()
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    let scoped_msg = scoped
+        .as_ref()
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
     assert!(
         legacy.is_err() && legacy_msg.contains("subscription tier"),
         "assignment-less Apply should stop at the entitlement gate, not at scope; got [{}] on {}",
