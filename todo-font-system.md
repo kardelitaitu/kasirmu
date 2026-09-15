@@ -605,6 +605,25 @@ Asking rule 15 the question this plan asks everything — *what does it not read
 
 **Verification for the round:** every plant deleted with **0** untracked paths anywhere in the tree, `fonts.css` and `ui/index.tablet.html` both byte-identical to HEAD, 46 tests with **45 passing and the one borrowed red** throughout, `eslint` and `tsc --noEmit` both exit 0. **Boxes: open 3, ticked 10 — unchanged across every commit of this round.**
 
+### One method improvement: earning a commit-level claim out of a dirty shared tree
+
+The standing discipline in `AGENTS.md` is that a walker has no channel to the revision it is asked about — record which walked paths were dirty, never sell a scoped green as a claim about a commit. Tonight that bound **4** dirty paths under `ui/src`, one of them inside this suite's own population: `ui/src/features/sales/CartPanelLineItem.css`, carrying 91 uncommitted lines by another lane.
+
+The question sharper than the hedge is **whether the delta intersects the shapes being graded, or merely sits in the same file.** Measured HEAD blob against working tree, pattern by pattern:
+
+| what the font rules read in that file | at HEAD | on disk |
+|---|---|---|
+| `font-family` | 2 | 2 |
+| `@font-face`, `@import`, `local(`, `unicode-range` | 0 | 0 |
+| `--font-sans`, `--font-mono` | 2, 0 | 2, 0 |
+| `--font-weight*` | 5 | **6** |
+| `font-size` | 6 | **8** |
+
+- The other lane added one weight usage and two size usages, and touched **no family, no face, no import**. Rule 9's probe exists partly to assert that sizes never enter its population, and the family harvest is byte-identical either side of the delta.
+- **Conclusion, stated at exactly its width:** the font rules' populations are identical between the named revision and this working tree, so their green *is* a claim about the revision; the single red — a `--shadow-md` literal tail in that same file — is graded on content that exists in no commit, and remains a property of the disk. The claim covers the font rules and **not** the whole file: 16 other cases in that suite harvest `var()` references, and one more `var(--font-weight-semibold)` genuinely changed their count.
+- **"Which paths were dirty" is the necessary first question and the insufficient second one.** The second is *"does the diff reach what you grade?"* — and answering it takes one comparison, not a worktree, which is the difference between hedging a result and claiming it.
+- The instrument broke in its own particular way, worth keeping: `git grep -c --font-sans` dies with `unknown option 'font-sans'`, because a pattern beginning with `--` is parsed as a flag; the fix is `-e`, and the first pass at that table was missing two rows for exactly that reason.
+
 ### The ten anchors this file points at that suite, re-derived
 
 The suite is **2,067 → 2,859 lines (+792)** across this plan's work, so **9 of the 10 anchors here no longer resolve to what their sentences claim**; the tenth is a note explaining one of them to be a regex false alarm. Live values, resolved **by content** rather than by arithmetic on the old numbers:
