@@ -323,6 +323,47 @@ def find_midline_handler_keys(sources: list[tuple[str, str]]) -> dict[str, set[s
     return found
 
 
+def find_unreachable_mock_keys(
+    per_file: dict[str, set[str]], shell_registered: set[str], ui_named: set[str]
+) -> dict[str, set[str]]:
+    """Mock handler keys that nothing on either side can reach, by file.
+
+    The mirror of this gate's own question. It asks, on three sides, whether a call the
+    renderer makes has something behind it, and never asks whether a handler the mock
+    provides has anything in FRONT of it. The asymmetry is not harmless: `rotate_encryption_key`
+    kept answering calls in the browser after the command was deleted from both shells for
+    being an ungated bypass (`ui/src/api/security.ts:31`, and the three test cases closed at
+    `ui/src/__tests__/api-security-contract.test.ts:38-44` on the grounds that resurrecting
+    the wrapper would resurrect the bypass). The contract test's discipline was enforced
+    exactly where it could be enforced, and the two files outside its reach drifted anyway.
+
+    A key counts as reachable on ANY of three routes, which is the whole reason this is
+    worth a function rather than a set subtraction:
+      * a shell registers it;
+      * UI code names it;
+      * it is an UNSCOPED name whose `_scoped` twin takes one of the first two routes,
+        because applyScopedAliases copies this handler onto that name at dispatch time.
+    The third route is what makes the first naive attempt at this census useless: measured
+    against only the first two, 164 of 521 keys looked dead on 2026-09-16, and the true
+    figure after the alias term was 7. Any reader of the count below should re-derive the
+    number before deleting anything, and remember that a handler answering nothing today is
+    also a handler a future screen will silently need.
+
+    Informational by design. A mock key with no consumer is dead weight, not a defect, and
+    the tree is full of surfaces that were built before their callers.
+    """
+    consumers = shell_registered | ui_named
+    found: dict[str, set[str]] = {}
+    for path, names in per_file.items():
+        dead = {
+            n for n in names
+            if n not in consumers and (n.endswith("_scoped") or f"{n}_scoped" not in consumers)
+        }
+        if dead:
+            found[path] = dead
+    return found
+
+
 
 def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
     """Names the browser dev-mock can serve.
@@ -2516,6 +2557,21 @@ def self_test() -> int:
     case("glue   a key-shaped thing inside a comment is not a key",
          not find_midline_handler_keys(commented))
 
+    # The reverse census, same both-directions discipline: a key is reachable by ANY of the
+    # three routes, so the test must show all three working AND show a key that has none of
+    # them. The seed route is the one that matters -- drop the twin's consumer and the
+    # unscoped handler that only existed to feed it becomes dead, which is exactly the term
+    # that took a naive 164-name census down to 7.
+    reach_src = {"x/handlers/a.ts": {
+        'alive_registered', 'alive_ui', 'alive_seed', 'dead_one', 'dead_scoped'}}
+    case("reach  registration, a UI name, or a consumed _scoped twin each keep a handler alive",
+         find_unreachable_mock_keys(reach_src, {'alive_registered'},
+                                    {'alive_ui', 'alive_seed_scoped'})
+         == {'x/handlers/a.ts': {'dead_one', 'dead_scoped'}})
+    case("reach  an unscoped seed dies with the twin nobody consumes",
+         find_unreachable_mock_keys(reach_src, {'alive_registered'}, {'alive_ui'})
+         == {'x/handlers/a.ts': {'dead_one', 'dead_scoped', 'alive_seed'}})
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -2854,6 +2910,19 @@ def main() -> int:
         print(
             f"info[dev-mock]: {sum(len(v) for v in midline_keys.values())} handler-shaped "
             f"key(s) sit mid-line and are INVISIBLE to the registrar parse -- {detail}"
+        )
+    # The reverse direction, on the gate's own parse of the tree rather than on a second one.
+    shell_all = set().union(*(set(handlers[s]) for s in SHELLS))
+    unreachable = find_unreachable_mock_keys(mock_per_file, shell_all, set(ui_commands))
+    if unreachable:
+        names_all = sorted({n for s in unreachable.values() for n in s})
+        shown = ", ".join(names_all[:12]) + (
+            f" … (+{len(names_all) - 12} more)" if len(names_all) > 12 else ""
+        )
+        print(
+            f"info[dev-mock]: {len(names_all)} handler key(s) across {len(unreachable)} "
+            f"file(s) reach nothing -- no shell registers them, no UI code names them, and "
+            f"they seed no _scoped name that either does: {shown}"
         )
     # Reason state, printed whether or not anything is wrong, because the count of entries
     # nobody explained is the number an owner has to act on and it is invisible in a list of
