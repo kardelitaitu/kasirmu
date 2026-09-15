@@ -180,101 +180,6 @@ pub struct PrintSalesReceiptResult {
     pub printed: bool,
 }
 
-#[command]
-/// Print sales receipt.
-pub async fn print_sales_receipt(
-    args: PrintSalesReceiptArgs,
-    state: State<'_, AppState>,
-) -> Result<PrintSalesReceiptResult, AppError> {
-    let printer = state
-        .registry
-        .printer("default")
-        .await
-        .ok_or_else(|| AppError::Invalid("no receipt printer registered".into()))?;
-
-    // Load store info + display settings from the DB.
-    let conn = state.db.lock().await;
-    let store_name = Settings::get_store_name(&conn)?.unwrap_or_else(|| "OZ-POS Store".into());
-    let store_address = Settings::get_store_address(&conn)?.unwrap_or_default();
-    let store_tax_id = Settings::get_store_tax_id(&conn)?;
-    let decimals = Settings::get_receipt_decimal_separator(&conn)?;
-    let decimal_separator = match decimals.as_str() {
-        "comma" => receipt::DecimalSeparator::Comma,
-        "none" => receipt::DecimalSeparator::None,
-        _ => receipt::DecimalSeparator::Dot,
-    };
-    let paper_width = match Settings::get_receipt_paper_width(&conn)?.as_str() {
-        "narrow" => receipt::PaperWidth::Narrow,
-        _ => receipt::PaperWidth::Standard,
-    };
-    let config = receipt::ReceiptConfig {
-        paper_width,
-        show_currency: Settings::get_receipt_show_currency(&conn)?,
-        decimal_separator,
-        show_tax: Settings::get_receipt_show_tax(&conn)?,
-        footer: {
-            let f = Settings::get_receipt_footer(&conn)?;
-            if f.is_empty() { None } else { Some(f) }
-        },
-        show_table_number: Settings::get_receipt_show_table_number(&conn)?,
-        barcode_enabled: false,
-        payment_link_template: None,
-    };
-    drop(conn); // release lock before printing
-
-    let receipt = receipt::SalesReceipt {
-        store: receipt::StoreInfo {
-            name: store_name,
-            address: store_address,
-            tax_id: store_tax_id,
-        },
-        date: args.date,
-        receipt_number: args.receipt_number,
-        table_number: args.table_number,
-        items: args
-            .items
-            .into_iter()
-            .map(|i| {
-                Ok::<_, AppError>(receipt::LineItem {
-                    name: i.name,
-                    quantity: i.quantity,
-                    unit_price: i.unit_price.to_money()?,
-                    total_price: i.total_price.to_money()?,
-                    tax_amount: i.tax_amount.map(|t| t.to_money()).transpose()?,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-        subtotal: args.subtotal.to_money()?,
-        tax: args.tax.map(|t| t.to_money()).transpose()?,
-        total: args.total.to_money()?,
-        payments: args
-            .payments
-            .into_iter()
-            .map(|p| {
-                Ok::<_, AppError>(receipt::PaymentInfo {
-                    method: p.method,
-                    amount: p.amount.to_money()?,
-                    change: p.change.map(|c| c.to_money()).transpose()?,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    };
-
-    let data = receipt::format_sales_receipt(&receipt, &config);
-    let line_count = receipt.items.len() + 6;
-
-    printer.print_raw(&data).await?;
-
-    if let Some(ref app) = state.app {
-        let _ = app.emit(
-            "receipt:printed",
-            serde_json::json!({ "lines": line_count }),
-        );
-    }
-
-    Ok(PrintSalesReceiptResult { printed: true })
-}
-
 // ── Barcode scanner ──────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -425,7 +330,7 @@ pub async fn print_receipt_scoped(
     Ok(PrintReceiptResult { printed_lines: n })
 }
 
-/// Session-scoped variant of `print_sales_receipt`.
+/// Print sales receipt resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn print_sales_receipt_scoped(

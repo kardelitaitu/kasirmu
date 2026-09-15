@@ -15,17 +15,6 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[command]
-/// List exchange rates.
-pub async fn list_exchange_rates(
-    state: State<'_, AppState>,
-) -> Result<Vec<ExchangeRateDto>, AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    let rows = repo.list_exchange_rates()?;
-    Ok(rows.into_iter().map(ExchangeRateDto::from).collect())
-}
-
 /// Shared validation for exchange-rate creation (CUR-05), used by both
 /// the legacy and scoped command paths so the two cannot drift.
 fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppError> {
@@ -93,15 +82,6 @@ pub async fn create_exchange_rate(
         &date,
     )?;
     Ok(ExchangeRateDto::from(row))
-}
-
-#[command]
-/// Delete exchange rate.
-pub async fn delete_exchange_rate(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    repo.delete_exchange_rate(&id)?;
-    Ok(())
 }
 
 // ── Scoped variants (CUR-03) ─────────────────────────────────────────
