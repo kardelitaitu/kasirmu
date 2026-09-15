@@ -55,7 +55,7 @@ import { topologyHandlers } from './handlers/topology';
 import { brandHandlers, licenseHandlers, settingsHandlers, settingsWriteHandlers } from './handlers/settings';
 import { deviceBindingHandlers } from './handlers/terminals';
 import { floorplanHandlers } from './handlers/floorplan';
-import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
+import { crmHandlers } from './handlers/crm';
 import { bundlesHandlers } from './handlers/bundles';
 import { syncHandlers } from './handlers/sync';
 import { kdsDeviceHandlers } from './handlers/kds-devices';
@@ -302,20 +302,9 @@ registerHandlers(crmHandlers);
 // fails on the specific command rather than crashing a screen at runtime.
 
 // Scoped commands without an unscoped twin get minimal direct stubs.
-handlers['search_customers_scoped'] = (args) => {
-  const { query } = (args ?? {}) as { query?: string };
-  const q = (query ?? '').toLowerCase();
-  const items = MOCK_CUSTOMERS.filter(
-    (c) => !q || c.name.toLowerCase().includes(q),
-  );
-  return { items, total: items.length };
-};
-handlers['get_customer_history_scoped'] = (args) => {
-  const { customerId } = (args ?? {}) as { customerId?: string };
-  const customer =
-    MOCK_CUSTOMERS.find((c) => c.id === customerId) ?? MOCK_CUSTOMERS[0]!;
-  return { customer, loyalty: null, sales: [], sales_total: 0 };
-};
+// search_customers_scoped + get_customer_history_scoped moved verbatim to
+// handlers/crm.ts (Phase 5.5) — single-defined, use only crm.ts's own
+// MOCK_CUSTOMERS export, so the move is a pure copy.
 handlers['list_in_transit_transfers_scoped'] = () => [];
 // Sync conflict review. The mock has no cloud to ask, so it reports "nothing
 // flagged" — the screen must render its empty state rather than crash. The
