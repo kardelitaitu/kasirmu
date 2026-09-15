@@ -2458,6 +2458,10 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   // data from bad data gets blamed on the data, so the hole is named per entry instead.
   const noSheets: string[] = [];
   const credited = new Map<string, string[]>();
+  // Graded values whose EVERY credit lives in a parent-cited sheet -- see the split print below.
+  // A LIST AND A LINE, nothing more: it feeds no assertion, so it cannot decide which reading of
+  // the citation is authoritative. Unit: values, named per value (the census's unit is names).
+  const parentOnly: string[] = [];
   // Graded values that passed ONLY because some source string contains the prefix, with no
   // class of their own inside the entry's cited sheets. Printed by name: the identity this
   // line exists to keep auditable is graded = credited + inert + residual, and every term
@@ -2477,11 +2481,27 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
     // defined is collecting credit for a family this entry does not own.
     const own = new Set([...entry.css, ...(entry.parentCss ?? [])]);
     const ownClasses: string[] = [];
+    // The two halves of that same citation, recorded SIDE BY SIDE and never merged. This exists
+    // only for the split print below: `ownClasses` keeps feeding `credited` / `inert` /
+    // `residual` / `graded` exactly as before, and no value is re-classified by it.
+    // `prefix credit` counts a value that credits any class in css ∪ parentCss; the dead-class
+    // walk iterates `ownIndex`, which is fed from `cssPaths` alone at :1794-1797 while
+    // `parentPaths` reach only `definedIndex` (:1798-1800) -- the field doc's own sentence at
+    // :115-118. Those are two
+    // different questions and the file has been answering them in two different ways, so a value
+    // can be credited to one half and invisible to the other IN THE SAME RUN. Which half is
+    // authoritative is an open question in the plan doc and is NOT ruled here -- the line below
+    // just makes the size of the disagreement print itself every run instead of being argued.
+    const ownCssPaths = new Set(entry.css);
+    const ownCssClasses = new Set<string>();
+    const parentSheetOf = new Map<string, string>();
     let sheetsIndexed = 0;
     for (const [sheet, classes] of index) {
       if (!own.has(sheet)) continue;
       sheetsIndexed += 1;
       for (const cls of classes) ownClasses.push(cls);
+      if (ownCssPaths.has(sheet)) { for (const cls of classes) ownCssClasses.add(cls); }
+      else { for (const cls of classes) if (!parentSheetOf.has(cls)) parentSheetOf.set(cls, sheet); }
     }
     const declared = entry.dynamicClassPrefixes ?? [];
     if (declared.length > 0 && (own.size === 0 || sheetsIndexed === 0 || ownClasses.length === 0)) {
@@ -2493,6 +2513,16 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
       graded += 1;
       const hits = ownClasses.filter((cls) => prefixCovers(cls, prefix)).sort();
       if (hits.length > 0) credited.set(entry.name + ' :: ' + prefix, hits);
+      // The split, read off the SAME `hits` -- no second lookup, no re-classification. A value
+      // lands here when every class it credits sits in a sheet the entry cites as `parentCss`:
+      // credited under this arm's rule, unreachable by the dead walk's. Named in the census's
+      // own shape (RESCUED <entry>: <cls> (only claim: prefix 'x')), because a count of this
+      // without the membership beside it is exactly the kind of number that gets re-baselined.
+      if (hits.length > 0 && !hits.some((cls) => ownCssClasses.has(cls))) {
+        const uniq = [...new Set(hits)];
+        const via = [...new Set(uniq.map((cls) => parentSheetOf.get(cls) ?? 'unresolved sheet'))].sort();
+        parentOnly.push(entry.name + ': ' + prefix + ' (only credit: parentCss ' + via.join('+') + ' x' + uniq.length + ': ' + uniq.join(', ') + ')');
+      }
       if (ownClasses.length === 0) continue; // ledger hole: one noSheets finding per entry, not N manufactured inert ones
       const hasRule = hits.length > 0;
       const hasSite = sources.includes(prefix);
@@ -2544,6 +2574,26 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   console.log(
     'prefix credit: ' + credited.size + ' of ' + graded + ' graded values credit at least one class defined inside the sheets their own entry cites',
   );
+  // The split, printed beside the number it splits. `prefix credit` counts css ∪ parentCss; the
+  // dead-class walk above takes own `css` alone (`ownIndex` at :1794-1797, `parentPaths` only
+  // into `definedIndex` at :1798-1800), so a value can be credited to one reading and invisible
+  // to the other in the same run, and until now the only way to find that out was to read both
+  // implementations and reason about it -- which is how it became an argument in a plan doc.
+  // Measured rather than assumed before this line was written: a probe over today's ledger found
+  // exactly 4 such values, all four the StockCountDetail copy of the badge family
+  // (sc-badge--draft / --in_progress / --completed / --cancelled), each crediting ONE class, in
+  // inventory/StockCountBadge.css, the sheet 960d00568 hoisted out of StockCountsScreen.css;
+  // 0 of them in StockCountDetail.css. It also found two values NOT counted here because they
+  // credit both halves -- KdsScreen :: kds-ticket (own 40, parent 3) and :: kds-workspace
+  // (own 3, parent 1) -- and it did NOT find sc-add-line-item-- (1 own) or sc-diff- (2 own).
+  // Neither half is made authoritative: no expect() reads this list, nothing in graded /
+  // credited / inert / residual moves, and the number is a print, not a ruling.
+  console.log(
+    'prefix credit split: PARENT-ONLY-CREDITED ' + parentOnly.length + ' of ' + graded + ' graded value(s) credit a class that exists ONLY in a sheet their entry cites as parentCss — 0 credit in the entry\'s own css, so the dead-class walk never sees them and this arm counts them as credit; neither reading is overruled and both are printed || the other half of the split is ' + (credited.size - parentOnly.length) + ' of ' + graded + ' with at least one own-css class, sum check ' + parentOnly.length + ' + ' + (credited.size - parentOnly.length) + ' = ' + credited.size + ' credited',
+  );
+  // Named one per line, in the census's own shape (RESCUED <entry>: <cls> (only claim: ...)),
+  // because a count of this without the membership beside it is a number somebody will re-take.
+  for (const v of parentOnly.slice().sort()) console.log('  PARENT-ONLY  ' + v);
   console.log(
     'prefix arm arithmetic: ' + graded + ' graded = ' + credited.size + ' credited + ' + inert.length + ' inert + ' + uncreditedLive.length + ' residual [site-only pass, no class of their own in the entry\'s own sheets] — ' + (uncreditedLive.join(' ; ') || 'none') + ' || residual=' + uncreditedLive.length + ', of which citing nothing resolvable=' + uncreditedLive.filter((u) => u.includes('LEDGER HOLE')).length + ', sum check ' + (credited.size + inert.length + uncreditedLive.length) + '=' + graded,
   );
