@@ -1647,3 +1647,242 @@ describe("literal tail vs block relation", () => {
     expect(harvested.size).toBe(DISAGREEING_TAIL_BASELINE.length);
   });
 });
+
+/* ── Appended at the bottom 2026-09-15: the leading-token FREEZE, not a rule ──
+ *
+ * docs/plans/notes.md item 10 (:1360) parks the question this guard
+ * deliberately does NOT answer: is the three-step --leading-* scale a target
+ * the UI normalises onto, or a convention literals are allowed to take? :1364
+ * says answer the scale question before funding any sweep, so this block
+ * freezes the population and funds nothing. It is a ratchet: nothing here
+ * asserts that line-height must be a token, because 68 of the 142 literals --
+ * "1" sixty-six times and "inherit" twice -- name no value the three-step scale
+ * contains at all, so a must-be-a-token gate would be red on arrival and would
+ * be disabled inside a week.
+ *
+ * It reads line-height directly instead of editing the NON_TOKEN_PROPS
+ * carve-out at :75 (the property is a member, skipped at :259), because
+ * deleting that carve-out alone grades nothing: the dispatcher branches on
+ * colour :291, font-size :303, font-family :317, border-radius :331, shadows
+ * :345 and SPACING_PROPERTIES :359 and then ENDS with no catch-all, so a
+ * line-height declaration reaches no grader either way. The other four sheet
+ * walkers hold zero hits for line-height, margin, padding or gap.
+ *
+ * Baseline measured at HEAD d29ebd535 through this file's own collector: 137
+ * sheets, 217 declarations = 75 token references (every one of them
+ * var(--leading-*), asserted below) + 142 literals over 90 (value @ sheet) keys.
+ */
+
+interface LineHeightDecl {
+  file: string;
+  line: number;
+  value: string;
+  token: boolean;
+}
+
+function lineHeightDeclsFromCss(file: string, text: string): LineHeightDecl[] {
+  const lines = blankComments(text).split(/\r?\n/);
+  const hits: LineHeightDecl[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    let m: RegExpExecArray | null;
+    const re = /(?:^|[;{}\s])line-height\s*:\s*([^;}]+)/g;
+    while ((m = re.exec(line))) {
+      const value = (m[1] ?? "").trim();
+      if (!value) continue;
+      hits.push({ file: shortFile(file), line: i + 1, value, token: isDesignToken(value) });
+    }
+  }
+  return hits;
+}
+
+const LINE_HEIGHT_HARVEST: LineHeightDecl[] = ALL_CSS_SOURCES.map((s) =>
+  lineHeightDeclsFromCss(s.file, s.text),
+).flat();
+const LH_TOKENS = LINE_HEIGHT_HARVEST.filter((d) => d.token);
+const LH_LITERALS = LINE_HEIGHT_HARVEST.filter((d) => !d.token);
+
+/** (value @ sheet) -> the lines holding it, so a failure can name the site. */
+const LH_SITE_LINES = new Map<string, number[]>();
+for (const d of LH_LITERALS) {
+  const key = d.value + " @ " + d.file;
+  const arr = LH_SITE_LINES.get(key) ?? [];
+  arr.push(d.line);
+  LH_SITE_LINES.set(key, arr);
+}
+const LH_HARVESTED = new Map([...LH_SITE_LINES].map(([k, v]) => [k, v.length]));
+function lhWhere(key: string): string {
+  const i = key.lastIndexOf(" @ ");
+  const lines = LH_SITE_LINES.get(key) ?? [];
+  const at = key.slice(i + 3);
+  const value = key.slice(0, i);
+  return at + ":" + (lines.join(", ") || "?") + "  line-height: " + value;
+}
+
+/**
+ * Grandfathered line-height literals, measured at HEAD d29ebd535. Shrink-only in
+ * BOTH directions, the shape FOREIGN_SCHEME_BASELINE above already uses: a new
+ * (value @ sheet) key is spread, and a frozen key whose site count moved is
+ * drift either way -- an added site and a silently deleted one read identically
+ * to a one-directional check, which is the failure this repo keeps re-proving.
+ */
+const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
+  ["1", "ui/src/components/QrisQrDisplay.css", 1],
+  ["16px", "ui/src/components/StockAlertBell.css", 1],
+  ["1", "ui/src/features/analytics/AnalyticsScreen.css", 1],
+  ["1.2", "ui/src/features/analytics/AnalyticsScreen.css", 1],
+  ["1.3", "ui/src/features/analytics/AnalyticsScreen.css", 1],
+  ["1.4", "ui/src/features/analytics/AnalyticsScreen.css", 2],
+  ["1.6", "ui/src/features/audit/AuditLogScreen.css", 1],
+  ["1.2", "ui/src/features/auth/LicenseActivationScreen.css", 1],
+  ["1", "ui/src/features/auth/SessionLockScreen.css", 1],
+  ["1", "ui/src/features/categories/CategoryManagementScreen.css", 2],
+  ["1", "ui/src/features/design/DesignSystem.css", 1],
+  ["1.3", "ui/src/features/design/DesignSystem.css", 1],
+  ["1.6", "ui/src/features/design/TooltipPreview.css", 1],
+  ["1.4", "ui/src/features/inventory/LocationPicker.css", 1],
+  ["1", "ui/src/features/inventory/StockAlertPanel.css", 1],
+  ["1", "ui/src/features/kds/components/KdsProductPickerModal.css", 1],
+  ["1.35", "ui/src/features/kds/components/ModifierBadge.css", 1],
+  ["1", "ui/src/features/kds/KdsScreen.css", 2],
+  ["1.2", "ui/src/features/kds/KdsScreen.css", 1],
+  ["1.3", "ui/src/features/kds/KdsScreen.css", 1],
+  ["1.4", "ui/src/features/kds/KdsScreen.css", 7],
+  ["18px", "ui/src/features/kds/KdsScreen.css", 2],
+  ["2rem", "ui/src/features/kds/KdsScreen.css", 1],
+  ["1", "ui/src/features/locations/MultiStoreDashboardScreen.css", 1],
+  ["1", "ui/src/features/locations/NodeTopologyEditor.css", 5],
+  ["1.2", "ui/src/features/locations/NodeTopologyEditor.css", 3],
+  ["1.3", "ui/src/features/locations/NodeTopologyEditor.css", 1],
+  ["1.35", "ui/src/features/locations/NodeTopologyEditor.css", 2],
+  ["1.4", "ui/src/features/locations/NodeTopologyEditor.css", 5],
+  ["1.45", "ui/src/features/locations/NodeTopologyEditor.css", 1],
+  ["1.4", "ui/src/features/locations/TopologyApplyConfirm.css", 1],
+  ["1", "ui/src/features/locations/TopologyRevisionBrowser.css", 1],
+  ["1", "ui/src/features/marketplace/AddonsMarketplace.css", 1],
+  ["1.4", "ui/src/features/marketplace/AddonsMarketplace.css", 1],
+  ["1.6", "ui/src/features/memo/MemosScreen.css", 1],
+  ["1", "ui/src/features/products/BundleManagementScreen.css", 1],
+  ["1", "ui/src/features/products/ProductLookupScreen.css", 1],
+  ["1", "ui/src/features/products/ProductManagementScreen.css", 1],
+  ["1rem", "ui/src/features/products/ProductManagementScreen.css", 1],
+  ["1", "ui/src/features/promotions/PromotionManagementScreen.css", 1],
+  ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
+  ["1", "ui/src/features/reports/DashboardScreen.css", 1],
+  ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
+  ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
+  ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
+  ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
+  ["1.4", "ui/src/features/retail/RetailPosScreen.css", 3],
+  ["1.8", "ui/src/features/retail/RetailPosScreen.css", 1],
+  ["1.4", "ui/src/features/sales/CartPanel.css", 2],
+  ["1", "ui/src/features/sales/CartPanelCourseBar.css", 2],
+  ["1", "ui/src/features/sales/CartPanelFooterTotals.css", 1],
+  ["1.3", "ui/src/features/sales/CartPanelLineItem.css", 1],
+  ["1.6", "ui/src/features/sales/EodReportScreen.css", 1],
+  ["1", "ui/src/features/sales/PaymentModal.css", 3],
+  ["1.4", "ui/src/features/sales/PaymentModal.css", 1],
+  ["1", "ui/src/features/sales/PosScreen.css", 2],
+  ["1.4", "ui/src/features/sales/PosScreen.css", 2],
+  ["1", "ui/src/features/sales/PromotionsModal.css", 1],
+  ["1", "ui/src/features/sales/ReceiptPreview.css", 1],
+  ["1.2", "ui/src/features/sales/ReceiptPreview.css", 2],
+  ["1.4", "ui/src/features/sales/ReceiptPreview.css", 1],
+  ["1.6", "ui/src/features/sales/ReceiptPreview.css", 1],
+  ["1", "ui/src/features/sales/SalesHistoryScreen.css", 2],
+  ["1.4", "ui/src/features/sales/StockShortfallDialog.css", 1],
+  ["1", "ui/src/features/settings/DataManagementScreen.css", 1],
+  ["1.4", "ui/src/features/settings/FeatureToggleScreen.css", 1],
+  ["1", "ui/src/features/settings/LicenseSettings.css", 1],
+  ["1.4", "ui/src/features/settings/LicenseSettings.css", 1],
+  ["1.25rem", "ui/src/features/settings/SettingsNavTree.css", 1],
+  ["1.4", "ui/src/features/settings/SettingsNavTree.css", 1],
+  ["1", "ui/src/features/settings/SettingsPage.css", 1],
+  ["1.4", "ui/src/features/settings/SettingsPage.css", 3],
+  ["1", "ui/src/features/settings/SettingsScopeTag.css", 1],
+  ["1", "ui/src/features/setup/components/LiveSetupPreview.css", 2],
+  ["1", "ui/src/features/setup/SetupWizard.css", 2],
+  ["1.6", "ui/src/features/shifts/ShiftManagementScreen.css", 1],
+  ["1", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["1.3", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["1.4", "ui/src/features/staff/StaffManagementScreen.css", 1],
+  ["1", "ui/src/features/stock-transfers/StockTransfersScreen.css", 2],
+  ["1", "ui/src/features/warehouse/WarehouseConsole.css", 1],
+  ["1", "ui/src/features/workspaces/WorkspaceHome.css", 1],
+  ["1.2", "ui/src/features/workspaces/WorkspaceHome.css", 1],
+  ["1.3", "ui/src/frontend/shell/AppLayout.css", 2],
+  ["1", "ui/src/frontend/shell/StatusBar.css", 1],
+  ["1.2", "ui/src/frontend/shell/tablet/tablet.css", 1],
+  ["1.3", "ui/src/frontend/shell/tablet/tablet.css", 1],
+  ["1", "ui/src/frontend/themes/components.css", 3],
+  ["inherit", "ui/src/frontend/themes/reset.css", 2],
+];
+
+describe("leading-token freeze (line-height literals)", () => {
+  it(
+    "freezes " +
+      LH_LITERALS.length +
+      " hard line-height literals against " +
+      LH_TOKENS.length +
+      " token references over " +
+      LINE_HEIGHT_LITERAL_BASELINE.length +
+      " (value @ sheet) keys -- never a vacuous freeze",
+    () => {
+      expect(ALL_CSS_SOURCES.length, "no stylesheets were collected over ui/src").toBeGreaterThanOrEqual(130);
+      expect(
+        LINE_HEIGHT_HARVEST.length,
+        "not one line-height declaration parsed -- the harvest regex is dead",
+      ).toBeGreaterThanOrEqual(200);
+      expect(LH_LITERALS.length, "the literal population collapsed").toBeGreaterThanOrEqual(100);
+      expect(LH_TOKENS.length, "the token population collapsed").toBeGreaterThanOrEqual(50);
+      expect(LH_TOKENS.length + LH_LITERALS.length).toBe(LINE_HEIGHT_HARVEST.length);
+      // The token half is the leading scale and nothing else: a fourth namespace
+      // under line-height is a new decision, and item 10 has not made one.
+      const offScale = [
+        ...new Set(LH_TOKENS.filter((d) => !/^var\(--leading-/.test(d.value)).map((d) => d.value)),
+      ];
+      expect(
+        offScale,
+        "a line-height token outside --leading-* is a namespace item 10 has not decided:" +
+          " " +
+          offScale.join(", "),
+      ).toEqual([]);
+    },
+  );
+
+  it("no new line-height literal appears and no frozen one silently vanished", () => {
+    const baseline = new Map(LINE_HEIGHT_LITERAL_BASELINE.map(([v, f, n]) => [v + " @ " + f, n]));
+    const grown = [...LH_HARVESTED]
+      .filter(([k, n]) => baseline.has(k) && baseline.get(k) !== n)
+      .map(([k, n]) => k + "  " + baseline.get(k) + " -> " + n + " sites at " + lhWhere(k));
+    const spread = [...LH_HARVESTED.keys()].filter((k) => !baseline.has(k)).sort().map(lhWhere);
+    const stale = [...baseline.keys()].filter((k) => !LH_HARVESTED.has(k)).sort();
+    expect(
+      spread,
+      "New line-height literal: item 10 is parked, so a new unit value is a new decision " +
+        "about the scale and needs a human to pick a step -- delete it, or list it here " +
+        "WITH that decision recorded:\n  " +
+        spread.join("\n  "),
+    ).toEqual([]);
+    expect(
+      grown,
+      "A frozen line-height site count moved -- a sweep added a site, or deleted one " +
+        "without restating this freeze (a paid-down deletion still has to name the step " +
+        "it became):\n  " +
+        grown.join("\n  "),
+    ).toEqual([]);
+    expect(
+      stale,
+      "Frozen key no longer harvested at all: a restated removal belongs in a commit, " +
+        "not in a quiet green:\n  " +
+        stale.join("\n  "),
+    ).toEqual([]);
+    let total = 0;
+    for (const n of LH_HARVESTED.values()) total += n;
+    expect(
+      total,
+      "the frozen site total moved while every key held its count -- a value changed in place",
+    ).toBe(LINE_HEIGHT_LITERAL_BASELINE.reduce((a, t) => a + t[2], 0));
+  });
+});
