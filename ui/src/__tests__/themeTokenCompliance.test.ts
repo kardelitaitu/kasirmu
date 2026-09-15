@@ -966,6 +966,43 @@ function leadFamily(value: string): string {
 }
 
 /**
+ * Rule 10 -- the fallback tail of each theme font token, pinned.
+ *
+ * Rule 9 guards what a stack LEADS with and rule 2 guards what it ENDS with; the
+ * names in between are the part that paints when the bundled face is missing, and
+ * nothing held them. todo-font-system.md :65 says so directly -- "fallback tails
+ * ... they are correct and they are the safety net" -- and the row is still open,
+ * which is why these strings are pinned here rather than merely counted: an open
+ * box about a property is a property nothing stops from changing.
+ *
+ * The pinned unit is the NAME SEQUENCE, whitespace-normalised, not raw bytes.
+ * :65's word is "byte-identical"; a byte-level pin would fire on a line re-wrap in
+ * tokens.css, and the safety net is about which faces are named and in what order,
+ * not where the source breaks. The probe below asserts a reflow does NOT fire, so
+ * the difference is tested rather than asserted in this comment.
+ *
+ * Editing a row here is the intended escape hatch -- a tail change is allowed when
+ * someone deliberately edits this list too, and the diff then shows both.
+ */
+const THEME_FONT_FALLBACK_TAILS: Array<{ name: string; tail: string; names: number }> = [
+  {
+    name: '--font-sans',
+    tail: "'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif",
+    names: 7,
+  },
+  {
+    name: '--font-mono',
+    tail: "'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace",
+    names: 6,
+  },
+];
+
+/** Everything after a stack's first name, normalised the way fontStacksFromCss does. */
+function fallbackTail(value: string): string {
+  return value.split(',').slice(1).map((p) => p.trim()).join(', ');
+}
+
+/**
  * Font-family tokens whose FIRST name is exempt from the bundled-face requirement.
  *
  * Keyed on token + file, deliberately NOT on the value: --brand-font-family is a
@@ -1433,6 +1470,62 @@ describe('font-reference portability', () => {
     expect(fontStacksFromCss('probe.css', "--display-type: 'Grotesk No. 1', sans-serif;\n").length).toBe(0);
     // And the real inventory is not empty by accident of a resolver that stopped working.
     expect([...bundledFamilies()].sort()).toEqual(['inter variable', 'jetbrains mono variable']);
+  });
+
+  it('rule 10: a theme font token may not drop, add or reorder a fallback name', () => {
+    for (const pin of THEME_FONT_FALLBACK_TAILS) {
+      const found = CSS_SOURCES.flatMap(({ file, text }) => fontStacksFromCss(file, text))
+        .filter((s) => s.name === pin.name);
+      // Existence before content: a token renamed out of the walked tree would leave
+      // this loop nothing to compare, and "nothing to compare" must not read clean.
+      expect(
+        found.length,
+        `${pin.name} is declared ${found.length} time(s) in the walked tree; rule 10 needs `
+          + 'exactly one declaration to hold a tail against (rule 5 polices tree-wide '
+          + 'uniqueness; this case polices content).',
+      ).toBe(1);
+      const site = found[0];
+      const tail = fallbackTail(site?.value ?? '');
+      expect(
+        tail,
+        `${pin.name} at ${site?.file ?? '?'}:${site?.line ?? '?'} no longer carries the pinned `
+          + `fallback tail.\n  pinned : ${pin.tail}\n  now    : ${tail}\n`
+          + 'The names after the bundled face are what paints when the bundle is absent -- on a '
+          + 'device, on a first paint before the woff2 arrives, and in the splash window, which '
+          + 'measures --font-sans as empty. Change it deliberately by editing '
+          + 'THEME_FONT_FALLBACK_TAILS in the same commit, never by editing only the stylesheet.',
+      ).toBe(pin.tail);
+      expect(
+        tail.split(',').length,
+        `${pin.name}'s tail holds ${tail.split(',').length} names against a pinned ${pin.names}`,
+      ).toBe(pin.names);
+    }
+    expect(
+      THEME_FONT_FALLBACK_TAILS.length,
+      'the tail pin list is empty, so rule 10 would pass by checking nothing',
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rule 10 probe: a dropped, added or reordered name fires, a re-wrapped line does not', () => {
+    const pin = THEME_FONT_FALLBACK_TAILS.find((r) => r.name === '--font-sans');
+    expect(pin, 'the --font-sans pin is gone, so rule 10 has nothing to compare against').toBeTruthy();
+    expect(fallbackTail(`'Inter Variable', ${pin?.tail ?? ''}`)).toBe(pin?.tail);
+    // A dropped name and a reordered pair both change the sequence.
+    expect(fallbackTail("'Inter Variable', -apple-system, system-ui, sans-serif")).not.toBe(pin?.tail);
+    expect(fallbackTail(
+      "'Inter Variable', 'Inter', BlinkMacSystemFont, -apple-system, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif",
+    )).not.toBe(pin?.tail);
+    // A different HEAD with an intact tail is rule 9's business, not this one's.
+    expect(fallbackTail(
+      "'Something Else', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif",
+    )).toBe(pin?.tail);
+    // THE UNIT CLAIM, tested rather than asserted in a comment: the same tail spread
+    // across wrapped source lines is the same sequence, so a formatting change in
+    // tokens.css cannot fire this rule and a content change cannot slip past it.
+    const wrapped = `--font-sans: 'Inter Variable',\n    ${(pin?.tail ?? '').split(', ').join(',\n    ')};\n`;
+    const stacks = fontStacksFromCss('probe.css', wrapped);
+    expect(stacks.length, 'the re-wrapped declaration was not harvested at all').toBe(1);
+    expect(fallbackTail(stacks[0]?.value ?? '')).toBe(pin?.tail);
   });
 });
 
