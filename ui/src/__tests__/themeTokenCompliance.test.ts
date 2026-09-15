@@ -834,7 +834,39 @@ function describeBootDecls(decls: BootFontDecl[]): string {
 /* ── Rule 7 -- faces that arrive through an @import ─────────────────────── */
 
 const FONTS_CSS = join(UI_SRC, 'frontend', 'themes', 'fonts.css');
-const CSS_IMPORT_RE = /@import\s+(?:url\(\s*)?(['"])([^'"]+)\1/gi;
+/**
+ * Three legal @import shapes must all harvest, because the third is the one a
+ * remote import tends to be written in:
+ *   @import 'x.css';            @import url("x.css");          @import url(x.css);
+ * The character class excludes ( ) and ; so a bare url() form stops at the paren
+ * instead of swallowing it, and an unquoted spec stops at the semicolon.
+ */
+const CSS_IMPORT_RE = /@import\s+(?:url\(\s*)?(['"]?)([^'"\s();]+)\1\s*\)?/gi;
+
+/** A spec naming a host rather than a package or a relative file. */
+function isRemoteImport(spec: string): boolean {
+  return /^(https?:)?\/\//i.test(spec);
+}
+
+/**
+ * Rule 8's scanner: every @import in one stylesheet that names a host. Rule 3's
+ * detector cannot see these -- FONT_FACE_BLOCK_RE only reads INSIDE an
+ * @font-face block, and an @import is not in one.
+ */
+function remoteCssImports(file: string, text: string): FontRefHit[] {
+  const stripped = blankComments(text);
+  const hits: FontRefHit[] = [];
+  CSS_IMPORT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null = CSS_IMPORT_RE.exec(stripped);
+  while (m) {
+    const spec = (m[2] ?? '').trim();
+    if (spec && isRemoteImport(spec)) {
+      hits.push({ file: shortFile(file), line: lineOf(stripped, m.index), snippet: `@import ${spec}`.slice(0, 120) });
+    }
+    m = CSS_IMPORT_RE.exec(stripped);
+  }
+  return hits;
+}
 
 interface FaceSource {
   spec: string;
@@ -871,7 +903,7 @@ function countAtImports(text: string): number {
 /** Map one bare package specifier to the CSS the bundler would actually read. */
 function resolveFaceSource(spec: string): FaceSource {
   const base: FaceSource = { spec, kind: 'missing', file: null, text: '', faces: 0 };
-  if (/^(https?:)?\/\//i.test(spec)) return { ...base, kind: 'remote' };
+  if (isRemoteImport(spec)) return { ...base, kind: 'remote' };
   if (spec.startsWith('.')) {
     const rel = resolve(UI_SRC, 'frontend', 'themes', spec);
     if (!existsSync(rel)) return base;
@@ -1206,6 +1238,50 @@ describe('font-reference portability', () => {
     expect(resolveFaceSource('https://fonts.googleapis.com/css2?family=Inter').kind).toBe('remote');
     // And a real resolution must actually carry faces, or the rule above is vacuous.
     expect(resolveFaceSource('@fontsource-variable/inter').faces).toBeGreaterThanOrEqual(1);
+  });
+
+  it('rule 8: no first-party stylesheet imports a stylesheet from a host', () => {
+    // Rule 1's law has no CSS counterpart: "no remote font reference" was written
+    // for the two boot documents, and an @import is how a remote face actually
+    // gets into a stylesheet today. Nothing in rules 1-7 reads an @import outside
+    // fonts.css -- rule 3 stops at the inside of an @font-face block -- so a
+    // first-party sheet could pull a host and every gate would agree.
+    let harvested = 0;
+    let keywords = 0;
+    const hits: FontRefHit[] = [];
+    for (const { file, text } of CSS_SOURCES) {
+      harvested += cssImportSpecs(text).length;
+      keywords += countAtImports(text);
+      hits.push(...remoteCssImports(file, text));
+    }
+    // Harvest identity, tree-wide this time: an @import written in a shape the
+    // parser does not match would shrink `harvested` and read as a clean walk.
+    expect(
+      harvested,
+      `rules 7-8 harvested ${harvested} @import specs but the walked tree contains `
+        + `${keywords} @import keywords -- the parser is under-reading, and an import `
+        + 'it cannot see is an import it cannot police.',
+    ).toBe(keywords);
+    expect(harvested, 'no @import at all reached the parser, so rule 8 graded nothing').toBeGreaterThanOrEqual(2);
+    expect(
+      hits.length,
+      'A stylesheet in the app pulls another stylesheet from a host. A bare browser '
+        + "session would fetch it; the packaged app is blocked by font-src 'self' data: "
+        + 'and shows a different page from the one a developer just saw:\n'
+        + describeHits(hits),
+    ).toBe(0);
+  });
+
+  it('rule 8 probe: all three @import syntaxes harvest, and a commented one does not', () => {
+    const three = "@import 'a.css';\n@import url(\"b.css\");\n@import url(https://cdn.example.com/c.css);\n";
+    expect(cssImportSpecs(three)).toEqual(['a.css', 'b.css', 'https://cdn.example.com/c.css']);
+    expect(cssImportSpecs(three).length).toBe(countAtImports(three));
+    // The shape that started this: a real remote import, written unquoted.
+    const unquoted = remoteCssImports('probe.css', '@import url(https://fonts.example.com/x.css);\n.x { color: red; }');
+    expect(unquoted.map((h) => h.snippet)).toEqual(['@import https://fonts.example.com/x.css']);
+    expect(remoteCssImports('probe.css', "@import '@fontsource-variable/inter';").length).toBe(0);
+    expect(remoteCssImports('probe.css', '/* @import url(https://cdn.example.com/d.css); */').length).toBe(0);
+    expect(remoteCssImports('probe.css', '.x { color: red; }').length).toBe(0);
   });
 });
 
