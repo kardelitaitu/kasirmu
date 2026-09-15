@@ -31,10 +31,10 @@
  * two earlier baselines kept as provenance -- a reader who takes 193 as an
  * allowance mis-grades this gate by 193 violations.
  *
- * Appended after that gate: TWELVE font-reference portability rules. Four predate
+ * Appended after that gate: THIRTEEN font-reference portability rules. Four predate
  * this plan -- blame gives rules 1-3 to `93c367b` and rule 4 to `6649571`, both
- * earlier lanes -- and eight, rules 5 to 12, are todo-font-system.md's. Each rule
- * ships with its own probe case (12 rules = 24 cases, 16 of them this plan's). They
+ * earlier lanes -- and nine, rules 5 to 13, are todo-font-system.md's. Each rule
+ * ships with its own probe case (13 rules = 26 cases, 18 of them this plan's). They
  * live HERE rather than in a new file because this file is already the live
  * font-family gate, and the `ui-test` job of `.github/workflows/dev-ci.yml` runs
  * `cd ui && npm test` on any commit under `ui/` -- its `changes` router matches the
@@ -55,13 +55,15 @@
  *  11  a boot document stack ends in a generic keyword once var() is unwrapped
  *  12  the boot documents' fallback SEQUENCE is pinned: two rules that each read
  *      one end of a list cannot see the list, and agreement is not correctness
+ *  13  every shipped @font-face names at least one src file that EXISTS: rules 3
+ *      and 7 ask where a url points, never whether anything is standing there
  *
  * Their scope is deliberately wider than the gate above. The font rules walk every
  * stylesheet under ui/src (collectCssFiles), both boot HTML documents, and reach
  * node_modules ONLY by resolving an @import that first-party CSS declares --
  * nothing here enumerates node_modules.
  *
- * None of the eight rules this plan wrote added a line to the original scanner:
+ * None of the nine rules this plan wrote added a line to the original scanner:
  * `git blame -L 1,600` at `c614e5667` attributed all 600 of those lines to eight
  * other commits, and to none of this plan's. The header sentences that WERE wrong --
  * a two-directory scope, a drift-guard figure, "three rules", and the provenance of
