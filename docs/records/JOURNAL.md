@@ -11161,3 +11161,19 @@ KDS scoped surface 74 files / 956 tests green, re-run twice during the session; 
 The KDS decomposition lane is closed — code, docs and acceptance record. The superseded sources stay `todo-` by rule (superseded is not done); their final-sync blocks tell the story from the old names. The only open item is the push, which awaits an explicit user order.
 
 **Commit:** this entry rides its own single pathspec commit `docs(journal): record the KDS lane closure, fix and §4 waiver`, following the lane's `3df117977`, `6806d9ab0` and `273b0a455` -- never push without a direct user order. <!-- 2026-09-15 correction, same pass: the landed subject lost the `§` in the shell — the real commit is 03fb20622 `docs(journal): record the KDS lane closure, fix and 4-waiver`. Quoted as it actually reads; no amend per the repo's own recovery rule. -->
+
+## 2026-09-16 — the popover red two plans each blamed on the other gets repaired from outside (css/restaurant)
+
+**Context:**
+The KDS cleanup pass ran `check:all` and found 3 foreign failing tests: 2 belonged to `popoverSurfaceCompliance` flagging `.restaurant-hamburger-dropdown` in `features/restaurant/RestaurantMenu.css` at `var(--color-bg-surface)` (committed by `1fb8cc643`). The pos-screen and KDS plans each recorded it as the OTHER lane's item, so nobody owned it; the continue-the-implementation order put the repair-then-commit row of the cleanup table in reach.
+
+**Changes:**
+`f8c017428 fix(restaurant): move the floating dropdown onto the popover bg token (THM-08)`: the background leaves the shared geometry rule — sidebar keeps `--color-bg-surface` (docked panel), the dropdown takes `--color-bg-popover` (the token ContextMenu, StoreSwitcher and LocationPicker already use). First attempt — a later override rule — FAILED the guard and is the lesson worth keeping: `popoverSurfaceCompliance.test.ts` walks EVERY rule block naming a floating selector (`ruleBodiesFor`, the `for (const body of bodies)` check), so a cascade override cannot pass while any naming rule carries a non-popover background. The guard cannot be out-ordered, only obeyed.
+
+**Verification:**
+`popoverSurfaceCompliance` 3/3 green. Whole-tree `npx vitest run`: was 2 failed files / 3 failed tests → now **1 failed file / 9,985 passed**, the sole red the sales lane's UNCOMMITTED `--shadow-md` tail in dirty `CartPanelLineItem.css` — a live-lane working-tree property, not a committed defect; it dies when that lane commits its own coursing queue item.
+
+**What it means:**
+Every committed red `check:all` carried is gone bar one that only the owning lane can clear. And the `__probe_remote_import.css` that sat untracked during the review self-deleted within ten minutes exactly as its own header promised ("deleted in the same pass") — the probe-with-cleanup is the third option between committing and deleting, and leaving live lanes alone was what let it clean itself.
+
+**Commit:** single pathspec commit `f8c017428`; this entry rides its own docs(journal) commit -- never push without a direct user order.
