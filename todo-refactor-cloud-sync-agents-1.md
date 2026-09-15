@@ -8,7 +8,7 @@
 > after any further edit: a line reference is only true of the revision it was taken from, which is
 > the failure class every note below exists to prevent.**
 
-**Document:** `todo-refactor-cloud-sync-agents-1.md`  
+**Document:** `todo-refactor-cloud-sync-agents-1.md` — **STATE, 2026-09-15 (fourth pass): sizing gate MET, acceptance UNRUN, and therefore deliberately NOT renamed.** `AGENTS.md` §4 is what decides this and it says the two halves plainly: `done-todo-*` "is earned ONLY when that file's own acceptance command was RUN and PASSED," and the states that are not that — parked, superseded, an audit that keeps items open — "belong in a **dated header line**, never in the filename." This plan's acceptance command is `cargo test -p oz-cloud-server sync` under the condition `:64`/`:102` set, and that condition fails: the run exits 0 at 84 passed / 0 failed, but 12 cases skipped (`§5` at EOF), and a zero-skip condition is not met by a run with twelve skips. So `:59`/`:100` stay open, the name stays `todo-`, and the four `refactor(cloud-sync)` commits plus the §9 ruling are what this file reports as done — not what it is renamed for. Renaming it now would put the *completed-decomposition* axis into a token that names the *acceptance-run* axis, which is exactly the category error §4's "one axis, five states" sentence exists to block. (A fourth-pass edit briefly wrote the `done-` name on this line before §4 was read; that claim is retracted here rather than committed, and §9's disposition is corrected to match.)  
 **Role:** Orchestrator Agent 1 (Sync Protocol & Conflict Architect)  
 **Goal:** Decompose `apps/cloud-server/src/sync_store.rs` (1,412 lines — it read 1,757 until `7a310e013` took 345 out) and `sync_api.rs` (800 lines) to streamline conflict resolution and SQLite-to-Cloud replication.  <!-- 2026-09-15 fourth pass: that first clause is CLOSED and the second has never been opened by any phase in this plan. sync_store.rs reads 408 (wc -l) across itself + four child modules, so it is under the 1,000-line ceiling in AGENTS.md:181 AND under that file's own "preferably < 600" preference; sync_api.rs still reads 800, is named in the Goal and in the path fence at `:45`, and is the subject of ZERO boxes in this checklist — see §7 at EOF. -->
 
@@ -61,7 +61,7 @@
   > the command is well-formed, and the suite exists (`sync_store_tests.rs`: 20 `#[tokio::test]`,
   > 0 plain `#[test]`). **The test run itself was NOT performed by this docs audit** (it is a cargo
   > build, out of scope here), so the box stays unticked: valid command, unknown result.
-  > **Sizing pass 2026-09-14 — and the command as written cannot be honestly ticked whatever the pass count reads.** Of the 20 `#[tokio::test]` cases in `sync_store_tests.rs`, **SEVEN** `pg_integration_*` cases (`:272`, `:451`, `:515`, `:576`, `:1016`, `:1115`, `:1185`) open with `let Some((pool, db_name)) = throwaway_pool().await else { eprintln!("… skipped: cannot create throwaway DB"); return; };` — at `:273`, `:452`, `:516`, `:577`, `:1017`, `:1116`, `:1186`. **A `return` inside the `else` arm is a PASS to cargo, not a test that ran: "20 passed" can mean "13 ran".** Condition for a tick: container **`oz-pg-test-15432`** up (`scripts/reset-dev-pg.sh` names it; the suite dials `postgres://postgres:postgres@localhost:15432/postgres` unless `OZ_TEST_PG_URL` is set — `sync_store_tests.rs:15-16`), **and** the captured output must show **ZERO `skipped:` lines** — grep the log, do not eyeball the summary. Not theoretical: `sync_store_tests.rs:42-44` records that the hex-only `.simple()` DB names exist because UUID `Display` hyphens made `CREATE DATABASE` a syntax error and *"silently skipped every sync-store PG test"*. This exact suite has already been green while skipping everything. <!-- 2026-09-15 fourth pass: THE STATED CONDITION IS UNSATISFIABLE AS WRITTEN. A passing test's eprintln! is captured and discarded by libtest, so a default run shows ZERO skip lines even when every PG case skipped — measured: `cargo test -p oz-cloud-server sync` printed "84 passed; 0 failed" with 12 skips in it and a grep for the skip text returned only a test NAME (sqlite_unstamped_payload_is_skipped_not_flagged). The condition is only checkable as `cargo test -p oz-cloud-server sync -- --nocapture`, and its counts are 84 / 12-skipped, not 20 / 7, because the `sync` filter matches sync_api_tests.rs and main_tests.rs too — see §5 at EOF. -->
+  > **Sizing pass 2026-09-14 — and the command as written cannot be honestly ticked whatever the pass count reads.** Of the 20 `#[tokio::test]` cases in `sync_store_tests.rs`, **SEVEN** `pg_integration_*` cases (`:272`, `:451`, `:515`, `:576`, `:1016`, `:1115`, `:1185`) open with `let Some((pool, db_name)) = throwaway_pool().await else { eprintln!("… skipped: cannot create throwaway DB"); return; };` — at `:273`, `:452`, `:516`, `:577`, `:1017`, `:1116`, `:1186`. **A `return` inside the `else` arm is a PASS to cargo, not a test that ran: "20 passed" can mean "13 ran".** Condition for a tick: container **`oz-pg-test-15432`** up (`scripts/reset-dev-pg.sh` names it; the suite dials `postgres://postgres:postgres@localhost:15432/postgres` unless `OZ_TEST_PG_URL` is set — `sync_store_tests.rs:15-16`), **and** the captured output must show **ZERO `skipped:` lines** — grep the log, do not eyeball the summary. Not theoretical: `sync_store_tests.rs:42-44` records that the hex-only `.simple()` DB names exist because UUID `Display` hyphens made `CREATE DATABASE` a syntax error and *"silently skipped every sync-store PG test"*. This exact suite has already been green while skipping everything. <!-- 2026-09-15 fourth pass: THE STATED CONDITION IS UNSATISFIABLE AS WRITTEN. A passing test's eprintln! is captured and discarded by libtest, so a default run shows ZERO skip lines even when every PG case skipped — measured: `cargo test -p oz-cloud-server sync` printed "84 passed; 0 failed" with 12 skips in it and a grep for the skip text returned only a test NAME (sqlite_unstamped_payload_is_skipped_not_flagged). The condition is only checkable as `cargo test -p oz-cloud-server sync -- --nocapture`, and its counts are 84 / 12-skipped, not 20 / 7, because the `sync` filter matches sync_api_tests.rs and main_tests.rs too — see §5 at EOF. CORRECTED INSTRUCTION, supersedes the sentence above for any lane ticking this box: run `cargo test -p oz-cloud-server sync -- --nocapture` and require ZERO `test skipped` lines; on this repo's tip with the container down it reads 84 ok / 12 skipped, so 72 ran. `-- --nocapture` is already the house convention for exactly this — every `docs/specs/**/validation.md` command line carries it, and `apps/desktop-client/src/commands/registration_gate_tests.rs:1466` documents the same capture trap. -->
 
 ### Phase 1.1: Decompose `sync_store.rs`
 - [x] Separate storage backend adapters from conflict resolution logic.
@@ -73,7 +73,7 @@
   > **So this `[x]` means CLASSIFIER OUT, ADAPTERS STILL IN — the classifier moved while the adapters
   > did not. It is PARTIAL-BY-OTHERS and must not be read as "split done"; the split is the unchecked
   > `:68` below, and it is still open.**
-- [ ] Extract batch mutation application into dedicated transaction chunks.
+- [x] Extract batch mutation application into dedicated transaction chunks. **[RETIRED BY OWNER RULING, 2026-09-15 — the `0e52f1d46` shape IS the answer, so the bullet closes as done-by-perf. Ruling given by the human in the session that wrote the fourth pass, which is the only party entitled to give it: `:93` forbids a LANE from ticking here. Evidence and the safety argument at §9 at EOF.]**
   > Pre-existing partial: `sqlite_push_batch_multirow` (`sync_store.rs:621` today, `:615` at `7a310e013^`) and
   > `pg_push_batch_multirow` (`sync_store/pg.rs:35`, was `:691` here) were pulled out of `push_batch` (`:188`) by `0e52f1d46`
   > (2026-09-01) as a **perf** change, not as this refactor. `push_batch` still owns the dispatch.
@@ -101,7 +101,7 @@
   > **Sizing pass 2026-09-14 — the same condition as `:51` above, and it is the whole point of this box:**
   > "passes" is not "ran". Tick only on a run against a live `oz-pg-test-15432` whose captured output
   > contains **zero `skipped:` lines**. With the container down, 7 of the 20 cases `return` as a pass,
-  > so on a default developer machine this box is greenest exactly when it has verified least.
+  > so on a default developer machine this box is greenest exactly when it has verified least. <!-- CORRECTED 2026-09-15 fourth pass: the grep above cannot see a skip without `-- --nocapture`, and the count is 12 across three files, not 7 in one — see §5 at EOF. Box stays open: it needs the container, which is an owner action (`scripts/reset-dev-pg.sh:19`-`:21`), not a lane action. -->
 - [ ] **Commit Milestone:**
   ```bash
   git commit -m "refactor(cloud-sync): decouple conflict resolution from sync storage backend"
@@ -302,14 +302,15 @@
 
 ---
 
-## Fourth pass — 2026-09-15 (measured at HEAD `503591a10`; **ONE tick**)
+## Fourth pass — 2026-09-15 (measured at HEAD `503591a10`; **two ticks, one owner ruling, and NO rename — `AGENTS.md` §4 blocks it**)
 
 > Provenance: every figure below was measured in this checkout at HEAD `503591a10`
 > (*fix(sales): center the empty cart state in the cart lines area*, 2026-09-15 21:00 +0700,
 > branch `0.0.39`), each quoted with the command that re-derives it. In-place edits made by
-> this pass were **character-level only** — one `[ ]`→`[x]` and five `<!-- -->` clauses appended
-> to existing lines — so the file stood at **301 ln after every in-place edit** (547 with this
-> block appended below them), the drift map at `:5`-`:9` and the box
+> this pass were **character-level only** — two `[ ]`→`[x]` ticks, and dated `<!-- -->` clauses on
+> **six** existing lines (`:13`, `:44`, `:64`, `:99`, `:104`, `:126` — seven clauses, since `:64`
+> carries two) — so the checklist region is byte-for-byte the same height: the file
+> stood at **301 ln after every in-place edit**, the drift map at `:5`-`:9` and the box
 > lines `:59` `:67` `:76` `:94` `:100` `:105` all still resolve to what they name (re-checked),
 > and this block sits at EOF, below every pointer in the file. The working tree was NOT clean
 > while this pass ran (`crates/oz-payment/*` and three sibling plan docs carried other sessions'
@@ -522,29 +523,106 @@ and phases one of them. If this plan stays live, the `sync_api` decomposition is
 scope and needs a phase written for it. If not, the Goal should say so and the file should sit
 beside its two siblings.
 
-### 8. Status of every box, and the disposition this pass recommends
+### 8. Status of every box, and the disposition — recommended one way, then corrected by `AGENTS.md` §4
 
 | box | was | now | basis |
 |---|---|---|---|
 | `:59` baseline | open | **open; condition rewritten** | ran: 84 passed / 12 skipped / 72 real — `--nocapture` required |
 | `:67` classifier out | `[x]` partial-by-others | **unchanged** | `conflict_resolution.rs` still 401, still imported |
-| `:76` tx chunks | open | **open; still a ruling, not a lane** | `push_batch` still owns pre-pass + dispatch + both fallbacks (§3) |
+| `:76` tx chunks | open | **CLOSED BY OWNER RULING** | retired as done-by-perf; the safety case is §9 |
 | `:94` split adapters | open ("half shipped") | **TICKED `[x]`** | both halves out, parent 408 ln, 0 adapter definitions |
 | `:100` verify passes | open | **open; same rewritten condition** | exit 0 but 12 vacuous passes; port 15432 refused |
 | `:105` milestone | open | **open and void** | 4 `refactor(cloud-sync)` commits, none with this subject — and the command at `:106`-`:108` carries **no pathspec**, which `AGENTS.md` §3 forbids; a milestone a lane may paste is a milestone that teaches the violation |
 
-Open/ticked, both grep forms (`grep -cE '^[[:space:]]*- \[ \]'` and `…'\[[xX]\]'`), before → after:
-**open 5 → 4** · **ticked 1 → 2**. One tick was made here, at `:94`, and it is the first tick in
-this document's history — every prior pass recorded "ZERO ticks".
+Open/ticked, both grep forms (`grep -cE '^[[:space:]]*- \[ \]'` and `…'\[[xX]\]'`): at the start of
+this pass **open 5 / ticked 1**; on the first tick below, **open 4 / ticked 2**; after the §9
+ruling, **open 3 / ticked 3** (`:59`, `:100`, `:105` remain open — two need Docker, one is void).
+Two ticks were made here, `:94` and `:76`, and they are the first and second in this document's
+history — every prior pass recorded "ZERO ticks".
 
-**Disposition.** This plan has delivered the only thing `:15` said it was for, so it should be
-either **retired** — renamed to `done-todo-refactor-cloud-sync-agents-1.md` beside Agents 2 and 3,
-with `:76` handed to the owner as a one-line ruling and the `--nocapture` fix applied to
-`:64`/`:102` on the way out — or **re-scoped** onto `sync_api.rs` with a real phase. What it must
-not be is left standing as a live work order whose headline figure (1,412), whose central box
-("half shipped"), whose §6 seam map and §7 skip count — both drawn by the pass before this one — are now all false, because the next
-reader costs the work from those numbers, and there is nothing left to cost. This pass touched no
-code and no test file: it ticked one box, appended five dated clauses, and ran one `cargo check`,
-four `cargo test` invocations — the fourth being a malformed `--lib` request that errored, since
-this package has no library target and all its unit tests live in the binary — and one TCP probe
-run twice.
+### 9. Rulings applied, the rename refused by §4, and the one repair that outgrew this plan
+
+**`:76` — RETIRED AS DONE-BY-PERF, on the owner's ruling given in the session that wrote this
+pass.** `:93` ruled that no lane may tick this box on the strength of the two extracted functions,
+and it was right to write it that way: the thing `:93` was protecting against is a lane
+*self-certifying* a design question closed. The ruling now on record is not a lane's. The
+substantive case, which is what made the ruling cheap enough to get:
+
+- The bullet asks for "dedicated transaction chunks," and `0e52f1d46` delivered exactly that
+  reading — `MULTIROW_CHUNK`-sized statements (500 rows, `sync_store.rs:70`) each in one
+  transaction, per backend, with per-item outcomes reconstructed from the returned-id multiset.
+  The header audit block at `sync_store.rs:1`-`:6` already states it that way.
+- What remains is `push_batch` owning its pre-pass (`:178`-`:200`), its dispatch (`:202`) and its
+  two fallbacks (`:214`-`:245`, `:255`-`:333`). That is a **shape preference inside a 408-line
+  file**, not a ceiling violation — §3 closed the only pressure that made this plan worth funding.
+  A named chunk type would buy readability, and nothing else.
+- **And it would be unsafe to buy here.** The PG SAVEPOINT fallback is guarded by exactly three
+  tests: `pg_integration_push_batch_duplicate_in_middle_survives`,
+  `…_commit_visible_to_new_connection`, `…_data_error_does_not_abort_batch`. All three are in the
+  12 that skipped in §5's run. The SQLite fallback's guards —
+  `sqlite_push_batch_commits_atomically_and_rejects_dups`, `…_matches_per_item_semantics` — did
+  run. So in this checkout one fallback is testable and the other is not, and a mechanical-move
+  brief against `:255`-`:333` would be a blind edit to the hottest write path in the crate. That
+  asymmetry, not taste, is the reason to close the box rather than schedule it.
+
+**`sync_api.rs` — NO SUCCESSOR PLAN, on the same ruling.** It stays in the Goal's shadow at 800
+lines: under the 1,000 ceiling (no policy pressure), 200 over the `AGENTS.md:181` preference
+(discretionary). This document's own `:15` honesty pass argues the general case — a file-size split
+buys no better sync — so opening a phase to split `sync_api.rs` would contradict the one conclusion
+this plan earned. If it is ever split, let it be pulled by a behaviour change that needs the seam.
+
+**The durable repair, which is deliberately NOT filed here.** While sizing §5's fix, the sweep came
+back much bigger than this plan. **Forty-seven** invisible-skip arms — `else { eprintln!("… test
+skipped …"); return; }`, the shape that reports a pass to cargo and hides its own message — across
+**nine** files in `apps/cloud-server/src`: `email_pg_tests` 12, `db_tests` 9, `sync_store_tests` 7,
+`prune_tests` 5, `sync_api_tests` 5, `webhooks_tests` 3, `main_tests` 2, `redis_backend_tests` 2,
+`migrate_sqlite_to_pg_tests` 2. Only 12 of the 47 sit inside Agent 1's fence.
+
+And the repo already owns the right mechanism: `platform/sync/tests/pg_integration.rs:112` and
+`:146` use `#[ignore = "requires a disposable PostgreSQL instance"]`, which is why
+`todo-topology-editor.md:200` could honestly cite `0 ignored` as proof a run was not vacuous. An
+`#[ignore]`d test is *countable in the summary*; a `return`ed one is not, in either runner — CI runs
+`cargo nextest run --workspace --all-features` (`dev-ci.yml:244`) and nextest draws the same
+distinction. So `apps/cloud-server` has two skip conventions and the worse one is what every
+verification box in this crate inherits. Converting the 47 is a cross-owner change to test
+semantics with a CI surface, not a docs edit, and it belongs to no plan here — this one closes its
+decomposition mandate having *found* it, which is the useful leftover.
+
+**Disposition — NOT a rename, on the convention, and this is the correction of this pass's own
+recommendation.** The fourth pass first recommended retiring this file to
+`done-todo-refactor-cloud-sync-agents-1.md` beside Agents 2 and 3, edited `:11` to say so, and then
+read `AGENTS.md` §4 — which forbids it twice over, and the retraction is recorded at `:11` rather
+than quietly unwritten:
+
+- **§4's earning rule:** `done-todo-*` is earned "ONLY when that file's own acceptance command was
+  RUN and PASSED," and "a plan whose … documented equivalent was never executed STAYS `todo-`,
+  **however complete its code is**." This plan's acceptance command is `:59`/`:100`'s
+  `cargo test -p oz-cloud-server sync` against the zero-skip condition at `:64`/`:102`. It was run,
+  it exited 0, and **it does not satisfy its own documented condition** — 12 skips against a
+  condition that demands none. So the rename is not available, and §5's finding is the reason, not
+  an incidental.
+- **§4's placement rule:** the states that are not "acceptance run" — parked on a ruling,
+  superseded, an audit that keeps items open — "belong in a **dated header line**, never in the
+  filename," because the `todo-`/`done-` pair names one axis and this file sits in a five-state
+  population. The header line at `:11` is that mechanism, and it is now carrying the state.
+- **The precedent I cited was the warning, not the model.** Agents 2 and 3 are not sitting at the
+  root under `done-` names — `5798599a7` *moved* them into `.agents/archived/`, where 37 plan docs
+  now are, and §4 names that move as something not to do "as a substitute for naming them": that
+  directory is absent from `HIST_DIR_PREFIXES` (`check-dead-refs.py:74-76`), so those files hold
+  their dead-ref exemption only because `cc382ef20` made `is_historical_doc()` a substring test.
+  Pointing a future lane at that pair would have taught it the exception §4 calls unapproved.
+
+What is genuinely executed by this pass, then, is narrower and all real: `:94` ticked on
+measurement, `:76` closed on the owner's ruling (§9), the vacuous skip-grep instruction at
+`:64`/`:102` rewritten to `-- --nocapture`, and the state declared in the header. `:59`/`:100`
+stay open pending one owner action — bring up `oz-pg-test-15432` (`scripts/reset-dev-pg.sh:19`-`:21`)
+and re-run with `-- --nocapture` until the log shows no `test skipped` line; that is the whole
+distance to a renameable plan. `:105` stays open and void: 4 `refactor(cloud-sync)` commits exist,
+none with its subject, and its command text carries no pathspec, which `AGENTS.md` §3 forbids —
+left verbatim as the evidence the third pass's §3 says stale milestone text should be.
+
+What this pass touched: no code, no test file, no other document. It ticked two boxes (`:94` on
+measurement, `:76` on the owner's ruling), left dated clauses on six checklist lines, rewrote one live
+instruction to `-- --nocapture`, ran one `cargo check`, four `cargo test` invocations — the fourth a
+malformed `--lib` request that errored, since this package has no library target and its unit tests
+live in the binary — one `git grep` sweep over nine test files, and one TCP probe run twice.
