@@ -10,7 +10,7 @@
 
 **Document:** `todo-refactor-cloud-sync-agents-1.md`  
 **Role:** Orchestrator Agent 1 (Sync Protocol & Conflict Architect)  
-**Goal:** Decompose `apps/cloud-server/src/sync_store.rs` (1,412 lines — it read 1,757 until `7a310e013` took 345 out) and `sync_api.rs` (800 lines) to streamline conflict resolution and SQLite-to-Cloud replication.  
+**Goal:** Decompose `apps/cloud-server/src/sync_store.rs` (1,412 lines — it read 1,757 until `7a310e013` took 345 out) and `sync_api.rs` (800 lines) to streamline conflict resolution and SQLite-to-Cloud replication.  <!-- 2026-09-15 fourth pass: that first clause is CLOSED and the second has never been opened by any phase in this plan. sync_store.rs reads 408 (wc -l) across itself + four child modules, so it is under the 1,000-line ceiling in AGENTS.md:181 AND under that file's own "preferably < 600" preference; sync_api.rs still reads 800, is named in the Goal and in the path fence at `:45`, and is the subject of ZERO boxes in this checklist — see §7 at EOF. -->
 
 > ⚠️ **Honesty pass 2026-09-14 (measured): this Goal line oversells. It is left exactly as written so that no coder is dispatched to re-do shipped work.** Conflict resolution has **already moved out of the file** — `apps/cloud-server/src/conflict_resolution.rs`, 401 ln, pure (no I/O), imported at `sync_store.rs:42`, created by `230642b64` (2026-09-13, *feat(sync-cloud): classify concurrent sync mutations and persist conflict rows*) on the sync-conflict lane, not under this work order. Version vectors are **real and in use**: `use platform_sync::crdt::VersionVector;` at `sync_store.rs:53`, **26** `VersionVector` references across `apps/cloud-server/src/` (`grep -rn VersionVector apps/cloud-server/src | wc -l` = 26), over `platform/sync/src/crdt/version_vector.rs` (146 ln). **What this document still owns is `:68`, and `:68` is a STRUCTURAL / POLICY split: funding it buys `AGENTS.md` §2 compliance — `wc -l apps/cloud-server/src/sync_store.rs` = **1,412** against the 1,000-line production-file ceiling — it does not buy a better sync. That is the honest sales pitch, and no phase here changes replication behaviour (where behaviour work lives: the closing note).**
 
@@ -41,7 +41,7 @@
 
 1. **Commit Subject Convention:** `refactor(cloud-sync): ...`
 2. **Owned Path Fence (Exclusive to Agent 1):**
-   - `apps/cloud-server/src/sync_store.rs` (1,412 ln, 1,757 before `7a310e013`) & `sync_store_tests.rs` (1,386 ln) · `sync_store/pg.rs` (378 ln) sits inside this fence by parentage — see the 2026-09-15 block at EOF
+   - `apps/cloud-server/src/sync_store.rs` (1,412 ln, 1,757 before `7a310e013`) & `sync_store_tests.rs` (1,386 ln) · `sync_store/pg.rs` (378 ln) sits inside this fence by parentage — see the 2026-09-15 block at EOF <!-- 2026-09-15 fourth pass: the fence now covers FIVE files by that same parentage — sync_store.rs (408) + sync_store/{pg 378, conflicts 509, sqlite 332, tenant 233}. All four `mod` lines are registered in the parent at `:34`-`:37`. Nothing outside this list was touched by the three commits that landed it. -->
    - `apps/cloud-server/src/sync_api.rs` (800 ln) & `sync_api_tests.rs` (2,525 ln)
 3. **Forbidden Paths (Owned by Siblings):**
    - DO NOT edit `email_pg.rs` **or the `email_pg/` module directory** (owned by Agent 2 — already decomposed by `01e62dec1`).
@@ -61,7 +61,7 @@
   > the command is well-formed, and the suite exists (`sync_store_tests.rs`: 20 `#[tokio::test]`,
   > 0 plain `#[test]`). **The test run itself was NOT performed by this docs audit** (it is a cargo
   > build, out of scope here), so the box stays unticked: valid command, unknown result.
-  > **Sizing pass 2026-09-14 — and the command as written cannot be honestly ticked whatever the pass count reads.** Of the 20 `#[tokio::test]` cases in `sync_store_tests.rs`, **SEVEN** `pg_integration_*` cases (`:272`, `:451`, `:515`, `:576`, `:1016`, `:1115`, `:1185`) open with `let Some((pool, db_name)) = throwaway_pool().await else { eprintln!("… skipped: cannot create throwaway DB"); return; };` — at `:273`, `:452`, `:516`, `:577`, `:1017`, `:1116`, `:1186`. **A `return` inside the `else` arm is a PASS to cargo, not a test that ran: "20 passed" can mean "13 ran".** Condition for a tick: container **`oz-pg-test-15432`** up (`scripts/reset-dev-pg.sh` names it; the suite dials `postgres://postgres:postgres@localhost:15432/postgres` unless `OZ_TEST_PG_URL` is set — `sync_store_tests.rs:15-16`), **and** the captured output must show **ZERO `skipped:` lines** — grep the log, do not eyeball the summary. Not theoretical: `sync_store_tests.rs:42-44` records that the hex-only `.simple()` DB names exist because UUID `Display` hyphens made `CREATE DATABASE` a syntax error and *"silently skipped every sync-store PG test"*. This exact suite has already been green while skipping everything.
+  > **Sizing pass 2026-09-14 — and the command as written cannot be honestly ticked whatever the pass count reads.** Of the 20 `#[tokio::test]` cases in `sync_store_tests.rs`, **SEVEN** `pg_integration_*` cases (`:272`, `:451`, `:515`, `:576`, `:1016`, `:1115`, `:1185`) open with `let Some((pool, db_name)) = throwaway_pool().await else { eprintln!("… skipped: cannot create throwaway DB"); return; };` — at `:273`, `:452`, `:516`, `:577`, `:1017`, `:1116`, `:1186`. **A `return` inside the `else` arm is a PASS to cargo, not a test that ran: "20 passed" can mean "13 ran".** Condition for a tick: container **`oz-pg-test-15432`** up (`scripts/reset-dev-pg.sh` names it; the suite dials `postgres://postgres:postgres@localhost:15432/postgres` unless `OZ_TEST_PG_URL` is set — `sync_store_tests.rs:15-16`), **and** the captured output must show **ZERO `skipped:` lines** — grep the log, do not eyeball the summary. Not theoretical: `sync_store_tests.rs:42-44` records that the hex-only `.simple()` DB names exist because UUID `Display` hyphens made `CREATE DATABASE` a syntax error and *"silently skipped every sync-store PG test"*. This exact suite has already been green while skipping everything. <!-- 2026-09-15 fourth pass: THE STATED CONDITION IS UNSATISFIABLE AS WRITTEN. A passing test's eprintln! is captured and discarded by libtest, so a default run shows ZERO skip lines even when every PG case skipped — measured: `cargo test -p oz-cloud-server sync` printed "84 passed; 0 failed" with 12 skips in it and a grep for the skip text returned only a test NAME (sqlite_unstamped_payload_is_skipped_not_flagged). The condition is only checkable as `cargo test -p oz-cloud-server sync -- --nocapture`, and its counts are 84 / 12-skipped, not 20 / 7, because the `sync` filter matches sync_api_tests.rs and main_tests.rs too — see §5 at EOF. -->
 
 ### Phase 1.1: Decompose `sync_store.rs`
 - [x] Separate storage backend adapters from conflict resolution logic.
@@ -91,12 +91,12 @@
   > Ticking this box needs either that ownership extracted behind a named chunk type both adapters
   > share, or a recorded ruling that the `0e52f1d46` shape **is** the transaction chunks and the bullet
   > retires as done-by-perf. Two extracted functions are not that; do not tick on their strength.
-- [ ] Split the SQLite and PostgreSQL adapters out of `sync_store.rs`.
+- [x] Split the SQLite and PostgreSQL adapters out of `sync_store.rs`. **[TICKED by the fourth pass, 2026-09-15, at HEAD `503591a10` — BOTH halves are now out: `wc -l apps/cloud-server/src/sync_store.rs` = 408, and `grep -c 'fn sqlite_\|fn pg_'` over it = 0. See §2 at EOF; the note below it is superseded but kept verbatim.**
   > **Bullet added by this audit (wrong-by-omission).** The file is 1,412 ln against the 1,000-line
   > production-file ceiling in `AGENTS.md` §2, and `grep -n 'mod ' sync_store.rs` returned exactly one
   > hit (`mod tests;`, `:1757`). **Re-measured 2026-09-15: TWO hits — `mod pg;` at `:34` and `mod tests;` at `:1412` — so the claim that there is no submodule structure to inherit a split is FALSE: `sync_store/pg.rs` IS one. Three
   > separate `impl SyncStore` blocks (`:90`, `:927`, `:1112`; `:84`/`:1272`/`:1457` were their `7a310e013^` positions) confirm the file has grown by
-  > accretion, not by decomposition. **2026-09-15: this box is HALF SHIPPED and the plan did not know it — `sync_store/pg.rs`, 378 ln, landed in `7a310e013` under this plan own `refactor(cloud-sync)` prefix (`:42`). NO TICK: the box asks for both halves, and the SQLite half is what remains; detail at EOF.**
+  > accretion, not by decomposition. **2026-09-15: this box is HALF SHIPPED and the plan did not know it — `sync_store/pg.rs`, 378 ln, landed in `7a310e013` under this plan own `refactor(cloud-sync)` prefix (`:42`). NO TICK: the box asks for both halves, and the SQLite half is what remains; detail at EOF.** <!-- 2026-09-15 fourth pass: "the SQLite half is what remains" and "NO TICK" were true when written and are FALSE now — sqlite.rs landed in 8193fd3d5 the same morning, and the box is TICKED at :94. Kept verbatim as the record of what the third pass could see. Two other claims in this same note are superseded: "TWO hits" for `mod ` is now FIVE (:34 pg, :35 conflicts, :36 sqlite, :37 tenant, :408 tests), and the "three separate impl SyncStore blocks" at :90/:927/:1112 are now ONE in the parent (:99) plus three in the children (conflicts.rs:30, :215, tenant.rs:21). -->
 - [ ] Verify `cargo test -p oz-cloud-server sync` passes.
   > **Sizing pass 2026-09-14 — the same condition as `:51` above, and it is the whole point of this box:**
   > "passes" is not "ran". Tick only on a run against a live `oz-pg-test-15432` whose captured output
@@ -123,7 +123,7 @@
 > costing from them, and ADR43's own status line already reads *Implemented (D1–D4, D7, D9-ready) —
 > remaining items deferred or infra-only* (2026-09-02). **Every box in this plan is left as found:
 > `:58` ticked as partial-by-others, all others unticked, and no line target here is retired — the
-> 1,412-line file still has to be split — the SQLite half of it; the Postgres half shipped in `7a310e013` without this plan knowing.**
+> 1,412-line file still has to be split — the SQLite half of it; the Postgres half shipped in `7a310e013` without this plan knowing.** <!-- 2026-09-15 fourth pass: this sentence is now FALSE on three counts and is kept verbatim as the evidence. (a) "every box left as found" — one box was ticked by this pass, :94. (b) "still has to be split — the SQLite half of it" — the SQLite half shipped in 8193fd3d5, and two further cuts the plan never modelled shipped in f26c1afa6 (conflicts) and 846940e29 (tenant). (c) "no line target here is retired" — the line target IS retired: the ceiling this plan existed to close is closed, sync_store.rs reads 408. The failure mode named at :149-:151 ("nothing ever re-ran its own acceptance greps") has now recurred once more, at an interval of hours rather than days: this sentence was committed in 57bca12f8 and overtaken by three commits on the same date. -->
 
 ---
 
@@ -299,3 +299,252 @@
   and `:105`'s milestone has never been exercised. A plan can be corrected into accuracy
   about the tree and still be wrong about what is left to do — that is the remaining gap, and
   it is now written down instead of being discovered.
+
+---
+
+## Fourth pass — 2026-09-15 (measured at HEAD `503591a10`; **ONE tick**)
+
+> Provenance: every figure below was measured in this checkout at HEAD `503591a10`
+> (*fix(sales): center the empty cart state in the cart lines area*, 2026-09-15 21:00 +0700,
+> branch `0.0.39`), each quoted with the command that re-derives it. In-place edits made by
+> this pass were **character-level only** — one `[ ]`→`[x]` and five `<!-- -->` clauses appended
+> to existing lines — so the file stood at **301 ln after every in-place edit** (547 with this
+> block appended below them), the drift map at `:5`-`:9` and the box
+> lines `:59` `:67` `:76` `:94` `:100` `:105` all still resolve to what they name (re-checked),
+> and this block sits at EOF, below every pointer in the file. The working tree was NOT clean
+> while this pass ran (`crates/oz-payment/*` and three sibling plan docs carried other sessions'
+> uncommitted edits), so code figures are a read of a dirty tree — except that
+> `git status --porcelain -- apps/cloud-server` was **empty**, which is what makes the
+> `sync_store*` numbers safe to quote as HEAD facts.
+
+### 1. Three commits landed after the pass that measured this file
+
+The third pass was committed as `57bca12f8` and stated its measurements at HEAD `92e752666`.
+Three more commits landed *after* `57bca12f8`, all on 2026-09-15, all inside this plan's own path
+fence, all under this plan's own declared prefix (`:42`) — verified by
+`git merge-base --is-ancestor 57bca12f8 <sha>` (exit 0 for all three):
+
+| SHA | time | subject | numstat (`sync_store.rs` → child) |
+|---|---|---|---|
+| `f26c1afa6` | 08:12 | move the conflict rows out of the sync store behind a submodule | `+2 / −494` → `sync_store/conflicts.rs` **+509 (new)** |
+| `8193fd3d5` | 09:36 | move the sqlite seam behind a second submodule of the sync store | `+8 / −313` → `sync_store/sqlite.rs` **+332 (new)** |
+| `846940e29` | 10:02 | move the five per-tenant bookkeeping queries into sync_store::tenant | `+5 / −212` → `sync_store/tenant.rs` **+233 (new)** |
+
+The arithmetic closes exactly, and this is the only figure set in this document that does *not*
+require a revision to interpret: 1,412 − 494 + 2 = 920 · 920 − 313 + 8 = 615 · 615 − 212 + 5 =
+**408**, against `wc -l apps/cloud-server/src/sync_store.rs` = 408. A companion
+`style(cloud-sync)` commit, `821c16592`, sits between the first two and rustfmt'd the moved
+imports. `git log --format=%s | grep -c 'refactor(cloud-sync)'` reads **4**, against the **1**
+recorded at `:182`-`:183`.
+
+The recurrence is the point. `:149`-`:151` diagnosed this plan's staleness as *"nothing ever re-ran
+its own acceptance greps"*. The re-check was written down, and then the same drift happened again
+**within the same calendar day, at an interval of hours.** Note what the third pass got *right*:
+`:234` already names the target file by the name it actually got — *"take seam 2 out to
+`sync_store/sqlite.rs`"* — and that file landed with that name eight hours after the sentence was
+committed. What it never recorded, because nothing re-grepped: `conflicts.rs`, `tenant.rs`,
+`f26c1afa6`, `8193fd3d5`, `846940e29` each occur **0 times** in this file outside §1 above.
+
+### 2. `:94` is TICKED — both halves are out, and the split line is not the one this plan drew
+
+`wc -l` at HEAD, with non-blank from `grep -c '[^[:space:]]'`:
+
+| file | ln | non-blank | surface |
+|---|---|---|---|
+| `sync_store.rs` | **408** | 390 | dispatch enum, 2 constructors, `push_item:120`, `push_batch:163`, `pull_items:342`, `snapshot_all:370` |
+| `sync_store/conflicts.rs` | 509 | 492 | two `impl SyncStore` blocks (`:30`, `:215`), 4 `pub` fns, 2 row decoders (`:470`, `:491`) |
+| `sync_store/pg.rs` | 378 | 358 | 5 `pub(super)` + 2 private |
+| `sync_store/sqlite.rs` | 332 | 314 | 5 `pub(super)` + 2 private |
+| `sync_store/tenant.rs` | 233 | 226 | one `impl SyncStore` (`:21`), **zero** `pub(super)` |
+
+`grep -n 'mod ' apps/cloud-server/src/sync_store.rs` → **five** hits (`:34` `pg`, `:35`
+`conflicts`, `:36` `sqlite`, `:37` `tenant`, `:408` `tests`), against the two the note at `:97`
+records. And the parent holds **no adapter definition at all**: `fn sqlite_` / `fn pg_` → 0
+matches; the 14 lines / 20 matches (`grep -o -E 'sqlite_|pg_'`, 10 of each) are import names
+(`:56`-`:57`, `:61`-`:62`) and call sites (`:207`, `:251`, `:352`, `:360`, `:384`-`:386`,
+`:395`-`:397`). That is what the box asks for, so it is ticked.
+
+The SQLite half is the **exact mirror** of `pg.rs`, down to the surface arithmetic the third pass
+flagged as a future grep trap at `:159`-`:161` — seven functions, five `pub(super)`, two
+module-private (`sqlite_collect_pull_rows:163`, `sqlite_row_to_item:182`) — and its own header
+states the same "the parent calls five of them" reasoning (`sqlite.rs:10`-`:12`).
+
+**But two of the three new cuts do not follow `pg.rs`'s shape at all**, and the third pass's §6 called that shape
+"the template, four properties, all measured" (`:238`-`:240`). `conflicts.rs` and `tenant.rs` move
+`impl SyncStore` *blocks*, not free functions: no `pub(super)` surface exists to declare and no
+`use super::…` back-import. `tenant.rs:8`-`:10` says so deliberately — *"nothing is re-exported: a
+method resolves through the type, not through the module path, and each of the five was already
+`pub`."* `conflicts.rs:12`-`:13` records the one visibility question the split really raised, with
+its answer: *"`detect_conflict` is the single edge back into the parent's `push_batch`; it is `pub`,
+so the seam needs no widened visibility."* Of the four template properties, only "exactly one `mod`
+line is added to the parent" held across all three cuts. The `MULTIROW_CHUNK` coupling named at
+`:169`-`:170` is real and now **doubled** — the constant moved `:61`→`:70`, and both `pg.rs:27` and
+`sqlite.rs:20` carry `use super::MULTIROW_CHUNK;` — while `conflicts.rs` and `tenant.rs` reference
+it **0** times, which is precisely why those two were separable without touching it.
+
+### 3. The ceiling this plan existed to close is closed; `:76` is all that's left of the work order
+
+`AGENTS.md:181` reads *"Keep production `.rs` files under 1,000 lines (preferably < 600 lines)"* —
+quoted with its line because the checklist cites it as "§2" without one. Every one of the five
+files above is **under 600**, so this plan now satisfies the preference, which no box here ever
+asked for. The largest *production* file in the crate is no longer a sync-store file: `webhooks.rs`
+at **927**. The files still over 1,000 in `cloud-server/src` are all test files — `sync_api_tests`
+2,525, `sync_store_tests` 1,386, `webhooks_tests` 1,348, `email_pg_tests` 1,300, `openapi_tests`
+1,160, `main_tests` 1,116 — and `:181` scopes its ceiling to *production* files, so none is a
+violation. **`:15`'s sales pitch ("funding it buys §2 compliance") is therefore spent**: there is
+no line-count target left for this plan to own.
+
+The one box that remains genuinely open is `:76`, and its coordinates moved again. At `503591a10`:
+`push_batch` defined at `:163` (was `:188`), conflict pre-pass `:178`-`:200`, `match self` dispatch
+at `:202`, SQLite arm `:203` with fast path called at `:207` and its single-transaction fallback
+inline at `:214`-`:245` (`tx.commit()` `:244`), PG arm `:247` with fast path at `:251` and its
+SAVEPOINT-per-item loop from `:255` to commit at `:333`. The ownership described at `:87`-`:93` is
+**unchanged in substance** — pre-pass, dispatch and both fallbacks are still `push_batch`'s — and
+the ruling `:76` waits on is still unmade. That pass's §6 arithmetic is now moot rather than wrong: it
+forecast "two briefs minimum" and three landed, and it forecast a 908-line parent against a real
+408.
+
+One prediction of that §6 *was* tested and held. `:241`-`:246` forbade taking seam 4 away from seam 3,
+because the row decoders are defined in seam 4 and called from seam 3. `f26c1afa6` moved **both**
+seams into **one** file (192 + 295 ≈ 487, against 509 with its header), so the decoders
+(`conflicts.rs:470`, `:491`) travelled with their callers and no cross-dependency between two new
+files was created. That prohibition was a real constraint read off real code, and the executing
+lane honoured it.
+
+### 4. What the third pass's §6 seam model missed: a fifth seam, and an order it had backwards
+
+`:221`-`:224` describes seam 1 (`:1`-`:605`) as *"Dispatch and shared state; **it is what stays**"*
+and then builds the two-brief arithmetic on that. `tenant.rs` came out of it — five read-only
+per-tenant queries (`get_tenant_plan`, `oldest_created_at`, `pending_count`,
+`distinct_tenant_count`, `snapshot_version`) that are neither adapters nor conflict rows nor batch
+application, and so had no seam in this plan's map. A four-seam decomposition of a file is a claim
+about where the banners are, not about what is removable.
+
+The order prediction failed harmlessly. `:236`-`:237`: *"the order matters: seam 2 first, because
+`pg.rs` is its template."* Actual order was **conflicts → sqlite → tenant** — the
+template-following cut went second, and nothing broke. Order mattered for the *line-number
+bookkeeping* (that pass's §4 ±6 / −345 rule) and not for correctness; the sentence conflated the two.
+
+The honest total: the module is **1,860 ln** across five files against the **1,790** measured at
+`92e752666`, so the decomposition has cost **+70 lines** of headers, import blocks and `mod`
+wiring — the real price of the compliance this plan was funded to buy, and it appears in no
+estimate here.
+
+### 5. The tick conditions at `:59` and `:100` are **unsatisfiable as written** — this pass ran the command
+
+`:64` and `:102`-`:104` both condition a tick on *"the captured output must show **ZERO `skipped:`
+lines** — grep the log, do not eyeball the summary"*. **That grep cannot fail.** libtest captures
+and discards a *passing* test's stdout/stderr, and each of these cases prints its skip message and
+then `return`s — a pass. Measured at this HEAD, container down:
+
+```
+$ cargo test -p oz-cloud-server sync 2>&1 | grep -c 'skipped'
+1        # …and the single hit is a TEST NAME: sqlite_unstamped_payload_is_skipped_not_flagged
+$ cargo test -p oz-cloud-server sync 2>&1 | grep 'test result'
+test result: ok. 84 passed; 0 failed; 0 ignored; 0 measured; 267 filtered out; finished in 51.17s
+```
+
+Zero skip lines, exit 0, and **twelve cases did not run**. With the flag that makes the messages
+visible, the same command reports itself honestly:
+
+```
+$ cargo test -p oz-cloud-server sync -- --nocapture     # → 12 "test skipped" lines, 84 ok
+7 × "cannot create throwaway DB"        sync_store_tests.rs  (the 7 this plan enumerates)
+4 × "Connection error: … pool.get() …"  sync_api_tests.rs:931, :1831/:1845/:1866, :2419
+1 × "Connection error: … pool.get() …"  main_tests.rs:1002
+```
+
+**84 passed, 12 skipped, 72 actually ran.** Three corrections to the plan's own account, and the
+third is the finding rather than a figure:
+
+1. The `sync` **substring filter is crate-wide**, not the file-scoped 20 cases of `:61`-`:64`. It
+   selects `sync_store::tests::*`, `sync_api::tests::*`, `tests::sync_*`, and
+   `tests::pg_integration_health_last_sync_query_is_indexed`. "20 passed can mean 13 ran" is true
+   of that file and understates that command: **84 can mean 72**.
+2. **Twelve cases skip, not seven.** The third pass's §7 enumerated one file and never looked at
+   the other two the same command runs. Its seven are right *for `sync_store_tests.rs`* — still `:272`, `:451`,
+   `:515`, `:576`, `:1016`, `:1115`, `:1185`, re-verified by `grep -n 'async fn pg_integration'`.
+3. **The acceptance condition is vacuous and must be rewritten with `-- --nocapture` or dropped.**
+   A lane that follows `:64` to the letter on a machine with no Postgres gets the greenest possible
+   reading out of the run that verified the least: the plan's own trap at `:103`-`:104`, armed by
+   the plan's own instruction for escaping it.
+
+Both boxes stay **unticked**, but the reason changed — not "valid command, unrunnable environment"
+but *"valid command, ran, 84 passed / 0 failed, and 12 of its cases verified nothing."* The
+container is still down: TCP connect to `127.0.0.1:15432` **refused** (probed twice this pass),
+`OZ_TEST_PG_URL` unset.
+
+What this pass *can* certify, and it is the part of `:59`/`:100` that never needed Docker:
+`cargo check -p oz-cloud-server --all-targets` → **exit 0** (7.08s). `--all-targets` compiles the
+`#[cfg(test)]` wiring too, so this proves `sync_store_tests.rs` still typechecks as a `#[path]`
+child of a file that has since given away four modules (wiring at `:406`-`:408`). That pass's §6 asked for "a
+cargo run to prove the crate still links" for each cut. **It links.**
+
+### 6. Coordinates: the third pass's §4 ±6 / −345 rule is obsolete; the whole map is now wrong
+
+Every `sync_store.rs` pointer in this file predates three more commits, so the ±6 / −345 rule at
+`:193`-`:199` describes a shift that has since been overlaid twice. Do not apply it — use this
+table (`old` = the coordinate printed in this plan's checklist and its §6 text):
+
+| item | old (in-text) | new at `503591a10` |
+|---|---|---|
+| `MULTIROW_CHUNK` | `:61` | **`:70`** |
+| `mod` lines | `:34` | **`:34`-`:37`** (four children) + `:408` |
+| `impl SyncStore` (parent) | `:90` | **`:99`** (plus `conflicts.rs:30`, `:215`, `tenant.rs:21`) |
+| `push_batch` | `:188` | **`:163`** |
+| conflict pre-pass | `:203`-`:225` | **`:178`-`:200`** |
+| backend dispatch | `:227` | **`:202`** |
+| SQLite fast-path call / arm | `:232` / `:239`-`:270` | **`:207`** / **`:203`-`:245`** |
+| PG fast-path call / arm | `:276` / `:280`+ | **`:251`** / **`:247`-`:333`** |
+| `sqlite_push_batch_multirow` | `sync_store.rs:621` | **`sync_store/sqlite.rs:36`** |
+| `pull_items` / `snapshot_all` | — | **`:342` / `:370`** |
+| `mod tests;` | `:1412` | **`:408`** (wiring `:406`-`:408`) |
+| seams 2 / 3 / 4 as ranges | `:607`-`:918` / `:919`-`:1110` / `:1112`-`:1406` | **the ranges no longer exist** — they are three child files (§2) |
+
+**Still true, re-measured, so nobody "fixes" them:** `sync_api.rs` **800**, `sync_api_tests.rs`
+**2,525**, `sync_store_tests.rs` **1,386**, `conflict_resolution.rs` **401**, `main.rs`
+registrations (`conflict_resolution:31`, `sync_api:47`, `sync_store:48`), **20** `#[tokio::test]` /
+**0** plain `#[test]` in `sync_store_tests.rs`, the header audit block still at `sync_store.rs:1`-
+`:6`, and the seven `pg_integration` anchors at `:64`. One figure needs its unit stated, per §5 of
+the last pass: `VersionVector` in `apps/cloud-server/src` is **26** by
+`git grep -n VersionVector apps/cloud-server/src | wc -l` — unchanged — but **27** by `grep -o`
+match count (`conflict_resolution.rs` 10 + `conflict_resolution_tests.rs` 12 +
+`sync_store/conflicts.rs` 5), because one line carries two. The distribution moved: those 5 left
+`sync_store.rs` in `f26c1afa6`.
+
+### 7. The Goal's second file has never been tasked, and it is the only live work here
+
+`sync_api.rs` is 800 ln — **under** the 1,000 ceiling, so no compliance pressure — but **200 over**
+the `:181` "preferably < 600" preference, and it has no submodule (`apps/cloud-server/src/sync_api/`
+does not exist; the file's only `mod` line is `mod tests;` at `:800`). It appears in the Goal
+(`:13`) and in the owned fence (`:45`) and **in zero boxes**: the plan states a two-file objective
+and phases one of them. If this plan stays live, the `sync_api` decomposition is its remaining
+scope and needs a phase written for it. If not, the Goal should say so and the file should sit
+beside its two siblings.
+
+### 8. Status of every box, and the disposition this pass recommends
+
+| box | was | now | basis |
+|---|---|---|---|
+| `:59` baseline | open | **open; condition rewritten** | ran: 84 passed / 12 skipped / 72 real — `--nocapture` required |
+| `:67` classifier out | `[x]` partial-by-others | **unchanged** | `conflict_resolution.rs` still 401, still imported |
+| `:76` tx chunks | open | **open; still a ruling, not a lane** | `push_batch` still owns pre-pass + dispatch + both fallbacks (§3) |
+| `:94` split adapters | open ("half shipped") | **TICKED `[x]`** | both halves out, parent 408 ln, 0 adapter definitions |
+| `:100` verify passes | open | **open; same rewritten condition** | exit 0 but 12 vacuous passes; port 15432 refused |
+| `:105` milestone | open | **open and void** | 4 `refactor(cloud-sync)` commits, none with this subject — and the command at `:106`-`:108` carries **no pathspec**, which `AGENTS.md` §3 forbids; a milestone a lane may paste is a milestone that teaches the violation |
+
+Open/ticked, both grep forms (`grep -cE '^[[:space:]]*- \[ \]'` and `…'\[[xX]\]'`), before → after:
+**open 5 → 4** · **ticked 1 → 2**. One tick was made here, at `:94`, and it is the first tick in
+this document's history — every prior pass recorded "ZERO ticks".
+
+**Disposition.** This plan has delivered the only thing `:15` said it was for, so it should be
+either **retired** — renamed to `done-todo-refactor-cloud-sync-agents-1.md` beside Agents 2 and 3,
+with `:76` handed to the owner as a one-line ruling and the `--nocapture` fix applied to
+`:64`/`:102` on the way out — or **re-scoped** onto `sync_api.rs` with a real phase. What it must
+not be is left standing as a live work order whose headline figure (1,412), whose central box
+("half shipped"), whose §6 seam map and §7 skip count — both drawn by the pass before this one — are now all false, because the next
+reader costs the work from those numbers, and there is nothing left to cost. This pass touched no
+code and no test file: it ticked one box, appended five dated clauses, and ran one `cargo check`,
+four `cargo test` invocations — the fourth being a malformed `--lib` request that errored, since
+this package has no library target and all its unit tests live in the binary — and one TCP probe
+run twice.
