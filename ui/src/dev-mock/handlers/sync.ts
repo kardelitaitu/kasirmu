@@ -37,4 +37,15 @@ export const syncHandlers: Record<string, MockHandler> = {
   },
   'test_sync_connection': () => ({ ok: true, status: 'connected', latencyMs: 12 }),
   'request_sync_token': () => ({ ok: true, token: 'mock-jwt-token', status: 'issued', expiresAt: new Date(Date.now() + 86400000).toISOString() }),
+
+  // ── Sync-conflict review (scoped-only) ─────────────────────────────
+  // Moved verbatim out of `tauri-api.ts`'s in-place `handlers['x'] = …`
+  // patches by todo-refactor-devmock-router-consolidation.md Phase 5.5; both
+  // keys `git grep`-confirmed single-defined so the move is a pure copy.
+  // The mock has no cloud to ask, so it reports "nothing flagged" — the screen
+  // must render its empty state rather than crash. The resolve stub returns
+  // false, the honest answer for a row that does not exist: callers treat it as
+  // "already resolved elsewhere", which is exactly what an empty mock is.
+  'list_sync_conflicts_scoped': () => [],
+  'resolve_sync_conflict_scoped': () => false,
 };

@@ -306,13 +306,8 @@ registerHandlers(crmHandlers);
 // handlers/crm.ts (Phase 5.5) — single-defined, use only crm.ts's own
 // MOCK_CUSTOMERS export, so the move is a pure copy.
 handlers['list_in_transit_transfers_scoped'] = () => [];
-// Sync conflict review. The mock has no cloud to ask, so it reports "nothing
-// flagged" — the screen must render its empty state rather than crash. The
-// resolve stub returns false, the honest answer for a row that does not exist:
-// callers treat it as "already resolved elsewhere", which is exactly what an
-// empty mock is.
-handlers['list_sync_conflicts_scoped'] = () => [];
-handlers['resolve_sync_conflict_scoped'] = () => false;
+// Sync-conflict review pair (list_sync_conflicts_scoped,
+// resolve_sync_conflict_scoped) moved verbatim to handlers/sync.ts (Phase 5.5).
 // HPP exposure: no historical sale lines exist in the mock, so the margin
 // report is empty (the UI hides the Cost/Margin columns when it is).
 handlers['get_sale_line_margins_scoped'] = () => [];
