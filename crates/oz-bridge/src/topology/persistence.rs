@@ -257,7 +257,7 @@ pub fn sort_template_names(mut names: Vec<String>) -> Vec<String> {
 /// and the session/entitlement resolution are the CALLER's, all of which
 /// `commands.rs` runs before it reaches this function at `:944`. A client that
 /// saves through this helper without them can publish a diagram the Apply
-/// command would reject — the hazard M4 (`todo-topology-editor.md:407`) exists
+/// command would reject — the hazard M4 (`todo-topology-editor.md:408`) exists
 /// to close.
 ///
 /// STAYS `pub`, and the reason is a LIVE caller, not a shim: the desktop
@@ -677,7 +677,7 @@ pub fn validate_semantic_ownership_in(
 /// only place the canonical semantic shape is required. Production runs it at
 /// `commands.rs:561`, before the workspace block.
 ///
-/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:407`). Its whole
+/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:408`). Its whole
 /// caller set is inside this crate — `commands.rs:561` plus the mounted
 /// `topology_tests.rs` cases — and, unlike its two sibling helpers, no shell
 /// adapter names it, so a third client cannot reach an ungated copy of it.
@@ -713,7 +713,7 @@ pub(crate) fn validate_apply_gate(
 /// other gate on the path. Production calls it at `commands.rs:638`, after the
 /// apply gate and before any save.
 ///
-/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:407`, finished by
+/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:408`, finished by
 /// the follow-up that deleted the desktop shell's `#[allow(dead_code)]`
 /// `validate_warehouse_quota` adapter — the only out-of-crate reference). Its
 /// remaining callers are all in this crate: `commands.rs:638` on the Apply path
