@@ -235,7 +235,62 @@ async function observe(page) {
   });
 }
 
-function banner(title, o, net) {
+/**
+ * Force each bundled family to load, then report. `document.fonts.check()` on the boot
+ * document reports the mono face as false in BOTH modes -- nothing in the splash asks
+ * for its glyphs, which is exactly the lazy `unicode-range` behaviour rule 1 of this
+ * plan exists to protect, and also means the mono half of the bundle (6 of 13 declared
+ * face blocks) had no runtime witness anywhere in this file's history.
+ *
+ * `load()` is what separates "not needed here" from "cannot load", and the width against
+ * a bogus-family baseline is what makes the answer checkable rather than a boolean: a
+ * loaded real face differs from the fallback, a face that never arrived does not. The
+ * website lane's own probe reported a healthy mono face as unresolved for exactly this
+ * reason (recorded in the `:342` repair block), so this is a probe requirement, not a
+ * nicety.
+ */
+async function forceLoad(page) {
+  return page.evaluate(async () => {
+    const FAMILIES = ['Inter Variable', 'JetBrains Mono Variable'];
+    const measure = (family, text) => {
+      const s = document.createElement('span');
+      s.style.cssText = 'position:fixed;left:-9999px;top:0;font-size:64px;white-space:pre;font-family:' + family;
+      s.textContent = text;
+      document.body.appendChild(s);
+      const w = s.getBoundingClientRect().width;
+      s.remove();
+      return Math.round(w * 10000) / 10000;
+    };
+    const families = {};
+    for (const fam of FAMILIES) {
+      const spec = '64px "' + fam + '"';
+      let resolved = -1;
+      try {
+        // The digits and the rupiah sign are the glyphs the app actually paints in mono
+        // (totals, receipt numbers); a subset that excludes them would load and still be
+        // wrong, so the load is asked for WITH the text.
+        resolved = (await document.fonts.load(spec, '0123456789 Rp')).length;
+      } catch (e) {
+        families[fam] = { error: String(e) };
+        continue;
+      }
+      families[fam] = { resolved, checkAfter: document.fonts.check(spec) };
+    }
+    const loaded = [];
+    document.fonts.forEach((f) => { if (f.status === 'loaded') loaded.push(f.family); });
+    const MONO_TEXT = '0123456789 Rp';
+    return {
+      families,
+      monoWidth: measure('"JetBrains Mono Variable"', MONO_TEXT),
+      monoWidthBogus: measure('"no-such-family-plant-xyz"', MONO_TEXT),
+      monoText: MONO_TEXT,
+      loadedFaces: new Set(loaded).size,
+      loadedSample: [...new Set(loaded)].slice(0, 4),
+    };
+  });
+}
+
+function banner(title, o, net, force, bootNet) {
   console.log(`\n--- ${title} ---`);
   console.log(`  element              ${o.element}  "${o.text}"  font-size ${o.usedFontSize}`);
   console.log(`  declared stack       ${o.declaredStack}`);
@@ -243,7 +298,17 @@ function banner(title, o, net) {
   console.log(`  64px probe width     ${o.probeWidth}   (serif ${o.probeWidthSerif}, monospace ${o.probeWidthMono})`);
   console.log(`  fonts.check          Inter Variable=${o.checkInter}  JetBrains Mono Variable=${o.checkMono}`);
   console.log(`  faces loaded in page ${o.loadedFaces} ${JSON.stringify(o.loadedSample)}`);
-  console.log(`  woff2 over network   ${net.count} request(s), ${net.kb} KB`);
+  console.log(`  woff2 for the boot paint (passive) ${bootNet.count} request(s), ${bootNet.kb} KB  <-- the lazy-loading claim: of 13 declared face blocks, this is what the splash asked for`);
+  console.log(`  woff2 after forcing both families  ${net.count} request(s), ${net.kb} KB  (+${Math.round((net.bytes - bootNet.bytes) / 1024 * 10) / 10} KB pulled only because the probe asked)`);
+  if (force) {
+    const parts = Object.entries(force.families)
+      .map(([fam, v]) => `${fam}: load()=${v.resolved ?? v.error} check=${v.checkAfter}`);
+    console.log(`  forced load          ${parts.join('   |   ')}`);
+    const differs = force.monoWidth !== force.monoWidthBogus;
+    console.log(`                       mono "${force.monoText}" at 64px = ${force.monoWidth} against a bogus-family baseline of ${force.monoWidthBogus}`);
+    console.log(`                       -> ${differs ? 'a real mono face is painting' : 'STILL THE FALLBACK: the mono face never rendered, and no boot screen would notice'}`);
+    console.log(`                       families loaded after forcing: ${force.loadedFaces} ${JSON.stringify(force.loadedSample)}`);
+  }
 }
 
 async function run() {
@@ -305,6 +370,11 @@ async function run() {
     await page.goto(server.url, { waitUntil: 'load' });
     await page.evaluate(() => document.fonts.ready.catch(() => undefined));
     const o = await observe(page);
+    // Snapshot BEFORE forcing: these are the bytes the boot paint asked for on its own,
+    // which is the lazy-loading claim. The tally after forcing is a different question and
+    // printing only it would quietly replace the first claim with a worse number.
+    const bootNet = { count: net.count, bytes: net.bytes, kb: net.kb };
+    const force = await forceLoad(page);
     const rows = await bench(page);
     const shot = path.join(outDir, `splash-${mode}.png`);
     await page.screenshot({ path: shot });
@@ -334,7 +404,7 @@ async function run() {
     } else {
       clipBytes = -1;
     }
-    banner(mode === 'with-fonts' ? 'AFTER -- the bundled faces are allowed' : 'BEFORE -- every woff2 request aborted, so only the fallback tails remain', o, net);
+    banner(mode === 'with-fonts' ? 'AFTER -- the bundled faces are allowed' : 'BEFORE -- every woff2 request aborted, so only the fallback tails remain', o, net, force, bootNet);
     console.log(`  screenshot           ${shot}`);
     console.log(`  text-clip bytes      ${clipBytes < 0 ? 'unavailable (no label box found)' : `${clipBytes} of ${clipSource}`}`);
     results[mode] = { ...o, net, clipBytes, bench: rows };
