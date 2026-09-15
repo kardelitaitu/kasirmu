@@ -499,12 +499,12 @@ graph TD
 > NINE TARGETS NO LONGER LAND WHERE THEY SAY (2026-09-15, HEAD `d29ebd535`).** Checked with
 > `sed -n '290p;298p;300p;302p;304p;634p;636p' todo-payment.md`: `:290` still holds the Phase-0
 > `qris_manual` table row, but `:298` and `:300` are now the ADR-39 blockquote, `:302` is a
-> "**Reframe:**" line, `:304` is **blank**, `:634` is prose about QR poll loops and `:636` is the
-> string `"Pay with GoPay".`. Two of them are cited for their CONTENT and the content has moved:
-> "no new table needed" — quoted at `:457` as living at `:298` — is at **`:440`**, and the phrase
+> "**Reframe:**" line, `:304` is **blank**, and the two Phase-5 targets are prose inside the Midtrans
+> block — `:664` and `:666` as measured at `c6c22d905`, where an insertion above a number moves it, so
+>`grep -n "poll loop are identical" todo-payment.md` gives the live home. Two targets are cited by CONTENT:
 > "replace the hardcoded" — quoted at `:460` as `:634`'s own wording — now appears **nowhere in this
-> file except in `:460`'s citation of it** (`grep -n "replace the hardcoded" todo-payment.md` → 1 hit,
-> the citing line), so that pointer is content-dead and not merely drifted. Nothing is being unticked
+> file except in a citation of it — `grep -n "replace the hardcoded" todo-payment.md` returns only the
+> Nothing is being unticked
 > or re-sequenced by this clause: the list's claim is that those Phase-0 and Phase-5 boxes depend on
 > the rails work, and every one of those boxes is still open and unticked in place. The defect is that a reader
 > following the pointers lands on prose and concludes the boxes are gone.
@@ -1353,8 +1353,8 @@ real, **guard-touching** job that must run with `PaymentModal.tsx` free of every
 the whole pos lane is one sequenced coder).
 > ⚠️ **SUPERSEDED FOR CITATION (2026-09-15, HEAD `d29ebd535`) — this sentence asks for work that has
 > already shipped, under a name this file itself records. The paragraph immediately above it (§2 "ALIAS
-> note — what landed instead of `useSplitTenders.ts`", `:1242`, with the NOT TICKED ruling at `:1238`)
-> is the authority and it was not read from here.** Measured: `useSplitTenders` has **zero hits under
+> note — what landed instead of `useSplitTenders.ts`", at `:1272` as measured at `c6c22d905`, and its
+> NOT TICKED ruling at `:1268` directly above) is the authority and was not read from here.** Measured:
 > `ui/`** (`grep -rl useSplitTenders ui/ | wc -l` → 0) because it was never committed, while the split
 > state it describes lives at `ui/src/features/sales/payment/useSplitTenderState.ts` — **121 lines,
 > `export function useSplitTenderState()` at its `:86`, imported by `PaymentModal.tsx:33`** and shipped
