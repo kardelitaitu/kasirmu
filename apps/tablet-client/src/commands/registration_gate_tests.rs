@@ -295,14 +295,42 @@ fn resolves_session(text: &str) -> bool {
     .any(|marker| text.contains(marker))
 }
 
+/// Spellings that mean "this body checked a permission".
+///
+/// Mirrors `apps/desktop-client/src/commands/registration_gate_tests.rs:317`, which has
+/// carried the bespoke half of this list since its own census; this shell's copy had only
+/// the first four, and that was not cosmetic. `inventory_counts.rs` and
+/// `stock_transfers.rs` route all twenty of their scoped commands through a domain helper
+/// (`require_inventory_count_permission(&state, &session.user_id)`, defined at
+/// `commands/inventory_counts.rs:178-186` as a real
+/// `require_permission_for_user(…, permissions::INVENTORY_COUNT)`), and no such call site
+/// contains the substring `require_permission`. So the sweep classed all twenty as
+/// `resolves_session_names_no_permission`, the generated ledger carried the same twenty
+/// rows, and the two instruments agreed with each other -- while
+/// `.agents/measure_gate_gap.mjs`, which derives `gated = registered && !debt` (`:29`) and
+/// therefore inherits every miss here, printed the difference from the desktop as
+/// `differentlyClassified=85`. Measured 2026-09-16 while chasing what looked like ten
+/// ungated stock-count commands and turned out to be ten gated ones; the same helper shape
+/// occurs 12 / 12 / 11 / 11 / 8 / 4 times across loyalty, tax, inventory, inventory_counts,
+/// customers and categories. `drift_pin_guard_marker_vocabulary_is_closed` is what stops
+/// this list rotting the way the desktop's already cannot.
+const GUARD_MARKERS: &[&str] = &[
+    "require_permission",
+    "permissions::",
+    "has_permission",
+    "authorize_with",
+    "require_session_permission",
+    "require_inventory_permission",
+    "require_inventory_count_permission",
+    "require_loyalty_permission",
+    "require_tax_permission",
+    "require_customer_permission",
+    "require_category_permission",
+];
+
 /// Does this text name a permission?
 fn names_permission(text: &str) -> bool {
-    for marker in [
-        "require_permission",
-        "permissions::",
-        "has_permission",
-        "authorize_with",
-    ] {
+    for marker in GUARD_MARKERS {
         if text.contains(marker) {
             return true;
         }
@@ -941,4 +969,140 @@ fn collect_ts(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(p);
         }
     }
+}
+
+/// The classifier's own eyes, tested. `names_permission` grew a marker for gates
+/// reached through a DOMAIN helper (`require_inventory_permission(…)`), after 20
+/// commands in `inventory_counts` and `stock_transfers` had sat in the ledger as
+/// `resolves_session_names_no_permission` while every one of them called a real
+/// check. Both directions are pinned on purpose: the helper call must read as a
+/// gate, and the same text with the call deleted must read as debt again. A
+/// marker that cannot notice its own absence is not a marker.
+#[test]
+fn classifier_reads_a_domain_permission_helper_as_a_gate_and_its_absence_as_debt() {
+    let gated = "pub async fn create_stock_count_scoped(\n    session_token: String,\n    state: State<'_, AppState>,\n) -> Result<(), AppError> {\n    let (session, conn) = state.resolve_scope(&session_token)?;\n    require_inventory_count_permission(&state, &session.user_id).await?;\n    Ok(())\n}\n";
+    assert!(
+        resolves_session(gated),
+        "the fixture must resolve a session, or it proves nothing"
+    );
+    assert!(
+        names_permission(gated),
+        "a gate reached through a domain helper must read as a permission check"
+    );
+
+    let hole = gated.replace(
+        "    require_inventory_count_permission(&state, &session.user_id).await?;\n",
+        "",
+    );
+    assert_ne!(hole, gated, "the planted removal must find its target");
+    assert!(
+        !names_permission(&hole),
+        "with the call removed this is a bare authenticate-then-assume body; the marker \
+         must not be matching something else in it"
+    );
+    assert!(
+        resolves_session(&hole),
+        "and it must still resolve a session, which is exactly what makes it debt"
+    );
+}
+
+/// Guard-shaped identifiers named anywhere in a line: `require_…` / `authorize_…`.
+/// Comment lines are skipped, because a doc comment that mentions a helper is not a
+/// call to it -- the same per-line comment rule that bit the `generate_handler!`
+/// parser earlier in this programme's history.
+fn guard_identifiers(line: &str) -> Vec<String> {
+    if line.trim_start().starts_with("//") {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let chars: Vec<char> = line.chars().collect();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let is_ident_start = chars[i].is_ascii_alphabetic() || chars[i] == '_';
+        if !is_ident_start {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+            i += 1;
+        }
+        let word: String = chars[start..i].iter().collect();
+        if word.starts_with("require_") || word.starts_with("authorize_") {
+            out.push(word);
+        }
+    }
+    out
+}
+
+/// The vocabulary of accepted guards is CLOSED, not open-ended.
+///
+/// `names_permission` answers with `contains`, so any future domain helper
+/// (`require_audit_permission`, say) would silently classify every command that
+/// calls it as gated -- the exact failure this file spent 2026-09-16 discovering,
+/// where twenty stock-count and transfer commands sat in the ledger as debt because
+/// their real gate was spelled a name the list did not know. Refusing to be
+/// surprised again is cheap: walk the bodies the sweep already reads, pull every
+/// `require_…` / `authorize_…` identifier out of them, and require each one to be
+/// covered by a marker. A new spelling fails here and forces a deliberate entry --
+/// or a deliberate exemption, which is what the list below is for.
+#[test]
+fn drift_pin_guard_marker_vocabulary_is_closed() {
+    // Names that look like guards but are NOT per-user permission checks, each with the
+    // reason it is exempt. Treating either as a marker would re-open this file's failure
+    // in the opposite direction: a command would read as RBAC-gated because it calls
+    // something that says "require".
+    let exemptions: BTreeMap<&str, &str> = BTreeMap::from([
+        // commands/audit.rs:103. Returns AppError::PermissionDenied, but it inspects
+        // build_entitlements(...).tier -- the SUBSCRIPTION plan, not the caller's role.
+        // A Premium-plan user holding no audit:read passes it, so it cannot stand as
+        // evidence that the seven audit commands check permissions.
+        (
+            "require_audit_tier",
+            "plan-tier availability gate, not a per-user permission check",
+        ),
+        // commands/staff.rs:475 -> Store::require_role_assignable (crates/oz-core):
+        // validates that the role being assigned exists and may be assigned. Data
+        // integrity around an authorization change, not the authorization itself.
+        (
+            "require_role_assignable",
+            "role-assignment validity check in the store layer",
+        ),
+    ]);
+
+    let sweep = run_sweep();
+    let mut want = BTreeSet::new();
+    for ((_module, function), _state) in &sweep.states {
+        want.insert(function.clone());
+    }
+    let sources = fn_sources(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands"),
+        &want,
+    );
+
+    let mut vocabulary: BTreeSet<String> = BTreeSet::new();
+    for hits in sources.values() {
+        for text in hits {
+            for line in text.lines() {
+                for word in guard_identifiers(line) {
+                    vocabulary.insert(word);
+                }
+            }
+        }
+    }
+
+    let unknown: Vec<&str> = vocabulary
+        .iter()
+        .filter(|id| !GUARD_MARKERS.iter().any(|marker| id.contains(marker)))
+        .filter(|id: &&String| !exemptions.contains_key(id.as_str()))
+        .map(String::as_str)
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "command bodies call guard-shaped names this file has never heard of: {unknown:?}. \
+         Add each to GUARD_MARKERS (it is a gate, and every command calling it was being \
+         miscounted as debt until you did) or to the exemption list with a reason (it is \
+         not a gate). Vocabulary of guard names found: {}.",
+        vocabulary.len(),
+    );
 }

@@ -59,46 +59,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "features::list_all_features_scoped",
         "resolves_session_names_no_permission",
     ),
-    (
-        "inventory_counts::create_stock_count_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::get_stock_count_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::list_stock_counts_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::get_count_lines_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::add_count_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::update_count_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::remove_count_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::complete_stock_count_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::update_stock_count_status_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::list_stock_adjustments_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("health::ping", "no_session_resolution"),
     ("health::version", "no_session_resolution"),
     ("health::get_device_id", "no_session_resolution"),
@@ -122,46 +82,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("pos::get_cart_deduction_location", "no_session_resolution"),
     (
         "pos::get_cart_deduction_location_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::create_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::get_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::list_stock_transfers_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::list_in_transit_transfers_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::get_stock_transfer_lines_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::add_stock_transfer_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::remove_stock_transfer_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::send_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::receive_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::cancel_stock_transfer_scoped",
         "resolves_session_names_no_permission",
     ),
     ("history::list_sales", "no_session_resolution"),
@@ -348,14 +268,14 @@ pub const REGISTERED_TOTAL: usize = 318;
 /// `list_terminals_scoped`, `ping_terminal_scoped`) stopped being
 /// authenticate-then-assume when each gained the session-derived
 /// `TERMINALS_READ` gate its `oz_bridge` twin already enforced.
-pub const DEBT_CEILING: usize = 110;
+pub const DEBT_CEILING: usize = 90;
 
 /// Names that never resolve a session at all.
 pub const NO_SESSION_RESOLUTION: usize = 42;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 68 + 42 = 110 = `DEBT_CEILING`, as the class counts must sum to the ledger.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 68;
+/// 48 + 42 = 90 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 48;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;
