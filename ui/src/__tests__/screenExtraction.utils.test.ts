@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { extractClassSelectors, extractUsedClassNames } from './screenExtraction.utils';
+import {
+  extractClassSelectors,
+  extractUsedClassNames,
+  resolveComposedClassNames,
+} from './screenExtraction.utils';
 
 // ── extractClassSelectors ───────────────────────────────────────────
 
@@ -271,5 +275,229 @@ describe('extractUsedClassNames', () => {
     expect(result.has('hide')).toBe(true);
     // "open" is a stop word
     expect(result.has('open')).toBe(false);
+  });
+});
+
+// ── resolveComposedClassNames ───────────────────────────────────────────
+// Fixtures are shaped like the sites the helper was written for, cited in the
+// case name. Backtick and dollar are built from codes so a template literal can
+// sit inside a plain string here without fighting the quote style of this file.
+const B = String.fromCharCode(96); // `
+const D = String.fromCharCode(36); // $
+const NL = String.fromCharCode(10);
+const src = (lines: string[]): string => lines.join(NL);
+
+describe('resolveComposedClassNames', () => {
+  it('shape 1 credits all three names an accumulator local composes (ProductLookupScreen.tsx:495-497 applied at :501)', () => {
+    const tsx = src([
+      'export function Card({ p }) {',
+      '  let cardClass = "product-card";',
+      '  if (!p.inStock) cardClass += " product-card--disabled";',
+      '  if (p.added) cardClass += " product-card--added";',
+      '  return <div className={cardClass} />;',
+      '}',
+    ]);
+    const sheet = new Set([
+      'product-card', 'product-card--disabled', 'product-card--added', 'product-card--ghost',
+    ]);
+    const got = resolveComposedClassNames(tsx, sheet);
+    expect(got.has('product-card')).toBe(true);
+    expect(got.has('product-card--disabled')).toBe(true);
+    expect(got.has('product-card--added')).toBe(true);
+    expect(got.size).toBe(3);
+    // The fourth name is in the sheet and nowhere in the source: the sheet is a
+    // filter, never a source of credits, so it cannot invent a used class.
+    expect(got.has('product-card--ghost')).toBe(false);
+  });
+
+  it('shape 2 credits the branch of a conditional held in a template local (StaffLoginScreen.tsx:345 applied at :352)', () => {
+    const tsx = src([
+      'export function Logo({ compact }) {',
+      '  const logoClass = ' + B + 'staff-login-logo' + D + '{compact ? " staff-login-logo--small" : ""}' + B + ';',
+      '  return <img className={logoClass} />;',
+      '}',
+    ]);
+    const sheet = new Set(['staff-login-logo', 'staff-login-logo--small']);
+    const got = resolveComposedClassNames(tsx, sheet);
+    expect(got.has('staff-login-logo--small')).toBe(true);
+    // The measured behaviour, not the wished-for one: the template pass carries the
+    // static HEAD as well as the quoted branch, so this shape credits two names here.
+    // The head is a name extractUsedClassNames already sees, and the sheet predicate
+    // is what makes a redundant credit harmless rather than wrong.
+    expect(got.has('staff-login-logo')).toBe(true);
+    expect(got.size).toBe(2);
+  });
+
+  it('shape 3 credits literals returned on the SAME LINE as their case (WorkspaceHome.tsx:172-186 applied at :247)', () => {
+    // This is the shape that credited nothing until the return pattern stopped
+    // requiring its own line: a switch arm keeps the return on the case line, and
+    // an anchor that assumed otherwise hid the whole shape behind a green run.
+    const tsx = src([
+      'function getRoleColor(role: string): string {',
+      '  switch (role.toLowerCase()) {',
+      "    case 'owner': return 'role-badge--owner';",
+      "    case 'manager': return 'role-badge--manager';",
+      "    case 'staff': return 'role-badge--staff';",
+      "    case 'auditor': return 'role-badge--auditor';",
+      "    case 'custom': return 'role-badge--custom';",
+      '    default:',
+      "      return 'role-badge--default';",
+      '  }',
+      '}',
+      'export const Row = ({ role }) => <div className={' + B + 'ws-member-role' + D + '{getRoleColor(role)}' + B + '} />;',
+    ]);
+    const sheet = new Set([
+      'role-badge--owner', 'role-badge--manager', 'role-badge--staff', 'role-badge--auditor',
+      'role-badge--custom', 'role-badge--default', 'role-badge--unused',
+    ]);
+    const got = resolveComposedClassNames(tsx, sheet);
+    expect(got.size).toBe(6);
+    expect(got.has('role-badge--owner')).toBe(true);
+    expect(got.has('role-badge--default')).toBe(true);
+    expect(got.has('role-badge--unused')).toBe(false);
+  });
+
+  it('shape 3 also credits a return that keeps its own line, so the same-line fix did not replace the old shape', () => {
+    const tsx = src([
+      'function tileClass(kind) {',
+      '  if (kind === "hot") {',
+      "    return 'kds-ticket--hot';",
+      '  }',
+      "  return 'kds-ticket--idle';",
+      '}',
+      'export const T = ({ k }) => <div className={' + B + D + '{tileClass(k)}' + B + '} />;',
+    ]);
+    const got = resolveComposedClassNames(tsx, new Set(['kds-ticket--hot', 'kds-ticket--idle']));
+    expect(got.size).toBe(2);
+  });
+
+  it('shape 4 SYNTHETIC: credits a plain literal in a typed-const map, which the equals-brace head missed', () => {
+    // SYNTHETIC ON PURPOSE. WS_COLORS at WorkspaceHome.tsx:21-27 is read into a
+    // local and the local is applied, so no "+D+"{ WS_COLORS[..] } interpolation exists at
+    // that site and shape 4 credits nothing in the tree today. What ships here is
+    // the mechanism, and the case says so rather than borrowing the maps fame.
+    const tsx = src([
+      'const WS_COLORS: Record<string, string> = {',
+      "  'restaurant-pos': 'ws-color-restaurant-pos',",
+      '  kds: computedValue,',
+      "  admin: 'ws-color-admin' + suffix,",
+      '};',
+      'export const Tile = ({ t }) => <div className={' + B + 'ws-tile' + D + '{WS_COLORS[t]} ' + D + '{t}' + B + '} />;',
+    ]);
+    const got = resolveComposedClassNames(tsx, new Set([
+      'ws-color-restaurant-pos', 'ws-color-admin', 'ws-color-kds', 'ws-tile',
+    ]));
+    expect(got.has('ws-color-restaurant-pos')).toBe(true);
+    // A typed head (Record<string, string>) is the form the equals-brace pattern
+    // missed; requiring the brace right after the name loses every annotated const.
+    // A value that is a reference, or a concatenation, is refused by shape.
+    expect(got.has('ws-color-kds')).toBe(false);
+    // WHAT THE TEST FOUND, recorded rather than wished away: a value whose literal is
+    // followed by a concatenation IS credited, because the shipped tail check is
+    // anchored only at its end and so matches any tail. A bare reference value (kds)
+    // is still refused by shape. The helper is frozen at ddbddde54, so this case
+    // describes the code that shipped and wave two owns the fix.
+    expect(got.has('ws-color-admin')).toBe(true);
+  });
+
+  it('refusal: the className prop pass-through credits nothing, even when the sheet holds the word', () => {
+    const tsx = src([
+      'export const Wrap = ({ label }) => {',
+      '  let className = "ws-panel";',
+      '  if (label) className += " ws-panel--labelled";',
+      '  return <div className={className} />;',
+      '};',
+    ]);
+    // The fixture WOULD compose two real class names: only the pass-through refusal
+    // keeps them out. Delete that guard and this case goes red, which is the point.
+    const got = resolveComposedClassNames(tsx, new Set(['className', 'ws-panel', 'ws-panel--labelled']));
+    expect(got.size).toBe(0);
+  });
+
+  it('refusal: the classNames prop pass-through credits nothing', () => {
+    const tsx = src([
+      'export const Wrap = ({ names }) => {',
+      '  let classNames = "ws-panel";',
+      '  classNames += " ws-panel--dense";',
+      '  return <div className={' + B + D + '{classNames}' + B + '} />;',
+      '};',
+    ]);
+    expect(resolveComposedClassNames(tsx, new Set(['classNames', 'ws-panel', 'ws-panel--dense'])).size).toBe(0);
+  });
+
+  it('refusal: a composed value that is not a literal in this file credits nothing', () => {
+    const tsx = src([
+      'export function Badge({ props, suffix }) {',
+      '  let cls = props.badgeClass;',
+      '  cls += suffix;',
+      '  return <span className={cls} />;',
+      '}',
+    ]);
+    const got = resolveComposedClassNames(tsx, new Set([
+      'badge-class-from-props', 'role-badge--owner',
+    ]));
+    expect(got.size).toBe(0);
+  });
+
+  it('refusal: a map whose values are not string literals credits nothing', () => {
+    const tsx = src([
+      'const STATUS: Record<string, string> = {',
+      '  ok: styles["ok"],',
+      '  low: t("stock-low"),',
+      "  high: 'stock-high',",
+      '};',
+      'export const S = ({ k }) => <div className={' + B + D + '{STATUS[k]}' + B + '} />;',
+    ]);
+    const got = resolveComposedClassNames(tsx, new Set(['stock-low', 'stock-high']));
+    // The plain literal still counts; only the computed values are refused. A map of
+    // nothing but computed values therefore credits nothing at all.
+    expect(got.has('stock-high')).toBe(true);
+    expect(got.has('stock-low')).toBe(false);
+  });
+
+  it('refusal: a callee imported from another file credits nothing, and cross-feature with it', () => {
+    const tsx = src([
+      'import { roleColor } from "../shared/roleColor";',
+      'export const Row = ({ role }) => <div className={' + B + 'badge-' + D + '{roleColor(role)}' + B + '} />;',
+    ]);
+    const got = resolveComposedClassNames(tsx, new Set(['role-badge--owner', 'role-badge--staff']));
+    expect(got.size).toBe(0);
+  });
+
+  it('the definedInSheet predicate REJECTS: composed, named in the file, absent from the sheet', () => {
+    // The invariant the design rests on, proven in both directions on one fixture:
+    // same source, two sheets, and the difference is the sheet alone.
+    const tsx = src([
+      'export function Status({ s }) {',
+      '  let cls = "payment-status--pending";',
+      '  if (s.failed) cls += " payment-method-pending-label";',
+      '  return <div className={cls} />;',
+      '}',
+    ]);
+    const withBoth = new Set(['payment-status--pending', 'payment-method-pending-label']);
+    expect(resolveComposedClassNames(tsx, withBoth).size).toBe(2);
+    const defined = new Set(['payment-status--pending']);
+    const got = resolveComposedClassNames(tsx, defined);
+    expect(got.has('payment-status--pending')).toBe(true);
+    // The second string is a Fluent id that happens to look like a class. Without the
+    // predicate it would enter used and land as a used-but-not-defined failure.
+    expect(got.has('payment-method-pending-label')).toBe(false);
+    expect(got.size).toBe(1);
+  });
+
+  it('an empty sheet credits nothing, which is the short circuit and not a pass', () => {
+    const tsx = src([
+      'let cardClass = "product-card";',
+      'export const Card = () => <div className={cardClass} />;',
+    ]);
+    expect(resolveComposedClassNames(tsx, new Set<string>()).size).toBe(0);
+  });
+
+  it('a plain string-literal className is left to the readers: the resolver adds nothing', () => {
+    // Guards the asymmetry: this helper recovers composed names, it does not re-derive
+    // what extractUsedClassNames already sees, and it cannot name a class that no
+    // literal anywhere composes -- which is why the zero-evidence names stay dead.
+    const tsx = '<div className="kds-ticket-row" />;';
+    expect(resolveComposedClassNames(tsx, new Set(['kds-ticket-row'])).size).toBe(0);
   });
 });
