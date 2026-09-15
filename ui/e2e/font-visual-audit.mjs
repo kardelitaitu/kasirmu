@@ -298,7 +298,11 @@ function banner(title, o, net, force, bootNet) {
   console.log(`  64px probe width     ${o.probeWidth}   (serif ${o.probeWidthSerif}, monospace ${o.probeWidthMono})`);
   console.log(`  fonts.check          Inter Variable=${o.checkInter}  JetBrains Mono Variable=${o.checkMono}`);
   console.log(`  faces loaded in page ${o.loadedFaces} ${JSON.stringify(o.loadedSample)}`);
-  console.log(`  woff2 for the boot paint (passive) ${bootNet.count} request(s), ${bootNet.kb} KB  <-- the lazy-loading claim: of 13 declared face blocks, this is what the splash asked for`);
+  // Two things this line used to get wrong: it hardcoded the declared-face census (a
+  // number that belongs to check-font-bundle.mjs, not to a print), and it asserted the
+  // splash was the thing that painted -- false whenever the app was allowed to boot.
+  const subject = /splash/i.test(o.element) ? 'the boot splash' : `a different element (${o.element})`;
+  console.log(`  woff2 fetched unprompted (passive) ${bootNet.count} request(s), ${bootNet.kb} KB  <-- the lazy-loading claim: what ${subject} needed before anything forced it; the declared-face census is printed by \`node scripts/check-font-bundle.mjs\`, not duplicated here`);
   console.log(`  woff2 after forcing both families  ${net.count} request(s), ${net.kb} KB  (+${Math.round((net.bytes - bootNet.bytes) / 1024 * 10) / 10} KB pulled only because the probe asked)`);
   if (force) {
     const parts = Object.entries(force.families)
@@ -376,7 +380,16 @@ async function run() {
     const bootNet = { count: net.count, bytes: net.bytes, kb: net.kb };
     const force = await forceLoad(page);
     const rows = await bench(page);
-    const shot = path.join(outDir, `splash-${mode}.png`);
+    // Name the file after the thing in it. With --keep-js the app boots, removes the
+    // splash, and the measured element becomes `body`; writing `splash-*.png` over the
+    // handover pair for that capture was the bug, not the fallback.
+    const stem = /splash/i.test(o.element)
+      ? 'splash'
+      : (o.element.replace(/^[.#]/, '').split(/[^A-Za-z0-9_-]/)[0] || 'page').toLowerCase().slice(0, 24);
+    if (stem !== 'splash') {
+      console.log(`  note: no splash was on screen (measured element ${o.element}); the artifact is named for what WAS, so it cannot overwrite the splash pair`);
+    }
+    const shot = path.join(outDir, `${stem}-${mode}.png`);
     await page.screenshot({ path: shot });
     // Self-verification, because the lane running this may not be able to look at a
     // picture at all (this plan's author cannot: no image input). A full-window
