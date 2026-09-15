@@ -64,11 +64,22 @@ pub use oz_bridge::settings::{
 
 #[command]
 /// Get receipt settings.
+///
+/// ADR #49: the body is the bridge's, and this delegation is a pure identity
+/// rather than a merge. `oz_bridge::settings::get_receipt_settings` locks
+/// `ctx.db` — which `AppState::bridge_ctx` binds to this same `state.db` — and
+/// calls the same `run_get_receipt_settings` in the same order, and the bridge
+/// documents its twin as "gate-free exactly as in the shell". So delegating adds
+/// no gate and removes none. `run_get_receipt_settings` stays below as this
+/// suite's seam, because 25 of this file's 50 tests drive the `run_*` helpers
+/// rather than the doors (measured 2026-09-16, not carried over).
 pub async fn get_receipt_settings(
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
-    let conn = state.db.lock().await;
-    run_get_receipt_settings(&conn)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_receipt_settings(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for `get_receipt_settings` (extracted for testing). The body
@@ -111,9 +122,16 @@ fn run_set_receipt_settings(
 
 #[command]
 /// Get store settings.
+///
+/// ADR #49: the body is the bridge's, and as with `get_receipt_settings` the
+/// delegation is a pure identity — same `ctx.db` (bound to this `state.db`),
+/// same `run_get_store_settings`, same order, and the bridge's twin is
+/// documented "gate-free exactly as in the shell".
 pub async fn get_store_settings(state: State<'_, AppState>) -> Result<StoreSettingsDto, AppError> {
-    let conn = state.db.lock().await;
-    run_get_store_settings(&conn)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_store_settings(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for `get_store_settings` (extracted for testing).
