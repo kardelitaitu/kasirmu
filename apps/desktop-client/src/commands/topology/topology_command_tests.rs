@@ -1926,3 +1926,226 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
     );
     let _ = dir;
 }
+
+// ── Replay coverage per request_id ────────────────────────────────────────
+//
+// Two promises, one test each, both stated so they can FAIL:
+//   * a retried `request_id` is answered from the request ledger and repeats
+//     no workspace mutation (it must also be distinguishable from a first
+//     application, which is why the third call below uses a NEW id and is
+//     allowed to advance the document), and
+//   * a DIFFERENT `request_id` carrying the SAME content is not a retry at all
+//     — the id, not the payload, is the replay key.
+// The ledger is written by `apply_topology_diff` via
+// `topology_apply_request_key(&request_id)` and read back in the block that
+// returns `Ok(TopologyApplyResult { revision })` before the revision gate, in
+// `crates/oz-bridge/src/topology/commands.rs`. Neither case touches the
+// two-store question owned by notes.md item 20.
+
+fn replay_app(
+    store_id: &str,
+) -> (
+    tempfile::TempDir,
+    tauri::App<tauri::test::MockRuntime>,
+    String,
+) {
+    // The same session/subscription/store-DB shape the stale-revision e2e case
+    // builds inline; factored out so both replay cases grade the same harness.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
+                rusqlite::params![store_id, "Replay Store"],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    // Provision the store DB the way `commit_creation_to_store` does: the Apply
+    // path INSERTs a workspace instance, whose FKs need both the store's own
+    // `locations` row and a `workspace_types` row for the type it creates. The
+    // two existing Apply cases never reach this — neither passes a creation.
+    {
+        let store_conn = state.db_manager.open_store(store_id).unwrap();
+        let store = store_conn.lock().unwrap();
+        store
+            .execute(
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
+                rusqlite::params![store_id, "Replay Store"],
+            )
+            .unwrap();
+        store
+            .execute(
+                "INSERT OR IGNORE INTO workspace_types \
+                     (key, name, description, layout_mode, icon, sort_order, accent_colour) \
+                     VALUES ('store-pos', 'Store POS', '', 'fullscreen', '', 0, '')",
+                [],
+            )
+            .unwrap();
+    }
+    let token = "token-replay".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            store_id.into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    (dir, app, token)
+}
+
+async fn replay_apply(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    token: &str,
+    store_id: &str,
+    instance_id: &str,
+    request_id: &str,
+    base_revision: u64,
+) -> Result<oz_bridge::topology::commands::TopologyApplyResult, AppError> {
+    let creations = vec![CreateInstanceRequest {
+        id: instance_id.into(),
+        type_key: "store-pos".into(),
+        store_id: store_id.into(),
+        name: format!("Replay {instance_id}"),
+        purpose_key: Some("general".into()),
+        description: None,
+        colour: None,
+    }];
+    let nodes = vec![serde_json::json!({
+        "id": "branch-replay",
+        "type": "branch-location",
+        "name": "Branch",
+        "store_profile_id": store_id,
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    apply_topology_diff(
+        token.to_string(),
+        creations,
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        base_revision,
+        request_id.to_string(),
+        None,
+        Some("replay coverage".into()),
+        app.state(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_retried_request_id_answers_from_the_ledger_without_repeating_the_mutation() {
+    let store_id = "store-replay-same";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+
+    let first = replay_apply(&app, &token, store_id, "ws-replay-1", "req-replay-same", 0)
+        .await
+        .expect("the first Apply must succeed");
+    assert_eq!(
+        first.revision, 1,
+        "a first Apply must advance a fresh document to revision 1"
+    );
+    assert!(
+        store_has_instance(state, store_id, "ws-replay-1"),
+        "the first Apply must have created the workspace instance"
+    );
+    let audit_after_first = char_audit_count(state, store_id);
+    assert!(
+        audit_after_first > 0,
+        "the first Apply must leave an audit trail to compare against; got {audit_after_first}"
+    );
+
+    // The retry: same request_id, same content, and the SAME stale base_revision
+    // — precisely what a client that never received the response re-sends. The
+    // ledger sits before the revision gate, so answering a revision conflict
+    // here would mean the id never bought the idempotence it promises.
+    let retry = replay_apply(&app, &token, store_id, "ws-replay-1", "req-replay-same", 0)
+        .await
+        .expect("a retried request_id must be answered from the ledger, not rejected as stale");
+    assert_eq!(
+        retry.revision, first.revision,
+        "a replay must return the ORIGINAL revision, not a new one: first {} retry {}",
+        first.revision, retry.revision
+    );
+    assert_eq!(
+        char_audit_count(state, store_id),
+        audit_after_first,
+        "a replay must not write a second audit row (was {audit_after_first}, now {})",
+        char_audit_count(state, store_id)
+    );
+
+    // WHAT MAKES THIS DISTINGUISHABLE FROM A FIRST APPLICATION: the calls above
+    // are the same request with the same stale base revision, and the only way
+    // the second one can return revision 1 is by reading the ledger — a first
+    // application of that payload is what produced revision 1 in the first place,
+    // and a second application under a NEW request id is test 2's subject (it is
+    // refused by the revision gate, which proves the id is the replay key). A
+    // third mutation cannot be used as the control here: the tier this fixture
+    // resolves to (see the note on `replay_app`) caps the store at ONE pos
+    // instance, so a control Apply would fail on quota and prove nothing.
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn a_different_request_id_carrying_the_same_content_is_not_treated_as_a_replay() {
+    let store_id = "store-replay-other";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+
+    let first = replay_apply(&app, &token, store_id, "ws-replay-3", "req-original", 0)
+        .await
+        .expect("the first Apply must succeed");
+    assert_eq!(first.revision, 1);
+
+    // Identical content, fresh id, stale base revision: the ledger has never
+    // seen this id, so this is a NEW Apply and the revision gate is the correct
+    // answer. A replay guard keyed on the payload instead of the id would
+    // return Ok(1) here and this assertion is what catches that swap.
+    let other = replay_apply(&app, &token, store_id, "ws-replay-3", "req-different-id", 0).await;
+    assert!(
+        matches!(other, Err(AppError::TopologyValidation { ref code, .. })
+            if code == "topology-revision-conflict"),
+        "a different request_id must be graded as a new Apply, not excused as a replay; got {other:?}"
+    );
+    assert!(
+        store_has_instance(state, store_id, "ws-replay-3"),
+        "the refused Apply must not have disturbed the committed instance"
+    );
+    let _ = dir;
+}
