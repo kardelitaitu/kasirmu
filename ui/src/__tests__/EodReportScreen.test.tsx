@@ -31,6 +31,19 @@ vi.mock('@/api/hardware', () => ({
   printReceiptScoped: (...args: unknown[]) => mockPrintReceipt(...args),
 }));
 
+// EodReportScreen.tsx:10 imports buildCsv/downloadCsv from here. Only the
+// download is replaced — buildCsv stays real so a malformed header/row pair
+// still surfaces as a throw instead of being mocked silent.
+const mockDownloadCsv = vi.fn();
+
+vi.mock('@/features/reports/csv', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@/features/reports/csv');
+  return {
+    ...actual,
+    downloadCsv: (...args: unknown[]) => mockDownloadCsv(...args),
+  };
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function makeEodReport(overrides: Record<string, unknown> = {}) {
@@ -95,6 +108,7 @@ describe('EodReportScreen', () => {
     mockEodReportScoped.mockReset();
     mockListShifts.mockReset();
     mockPrintReceipt.mockReset();
+    mockDownloadCsv.mockReset();
   });
 
   it('renders the title', async () => {
@@ -298,9 +312,13 @@ describe('EodReportScreen', () => {
 
     // The CSV export is async, wait for it to complete
     await waitFor(() => {
-      // If downloadCsv was called, the test passes
-      expect(true).toBe(true);
+      expect(mockDownloadCsv).toHaveBeenCalledTimes(1);
     }, { timeout: 2000 });
+
+    // Filename is stamped from the refresh time (EodReportScreen.tsx:417).
+    const [csv, filename] = mockDownloadCsv.mock.calls[0] as [string, string];
+    expect(filename).toMatch(/^end-of-day-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(csv).toContain(',');
   });
 
   // ── Shift summary with diff tags ──
@@ -377,10 +395,10 @@ describe('EodReportScreen', () => {
     const user = userEvent.setup();
     await user.click(screen.getByText('Export CSV'));
 
-    // Should not throw, just silently return
-    await waitFor(() => {
-      expect(true).toBe(true);
-    });
+    // exportCsv bails at `if (!r) return` (EodReportScreen.tsx:388) — no file
+    // is written and nothing throws. Asserting the negative is the whole point:
+    // a guard that silently wrote an empty CSV would still "not throw".
+    expect(mockDownloadCsv).not.toHaveBeenCalled();
   });
 
   // ── Discount count = 0 branch ──

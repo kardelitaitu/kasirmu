@@ -5,6 +5,33 @@
 //
 // TDD Phase: 3 (Red → Green → Refactor)
 //
+// ── Removed 2026-09-15: 20 vacuous tests ───────────────────────────
+// This file carried 26 `expect(true).toBe(true)` stubs (6 went with the
+// workspace-settings modal in 3af8e2989, 20 more below). They always passed
+// and asserted nothing, so they inflated the count without guarding anything.
+// Every behaviour they named is covered for real elsewhere — verified, not
+// assumed:
+//   · undo stack cap of 5 ......... useAnimatedUndoStack.test.ts:63
+//     ("drops the oldest entry when exceeding maxSize"); the 5 comes from
+//     usePosCartActions.ts:219.
+//   · deduction badge + FastPIN ... PosScreenDeductionLocation.test.tsx:135
+//     (badge renders), :359 (badge click opens the FastPIN overlay);
+//     FastPINOverlay.test.tsx / FastPINOverlayKeyboard.test.tsx.
+//   · course bar + fire buttons .. CourseSelectorBar.test.tsx:109,139
+//     (fire-course-* testids), :151-162 (fireCourse('dessert') /
+//     fireAllCourses actually called); courseFiring.test.tsx:75.
+//   · price override modal ........ PriceOverrideModal.test.tsx plus
+//     PriceOverrideModalSync / -KeyboardEdgeCases / -PriceStep.
+//   · payment modal opens ......... this file, :~651 "opens payment modal
+//     when Charge button clicked" (a real click + dialog assertion);
+//     PaymentModal.test.tsx, PaymentModalSaleFlow.test.tsx.
+//
+// KNOWN REMAINING GAP (not faked away by deleting these): nothing asserts
+// PosScreen's own wiring into PriceOverrideModal — i.e. that it renders when
+// `overrideTarget` is set and forwards `lineDescription` / `currentPrice`
+// (PosScreen.tsx:668-672). Opening it needs the manager override path, which
+// this harness does not exercise. Prefer a real test there over a new stub.
+//
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act } from 'react';
@@ -1677,13 +1704,6 @@ describe('PosScreen — Undo stack (animated, max 5)', () => {
     });
   });
 
-  it('limits undo stack to max 5 items (source code logic)', async () => {
-    // The useAnimatedUndoStack hook limits to maxSize: 5
-    // This is tested at the hook level; here we verify the integration
-    await setupCart();
-    expect(true).toBe(true);
-  });
-
   it('triggers undo on keyboard Delete/Backspace', async () => {
     await setupCart();
 
@@ -1839,153 +1859,5 @@ describe('PosScreen — Sub-screens (Stock Inquiry, Settings)', () => {
     // Since we can't easily test onNavigate callback in this setup,
     // we verify the button exists and click doesn't throw
     expect(settingsBtn).toBeInTheDocument();
-  });
-
-});
-
-describe('PosScreen — FastPINOverlay + deduction location override', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    mockedBarcode.reset();
-  });
-
-  it('shows deduction location badge when location is set', async () => {
-    // This would require mocking getCartDeductionLocation to return a location
-    // For now, verify the badge test ID exists in component
-    await renderPosScreenWithShift();
-    // The badge is rendered when deductionLocationName is set
-    // This is tested in PosScreenDeductionLocation.test.tsx
-    expect(true).toBe(true);
-  });
-
-  it('opens FastPINOverlay when deduction badge clicked', async () => {
-    // This test requires a cart with deduction location set
-    // The FastPINOverlay is conditionally rendered based on showFastPINOverlay state
-    // This is covered by FastPINOverlay's own tests
-    await renderPosScreenWithShift();
-    expect(true).toBe(true);
-  });
-
-  it('calls handleDeductionPinVerified when PIN verified', async () => {
-    // This tests the override flow
-    // Covered by FastPINOverlay tests and PosScreenDeductionLocation tests
-    expect(true).toBe(true);
-  });
-
-  it('shows "Deducting: {name}" label on badge', async () => {
-    // The badge displays the deduction location name
-    // This is tested in PosScreenDeductionLocation.test.tsx
-    expect(true).toBe(true);
-  });
-});
-
-describe('PosScreen — Course firing bar (restaurant mode)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    mockedBarcode.reset();
-  });
-
-  it('shows course firing bar in restaurant-pos workspace when items on hold', async () => {
-    // This would require setting activeWorkspace to 'restaurant-pos'
-    // and adding items with courseId and coursingStatus: 'hold'
-    // The course bar is rendered conditionally
-    await renderPosScreenWithShift();
-    expect(true).toBe(true);
-  });
-
-  it('has fire course buttons with data-testid', async () => {
-    // The buttons have data-testid="fire-course-{id}" and "fire-all-courses"
-    // This is tested at the component level
-    expect(true).toBe(true);
-  });
-
-  it('calls fireCourse when course button clicked', async () => {
-    // The fireCourse callback is from usePosState
-    // This is tested in usePosState tests
-    expect(true).toBe(true);
-  });
-
-  it('calls fireAllCourses when Fire All clicked', async () => {
-    // The fireAllCourses callback is from usePosState
-    // This is tested in usePosState tests
-    expect(true).toBe(true);
-  });
-
-  it('shows hold count on course buttons', async () => {
-    // Each course button shows the count of items on hold for that course
-    expect(true).toBe(true);
-  });
-});
-
-describe('PosScreen — Price override modal', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    mockedBarcode.reset();
-  });
-
-  it('shows Price Override modal when overrideTarget is set', async () => {
-    // The PriceOverrideModal is rendered when overrideTarget is not null
-    // This is triggered by CartLineItem's onOverride callback (manager only)
-    await renderPosScreenWithShift();
-    expect(true).toBe(true);
-  });
-
-  it('calls handleOverrideConfirm when price confirmed', async () => {
-    // handleOverrideConfirm calls overrideLinePriceScoped and updateLinePrice
-    // This is tested at the component level
-    expect(true).toBe(true);
-  });
-
-  it('closes modal when onClose is called', async () => {
-    // onClose sets overrideTarget to null
-    expect(true).toBe(true);
-  });
-
-  it('passes current price and line description to modal', async () => {
-    // The modal receives lineDescription and currentPrice props
-    expect(true).toBe(true);
-  });
-});
-
-describe('PosScreen — Payment modal integration', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    localStorage.clear();
-    mockedBarcode.reset();
-  });
-
-  it('shows PaymentModal when cart has total and showPayment is true', async () => {
-    // PaymentModal is conditionally rendered when total exists
-    // It's opened by clicking the Charge button
-    await renderPosScreenWithShift();
-    expect(true).toBe(true);
-  });
-
-  it('passes line items and total to PaymentModal', async () => {
-    // The modal receives lines, total (with tax if exclusive), discount, tip, service charge
-    expect(true).toBe(true);
-  });
-
-  it('calls handlePaymentComplete on payment completion', async () => {
-    // handlePaymentComplete resets cart, clears deduction location, deletes open bill
-    expect(true).toBe(true);
-  });
-
-  it('closes modal when onClose is called', async () => {
-    // onClose sets showPayment to false
-    expect(true).toBe(true);
-  });
-
-  it('passes sessionToken when available', async () => {
-    // sessionToken is passed for scoped API calls
-    expect(true).toBe(true);
-  });
-
-  it('passes tableNumber for table management', async () => {
-    // tableNumber is passed when table management is enabled
-    expect(true).toBe(true);
   });
 });

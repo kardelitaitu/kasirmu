@@ -1226,17 +1226,15 @@ describe('PaymentModal — edge cases', () => {
 
   // ── Printer error handling in done state ────────────────────────────
 
-  it('handles printer error gracefully in done state', async () => {
-    // TODO: This test needs proper mocking of complete_sale to reach done state
-    // Currently times out because the mock doesn't properly simulate the flow
-    expect(true).toBe(true);
-  });
+  // Needs proper mocking of complete_sale to reach the done state; the current
+  // mock times out. Previously an `expect(true).toBe(true)` stub that reported
+  // green while asserting nothing — demoted to it.todo so the gap shows up in
+  // the reporter instead of hiding behind a pass.
+  it.todo('handles printer error gracefully in done state');
 
   // ── Multi-currency exchange rate notice ──────────────────────────────
 
-  it('shows exchange rate notice when charge currency differs from total currency', async () => {
-    // TODO: This test needs proper mocking of subscription capabilities and currencies
-    // Currently times out
-    expect(true).toBe(true);
-  });
+  // Needs proper mocking of subscription capabilities and currencies; currently
+  // times out. Same demotion as above — was a vacuous stub.
+  it.todo('shows exchange rate notice when charge currency differs from total currency');
 });
