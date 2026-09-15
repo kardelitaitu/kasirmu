@@ -865,7 +865,13 @@ interface BootFontDecl {
  * the population in silence -- rule 6's floor is what keeps that honest.
  */
 function bootFontDeclarations(file: string, text: string): BootFontDecl[] {
-  const stripped = blankComments(text);
+  // An @font-face block's own `font-family:` line NAMES the face it defines; it is
+  // not a stack anyone renders with. Harvesting it as one made rules 6, 11 and 12
+  // fire on a planted inline face with messages about a missing generic tail --
+  // true verdict, wrong reason, and the same self-reference that made rule 14
+  // vacuous in the other direction. Faces arriving in these documents are graded by
+  // rule 15, which reads them as faces.
+  const stripped = blankComments(text).replace(/@font-face\s*\{[^}]*\}/gi, ' ');
   const out: BootFontDecl[] = [];
   const re = /font-family\s*:\s*([^;{}]+);/gi;
   let m: RegExpExecArray | null = re.exec(stripped);
@@ -2036,11 +2042,19 @@ describe('font-reference portability', () => {
       if (scanned.has(resolve(s.file))) continue;
       scan(shortFile(s.file), blankComments(s.text));
     }
+    // The third surface, and the one this rule did not read when it shipped: the
+    // boot documents' inline <style>. Those blocks paint before any stylesheet is
+    // requested, so a face declared there is the earliest-rendering face in the app,
+    // and neither loop above can see it -- HTML is not in CSS_SOURCES and fonts.css
+    // does not import it. Measured, not guessed: an inline
+    // `@font-face { src: local('Arial') }` satisfied all fifteen rules until this
+    // loop existed.
+    for (const s of HTML_SOURCES) scan(shortFile(s.file), blankComments(s.text));
     expect(
       walked,
-      `rule 15 walked ${walked} @font-face blocks; 13 arrive through the imports and the `
-        + 'first-party sheets add any hand-written face. A walk this small means the '
-        + 'population, not the faces, went away.',
+      `rule 15 walked ${walked} @font-face blocks; 13 arrive through the imports, and the `
+        + 'first-party sheets plus the two boot documents add any hand-written face. A walk this '
+        + 'small means the population, not the faces, went away.',
     ).toBeGreaterThanOrEqual(12);
     expect(
       hits,
@@ -2074,6 +2088,16 @@ describe('font-reference portability', () => {
     expect(localFaceNames(commented)).toEqual([]);
     // And the walk of the real tree sees the imported population, not nothing.
     expect(importedFaceSources().filter((s) => s.kind === 'file').length).toBeGreaterThanOrEqual(1);
+    // The third surface is a document, not a stylesheet: faceBlockTexts must reach an
+    // inline face inside HTML, which is exactly what the boot-document loop exists for.
+    const inline = '<style>@font-face { font-family: "X"; src: local("Y"); }</style>';
+    expect(faceBlockTexts(inline)).toHaveLength(1);
+    expect(localFaceNames(faceBlockTexts(inline)[0] ?? '')).toEqual(['Y']);
+    expect(HTML_SOURCES.length).toBeGreaterThanOrEqual(2);
+    // And a face declaration in such a document is NOT harvested as a rendering stack,
+    // which is the misattribution bootFontDeclarations used to make.
+    expect(bootFontDeclarations('probe.html', inline)).toHaveLength(0);
+    expect(bootFontDeclarations('probe.html', '<style>.a { font-family: Inter, sans-serif; }</style>')).toHaveLength(1);
   });
 });
 
