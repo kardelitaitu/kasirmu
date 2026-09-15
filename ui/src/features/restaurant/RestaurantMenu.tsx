@@ -28,6 +28,29 @@ function key(uid: string, name: string) {
   return `restaurant-${uid}-${name}`;
 }
 
+// ── Menu state storage: two tiers ───────────────────────────────────
+//
+// Tier 1 — backend, with localStorage as the offline fallback:
+//   `sort`, `cardsize`, `fontsize`, `font-smoothing`.
+//   Written by `persistMenuPreference` → `setUserPreferencesScoped`,
+//   rehydrated from `getUserPreferencesScoped` on mount (see the effect
+//   below). These follow the user to another terminal.
+//
+// Tier 2 — localStorage only:
+//   `pinned`, `colors`, `unavailable`, `pop`.
+//   Namespaced per user through `key()` above but never sent to the server,
+//   so they do NOT follow the user across terminals. `pinned` and `colors`
+//   are personal curation and read as defensibly terminal-local.
+//   `unavailable` is the odd one out: it is an operational flag (86 an
+//   item), so a waiter marking an item unavailable on one terminal does not
+//   propagate to the others, which looks more like a gap than a choice.
+//
+// This split is recorded in code but is NOT backed by an ADR or product
+// decision — treat it as unresolved rather than settled. If `unavailable`
+// (or the rest of Tier 2) should be shared, promote it to Tier 1; note the
+// preference store is generic string KV (api/settings.ts:198-202), so a set
+// or map needs serialising first. Raised by .agents/resto-pos-ui-review.md §F5.
+
 // Sort options in menu order. Exported, and SortMode derived from it rather
 // than written out separately, so the two cannot drift: the hamburger renders
 // `restaurant-sort-${mode}` by interpolation, which no static gate can follow,
