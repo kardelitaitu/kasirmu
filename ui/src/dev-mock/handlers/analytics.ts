@@ -359,4 +359,83 @@ export const analyticsHandlers: Record<string, MockHandler> = {
   'build_custom_report': () => ({
     rows: [], columns: [], total: 0, page: 1, pageSize: 50, totalPages: 1,
   }),
+
+  // ── Analytics dashboard cards ──────────────────────────────────────
+  // Scoped-only commands (no unscoped twin, so applyScopedAliases mirrors
+  // nothing here). Moved verbatim out of `tauri-api.ts`'s in-place
+  // `handlers['x'] = …` patches by todo-refactor-devmock-router-consolidation.md
+  // Phase 5.5. Each body is a self-contained plausible fixed shape so the
+  // analytics grid renders in browser mode instead of resolving null and
+  // crashing card layouts; none references router-local state, so the move is
+  // a pure copy. Confirmed single-defined beforehand (git grep: each key
+  // occurred in exactly one file) so folding them into this map cannot flip
+  // which body wins.
+  'get_customer_split_scoped': () => ({ new_count: 84, returning_count: 47 }),
+  'get_payment_method_breakdown_scoped': () => [
+    { payment_method: 'qris', total_minor: 98000000, sale_count: 142 },
+    { payment_method: 'cash', total_minor: 74000000, sale_count: 118 },
+    { payment_method: 'card', total_minor: 61000000, sale_count: 89 },
+    { payment_method: 'ewallet', total_minor: 39000000, sale_count: 57 },
+  ],
+  'get_discounts_summary_scoped': () => ({
+    sale_count: 406,
+    discounted_sale_count: 96,
+    share_percent: 6.4,
+    codes: [
+      { label: 'WELCOME10', redeemed_count: 41 },
+      { label: 'PROMO8.8', redeemed_count: 28 },
+      { label: 'LOYALTY15', redeemed_count: 17 },
+      { label: 'FREESHIP', redeemed_count: 10 },
+    ],
+  }),
+  'get_voided_sales_summary_scoped': () => ({ void_count: 23, void_total_minor: 5400000 }),
+  'get_basket_size_scoped': () => ({ sale_count: 406, avg_line_count: 3.2 }),
+  // Per-day basket size for the trend card — a week of plausible averages.
+  'get_basket_size_trend_scoped': () => {
+    const days: { date: string; sale_count: number; avg_line_count: number }[] = [];
+    const avgs = [3.1, 3.4, 2.9, 3.6, 3.2, 3.8, 3.3];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push({
+        date: d.toISOString().slice(0, 10),
+        sale_count: 55 + ((i * 13) % 20),
+        avg_line_count: avgs[i]!,
+      });
+    }
+    return days;
+  },
+  'get_inventory_turnover_scoped': () => ({ units_sold: 1280, stock_on_hand: 340, sku_count: 486, range_days: 30 }),
+  'get_inventory_trend_scoped': () => {
+    const days: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push(d.toISOString().slice(0, 10));
+    }
+    return days.map((date, i) => ({ date, units_sold: 30 + ((i * 17) % 40) }));
+  },
+  // Restaurant table turnover: 7 days of completed table-bound orders.
+  // ~18–31 turns/day → average turn 46–80 minutes (plausible service pace).
+  'get_table_turnover_scoped': () => {
+    const days: { date: string; table_orders: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      days.push({ date: d.toISOString().slice(0, 10), table_orders: 18 + ((i * 7) % 14) });
+    }
+    return days;
+  },
+  // Restaurant hourly table activity: twin-peak service shape (lunch ≈ 12:00,
+  // dinner ≈ 19:00) across the service day — feeds the occupancy curve.
+  'get_hourly_occupancy_scoped': () => {
+    const shape = [0, 0, 0, 0, 0, 0, 4, 9, 18, 30, 42, 55, 62, 48, 34, 30, 38, 52, 64, 70, 58, 36, 18, 6];
+    return shape.map((count, hour) => ({ hour, table_orders: count }));
+  },
+  'get_voided_items_scoped': () => [
+    { name: 'Caffè Latte', qty: 6 },
+    { name: 'Iced Coffee', qty: 5 },
+    { name: 'Avocado Toast', qty: 4 },
+    { name: 'Smoothie', qty: 3 },
+  ],
 };

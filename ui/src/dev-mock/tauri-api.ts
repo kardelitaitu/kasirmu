@@ -327,77 +327,10 @@ handlers['resolve_sync_conflict_scoped'] = () => false;
 // HPP exposure: no historical sale lines exist in the mock, so the margin
 // report is empty (the UI hides the Cost/Margin columns when it is).
 handlers['get_sale_line_margins_scoped'] = () => [];
-// Analytics dashboard cards — scoped commands with no unscoped twin.
-// Plausible fixed shapes so the analytics grid renders in browser mode
-// instead of resolving null and crashing card layouts.
-handlers['get_customer_split_scoped'] = () => ({ new_count: 84, returning_count: 47 });
-handlers['get_payment_method_breakdown_scoped'] = () => [
-  { payment_method: 'qris', total_minor: 98000000, sale_count: 142 },
-  { payment_method: 'cash', total_minor: 74000000, sale_count: 118 },
-  { payment_method: 'card', total_minor: 61000000, sale_count: 89 },
-  { payment_method: 'ewallet', total_minor: 39000000, sale_count: 57 },
-];
-handlers['get_discounts_summary_scoped'] = () => ({
-  sale_count: 406,
-  discounted_sale_count: 96,
-  share_percent: 6.4,
-  codes: [
-    { label: 'WELCOME10', redeemed_count: 41 },
-    { label: 'PROMO8.8', redeemed_count: 28 },
-    { label: 'LOYALTY15', redeemed_count: 17 },
-    { label: 'FREESHIP', redeemed_count: 10 },
-  ],
-});
-handlers['get_voided_sales_summary_scoped'] = () => ({ void_count: 23, void_total_minor: 5400000 });
-handlers['get_basket_size_scoped'] = () => ({ sale_count: 406, avg_line_count: 3.2 });
-// Per-day basket size for the trend card — a week of plausible averages.
-handlers['get_basket_size_trend_scoped'] = () => {
-  const days: { date: string; sale_count: number; avg_line_count: number }[] = [];
-  const avgs = [3.1, 3.4, 2.9, 3.6, 3.2, 3.8, 3.3];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push({
-      date: d.toISOString().slice(0, 10),
-      sale_count: 55 + ((i * 13) % 20),
-      avg_line_count: avgs[i]!,
-    });
-  }
-  return days;
-};
-handlers['get_inventory_turnover_scoped'] = () => ({ units_sold: 1280, stock_on_hand: 340, sku_count: 486, range_days: 30 });
-handlers['get_inventory_trend_scoped'] = () => {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  return days.map((date, i) => ({ date, units_sold: 30 + ((i * 17) % 40) }));
-};
-// Restaurant table turnover: 7 days of completed table-bound orders.
-// ~18–31 turns/day → average turn 46–80 minutes (plausible service pace).
-handlers['get_table_turnover_scoped'] = () => {
-  const days: { date: string; table_orders: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push({ date: d.toISOString().slice(0, 10), table_orders: 18 + ((i * 7) % 14) });
-  }
-  return days;
-};
-// Restaurant hourly table activity: twin-peak service shape (lunch ≈ 12:00,
-// dinner ≈ 19:00) across the service day — feeds the occupancy curve.
-handlers['get_hourly_occupancy_scoped'] = () => {
-  const shape = [0, 0, 0, 0, 0, 0, 4, 9, 18, 30, 42, 55, 62, 48, 34, 30, 38, 52, 64, 70, 58, 36, 18, 6];
-  return shape.map((count, hour) => ({ hour, table_orders: count }));
-};
-handlers['get_voided_items_scoped'] = () => [
-  { name: 'Caffè Latte', qty: 6 },
-  { name: 'Iced Coffee', qty: 5 },
-  { name: 'Avocado Toast', qty: 4 },
-  { name: 'Smoothie', qty: 3 },
-];
+// Analytics dashboard cards (11 scoped-only stubs) moved verbatim to
+// handlers/analytics.ts (Phase 5.5). Confirmed single-defined (git grep) and
+// self-contained before the move, so folding them into analyticsHandlers is a
+// pure copy — no override to flip, and applyScopedAliases mirrors none of them.
 // ── Remaining uncovered commands (14 total) ───────────────────────
 // Staff profile
 
