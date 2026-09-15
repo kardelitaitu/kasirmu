@@ -161,8 +161,21 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
   filing them under a "sync" module would misname it; they want their own home (system.ts / inventory.ts).
 
 ### Phase 5.4 — KDS devices & the 22 patches
-- [ ] Move `list/register/get/update_status/deactivate_kds_device` into `handlers/kds.ts`.
-- [ ] Re-home the 22 `handlers['x'] = …` patches into their domain modules (or a single documented `entryHandlers` residue, with a comment per remaining stub explaining why it has no other home — `agents-4:193` says only "scoped-alias stubs and cross-domain patches" may remain).
+- [x] **LANDED (KDS-device half) 2026-09-16, HEAD `c338c9ac8`.** Moved the 5 KDS device-management keys
+  (`list/register/get/update_status/deactivate_kds_device_scoped`) verbatim into a NEW
+  `ui/src/dev-mock/handlers/kds-devices.ts`, registered after `syncHandlers`. **Refinement over the plan:**
+  these went to their own module, not `handlers/kds.ts` as this line said — `kds.ts` is another domain's
+  actively-edited *order-workflow* file; device-registration/presence is a different concern, so a new file
+  keeps the extraction surgical (zero concurrent-edit surface) and honest. All 5 are `_scoped`-only (no
+  unscoped base → `applyScopedAliases` has nothing to mirror). **Registration-identity proven:** after-dump
+  (throwaway, run+deleted) → **681 commands, sha256 `105d29730df2…60681c`, identical**; `tsc` exit 0;
+  `dev-mock-scoped-aliases.test.ts` 41 passed. Router 723 → **710** (−13).
+- [ ] **22 `handlers['x'] = …` patches re-home: REMAINING.** These are the analytics/inventory cross-domain
+  stubs (e.g. `get_sales_by_payment_method_scoped`, `get_inventory_trend_scoped`,
+  `suspend_surplus_workspace_instances_scoped`…) plus the two `entryHandlers` singletons `get_local_ip` /
+  `get_low_stock_alerts` deferred from 5.3. They fold into existing `handlers/{analytics,inventory,...}.ts`
+  or a documented `entryHandlers` residue — **re-derive the 681 baseline first and clean-guard the router
+  per move** (a peer lane edited this same file earlier today).
 
 ### Phase 5.5 — Reduce the router
 - [ ] `entryHandlers` empty or gone; `tauri-api.ts` reduced to: the vite-alias header, `export { convertFileSrc, invoke, isTauri }`, the `createXHandlers`/`registerHandlers` sequence, any documented residue, then the single `applyScopedAliases()`. Target: **`tauri-api.ts` < 200 lines** — `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l`.

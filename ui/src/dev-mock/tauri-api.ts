@@ -61,6 +61,7 @@ import { floorplanHandlers } from './handlers/floorplan';
 import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 import { bundlesHandlers } from './handlers/bundles';
 import { syncHandlers } from './handlers/sync';
+import { kdsDeviceHandlers } from './handlers/kds-devices';
 
 // The mock's public surface is the three names the app actually imports through
 // the vite alias on `@tauri-apps/api/core`. They are defined by the dispatcher
@@ -479,24 +480,8 @@ const entryHandlers: Record<string, MockHandler> = {
   // KDS DEVICE MANAGEMENT
   // ═══════════════════════════════════════════════════════════════
 
-  'list_kds_devices_scoped': () => [] as unknown[],
-  'register_kds_device_scoped': (args: unknown) => {
-    const input = (args as { input?: Record<string, unknown> })?.input ?? {};
-    return {
-      id: `kds-device-mock-${Date.now()}`,
-      name: input['name'] ?? 'Mock KDS Device',
-      restaurant_pos_id: input['restaurant_pos_id'] ?? 'resto-1',
-      station_ids: input['station_ids'] ?? [],
-      is_active: true,
-      last_seen_at: new Date().toISOString(),
-      connection_status: 'connected',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-  },
-  'get_kds_device_scoped': () => null,
-  'update_kds_device_status_scoped': () => {},
-  'deactivate_kds_device_scoped': () => {},
+  // (the five KDS device-management handlers moved verbatim to ./handlers/kds-devices.ts
+  //  — Phase 5.4; registered below. Kept out of handlers/kds.ts (order workflow), see that file.)
   'get_low_stock_alerts': () => [
     { product_id: 'RAM-D4-16GB-KF', sku: 'RAM-D4-16GB-KF', name: 'Kingston Fury Beast 16GB DDR4 3200', current_qty: 3, threshold: 10, currency: 'IDR', price_minor: 450000, cost_minor: 390000 },
     { product_id: 'MB-B650-ROG', sku: 'MB-B650-ROG', name: 'ASUS ROG Strix B650-A Gaming WiFi', current_qty: 5, threshold: 10, currency: 'IDR', price_minor: 2850000, cost_minor: 2500000 },
@@ -533,6 +518,8 @@ registerHandlers(bundlesHandlers);
 // Sync / cash-drawer / receipt hardware stubs (Phase 5.3) moved verbatim to
 // `handlers/sync.ts`; registered here so the eleven keys keep their registry position.
 registerHandlers(syncHandlers);
+// KDS device-management keys (Phase 5.4) moved verbatim to `handlers/kds-devices.ts`.
+registerHandlers(kdsDeviceHandlers);
 // Topology handlers (the diagram read, the editor's atomic diff apply, and the
 // ADR #46 revision reads) live in `handlers/topology.ts`, which owns the
 // `mockTopology` diagram slice and mutates the `mockWorkspaces` list that
