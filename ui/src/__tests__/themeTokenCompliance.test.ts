@@ -1003,6 +1003,26 @@ function fallbackTail(value: string): string {
 }
 
 /**
+ * The fallback part of a `var()` expression, or the value itself when it is not a
+ * var(). Returns null for a var() with NO fallback, which in a boot document is
+ * the worst shape of all: --font-sans is measured to compute as the empty string
+ * during the splash window, so `font-family: var(--font-sans)` leaves the loading
+ * screen with no family at all and the browser default serif paints.
+ *
+ * Nested var() unwraps to the deepest literal. The paren is the reason unwrapping
+ * is required rather than optional: a raw split of
+ *   var(--font-sans, -apple-system, system-ui, sans-serif)
+ * hands back "sans-serif)" -- with the closing paren -- which no generic list
+ * contains, so the naive test fails a value that is perfectly correct.
+ */
+function varFallback(value: string): string | null {
+  const m = /^\s*var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,([\s\S]*))?\s*\)\s*$/.exec(value);
+  if (!m) return value;
+  const inner = (m[2] ?? '').trim();
+  return inner === '' ? null : varFallback(inner);
+}
+
+/**
  * Font-family tokens whose FIRST name is exempt from the bundled-face requirement.
  *
  * Keyed on token + file, deliberately NOT on the value: --brand-font-family is a
@@ -1526,6 +1546,55 @@ describe('font-reference portability', () => {
     const stacks = fontStacksFromCss('probe.css', wrapped);
     expect(stacks.length, 'the re-wrapped declaration was not harvested at all').toBe(1);
     expect(fallbackTail(stacks[0]?.value ?? '')).toBe(pin?.tail);
+  });
+
+  it('rule 11: a boot document stack must end in a generic keyword, once var() is unwrapped', () => {
+    // Rule 2's law stops at the edge of the CSS tree: it walks tokens, and an inline
+    // <style> in a boot document holds no token. That makes the splash fallback the
+    // one stack in the app whose tail is not decoration -- measured at waitUntil
+    // 'commit', --font-sans computes as the empty string while the splash is on
+    // screen, so the names written here are the only ones the loading screen can
+    // use. Nothing checked that they end in a generic.
+    const decls = HTML_SOURCES.flatMap(({ file, text }) => bootFontDeclarations(file, text));
+    expect(
+      decls.length,
+      'rule 11 found ' + decls.length + ' font-family declarations across ' + HTML_SOURCES.length
+        + ' boot documents; HTML_SOURCES is filtered by existsSync, so a deleted or '
+        + 'unlinked document shrinks this population in silence.',
+    ).toBeGreaterThanOrEqual(2);
+    for (const d of decls) {
+      const fb = varFallback(d.value);
+      expect(
+        fb,
+        `${d.file}:${d.line} sets font-family to a var() with NO fallback. In the splash `
+          + 'window the token is not yet defined, so the property resolves to nothing and '
+          + 'the browser default serif paints the loading screen:\n  value: ' + d.value,
+      ).not.toBeNull();
+      expect(
+        GENERIC_FONT_KEYWORDS.has(genericTail(fb ?? '')),
+        'a boot document stack does not end in a CSS generic keyword, so it can resolve to '
+          + 'nothing on a machine that has none of the named faces:\n'
+          + `  ${d.file}:${d.line}\n  value: ${d.value}\n  tail : ${genericTail(fb ?? '')}`,
+      ).toBe(true);
+    }
+  });
+
+  it('rule 11 probe: the var() paren is why unwrapping is required, and nesting unwraps', () => {
+    const wrapped = 'var(--font-sans, -apple-system, system-ui, sans-serif)';
+    // THE TRAP, encoded as an assertion: the raw last name carries the closing paren,
+    // so testing the value as written fails a declaration that is perfectly correct.
+    expect(genericTail(wrapped)).toBe('sans-serif)');
+    expect(GENERIC_FONT_KEYWORDS.has(genericTail(wrapped))).toBe(false);
+    expect(GENERIC_FONT_KEYWORDS.has(genericTail(varFallback(wrapped) ?? ''))).toBe(true);
+    // A var() with no fallback is reported rather than read as a stack ending in ")".
+    expect(varFallback('var(--font-sans)')).toBeNull();
+    // Nested var() unwraps to the deepest literal.
+    expect(varFallback('var(--font-sans, var(--fallback-font, serif))')).toBe('serif');
+    // A plain stack: unquoted and differently-cased still passes, no generic fails.
+    expect(GENERIC_FONT_KEYWORDS.has(genericTail(varFallback("'Inter', SYSTEM-UI") ?? ''))).toBe(true);
+    expect(GENERIC_FONT_KEYWORDS.has(genericTail(varFallback("'Inter', 'Segoe UI'") ?? ''))).toBe(false);
+    // A value that is not a var() is returned unchanged -- no silent rewriting.
+    expect(varFallback('-apple-system, sans-serif')).toBe('-apple-system, sans-serif');
   });
 });
 
