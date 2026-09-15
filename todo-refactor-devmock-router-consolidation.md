@@ -36,9 +36,48 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 
 ## Task checklist
 
-### Phase 5.0 — Baseline & guardrails
-- [ ] Re-derive the counts above; record that the current `check:all` red is the **two foreign CSS suites** (`popoverSurfaceCompliance` on `RestaurantMenu.css`, `themeTokenCompliance` on the uncommitted `CartPanelLineItem.css`) and **not** this lane. Do NOT fix them by editing foreign CSS; this lane is judged by typecheck + the devmock suites, and its done-state is separately gated by `check:all` per §4 (see the precedent in `done-todo-refactor-devmock-agents-3.md`).
-- [ ] Capture the current registered-command key set (dispatcher view) as a before-snapshot to diff against after each move — the consolidation must be **registration-identity**, no command silently dropped to the `Unhandled command` warn.
+### Phase 5.0 — Baseline & guardrails — LANDED 2026-09-15
+- [x] *Re-derive counts + classify the current `check:all` red.* Measured at HEAD `1fd7ced54`:
+  router **851 lines**, last commit `b27fad9ba` (untouched since — this order is genuinely unstarted);
+  `entryHandlers` literal holds **54** inline quoted keys (`:477`–`:662`, `grep -cE "^\s*'[a-z_0-9]+':\s"`
+  over `git show HEAD:…tauri-api.ts`) plus **22** `handlers[…]` patches. **Correction to the two claims
+  in this box when it was written:** the `popoverSurfaceCompliance` red on `RestaurantMenu.css` has since
+  **cleared** — re-run scoped at `3aa02090f` it prints `Tests 3 passed (3)`; some other lane fixed it. So
+  the only remaining known `check:all` red is `themeTokenCompliance` on `CartPanelLineItem.css`, which is
+  **` M` (uncommitted)** — a working-tree read, not a fact about any commit (AGENTS.md CSS section:
+  "a walker has no channel to the revision it is being asked about"). Neither is this lane's, and neither
+  was "fixed" here. This box was graded by that scoped suite run, not a full `check:all` (the full command
+  is 4 min and re-reads foreign WIP). This lane's own done-state stays §4-gated on a whole-tree green —
+  see the precedent in `done-todo-refactor-devmock-agents-3.md`.
+- [x] *Capture the registered-command before-snapshot.* Mechanism reused from
+  `dev-mock-scoped-aliases.test.ts`: importing the entry file runs every registration + the final
+  `applyScopedAliases()`, so `Object.keys(handlers)` **is** the authoritative dispatcher view. A throwaway
+  dump test (written, run, **deleted** — left no artifact in `__tests__`) captured:
+  **count = 681**, **sha256(sorted keys) = `105d29730df27be6a344554705cd92930283aa0c65ae1d8c391d9d4c3f60681c`**,
+  full sorted list in the gitignored `ui/zz-snap.log`. **The consolidation invariant is now concrete: any
+  Phase 5.1+ end-state must reproduce exactly this 681-key set** — same count, same digest — or a command
+  has silently dropped to the `[TAURI MOCK] Unhandled command` warn. Re-derive with the same throwaway
+  pattern if `zz-snap.log` is gone.
+
+> **Triage of the other 15 open `todo-*` plans (read-only, 2026-09-15): this order's ownership is
+> unique, but it is not the only lane in the tree.** No other open plan claims "reduce `tauri-api.ts`
+> to a register-only router" — that is exclusively Agent 5's. **Two live coordination hazards the next
+> worker must respect:**
+> 1. **`todo-refactor-oz-pos-app-agents-3.md` (T7-4 / T10 / T19, still `[ ]`) is editing the same
+>    `ui/src/dev-mock/handlers/*` modules right now** — commits `3f026e6a2` (deleted 7 no-command
+>    handlers), `2422eddfe` (moved the key-rotation handler), `683c9f2b9` (added a
+>    `refresh_picker_ticket` handler) landed after this order opened. Consequence: **the 681-key
+>    before-snapshot above is a timestamp, not a constant** — it will move from *their* registrations,
+>    not this lane's. Re-derive it at the top of every Phase 5.x move and diff against the *then*-current
+>    set, never against 681 as a magic number.
+> 2. **`todo-topology-editor.md` §7 (`:473`) wants the `handlers/topology*.ts` mock reconciled to the
+>    "third implementation" it flagged** — that file is this lane's own closed `agents-3` output, so any
+>    Phase 5.x that relocates `mockStores`/topology state must not break the topology lane's follow-up.
+> 3. `todo-open-debt-program.md` is a program umbrella (owner-decision items R4–R10, not code work);
+>    no box there overlaps this router order.
+>
+> Net: proceed, but `git status --porcelain -- ui/src/dev-mock/` before every move, and treat the
+> 681 as "re-derive, then diff."
 
 ### Phase 5.1 — Relocate the shared state
 - [ ] Move `mockStores` (+ `listMockLocations`/`getMockLocation`/`createMockLocation`/`updateMockLocation`/`setMockPrimaryLocation`/`deleteMockLocation` and `mockTicketPrefixes`/prefix helpers) out of the router into `handlers/locations.ts` (or a state module if that creates an import cycle — `mockDispatcher.ts:16` warns the dispatcher must not import the router).
@@ -63,6 +102,11 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 - [ ] Before-snapshot registered-command set == after-snapshot set (no command dropped to the warn) — prove by diffing the two dispatcher key lists.
 - [ ] `cd ui && npx tsc --noEmit -p tsconfig.json` → exit 0.
 - [ ] `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts` (+ any `invoke-coverage`/`dev-mock-*` suites found in 5.0) → exit 0.
-- [ ] `cd ui && npm run check:all` → exit 0 **only once the two foreign CSS reds are independently resolved**; until then this box is legitimately unmet and, per the §4 rule and the `agents-3` precedent, the file stays `todo-` however clean the router becomes.
+- [ ] `cd ui && npm run check:all` → exit 0. **Update 2026-09-15:** the gate is now **one** red, not two —
+  the `popoverSurfaceCompliance` blocker self-cleared (see Phase 5.0); only `themeTokenCompliance` on the
+  **uncommitted** `CartPanelLineItem.css` remains, and it is a working-tree read another lane must resolve
+  (by committing a clean version or reverting), not this order's to fix. Until that lands green, this box
+  is legitimately unmet and, per the §4 rule and the `agents-3` precedent, the file stays `todo-` however
+  clean the router becomes.
 
 > **§4 naming rule reminder:** this file earns `done-todo-` only when its own acceptance command was RUN and PASSED. Router line-count reduction is the objective; the whole-tree green is the gate, and it is currently blocked on surfaces outside this order's fence.
