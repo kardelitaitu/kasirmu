@@ -72,6 +72,33 @@ def signature_index(lines: list[str], name: str) -> int | None:
 PROSE_LINE = re.compile(r"^\s*(?://[/*]?|\*)")
 
 
+def prose_flags(lines: list[str]) -> list[bool]:
+    """Which lines are commentary, including the interiors of `/* … */` blocks.
+
+    The apps carry docs-auditor stamps written as a C-style block at the top of a command
+    module ("last audited … findings: staff IPC surface fail-closed … legacy unscoped
+    commands (list_staff/create_staff/update_staff/list_roles) are permission-denied
+    tombstones"). A line-based prefix test sees `findings: …` as CODE, which put that stamp
+    on the path-mention gate as if it were a function pointer, and -- worse -- would hide a
+    retired command named inside a stamp from the stale-prose report entirely. Both halves
+    are fixed here: inside a block comment, prose; outside it, the prefix rules.
+    """
+    flags: list[bool] = []
+    inside = False
+    for line in lines:
+        pre = inside
+        if PROSE_LINE.match(line):
+            flags.append(True)
+        else:
+            flags.append(pre)
+        # Track only unambiguous openers/closers; a `///` line never opens a block.
+        if not pre and "/*" in line and "*/" not in line:
+            inside = True
+        elif inside and "*/" in line:
+            inside = False
+    return flags
+
+
 def path_refs(name: str, sources: list[tuple[str, str]]) -> list[str]:
     """Non-call, non-prose mentions of `name` -- the signal `fn_call_sites` cannot see.
 
@@ -86,8 +113,10 @@ def path_refs(name: str, sources: list[tuple[str, str]]) -> list[str]:
     call = re.compile(re.escape(name) + r"\s*\(")
     hits: list[str] = []
     for label, text in sources:
-        for number, line in enumerate(text.splitlines(), 1):
-            if PROSE_LINE.match(line) or re.match(r"^\s*pub (?:async )?fn\b", line):
+        body = text.splitlines()
+        flags = prose_flags(body)
+        for number, line in enumerate(body, 1):
+            if flags[number - 1] or re.match(r"^\s*pub (?:async )?fn\b", line):
                 continue
             if word.search(line) and not call.search(line):
                 hits.append(f"{label}:{number}: {line.strip()[:90]}")
@@ -281,8 +310,12 @@ def main() -> int:
         # the stale `lib_path` that made the F-006 leg grade the desktop's names against the
         # tablet's sources on 2026-09-16: a name in an enclosing scope, reused.
         for label, txt in scan:
-            for i, line in enumerate(txt.splitlines(), 1):
-                if not re.match(r"^\s*(///|//|\*)", line):
+            body = txt.splitlines()
+            flags = prose_flags(body)
+            for i, line in enumerate(body, 1):
+                # Report commentary only -- but ALL commentary, including the interiors of
+                # `/* … */` audit stamps, which a `///`-prefix test cannot see.
+                if not flags[i - 1]:
                     continue
                 if re.search(r"(?<![\w:])" + re.escape(name) + r"\b(?!_scoped)", line):
                     residue.append(f"    {label}:{i}: {line.strip()[:110]}")
