@@ -352,9 +352,19 @@ describe('template migration wiring (canary)', () => {
     // The half-swap is the dangerous one: switching the listing while leaving the
     // migration uncalled is silent data loss, and this is the only test that
     // notices.
-    if (usesBackendTemplates) {
-      expect(invokesMigration, 'backend templates are in use but the migration is never invoked').toBe(true);
-    }
-    expect(usesBackendTemplates || !usesBackendTemplates).toBe(true);
+    // One assertion, and it CAN fail. The old body was a conditional expect followed by
+    // `expect(usesBackendTemplates || !usesBackendTemplates).toBe(true)` — a law of excluded
+    // middle, true for every value of the operand, so the case could never go red and the
+    // `if` only ever ran the check in the branch where the canary had already fired. What the
+    // code owes is the material implication: reaching for backend templates WITHOUT running
+    // the migration is the half-swap that loses templates.
+    expect(
+      !usesBackendTemplates || invokesMigration,
+      'half-swap in NodeTopologyEditor.tsx: backend template call sites present = ' +
+        usesBackendTemplates +
+        ' while migrateLocalTemplates( is invoked = ' +
+        invokesMigration +
+        ' — templates still sitting in localStorage disappear from the only UI that can reach them. Either call the migration before the first listing, or do not swap the listing.',
+    ).toBe(true);
   });
 });

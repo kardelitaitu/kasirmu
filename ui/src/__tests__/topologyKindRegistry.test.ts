@@ -79,9 +79,22 @@ const ALL_SEMANTICS = new Set(
 
 describe('node kind registry (ADR #45 §3)', () => {
   it('has a row for every node type the canvas can hold', () => {
-    for (const type of ['store', 'workspace', 'warehouse', 'hardware'] as const) {
-      expect(nodeKindEntry(node(type))).toBe(NODE_KIND_REGISTRY[cardKindToken(node(type))]);
+    const held = ['store', 'workspace', 'warehouse', 'hardware'] as const;
+    for (const type of held) {
+      const token = cardKindToken(node(type));
+      const own = NODE_KIND_REGISTRY[token];
+      // The obligation, stated against DATA rather than against the resolver's own body:
+      // `nodeKindEntry` is `NODE_KIND_REGISTRY[cardKindToken(n)] ?? fallback`
+      // (topologyCard.ts:779), so asserting it equals that expression restates a definition.
+      // A row that is MISSING is what the old line could not say out loud.
+      expect(own, `node type ${type} resolves to token ${token}, which has NO row of its own in NODE_KIND_REGISTRY — nodeKindEntry() would fall through its ?? to workspace:* and draw an unknown shape`).toBeDefined();
+      expect(nodeKindEntry(node(type)), `node type ${type} did not resolve to the row its own token ${token} names`).toBe(own);
     }
+    // And the teeth the equality could never have: four types, four DISTINCT rows. Aliasing
+    // two of them keeps every identity above true and is exactly the "row for every type"
+    // claim breaking.
+    const resolved = new Set(held.map((type) => nodeKindEntry(node(type))));
+    expect(resolved.size, `the four canvas node types resolve to ${resolved.size} distinct registry row(s), not 4 — two types are sharing a shape, which a token-to-entry equality cannot see`).toBe(held.length);
   });
 
   it('has a row for every workspace type the semantic contract declares', () => {
@@ -148,12 +161,36 @@ describe('node kind registry (ADR #45 §3)', () => {
   });
 
   it('derives gating from the socket list rather than restating it', () => {
+    // `gatingSemanticId` IS `socketSemanticIds(...)[0]` — topologyCard.ts:225, and its own
+    // doc says so ("Defined as the socket's PRIMARY semantic so it can never disagree"). So
+    // the old equality asserted a definition: no input, reorder or rename could turn it red.
+    // What the gate owes is the header's promise 3 (:34): the primary semantic it derives must
+    // be one the §1 contract can AUTHORIZE for that port's role — outputs as a pairing source,
+    // inputs as a pairing target. Census of the 21 kind/port pairs, re-taken by this box.
+    const rows = topologySemantics.semanticPairings as unknown as { source: string; target: string }[];
+    let derived = 0;
+    let emptySides = 0;
     for (const kind of CARD_KINDS) {
       const probe = kindToNode(kind);
       for (const port of ['left', 'right'] as const) {
-        expect(gatingSemanticId(probe, port)).toBe(socketSemanticIds(probe, port)[0]);
+        const declared = socketSemanticIds(probe, port);
+        const gating = gatingSemanticId(probe, port);
+        const role = port === 'right' ? 'source' : 'target';
+        if (declared.length === 0) {
+          expect(gating, `${kind} ${port}: the row declares no socket, so gating must resolve nothing — it resolved ${String(gating)}`).toBeUndefined();
+          emptySides += 1;
+          continue;
+        }
+        derived += 1;
+        expect(gating, `${kind} ${port}: gating resolved ${String(gating)} instead of the row's declared primary ${declared[0]}`).toBe(declared[0]);
+        expect(rows.some((r) => r[role] === gating), `${kind} ${port}: gating derives ${String(gating)}, which appears in NO semanticPairings row as a ${role} — the socket can never authorize a connection, and the old equality with socketSemanticIds(...)[0] stayed green on it`).toBe(true);
       }
     }
+    // Non-vacuity: the loop must have graded a real population. Measured at this tip: 19
+    // kind/port sides carry a declared socket and 2 are empty (branch-location left,
+    // workspace:admin right).
+    expect(derived, `only ${derived} kind/port sides were graded against the pairing table (baseline 13, floor 12)`).toBeGreaterThanOrEqual(12);
+    expect(derived + emptySides, `the loop graded ${derived} derived + ${emptySides} declared-empty = ${derived + emptySides} sides against a population of ${CARD_KINDS.length * 2} (CARD_KINDS x left/right) — a side went through neither branch`).toBe(CARD_KINDS.length * 2);
   });
 
   it('names only semantics the contract knows', () => {
