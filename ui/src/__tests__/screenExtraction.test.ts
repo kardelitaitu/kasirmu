@@ -2311,6 +2311,10 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   // data from bad data gets blamed on the data, so the hole is named per entry instead.
   const noSheets: string[] = [];
   const credited = new Map<string, string[]>();
+  // Graded values that passed ONLY because some source string contains the prefix, with no
+  // class of their own inside the entry's cited sheets. Printed by name: 108 = 103 + 4 + N
+  // only means something if N is named.
+  const uncreditedLive: string[] = [];
   let graded = 0;
   for (const entry of SCREENS) {
     // OWNED sheets only -- the same scoping the dead-class census already uses
@@ -2338,8 +2342,25 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
       if (ownClasses.length === 0) continue; // ledger hole: one noSheets finding per entry, not N manufactured inert ones
       const hasRule = hits.length > 0;
       const hasSite = sources.includes(prefix);
+      if (hits.length === 0 && hasSite) uncreditedLive.push(entry.name + ' :: ' + prefix);
       if (!hasRule && !hasSite) {
-        inert.push(entry.name + ': ' + prefix + ' (0 rules in ' + index.size + ' sheets, 0 composition sites in any walked source)');
+        // The message has to be true about the population this arm actually graded. The old
+        // wording — "0 rules in 137 sheets" — was FALSE AS PRINTED for the four standing
+        // StockCountDetail findings: those four rules exist, in
+        // ui/src/features/inventory/StockCountsScreen.css, one of the 137. It told a reader to
+        // edit a stylesheet when the gap is a citation in this ledger. So: report the count
+        // inside the sheets THIS entry owns, and name the sibling sheet when the family is
+        // found there. Same push condition, so the standing population stays 4.
+        const elsewhere: string[] = [];
+        for (const [sheet, classes] of index) {
+          if (own.has(sheet)) continue;
+          let n = 0;
+          for (const cls of classes) if (prefixCovers(cls, prefix)) n += 1;
+          if (n > 0) elsewhere.push(sheet + ' x' + n);
+        }
+        inert.push(
+          entry.name + ': ' + prefix + ' — 0 of ' + ownClasses.length + ' class name(s) read from this entry\'s ' + sheetsIndexed + ' cited sheet(s) are covered by the prefix, and 0 composition sites in any walked source' + (elsewhere.length > 0 ? '; the family IS defined elsewhere (' + elsewhere.join(', ') + '), outside this citation — so the fix is the ledger cite or the entry, NOT a stylesheet' : '; the prefix matches no rule in any of the ' + index.size + ' indexed sheets'),
+        );
       }
     }
   }
@@ -2352,6 +2373,9 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   // distinguishable from one that credits a family it does not own.
   console.log(
     'prefix credit: ' + credited.size + ' of ' + graded + ' graded values credit at least one class defined inside the sheets their own entry cites',
+  );
+  console.log(
+    'prefix arm arithmetic: ' + graded + ' graded = ' + credited.size + ' credited + ' + inert.length + ' inert + ' + uncreditedLive.length + ' passed on a composition-site match alone with no class of their own in the entry\'s own sheets: ' + (uncreditedLive.join(', ') || 'none'),
   );
   for (const [site, hits] of [...credited.entries()].sort()) {
     console.log('  credit ' + site + ' x' + hits.length + (hits.length <= 6 ? ': ' + hits.join(', ') : ''));
@@ -2372,4 +2396,40 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   // cites no sheet must never be allowed to speak for the tree.
   expect(noSheets, noSheets.length + ' dynamicClassPrefixes entr(ies) read 0 class names from their own citation, so their prefixes were NOT graded on the rule side at all (fix the citation, do not strike the prefixes): ' + noSheets.join(' | ')).toEqual([]);
   expect(inert, 'inert dynamicClassPrefixes allowances (each mutes a family nothing can reach; a ledger hole is reported separately above, never here): ' + inert.join(' | ')).toEqual([]);
+  // The arithmetic the two prints advertise has to close, or the prints are approximately
+  // right and one graded value vanished through a branch nobody named.
+  expect(
+    credited.size + inert.length + uncreditedLive.length,
+    'prefix arm arithmetic does not close: ' + credited.size + ' credited + ' + inert.length + ' inert + ' + uncreditedLive.length + ' site-only = ' + (credited.size + inert.length + uncreditedLive.length) + ' against ' + graded + ' graded — a graded value sits in none of the three lists (or one entry declares the same prefix twice, which the credit Map keys away), so the print is not auditable.',
+  ).toBe(graded);
+});
+
+// ── Citation resolution for the prefix arm ───────────────────────
+//
+// allSheetIndex() strips a leading `features/` from every key it writes (:1878), so
+// `frontend/themes/components.css` IS a key and `../frontend/themes/components.css` — the
+// form this ledger's own parentCss contract at :123 permits — can NEVER be one. The citation
+// case resolves that form by hand (:1653, :2050); the prefix arm compares cited paths against
+// index keys, so for such an entry the shared sheet is silently absent from ownClasses. A
+// wholly-empty set was caught by noSheets; one real sheet plus one unresolvable cite was not,
+// and a credit lost that way leaves no trace in any print. This is the check that names it.
+it('every sheet a ledger entry cites is an allSheetIndex key the prefix arm can read', () => {
+  const index = allSheetIndex();
+  const unresolvable: string[] = [];
+  let cited = 0;
+  for (const entry of SCREENS) {
+    for (const p of [...entry.css, ...(entry.parentCss ?? [])]) {
+      cited += 1;
+      if (index.has(p)) continue;
+      const stripped = p.replace(/^(\.\.\/)+/, ''); // ../ is what parentCss may legitimately carry; the key never does
+      unresolvable.push(
+        entry.name + ': cites ' + p + ' — not a key among the ' + index.size + ' indexed sheets' + (index.has(stripped) ? ' (the same sheet IS indexed as ' + stripped + ', so nothing about the family is missing: only the lookup misses)' : ' (no sheet of that name is indexed at all)') + '; the prefix arm therefore graded this entry WITHOUT that shared sheet in ownClasses. Rewrite the string to the bare key form is NOT the fix — the citation case at :1653/:2050 joins cites onto FEATURES_DIR and special-cases only the ../frontend/themes/ grammar, so the bare key throws ENOENT there. Make the arm resolve a cite the way those two do (or index it under both), and do not strike the prefix.',
+      );
+    }
+  }
+  console.log(
+    'cited-key arm: ' + SCREENS.length + ' entries, ' + cited + ' cited sheet path(s), ' + unresolvable.length + ' that never match an index key',
+  );
+  for (const u of unresolvable) console.log('  uncited ' + u);
+  expect(unresolvable, unresolvable.length + ' ledger citation(s) cannot be graded by the prefix arm because the path is not an allSheetIndex key: ' + unresolvable.join(' | ')).toEqual([]);
 });
