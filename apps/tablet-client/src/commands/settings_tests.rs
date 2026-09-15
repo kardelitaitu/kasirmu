@@ -1481,3 +1481,228 @@ fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
         }
     }
 }
+
+// ── Phase 3.3 T4: the settings wire pins ────────────────────────────
+//
+// Everything above this line either builds a Rust value and asserts on the
+// JSON that value produces, or hand-writes JSON transcribed from that same
+// output. Neither shape can see the bug class T3 found in
+// `LocalPaymentRailArgs`: a DTO and its only caller may disagree about key
+// casing, and every self-referential test still passes, because the fixture
+// was copied from the wrong side of the boundary. The card reports "saved"
+// and the value never lands.
+//
+// These pins are written from the renderer instead. Every expected key list
+// below is transcribed field-for-field from `ui/src/api/settings.ts` (and
+// `ui/src/api/gateway.ts` for the status entry), so a Rust field renamed
+// without the UI following — in either direction, camelCase or snake_case —
+// reads red here instead of shipping.
+//
+#[test]
+fn wire_pin_credit_sale_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:74 — CreditSaleDto. The renderer reads it as
+    // camelCase in three places: features/retail/RetailModals.tsx:375-389
+    // (`c.saleId` as the row key and again for Settle, `c.customerName`,
+    // `c.totalMinor`, `c.createdAt`) and features/retail/RetailPosScreen.tsx:1274
+    // and :1286 (`!c.settledAt`, `c.saleId !== saleId`).
+    //
+    // The struct carried no `rename_all` in ANY of its three definitions
+    // (oz-bridge, the desktop re-export of it, and this shell's own copy), so it
+    // emitted snake_case and every one of those reads was `undefined`: the list
+    // showed an em-dash for the customer, NaN for the amount and "Invalid Date"
+    // for the date; Settle sent `sale_id: undefined`; and the quiet one — the
+    // `!c.settledAt` filter passed EVERY row, so a settled tab stayed on the
+    // unpaid list forever. Invisible because
+    // `ui/src/dev-mock/handlers/payment.ts:231-232` answers both
+    // `list_credit_sales` variants with `[]`, and because nothing in the repo
+    // had serialized this type in a test before this one.
+    let dto = CreditSaleDto {
+        sale_id: "s-1".into(),
+        customer_name: "Bagus".into(),
+        total_minor: 25_000,
+        currency: "IDR".into(),
+        created_at: "2026-09-15T00:00:00Z".into(),
+        settled_at: None,
+        cashier_name: "Rina".into(),
+    };
+    let mut want = [
+        "saleId",
+        "customerName",
+        "totalMinor",
+        "currency",
+        "createdAt",
+        "settledAt",
+        "cashierName",
+    ];
+    want.sort_unstable();
+    assert_eq!(
+        wire_keys(&dto),
+        want.iter().map(|k| k.to_string()).collect::<Vec<String>>(),
+        "CreditSaleDto must serialize the keys the retail credit list reads"
+    );
+    // Names alone are not the contract: a renamed field whose value was mapped
+    // to the wrong source would pass the key set above and still render the
+    // wrong amount, so two values are read out by key.
+    let json = serde_json::to_value(&dto).unwrap();
+    assert_eq!(json["totalMinor"], 25_000);
+    assert_eq!(json["saleId"], "s-1");
+    assert!(
+        json["settledAt"].is_null(),
+        "an open tab must emit `settledAt: null` rather than omit the key, so the renderer can tell an open tab from an absent field"
+    );
+}
+
+/// Sorted key set of a value as the wire carries it.
+fn wire_keys<T: Serialize>(value: &T) -> Vec<String> {
+    let json = serde_json::to_value(value).expect("a settings DTO must serialize");
+    let mut keys: Vec<String> = json
+        .as_object()
+        .expect("the wire shape of a settings DTO is an object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
+/// Parse `payload` the way the command layer will, then send it back out, and
+/// require every key the renderer wrote to still be there. Absence is the
+/// silent-loss shape: serde ignores an unknown field unless the struct says
+/// `deny_unknown_fields`, so the write returns `Ok(())` with the value gone.
+fn assert_wire_matches<T>(payload: &str, expected: &[&str], label: &str)
+where
+    T: Serialize + serde::de::DeserializeOwned,
+{
+    let sent: serde_json::Map<String, serde_json::Value> = serde_json::from_str(payload)
+        .unwrap_or_else(|e| panic!("{label}: pin is not valid JSON: {e}"));
+    let parsed: T = serde_json::from_str(payload)
+        .unwrap_or_else(|e| panic!("{label}: the DTO rejects the payload the renderer sends: {e}"));
+    let mut keys = wire_keys(&parsed);
+    let mut want: Vec<&str> = expected.to_vec();
+    want.sort_unstable();
+    keys.sort();
+    let want: Vec<String> = want.iter().map(|k| (*k).to_string()).collect();
+    assert_eq!(
+        keys, want,
+        "{label}: the wire key set does not match the renderer's declared interface"
+    );
+    let dropped: Vec<&String> = sent.keys().filter(|k| !keys.contains(k)).collect();
+    assert!(
+        dropped.is_empty(),
+        "{label}: accepted and silently dropped {} renderer key(s): {dropped:?}",
+        dropped.len()
+    );
+}
+
+#[test]
+fn wire_pin_receipt_settings_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:9 — ReceiptSettingsDto (11 keys, taxRoundingMode optional).
+    const PAYLOAD: &str = r#"{
+        "showCurrency": true, "decimalSeparator": "comma", "showTax": false,
+        "footer": "Terima kasih", "paperWidth": "narrow", "showTableNumber": true,
+        "marginTop": 5, "marginBottom": 4, "marginLeft": 3, "marginRight": 2,
+        "taxRoundingMode": "truncate"
+    }"#;
+    assert_wire_matches::<ReceiptSettingsDto>(
+        PAYLOAD,
+        &[
+            "showCurrency",
+            "decimalSeparator",
+            "showTax",
+            "footer",
+            "paperWidth",
+            "showTableNumber",
+            "marginTop",
+            "marginBottom",
+            "marginLeft",
+            "marginRight",
+            "taxRoundingMode",
+        ],
+        "ReceiptSettingsDto",
+    );
+    let parsed: ReceiptSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
+    // Two values from opposite ends of the object: a mis-ordered rename would
+    // land one of these on the wrong field rather than dropping it.
+    assert!(parsed.show_currency);
+    assert_eq!(parsed.tax_rounding_mode, "truncate");
+    assert_eq!(parsed.margin_right, 2);
+}
+
+#[test]
+fn wire_pin_store_settings_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:35 — StoreSettingsDto (logo optional on the TS side,
+    // required here, which is why the pin sends it).
+    const PAYLOAD: &str = r#"{
+        "name": "Kopi Kita", "address": "Jl. Melati 12", "taxId": "NP-0001",
+        "currency": "IDR", "branch": "Bandung", "logo": "abc123"
+    }"#;
+    assert_wire_matches::<StoreSettingsDto>(
+        PAYLOAD,
+        &["name", "address", "taxId", "currency", "branch", "logo"],
+        "StoreSettingsDto",
+    );
+    let parsed: StoreSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(parsed.tax_id, "NP-0001");
+    assert_eq!(parsed.branch, "Bandung");
+}
+
+#[test]
+fn wire_pin_credit_settings_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:67 — CreditSettingsDto.
+    const PAYLOAD: &str =
+        r#"{"enabled": true, "reminderIntervalHours": 24, "maxLimitMinor": 500000}"#;
+    assert_wire_matches::<CreditSettingsDto>(
+        PAYLOAD,
+        &["enabled", "reminderIntervalHours", "maxLimitMinor"],
+        "CreditSettingsDto",
+    );
+    let parsed: CreditSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(parsed.reminder_interval_hours, 24);
+    assert_eq!(parsed.max_limit_minor, 500000);
+}
+
+#[test]
+fn wire_pin_user_pref_entry_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:190 — UserPrefEntry. Single-word fields, so this
+    // pin is cheap insurance against a future rename_all on the struct.
+    const PAYLOAD: &str = r#"{"key": "cardsize", "value": "large"}"#;
+    assert_wire_matches::<UserPrefEntry>(PAYLOAD, &["key", "value"], "UserPrefEntry");
+    let parsed: UserPrefEntry = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(parsed.key, "cardsize");
+}
+
+#[test]
+fn wire_pin_deployment_info_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:55 — DeploymentInfo. Response-only (`Serialize`
+    // alone), so there is no inbound payload to pin and a drift here is a blank
+    // "About" row rather than a lost write. The assertion is on what goes out.
+    let keys = wire_keys(&DeploymentInfo {
+        app_version: "0.0.39".into(),
+    });
+    assert_eq!(
+        keys,
+        ["appVersion"],
+        "DeploymentInfo must emit exactly the one key the renderer reads"
+    );
+}
+
+#[test]
+fn wire_pin_gateway_status_entry_carries_every_key_the_renderer_declares() {
+    // ui/src/api/gateway.ts — the array `gateway_status` resolves to. Response
+    // only, and the whole point of UI-1 is that these three fields are ALL the
+    // renderer ever sees about a credential, so the emitted key set is part of
+    // the security boundary rather than a convenience: a fourth key would put a
+    // value on the wire that the deny-list was written to keep off it.
+    let keys = wire_keys(&GatewayStatusEntry {
+        name: "Midtrans".into(),
+        configured: true,
+        online: false,
+    });
+    let mut want = ["configured", "name", "online"];
+    want.sort_unstable();
+    assert_eq!(
+        keys,
+        want.iter().map(|k| k.to_string()).collect::<Vec<String>>(),
+        "GatewayStatusEntry must emit exactly name/configured/online — any extra key is a credential leak"
+    );
+}

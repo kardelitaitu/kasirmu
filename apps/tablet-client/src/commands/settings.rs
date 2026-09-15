@@ -25,41 +25,37 @@ use crate::commands::authz::{require_permission_for_session, require_permission_
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// Phase 3.3 T4: these settings wire types are re-exported from
+/// `oz_bridge::settings` — the same move T3 made for `LocalPaymentRailArgs`
+/// and the regional DTOs — so a field rename or a `rename_all` edit lands once
+/// instead of having to be made twice and noticed a third time. Until this
+/// slice each was a byte-identical second definition in this file, and the
+/// renderer's TypeScript interface was the only place the three copies agreed.
+///
+/// `HardwareSettingsDto` is deliberately NOT on the list, and that is a defect
+/// being reported rather than a shortcut being taken: the bridge type carries
+/// fifteen keys (scale connection / path / baud / zero-on-boot / auto-zero,
+/// kitchen printer connection / path, sound volume, dark mode, schema version)
+/// while this shell's type — and both of its command bodies — carry five. A
+/// re-export here would let `set_hardware_settings[_scoped]` ACCEPT ten keys
+/// it then never writes, converting a visible absence into a silent drop. The
+/// two shells also read different stores for the same screen (this one reads
+/// the `settings` KV table through `Settings::get_printer_*`; the bridge reads
+/// `hardware_profiles` through `TerminalProfile` and needs `base_dir`), so the
+/// repair is a storage-source decision plus the `AppState` → `BridgeCtx` seam
+/// T2 deferred — not a `pub use`. Measured and recorded in the 2026-09-15 T4
+/// entry of `todo-refactor-oz-pos-app-agents-3.md`.
+pub use oz_bridge::settings::{
+    CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, ReceiptSettingsDto,
+    StoreSettingsDto, UserPrefEntry,
+};
+
 // ── Receipt settings DTO ─────────────────────────────────
-
-/// All receipt display options in one shot – the UI loads these on
-/// mount and sends the whole struct back on save.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiptSettingsDto {
-    /// Show currency symbol prefix on amounts.
-    pub show_currency: bool,
-    /// Decimal separator: `"dot"`, `"comma"`, or `"none"`.
-    pub decimal_separator: String,
-    /// Show the tax line.
-    pub show_tax: bool,
-    /// Footer text (empty = disabled).
-    pub footer: String,
-    /// Paper width: `"standard"` or `"narrow"`.
-    pub paper_width: String,
-    /// Show table number on cart and receipts.
-    pub show_table_number: bool,
-    /// Top margin (mm).
-    pub margin_top: i64,
-    /// Bottom margin (mm).
-    pub margin_bottom: i64,
-    /// Left margin (mm).
-    pub margin_left: i64,
-    /// Right margin (mm).
-    pub margin_right: i64,
-    /// Tax rounding mode: `"half_up"` or `"truncate"`. Default `"half_up"`.
-    #[serde(default = "default_tax_rounding_mode")]
-    pub tax_rounding_mode: String,
-}
-
-fn default_tax_rounding_mode() -> String {
-    "half_up".to_string()
-}
+//
+// `ReceiptSettingsDto` and its `default_tax_rounding_mode` come from
+// `oz_bridge::settings` (see the re-export above); the eleven camelCase keys
+// they carry are pinned against `ui/src/api/settings.ts` by
+// `wire_pin_receipt_settings_carries_every_key_the_renderer_declares`.
 
 // ── Get receipt settings ──────────────────────────────────
 
@@ -72,23 +68,11 @@ pub async fn get_receipt_settings(
     run_get_receipt_settings(&conn)
 }
 
-/// Business logic for `get_receipt_settings` (extracted for testing).
+/// Business logic for `get_receipt_settings` (extracted for testing). The body
+/// is the bridge's; what is tablet-specific is the error type, converted by the
+/// `From<BridgeError> for AppError` seam in `authz.rs` that landed with T1.
 fn run_get_receipt_settings(conn: &rusqlite::Connection) -> Result<ReceiptSettingsDto, AppError> {
-    Ok(ReceiptSettingsDto {
-        show_currency: Settings::get_receipt_show_currency(conn)?,
-        decimal_separator: Settings::get_receipt_decimal_separator(conn)?,
-        show_tax: Settings::get_receipt_show_tax(conn)?,
-        footer: Settings::get_receipt_footer(conn)?,
-        paper_width: Settings::get_receipt_paper_width(conn)?,
-        show_table_number: Settings::get_receipt_show_table_number(conn)?,
-        margin_top: Settings::get_receipt_margin_top(conn)?,
-        margin_bottom: Settings::get_receipt_margin_bottom(conn)?,
-        margin_left: Settings::get_receipt_margin_left(conn)?,
-        margin_right: Settings::get_receipt_margin_right(conn)?,
-        tax_rounding_mode: Settings::get_tax_rounding_mode(conn)?
-            .wire_name()
-            .to_string(),
-    })
+    Ok(oz_bridge::settings::run_get_receipt_settings(conn)?)
 }
 
 // ── Set receipt settings ──────────────────────────────────
@@ -106,49 +90,19 @@ pub async fn set_receipt_settings(
     run_set_receipt_settings(&conn, &args)
 }
 
-/// Business logic for `set_receipt_settings` (extracted for testing).
+/// Business logic for `set_receipt_settings` (extracted for testing). Body is
+/// the bridge's; see `run_get_receipt_settings` for why a forwarder stays.
 fn run_set_receipt_settings(
     conn: &rusqlite::Connection,
     args: &ReceiptSettingsDto,
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-
-    Settings::set_receipt_show_currency(&tx, args.show_currency)?;
-    Settings::set_receipt_decimal_separator(&tx, &args.decimal_separator)?;
-    Settings::set_receipt_show_tax(&tx, args.show_tax)?;
-    Settings::set_receipt_footer(&tx, &args.footer)?;
-    Settings::set_receipt_paper_width(&tx, &args.paper_width)?;
-    Settings::set_receipt_show_table_number(&tx, args.show_table_number)?;
-    Settings::set_receipt_margin_top(&tx, args.margin_top)?;
-    Settings::set_receipt_margin_bottom(&tx, args.margin_bottom)?;
-    Settings::set_receipt_margin_left(&tx, args.margin_left)?;
-    Settings::set_receipt_margin_right(&tx, args.margin_right)?;
-    Settings::set_tax_rounding_mode_str(&tx, &args.tax_rounding_mode)?;
-
-    tx.commit()?;
-
-    Ok(())
+    Ok(oz_bridge::settings::run_set_receipt_settings(conn, args)?)
 }
 
 // ── Store info DTO ────────────────────────────────────────────
-
-/// Store name, address, tax ID, currency, branch, and logo – shown on printed receipts.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreSettingsDto {
-    /// Display name.
-    pub name: String,
-    /// Street address.
-    pub address: String,
-    /// ID of the associated tax.
-    pub tax_id: String,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// Branch.
-    pub branch: String,
-    /// Logo.
-    pub logo: String,
-}
+//
+// `StoreSettingsDto` comes from `oz_bridge::settings`; its six camelCase keys
+// are pinned by `wire_pin_store_settings_carries_every_key_the_renderer_declares`.
 
 // ── Get store settings ────────────────────────────────────────
 
@@ -161,14 +115,7 @@ pub async fn get_store_settings(state: State<'_, AppState>) -> Result<StoreSetti
 
 /// Business logic for `get_store_settings` (extracted for testing).
 fn run_get_store_settings(conn: &rusqlite::Connection) -> Result<StoreSettingsDto, AppError> {
-    Ok(StoreSettingsDto {
-        name: Settings::get_store_name(conn)?.unwrap_or_default(),
-        address: Settings::get_store_address(conn)?.unwrap_or_default(),
-        tax_id: Settings::get_store_tax_id(conn)?.unwrap_or_default(),
-        currency: Settings::get_default_currency(conn)?.unwrap_or_else(|| "IDR".into()),
-        branch: Settings::get_store_branch(conn)?.unwrap_or_default(),
-        logo: Settings::get_store_logo(conn)?.unwrap_or_default(),
-    })
+    Ok(oz_bridge::settings::run_get_store_settings(conn)?)
 }
 
 // ── Set store settings ────────────────────────────────────────
@@ -191,33 +138,12 @@ fn run_set_store_settings(
     conn: &rusqlite::Connection,
     args: &StoreSettingsDto,
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-
-    Settings::set_store_name(&tx, &args.name)?;
-    Settings::set_store_address(&tx, &args.address)?;
-    Settings::set_store_tax_id(&tx, &args.tax_id)?;
-    Settings::set_default_currency(&tx, &args.currency)?;
-    Settings::set_store_branch(&tx, &args.branch)?;
-    Settings::set_store_logo(&tx, &args.logo)?;
-
-    tx.commit()?;
-
-    Ok(())
+    Ok(oz_bridge::settings::run_set_store_settings(conn, args)?)
 }
 
 // ── Credit Settings DTO ─────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Creditsettingsdto.
-pub struct CreditSettingsDto {
-    /// Enabled.
-    pub enabled: bool,
-    /// Reminder Interval Hours.
-    pub reminder_interval_hours: i64,
-    /// Max Limit Minor.
-    pub max_limit_minor: i64,
-}
+//
+// `CreditSettingsDto` comes from `oz_bridge::settings`.
 
 #[command]
 /// Get credit settings.
@@ -251,28 +177,26 @@ pub async fn set_credit_settings(
 }
 
 // ── Credit sale DTO ──────────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize)]
-/// Creditsaledto.
-pub struct CreditSaleDto {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Customer Name.
-    pub customer_name: String,
-    /// Total amount in minor currency units.
-    pub total_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// Settled At.
-    pub settled_at: Option<String>,
-    /// Cashier Name.
-    pub cashier_name: String,
-}
+//
+// `CreditSaleDto` comes from `oz_bridge::settings`. Its wire keys are camelCase
+// as of the 2026-09-15 T4 repair, because the retail credit list reads
+// `saleId`/`customerName`/`totalMinor`/`createdAt`/`settledAt`; the pin lives in
+// `settings_tests.rs::wire_pin_credit_sale_carries_every_key_the_renderer_declares`.
 
 #[command]
 /// List credit sales.
+///
+/// The SQL body stays inline here on purpose, even though
+/// `oz_bridge::settings::run_list_credit_sales` is byte-identical to it: the
+/// tablet registration gate's sweep reads a call into `oz_bridge::` as evidence
+/// that the shared funnel owns the RBAC, and for this pair of commands it does
+/// not — `run_list_credit_sales` is a pure query helper, and this shell's
+/// scoped twin has never asked for `sales:view` the way the bridge's
+/// `list_credit_sales_scoped` does. Delegating here would flip
+/// `settings::list_credit_sales_scoped` from "ungated debt on the ledger" to
+/// "gated" without a single permission being added, i.e. it would erase a real
+/// gap from the ratchet. The repair is to gate it, not to delegate it; see the
+/// 2026-09-15 T4 record in `todo-refactor-oz-pos-app-agents-3.md`.
 pub async fn list_credit_sales(state: State<'_, AppState>) -> Result<Vec<CreditSaleDto>, AppError> {
     let conn = state.db.lock().await;
     let mut stmt = conn.prepare(
@@ -373,15 +297,9 @@ pub async fn set_hardware_settings(
 }
 
 // ── User preferences ───────────────────────────────────────────
-
-/// One key-value pair within a user's preferences.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserPrefEntry {
-    /// Key.
-    pub key: String,
-    /// Value.
-    pub value: String,
-}
+//
+// `UserPrefEntry` comes from `oz_bridge::settings` (two single-word keys; the
+// pin is `wire_pin_user_pref_entry_carries_every_key_the_renderer_declares`).
 
 #[command]
 /// Get user preferences.
@@ -485,18 +403,10 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
 // entirely - so both credentials were readable through this shell's
 // get_setting while the tests that named them stayed green.
 
-/// Status entry for one payment gateway.
-#[derive(Debug, Serialize)]
-pub struct GatewayStatusEntry {
-    /// Display name of the gateway.
-    pub name: String,
-    /// Whether a credential is configured.
-    pub configured: bool,
-    /// Whether the gateway is usable for charging (same as `configured`
-    /// today; kept separate so reachability checks can land later without
-    /// changing the wire shape).
-    pub online: bool,
-}
+// `GatewayStatusEntry` is re-exported from `oz_bridge::settings`. The three
+// emitted keys are the whole contract, and they are pinned in
+// `settings_tests.rs` because a fourth key here would put a credential on the
+// wire that UI-1 exists to keep off it.
 
 /// Report which payment gateways have credentials configured.
 ///
@@ -759,7 +669,11 @@ pub async fn set_credit_settings_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `list_credit_sales`.
+/// Session-scoped variant of `list_credit_sales`. Its body stays inline for the
+/// same registration-gate reason spelled out on `list_credit_sales`, and it is
+/// the command that carries the real gap: this path resolves a session and then
+/// drops it (`_session`) without asking for `sales:view`, which the bridge's own
+/// `list_credit_sales_scoped` does require.
 #[command]
 pub async fn list_credit_sales_scoped(
     session_token: String,
@@ -909,20 +823,10 @@ pub async fn set_setting_scoped(
 
 // ── Deployment / version read (operator tooling, saas-3 L162) ─────
 
-/// Running deployment metadata for the operator/support "About" surface in
-/// Diagnostics (todo-global-saas-3.md, L162 operator tooling). The version is
-/// organization-global — the build version is identical across every store — so
-/// there is no store to resolve; a `_scoped` variant would be an empty ceremony
-/// (category 2, per `scripts/verify-scoped-coverage.sh`, alongside
-/// `get_over_quota_report`). It is still gated on `settings:read` inline so only
-/// roles that can already read store/system settings see it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeploymentInfo {
-    /// The running build version (`CARGO_PKG_VERSION`, locked to the release
-    /// line — 0.0.37 at this writing).
-    pub app_version: String,
-}
+// `DeploymentInfo` is re-exported from `oz_bridge::settings`; the value is
+// built HERE, on purpose, because `CARGO_PKG_VERSION` expands against the crate
+// that writes it — a tablet terminal reports the tablet build, exactly as the
+// About identity constants resolve in the tablet shim (T1's decision).
 
 /// Read-only deployment metadata for the signed-in operator. Authenticates the
 /// session and checks `settings:read` inline (category 2 unscoped command).
