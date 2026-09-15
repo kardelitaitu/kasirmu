@@ -11160,4 +11160,4 @@ KDS scoped surface 74 files / 956 tests green, re-run twice during the session; 
 **What it means:**
 The KDS decomposition lane is closed — code, docs and acceptance record. The superseded sources stay `todo-` by rule (superseded is not done); their final-sync blocks tell the story from the old names. The only open item is the push, which awaits an explicit user order.
 
-**Commit:** this entry rides its own single pathspec commit `docs(journal): record the KDS lane closure, fix and §4 waiver`, following the lane's `3df117977`, `6806d9ab0` and `273b0a455` -- never push without a direct user order.
+**Commit:** this entry rides its own single pathspec commit `docs(journal): record the KDS lane closure, fix and §4 waiver`, following the lane's `3df117977`, `6806d9ab0` and `273b0a455` -- never push without a direct user order. <!-- 2026-09-15 correction, same pass: the landed subject lost the `§` in the shell — the real commit is 03fb20622 `docs(journal): record the KDS lane closure, fix and 4-waiver`. Quoted as it actually reads; no amend per the repo's own recovery rule. -->
