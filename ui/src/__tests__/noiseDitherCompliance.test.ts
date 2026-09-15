@@ -252,7 +252,11 @@ function findCssFiles(dir: string): string[] {
         results.push(fullPath);
       }
     }
-  } catch { /* skip */ }
+  } catch (err) {
+    // Counted, still skipped: an unlistable directory must not be able to shrink
+    // the walk without saying so. The path recorded is the one attempted.
+    dirsUnreadable.push(dir.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '') + ' -- ' + String(err).slice(0, 60));
+  }
   return results;
 }
 
@@ -337,6 +341,19 @@ let shadowRulesGraded = 0;  // ...and also names a --shadow-* token: the gate's 
 let shadowRulesSkipped = 0; // hardcoded shadow, no token: the counted skip
 let sheetsRefused = 0;      // basenames the walk declines to open at all
 let unparseableSheets: string[] = [];  // sheets it tried and could not read
+// -- The doors a sheet can leave the walk through, counted apart (2026-09-15). --
+// A sheet the PARSE throws on was already recorded in `unparseableSheets` and is
+// asserted empty below, so that door has a counter. Two doors had none:
+//   (a) `findCssFiles` swallowed a failed `readdirSync` with a bare
+//       catch-skip, so a directory that cannot be LISTED removes every sheet
+//       under it from the population -- the walk gets smaller, not red;
+//   (b) nothing related sheets FOUND to sheets PARSED, so (a) had no floor.
+// These three are the accounting. The relations between them are tautologies about
+// control flow, kept so the print is auditable; the weight is on the magnitude
+// floor on `sheetsOpened` and on the two emptiness checks naming each escape.
+let sheetsOpened = 0;                 // non-refused sheets handed to readFileSync
+const sheetsParsed: string[] = [];    // ...and what came out of the parse intact
+const dirsUnreadable: string[] = [];  // directories the LISTING itself threw on
 
 
 /* ── Tests ────────────────────────────────────────────────────── */
@@ -354,6 +371,7 @@ function walkShadowPopulation(): void {
   allCssFiles = [];
   rulesExamined = 0; shadowRules = 0; shadowRulesGraded = 0; shadowRulesSkipped = 0;
   sheetsRefused = 0; unparseableSheets = [];
+  sheetsOpened = 0; sheetsParsed.length = 0; dirsUnreadable.length = 0;
 
   for (const dir of ['features', 'frontend', 'components']) {
     const files = findCssFiles(dir);
@@ -363,6 +381,7 @@ function walkShadowPopulation(): void {
       const basename = file.split(/[/\\]/).pop() || '';
       if (basename === 'tokens.css' || basename === 'components.css') { sheetsRefused++; continue; }
 
+      sheetsOpened++;
       try {
         let content = readFileSync(file, 'utf-8');
         // Remove CSS comments to prevent false positives
@@ -411,6 +430,7 @@ function walkShadowPopulation(): void {
             uncoveredSurfaces.push({ file: relPath, selector: sel });
           }
         }
+        sheetsParsed.push(file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, ''));
       } catch (err) {
         unparseableSheets.push(file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '') + ' -- ' + String(err).slice(0, 60));
       }
@@ -530,6 +550,15 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     expect(rulesExamined, 'not one rule was examined across ' + allCssFiles.length + ' sheets -- the splitter is dead').toBeGreaterThanOrEqual(1000);
     expect(unparseableSheets, 'a sheet the walk could not read is a silent blackout, not a pass:\n  ' + unparseableSheets.join('\n  ')).toEqual([]);
     expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
+  });
+
+  it(`walk accounting: ${sheetsOpened} sheets opened, ${sheetsParsed.length} parsed, ${unparseableSheets.length} abandoned at the parse, ${dirsUnreadable.length} directories unlistable, ${allCssFiles.length} found`, () => {
+    // Door (a): a directory that cannot be listed takes its whole subtree with it.
+    expect(dirsUnreadable, 'a directory readdirSync refused, so nothing under it was ever counted: ' + dirsUnreadable.join(' | ')).toEqual([]);
+    // Door (b): every sheet the walk opened has to be accounted for by name.
+    expect(sheetsParsed.length + unparseableSheets.length, 'opened ' + sheetsOpened + ' but parsed ' + sheetsParsed.length + ' + abandoned ' + unparseableSheets.length).toBe(sheetsOpened);
+    expect(sheetsOpened + sheetsRefused, 'found ' + allCssFiles.length + ' but opened ' + sheetsOpened + ' + refused ' + sheetsRefused).toBe(allCssFiles.length);
+    expect(sheetsOpened, 'the walk opened ' + sheetsOpened + ' sheets; measured at 134 on this tree (136 found, 2 refused by basename), so 130 leaves 4 of headroom and a subtree that vanishes reads red here').toBeGreaterThanOrEqual(130);
   });
 
   it('scanned at least 10 CSS files for shadow-using selectors', () => {
