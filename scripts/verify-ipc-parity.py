@@ -111,12 +111,14 @@ COMMAND_FN_RE = re.compile(
     # Both spellings of the attribute. `#[command]` is the short form of the same token, used
     # wherever a file has `use tauri::command;` -- which is how this shell's tablet modules are
     # written. Matching only the qualified form made this leg blind to nearly the whole tablet:
-    # measured 2026-09-16, 20 of the tablet's 326 command-shaped declarations matched, so the
-    # count below printed a confident 0 while 59 unregistered command fns sat under
-    # commands/. That 0 is quoted as evidence in this programme's own records (todo-refactor-
-    # oz-pos-app-agents-3.md leans on "0 unregistered tauri command fns" when arguing a
-    # deletion was safe), which is the reason the fix carries the two fixtures in
-    # self_test() rather than trusting this comment.
+    # measured 2026-09-16 in three stages. Qualified form only: 20 of the tablet's command
+    # declarations were visible and the leg printed 0 unregistered. Short form added: 326
+    # visible, 59 unregistered. command_fns_in() also taught to look past a doc comment or a
+    # second attribute between the token and its signature: 441 visible, 122 unregistered (and
+    # the desktop went 16 -> 16 -> 43). No record of mine ever cited that first 0 as an
+    # argument -- I asserted as much in an earlier draft of this comment and it was false, so it
+    # is corrected here rather than left standing -- but the number was printed on every run and
+    # read as clean, which is what the eight f006 fixtures in self_test() are for.
     r"#\[(?:tauri::)?command\]\s*pub (?:async )?fn ([a-z0-9_]+)"
 )
 
@@ -165,6 +167,53 @@ def extract_handlers(lib_path: Path) -> list[str]:
     return sorted(set(names))
 
 
+COMMAND_ATTR_RE = re.compile(r"""^\s*#\[(?:tauri::)?command(?:\([^\]]*\))?\]\s*$""")
+COMMAND_SIG_RE = re.compile(r"""^\s*pub (?:async )?fn ([a-z0-9_]+)""")
+# A line that may legally sit between the attribute and the signature: blank, any comment
+# form, or any other attribute. Rust allows all of them, in any order and quantity.
+COMMAND_GAP_RE = re.compile(r"""^\s*(?://|/\*|\*/|#!?\[|$)""")
+
+
+def command_fns_in(text: str) -> set[str]:
+    """Every command function defined in one source, attributes and all.
+
+    Two passes, unioned, because each catches what the other cannot:
+
+    * `COMMAND_FN_RE` handles the compact form, including an attribute and its signature on
+      the SAME line, which a line-oriented walk would never find.
+    * the walk handles what that regex cannot: a `#[command]` or `#[tauri::command]` separated
+      from its `pub fn` by a doc comment or another attribute. Tauri accepts both, and this
+      tree uses both -- measured 2026-09-16, the single-regex pass saw 430 of the desktop's
+      495 command definitions and 326 of the tablet's 441, so this leg printed 16 and 59 where
+      the honest figures are 43 and 122.
+
+    That difference also closes a question this programme left open in its own plan file: a
+    pass recorded "`#[tauri::command]` definition sites 496 against 453 registered paths, and
+    parity grades a name-level form of the same gap and prints 16; 43 != 16 is a unit
+    difference -- sites against names -- and this pass did not reconcile them". It was not a
+    unit difference. 496 - 453 is 43, and 43 is exactly what the walk reports as unregistered;
+    the note's own arithmetic was right and its explanation was wrong, because the 496 and the
+    16 were counting the same population with a parser that could see only part of it.
+
+    The walk stops at the first line that is not blank, not a comment and not another
+    attribute, so an attribute sitting over something that is not a `pub fn` contributes
+    nothing -- the case `f006   an attribute over a non-function is not a command` holds open.
+    """
+    names = set(COMMAND_FN_RE.findall(text))
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not COMMAND_ATTR_RE.match(line):
+            continue
+        j = i + 1
+        while j < len(lines) and COMMAND_GAP_RE.match(lines[j]):
+            j += 1
+        if j < len(lines):
+            sig = COMMAND_SIG_RE.match(lines[j])
+            if sig:
+                names.add(sig.group(1))
+    return names
+
+
 def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> list[str]:
     """Command fns in the shell that are not registered -- either attribute spelling."""
     unregistered: list[str] = []
@@ -173,8 +222,7 @@ def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> li
         if path.name.endswith("_tests.rs"):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for match in COMMAND_FN_RE.finditer(text):
-            fn = match.group(1)
+        for fn in command_fns_in(text):
             if fn not in registered:
                 unregistered.append(fn)
     return sorted(set(unregistered))
@@ -2594,6 +2642,18 @@ def self_test() -> int:
          COMMAND_FN_RE.findall("pub async fn helper(x: u8) -> u8 { x }") == [])
     case("f006   a pub fn behind an unrelated attribute is not a command either",
          COMMAND_FN_RE.findall("#[serde(rename_all = 'camelCase')]\npub async fn not_a_command()") == [])
+
+    # And the walk's own cases: an attribute separated from its signature by a doc comment or
+    # by a second attribute is still a command in Rust, and the single regex cannot see either.
+    # These four together are what make 43 and 122 reproducible rather than a claim.
+    case("f006   a doc comment between attribute and signature does not hide the command",
+         'documented' in command_fns_in("#[tauri::command]\n/// Lists things.\npub async fn documented() -> X {"))
+    case("f006   a second attribute between them does not hide it either",
+         'double' in command_fns_in("#[command]\n#[allow(clippy::unused_async)]\npub fn double() -> X {"))
+    case("f006   attribute and signature on one line still count",
+         'oneline' in command_fns_in("#[command] pub async fn oneline() -> X {"))
+    case("f006   an attribute over a non-function is not a command",
+         not command_fns_in("#[command]\nconst LIMIT: u32 = 4;\n"))
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
