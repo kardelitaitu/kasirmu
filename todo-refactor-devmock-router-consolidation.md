@@ -235,6 +235,17 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 ### Phase 5.5 — Reduce the router
 - [ ] `entryHandlers` empty or gone; `tauri-api.ts` reduced to: the vite-alias header, `export { convertFileSrc, invoke, isTauri }`, the `createXHandlers`/`registerHandlers` sequence, any documented residue, then the single `applyScopedAliases()`. Target: **`tauri-api.ts` < 200 lines** — `git show HEAD:ui/src/dev-mock/tauri-api.ts | wc -l`.
 
+  > **Phase 5.5 structure DONE (this session, 2026-09-16, commit `1ac117450`): the `entryHandlers` literal now
+  > contains ONLY its two imported spreads (`...licenseHandlers`, `...settingsHandlers`) — verified zero direct
+  > `'key':` entries remain (regex walk). The last three deferred singletons were given their proper homes:
+  > `get_local_ip`→`system.ts`, `get_low_stock_alerts`→`inventory.ts` (beside the transfer/adjust commands),
+  > `print_sales_receipt`(+`_scoped`)→`sync.ts` (beside its sibling `print_receipt`) — each `git grep`-confirmed
+  > single-defined first. Verified together: `tsc` 0, **681 / `105d29730df2…` identical**, all 7 `dev-mock-*`
+  > suites (96 tests) green; 4 files, +37/−12, no foreign hunks. So the literal's CODE is fully extracted;
+  > `wc -l` now reads **370 total = ~133 code + ~195 comment + blanks**. The box stays UNTICKED **solely**
+  > because of the `<200` **total-line** number, which (see the finding below) is now a documentation-
+  > compression / owner judgment, not remaining handler code to move.
+
   > **Phase 5.5 progress (this session, 2026-09-16, commits `758c72020` CRM pair + `584bb5c59` sync-conflict
   > pair). Two more self-contained stub groups re-homed to plan-correct homes (crm.ts, sync.ts); router
   > 380 → 364 (−16), plus a now-dead `MOCK_CUSTOMERS` import dropped. Each verified: **681 / sha256
