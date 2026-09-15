@@ -161,7 +161,7 @@ const entryHandlers: Record<string, MockHandler> = {
   // BOOT / SETUP
   // ═══════════════════════════════════════════════════════════════
 
-  'get_local_ip': () => '192.168.1.100',
+  // get_local_ip moved verbatim to handlers/system.ts (Phase 5.5).
 
   ...licenseHandlers,
 
@@ -199,8 +199,8 @@ const entryHandlers: Record<string, MockHandler> = {
   //  handlers/settings.ts as brandHandlers — Phase 5.1 conversion;
   //  registered below)
 
-  'print_sales_receipt': () => ({ printed: true }),
-  'print_sales_receipt_scoped': () => ({ printed: true }),
+  // print_sales_receipt (+ _scoped) moved verbatim to handlers/sync.ts (Phase 5.5),
+  // next to its sibling print_receipt in the receipt-hardware family.
 
   // ═══════════════════════════════════════════════════════════════
   // KDS DEVICE MANAGEMENT
@@ -208,14 +208,8 @@ const entryHandlers: Record<string, MockHandler> = {
 
   // (the five KDS device-management handlers moved verbatim to ./handlers/kds-devices.ts
   //  — Phase 5.4; registered below. Kept out of handlers/kds.ts (order workflow), see that file.)
-  'get_low_stock_alerts': () => [
-    { product_id: 'RAM-D4-16GB-KF', sku: 'RAM-D4-16GB-KF', name: 'Kingston Fury Beast 16GB DDR4 3200', current_qty: 3, threshold: 10, currency: 'IDR', price_minor: 450000, cost_minor: 390000 },
-    { product_id: 'MB-B650-ROG', sku: 'MB-B650-ROG', name: 'ASUS ROG Strix B650-A Gaming WiFi', current_qty: 5, threshold: 10, currency: 'IDR', price_minor: 2850000, cost_minor: 2500000 },
-    { product_id: 'SSD-NV2-1TB', sku: 'SSD-NV2-1TB', name: 'Kingston NV2 1TB NVMe SSD', current_qty: 4, threshold: 8, currency: 'IDR', price_minor: 950000, cost_minor: 820000 },
-    { product_id: 'PSU-RM750', sku: 'PSU-RM750', name: 'Corsair RM750e 80+ Gold PSU', current_qty: 6, threshold: 10, currency: 'IDR', price_minor: 1850000, cost_minor: 1650000 },
-    { product_id: 'GPU-RTX4070', sku: 'GPU-RTX4070', name: 'MSI RTX 4070 Ventus 2X', current_qty: 2, threshold: 5, currency: 'IDR', price_minor: 8900000, cost_minor: 8100000 },
-    { product_id: 'CPU-7800X3D', sku: 'CPU-7800X3D', name: 'AMD Ryzen 7 7800X3D', current_qty: 8, threshold: 10, currency: 'IDR', price_minor: 5400000, cost_minor: 4900000 },
-  ],
+  // get_low_stock_alerts moved verbatim to handlers/inventory.ts (Phase 5.5) —
+  // its natural home (stock-vs-threshold, beside the transfer/adjust commands).
 
   // ═══════════════════════════════════════════════════════════════
   // BUNDLES
@@ -230,7 +224,10 @@ const entryHandlers: Record<string, MockHandler> = {
 
   // (the sync / cash-drawer / receipt hardware stubs moved verbatim to
   //  ./handlers/sync.ts — Phase 5.3; registered right below. `get_local_ip` and
-  //  `get_low_stock_alerts` stay here pending properly-named homes — see sync.ts)
+  //  `get_low_stock_alerts`, previously deferred here, now have their proper
+  //  homes: system.ts and inventory.ts respectively (Phase 5.5), and
+  //  print_sales_receipt joined print_receipt in sync.ts — so this literal is
+  //  now just the two imported spreads below.)
 };
 
 // Merge this file's handlers into the registry the dispatcher routes through.

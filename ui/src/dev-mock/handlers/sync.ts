@@ -48,4 +48,12 @@ export const syncHandlers: Record<string, MockHandler> = {
   // "already resolved elsewhere", which is exactly what an empty mock is.
   'list_sync_conflicts_scoped': () => [],
   'resolve_sync_conflict_scoped': () => false,
+
+  // Sales-receipt print — moved verbatim from `tauri-api.ts`'s entryHandlers
+  // literal (Phase 5.5), next to its sibling `print_receipt` in the same
+  // receipt-hardware family. Pure self-contained stub, single-defined (git
+  // grep); the explicit `_scoped` twin is preserved verbatim so
+  // applyScopedAliases (run later in the router) mirrors nothing over it.
+  'print_sales_receipt': () => ({ printed: true }),
+  'print_sales_receipt_scoped': () => ({ printed: true }),
 };

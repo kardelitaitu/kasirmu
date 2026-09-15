@@ -307,6 +307,12 @@ const mockAuditReview: { checkpoint: MockReviewCheckpoint | null } = { checkpoin
 
 export const systemHandlers: Record<string, MockHandler> = {
 
+  // Local-IP banner for the boot/setup screen — moved verbatim from
+  // `tauri-api.ts`'s entryHandlers literal (Phase 5.5): a pure self-contained
+  // string stub, single-defined (git grep; other matches were prose). Home =
+  // system, since it is a system/boot read.
+  'get_local_ip': () => '192.168.1.100',
+
   'bootstrap_owner': (_args) => {
     return {
       session: {
