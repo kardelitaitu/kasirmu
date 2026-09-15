@@ -685,7 +685,7 @@ Full twelve-step table: **mean width change −0.55 %, heights that moved 0 of 1
 
 **Boxes: open 2, ticked 11 — unchanged this round.**
 
-### The ten anchors this file points at that suite, re-derived
+### The ten anchors this file points at that suite, re-derived **[provenance, added later: this subsection belongs to the round-7 audit. It sits at the end of the file because rounds 12 and 13 were appended by anchoring on the preceding footer, which slid everything below it down the page — so the `##` heading it now appears to fall under is not the block that wrote it. Read it as round 7's.]**
 
 The suite is **2,067 → 2,859 lines (+792)** across this plan's work, so **9 of the 10 anchors here no longer resolve to what their sentences claim**; the tenth is a note explaining one of them to be a regex false alarm. Live values, resolved **by content** rather than by arithmetic on the old numbers:
 
@@ -705,4 +705,4 @@ The suite is **2,067 → 2,859 lines (+792)** across this plan's work, so **9 of
 
 - **And the convention caught this block once, from the other direction.** The sentence above ends *"the header cites no line at all"* — which was **false the moment I wrote it**, because the header it praised still named `dev-ci.yml:277` and `:98`. **`ee8ee0724` removed the two numbers rather than softening the claim**, so the promise is now true of the file it describes: the CI wiring is named by job (`ui-test`), by command (`cd ui && npm test`) and by router prefix (`^ui/`), with no line into a workflow another lane edits hourly. Recorded because the sequence matters more than the fix: **a convention written in one commit and violated by the file it describes until a later one is exactly how prose about drift earns the right to be believed** — and a grep for `:\d{2,4}` over the header's first 70 lines now returns none, which is the command that re-checks this claim.
 
-**Boxes: open 3, ticked 10 — unchanged.**
+**Boxes: open 3, ticked 10 — unchanged.** *[Dated footer of that round-7 subsection, and deliberately left as written. It is NOT the file's current census — the live one is 2 open / 11 ticked, and the most recent block's footer is the number to trust; this line only reads as the summary because of the append ordering noted above.]*
