@@ -188,7 +188,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-finder-aria': 'Find node',
   'topology-finder-placeholder': 'Search nodes…',
   'topology-finder-no-matches': 'No nodes match',
-  'topology-shortcuts-find': 'Find node',
   'topology-auto-layout': 'Auto-layout',
   'topology-layout-announce': 'Topology arranged automatically',
   'topology-rack-share-title': 'topology-rack-share-title',
