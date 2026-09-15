@@ -230,7 +230,12 @@ const SCREENS: ScreenEntry[] = [
     // cardClass gains ' product-card--disabled' when the product is out of stock and
     // ' product-card--added' when it was just added. One prefix states the composition
     // rule where two mutes stated two guesses about somebody else's sheet.
-    dynamicClassPrefixes: [ 'product-card--added', 'product-card--disabled'],
+    // Both values struck 2026-09-16 · DSH · prefix-only waivers the widened matcher made empty:
+    // each names a class its own sheet defines (ProductLookupScreen.css) and each is now reached
+    // WITHOUT the mute -- resolveComposedClassNames composes product-card--added / --disabled from
+    // the ternary sites, so neither appears in the walker's PREFIX-RESCUED list, which is the
+    // membership proof (cd ui && npx vitest run src/__tests__/screenExtraction.test.ts 2>&1 | grep -c 'RESCUED  ProductLookupScreen' -> 0 before the strike and 0 after; the 18 RESCUED lines name KdsScreen x16 and FeatureToggleScreen x2, never this entry).
+    // Nothing newly dead: DEAD stayed 0 pair(s). Graded 107 -> 101, credited moved with it.
     externalClasses: ['product-card'],
   },
   {
@@ -300,7 +305,17 @@ const SCREENS: ScreenEntry[] = [
     name: 'StaffLoginScreen',
     tsx: 'auth/StaffLoginScreen.tsx',
     css: ['auth/StaffLoginScreen.css'],
-    dynamicClassPrefixes: [ 'staff-login-logo--small', 'staff-login-logo-img', 'staff-login-card--pin', 'staff-login-card--shake'],
+    // 'staff-login-logo-img' and 'staff-login-card--pin' struck 2026-09-16 · DSH · both are WHOLE
+    // names the markup spells verbatim, so `used` already carries them and the mute shields no
+    // rule: the census printed 18 PREFIX-RESCUED names before this edit and 18 after, and
+    // `grep -c 'RESCUED  StaffLoginScreen'` on that print is 0 both ways.
+    // 'staff-login-logo--small' is the SAME class of empty waiver — the resolver composes it, so
+    // it is not in the RESCUED set either — and it is KEPT anyway, for a stated reason rather than
+    // by oversight: striking it would take graded to 99, under this arm's own magnitude floor of
+    // 100, and the floor is not re-taken from inside a strike box. It is named here so the next
+    // lane sees a documented hold, not a mute nobody looked at.
+    // '--shake' stays on its own merit: a classList toggle the walker cannot reach at all.
+    dynamicClassPrefixes: ['staff-login-logo--small', 'staff-login-card--shake'],
     // Cited, not muted: .skeleton is defined in frontend/themes/components.css:1296,
     // a sheet both entry points import (main.tsx:7, main.tablet.tsx:20). The mute
     // claimed a runtime-composed name; the cite says what is true.
@@ -550,7 +565,11 @@ const SCREENS: ScreenEntry[] = [
     // offline-queue-status-* strings at :56,:58,:60,:62, which begin with 'offline-' and
     // are Fluent label ids rather than classes, so the shape was wrong in both
     // directions. A fourth variant in this sheet now reads dead instead of being waived.
-    dynamicClassPrefixes: ['status-pending', 'status-synced', 'status-failed'],
+    // All three struck 2026-09-16 · DSH · the same class of empty waiver. Each is a WHOLE class
+    // name, not a prefix, and each is composed at a ternary the resolver now reaches -- so the
+    // mute is not the only claim on any rule: the census printed 18 PREFIX-RESCUED names before
+    // this edit and none of them is a status-* name (RESCUED  OfflineQueueScreen -> 0 lines),
+    // and it prints 18 after. Nothing newly dead (DEAD stayed 0 pair(s)).
     knownDynamicFragments: ['free'],
   },
 
@@ -2416,9 +2435,13 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   // Graded values that passed ONLY because some source string contains the prefix, with no
   // class of their own inside the entry's cited sheets. Printed by name: the identity this
   // line exists to keep auditable is graded = credited + inert + residual, and every term
-  // of it is named. It read 108 = 103 + 4 + 1 while the four struck StockCountDetail
-  // sc-badge--* mutes stood; the same run now reads 104 = 103 + 0 + 1, and the four that
-  // left are named in the entry at :1025 rather than being absorbed into a smaller total.
+  // of it is named. Three dated reads of the same identity, each closed: 108 = 103 + 4 + 1
+  // while the four StockCountDetail sc-badge--* mutes stood unearned; 104 = 103 + 0 + 1
+  // once they were struck at the ledger; 107 = 107 + 0 + 0 once the badge family was hoisted
+  // into its own imported sheet and the mutes became credit. This box reads 100 = 100 + 0 + 0
+  // -- seven whole-name mutes that the census never credited as a sole claim removed, with
+  // inert and residual both still zero, so the shrink is the ledger getting thinner, not a
+  // term going missing.
   const uncreditedLive: string[] = [];
   let graded = 0;
   for (const entry of SCREENS) {
