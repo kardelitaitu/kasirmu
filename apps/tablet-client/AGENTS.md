@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths/claims verified) · capabilities/mobile.json exists; Cargo.toml crate-type ["staticlib","cdylib","rlib"] matches; src/commands/ exists; tauri.conf.json has android/minSdkVersion 26; CI-on-main note matches root AGENTS.md policy · the hardcoded ANDROID_NDK_HOME path (27.0.12077973) is a local env hint, not a code-claim error · REV 2 (09-09-26, DSH docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (1 finding) + 2 adjacent CI claims in the same file corrected; the older text above is kept verbatim, including the "CI-on-main note matches root AGENTS.md policy" clause, which the rev-2 note below now contradicts (root AGENTS.md has since been rewritten: dev-ci.yml has NO push trigger). Finding: the Signing section asserted "CI (android.yml / nightly.yml) decodes the base64 keystore secret into gen/android/ and writes this file" — both workflows were renamed to .bak by 23c963303 on 2026-09-02 and GitHub never executes a .bak file, so nothing does this; replaced with the retired file plus the line range where the logic still reads (.github/workflows/android.yml.bak:119-132) and the plain statement that release.yml is desktop-only (.github/workflows/release.yml:24). Also fixed: the CI notes section claimed a CI job "should" build the APK for PRs to main without saying no such job exists, and "The CI-only trigger on main push/pull_request ... feature-branch pushes skip CI" — wrong in both halves (pull_request to main + workflow_dispatch only; a main push runs nothing). Re-verified true: gen/android/app/build.gradle.kts exists and is tracked, capabilities/mobile.json exists, tauri.conf.json still carries android/minSdkVersion 26, crate-type is unchanged. Left alone: the keystore-properties format and the build/flag tables (Tauri CLI behaviour, not a repo claim I can measure here). -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths/claims verified) · capabilities/mobile.json exists; Cargo.toml crate-type ["staticlib","cdylib","rlib"] matches; src/commands/ exists; tauri.conf.json has android/minSdkVersion 26; CI-on-main note matches root AGENTS.md policy · the hardcoded ANDROID_NDK_HOME path (27.0.12077973) is a local env hint, not a code-claim error · REV 2 (09-09-26, DSH docs-auditor, CI-claim pass) — status: ACCURATE AFTER REPAIR (1 finding) + 2 adjacent CI claims in the same file corrected; the older text above is kept verbatim, including the "CI-on-main note matches root AGENTS.md policy" clause, which the rev-2 note below now contradicts (root AGENTS.md has since been rewritten: dev-ci.yml has NO push trigger). Finding: the Signing section asserted "CI (android.yml / nightly.yml) decodes the base64 keystore secret into gen/android/ and writes this file" — both workflows were renamed to .bak by 23c963303 on 2026-09-02 and GitHub never executes a .bak file, so nothing does this; replaced with the retired file plus the line range where the logic still reads (.github/workflows/android.yml.bak:119-132) and the plain statement that release.yml is desktop-only (.github/workflows/release.yml:24). Also fixed: the CI notes section claimed a CI job "should" build the APK for PRs to main without saying no such job exists, and "The CI-only trigger on main push/pull_request ... feature-branch pushes skip CI" — wrong in both halves (pull_request to main + workflow_dispatch only; a main push runs nothing). Re-verified true: gen/android/app/build.gradle.kts exists and is tracked, capabilities/mobile.json exists, tauri.conf.json still carries android/minSdkVersion 26, crate-type is unchanged. Left alone: the keystore-properties format and the build/flag tables (Tauri CLI behaviour, not a repo claim I can measure here). · REV 3 (2026-09-16, DSH agents-3 lane): the rev-2 note and the Signing section both assert that root AGENTS.md was rewritten to say dev-ci.yml has NO push trigger. That is inverted: `dev-ci.yml:3-8` declares `pull_request: branches: [main]`, `push: branches: [main]` and `workflow_dispatch:`, and root AGENTS.md names this very denial as one of two false CI claims it corrected. Both prose sites are fixed; the stamp keeps rev 2 verbatim because this file preserves superseded readings. No Android, signing or build claim moved. The per-directory mirror is NOT policed: `scripts/verify-agents-mirrors.py` compares root AGENTS.md with `.agents/AGENTS.md` only ("all 2 mirrors agree"), so a green from it says nothing about this file, which is how the false note survived a correction pass. -->
 
 # Android Development — OZ-POS Tablet
 
@@ -91,7 +91,8 @@ file (`.github/workflows/android.yml.bak:119-132`: base64 -d into
 `oz-pos-release.keystore`, then `keyAlias`/`password`/`storeFile` written to
 `keystore.properties` from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` /
 `KEYSTORE_PASSWORD` secrets). The only live workflows are `dev-ci.yml` (PR to
-`main` + `workflow_dispatch`) and `release.yml` (`v*` tags), and `release.yml` is
+`main`, a push to `main` and `workflow_dispatch`, three events re-read from
+`dev-ci.yml:3-8`) and `release.yml` (`v*` tags), and `release.yml` is
 desktop-only by design — its own header at `.github/workflows/release.yml:24`
 lists "Mobile (`android.yml.bak` / `ios.yml.bak`). Never part of this file." So
 restoring an Android release build means writing a workflow again; until then,
@@ -167,10 +168,15 @@ today's CI. For PRs targeting `main`, a CI job should:
 5. `cargo tauri android build --apk --target aarch64`
 6. Upload APK as an artifact
 
-Trigger note (corrected 09-09-26): `dev-ci.yml` fires on `pull_request`
-targeting `main` plus `workflow_dispatch` only — there is **no `push` trigger**, so
-pushing to `main` runs nothing either, and a feature-branch push runs nothing
-until a PR is opened. Root `AGENTS.md` says the same; when this line was written it
-did not.
+Trigger note (corrected 09-09-26; **corrected again 2026-09-16**): what the 09-09-26
+fix got right is its last clause — a feature-branch push runs nothing until a
+PR is opened. What it got wrong it asserted twice over, and it then pointed at the root
+file for agreement the root file does not give: `dev-ci.yml:3-8` declares
+`pull_request: branches: [main]`, `push: branches: [main]` and `workflow_dispatch:`, so
+there IS a push trigger, a push to `main` does run CI, and per the comment at
+`dev-ci.yml:662-663` such a push also deploys: the `if:` condition on
+`northflank-deploy` at `dev-ci.yml:695` matches `github.event_name` equal to
+`push` on `refs/heads/main`. Re-derive with
+`sed -n 3,8p` on that file. What a PR gates is the merge, not the validation.
 
 > last audited 09-09-26 by docs-auditor
