@@ -18,7 +18,13 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 /// Get the current sync configuration settings.
+///
+/// Wire keys are camelCase because this crosses Tauri IPC to the shared
+/// settings page (`ui/src/api/offline.ts` `SyncSettingsDto` reads `serverUrl`
+/// / `hasApiKey`), which is also what the bridge twin this command must agree
+/// with serialises.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncSettingsDto {
     /// Server Url.
     pub server_url: Option<String>,
@@ -44,7 +50,20 @@ pub async fn get_sync_settings(state: State<'_, AppState>) -> Result<SyncSetting
 }
 
 /// Update sync settings.
+///
+/// The effective wire keys are camelCase — `serverUrl` / `apiKey` / `enabled`
+/// — because that is what the settings page sends (`ui/src/api/offline.ts`
+/// `UpdateSyncSettingsArgs`, payload built in
+/// `ui/src/features/settings/hooks/saveDiff.ts`) and what the bridge twin
+/// `crates/oz-bridge/src/sync.rs` already expects. Without `rename_all` this
+/// struct silently ignored the UI's payload: both divergent fields are
+/// `Option<String>`, so serde filled `None` instead of erroring and
+/// `update_sync_settings_data`'s `unwrap_or("")` then WIPED the stored server
+/// URL on tablet while the same save worked on desktop. The pair assertion in
+/// `sync_tests.rs::update_sync_settings_wire_keys_match_bridge_twin` pins the
+/// two structs against each other so casing drift reads red.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateSyncSettingsArgs {
     /// Server Url.
     pub server_url: Option<String>,

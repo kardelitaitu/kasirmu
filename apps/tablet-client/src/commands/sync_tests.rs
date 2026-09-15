@@ -8,9 +8,14 @@ fn sync_settings_serialize() {
         enabled: true,
     };
     let json = serde_json::to_value(&dto).unwrap();
-    assert_eq!(json["server_url"], "https://sync.example.com");
-    assert_eq!(json["has_api_key"], true);
+    // The shared settings page reads camelCase (ui/src/api/offline.ts
+    // `SyncSettingsDto`); snake_case here reads as `undefined` on the tablet
+    // and the page then re-sends a null URL, which wipes the stored one.
+    assert_eq!(json["serverUrl"], "https://sync.example.com");
+    assert_eq!(json["hasApiKey"], true);
     assert_eq!(json["enabled"], true);
+    assert!(json.get("server_url").is_none(), "snake_case key must not reach the UI");
+    assert!(json.get("has_api_key").is_none(), "snake_case key must not reach the UI");
 }
 
 #[test]
@@ -21,24 +26,91 @@ fn sync_settings_no_url_disabled() {
         enabled: false,
     };
     let json = serde_json::to_value(&dto).unwrap();
-    assert!(json["server_url"].is_null());
+    assert!(json["serverUrl"].is_null());
     assert!(!json["enabled"].as_bool().unwrap());
 }
 
 #[test]
 fn update_sync_settings_deserialize() {
-    let json = r#"{"server_url":"https://sync.example.com","api_key":"sk-123","enabled":true}"#;
+    // This is the payload the settings page really sends — camelCase, built at
+    // ui/src/features/settings/hooks/saveDiff.ts and forwarded unconverted by
+    // ui/src/api/offline.ts. The snake_case version of this line used to pass
+    // green while certifying the bug: serde filled both Option fields with
+    // None and `update_sync_settings_data` wrote "" over the saved URL.
+    let json = r#"{"serverUrl":"https://sync.example.com","apiKey":"sk-123","enabled":true}"#;
     let args: UpdateSyncSettingsArgs = serde_json::from_str(json).unwrap();
     assert_eq!(args.server_url.unwrap(), "https://sync.example.com");
     assert_eq!(args.api_key.unwrap(), "sk-123");
+    assert!(args.enabled);
 }
 
 #[test]
 fn update_sync_settings_deserialize_no_key() {
-    let json = r#"{"server_url":null,"api_key":null,"enabled":false}"#;
+    // The masked key field is only sent when the user typed one, so the
+    // omitted-`apiKey` shape is the common case.
+    let json = r#"{"serverUrl":null,"enabled":false}"#;
     let args: UpdateSyncSettingsArgs = serde_json::from_str(json).unwrap();
     assert!(args.server_url.is_none());
     assert!(args.api_key.is_none());
+    assert!(!args.enabled);
+}
+
+#[test]
+fn update_sync_settings_wire_keys_match_bridge_twin() {
+    // The drift guard. One JSON object — the bytes the UI sends — must land in
+    // the tablet struct AND in `oz_bridge::sync::UpdateSyncSettingsArgs` (the
+    // type the desktop shell re-exports at
+    // apps/desktop-client/src/commands/sync.rs) with equal effective values.
+    // Both divergent fields are Option, so a casing mismatch on ONE side used
+    // to be invisible to every other test: it deserialises fine and silently
+    // carries None into the unwrap_or("") that wipes the stored URL. Equalising
+    // the two structs is what makes that read red.
+    //
+    // Payload 2 is the snake_case shape, included so the assertion bites in
+    // BOTH directions: if the tablet struct ever reverts to snake_case it
+    // fills Some where the bridge fills None and the pair fails, while
+    // payload 1 pins that camelCase — not the empty pair of Nones — is what
+    // the tablet actually accepts.
+    const PAYLOADS: [&str; 3] = [
+        r#"{"serverUrl":"https://sync.example.com","apiKey":"sk-123","enabled":true}"#,
+        r#"{"server_url":"https://sync.example.com","api_key":"sk-123","enabled":true}"#,
+        r#"{"serverUrl":null,"enabled":false}"#,
+    ];
+    for json in PAYLOADS {
+        let tablet: UpdateSyncSettingsArgs =
+            serde_json::from_str(json).unwrap_or_else(|e| panic!("tablet must accept {json}: {e}"));
+        let bridge: oz_bridge::sync::UpdateSyncSettingsArgs =
+            serde_json::from_str(json).unwrap_or_else(|e| panic!("bridge must accept {json}: {e}"));
+        assert_eq!(tablet.server_url, bridge.server_url, "server_url casing drift on {json}");
+        assert_eq!(tablet.api_key, bridge.api_key, "api_key casing drift on {json}");
+        assert_eq!(tablet.enabled, bridge.enabled, "enabled casing drift on {json}");
+    }
+
+    // And the UI's own shape must resolve to values, not to two matching Nones.
+    let tablet: UpdateSyncSettingsArgs = serde_json::from_str(PAYLOADS[0]).unwrap();
+    assert_eq!(tablet.server_url.as_deref(), Some("https://sync.example.com"));
+    assert_eq!(tablet.api_key.as_deref(), Some("sk-123"));
+    assert!(tablet.enabled);
+}
+
+#[test]
+fn sync_settings_dto_wire_keys_match_bridge_twin() {
+    // Read-path half of the same guard: the page cannot show a URL the tablet
+    // serialised as `server_url`, and the blank field it shows instead is what
+    // the next save writes back.
+    let tablet_dto = SyncSettingsDto {
+        server_url: Some("https://sync.example.com".into()),
+        has_api_key: true,
+        enabled: true,
+    };
+    let tablet = serde_json::to_value(&tablet_dto).unwrap();
+    let bridge = serde_json::to_value(oz_bridge::sync::SyncSettingsDto {
+        server_url: tablet_dto.server_url.clone(),
+        has_api_key: tablet_dto.has_api_key,
+        enabled: tablet_dto.enabled,
+    })
+    .unwrap();
+    assert_eq!(tablet, bridge, "tablet/bridge SyncSettingsDto wire keys drifted");
 }
 
 #[test]
