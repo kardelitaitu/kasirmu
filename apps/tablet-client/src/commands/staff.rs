@@ -613,60 +613,22 @@ pub async fn bootstrap_owner(
 }
 
 /// Business logic for `bootstrap_owner` (extracted for testing).
+///
+/// A forwarder, not a copy. The body now lives once in
+/// `oz_bridge::staff::run_bootstrap_owner`, which this shell's eight
+/// `run_bootstrap_owner_*` tests drive through this name and which the desktop
+/// shell reaches the same way. The two copies were line-for-line identical
+/// (same trim/lowercase, the same three validations in the same order, the same
+/// "staff accounts already exist" guard against `list_users`, the same
+/// seed-then-create sequence, and the same empty `picker_ticket` that the
+/// command wrapper above replaces) apart from the error type, so
+/// `BridgeError::Invalid -> AppError::Invalid` keeps every message byte-equal
+/// and those tests are the proof rather than a claim of equivalence.
 fn run_bootstrap_owner(
     conn: &rusqlite::Connection,
     args: &BootstrapOwnerArgs,
 ) -> Result<BootstrapOwnerResult, AppError> {
-    let username = args.username.trim().to_lowercase();
-    let display_name = args.display_name.trim();
-
-    validate_not_empty("username", &username).map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("display_name", display_name)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_min_length("pin", &args.pin, 4).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let pin_hash =
-        hash_pin(&args.pin).map_err(|e| AppError::Internal(format!("hashing PIN: {e}")))?;
-
-    let store = Store::new(conn);
-
-    // Guard: refuse to bootstrap if users already exist.
-    let existing = store.list_users()?;
-    if !existing.is_empty() {
-        return Err(AppError::Invalid(
-            "cannot bootstrap: staff accounts already exist".into(),
-        ));
-    }
-
-    // Seed roles first so role-owner exists.
-    store.seed_default_roles()?;
-
-    let user = store.create_user(
-        &username,
-        &pin_hash,
-        display_name,
-        oz_core::builtin_roles::OWNER,
-    )?;
-    let role = store
-        .get_role(oz_core::builtin_roles::OWNER)?
-        .ok_or_else(|| AppError::Internal("owner role not found after seeding".into()))?;
-
-    tracing::info!(username = %username, "owner account bootstrapped");
-
-    let permissions = role.permission_keys();
-
-    Ok(BootstrapOwnerResult {
-        session: oz_core::auth::LoginSession {
-            user_id: user.id,
-            display_name: user.display_name,
-            role_name: role.name,
-            role_id: role.id,
-            permissions,
-        },
-        // The command wrapper attaches the picker ticket after the pure
-        // function returns (it needs the per-process secret).
-        picker_ticket: String::new(),
-    })
+    Ok(oz_bridge::staff::run_bootstrap_owner(conn, args)?)
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
