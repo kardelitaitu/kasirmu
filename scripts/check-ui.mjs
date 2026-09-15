@@ -63,16 +63,24 @@ const results = []; // { gate, status, duration }
  * @param {string}  name         Human-readable gate name.
  * @param {string}  command      Shell command to execute.
  * @param {object}  [opts]
- * @param {number}  [opts.timeout]  Timeout in ms (default 300_000).
+ * @param {number}  [opts.timeout]    Timeout in ms (default 300_000).
+ * @param {number}  [opts.maxBuffer]  Cap on the stdout this gate captures.
+ *   Left unset it inherits execSync's own 1 MiB — and exceeding that does not
+ *   truncate the capture, it kills the child with SIGTERM and throws ENOBUFS,
+ *   which the catch below files as a FAIL. So a leg whose PASSING output is
+ *   near 1 MiB is graded by its verbosity, not its result: set maxBuffer on
+ *   any leg that can print that much when nothing is wrong.
  */
 function gate(name, command, opts = {}) {
   const timeout = opts.timeout ?? 300_000;
+  const execOpts = { stdio: 'pipe', timeout };
+  if (opts.maxBuffer !== undefined) execOpts.maxBuffer = opts.maxBuffer;
   const start = Date.now();
 
   process.stdout.write(`  ${CYAN}▶${NC} ${name} ... `);
 
   try {
-    execSync(command, { stdio: 'pipe', timeout });
+    execSync(command, execOpts);
     const sec = ((Date.now() - start) / 1000).toFixed(1);
     console.log(`${GREEN}PASS (${sec}s)${NC}`);
     results.push({ gate: name, status: 'pass', duration: sec });
@@ -127,7 +135,17 @@ function main() {
   gate('TypeScript type check', 'npm run typecheck');
 
   // ── 3. Unit tests ──────────────────────────────────────────────────────
-  gate('Unit tests (vitest)', 'npm run test', { timeout: 600_000 });
+  // Sized from this leg's own print, not guessed: measured 2026-09-15 the
+  // GREEN run is 1,335,496 bytes (580 files / 9,988 cases) — 27% OVER execSync's
+  // 1 MiB default, which is how a passing suite was being filed as a FAIL.
+  // 64 MiB is 50x that print, and maxBuffer ceilings accumulated bytes rather
+  // than reserving them, so unused headroom costs nothing. RESIDUAL RISK left
+  // on purpose: a suite that outgrows even 64 MiB reproduces the same bug
+  // rarer — green reported as FAIL with no failing test named. The structural
+  // fix is stdio: 'inherit' here, since gate() parses none of this output; the
+  // other seven legs keep the pipe because their GREEN print is small enough
+  // that overflow can only follow a real failure, which is already their verdict.
+  gate('Unit tests (vitest)', 'npm run test', { timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
 
   // ── 4. i18n lint ───────────────────────────────────────────────────────
   gate('i18n lint', 'npm run lint:i18n');
