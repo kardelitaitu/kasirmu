@@ -92,7 +92,7 @@ export default function AuthForm({ locale }: Props) {
     if (redirect && token) {
       try {
         const u = new URL(redirect);
-        if (u.hostname === 'dashboard.ozpos.my.id' || u.hostname === 'admin.ozpos.my.id') {
+        if (u.hostname === 'dashboard.kasir.mu' || u.hostname === 'admin.kasir.mu') {
           const res = await fetch(`${API}/api/v1/web/exchange-issue`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

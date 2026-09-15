@@ -170,7 +170,7 @@ pub fn update_pg_sync_settings_data(
 // indicator can recover while auto-provisioning is still writing the
 // persisted settings row. Points at the unified cloud server.
 #[cfg(debug_assertions)]
-const LOCAL_DEV_SYNC_URL: &str = "https://license.ozpos.my.id";
+const LOCAL_DEV_SYNC_URL: &str = "https://license.kasir.mu";
 
 /// Resolve the URL used by the status-bar health probe.
 ///

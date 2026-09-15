@@ -20,7 +20,7 @@ Kami dapat menambah, mengubah, atau menghapus fitur dari waktu ke waktu. Kami ak
 2. Anda harus memberikan alamat surel yang benar dan menjaga informasi akun tetap mutakhir. Kami memverifikasi kepemilikan surel dengan mengirimkan kode sekali pakai ke alamat Anda.
 3. Anda bertanggung jawab atas segala hal yang dilakukan melalui akun Anda. Jaga kerahasiaan kata sandi Anda dan jangan membagikan akun Anda.
 4. Anda tidak boleh membuat akun untuk tujuan menghindari batasan paket, batasan masa percobaan gratis, atau pembatasan lainnya.
-5. Jika Anda mencurigai penggunaan akun tanpa izin, segera hubungi kami di support@ozpos.my.id.
+5. Jika Anda mencurigai penggunaan akun tanpa izin, segera hubungi kami di support@kasir.mu.
 
 ## 3. Paket, lisensi, dan aktivasi
 
@@ -33,7 +33,7 @@ Kami dapat menambah, mengubah, atau menghapus fitur dari waktu ke waktu. Kami ak
 
 1. **Penyedia pembayaran.** Seluruh pembayaran diproses oleh Paddle (paddle.com), penyedia pembayaran kami. Saat Anda membayar, Anda membuat perjanjian terpisah dengan Paddle untuk pembayaran itu sendiri (termasuk ketentuan dan kebijakan privasi Paddle). Kami tidak pernah menerima atau menyimpan rincian kartu pembayaran Anda.
 2. **Mata uang dan harga.** Harga ditampilkan pada halaman harga dan saat checkout. Pelanggan internasional ditagih dalam Dolar AS (USD); pelanggan di Indonesia dapat ditagih dalam Rupiah Indonesia (IDR). Harga dapat berubah dari waktu ke waktu; perubahan berlaku untuk periode penagihan berikutnya, dan kami akan memberikan pemberitahuan apabila diwajibkan.
-3. **Perpanjangan otomatis.** Langganan berbayar diperpanjang secara otomatis pada akhir setiap periode penagihan hingga dibatalkan. Anda dapat membatalkan kapan saja melalui checkout/akun Paddle Anda atau dengan menghubungi support@ozpos.my.id; akses berlanjut hingga akhir periode yang telah Anda bayar.
+3. **Perpanjangan otomatis.** Langganan berbayar diperpanjang secara otomatis pada akhir setiap periode penagihan hingga dibatalkan. Anda dapat membatalkan kapan saja melalui checkout/akun Paddle Anda atau dengan menghubungi support@kasir.mu; akses berlanjut hingga akhir periode yang telah Anda bayar.
 4. **Pajak.** Pajak yang berlaku (misalnya PPN) ditambahkan saat checkout apabila diwajibkan oleh hukum, dan dipungut serta disetorkan oleh Paddle atau oleh kami sebagaimana berlaku.
 5. **Pengembalian dana.** Jika Anda tidak puas, Anda dapat meminta pengembalian dana dalam 30 hari sejak pembayaran pertama untuk suatu paket. Pengembalian dana diproses melalui mekanisme Paddle dan tunduk pada proses Paddle. Di luar jendela 30 hari awal, pengembalian dana sepenuhnya merupakan kebijaksanaan kami, kecuali hukum setempat mengharuskan lain.
 6. **Pembayaran gagal atau disengketakan.** Jika pembayaran gagal, dibatalkan, atau disengketakan, kami dapat menangguhkan atau menurunkan akses ke fitur berbayar hingga masalah diselesaikan, dan jumlah yang belum dibayar tetap terutang.
@@ -109,7 +109,7 @@ Tidak ada pihak yang bertanggung jawab atas kegagalan atau keterlambatan dalam m
 ## 15. Hukum yang berlaku dan penyelesaian sengketa
 
 1. Ketentuan ini diatur oleh hukum Republik Indonesia, tanpa memperhatikan asas-asas hukum yang bertentangan (conflict of law).
-2. Para pihak akan terlebih dahulu berupaya menyelesaikan sengketa secara musyawarah dengan menghubungi support@ozpos.my.id.
+2. Para pihak akan terlebih dahulu berupaya menyelesaikan sengketa secara musyawarah dengan menghubungi support@kasir.mu.
 3. Apabila sengketa tidak terselesaikan dalam 30 hari, sengketa akan diajukan ke pengadilan yang berwenang di Republik Indonesia, dan setiap pihak menyetujui yurisdiksi pengadilan tersebut. Tidak ada ketentuan dalam bagian ini yang menghalangi salah satu pihak untuk mengajukan upaya hukum berupa ganti rugi darurat atau keadilan lain (injunctive relief) di pengadilan yang berwenang, dan tidak ada ketentuan yang membatasi hak Anda berdasarkan hukum perlindungan konsumen yang bersifat memaksa di negara tempat tinggal Anda.
 
 ## 16. Ketentuan umum
@@ -118,11 +118,11 @@ Tidak ada pihak yang bertanggung jawab atas kegagalan atau keterlambatan dalam m
 2. **Pemisahan.** Jika salah satu ketentuan tidak dapat diberlakukan, ketentuan lainnya tetap berlaku sepenuhnya.
 3. **Tidak ada pengesampingan.** Kegagalan kami untuk menegakkan suatu ketentuan bukan merupakan pengesampingan atas ketentuan tersebut.
 4. **Pengalihan.** Anda tidak dapat mengalihkan Ketentuan ini tanpa persetujuan tertulis kami. Kami dapat mengalihkan Ketentuan ini sehubungan dengan merger, akuisisi, atau penjualan seluruh atau sebagian besar aset kami, dengan pemberitahuan kepada Anda.
-5. **Pemberitahuan.** Pemberitahuan kepada kami: support@ozpos.my.id. Pemberitahuan kepada Anda: alamat surel pada akun Anda atau pemberitahuan di situs web.
+5. **Pemberitahuan.** Pemberitahuan kepada kami: support@kasir.mu. Pemberitahuan kepada Anda: alamat surel pada akun Anda atau pemberitahuan di situs web.
 
 ## 17. Kontak
 
-Pertanyaan tentang Ketentuan ini: **support@ozpos.my.id**. Untuk membeli atau meningkatkan paket: halaman harga atau **sales@ozpos.my.id**.
+Pertanyaan tentang Ketentuan ini: **support@kasir.mu**. Untuk membeli atau meningkatkan paket: halaman harga atau **sales@kasir.mu**.
 
 
 ## Riwayat versi

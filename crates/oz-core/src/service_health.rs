@@ -45,7 +45,7 @@ use serde::Deserialize;
 /// than hidden by omitting it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ServiceKind {
-    /// The license/auth server (`https://license.ozpos.my.id`).
+    /// The license/auth server (`https://license.kasir.mu`).
     LicenseServer,
     /// The cloud sync service.
     Sync,

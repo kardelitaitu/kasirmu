@@ -14,8 +14,8 @@ Dengan membuat akun atau menggunakan Layanan, Anda menyetujui praktik yang dijel
 
 OZ-POS mengoperasikan Layanan dan merupakan pengendali data pribadi yang bertanggung jawab atas data pribadi yang dijelaskan dalam kebijakan ini. Anda dapat menghubungi kami kapan saja:
 
-- **Surel:** support@ozpos.my.id
-- **Penjualan:** sales@ozpos.my.id
+- **Surel:** support@kasir.mu
+- **Penjualan:** sales@kasir.mu
 
 Kami berkomitmen untuk memproses data pribadi secara sah, adil, dan transparan sesuai dengan peraturan perundang-undangan yang berlaku, termasuk Undang-Undang Nomor 27 Tahun 2022 tentang Pelindungan Data Pribadi ("UU PDP") dan, apabila berlaku, Peraturan Umum Pelindungan Data Uni Eropa (GDPR).
 
@@ -93,7 +93,7 @@ Kami menerapkan langkah keamanan teknis dan organisasi yang wajar untuk melindun
 - Kontrol akses dan pencatatan pada sistem produksi;
 - Pembatasan akses ke data produksi bagi tim dan penyedia kami.
 
-Tidak ada metode transmisi atau penyimpanan yang sepenuhnya aman. Anda juga berperan: gunakan kata sandi yang kuat dan unik untuk akun Anda dan jangan membagikannya. Jika Anda merasa akun Anda telah disusupi, segera hubungi kami di support@ozpos.my.id.
+Tidak ada metode transmisi atau penyimpanan yang sepenuhnya aman. Anda juga berperan: gunakan kata sandi yang kuat dan unik untuk akun Anda dan jangan membagikannya. Jika Anda merasa akun Anda telah disusupi, segera hubungi kami di support@kasir.mu.
 
 ## 9. Cookie dan pelacakan
 
@@ -115,7 +115,7 @@ Tergantung tempat tinggal Anda, Anda mungkin memiliki hak-hak berikut atas data 
 - **Penarikan persetujuan** — apabila pemrosesan didasarkan pada persetujuan;
 - **Pengaduan** — mengajukan pengaduan kepada lembaga pelindungan data pribadi setempat (misalnya di UE/EEA) atau kepada lembaga pelindungan data pribadi Indonesia.
 
-Untuk menggunakan hak-hak ini, kirim surel ke **support@ozpos.my.id** dari alamat surel yang terdaftar pada akun Anda. Kami akan memverifikasi identitas Anda dan menanggapi dalam 30 hari. Kami mungkin perlu menyimpan data tertentu untuk memenuhi kewajiban hukum atau melindungi kepentingan sah kami, dan kami akan memberi tahu Anda apabila demikian.
+Untuk menggunakan hak-hak ini, kirim surel ke **support@kasir.mu** dari alamat surel yang terdaftar pada akun Anda. Kami akan memverifikasi identitas Anda dan menanggapi dalam 30 hari. Kami mungkin perlu menyimpan data tertentu untuk memenuhi kewajiban hukum atau melindungi kepentingan sah kami, dan kami akan memberi tahu Anda apabila demikian.
 
 ## 11. Anak-anak
 
@@ -129,7 +129,7 @@ Kami dapat memperbarui Kebijakan Privasi ini dari waktu ke waktu. Perubahan yang
 
 Pertanyaan, permintaan, atau pengaduan mengenai kebijakan ini atau data Anda:
 
-- **Surel:** support@ozpos.my.id
+- **Surel:** support@kasir.mu
 - **Subjek surel:** "Permintaan privasi"
 
 Kami berupaya menanggapi setiap permintaan privasi dalam 30 hari.

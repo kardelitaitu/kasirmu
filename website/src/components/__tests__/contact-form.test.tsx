@@ -156,7 +156,7 @@ describe('ContactForm', () => {
 
       const mailto = container.querySelector('a[href^="mailto:"]') as HTMLAnchorElement | null;
       expect(mailto).not.toBeNull();
-      expect(mailto?.getAttribute('href')).toContain('support@ozpos.my.id');
+      expect(mailto?.getAttribute('href')).toContain('support@kasir.mu');
       expect(mailto?.getAttribute('href')).toContain(encodeURIComponent('Support: Bob'));
       expect(mailto?.getAttribute('href')).toContain(encodeURIComponent('My printer stopped working.'));
     } finally {

@@ -31,7 +31,7 @@ use crate::error::CoreError;
 /// the old standalone `oz-pos-license-service` was folded into it.
 /// Override via the `OZ_LICENSE_SERVER_URL` environment variable
 /// in production, or use `http://localhost:8090` for local testing.
-pub const LICENSE_SERVER_URL: &str = "https://license.ozpos.my.id";
+pub const LICENSE_SERVER_URL: &str = "https://license.kasir.mu";
 
 /// The RSA-2048 public key in PEM format, embedded at build time.
 ///

@@ -12,7 +12,7 @@ import { t } from '../i18n';
  * entered fields pre-filled, so the UI stays fully usable.
  */
 const API = '/api/contact';
-const SUPPORT_EMAIL = 'support@ozpos.my.id';
+const SUPPORT_EMAIL = 'support@kasir.mu';
 
 interface Props {
   locale: string;

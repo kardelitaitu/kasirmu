@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://ozpos.my.id/sitemap-index.xml
+Sitemap: https://kasir.mu/sitemap-index.xml

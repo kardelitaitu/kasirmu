@@ -506,7 +506,7 @@ describe('AuthForm — open redirect guard', () => {
       value: {
         get href() { return capturedHref; },
         set href(v: string) { capturedHref = v; },
-        search: '?redirect=https://dashboard.ozpos.my.id/settings',
+        search: '?redirect=https://dashboard.kasir.mu/settings',
         pathname: '/en/login',
       },
       writable: true,
@@ -524,7 +524,7 @@ describe('AuthForm — open redirect guard', () => {
         await new Promise((r) => setTimeout(r, 30));
       });
       expect(exchangeCalled).toBe(true);
-      expect(capturedHref).toContain('https://dashboard.ozpos.my.id/settings');
+      expect(capturedHref).toContain('https://dashboard.kasir.mu/settings');
       expect(capturedHref).toContain('code=one-time-code-123');
       expect(capturedHref).not.toContain('token=');
     } finally {
@@ -551,7 +551,7 @@ describe('AuthForm — open redirect guard', () => {
       value: {
         get href() { return capturedHref; },
         set href(v: string) { capturedHref = v; },
-        search: '?redirect=https://dashboard.ozpos.my.id/',
+        search: '?redirect=https://dashboard.kasir.mu/',
         pathname: '/en/login',
       },
       writable: true,
@@ -568,7 +568,7 @@ describe('AuthForm — open redirect guard', () => {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 30));
       });
-      expect(capturedHref).toContain('https://dashboard.ozpos.my.id/');
+      expect(capturedHref).toContain('https://dashboard.kasir.mu/');
       expect(capturedHref).not.toContain('token=');
       expect(capturedHref).not.toContain('code=');
     } finally {
@@ -579,7 +579,7 @@ describe('AuthForm — open redirect guard', () => {
   });
 
   it('blocks ?redirect= to a non-dashboard host (host allowlist)', async () => {
-    // The hostname allowlist (dashboard/admin.ozpos.my.id) is the
+    // The hostname allowlist (dashboard/admin.kasir.mu) is the
     // open-redirect guard for the dashboard gate — an external host must
     // fall through to the plain next/account handling. R1 (httpOnly cookie
     // migration): the account-portal target still exchanges the token for a

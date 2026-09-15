@@ -12,7 +12,7 @@ import rehypeMermaid from 'rehype-mermaid';
 // server runtime. See website-plan.md §10 for the Cloudflare Pages settings.
 // Canonical, og:url, sitemap, and hreflang all derive from `site`.
 export default defineConfig({
-  site: 'https://ozpos.my.id',
+  site: 'https://kasir.mu',
   // Inline global.css into every page's <head> instead of emitting a
   // render-blocking <link rel="stylesheet">. A worker-side hack that
   // deferred the link (media="print" onload swap) caused a flash of

@@ -51,7 +51,7 @@
     "title": "Dukungan",
     "subtitle": "Kami siap membantu — hubungi kami kapan saja.",
     "emailLabel": "Email kami",
-    "email": "support@ozpos.my.id",
+    "email": "support@kasir.mu",
     "name": "Nama",
     "namePlaceholder": "Nama Anda",
     "message": "Pesan",
@@ -77,7 +77,7 @@
       },
       {
         "q": "Di mana saya bisa melaporkan bug?",
-        "a": "Email kami di support@ozpos.my.id dengan nomor versi Anda dan deskripsi kejadian."
+        "a": "Email kami di support@kasir.mu dengan nomor versi Anda dan deskripsi kejadian."
       }
     ]
   },
@@ -332,7 +332,7 @@
     "logout": "Keluar",
     "notConfigured": "API lisensi belum dikonfigurasi pada deployment ini.",
     "noSubscription": "Anda belum memiliki langganan aktif. Pilih paket untuk memulai.",
-    "checkoutUnavailable": "Pembayaran online belum tersedia — hubungi sales@ozpos.my.id untuk berlangganan.",
+    "checkoutUnavailable": "Pembayaran online belum tersedia — hubungi sales@kasir.mu untuk berlangganan.",
     "subscribe": "Berlangganan",
     "subscription": "Langganan",
     "starts": "Mulai",
@@ -381,7 +381,7 @@
     "billingInvoices": "Tagihan & Kuitansi",
     "billingInvoicesHint": "Lihat kuitansi transaksi dan riwayat faktur pajak untuk akun Anda.",
     "viewReceipts": "Akses Portal Tagihan & Kuitansi",
-    "invoiceNote": "Butuh faktur pajak perusahaan resmi? Hubungi sales@ozpos.my.id dengan detail NPWP perusahaan Anda.",
+    "invoiceNote": "Butuh faktur pajak perusahaan resmi? Hubungi sales@kasir.mu dengan detail NPWP perusahaan Anda.",
     "invoiceSubject": "Permintaan Faktur - {email}"
   },
   "footer": {
@@ -418,7 +418,7 @@
   "checkout": {
     "signInToSubscribe": "Berlangganan",
     "error": "Tidak dapat memulai checkout. Silakan coba lagi.",
-    "unavailable": "Paket ini belum bisa dibeli online — hubungi sales@ozpos.my.id untuk berlangganan."
+    "unavailable": "Paket ini belum bisa dibeli online — hubungi sales@kasir.mu untuk berlangganan."
   },
   "password": {
     "meterLabel": "Kekuatan kata sandi",

@@ -4,7 +4,7 @@
  *
  * Copies the repo-root dev/ folder into website/public/dev/ so the
  * design-language and KDS-prototype pages are included in the Astro
- * build output and served at https://ozpos.my.id/dev/.
+ * build output and served at https://kasir.mu/dev/.
  *
  * Run automatically via `prebuild` — no manual invocation needed.
  */

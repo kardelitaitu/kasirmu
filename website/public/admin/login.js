@@ -1,9 +1,9 @@
-// API base: use relative path when hosted on ozpos.my.id subdomains (Worker API proxy)
+// API base: use relative path when hosted on kasir.mu subdomains (Worker API proxy)
 // to eliminate CORS and in-handler origin restrictions. Fall back to direct backend URL locally.
-const isSubdomain = window.location.hostname.endsWith('ozpos.my.id');
+const isSubdomain = window.location.hostname.endsWith('kasir.mu');
 const API = isSubdomain
   ? ''
-  : ((window.__OZ_CONFIG__ && window.__OZ_CONFIG__.licenseApiUrl) || 'https://license.ozpos.my.id');
+  : ((window.__OZ_CONFIG__ && window.__OZ_CONFIG__.licenseApiUrl) || 'https://license.kasir.mu');
 
 let currentMode = 'otp'; // default to 'otp' since admin accounts start without a password
 // B18: the OTP cooldown timer is no longer a module global — it lives on

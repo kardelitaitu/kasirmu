@@ -20,7 +20,7 @@ We may add, change, or remove features over time. We will try to give reasonable
 2. You must provide an accurate email address and keep your account information current. We verify email ownership by sending a one-time code to your address.
 3. You are responsible for everything done under your account. Keep your password confidential and do not share your account.
 4. You may not create accounts for the purpose of circumventing plan limits, free-trial limits, or restrictions.
-5. If you suspect unauthorized use of your account, contact us immediately at support@ozpos.my.id.
+5. If you suspect unauthorized use of your account, contact us immediately at support@kasir.mu.
 
 ## 3. Plans, licenses, and activation
 
@@ -33,7 +33,7 @@ We may add, change, or remove features over time. We will try to give reasonable
 
 1. **Payment processor.** All payments are processed by Paddle (paddle.com), our payment provider. When you pay, you are entering into a separate agreement with Paddle for the payment itself (including Paddle's terms and privacy policy). We never receive or store your payment card details.
 2. **Currency and price.** Prices are displayed on the pricing page and at checkout. International customers are billed in US Dollars (USD); customers in Indonesia may be billed in Indonesian Rupiah (IDR). Prices may change over time; changes apply to future billing periods, and we will give notice where required.
-3. **Auto-renewal.** Paid subscriptions renew automatically at the end of each billing period until canceled. You can cancel at any time through your Paddle checkout/account or by contacting support@ozpos.my.id; access continues until the end of the period you have paid for.
+3. **Auto-renewal.** Paid subscriptions renew automatically at the end of each billing period until canceled. You can cancel at any time through your Paddle checkout/account or by contacting support@kasir.mu; access continues until the end of the period you have paid for.
 4. **Taxes.** Applicable taxes (for example VAT/GST/PPN) are added at checkout where required by law, and are collected and remitted by Paddle or by us as applicable.
 5. **Refunds.** If you are not satisfied, you may request a refund within 30 days of your first payment for a plan. Refunds are processed through Paddle's refund mechanism and are subject to Paddle's processes. Beyond the initial 30-day window, refunds are at our sole discretion unless local law requires otherwise.
 6. **Failed or disputed payments.** If a payment fails, is reversed, or is disputed, we may suspend or downgrade access to paid features until the matter is resolved, and unpaid amounts remain due.
@@ -109,7 +109,7 @@ Neither party is liable for failure or delay in performing obligations under the
 ## 15. Governing law and disputes
 
 1. These Terms are governed by the laws of the Republic of Indonesia, without regard to conflict-of-law principles.
-2. The parties will first attempt in good faith to resolve any dispute informally by contacting support@ozpos.my.id.
+2. The parties will first attempt in good faith to resolve any dispute informally by contacting support@kasir.mu.
 3. If a dispute is not resolved within 30 days, it will be submitted to the competent courts of the Republic of Indonesia, and each party consents to the jurisdiction of those courts. Nothing in this section prevents either party from seeking injunctive or other equitable relief in any court of competent jurisdiction, and nothing limits your rights under mandatory consumer-protection laws of your country of residence.
 
 ## 16. General provisions
@@ -118,11 +118,11 @@ Neither party is liable for failure or delay in performing obligations under the
 2. **Severability.** If any provision of these Terms is held unenforceable, the remaining provisions remain in full force and effect.
 3. **No waiver.** Our failure to enforce any provision is not a waiver of it.
 4. **Assignment.** You may not assign these Terms without our prior written consent. We may assign these Terms in connection with a merger, acquisition, or sale of substantially all of our assets, with notice to you.
-5. **Notices.** Notices to us: support@ozpos.my.id. Notices to you: the email address on your account or a notice posted on the website.
+5. **Notices.** Notices to us: support@kasir.mu. Notices to you: the email address on your account or a notice posted on the website.
 
 ## 17. Contact
 
-Questions about these Terms: **support@ozpos.my.id**. To purchase or upgrade a plan: the pricing page or **sales@ozpos.my.id**.
+Questions about these Terms: **support@kasir.mu**. To purchase or upgrade a plan: the pricing page or **sales@kasir.mu**.
 
 
 ## Version history

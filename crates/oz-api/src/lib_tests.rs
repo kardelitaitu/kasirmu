@@ -1110,7 +1110,7 @@ fn parse_cors_origins_dedups_non_adjacent_preserving_order() {
 async fn cors_allowed_origin_is_echoed() {
     let req = Request::builder()
         .uri("/api/v1/health")
-        .header("Origin", "https://ozpos.my.id")
+        .header("Origin", "https://kasir.mu")
         .body(Body::empty())
         .unwrap();
     let resp = test_app().oneshot(req).await.unwrap();
@@ -1119,7 +1119,7 @@ async fn cors_allowed_origin_is_echoed() {
         .headers()
         .get("access-control-allow-origin")
         .map(|v| v.to_str().unwrap());
-    assert_eq!(allow_origin, Some("https://ozpos.my.id"));
+    assert_eq!(allow_origin, Some("https://kasir.mu"));
 }
 
 /// Windows WebView2 uses `http://tauri.localhost` as the Tauri v2
@@ -1162,7 +1162,7 @@ async fn cors_preflight_allowed_origin_returns_allow_header() {
     let req = Request::builder()
         .method("OPTIONS")
         .uri("/api/v1/products")
-        .header("Origin", "https://ozpos.my.id")
+        .header("Origin", "https://kasir.mu")
         .header("Access-Control-Request-Method", "GET")
         .body(Body::empty())
         .unwrap();
@@ -1172,7 +1172,7 @@ async fn cors_preflight_allowed_origin_returns_allow_header() {
         resp.headers()
             .get("access-control-allow-origin")
             .map(|v| v.to_str().unwrap()),
-        Some("https://ozpos.my.id")
+        Some("https://kasir.mu")
     );
 }
 
