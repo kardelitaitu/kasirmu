@@ -595,7 +595,7 @@ back much bigger than this plan. **Forty-seven** silent-skip arms — `else { ep
 skipped …"); return; }`, the shape that reports a pass to cargo and hides its own message — across
 **nine** files in `apps/cloud-server/src`: `email_pg_tests` 12, `db_tests` 9, `sync_store_tests` 7,
 `prune_tests` 5, `sync_api_tests` 5, `webhooks_tests` 3, `main_tests` 2, `redis_backend_tests` 2,
-`migrate_sqlite_to_pg_tests` 2. Only 12 of the 47 sit inside Agent 1's fence.
+`migrate_sqlite_to_pg_tests` 2. Only 12 of the 47 sit inside Agent 1's fence. **Scope of that number, so it is not over-read as the tree's:** 47 is `apps/cloud-server` alone, which is all this plan's sweep looked at. The wider query `git ls-files '*.rs' | Select-String 'eprintln!\("[^"]*[Ss]kipped'` returns **66 strings / 64 test arms across 12 files in 3 crates** — `crates/oz-api` adds 13 and `platform/sync` adds 4 — and Phase 5's own fence was widened to that figure by the sweep that found it.
 
 And **the repair this pass first proposed was wrong in a harmful direction, which is why it was not
 filed until it had been checked.** The draft claim was: *"the repo already owns the right mechanism
