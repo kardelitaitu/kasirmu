@@ -20,7 +20,7 @@ and can make landed phases look missing. Grep both: `git log --oneline --grep="d
 **Sibling Documents:**
 - [`todo-refactor-devmock-agents-1.md`](./todo-refactor-devmock-agents-1.md) (Agent 1 — Dev-Mock Storage Core & Seeding Engine)
 - [`todo-refactor-devmock-agents-2.md`](./todo-refactor-devmock-agents-2.md) (Agent 2 — Operational Mocks: Sales, Inventory & Catalog)
-- [`todo-refactor-devmock-agents-3.md`](../../todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
+- [`done-todo-refactor-devmock-agents-3.md`](../../done-todo-refactor-devmock-agents-3.md) (Agent 3 — Enterprise Mocks: Staff, Workspaces, Topology & Settings)
 
 ---
 
@@ -164,7 +164,7 @@ and can make landed phases look missing. Grep both: `git log --oneline --grep="d
   ```
 
 ### Phase 4.5: Final Cleanup — OWNS the router consolidation (supersedes agent 3's phase 3.3)
-> [`todo-refactor-devmock-agents-3.md`](../../todo-refactor-devmock-agents-3.md) phase 3.3 claims
+> [`done-todo-refactor-devmock-agents-3.md`](../../done-todo-refactor-devmock-agents-3.md) phase 3.3 claims
 > this same job. It is superseded by this phase; agent 3's remaining scope is 3.1 and 3.2 only.
 - [x] *Wait Gate:* Agent 2 has committed phases 2.1 and 2.2 (`refactor(devmock-ops):`).
   Agent 3 has **not** committed yet (`refactor(devmock-enterprise):` — no such commits exist
