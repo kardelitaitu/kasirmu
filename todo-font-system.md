@@ -800,3 +800,5 @@ Yesterday's lesson about artifact age belonged to both tools I own, and the seco
 - **Footprint note, since this plan counts its own reach:** the plan now touches **8** files (`scripts/font-freshness.mjs` is the new one), of which the production-tracked surface is still exactly one changed line in `ui/index.tablet.html`; everything else is tests, tools, and this document.
 
 **Boxes: open 2, ticked 11 — unchanged this round.**
+
+*Erratum, same round:* `2f8a3d2cf` was committed with a subject naming both the shared freshness definition **and** the probe, but its pathspec listed `ui/e2e/font-visual-audit.mjs` after that file had already landed at `404d23c1f` — so the commit contains **only** `todo-font-system.md`. A pathspec commit silently takes whatever still differs, which is correct behaviour and a wrong message. Repaired by this note rather than by an amend, because an amend re-commits the whole shared index and this repo's rules forbid it. The claim being corrected is about which commit holds which file, not about any figure above.
