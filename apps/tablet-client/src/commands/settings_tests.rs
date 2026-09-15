@@ -1470,8 +1470,22 @@ fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
             "pub async fn get_setting_scoped(",
         ] {
             let body = read_door_body(src, signature);
+            // ADR #49 moved the tablet's body into the bridge, so a shell door
+            // may now name the SHARED door instead of the local
+            // `run_get_setting`. That is still a reachable path to the refusal,
+            // and the extra hop is itself pinned: this same loop sweeps
+            // BRIDGE_SETTINGS_RS, whose `get_setting` body must still contain
+            // `run_get_setting`. Accepting the shared door therefore does not
+            // shorten the chain — it adds a link that is checked right here.
+            //
+            // The trailing `(` is load-bearing: without it the `_scoped`
+            // spelling would satisfy the unscoped case, because
+            // `oz_bridge::settings::get_setting_scoped(` contains
+            // `oz_bridge::settings::get_setting` as a prefix.
+            let reaches_the_refusal = body.contains("run_get_setting")
+                || body.contains("oz_bridge::settings::get_setting(");
             assert!(
-                body.contains("run_get_setting"),
+                reaches_the_refusal,
                 "{label}: `{signature}` no longer reaches the refused door —                  it either reads the table itself or the door was renamed. Body: {body}"
             );
             assert!(

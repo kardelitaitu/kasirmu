@@ -150,15 +150,18 @@ fn run_set_store_settings(
 
 #[command]
 /// Get credit settings.
+///
+/// ADR #49: the body is the bridge's. Its twin
+/// `oz_bridge::settings::get_credit_settings` is documented there as
+/// "gate-free exactly as in the shell", so delegating adds no gate and removes
+/// none — what stood here was a byte-identical second copy of that body.
 pub async fn get_credit_settings(
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
-    let conn = state.db.lock().await;
-    Ok(CreditSettingsDto {
-        enabled: Settings::is_credit_enabled(&conn)?,
-        reminder_interval_hours: Settings::get_credit_reminder_interval(&conn)?,
-        max_limit_minor: Settings::get_credit_max_limit(&conn)?,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_credit_settings(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 #[command]
@@ -321,6 +324,21 @@ pub async fn set_hardware_settings(
 /// session's store database, so a tablet terminal persists the same
 /// per-user preferences (menu sort, card/font size) that the desktop
 /// client writes.
+///
+/// ADR #49 NOT APPLIED, deliberately. The body is still the shell's, even
+/// though `oz_bridge::settings::get_user_preferences_scoped` is byte-identical
+/// to it. Delegating would make this shell's registration-gate sweep read the
+/// `oz_bridge::` call as evidence that the shared funnel owns the RBAC — and
+/// for this pair it does not: the bridge twin is ungated beyond the session,
+/// by design, because a caller's own UI preferences need no `settings:read`.
+/// So the delegation would flip `settings::get_user_preferences_scoped` from
+/// "ungated debt on the ledger" to "gated" without a permission being added,
+/// i.e. it would erase a real entry from the ratchet — the same mechanism
+/// `list_credit_sales` above refuses. §4 of the ADR forbids exactly this:
+/// an extraction must not widen a gate. Measured: delegating this pair turned
+/// `registration_gate_tests::drift_pin_three_way_partition_is_complete_and_sums`
+/// red with "on the ledger but no longer ungated: settings::get_user_preferences_scoped,
+/// settings::set_user_preferences_scoped".
 pub async fn get_user_preferences_scoped(
     session_token: String,
     state: State<'_, AppState>,
@@ -343,6 +361,9 @@ pub async fn get_user_preferences_scoped(
 /// session's store database — parity with the desktop client so
 /// the restaurant-menu hamburger configuration persists to the
 /// shared user settings on tablet terminals.
+///
+/// ADR #49 NOT APPLIED — see the getter above for the measurement. The pair
+/// moves together or not at all.
 pub async fn set_user_preferences_scoped(
     session_token: String,
     prefs: Vec<UserPrefEntry>,
@@ -370,19 +391,20 @@ pub async fn get_setting(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let conn = state.db.lock().await;
-    run_get_setting(&conn, &key)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_setting(&ctx, &key)
+        .await
+        .map_err(Into::into)
 }
 
-/// Business logic for `get_setting` (extracted for testing).
+/// Business logic for `get_setting`, kept as this suite's seam.
 ///
-/// C-2: Secret keys are denied — never return plaintext credentials,
-/// API keys, passwords, or PSKs to the IPC surface.
+/// ADR #49: the body is the bridge's. What stood here was not a forwarder but
+/// a second copy of the body — the secret-key refusal plus `Settings::get` —
+/// and the local `is_secret_key` wrapper that fed it goes with it, because
+/// `platform_core::settings::keys` is the one list both shells read.
 fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, AppError> {
-    if is_secret_key(key) {
-        return Ok(None);
-    }
-    Ok(Settings::get(conn, key)?)
+    Ok(oz_bridge::settings::run_get_setting(conn, key)?)
 }
 
 // The hand copy of SECRET_KEY_DENY_LIST that used to sit here is deleted. The
@@ -405,42 +427,18 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
 /// credential values never leave the backend — the gateway keys are on the
 /// shared `SECRET_KEY_DENY_LIST` (platform_core::settings::keys), and the
 /// renderer only ever sees booleans.
+///
+/// ADR #49: the body is the bridge's. This one was byte-identical to
+/// `oz_bridge::settings::gateway_status` — same closure, same three entries,
+/// same order — so the credential contract does not move with it.
 #[tauri::command]
 pub async fn gateway_status(
     state: State<'_, AppState>,
 ) -> Result<Vec<GatewayStatusEntry>, AppError> {
-    let conn = state.db.lock().await;
-    let configured = |key: &str| -> Result<bool, AppError> {
-        Ok(Settings::get(&conn, key)?.is_some_and(|v| !v.is_empty()))
-    };
-    let stripe = configured("stripe.api_key")?;
-    let square = configured("square.api_key")?;
-    let midtrans = configured("midtrans.server_key")?;
-    Ok(vec![
-        GatewayStatusEntry {
-            name: "Stripe".into(),
-            configured: stripe,
-            online: stripe,
-        },
-        GatewayStatusEntry {
-            name: "Square".into(),
-            configured: square,
-            online: square,
-        },
-        GatewayStatusEntry {
-            name: "QRIS (Midtrans)".into(),
-            configured: midtrans,
-            online: midtrans,
-        },
-    ])
-}
-
-/// Returns `true` if the given settings key should be blocked from
-/// the raw `get_setting` IPC surface.
-///
-/// Thin delegation to the shared predicate: one list, one match, both shells.
-fn is_secret_key(key: &str) -> bool {
-    platform_core::settings::keys::is_secret_setting_key(key)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::gateway_status(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Write (or overwrite) a single setting value.
