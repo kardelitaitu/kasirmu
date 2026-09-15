@@ -1069,7 +1069,12 @@ const SCREENS: ScreenEntry[] = [
     name: 'RestaurantMenu',
     tsx: 'restaurant/RestaurantMenu.tsx',
     css: ['restaurant/RestaurantMenu.css'],
-    dynamicClassPrefixes: ['restaurant-hamburger-item--', 'restaurant-card--'],
+    dynamicClassPrefixes: [
+      'restaurant-hamburger-item--',
+      'restaurant-card--added',
+      'restaurant-card--disabled',
+      'restaurant-card--pinned',
+    ],
     externalClasses: ['restaurant-card'],
     // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
