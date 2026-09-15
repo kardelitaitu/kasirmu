@@ -249,6 +249,22 @@ pub fn sort_template_names(mut names: Vec<String>) -> Vec<String> {
 /// profile may live in EITHER `conn` (global registry) or this connection
 /// (the session store's database, where the scoped profile family writes
 /// branch profiles). Pass `None` for single-registry callers and tests.
+///
+/// CONTRACT — callers must gate; this is not safe to call directly. It re-runs
+/// semantic OWNERSHIP only (`validate_semantic_ownership[_in]` above, its first
+/// statements), and nothing else: `validate_apply_gate`'s canonical-semantic
+/// and structural checks, `validate_warehouse_quota`, `validate_warehouse_capacity`
+/// and the session/entitlement resolution are the CALLER's, all of which
+/// `commands.rs` runs before it reaches this function at `:944`. A client that
+/// saves through this helper without them can publish a diagram the Apply
+/// command would reject — the hazard M4 (`todo-topology-editor.md:407`) exists
+/// to close.
+///
+/// It stayed `pub` under M4 for one reason: the desktop shell reaches it at
+/// `apps/desktop-client/src/commands/topology/persistence.rs:165`. That adapter
+/// is `#[allow(dead_code)]` and is itself reached only from the
+/// `#[cfg(test)]` wrapper at `:227` — a test shim, not a production need — so
+/// removing that wrapper and its adapter lets this become `pub(crate)`.
 #[allow(clippy::too_many_arguments)]
 pub fn save_topology_json_at_key_with_revision(
     conn: &Connection,
@@ -649,7 +665,17 @@ pub fn validate_semantic_ownership_in(
 /// here — running them only at the final save would let a malformed
 /// diagram mutate workspace rows and then fail at save, forcing the
 /// compensation cycle to unwind a partial apply.
-pub fn validate_apply_gate(
+///
+/// CONTRACT — this is the gate, not a helper behind it: a caller that mutates
+/// workspaces or saves an envelope without having run it first has skipped the
+/// only place the canonical semantic shape is required. Production runs it at
+/// `commands.rs:561`, before the workspace block.
+///
+/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:407`). Its whole
+/// caller set is inside this crate — `commands.rs:561` plus the mounted
+/// `topology_tests.rs` cases — and, unlike its two sibling helpers, no shell
+/// adapter names it, so a third client cannot reach an ungated copy of it.
+pub(crate) fn validate_apply_gate(
     registries: &[&Connection],
     nodes: &[Value],
     wires: &[Value],
@@ -672,6 +698,22 @@ pub fn validate_apply_gate(
 }
 
 /// Enforce the subscription-tier warehouse count quota for a topology save.
+///
+/// CONTRACT — callers must gate; this is not safe to call directly. It checks
+/// ONE axis (tier × warehouse count) and no others: not `validate_apply_gate`
+/// (semantic shape, ownership, structural validity), not
+/// `validate_warehouse_capacity`, not session authority, not the revision
+/// conflict. A command that reaches for this helper alone has bypassed every
+/// other gate on the path. Production calls it at `commands.rs:638`, after the
+/// apply gate and before any save.
+///
+/// M4 (`todo-topology-editor.md:407`) NARROWED the sibling
+/// `validate_apply_gate` to `pub(crate)` and could not narrow this one: every
+/// other caller is in-crate, but
+/// `apps/desktop-client/src/commands/topology/persistence.rs:195` names this
+/// path. That wrapper is `#[allow(dead_code)]` and nothing in the desktop shell
+/// calls it, so the blocker is a shim another lane owns, not a live need —
+/// delete that adapter and this becomes `pub(crate)` in one line.
 pub fn validate_warehouse_quota(
     nodes: &[Value],
     tier: &oz_core::subscription::SubscriptionTier,
