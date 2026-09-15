@@ -21,6 +21,33 @@ That goal, not any one framework, drives the ordering below. A Slint shell calls
 
 ---
 
+## Effort estimate (2026-09-15)
+
+Anchors are measured, not guessed: **127** Rust `*Dto` structs vs **336** TS interfaces under
+`ui/src/api/`; tablet has **449** command sites across **98** files of which only **15** files
+call `oz_bridge`, against desktop's finished **61 of 70**; the vocabulary leak is **37 lines in
+19 files**.
+
+| Item | Work | Effort | Gate |
+|---|---|---|---|
+| 1 | Lock the seam (2 rules + baseline) | **~1 day** | none — start here |
+| 2 | ADR: embedded shell | ~0.5 day to draft | **owner decision** |
+| 3a | ADR #49 tablet half | **~6–10 days** | biggest item by far |
+| 3b | `verify-dto-parity.py` + manifest/docs | ~1.5–2 days | new-gate cost |
+| 3c | Offline payload tagged union | ~0.5–1 day | — |
+| 4 | i18n prototype + script extension | ~1.5–2 days | prototype result |
+| 5 | Offline outbox-reconcile | ~1–2 days | — |
+| 6 | Perf adoption (mostly deletion) | ~0.5 day | — |
+
+**Total ≈ 15–22 person-days.** With 2–3 agents in parallel and no blockers: **~1.5–2 weeks**.
+Add owner latency on Items 2 and 4 and the realistic wall clock is **3–4 weeks**.
+
+**Calibrate before committing to 3a.** The 6–10 day figure is extrapolated from file counts and
+ADR #49's own note that the desktop half took **130 `bridge`-tagged commits** — it is a proxy,
+not a measurement. Do **one** tablet command file end-to-end first, time it, and multiply.
+
+---
+
 ## Item 1 — Lock the seam before anything else
 
 **Invariant:** everything below `crates/oz-bridge` is the *application*; everything above it is
