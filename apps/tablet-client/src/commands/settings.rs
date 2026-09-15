@@ -591,15 +591,17 @@ pub async fn get_receipt_settings_scoped(
 pub async fn set_receipt_settings_scoped(
     session_token: String,
     args: ReceiptSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    // The session names the user; the caller cannot. `require_permission_for_session`
+    // is also scope-aware (ADR #35 D5), so this is strictly stronger than the
+    // `user_id` argument it replaces — and that argument was unfillable from the
+    // renderer, which sends only `{ sessionToken, args }`.
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_receipt_settings(&db_guard, &args)
 }
 
@@ -621,15 +623,13 @@ pub async fn get_store_settings_scoped(
 pub async fn set_store_settings_scoped(
     session_token: String,
     args: StoreSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_store_settings(&db_guard, &args)
 }
 
@@ -655,15 +655,13 @@ pub async fn get_credit_settings_scoped(
 pub async fn set_credit_settings_scoped(
     session_token: String,
     args: CreditSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     let tx = db_guard.unchecked_transaction()?;
     Settings::set_credit_enabled(&tx, args.enabled)?;
     Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
@@ -715,15 +713,13 @@ pub async fn list_credit_sales_scoped(
 pub async fn settle_credit_scoped(
     session_token: String,
     sale_id: String,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     let tx = db_guard.unchecked_transaction()?;
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute(
@@ -758,15 +754,13 @@ pub async fn get_hardware_settings_scoped(
 pub async fn set_hardware_settings_scoped(
     session_token: String,
     args: HardwareSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     let tx = db_guard.unchecked_transaction()?;
     Settings::set_printer_connection(&tx, &args.printer_connection)?;
     Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
@@ -797,7 +791,6 @@ pub async fn set_setting_scoped(
     session_token: String,
     key: String,
     value: String,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     // Extract terminal_id before locking the DB — no await inside the lock.
@@ -808,12 +801,14 @@ pub async fn set_setting_scoped(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // The permission check is awaited BEFORE the store conn is locked, so no
+    // await is ever held inside that lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_setting(&db_guard, &key, &value, &terminal_id)?;
     // SYNC-10 parity: enqueue the change so the tablet's sync daemon
     // pushes it to the cloud (and the desktop's pull re-applies it).
