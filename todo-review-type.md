@@ -32,14 +32,29 @@ toolkit dependencies. **But nothing enforces either half**, measured: no script 
 mentions `oz-bridge`, and `scripts/gates.json` has no bridge entry. One `tauri` import would
 silently end the Slint option.
 
-- [ ] Add `scripts/verify-bridge-purity.py`: fail if `crates/oz-bridge/Cargo.toml` gains
-      `tauri`, `gtk`, `webkit2gtk` or any `tauri-plugin-*`, or if `crates/oz-bridge/src/**`
-      references them. Register it in `scripts/gates.json`. This is ADR #49's load-bearing
-      claim, currently unguarded.
-- [ ] Add `scripts/verify-ui-vocabulary.py`: fail when `crates/`, `modules/` or `platform/`
-      name a UI framework, a UI file or a UI concept (`React`, `.tsx`, `.css`, "component to
-      render"). Seed the allowlist with the hits that exist today — they are all **comments**,
-      which is the good news: the coupling is documentary, not typing.
+- [ ] **Extend `scripts/verify-architecture-boundaries.py`** — do NOT create new scripts. It
+      already exists (511 lines), is registered as gate `architecture-boundaries` in
+      `scripts/gates.json`, is declared by `check.sh`, runs in CI as `dev-ci.yml#static-gates`
+      with `--strict`, and carries `scripts/architecture-boundaries-baseline.json` (8 entries,
+      each with `introduced`/`expires`; a stale entry fails, so a fix without its baseline
+      removal is a red gate). Adding two entries to its `RULES` dict buys both checks and
+      inherits CI for free. Two new scripts would instead have to be added to `gates.json`
+      **and** `check.sh` **and** `docs/operations/ci-pipeline.md`, because
+      `verify-ci-docs-drift.py` fails a manifest gate no runner declares.
+- [ ] Rule `bridge-toolkit-purity`: fail if `crates/oz-bridge/Cargo.toml` gains `tauri`, `gtk`,
+      `webkit2gtk` or a `tauri-plugin-*`, or if `crates/oz-bridge/src/**` references them.
+      ADR #49's load-bearing claim, currently unguarded.
+- [ ] Rule `ui-framework-vocabulary`: fail when `crates/`, `modules/` or `platform/` name a UI
+      framework, a UI file or a UI concept (`React`, `.tsx`, `.css`, "component to render").
+      Baseline the hits that exist today — all **comments**, which is the good news: the
+      coupling is documentary, not typing. Two known false positives to exclude:
+      `crates/oz-bridge/src/settings_tests.rs:773` lists `.css`/`.ts`/`.tsx` as file
+      extensions in a fixture, and `oz-bridge/src/lib.rs:5` + `ctx.rs:8` name `tauri, gtk,
+      webkit` in the sentences that assert this very rule. Note the script's
+      `mask_comments_and_strings` helper *strips* comments — this rule needs the opposite.
+- [ ] Pick baseline expiries deliberately (existing entries run ~3 months). Deferred debt
+      expires into a red gate, and CI runs `--strict`, so a false positive is red for every
+      agent, not just the author.
 - [ ] Fix the measured leaks (all comment/doc level, all cheap):
       - `crates/oz-core/src/session.rs:55` — *"Workspace type key — determines which React
         component to render."* The core should not know what a React component is.
