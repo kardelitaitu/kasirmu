@@ -90,22 +90,12 @@ manual dialog's REAL-QR branch, and the unconfigured state says so
 plainly while keeping the cashier-assert path. The 441-cell pin retired
 with the grid it pinned.
 
-### R3 · Typed error classification (Resilience C) — DONE (`3d50b3ac5a`)
-CLOSED 2026-09-14, and its recorded precondition was itself wrong: the
-claim that the bridge must "surface HalErrorKind through to the UI
-payload (partially true)" understated reality — BOTH clients already
-reject every command with the tagged `{kind, subKind, message}` union
-(desktop + tablet `error.rs`, camelCase DTO), and `parseAppError` already
-decodes it. What was missing was never plumbing: the shared boundary
-classifier (`classifyRetry`, ERR-06) had ZERO screen consumers while
-PaymentModal kept a private substring scan of the same question. The
-modal now delegates; the scan's genuinely-transport patterns and its
-terminal-wins-over-transport precedence migrated INTO the shared
-fallback; 'try again' was deliberately NOT migrated (it appears in this
-module's own NON-retryable user copy — scanning for it once made the
-checkout offer Retry on the strength of its own fallback text). Proof
-tests in both directions: hardware Timeout saying "declined" → Retry
-appears; internal saying "timeout" → Retry absent.
+### R3 · Typed error classification (Resilience C) — DONE (`3d50b3ac5a` + backend `ErrorClass`)
+CLOSED 2026-09-14 (UI half `3d50b3ac5a`) and completed 2026-09-15 (backend half in `crates/oz-payment/src/error.rs`).
+The bridge surfaces typed error details, `parseAppError` decodes them, and the modal delegates retry
+verdicts to `classifyRetry`. On the backend, `PaymentError::classify() -> ErrorClass` maps
+`Network`/`Timeout` -> `ErrorClass::Transient`, `Expired` -> `ErrorClass::Deferred`, and
+`Declined`/`InvalidResponse`/`InvalidCard`/`Duplicate`/`Unsupported` -> `ErrorClass::Terminal`.
 
 ### R4 · Multi-terminal EDC
 Single implicit terminal ships; `crates/oz-core/src/db/edc_terminals.rs`'s own header says
@@ -138,14 +128,13 @@ the stubs failing closed is the honest placeholder until then. Re-measured
 own headers, and `crates/oz-hal/src/drivers/mock.rs` is the only EDC that can answer — it fails
 closed until `set_success()` (:506, message at :544).
 
-### R5 · Resilience cluster (fallback chain, breaker, reconciliation job)
-`crates/oz-payment/src/registry.rs::build_from_config` remains a documented PLANNED stub
-(:57-67 fails closed); no `method -> Vec<processor>` chain, no
-`ResilientProcessor`, no expiry/reconciliation job (pending-sale cleanup
-currently relies on cashier cancel + webhook). The basket-preservation UX
-is half-done (errors keep the modal open; there's no offered fallback).
-Largest remaining slice; cloud+crate blast radius; do NOT start without
-per-item design passes.
+### R5 · Resilience cluster (fallback chain, breaker, reconciliation job) — BACKEND CORE LANDED
+Backend resilience primitives landed 2026-09-15 in `crates/oz-payment`:
+1. `ErrorClass { Transient, Terminal, Deferred }` + `PaymentError::classify()` in `crates/oz-payment/src/error.rs`.
+2. `CircuitBreaker` (3-state: `Closed`, `Open`, `HalfOpen`) and `ResilientProcessor` (wrapping `Arc<dyn PaymentProcessor>` with bounded exponential backoff retries on `Transient` errors and fast fail on `Open`) in `crates/oz-payment/src/resilience.rs`.
+3. `PaymentProcessorRegistry` method fallback chain (`register_method_fallback`, `method_processors`, `execute_with_fallback`) in `crates/oz-payment/src/registry.rs`.
+4. 246 tests in `oz-payment` pass clean (`cargo test -p oz-payment`).
+Remaining in R5: background expiry/reconciliation job for pending sales and UI explicit fallback UX.
 
 ### R6 · Evidence debt (un-doable from this checkout)
 Sandbox probe (generic-QR interop, targeted-QR restriction, refund
@@ -165,14 +154,14 @@ are canonical; this paragraph only restates them.)*
 
 Proposed: agents-5 = R1+R2. **Executed** 2026-09-14 (`bffcbda97a` +
 `903b30a718`), both boxes ticked above with their premise corrections
-recorded where the claims were made. R3 was then closed by the same
-order (`3d50b3ac5a`). **R4-R7 stay open** as written; R5 still requires
-its own design doc before any boxes; R7 (the real EDC protocol handler,
-found by the follow-up audit that also corrected the stale "R3-R6"
-count in this paragraph) needs hardware or vendor protocol docs before
-ANY code can honestly be written for it.
+recorded where the claims were made. R3 was closed by `3d50b3ac5a` (UI) and
+completed with backend `ErrorClass` on 2026-09-15. R5 backend core (resilience
+decorator, circuit breaker, registry method fallback chain) landed 2026-09-15.
+R7 (real EDC protocol handler) remains open awaiting vendor hardware/docs.
+R4 & R6 remain parked as designed.
 
-> last audited 14-09-26 by docs-auditor
+> last audited 15-09-26 by docs-auditor
+
 
 ## Acceptance — what a run could and could not decide here (2026-09-15, read-only audit at HEAD `1f83ab903`)
 

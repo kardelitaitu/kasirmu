@@ -985,7 +985,7 @@ abstraction should contain the failure and offer a fallback path.
 | `sale()` synchronous poll | QRIS `sale()` (`qris.rs:566`; the SCAN_QR literal is built at `:585-587`) returns a `SCAN_QR\|...` string and `capture()` polls ~60s while the QR is valid 300s (PAY-6) | blocks the server request up to 60s; a customer who pays at 90s never settles in-call |
 | Webhook lost / late pay | nothing reconciles `pending` sales | sale stuck `pending` forever |
 | Midtrans slow (not down) | every call waits up to COR-31 30s | no circuit breaker => cashier waits on every sale |
-| UI error handling | ~~string-matches English messages~~ **no longer true**: `classifyError` is now a 4-line adapter delegating the retry verdict to the shared typed boundary classifier `classifyRetry` (`PaymentModal.tsx:225-231`, `ui/src/utils/app-error.ts:120`) — `3d50b3ac5a` | was brittle; now the shared classifier owns it. The remaining gap is the **backend** half: `PaymentError` still has no `classify()`/`ErrorClass` at all (`crates/oz-payment/src/error.rs` declares 8 variants and no such method; `git grep 'ErrorClass'` over the source trees = 0) |
+| UI error handling | ~~string-matches English messages~~ **CLOSED**: `classifyError` delegates to shared boundary classifier `classifyRetry` (`3d50b3ac5a`), and backend error classification is implemented via `PaymentError::classify()` returning `ErrorClass` (`crates/oz-payment/src/error.rs`) | was brittle; now both frontend and backend typed classifiers own it |
 
 ### Recommended resilient abstraction
 - **A. Async settlement (kill the sync trap).** `authorize()` for QRIS returns
@@ -995,31 +995,22 @@ abstraction should contain the failure and offer a fallback path.
   `qr_string`/`transaction_id` as **struct fields**, not a `SCAN_QR|` message
   string (so a format change cannot break the UI). (Plug-in: `processor.rs`
   payment-kind + `qris.rs` `sale()` rewrite.)
-- **B. Fallback chain in the registry.** A payment *method* ("qris") maps to an
+- **B. Fallback chain in the registry — CLOSED.** A payment *method* ("qris") maps to an
   **ordered** processor list `[midtrans_qris, qris_manual]`. On a transient or
-  terminal primary failure, the caller falls back to the next. `qris_manual`
-  is device-local (merchant's static QR, no secrets) so it works even when
-  Midtrans is unreachable. This is the concrete "should not break" guarantee.
-  (Plug-in: `registry.rs` `method -> Vec<processor>` + real `build_from_config`.)
-- **C. Classified errors, single source of truth.** **Half done — the two halves
-  are not the same commit.** UI half CLOSED (`3d50b3ac5a`): the modal's English
-  substring scan is gone and delegates to `classifyRetry`
-  (`PaymentModal.tsx:225-231`). Backend half STILL OPEN: add
-  `PaymentError::classify() -> ErrorClass { Transient, Terminal, Deferred }`
-  (`Transient` = Network/Timeout; `Terminal` = the rest; `Deferred` = QR
-  issued, awaiting settlement) — `error.rs` today declares 8 variants and no
-  `classify()`; `ErrorClass` appears nowhere in the Rust or TS sources
-  (`git grep -n ErrorClass -- crates/ apps/ platform/ modules/ foundation/
-  ui/ website/` = 0 hits). Scoped honestly: a repo-wide `git grep -c ErrorClass`
-  returns 4 hits, and all four are this plan doc naming the thing it proposes.
-  (Plug-in: `error.rs`.)
-- **D. Resilience decorator.** A `ResilientProcessor` wrapping
-  `Arc<dyn PaymentProcessor>` adds: bounded timeout (COR-31 already),
-  **retry-with-full-jitter-backoff on `Transient`** (reuse oz-core helper), and
-  a **circuit breaker** (open after N consecutive `Transient` failures =>
-  fail-fast so the fallback chain triggers instead of hanging). Uniform across
-  Stripe/Square/Midtrans. (Plug-in: new `crates/oz-payment/src/resilience.rs`.)
+  primary failure, `execute_with_fallback` tries each processor in order, falling
+  back to the next (e.g. device-local `qris_manual` when Midtrans is unreachable)
+  while respecting terminal declines. Landed in `crates/oz-payment/src/registry.rs`
+  (`register_method_fallback`, `method_processors`, `execute_with_fallback`).
+- **C. Classified errors, single source of truth — CLOSED.** Both halves complete:
+  UI half closed in `3d50b3ac5a` (`PaymentModal.tsx:225-231` -> `classifyRetry`);
+  Backend half closed in `crates/oz-payment/src/error.rs` (`ErrorClass { Transient, Terminal, Deferred }`
+  and `PaymentError::classify()`, tested in `error_tests.rs`).
+- **D. Resilience decorator — CLOSED.** `ResilientProcessor` and `CircuitBreaker` landed in
+  `crates/oz-payment/src/resilience.rs`. Decorates `Arc<dyn PaymentProcessor>` with:
+  bounded exponential backoff retries on `ErrorClass::Transient`, and a 3-state
+  circuit breaker (`Closed` -> `Open` -> `HalfOpen`) failing fast during outages.
 - **E. Webhook + reconciliation, idempotent.** Add `POST /api/webhooks/midtrans`
+
   (re-fetch pattern) and a background job that polls unsettled QRIS sales; both
   call `enqueue_finalize_sale`, both deduped via `processed_webhooks`. A
   **reconciliation/timeout job** marks QRIS sales still `pending` after
