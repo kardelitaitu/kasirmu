@@ -87,9 +87,11 @@ export default ts.config(
     },
   },
   {
-    // This standalone Playwright probe runs in a Node process but evaluates
-    // browser globals inside page.evaluate callbacks.
-    files: ['e2e/probe-ws.mjs'],
+    // These standalone Playwright probes run in a Node process but evaluate
+    // browser globals inside page.evaluate callbacks. Paths are listed one by one
+    // rather than as `e2e/*.mjs`, so a new probe has to ask for its globals instead
+    // of inheriting them unseen.
+    files: ['e2e/probe-ws.mjs', 'e2e/font-visual-audit.mjs'],
     languageOptions: {
       globals: {
         console: 'readonly',
