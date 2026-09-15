@@ -191,3 +191,39 @@ each of the three ticks cites this same block, so the sharing is on the record r
 > Recorded 2026-09-15 by the test/acceptance lane. Only this file and `todo-refactor-kds-agents-1.md`
 > were edited; no test or source file was touched.
 
+---
+
+## Final sync (2026-09-15, HEAD `3df117977`) — the lane closed by owner rulings
+
+> Supersedes the "Corrections (2026-09-15)" block above (680 → **634** — `wc -l
+> ui/src/features/kds/KdsScreen.tsx`), which stays verbatim as the dated record it is.
+
+1. **Presentation status, measured:** the screen is 634 ln. The header region this file called inline
+   is four extracted components — `KdsHeaderLeft` (212 ln), `KdsHeaderTabs` (104 ln), `KdsHeaderRight`
+   (142 ln), `KdsZoneChips` (91 ln) — plus `KdsNoticeBanners` and the grid behind `KdsMainContent`
+   (`fc29f3690`)/`KdsLayoutMasonry`. All gates met: `<= 760` with 126 slack, `<= 700` with 66; the
+   literal `< 350` stays unreachable.
+2. **Every open box of this file was ruled today, in the merged plan** (see its "Lane closure
+   rulings"): `:73` `KdsTicketLineItem` and `:80` `KdsTimerBadge` → **REJECTED permanently** (merged
+   `:168`/`:169` — the markup and the SLA view stay inside `KdsTicketCard.tsx`; the rule stays
+   single-sited in `useTicketSla.ts`; no file of either name will ever ship); `:102`
+   `KdsHeaderToolbar` → **REJECTED as a pass-through** (merged `:174` — the three-child header *is*
+   the decomposition; a wrapper re-declaring 38 props owns nothing); `:111` reduce → **ACHIEVED,
+   modulo the refused noun** (merged `:175`); `:94`/`:118` milestones → **CANCELLED** /
+   **LANDED-UNDER-THE-`refactor(kds)`-SERIES** (merged `:171`/`:177`). The source-doc glyphs stay as
+   they are by design: dispositions live once, in the merged plan.
+3. **The one finding this lane filed without a fix — the SLA clamp disagreement (UI 30/60 min vs
+   engine 14/15 min, no test pinning them together) — landed fixed today: `3df117977`.** Engine
+   ceiling wins by owner ruling; the minute ceilings now DERIVE from it, the hamburger sliders offer
+   3–14/4–15, `WorkspaceKdsSettings` clamps legacy persisted values at hydration, and
+   `KdsThresholdClamp.test.ts` gained three cross-surface cases (every raw minute 1..120 must pass
+   the engine clamp untouched). Board behavior changed zero.
+4. **Housekeeping:** Agent 3's archived file now lives at
+   `.agents/archived/done-todo-refactor-kds-agents-3.md`, not at the root as `:22` cites.
+5. **Lane state: merged plan 0 open / 23 ticked.** The single blocker for any `done-` rename is
+   unchanged: `npm run check:all`'s E2E leg has no backend in this checkout (Docker unreachable,
+   port 15432 refuses) — a decision to retire that leg is the owner's, not a drift to tick over.
+
+> Recorded 2026-09-15 by the owner-ruling lane, same sitting as `3df117977`. Files touched by this
+> pass: the two superseded plans, `todo-refactor-kds-agents-merged.md`, and the six in the fix commit.
+

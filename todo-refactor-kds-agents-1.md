@@ -176,3 +176,44 @@ they were, and a green suite is not evidence about a path that does not exist.
 > Nothing outside `todo-refactor-kds-agents-1.md` and `todo-refactor-kds-agents-2.md` was edited; no test
 > or source file was touched.
 
+---
+
+## Final sync (2026-09-15, HEAD `3df117977`) — the lane closed by owner rulings
+
+> Supersedes the "Corrections (2026-09-15)" block above, which stays verbatim as the dated record it
+> is. Every figure below re-derives at the named HEAD: `wc -l ui/src/features/kds/KdsScreen.tsx`,
+> `ls ui/src/features/kds/hooks/`, `rg -c "addEventListener|listen" ui/src/features/kds/KdsScreen.tsx`
+> — commands, not memory.
+
+1. **The screen is 634 lines** — not the 680 the corrections block printed, not the 1,193 at `:9`.
+   Both restated gates are met with room (`<= 760`: 126 lines of slack; `<= 700`: 66). `< 350` remains
+   unreachable, exactly as the merged plan argued.
+2. **Every still-open question of this file's Phase 1.1/1.2 has landed.** The keyboard target now
+   exists at the fenced path — `ui/src/features/kds/hooks/useKdsKeyboardShortcuts.ts` (129 ln, moved
+   from the feature root by `c965baddb`; `hooks/` holds five files). The ticket lifecycle landed as
+   `ui/src/features/kds/useKdsRealtime.ts` (127 ln, `9fe87671b`) — different name, flat directory, so
+   the acceptance lane's alias question is moot in substance: the screen holds **0**
+   `addEventListener`/`listen` calls. The merged plan's open "which of the two keydown registrations
+   does the hook own" question is answered by the tree itself: KEY-07 →
+   `hooks/useKdsKeyboardShortcuts.ts:124`; filter-panel nav → `useKdsFilterNav.ts:101-102`.
+3. **The two milestone rows (`:74`, `:95`) stay `- [ ]` here on purpose** — this file is superseded and
+   the dispositions were ruled once, in the merged plan: its `:157`/`:163` are ticked, and its `:177`
+   consolidated milestone closed today by owner ruling as LANDED-UNDER-THE-`refactor(kds)`-SERIES.
+4. **The lane's one filed finding — the SLA clamp disagreement (UI 30/60 min vs engine 14/15) — was
+   ruled and fixed today: `3df117977`.** The engine ceiling wins; the minute ceilings now derive from
+   it (`YELLOW_MAX_MIN`/`RED_MAX_MIN` from `SLA_YELLOW_MAX_SEC`/`SLA_RED_MAX_SEC`), the hamburger
+   sliders offer 3–14/4–15 instead of 3–30/4–60, legacy persisted values clamp at hydration, and three
+   new cross-surface cases pin the agreement for every raw minute 1..120 (written Red first). Board
+   behavior changed zero; the silent override did not survive the day.
+5. **Housekeeping:** Agent 3's archived file cited at `:29` now lives at
+   `.agents/archived/done-todo-refactor-kds-agents-3.md`, not at the root.
+6. **Lane state: the merged plan shows 0 open / 23 ticked** — the seven surviving dispositions closed
+   by owner ruling this evening ("Lane closure rulings", `todo-refactor-kds-agents-merged.md`). The
+   only thing still blocking a `done-` rename of anything in this family is unchanged and single:
+   `npm run check:all` — lint → typecheck → test → i18n → **E2E** — has never run in this checkout,
+   and its E2E leg has no backend here (Docker unreachable, port 15432 refuses).
+
+> Recorded 2026-09-15 by the owner-ruling lane, in the same sitting that landed `3df117977` and closed
+> the merged plan's checklist. Files touched by this pass: the two superseded plans,
+> `todo-refactor-kds-agents-merged.md`, and — for the ruling fix — the six files in `3df117977`.
+
