@@ -2055,3 +2055,71 @@ fn pin_the_offender_predicate_refuses_a_path_outside_the_sweep_root() {
         "test scaffolding inside the root is still scaffolded, not offending"
     );
 }
+
+/// Phase 3.2 closed on a recorded decision — Option A — that keeps the
+/// `tauri::generate_handler!` table in `lib.rs`, because this ratchet, the parity
+/// checker and the scoped-coverage gate all parse that macro verbatim. What that
+/// ruling did NOT come with was a gate for the other half of "thin shell": that
+/// the file names handlers and never defines one. The claim held at close by
+/// inspection alone, and `todo-refactor-oz-pos-app-agents-3.md`'s
+/// "Headline metric restated" section measured in passing that no tool in the
+/// repo checks it — which is how a shell quietly becomes the thing the
+/// relocation campaign spent five waves emptying.
+///
+/// Both assertions are anchored to the start of a line, deliberately: the
+/// unanchored pattern matches three prose occurrences in `lib.rs`'s own module
+/// doc (`:10`, `:15`, `:25`), and a lint whose first output is "the
+/// documentation is a defect" gets an `#[allow]` within a week and then checks
+/// nothing.
+#[test]
+fn drift_pin_the_shell_router_registers_commands_and_defines_none() {
+    let defined: Vec<&str> = LIB_RS
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| line.starts_with("#[tauri::command]") || line.starts_with("#[command]"))
+        .collect();
+    assert!(
+        defined.is_empty(),
+        "apps/desktop-client/src/lib.rs defines {} command(s) of its own: {defined:?} — after Wave E every handler body lives in oz-bridge and the shell only lists paths; a command defined here is invisible to the parity checker's handler-list parse and to the bridge tests alike",
+        defined.len()
+    );
+
+    // The file's remaining executable content is the builder. One function is
+    // the measured truth at this HEAD; a second one is the shape a slow
+    // re-thickening takes, so the assertion names what it found rather than
+    // counting.
+    let fns: Vec<String> = LIB_RS
+        .lines()
+        .filter(|line| {
+            let t = line.trim_start();
+            t.starts_with("fn ")
+                || t.starts_with("pub fn ")
+                || t.starts_with("async fn ")
+                || t.starts_with("pub async fn ")
+                || t.starts_with("pub(crate) fn ")
+        })
+        .map(|line| line.trim()[..line.trim().find('(').unwrap_or(line.trim().len())].to_string())
+        .collect();
+    assert_eq!(
+        fns,
+        vec!["pub fn run".to_string()],
+        "lib.rs is a router: its only function must be the Tauri builder `run`, found {fns:?}"
+    );
+
+    // Positive control, so the empty count above is a measurement and not a
+    // filter that matches nothing anywhere: the same anchored scan over the
+    // shell's own command directory finds a large population. The floor sits
+    // with headroom below the 23 sites measured at 2026-09-15, so a command
+    // module losing a few handlers does not fire this, while a predicate that
+    // stopped matching — an attribute spelled on one line differently, the
+    // `use tauri::command` alias dropped — does.
+    let defined_elsewhere: usize = include_str!("../commands/settings.rs")
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| line.starts_with("#[tauri::command]") || line.starts_with("#[command]"))
+        .count();
+    assert!(
+        defined_elsewhere > 10,
+        "the positive control found only {defined_elsewhere} command definitions in commands/settings.rs, so this test's filter has stopped matching anything and its verdict about lib.rs proves nothing"
+    );
+}
