@@ -31,10 +31,10 @@
  * two earlier baselines kept as provenance -- a reader who takes 193 as an
  * allowance mis-grades this gate by 193 violations.
  *
- * Appended after that gate: THIRTEEN font-reference portability rules. Four predate
+ * Appended after that gate: FOURTEEN font-reference portability rules. Four predate
  * this plan -- blame gives rules 1-3 to `93c367b` and rule 4 to `6649571`, both
- * earlier lanes -- and nine, rules 5 to 13, are todo-font-system.md's. Each rule
- * ships with its own probe case (13 rules = 26 cases, 18 of them this plan's). They
+ * earlier lanes -- and ten, rules 5 to 14, are todo-font-system.md's. Each rule
+ * ships with its own probe case (14 rules = 28 cases, 20 of them this plan's). They
  * live HERE rather than in a new file because this file is already the live
  * font-family gate, and the `ui-test` job of `.github/workflows/dev-ci.yml` runs
  * `cd ui && npm test` on any commit under `ui/` -- its `changes` router matches the
@@ -57,18 +57,22 @@
  *      one end of a list cannot see the list, and agreement is not correctness
  *  13  every shipped @font-face names at least one src file that EXISTS: rules 3
  *      and 7 ask where a url points, never whether anything is standing there
+ *  14  the mirror of 9 -- a family an @import DECLARES must be reached by some
+ *      stack, or it ships woff2 to every customer and paints nothing
  *
  * Their scope is deliberately wider than the gate above. The font rules walk every
  * stylesheet under ui/src (collectCssFiles), both boot HTML documents, and reach
  * node_modules ONLY by resolving an @import that first-party CSS declares --
  * nothing here enumerates node_modules.
  *
- * None of the nine rules this plan wrote added a line to the original scanner:
+ * None of the ten rules this plan wrote added a line to the original scanner:
  * `git blame -L 1,600` at `c614e5667` attributed all 600 of those lines to eight
  * other commits, and to none of this plan's. The header sentences that WERE wrong --
  * a two-directory scope, a drift-guard figure, "three rules", and the provenance of
  * rules 1 to 4 -- are the only pre-existing lines this work has since edited, and
- * each was a claim about the tree that the tree had already moved past.
+ * each was a claim about the tree that the tree had already moved past. The rule
+ * count in this header has been corrected twice more since that sentence was first
+ * written; treat any number in it as a claim to re-count, not a fact to quote.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
