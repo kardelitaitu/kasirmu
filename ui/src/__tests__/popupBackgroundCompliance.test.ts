@@ -14,6 +14,22 @@
  *   - Excludes overlays (purposefully translucent dimmers)
  *   - Excludes pseudo-elements, state modifiers (:hover, :focus, --exiting)
  *   - Excludes buttons/inputs inside popups (they have their own styling)
+ *
+ * Population guards, all in the floor case below, with their baselines named in
+ * each message: four LOWER bounds on what the walk read, a TWO-SIDED band on
+ * (parsed + hidden), a CEILING on hidden, and a required-member identity that
+ * names every graded rule by file and by its WHOLE selector.
+ *
+ * What is still blind, deliberately not papered over: a band has to be wide
+ * enough to survive ordinary work, so up to ~500 rules -- one sheet the size of
+ * the largest in the tree -- can still leave the walk silently, and nothing here
+ * counts what never reaches the graded door: every selector POPUP_ROOT turns
+ * away, and all the rules parked inside at-blocks, are invisible to the
+ * background check itself. Tightening the band past that rots the hour a new
+ * sheet lands, so the identity and the ceiling are the structural guards and the
+ * band is only the net under them. And no guard here grades a commit: the walk
+ * reads the working tree through fs with no channel to any revision, so every
+ * number in this file is a timestamp on this checkout, not a fact about a tip.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -137,6 +153,9 @@ describe('popup surfaces have visible backgrounds', () => {
   // set is what stats.graded is; the set itself is what the graded floor needs, so
   // a rule can be seen LEAVING even when a second rule arrives to hold the number up.
   const gradedAt: string[] = [];
+  // Same population, structured, for the exact-member identity: file plus the whole
+  // whitespace-collapsed selector, never a prefix of it.
+  const gradedMembers: { file: string; selector: string }[] = [];
 
   for (const filePath of cssFiles) {
     const content = readFileSync(filePath, 'utf-8');
@@ -160,7 +179,10 @@ describe('popup surfaces have visible backgrounds', () => {
       const bg = getBackground(rule.body); stats.graded++;
       // Identity, not address: a line number would make this baseline fail when an
       // unrelated edit above it moves the rule, which is not a rule leaving the door.
-      gradedAt.push(relPath.split(sep).join('/') + ' { ' + rule.selector.trim().replace(/\s+/g, ' ').slice(0, 80));
+      const gradedFile = relPath.split(sep).join('/');
+      const gradedSelector = rule.selector.trim().replace(/\s+/g, ' ');
+      gradedAt.push(gradedFile + ' { ' + gradedSelector);
+      gradedMembers.push({ file: gradedFile, selector: gradedSelector });
 
       // No background at all
       if (bg === null) {
@@ -274,6 +296,43 @@ describe('popup surfaces have visible backgrounds', () => {
     expect(stats.atBlocks.length, `at-blocks skipped ${stats.atBlocks.length}, floor ${FLOORS.atBlocks} (baseline 347) -- fewer containers are being abandoned wholesale`).toBeGreaterThan(FLOORS.atBlocks);
     expect(stats.nestedRules.length, `rules hidden inside at-blocks ${stats.nestedRules.length}, floor ${FLOORS.nestedRules} (baseline 816) -- content moved behind the door that skips it`).toBeGreaterThan(FLOORS.nestedRules);
 
+    // TWO-SIDED BOUNDS. Four lower bounds cannot see a MOVE, because the counter
+    // that a move inflates is one of the counters being floored: putting one whole
+    // sheet inside an @media took parsed 6078 -> 5642 and pushed hidden 816 -> 1238,
+    // and every floor above read that as healthier. So bound the SUM of what the
+    // walk knows about -- parsed plus hidden -- from both sides, which is what a
+    // deletion cannot hide inside (deleting a rule lowers the sum by exactly one,
+    // whichever door it came out of), and bound HIDDEN from above as well, which is
+    // what a wholesale move into an at-block cannot hide inside. Baselines are the
+    // committed tree measured 2026-09-15 at tip `36ca7fc6b` (git archive of HEAD,
+    // walked by this file's own extractor): parsed 6068 + hidden 816 = 6884, over
+    // 137 sheets whose median holds 30 rules and whose single largest holds 436 and
+    // hides 61. The band is therefore +/- a whole large sheet in each direction --
+    // deliberately NOT tightened to today's biggest silent loss; see the residual
+    // blind spot in the header comment.
+    const SUM_BASELINE = 6884;                 // 6068 parsed + 816 hidden at 36ca7fc6b
+    const SUM_BAND = { low: 6200, high: 7800 }; // -684 / +916: one large sheet either way
+    const rulesSeen = stats.parsed + stats.nestedRules.length;
+    expect(
+      rulesSeen,
+      `rules the walk knows about: ${stats.parsed} parsed + ${stats.nestedRules.length} hidden inside at-blocks = ${rulesSeen}, ` +
+      `outside the band ${SUM_BAND.low}..${SUM_BAND.high} around the baseline ${SUM_BASELINE} (6068 parsed + 816 hidden, ` +
+      `measured at 36ca7fc6b) -- rules left the walk, or arrived in it, without either counter's floor noticing`,
+    ).toBeGreaterThanOrEqual(SUM_BAND.low);
+    expect(
+      rulesSeen,
+      `rules the walk knows about: ${stats.parsed} parsed + ${stats.nestedRules.length} hidden = ${rulesSeen}, above the ceiling ` +
+      `${SUM_BAND.high} around the baseline ${SUM_BASELINE} (6068 parsed + 816 hidden at 36ca7fc6b) -- the harvest grew past one ` +
+      `large sheet since that baseline, so re-measure it here rather than widening the band`,
+    ).toBeLessThanOrEqual(SUM_BAND.high);
+    const NESTED_CEILING = 1000;               // baseline 816 at 36ca7fc6b, largest single sheet hides 61
+    expect(
+      stats.nestedRules.length,
+      `rules hidden inside at-blocks: ${stats.nestedRules.length}, above the ceiling ${NESTED_CEILING} (baseline 816, measured ` +
+      `at 36ca7fc6b) -- content moved behind the door the extractor skips wholesale, which is how a walk gets ` +
+      `emptier while its own hidden counter goes UP; the sum band cannot see this move because hiding conserves it`,
+    ).toBeLessThanOrEqual(NESTED_CEILING);
+
     // THE GRADED DOOR. Baseline today is exactly one rule, so `graded > 0` is
     // arithmetically `graded === 1`: the moment a second rule becomes gradable it
     // stops distinguishing anything, and one rule can then leave through the graded
@@ -284,12 +343,24 @@ describe('popup surfaces have visible backgrounds', () => {
     // never happen is a rule that used to be checked ceasing to be checked. So the
     // assertion is a SUBSET check on identity -- a new gradable rule passes, a rule
     // that leaves fails, and the size of the set is never pinned.
-    // Measured at af4b27238: the only rule reaching this door today. A prefix, so
-    // the rule gaining a descendant selector still matches and only a rule
-    // genuinely no longer graded can fail it.
-    const GRADED_BASELINE = ['frontend/themes/components.css { .toast'];
-    const lostGraded = GRADED_BASELINE.filter((id) => !gradedAt.some((g) => g.startsWith(id)));
-    expect(lostGraded, `rules that were graded and no longer reach the background check: ${JSON.stringify(lostGraded)} (graded set now ${stats.graded}: ${JSON.stringify(gradedAt)})`).toEqual([]);
+    // Measured at 36ca7fc6b: the only rule reaching this door today, and it is named
+    // by file plus its WHOLE selector, not a prefix of one. A prefix is the escape:
+    // `startsWith('... { .toast')` also accepts `.toast:hover` (the base toast now
+    // has no background at all, only a hovered one does) and `.toast, .popover` (the
+    // rule quietly grew a second surface). Both were demonstrated green against the
+    // prefix form, which is why the comparison is exact on both halves of the name.
+    // The check stays a required-member check, never a pinned set: a rule that
+    // BECOMES gradable passes, one that changes shape or leaves fails.
+    const GRADED_BASELINE = [{ file: 'frontend/themes/components.css', selector: '.toast' }];
+    const lostGraded = GRADED_BASELINE.filter(
+      (b) => !gradedMembers.some((m) => m.file === b.file && m.selector === b.selector),
+    );
+    expect(
+      lostGraded,
+      `rules that were graded and no longer reach the background check as the same rule: ` +
+      `${JSON.stringify(lostGraded)}\n  expected at least: ${JSON.stringify(GRADED_BASELINE)}\n` +
+      `  the graded set now (${stats.graded}): ${JSON.stringify(gradedMembers)}`,
+    ).toEqual([]);
 
     expect(stats.graded, `no rule reached the background check at all (graded set empty; ${stats.parsed} parsed, ${cssFiles.length} sheets)`).toBeGreaterThan(0);
     // The three reject paths must have run: on today's tree the primary-class
