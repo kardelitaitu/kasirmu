@@ -264,6 +264,26 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 
 - [ ] No dead imports / unused local helpers left behind.
 
+  > **Round 12 (`c0a15224f`): workspace pair re-homed.** The §J quota-remediation stubs
+  > (`suspend_surplus_workspace_instances_scoped`, `recover_workspace_instances_scoped`, both `() => 0`)
+  > moved verbatim — **with their full rationale comment** — into `handlers/workspaces.ts` (their plan-correct
+  > home; that module already imports `MOCK_WORKSPACES_SEED` the comment references). Both keys single-defined
+  > (git grep). Verified: **681 / `105d29730df2…` identical**, 7 `dev-mock-*` suites (96 tests) green, `tsc` 0;
+  > router 364 → **352**. Note: the commit first hit a transient `.git/index.lock` from a concurrent peer commit
+  > (shared checkout, §3) — retried after it cleared, with a fresh pre-commit guard proving still only my 2 files
+  > were dirty and the diff unchanged; no force-remove, no data loss.
+  >
+  > **Residue decision (this is where pure-copy extraction rightly stops):** the only remaining handler *code*
+  > in the router is `list_in_transit_transfers_scoped` + `get_sale_line_margins_scoped` (both `() => []`) and
+  > `list_warehouse_products_at_location` (reads `MOCK_PRODUCTS`). The first two are genuinely cross-domain
+  > (transfers/HPP have no single obvious home) and the plan explicitly permits **"a single documented
+  > `entryHandlers` residue, with a comment per remaining stub"** — I am leaving them as sanctioned residue
+  > rather than filing them under a module that would misrepresent the concern (my stated principle).
+  > `list_warehouse_products_at_location` would need a new catalog→module import edge for ~1 stub; not worth the
+  > coupling. The substantive objective — **dispatcher code extracted from the router** — is effectively met
+  > (~133 code lines at round-11 measure, now fewer); the literal `< 200` remains a documentation-compression
+  > call for the owner, not more code to move. Boxes stay UNTICKED pending an owner decision + `check:all`.
+
 > **Phase 5.5 progress (this session, 2026-09-16, commit `9caafa16e`): router 447 → 380 (−67).** Folded the
 > 11 scoped analytics-card stubs out of the router's in-place `handlers['x'] = …` patches into
 > `handlers/analytics.ts`'s `analyticsHandlers` map (their plan-correct domain home). Before moving I
