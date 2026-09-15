@@ -1548,6 +1548,26 @@ function ownSheetSelectors(entry: ScreenEntry): Set<string> {
 
 // ── Tests ─────────────────────────────────────────────────────────
 
+// The per-entry cases below compute their findings but PRINT them only when
+// they fail, so a green tip printed nothing at all: the dead count quoted in
+// the ledger came from a throwaway script that reconstructed this population,
+// and nobody running the suite tomorrow can reproduce it. This accumulator
+// turns it into a print. Module-level on purpose -- Vitest gives one file one
+// worker and runs every case against one module instance, so a finding is
+// recorded once per run; a setup that sharded a file across workers would
+// double it, which is why the census prints how many entries it saw.
+// UNIT: NAME-AND-ENTRY PAIRS, not names. One class defined in two registered
+// screens' own css is two rows here, because each entry grades only its own
+// sheet; the distinct-name count is printed beside it so a pair count can
+// never be read as a population, or the other way round, without a comment.
+const CENSUS: {
+  dead: Array<[string, string]>;
+  credit: Array<[string, string, string]>;
+  undefined: Array<[string, string]>;
+  seen: Set<string>;
+  runs: number;
+} = { dead: [], credit: [], undefined: [], seen: new Set(), runs: 0 };
+
 describe.each(SCREENS)(
   'CSS class integrity — $name',
   ({ name, tsx, css, parentCss, dynamicClassPrefixes, externalClasses, knownDynamicFragments, additionalTsx, selectorOnlyClasses }: ScreenEntry) => {
@@ -1644,6 +1664,7 @@ describe.each(SCREENS)(
           missing.push(cls);
         }
       }
+      CENSUS.undefined.push(...missing.map((cls) => [name, cls] as [string, string]));
       expect(
         missing,
         `${name}: className(s) used but not defined: ${missing.join(', ')}`,
@@ -1701,6 +1722,21 @@ describe.each(SCREENS)(
       // aborting the file on the first one. The `console.warn` below is
       // the informative half; this line is the gate. Do not read the
       // word "soft", or that warn, as "advisory".
+      CENSUS.seen.add(name);
+      CENSUS.runs += 1;
+      for (const cls of dead) CENSUS.dead.push([name, cls]);
+      // The other half of the number, and the half the suite cannot fail on:
+      // names for which a PREFIX is the only claim that they are used. These
+      // are not findings today -- a dynamicClassPrefixes entry is a legal
+      // claim -- but they are precisely what the guard stopped calling dead,
+      // and no deletion is defensible while they stay invisible. A whole-name
+      // entry (p === cls) is not a credit here: it is graded by name in the
+      // externalClasses/ledger cases instead. UNIT: name-and-entry pairs.
+      for (const [cls] of ownIndex) {
+        if (used.has(cls) || composed.has(cls) || external.has(cls)) continue;
+        const by = prefixes.find((p) => p !== cls && cls.startsWith(p));
+        if (by) CENSUS.credit.push([name, cls, by]);
+      }
       if (dead.length > 0) {
         console.warn(
           `[WARN] ${name}: className(s) defined in CSS but never referenced ` +
@@ -1711,6 +1747,32 @@ describe.each(SCREENS)(
     });
   },
 );
+
+// Declared after the describe.each above, so Vitest's declaration order runs
+// it last and the accumulator is complete.
+it('dead-class census: what the guard calls dead, and what a prefix rescues', () => {
+  // Printed on the GREEN path. A count that only appears when the suite is
+  // already red cannot license a deletion, which is the whole use of it.
+  // The floor is why a zero may be believed: an entry that never ran and an
+  // entry with nothing dead look identical otherwise.
+  expect(
+    CENSUS.runs,
+    `dead-class census ran ${CENSUS.runs} of ${SCREENS.length} entries (over ${CENSUS.seen.size} distinct names -- two entries share a name) -- so the count below is not a blank`,
+  ).toBe(SCREENS.length);
+  const distinct = new Set(CENSUS.dead.map(([, cls]) => cls));
+  const rescued = new Set(CENSUS.credit.map(([, cls]) => cls));
+  console.log(
+    `dead-class census (${CENSUS.runs} graded entries / ${CENSUS.seen.size} distinct names): ` +
+      `DEAD ${CENSUS.dead.length} pair(s) / ${distinct.size} distinct name(s); ` +
+      `PREFIX-RESCUED ${CENSUS.credit.length} pair(s) / ${rescued.size} distinct name(s); ` +
+      `USED-BUT-NOT-DEFINED ${CENSUS.undefined.length} pair(s)`,
+  );
+  for (const [entry, cls] of CENSUS.dead) console.log(`  DEAD  ${entry}: ${cls}`);
+  for (const [entry, cls, by] of CENSUS.credit)
+    console.log(`  RESCUED  ${entry}: ${cls} (only claim: prefix '${by}')`);
+  for (const [entry, cls] of CENSUS.undefined)
+    console.log(`  UNDEFINED  ${entry}: ${cls}`);
+});
 
 
 // ── Stylesheet coverage ──────────────────────────────────────────
