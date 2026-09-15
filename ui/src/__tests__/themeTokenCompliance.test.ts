@@ -1023,6 +1023,31 @@ function varFallback(value: string): string | null {
 }
 
 /**
+ * Rule 12 -- the boot documents' own fallback sequence, pinned.
+ *
+ * Rule 6 holds that the two documents AGREE, rule 11 that the agreed stack ENDS in
+ * a generic. Neither can see the middle, so deleting four operating-system faces
+ * from both files in the same commit satisfies both rules. `7e0fc4139` is the
+ * proof that this list matters as a list and not as a shape: the tablet document
+ * named 'Inter' in position one of its splash fallback, which was wrong precisely
+ * because it is a NAME rather than a generic, and the fix was to make the sequence
+ * match the desktop document's.
+ *
+ * Recorded rather than asserted, because it is a coincidence of content that may
+ * legitimately break: today this sequence equals --font-sans's pinned tail with its
+ * first entry ('Inter') dropped, i.e. the boot list is deliberately OS-only and
+ * never claims a webfont it cannot load.
+ */
+const BOOT_FALLBACK_TAIL = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif";
+
+/** A boot declaration's fallback sequence, normalised for comparison. */
+function bootTail(value: string): string {
+  const fb = varFallback(value);
+  if (fb === null) return '';
+  return fb.split(',').map((p) => p.trim()).join(', ');
+}
+
+/**
  * Font-family tokens whose FIRST name is exempt from the bundled-face requirement.
  *
  * Keyed on token + file, deliberately NOT on the value: --brand-font-family is a
@@ -1595,6 +1620,44 @@ describe('font-reference portability', () => {
     expect(GENERIC_FONT_KEYWORDS.has(genericTail(varFallback("'Inter', 'Segoe UI'") ?? ''))).toBe(false);
     // A value that is not a var() is returned unchanged -- no silent rewriting.
     expect(varFallback('-apple-system, sans-serif')).toBe('-apple-system, sans-serif');
+  });
+
+  it('rule 12: the boot documents cannot agree their way past a shortened fallback', () => {
+    const decls = HTML_SOURCES.flatMap(({ file, text }) => bootFontDeclarations(file, text));
+    expect(
+      decls.length,
+      'rule 12 sees ' + decls.length + ' boot font declarations; with fewer than two the '
+        + 'comparison against a single pinned sequence would be one document grading itself.',
+    ).toBeGreaterThanOrEqual(2);
+    for (const d of decls) {
+      expect(
+        bootTail(d.value),
+        'a boot document no longer carries the pinned splash fallback sequence, even though '
+          + 'the documents may still agree with each other:\n'
+          + `  ${d.file}:${d.line}\n  pinned : ${BOOT_FALLBACK_TAIL}\n  now    : ${bootTail(d.value)}\n`
+          + 'Rule 6 cannot catch this (it compares the two documents to each other) and '
+          + 'neither can rule 11 (it reads only the last name). This list is what paints '
+          + 'before any CSS or font arrives, so the entries are the design, not padding.',
+      ).toBe(BOOT_FALLBACK_TAIL);
+    }
+    // The pin is a fact about the tree, not a tautology: state its size so an edit
+    // to the constant is visible in the diff rather than absorbed silently.
+    expect(BOOT_FALLBACK_TAIL.split(',').length).toBe(6);
+  });
+
+  it('rule 12 probe: a shortened list that satisfies rules 6 and 11 still fires here', () => {
+    const shrunk = 'var(--font-sans, system-ui, sans-serif)';
+    // The two rules this one exists to complement, both satisfied by the shrunk value.
+    expect(GENERIC_FONT_KEYWORDS.has(genericTail(varFallback(shrunk) ?? ''))).toBe(true);
+    // And the one that is not: four OS names gone, sequence shorter, tail still generic.
+    expect(bootTail(shrunk)).not.toBe(BOOT_FALLBACK_TAIL);
+    expect(bootTail(shrunk).split(',').length).toBeLessThan(BOOT_FALLBACK_TAIL.split(',').length);
+    // The real value passes, and a re-wrapped copy of it produces the same sequence.
+    const real = HTML_SOURCES.flatMap(({ file, text }) => bootFontDeclarations(file, text))[0];
+    expect(bootTail(real?.value ?? '')).toBe(BOOT_FALLBACK_TAIL);
+    expect(bootTail("var(--font-sans,\n    -apple-system,  BlinkMacSystemFont,\n    'SF Pro Display', 'Segoe UI',\n    system-ui, sans-serif)")).toBe(BOOT_FALLBACK_TAIL);
+    // A var() with no fallback yields '', which is neither the pin nor a silent pass.
+    expect(bootTail('var(--font-sans)')).toBe('');
   });
 });
 
