@@ -22,7 +22,7 @@ next: none | perf: N/A
 //! - Domain: `crates/oz-core/src/loyalty.rs`
 //! - DB: `crates/oz-core/src/db/loyalty.rs`
 //! - Commands: `apps/desktop-client/src/commands/` (TBD)
-//! - Frontend: `ui/src/features/crm/` (LoyaltyPrograms)
+//! - Frontend: `ui/src/features/loyalty/` (LoyaltyManagementScreen)
 //! - API: `ui/src/api/` (TBD)
 //! - Locale: `ui/src/locales/` (TBD)
 //!

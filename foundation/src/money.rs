@@ -68,7 +68,7 @@ impl Currency {
     ///
     /// ISO-4217 minor-unit exponent: IDR/JPY/KRW/VND/CLP/ISK/HUF = 0,
     /// KWD/OMR/BHD/JOD/TND = 3, everything else = 2. This must stay in
-    /// sync with the seeds in `crates/oz-core/migrations/006_currencies.sql`,
+    /// sync with the seeds in `crates/oz-core/migrations/20260813_init.sql`,
     /// `crates/oz-cli` (init-db) and the frontend `MINOR_UNIT_EXPONENT`
     /// (ui/src/types/domain.ts) — all treat IDR as 0 (the Rupiah has no
     /// circulating minor unit).

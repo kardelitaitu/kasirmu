@@ -16,7 +16,7 @@ next: none | perf: single index pass per validation
 //! of the validation engine: it is Tauri-free and value-level, so any client
 //! (desktop Apply, tablet preview, tooling) can run the same gates.
 //!
-//! The desktop command layer (`apps/desktop-client/.../topology/semantics.rs`)
+//! The desktop command layer (`apps/desktop-client/src/commands/topology/semantics.rs`)
 //! delegates here and maps [`CoreError::TopologyValidation`] onto its own
 //! `AppError::TopologyValidation` wire shape.
 
