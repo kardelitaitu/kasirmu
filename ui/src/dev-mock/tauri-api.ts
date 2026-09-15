@@ -305,11 +305,26 @@ registerHandlers(crmHandlers);
 // search_customers_scoped + get_customer_history_scoped moved verbatim to
 // handlers/crm.ts (Phase 5.5) — single-defined, use only crm.ts's own
 // MOCK_CUSTOMERS export, so the move is a pure copy.
+// ═══════════════════════════════════════════════════════════════
+// DOCUMENTED RESIDUE — kept here on purpose (Phase 5.5).
+// This work order permits "a single documented entryHandlers residue," but
+// only with a per-stub note explaining why the command has no other home.
+// Each stub below now carries that justification; everything that DID have a
+// home was moved to it (crm.ts / sync.ts / analytics.ts / workspaces.ts).
+// ═══════════════════════════════════════════════════════════════
+// list_in_transit_transfers_scoped: an inventory STOCK-TRANSFER read, but the
+// mock models no transfer rows and handlers/inventory.ts is the product/qty
+// surface, not the transfers surface — filing it there would imply transfer
+// state the mock does not have. Empty list is the honest "nothing in transit."
 handlers['list_in_transit_transfers_scoped'] = () => [];
 // Sync-conflict review pair (list_sync_conflicts_scoped,
 // resolve_sync_conflict_scoped) moved verbatim to handlers/sync.ts (Phase 5.5).
 // HPP exposure: no historical sale lines exist in the mock, so the margin
 // report is empty (the UI hides the Cost/Margin columns when it is).
+// No other home: a cost/margin read that spans sales × inventory × analytics;
+// none of those domain modules "owns" an HPP exposure report, so it stays as
+// documented residue rather than being forced under one and mis-signalling
+// its scope.
 handlers['get_sale_line_margins_scoped'] = () => [];
 // Analytics dashboard cards (11 scoped-only stubs) moved verbatim to
 // handlers/analytics.ts (Phase 5.5). Confirmed single-defined (git grep) and
@@ -328,7 +343,13 @@ registerHandlers(settingsWriteHandlers);
 // recover_workspace_instances_scoped) moved verbatim — with its full rationale
 // comment — to handlers/workspaces.ts (Phase 5.5); () => 0 each, single-defined.
 
-// Warehouse products at a specific location
+// Warehouse products at a specific location.
+// No other home (and why it stays): this reads MOCK_PRODUCTS (a catalog symbol
+// the router already imports) filtered to a location — a cross-domain seed join.
+// Moving it into inventory.ts would force that module to import catalog just for
+// this one stub, an edge it does not otherwise need; leaving it here as
+// documented residue avoids coupling a domain module for a single browser-mode
+// preview helper.
 handlers['list_warehouse_products_at_location'] = (args) => {
   const { locationId: _locationId } = (args ?? {}) as { locationId?: string };
   // Return mock products with stock at the given location
