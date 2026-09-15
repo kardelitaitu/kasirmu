@@ -30,6 +30,17 @@ vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen">Login</div>,
 }));
 
+// Session lock stub — the shell lazy-loads the real screen only while locked.
+// The stub exposes an unlock affordance so the round trip is assertable; the
+// PIN keypad itself is SessionLockScreen.test.tsx's contract, not the shell's.
+vi.mock('@/features/auth/SessionLockScreen', () => ({
+  default: ({ onUnlock }: { onUnlock: () => void }) => (
+    <div data-testid="session-lock-screen">
+      <button type="button" onClick={onUnlock}>unlock</button>
+    </div>
+  ),
+}));
+
 vi.mock('@/features/workspaces/WorkspaceHome', () => ({
   default: () => <div data-testid="workspace-home">Workspace Home</div>,
 }));
@@ -325,6 +336,54 @@ describe('TabletAppShell — routing', () => {
     });
   });
 
+  // ── Session lock (the `app:lock` contract shared with the desktop shell) ──
+  //
+  // The restaurant sidebar's "Lock Terminal" item and DevToolbar both fire
+  // `app:lock`; the shell is the only place that owns the lock screen. Without
+  // this listener the tablet button would lock nothing.
+
+  describe('session lock', () => {
+    it('swaps the restaurant-pos screen for the lock screen on app:lock, and back on unlock', async () => {
+      mockWorkspaceValue({ activeWorkspace: 'restaurant-pos' });
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('app:lock'));
+      });
+      // Lazy-loaded screen: findBy gives the Suspense boundary a tick.
+      expect(await screen.findByTestId('session-lock-screen')).toBeInTheDocument();
+      // A locked terminal renders nothing else — not the workspace, and not
+      // the memo banner (same ruling as the desktop shell at AppShell.tsx).
+      expect(screen.queryByTestId('pos-screen')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('memo-banner-mount')).not.toBeInTheDocument();
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'unlock' }).click();
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('session-lock-screen')).not.toBeInTheDocument();
+    });
+
+    it('ignores app:lock with no session, rather than rendering a lock screen nobody can leave', async () => {
+      mockNoSession();
+      await renderWithProviders(<TabletAppShell />, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('app:lock'));
+      });
+      expect(screen.queryByTestId('session-lock-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('staff-login-screen')).toBeInTheDocument();
+    });
+  });
+
   // ── Sidebar workspaces ────────────────────────────────────────
 
   describe('sidebar workspaces', () => {
@@ -376,9 +435,10 @@ describe('TabletAppShell — routing', () => {
   // ── Memo banner surface (owner ruling 2026-09-08) ──────────
   //
   // Same ruling as the desktop shell: app-wide on authenticated
-  // surfaces, hidden on the login screen. The tablet has no session
-  // lock screen and no customer-facing kiosk route; the sidebar
-  // branch's mount lives in TabletAppLayout and is pinned here too.
+  // surfaces, hidden on the login screen (and on the session lock screen —
+  // see the `session lock` group above, which asserts the locked branch
+  // renders the lock screen alone). The sidebar branch's mount lives in
+  // TabletAppLayout and is pinned here too.
 
   describe('memo banner surface', () => {
     beforeEach(() => {

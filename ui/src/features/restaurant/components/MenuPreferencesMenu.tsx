@@ -22,7 +22,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
-import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/frontend/shell/ThemeProvider';
 import { useFullscreen } from '@/hooks/useFullscreen';
 import type { Dispatch, SetStateAction } from 'react';
@@ -54,7 +53,6 @@ export function MenuPreferencesMenu({
   onFontSizeStep,
 }: MenuPreferencesMenuProps) {
   const { l10n } = useLocalization();
-  const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { toggleFullscreen } = useFullscreen();
   const hamburgerRef = useRef<HTMLDivElement>(null);
@@ -242,7 +240,16 @@ export function MenuPreferencesMenu({
             className="restaurant-hamburger-item"
             onKeyDown={handleHamburgerKeyDown}
             aria-label={l10n.getString('restaurant-lock-terminal')}
-            onClick={() => { logout(); onOpenChange(false); }}
+            onClick={() => {
+              // Lock, not logout. `app:lock` is the shell's session-lock
+              // contract (the same event DevToolbar fires); AppShell and
+              // TabletAppShell answer it by swapping in SessionLockScreen while
+              // the auth session and the in-flight cart stay in place. logout()
+              // here would drop the session and send the next person through a
+              // full staff login.
+              window.dispatchEvent(new CustomEvent('app:lock'));
+              onOpenChange(false);
+            }}
           >
             <Localized id="restaurant-lock-terminal"><span>Lock Terminal</span></Localized>
           </button>

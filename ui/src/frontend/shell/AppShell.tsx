@@ -139,7 +139,9 @@ export default function AppShell() {
     }
   });
 
-  // DevToolbar "Lock" button fires app:lock to test the lock screen
+  // `app:lock` is how a screen asks for a session lock without owning the lock
+  // state: the restaurant sidebar's "Lock Terminal" fires it, and DevToolbar's
+  // "Lock" button fires it to exercise this screen.
   useEffect(() => {
     const handler = () => { if (session) setIsLocked(true); };
     window.addEventListener('app:lock', handler);

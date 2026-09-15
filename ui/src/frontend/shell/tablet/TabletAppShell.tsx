@@ -17,6 +17,7 @@ import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspa
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
+const SessionLockScreen = lazy(() => import('@/features/auth/SessionLockScreen'));
 const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
 const PosScreen = lazy(() => import('@/features/sales/PosScreen'));
@@ -41,6 +42,7 @@ export default function TabletAppShell() {
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
   const [currentRoute, setCurrentRoute] = useState('pos');
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
   // ADR #4 Phase 3b: use WorkspaceContext for device-bound auto-boot.
@@ -158,6 +160,31 @@ export default function TabletAppShell() {
     dismissSetupWizard().catch(console.error);
     setHasCompletedSetup(true);
   }, []);
+
+  // ── Session lock: the shell owns the lock screen; screens only ask for it ──
+  // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
+  // Terminal" and DevToolbar fire it). With no listener here a tablet lock
+  // would lock nothing — worse than the logout it replaced, because the
+  // terminal would keep showing the open cart to whoever walks up.
+  useEffect(() => {
+    const handler = () => { if (session) setIsLocked(true); };
+    window.addEventListener('app:lock', handler);
+    return () => window.removeEventListener('app:lock', handler);
+  }, [session]);
+
+  const handleUnlock = useCallback(() => {
+    setIsLocked(false);
+  }, []);
+
+  // The lock screen takes precedence over every branch, exactly as the desktop
+  // shell does: a locked terminal renders nothing else.
+  if (isLocked && session) {
+    return (
+      <LazyBoundary>
+        <SessionLockScreen onUnlock={handleUnlock} />
+      </LazyBoundary>
+    );
+  }
 
   if (loading) {
     // Branded boot splash (stage 2) — mirrors the desktop shell gate

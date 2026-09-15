@@ -347,6 +347,54 @@ describe('AppShell — KDS workspace navigation', () => {
     });
   });
 
+  // ── Manual session lock (`app:lock`) ──────────────────────────
+  //
+  // The restaurant sidebar's "Lock Terminal" item asks for a lock by firing
+  // this event; the shell is the only thing that owns the lock screen. Pinned
+  // separately from the idle path above: an idle test stays green if the
+  // `app:lock` listener is deleted, which would silently turn that item into a
+  // no-op button — the failure mode it had when it called logout() instead.
+
+  describe('manual session lock', () => {
+    it('renders the lock screen on app:lock and leaves the auth session alone', async () => {
+      const logout = vi.fn();
+      mockAuthSession.mockReturnValue({
+        session: {
+          user_id: 'user-1',
+          role_name: 'cashier',
+          role_id: 'role-1',
+          display_name: 'Test User',
+          permissions: [],
+        },
+        loading: false,
+        error: null,
+        login: vi.fn(),
+        logout,
+        clearError: vi.fn(),
+        swapSession: vi.fn(),
+        pickerTicket: null,
+        isManager: false,
+        isOwner: false,
+      });
+      mockRestaurantPos();
+
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+      await waitFor(() => {
+        expect(screen.getByTestId('pos-screen')).toBeInTheDocument();
+      });
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('app:lock'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('session-lock-screen')).toBeInTheDocument();
+      });
+      expect(logout).not.toHaveBeenCalled();
+    });
+  });
+
   // ── KDS Kiosk lockdown ────────────────────────────────────
 
   describe('kds kiosk lockdown', () => {

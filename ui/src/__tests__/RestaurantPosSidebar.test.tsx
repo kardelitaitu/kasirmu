@@ -22,6 +22,7 @@ const mockProducts = [
 ] as Product[];
 
 const mockActiveWorkspace = vi.hoisted(() => ({ current: 'restaurant-pos' }));
+const mockLogout = vi.hoisted(() => vi.fn());
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -63,7 +64,7 @@ vi.mock('@/contexts/AuthContext', () => ({
     loading: false,
     error: null,
     login: vi.fn(),
-    logout: vi.fn(),
+    logout: mockLogout,
     clearError: vi.fn(),
     isManager: false,
     isOwner: false,
@@ -160,6 +161,36 @@ describe('RestaurantPosSidebar', () => {
     expect(cartPanel).toHaveClass('pos-cart-panel--entering');
     expect(cartPanel.style.display).not.toBe('none');
     expect(resizeHandle.style.display).not.toBe('none');
+  });
+
+  // The sidebar item is labelled "Lock Terminal", so it has to lock the
+  // terminal: fire the shell's `app:lock` contract (AppShell / TabletAppShell
+  // swap in SessionLockScreen) and leave the auth session in place. It used to
+  // call logout(), which ended the cashier's session and dropped the open cart
+  // into a full staff login.
+  it('Lock Terminal fires app:lock without logging the session out', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    await user.click(document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement);
+    expect(document.querySelector('.restaurant-sidebar')).toBeInTheDocument();
+
+    mockLogout.mockClear();
+    const lockEvents: Event[] = [];
+    const record = (e: Event) => lockEvents.push(e);
+    // PosScreen alone is mounted here — no shell listener — so this spy sees
+    // exactly the event the button dispatched.
+    window.addEventListener('app:lock', record);
+    try {
+      await user.click(screen.getByRole('button', { name: 'Lock Terminal' }));
+    } finally {
+      window.removeEventListener('app:lock', record);
+    }
+
+    expect(lockEvents).toHaveLength(1);
+    expect(mockLogout).not.toHaveBeenCalled();
+    // The popover closes on the lock, like every other item in it.
+    expect(document.querySelector('.restaurant-sidebar')).not.toBeInTheDocument();
   });
 
   it('keeps CartPanel visible in retail POS workspace', async () => {
