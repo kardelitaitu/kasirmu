@@ -43,6 +43,23 @@ export interface TicketSlaResult {
  */
 export const RED_URGENT = 900;
 
+/**
+ * Upper bound for the yellow threshold, in seconds (RED_URGENT - 60 = 14 min).
+ * A yellow onset at or after the urgent mark would be invisible: the ticket
+ * is already escalated. Exported so the settings-UI minute clamp
+ * (features/kds/kdsThresholdMinutes.ts) DERIVES from it instead of writing a
+ * second literal — the 2026-09-15 SLA-clamp ruling made one surface govern
+ * the other; the cross-surface cases in KdsThresholdClamp.test.ts pin it.
+ */
+export const SLA_YELLOW_MAX_SEC = RED_URGENT - 60;
+
+/**
+ * Upper bound for the red threshold, in seconds (RED_URGENT = 15 min).
+ * Red onset at or beyond the urgent mark would leave the red band empty.
+ * See SLA_YELLOW_MAX_SEC for why this is exported and what derives from it.
+ */
+export const SLA_RED_MAX_SEC = RED_URGENT;
+
 /** Tick interval in milliseconds (every second). */
 const TICK_MS = 1000;
 
@@ -56,8 +73,8 @@ const TICK_MS = 1000;
  */
 export function clampSlaThresholds(thresholds: SlaThresholds): SlaThresholds {
   return {
-    yellowAtSec: Math.max(30, Math.min(thresholds.yellowAtSec, RED_URGENT - 60)),
-    redAtSec: Math.max(60, Math.min(thresholds.redAtSec, RED_URGENT)),
+    yellowAtSec: Math.max(30, Math.min(thresholds.yellowAtSec, SLA_YELLOW_MAX_SEC)),
+    redAtSec: Math.max(60, Math.min(thresholds.redAtSec, SLA_RED_MAX_SEC)),
   };
 }
 

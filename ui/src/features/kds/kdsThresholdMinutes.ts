@@ -10,20 +10,41 @@
  *
  * Minutes only. The SECONDS clamp — the rule that decides when a ticket
  * actually turns yellow/red on the board — is a separate rule in
- * hooks/useTicketSla.ts (clampSlaThresholds: yellow 30..840 s, red 60..900 s).
- * The two do not agree on their ceilings: this file permits 30/60 minutes,
- * that one caps at 14/15. That is an open product question about which clamp
- * wins, NOT something to "align" from here.
+ * hooks/useTicketSla.ts (clampSlaThresholds: yellow 30..SLA_YELLOW_MAX_SEC,
+ * red 60..SLA_RED_MAX_SEC).
+ *
+ * RULING 2026-09-15 (lane owner), resolving the disagreement this file used
+ * to record as an open product question: the ENGINE ceiling wins, and the
+ * minute ceilings below DERIVE from it rather than being written as
+ * literals. The settings UI can therefore no longer offer any value the
+ * board engine would silently override — a saved red is honored to the
+ * second. The cross-surface cases in KdsThresholdClamp.test.ts pin the
+ * agreement: change RED_URGENT and both clamps move together (still
+ * agreeing); hardcode either side and those cases go red.
  */
 
-/** Yellow's fixed range is 3–30 minutes, and it must stay strictly below red. */
+import { SLA_RED_MAX_SEC, SLA_YELLOW_MAX_SEC } from './hooks/useTicketSla';
+
+/**
+ * Highest yellow the UI may offer, in minutes (SLA_YELLOW_MAX_SEC / 60 = 14).
+ * Derived from the engine ceiling — do not replace with a literal.
+ */
+export const YELLOW_MAX_MIN = SLA_YELLOW_MAX_SEC / 60;
+
+/**
+ * Highest red the UI may offer, in minutes (SLA_RED_MAX_SEC / 60 = 15).
+ * Derived from the engine ceiling — do not replace with a literal.
+ */
+export const RED_MAX_MIN = SLA_RED_MAX_SEC / 60;
+
+/** Yellow's fixed range is 3–YELLOW_MAX_MIN minutes, and it must stay strictly below red. */
 export function clampYellowThreshold(v: number, redMin: number): number {
-  return Math.max(3, Math.min(v, redMin - 1, 30));
+  return Math.max(3, Math.min(v, redMin - 1, YELLOW_MAX_MIN));
 }
 
-/** Red's fixed range is 4–60 minutes. */
+/** Red's fixed range is 4–RED_MAX_MIN minutes. */
 export function clampRedThreshold(v: number): number {
-  return Math.max(4, Math.min(v, 60));
+  return Math.max(4, Math.min(v, RED_MAX_MIN));
 }
 
 /**

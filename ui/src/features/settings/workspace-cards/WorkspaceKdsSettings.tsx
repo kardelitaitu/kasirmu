@@ -7,6 +7,7 @@ import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
 import { useSettings } from '@/contexts/SettingsContext';
 import { getSettingScoped, setSettingsScoped } from '@/api/settings';
+import { clampRedThreshold, clampYellowThreshold } from '@/features/kds/kdsThresholdMinutes';
 import SettingsSelect from '../SettingsSelect';
 import type { WorkspaceCardProps } from './types';
 import { hasChanges } from './helpers';
@@ -88,10 +89,20 @@ export function WorkspaceKdsSettings({
       getSettingScoped(sessionToken ?? null, 'kds.auto_acknowledge'),
       getSettingScoped(sessionToken ?? null, 'kds.density'),
     ]).then(([sound, yellow, red, ack, density]) => {
+      // RULING 2026-09-15 (lane owner): values persisted BEFORE the ruling can exceed the
+      // ceilings the board engine honors — the KDS hamburger slider once offered 30/60
+      // minutes while clampSlaThresholds silently capped them at 14/15. Hydrate through
+      // the same minute clamps the writers use (red first; yellow follows red-1) so the
+      // number this card shows, and re-saves on the next unrelated edit, is the number
+      // the board actually acts on.
+      const redThresholdMin = clampRedThreshold(parseInt(red ?? '', 10) || DEFAULT_KDS.redThresholdMin);
       const loaded: KdsDraftState = {
         soundEnabled: sound !== 'false',
-        yellowThresholdMin: parseInt(yellow ?? '', 10) || DEFAULT_KDS.yellowThresholdMin,
-        redThresholdMin: parseInt(red ?? '', 10) || DEFAULT_KDS.redThresholdMin,
+        yellowThresholdMin: clampYellowThreshold(
+          parseInt(yellow ?? '', 10) || DEFAULT_KDS.yellowThresholdMin,
+          redThresholdMin,
+        ),
+        redThresholdMin,
         autoAcknowledge: ack === 'true',
         density: Math.min(5, Math.max(1, parseInt(density ?? '', 10) || DEFAULT_KDS.density)),
       };

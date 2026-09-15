@@ -119,7 +119,13 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ session: { user_id: 'user-1', display_name: 'Alice', role_name: 'cashier' } }),
 }));
 
-vi.mock('@/features/kds/hooks/useTicketSla', () => ({
+vi.mock('@/features/kds/hooks/useTicketSla', async (importOriginal) => ({
+  // Only the HOOK is mocked (it owns a 1 Hz ticker). The pure exports —
+  // RED_URGENT, SLA_YELLOW_MAX_SEC, SLA_RED_MAX_SEC — must pass through from
+  // the real module: kdsThresholdMinutes.ts derives the UI minute ceilings
+  // from them (2026-09-15 ruling), and KdsHeaderRight imports that helper, so
+  // a whole-module mock here makes those names undefined at import time.
+  ...(await importOriginal<typeof import('@/features/kds/hooks/useTicketSla')>()),
   useTicketSla: (..._args: unknown[]) => mockUseTicketSla(),
 }));
 
