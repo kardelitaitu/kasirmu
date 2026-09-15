@@ -41,17 +41,6 @@ fn validate_create_rate_args(args: &CreateExchangeRateArgs) -> Result<(), AppErr
 }
 
 #[tauri::command]
-/// List exchange rates.
-pub async fn list_exchange_rates(
-    state: State<'_, AppState>,
-) -> Result<Vec<ExchangeRateDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::currency::list_exchange_rates(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 /// Create a global exchange rate.
 ///
 /// Legacy compatibility command: it operates on the global catalog database,
@@ -67,15 +56,6 @@ pub async fn create_exchange_rate(
 ) -> Result<ExchangeRateDto, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::currency::create_exchange_rate(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-/// Delete exchange rate.
-pub async fn delete_exchange_rate(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::currency::delete_exchange_rate(&ctx, &id)
         .await
         .map_err(Into::into)
 }

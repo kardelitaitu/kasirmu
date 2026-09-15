@@ -53,18 +53,6 @@ pub async fn get_sync_settings_scoped(
         .map_err(Into::into)
 }
 
-/// Update sync settings.
-#[tauri::command]
-pub async fn update_sync_settings(
-    args: UpdateSyncSettingsArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::sync::update_sync_settings(&ctx, args)
-        .await
-        .map_err(Into::into)
-}
-
 /// Persist sync settings (server URL, API key, enabled flag) atomically.
 ///
 /// All three writes execute inside a single SQLite transaction so a
