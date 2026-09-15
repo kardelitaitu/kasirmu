@@ -1126,7 +1126,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
                 "INSERT OR IGNORE INTO tenant_subscription \
                      (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, \
                       allowed_types_json, signature, signed_payload, api_key, updated_at) \
-                     VALUES ('default', 'pro', 'active', NULL, 2, 3, '[]', 'BOOTSTRAP_FREE', \
+                     VALUES ('default', 'pro', 'active', NULL, 2, 3, '[\"pos\"]', 'BOOTSTRAP_FREE', \
                              '', '', '2026-08-10T00:00:00.000Z')",
                 [],
             )
@@ -1729,4 +1729,192 @@ async fn crash_recovery_with_snapshots_restores_pre_mutation_rows() {
             .unwrap(),
         previous
     );
+}
+
+// ── Two-store characterisation: docs/plans/notes.md item 20 ────────────────
+//
+// OBSERVES which database receives the writes when the SESSION store and the
+// DIAGRAM store_profile_id differ. It changes no production line and demands no
+// policy: whether the behaviour is intended is the open owner question recorded
+// as notes.md item 20. Reuses the helpers this file already carries --
+// crash_creation (:863) and store_has_instance (:917) -- so it is a case, not a
+// new harness.
+
+async fn char_apply(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    token: &str,
+    diagram_store: &str,
+    request_id: &str,
+) -> Result<oz_bridge::topology::commands::TopologyApplyResult, crate::error::AppError> {
+    let nodes = vec![serde_json::json!({
+        "id": "branch-char",
+        "type": "branch-location",
+        "name": "Branch",
+        "store_profile_id": diagram_store,
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    apply_topology_diff(
+        token.to_string(),
+        vec![crash_creation(diagram_store, "ws-char-1")],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        request_id.to_string(),
+        None,
+        Some("characterise foreign-store apply".into()),
+        app.state(),
+    )
+    .await
+}
+
+fn char_audit_count(state: &AppState, store_id: &str) -> i64 {
+    let conn = state.db_manager.open_store(store_id).unwrap();
+    let db = conn.lock().unwrap();
+    db.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0))
+        .unwrap_or(-1)
+}
+
+#[tokio::test]
+async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes() {
+    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    let store_a = "char-store-a"; // the SESSION store, both users
+    let store_b = "char-store-b"; // the DIAGRAM store_profile_id -- foreign
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute_batch(
+                r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES ('role-topo-mgr', 'Topo Manager', 'Scoped Topo', '["topology:write"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
+            )
+            .unwrap();
+        global
+            .execute_batch(
+                r#"INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES ('user-legacy', 'legacy', 'hash', 'Legacy Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z'), ('user-scoped', 'scoped', 'hash', 'Scoped Mgr', 'role-topo-mgr', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
+            )
+            .unwrap();
+        for sid in [store_a, store_b] {
+            global
+                .execute(
+                    "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
+                    rusqlite::params![sid, sid],
+                )
+                .unwrap();
+        }
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '[]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+        // user-scoped carries an explicit branch LIST naming store_a only, so
+        // store_b sits outside it, and workspaces_all = true so the workspace
+        // dimension cannot be the reason for any denial: the question is the
+        // branch intersection at crates/oz-core/src/db/assignments.rs:204.
+        store
+            .set_assignment(
+                "user-scoped",
+                "role-topo-mgr",
+                &AssignmentSpec {
+                    scope_mode: ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec![store_a.into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    for (tok, uid, rid) in [
+        ("token-legacy", "user-legacy", "role-owner"),
+        ("token-scoped", "user-scoped", "role-topo-mgr"),
+    ] {
+        state.session_store.write().unwrap().insert(
+            tok.to_string(),
+            SessionContext::new(
+                uid.into(),
+                rid.into(),
+                "terminal-1".into(),
+                store_a.into(),
+                "instance-1".into(),
+                "pos".into(),
+                None,
+                0,
+            ),
+        );
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let legacy = char_apply(&app, "token-legacy", store_b, "request-char-legacy").await;
+    let scoped = char_apply(&app, "token-scoped", store_b, "request-char-scoped").await;
+    let st = app.state::<AppState>();
+    let obs = format!(
+        "legacy_ok={} scoped_ok={} inst_a={} inst_b={} audit_a={} audit_b={}",
+        legacy.is_ok(),
+        scoped.is_ok(),
+        store_has_instance(&st, store_a, "ws-char-1"),
+        store_has_instance(&st, store_b, "ws-char-1"),
+        char_audit_count(&st, store_a),
+        char_audit_count(&st, store_b),
+    );
+    let errs = format!(
+        "legacy_err={:?} scoped_err={:?}",
+        legacy.as_ref().err(),
+        scoped.as_ref().err()
+    );
+    // CHARACTERISATION, not contract. Observed at this SHA; whether it is intended
+    // is the open owner question in docs/plans/notes.md item 20. Two facts are
+    // pinned, both about WHERE the request stopped, because neither user reaches a
+    // write:
+    //
+    //  * user-legacy (role-owner, NO assignments row) is refused with a
+    //    SUBSCRIPTION-tier message, not a scope message. The permission call at
+    //    crates/oz-bridge/src/topology/commands.rs:476-482 runs BEFORE the tier
+    //    check (commands.rs:~713), so an assignment-less session passing scope on a
+    //    store it merely NAMED in the diagram is the observation -- the write was
+    //    stopped by an entitlement that has nothing to do with store identity.
+    //  * user-scoped (explicit branch list = [store_a], store_b named by the
+    //    diagram) is refused with "branch/workspace out of scope", which is
+    //    crates/oz-core/src/db/assignments.rs:204 intersecting exactly as written.
+    //
+    // No row landed in either store, so the residual-state assertions are the
+    // point: whatever the ruling on item 20 turns out to be, today the divergence
+    // does not reach the databases in this configuration.
+    let legacy_msg = legacy.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+    let scoped_msg = scoped.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(
+        legacy.is_err() && legacy_msg.contains("subscription tier"),
+        "assignment-less Apply should stop at the entitlement gate, not at scope; got [{}] on {}",
+        legacy_msg,
+        obs,
+    );
+    assert!(
+        scoped.is_err() && scoped_msg.contains("out of scope"),
+        "Scoped Apply naming a store outside its branch list should deny on scope; got [{}]",
+        scoped_msg,
+    );
+    assert_eq!(
+        (
+            store_has_instance(&st, store_a, "ws-char-1"),
+            store_has_instance(&st, store_b, "ws-char-1"),
+            char_audit_count(&st, store_a),
+            char_audit_count(&st, store_b),
+        ),
+        (false, false, 0, 0),
+        "no instance and no audit row may exist in either store; observed {}",
+        obs,
+    );
+    let _ = dir;
 }
