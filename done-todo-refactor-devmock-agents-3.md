@@ -380,13 +380,18 @@ not a value verified" error this repo warns about. Opened now, it is not what th
   keys + 22 `handlers[…]` additions** — sibling-owned domains (Agent 2's bundles / cash-drawer / low-stock;
   Agent 4's locations / device-binding / kds / sync / receipt), each deferred to a lane that has since archived
   `done-todo-`.
-- All four `refactor-devmock-agents-*` lanes are now `done-todo-` (`-1`/`-2`/`-4` archived, `-3` this file).
-  **So the router's final reduction has no live owner — it is open debt, not a closed handoff.**
+- All four `refactor-devmock-agents-*` lanes are now `done-todo-` (`-1`/`-2`/`-4` archived, `-3` this file),
+  so when this note was first written the router's final reduction had **no live owner** — open debt, not a
+  closed handoff. **Superseded the same day:** that orphan status is exactly why
+  `todo-refactor-devmock-router-consolidation.md` (Orchestrator Agent 5) was opened at **`1938a0782`** to
+  claim the released job, with the `entryHandlers` baseline and the `mockStores` blocker recorded in it; the
+  debt is now owned, not ownerless.
 
-**Keep two things distinct, because conflating them would be the next wrong claim:** this orphaned
-consolidation is **not** why `check:all` is red. That red is, and remains, the two foreign CSS suites
+**Keep two things distinct, because conflating them would be the next wrong claim:** this consolidation
+(owned by Agent 5's `todo-refactor-devmock-router-consolidation.md` since **`1938a0782`**) is **not** why
+`check:all` is red. That red is, and remains, the two foreign CSS suites
 (popover on `RestaurantMenu.css`, theme on the uncommitted `CartPanelLineItem.css`); an un-reduced router
-fails no test. The fat router is ownerless quality debt, orthogonal to this file's acceptance.
+fails no test. The fat router is quality debt, orthogonal to this file's acceptance — no longer ownerless.
 
 **Blast radius of the rename — recorded, then repaired:** the new name broke two links inside `agents-4`
 — `:23` and `:167` pointed at `../../todo-refactor-devmock-agents-3.md`, which stopped resolving.
@@ -394,6 +399,7 @@ Factually dead, though inert to the dead-ref checker (`check-dead-refs.py` `is_h
 `todo-` substring test and agents-4's own name carries it). Repointing is a small edit to another,
 archived lane's file; the owner directed it this round, so both were repointed to
 `../../done-todo-refactor-devmock-agents-3.md` in **`2f5406acb`**. Two sibling links in that same
-`agents-4` block — `:21` and `:22`, pointing at `./todo-refactor-devmock-agents-1.md` / `-2.md` — are
-also stale, but those were broken by an earlier lane's `done-todo-` rename + move into `archived/`, not
-by this one; they are that lane's cleanup and are deliberately left untouched here.
+`agents-4` block — `:21` and `:22`, pointing at `./todo-refactor-devmock-agents-1.md` / `-2.md` — were
+also stale (broken earlier by those lanes' `done-todo-` rename + move into `archived/`, not by this one);
+recorded here first as another lane's cleanup, then repointed to `./done-todo-…` in **`80bafa27f`** on the
+owner's "continue" directive. All three back-links into `agents-3`/siblings now resolve.
