@@ -78,4 +78,25 @@ export const workspaceHandlers: Record<string, MockHandler> = {
 
   // Workspace store listing (multi-store picker)
   'list_workspaces_for_store_scoped': () => [],
+
+  // §J quota remediation. Both commands return Result<u32> — a COUNT of affected
+  // instances, not a row set. suspend_surplus_workspace_instances_scoped used to
+  // answer `[]` in the router's picker group (copied its neighbour's shape), so
+  // the mock contradicted the contract by type. A wired-up button would have
+  // rendered a blank count in browser preview while behaving correctly in the
+  // shell, which is the worst direction for a mock to be wrong in: it hides the
+  // real path and invents a phantom.
+  //
+  // Both answer 0 rather than an invented number. `MOCK_WORKSPACES_SEED` (this
+  // module's own import) carries no `status` column, so no instance is
+  // representable as `quota_suspended`, and the mock holds no signed tier
+  // payload, so "surplus" is genuinely undefined here — 0 is the only honest
+  // answer, and the correct one for the seed data. The count is therefore not
+  // stateful: nothing here can ever become suspended.
+  //
+  // Moved verbatim from `tauri-api.ts` by todo-refactor-devmock-router-
+  // consolidation.md Phase 5.5; both keys `git grep`-confirmed single-defined,
+  // so this is a pure copy into their plan-correct home.
+  'suspend_surplus_workspace_instances_scoped': () => 0,
+  'recover_workspace_instances_scoped': () => 0,
 };

@@ -324,21 +324,9 @@ registerHandlers(settingsWriteHandlers);
 
 // Analytics daily staff breakdown
 
-// §J quota remediation. Both commands return Result<u32> — a COUNT of affected
-// instances, not a row set. suspend_surplus_workspace_instances_scoped used to
-// answer `[]` here because it had been parked in the picker group above and
-// copied its neighbour's shape, so the mock contradicted the contract by type.
-// A wired-up button would have rendered a blank count in browser preview while
-// behaving correctly in the shell, which is the worst direction for a mock to
-// be wrong in: it hides the real path and invents a phantom.
-//
-// Both answer 0 rather than an invented number. `MOCK_WORKSPACES_SEED` carries no
-// `status` column (so no instance is representable as `quota_suspended`) and the
-// mock holds no signed tier payload, so "surplus" is genuinely undefined here —
-// 0 is the only honest answer, and it is the correct answer for the seed data.
-// The count is therefore not stateful: nothing here can ever become suspended.
-handlers['suspend_surplus_workspace_instances_scoped'] = () => 0;
-handlers['recover_workspace_instances_scoped'] = () => 0;
+// §J quota remediation pair (suspend_surplus_workspace_instances_scoped,
+// recover_workspace_instances_scoped) moved verbatim — with its full rationale
+// comment — to handlers/workspaces.ts (Phase 5.5); () => 0 each, single-defined.
 
 // Warehouse products at a specific location
 handlers['list_warehouse_products_at_location'] = (args) => {
