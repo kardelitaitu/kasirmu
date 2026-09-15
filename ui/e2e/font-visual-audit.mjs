@@ -70,7 +70,6 @@ const pageName = pageArg ?? presentDocs[0];
 if (presentDocs.length > 1 && !pageArg) {
   console.log(`note: ${distArg} holds both boot documents; measuring ${presentDocs[0]}, pass --page to choose the other`);
 }
-const shell = SHELL_OF[pageName] ?? 'unknown-shell';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
