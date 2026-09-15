@@ -92,6 +92,65 @@ function serve(root, csp) {
   });
 }
 
+/**
+ * The same measurement at every step of the app's OWN type scale, taken through
+ * var() so the numbers come from the shipped tokens rather than from sizes typed
+ * into this file. Height is reported alongside width on purpose: the leading tokens
+ * are unitless multipliers, so if any height moves between the two runs, the claim
+ * that bundling is a horizontal-only problem is wrong and this table is the proof.
+ */
+const SCALE_TOKENS = [
+  '--text-2xs', '--text-xs', '--text-sm', '--text-base', '--text-md', '--text-lg',
+  '--text-xl', '--text-2xl', '--text-3xl', '--text-4xl', '--text-5xl', '--text-hero',
+];
+const SAMPLE = 'Total 1.234.567,89 Rp — Shift 12 Open #42';
+
+async function bench(page) {
+  return page.evaluate(({ tokens, sample }) => {
+    const root = getComputedStyle(document.documentElement);
+    const stack = root.getPropertyValue('--font-sans').trim();
+    return tokens.map((t) => {
+      const decl = root.getPropertyValue(t).trim();
+      const s = document.createElement('span');
+      s.style.cssText = 'position:absolute;left:-9999px;top:0;white-space:pre;';
+      s.style.fontFamily = stack;
+      s.style.fontSize = `var(${t})`;
+      s.textContent = sample;
+      document.body.appendChild(s);
+      const r = s.getBoundingClientRect();
+      s.remove();
+      return {
+        token: t,
+        decl: decl || 'UNRESOLVED',
+        width: Math.round(r.width * 100) / 100,
+        height: Math.round(r.height * 100) / 100,
+      };
+    });
+  }, { tokens: SCALE_TOKENS, sample: SAMPLE });
+}
+
+function printBench(a, b) {
+  console.log('\n--- the whole shipped type scale, same document, faces allowed vs blocked ---');
+  console.log(`  sample: "${SAMPLE}"  (${SAMPLE.length} chars) in the --font-sans stack`);
+  console.log('  token        decl       no-face px  with-face px     d px     d %   height');
+  let widthSum = 0;
+  let heightMoved = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const w = a[i];
+    const n = b[i];
+    const dp = Math.round((w.width - n.width) * 100) / 100;
+    const pct = n.width ? Math.round((dp / n.width) * 10000) / 100 : 0;
+    widthSum += pct;
+    if (w.height !== n.height) heightMoved += 1;
+    console.log(
+      `  ${w.token.padEnd(12)} ${w.decl.padEnd(9)} ${String(n.width).padStart(9)}  ${String(w.width).padStart(11)}  ${String(dp).padStart(7)}  ${String(pct).padStart(6)}   ${w.height === n.height ? `${w.height} (unchanged)` : `${n.height} -> ${w.height} MOVED`}`,
+    );
+  }
+  console.log(`\n  mean width change: ${(Math.round((widthSum / a.length) * 100) / 100)} %  |  heights that moved: ${heightMoved} of ${a.length}`);
+  console.log('  the height column is the test of a claim, not a measurement of interest: unitless');
+  console.log('  line-height tokens mean the vertical rhythm cannot depend on which face paints, and');
+  console.log('  any row that says MOVED contradicts that and should be chased, not admired.');
+}
 /** What the page actually rendered with. No expectations, only observation. */
 async function observe(page) {
   return page.evaluate(() => {
@@ -179,6 +238,7 @@ async function run() {
     await page.goto(server.url, { waitUntil: 'load' });
     await page.evaluate(() => document.fonts.ready.catch(() => undefined));
     const o = await observe(page);
+    const rows = await bench(page);
     const shot = path.join(outDir, `splash-${mode}.png`);
     await page.screenshot({ path: shot });
     // Self-verification, because the lane running this may not be able to look at a
@@ -210,7 +270,7 @@ async function run() {
     banner(mode === 'with-fonts' ? 'AFTER -- the bundled faces are allowed' : 'BEFORE -- every woff2 request aborted, so only the fallback tails remain', o, net);
     console.log(`  screenshot           ${shot}`);
     console.log(`  text-clip bytes      ${clipBytes < 0 ? 'unavailable (no label box found)' : `${clipBytes} of ${clipSource}`}`);
-    results[mode] = { ...o, net, clipBytes };
+    results[mode] = { ...o, net, clipBytes, bench: rows };
     await ctx.close();
   }
 
@@ -226,6 +286,7 @@ async function run() {
     console.log('  text-clip bytes:  unavailable, so the pixel half of this report is unverified');
   }
   console.log(`  declared stack identical in both runs: ${a.declaredStack === b.declaredStack}`);
+  printBench(a.bench, b.bench);
   console.log('\nRead this as the bundle-budget half of the box too: the woff2 numbers above');
   console.log('are what a customer downloads before the first pixel of type is theirs.');
   console.log('\nWhat this tool cannot do: decide whether either rendering is the one the');
