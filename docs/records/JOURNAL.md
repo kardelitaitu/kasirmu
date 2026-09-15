@@ -11177,3 +11177,19 @@ The KDS cleanup pass ran `check:all` and found 3 foreign failing tests: 2 belong
 Every committed red `check:all` carried is gone bar one that only the owning lane can clear. And the `__probe_remote_import.css` that sat untracked during the review self-deleted within ten minutes exactly as its own header promised ("deleted in the same pass") — the probe-with-cleanup is the third option between committing and deleting, and leaving live lanes alone was what let it clean itself.
 
 **Commit:** single pathspec commit `f8c017428`; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — the router consolidation gets its state-move, and the lane hands off mid-checklist to a faster sibling (dev-mock)
+
+**Context:**
+After the push, the "continue" order found the git-cleaning loop fully converged: every dirty path belonged to a lane active within minutes (the tablet lane committed `purchasing.rs` as `095e744d0` WHILE classifying; the qris/cloud "00:06 cluster" failed the whitespace-invariance test — only 4 of 22 files were fmt-only, the rest substantive WIP; the sole tree red was proven to be the literally uncommitted `+ box-shadow: var(--shadow-md, ...)` line in the sales lane's dirty CSS — HEAD itself green, 581/582 files). The one zero-work plan left was the lane this session's earlier round had opened: `todo-refactor-devmock-router-consolidation.md`.
+
+**Changes:**
+Phase 5.1's state-move half, `99a68348f`: `handlers/locationState.ts` created, owning `mockStores`, the ticket-prefix pair and `unwrapArgs` verbatim — the shared-state knot `-4:190` had called the real blocker; the router's four surviving regional/receipt readers go through `getMockStores()`; the dangling Legal-Entity comment from an earlier move deleted; router 851 → 767 lines. The plan had grown a "DO NOT TOUCH tauri-api.ts — IN FLIGHT under another session" hold naming the exact same file; the hold described an attempt that had evaporated (untracked file gone, pre-move porcelain empty), so the phase was RE-DERIVED FROM ZERO against a freshly measured snapshot, and `4c81455b4` resolves the hold on the plan so it cannot mislead the next reader.
+
+**Verification:**
+Before-snapshot re-derived at THIS HEAD, not quoted from memory: 681 keys / sha `105d29730df2`; after-move identical (throwaway dump test, run both sides, deleted — the plan's no-artifact pattern); `npx tsc --noEmit` 0; dev-mock suites 7 files / 96/96.
+
+**What it means:**
+Two findings generalise. First: the measurement discipline paid off immediately — the digest is a timestamp, and the plan's own net-rule (re-derive, never trust 681) is what made the vanished-lane overlap safe instead of destructive. Second: minutes after the state-move landed, another session began executing Phases 5.2 and 5.3 ON TOP of it (`48c3f8027` bundles, `f0b2dc312` sync) and was editing the router for 5.4 (`kds-devices.ts` at 05:25, router mtime 05:26:15) — the guard claims were released rather than racing a live editor. In a shared checkout the right move when someone is writing your next file is to hand them the foundation you verified and keep the measurement history — the reduction lands either way; only its proof needs an owner, and right now that owner is this lane.
+
+**Commit:** `99a68348f` + `4c81455b4`, this entry rides its own docs(journal) commit -- never push without a direct user order.
