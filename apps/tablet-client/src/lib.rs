@@ -749,6 +749,7 @@ pub fn run() {
                 commands::settings::set_hardware_settings_scoped,
                 commands::settings::set_receipt_settings_scoped,
                 commands::settings::set_setting_scoped,
+                commands::settings::set_settings_scoped,
                 commands::settings::set_store_settings_scoped,
                 commands::settings::settle_credit_scoped,
                 commands::sync::get_sync_plan_scoped,

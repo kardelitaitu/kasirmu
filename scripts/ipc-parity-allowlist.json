@@ -165,7 +165,6 @@
     "send_test_report",
     "set_location_ticket_prefix_scoped",
     "set_primary_location_scoped",
-    "set_settings_scoped",
     "set_stock_threshold",
     "set_terminal_override",
     "set_terminal_profile_scoped",

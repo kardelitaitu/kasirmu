@@ -819,6 +819,77 @@ pub async fn set_setting_scoped(
     Ok(())
 }
 
+/// Session-scoped batch write of settings keys. ADR #7.
+///
+/// The tablet twin of the bridge's `set_settings_scoped`. It exists because
+/// three workspace settings cards call this name —
+/// `ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:114`,
+/// `WorkspaceKdsSettings.tsx:136` and `WorkspaceInventorySettings.tsx:97` — and
+/// the tablet mounts the same `WorkspaceSettingsModal` the desktop shell does
+/// (`ui/src/frontend/shell/tablet/TabletAppShell.tsx:71-91` registers the F10
+/// route, `:125` renders it). Before this command existed, those three cards
+/// could not save on a tablet at all. The name was registered on desktop and
+/// absent here, which is why `scripts/ipc-parity-allowlist.json` carried it
+/// (T4-4 in `todo-refactor-oz-pos-app-agents-3.md`).
+///
+/// Two deliberate differences from the bridge body, both measured rather than
+/// assumed:
+/// - **The enqueue goes to the STORE queue, not the global one.** The bridge
+///   enqueues on `ctx.db` because the desktop daemon watches the global queue
+///   (`crates/oz-bridge/src/settings.rs`, "the sync daemon only watches the
+///   global queue"). The tablet's daemon drains the *store* queue:
+///   `sync_run_scoped` reads it through `resolve_scope` (`sync.rs:400-411`) and
+///   its Phase 3 comment at `:437-447` records that writing these marks to the
+///   global connection instead stranded the store rows as `pending` forever.
+///   This matches the singular `set_setting_scoped` above, which already
+///   enqueues on the store.
+/// - **The tenant is the tablet's staged sentinel `"default"`**, the same value
+///   `enqueue_settings_update` passes, rather than the bridge's
+///   `session.store_id`.
+#[command]
+pub async fn set_settings_scoped(
+    session_token: String,
+    entries: HashMap<String, String>,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let terminal_id = state
+        .terminal_id
+        .lock()
+        .await
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db_guard);
+
+    // All-or-nothing, like the desktop twin: the batch funnel pre-flights every
+    // key before it writes any, so one refused key aborts the whole batch.
+    let written = {
+        let tx = db_guard.unchecked_transaction()?;
+        let written = oz_bridge::settings::run_set_settings_batch(&tx, &entries, &terminal_id)?;
+        tx.commit()?;
+        written
+    };
+
+    // Enqueue the values AS WRITTEN — the funnel merges `smtp_config`
+    // internally, so `entries` is not what replication is offered.
+    // Warn-and-continue: the local write already committed. SYNC-10.
+    if let Err(e) =
+        oz_bridge::settings::enqueue_settings_updates(&store, &written, &terminal_id, "default")
+    {
+        tracing::warn!(
+            key_count = written.len(),
+            error = %e,
+            "failed to enqueue settings.update sync items"
+        );
+    }
+    Ok(())
+}
+
 // ── Deployment / version read (operator tooling, saas-3 L162) ─────
 
 // `DeploymentInfo` is re-exported from `oz_bridge::settings`; the value is

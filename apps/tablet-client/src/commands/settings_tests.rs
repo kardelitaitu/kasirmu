@@ -1706,3 +1706,206 @@ fn wire_pin_gateway_status_entry_carries_every_key_the_renderer_declares() {
         "GatewayStatusEntry must emit exactly name/configured/online — any extra key is a credential leak"
     );
 }
+
+// ── Phase 3.3 T4-4: the batch settings write ────────────────────────
+//
+// `set_settings_scoped` is registered on this shell because three workspace
+// settings cards call it —
+// `ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:114`,
+// `WorkspaceKdsSettings.tsx:136`, `WorkspaceInventorySettings.tsx:97` — and the
+// tablet mounts the same `WorkspaceSettingsModal` the desktop shell does
+// (`TabletAppShell.tsx:71-91`, `:125`). Before it existed those three cards
+// could not save on a tablet at all, and the name sat in
+// `scripts/ipc-parity-allowlist.json` as the record of that gap.
+
+/// Seed a user whose role carries every permission, into the GLOBAL identity
+/// database — the one `require_permission_for_session` reads.
+fn seed_owner_user(conn: &rusqlite::Connection) {
+    let store = Store::new(conn);
+    store.seed_default_roles().unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+}
+
+/// An app whose store databases live in a temp dir, with a session for
+/// `user-owner` in `store-a`.
+fn owner_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
+    state.session_store.write().unwrap().insert(
+        "owner-token".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+fn store_state(conn: rusqlite::Connection) -> AppState {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager =
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    state
+}
+
+fn batch(entries: &[(&str, &str)]) -> HashMap<String, String> {
+    entries
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// Both halves that are easy to get wrong, pinned together: every entry lands
+/// on the SESSION's store database, and the sync items are enqueued on that
+/// same store queue.
+///
+/// The queue half is the one worth the ink. The desktop twin enqueues on the
+/// global connection because the desktop daemon watches the global queue; this
+/// shell's daemon drains the store queue, and `sync.rs:437-447` records that
+/// writing these marks to the global connection instead stranded the store rows
+/// as `pending` forever. So mirroring the bridge here would have produced a
+/// silently unsynced settings save — the failure this assertion exists to
+/// catch.
+#[tokio::test]
+async fn set_settings_scoped_writes_every_entry_and_queues_on_the_session_store() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    let app = owner_app(store_state(conn));
+
+    set_settings_scoped(
+        "owner-token".into(),
+        batch(&[
+            ("restaurant.course_firing", "true"),
+            ("kds.auto_accept", "1"),
+        ]),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let state = app.state::<AppState>();
+    let session = state
+        .resolve_session("owner-token")
+        .expect("the session resolves");
+    assert_eq!(session.store_id, "store-a");
+    let conn_arc = state
+        .db_manager
+        .open_store(&session.store_id)
+        .expect("the session's store db opens");
+    let db = conn_arc.lock().unwrap();
+
+    // Every entry landed, on the session's store and not anywhere else.
+    assert_eq!(
+        run_get_setting(&db, "restaurant.course_firing")
+            .unwrap()
+            .as_deref(),
+        Some("true"),
+    );
+    assert_eq!(
+        run_get_setting(&db, "kds.auto_accept").unwrap().as_deref(),
+        Some("1"),
+    );
+
+    // …and both were offered to the network from the STORE queue.
+    let pending = Store::new(&db).list_pending_offline().unwrap();
+    let mut queued: Vec<String> = pending
+        .iter()
+        .filter(|i| i.action == "settings.update")
+        .filter_map(|i| {
+            serde_json::from_str::<serde_json::Value>(&i.payload)
+                .ok()?
+                .get("key")?
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect();
+    queued.sort();
+    assert_eq!(
+        queued,
+        vec![
+            "kds.auto_accept".to_string(),
+            "restaurant.course_firing".to_string()
+        ],
+        "both entries must be offered to the network from the store queue the \
+         tablet's daemon drains (sync_run_scoped), not the global one",
+    );
+
+    // The complement, so "the store queue has them" cannot be satisfied by
+    // writing to BOTH: the global queue must be untouched. Mirroring the
+    // bridge's `ctx.db` enqueue here is exactly what this half catches.
+    let global = state.db.lock().await;
+    let global_settings_items = Store::new(&global)
+        .list_pending_offline()
+        .unwrap()
+        .into_iter()
+        .filter(|i| i.action == "settings.update")
+        .count();
+    assert_eq!(
+        global_settings_items, 0,
+        "the settings sync items must not be enqueued on the global connection: \
+         the tablet's daemon drains the store queue, so a global item is never sent",
+    );
+}
+
+/// The gate this command replaced was forgeable: the old signature took a
+/// caller-supplied `user_id`. `require_permission_for_session` derives the user
+/// from the session and is scope-aware (ADR #35 D5), so a session whose role
+/// lacks `settings:edit` is now refused with a typed denial.
+#[tokio::test]
+async fn set_settings_scoped_denies_a_session_without_settings_edit() {
+    let conn = migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-lite', 'Lite', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let state = store_state(conn);
+    state.session_store.write().unwrap().insert(
+        "lite-token".into(),
+        SessionContext::new(
+            "user-lite".into(),
+            "role-lite".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = set_settings_scoped(
+        "lite-token".into(),
+        batch(&[("restaurant.course_firing", "true")]),
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::PermissionDenied(_))),
+        "a session without settings:edit must be denied, got {result:?}",
+    );
+}
