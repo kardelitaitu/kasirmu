@@ -120,6 +120,20 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 - [ ] Convert the location / receipt-format / brand-settings / device-binding entries in `entryHandlers` into a `createXHandlers({ … })` factory consuming the relocated state; register it; delete the corresponding `entryHandlers` keys.
 - [ ] Verify: `cd ui && npx tsc --noEmit -p tsconfig.json` and `cd ui && npx vitest run src/__tests__/dev-mock-scoped-aliases.test.ts`.
 
+> **Independent verification at clean HEAD `e16499e67` (this session, 2026-09-16) — supersedes my
+> own earlier "does not compile / TS2440" note.** After the parallel lane finished the dedup and
+> committed the state-move (`99a68348f`, `tauri-api.ts` 851 → 767, `handlers/locationState.ts` now
+> tracked), I re-verified the *committed* artifact, not their working tree: `npx tsc --noEmit` **exit 0**;
+> a throwaway dispatcher dump (run + deleted) prints **681 registered commands, sha256
+> `105d29730df2…60681c` — identical to the Phase 5.0 before-snapshot**, so the state-move preserved
+> **registration-identity exactly** (their 5.1 note predicted it "will legitimately have changed if they
+> also dropped `entryHandlers` keys" — measured: they dropped none, count unchanged at **54 inline keys**).
+> **Status:** 5.1 state-move **landed & independently green**; 5.1 conversion-half (`createXHandlers`
+> factory over the relocated state) and 5.2–5.5 **remain open**. The lane's own note says "This lane
+> claims the phase" — so this session stands down from `tauri-api.ts` (concurrent-editor / AGENTS.md §3
+> clobber risk), and the remaining phases are for whoever holds the router next, re-deriving the 681
+> baseline before each move. No file outside this doc was touched by this verification.
+
 ### Phase 5.2 — Bundles
 - [ ] Move the 7 bundle command pairs (`create/delete/get/list/update/lookup_bundle_by_sku` ± `_scoped`) out of `entryHandlers` into `handlers/bundles.ts`; register; delete from the literal.
 
