@@ -235,7 +235,8 @@ const SCREENS: ScreenEntry[] = [
     // WITHOUT the mute -- resolveComposedClassNames composes product-card--added / --disabled from
     // the ternary sites, so neither appears in the walker's PREFIX-RESCUED list, which is the
     // membership proof (cd ui && npx vitest run src/__tests__/screenExtraction.test.ts 2>&1 | grep -c 'RESCUED  ProductLookupScreen' -> 0 before the strike and 0 after; the 18 RESCUED lines name KdsScreen x16 and FeatureToggleScreen x2, never this entry).
-    // Nothing newly dead: DEAD stayed 0 pair(s). Graded 107 -> 101, credited moved with it.
+    // Nothing newly dead: DEAD stayed 0 pair(s). Seven values struck across three entries, so
+    // graded 107 -> 100 and credited moved with it, 107 -> 100; inert and residual stayed 0.
     externalClasses: ['product-card'],
   },
   {
