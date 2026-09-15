@@ -36,9 +36,11 @@
  * earlier lanes -- and eight, rules 5 to 12, are todo-font-system.md's. Each rule
  * ships with its own probe case (12 rules = 24 cases, 16 of them this plan's). They
  * live HERE rather than in a new file because this file is already the live
- * font-family gate, and `dev-ci.yml#ui-test` runs `cd ui && npm test` (`:277`) on any
- * commit under `ui/` -- the changes router matches `^ui/` at `:98` -- so a new file
- * would need new wiring for no new reach.
+ * font-family gate, and the `ui-test` job of `.github/workflows/dev-ci.yml` runs
+ * `cd ui && npm test` on any commit under `ui/` -- its `changes` router matches the
+ * `^ui/` prefix -- so a new file would need new wiring for no new reach. Named by
+ * job and step rather than by line number on purpose: every line number cited in
+ * this plan's documents has already drifted once, including ones in this header.
  *
  *   1  no remote font reference in a boot HTML document: link, preconnect or url()
  *   2  every --font-* family token's stack ends in a CSS generic keyword
