@@ -2359,7 +2359,14 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
       if (ownClasses.length === 0) continue; // ledger hole: one noSheets finding per entry, not N manufactured inert ones
       const hasRule = hits.length > 0;
       const hasSite = sources.includes(prefix);
-      if (hits.length === 0 && hasSite) uncreditedLive.push(entry.name + ' :: ' + prefix);
+      // Annotated with the entry's OWN reach, so the residual is distinguishable from a lookup
+      // miss without re-running anything: an entry that reads 0 class names from its own
+      // citation is a LEDGER HOLE and is labelled one, never left to read like a clean pass.
+      if (hits.length === 0 && hasSite) {
+        uncreditedLive.push(
+          entry.name + ' :: ' + prefix + ' [own citation resolved to ' + ownClasses.length + ' class name(s) from ' + sheetsIndexed + ' of ' + own.size + ' cited path(s)' + (sheetsIndexed === 0 ? ' — LEDGER HOLE: this entry cites nothing resolvable, so its pass rests on a composition site alone' : ' — citation resolved, so this is a site-only pass, NOT a lookup miss') + ']',
+        );
+      }
       if (!hasRule && !hasSite) {
         // The message has to be true about the population this arm actually graded. The old
         // wording — "0 rules in 137 sheets" — was FALSE AS PRINTED for the four standing
@@ -2370,7 +2377,10 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
         // found there. Same push condition, so the standing population stays 4.
         const elsewhere: string[] = [];
         for (const [sheet, classes] of index) {
-          if (own.has(sheet)) continue;
+          // Canonical spelling only: since 5cdfcd601 every shared sheet is in the map twice
+          // (bare key and ../-key, same Set object), and naming a file twice would read as two
+          // places to look. The alias can never hold a name the bare key lacks — one object.
+          if (own.has(sheet) || sheet.startsWith('../')) continue;
           let n = 0;
           for (const cls of classes) if (prefixCovers(cls, prefix)) n += 1;
           if (n > 0) elsewhere.push(sheet + ' x' + n);
@@ -2392,7 +2402,7 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
     'prefix credit: ' + credited.size + ' of ' + graded + ' graded values credit at least one class defined inside the sheets their own entry cites',
   );
   console.log(
-    'prefix arm arithmetic: ' + graded + ' graded = ' + credited.size + ' credited + ' + inert.length + ' inert + ' + uncreditedLive.length + ' passed on a composition-site match alone with no class of their own in the entry\'s own sheets: ' + (uncreditedLive.join(', ') || 'none'),
+    'prefix arm arithmetic: ' + graded + ' graded = ' + credited.size + ' credited + ' + inert.length + ' inert + ' + uncreditedLive.length + ' residual [site-only pass, no class of their own in the entry\'s own sheets] — ' + (uncreditedLive.join(' ; ') || 'none') + ' || residual=' + uncreditedLive.length + ', of which citing nothing resolvable=' + uncreditedLive.filter((u) => u.includes('LEDGER HOLE')).length + ', sum check ' + (credited.size + inert.length + uncreditedLive.length) + '=' + graded,
   );
   for (const [site, hits] of [...credited.entries()].sort()) {
     console.log('  credit ' + site + ' x' + hits.length + (hits.length <= 6 ? ': ' + hits.join(', ') : ''));
