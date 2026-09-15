@@ -64,7 +64,7 @@ impl From<OfflineQueueItem> for OfflineQueueItemDto {
 /// Retained remote-application failure DTO for the front-end.
 ///
 /// Exposes everything an operator needs to decide whether to requeue a
-/// dead-lettered item (via `requeue_remote_failure`): the remote item id,
+/// dead-lettered item (via `requeue_remote_failure_scoped`): the remote item id,
 /// action, retained payload for inspection, attempt count, the latest
 /// error, and the dead-letter flag.
 #[derive(Debug, Serialize)]
@@ -133,67 +133,11 @@ pub struct EnqueueOfflineArgs {
 
 // ── Commands ──────────────────────────────────────────────────────────
 
-/// Manually enqueue a transaction for later sync.
-#[command]
-pub async fn enqueue_offline(
-    args: EnqueueOfflineArgs,
-    state: State<'_, AppState>,
-) -> Result<OfflineQueueItemDto, AppError> {
-    validate_not_empty("action", &args.action).map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("payload", &args.payload).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    // OFF-09: preserve tenant isolation and priority tier at the command
-    // boundary. `enqueue_offline_scoped` records both in the row; a missing
-    // tenant falls back to the "default" single-store tenant and a missing
-    // priority to Normal (never escalated from a stale front-end).
-    let tenant_id = args.tenant_id.as_deref().unwrap_or("default");
-    let priority = args
-        .priority
-        .as_deref()
-        .map(SyncPriority::from_str_lenient)
-        .unwrap_or(SyncPriority::Normal);
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    // §B read-only lock: sync queueing is an order mutation — a register
-    // whose grace window has lapsed may not enqueue new offline work.
-    let sub = oz_core::TenantSubscription::load(&db, "default")?
-        .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-    sub.verify_signature()?;
-    sub.enforce_pos_writable()?;
-    let item = store.enqueue_offline_scoped(&args.action, &args.payload, tenant_id, priority)?;
-    drop(db);
-
-    tracing::info!(id = %item.id, action = %item.action, tenant_id, "offline transaction enqueued");
-    Ok(item.into())
-}
-
-/// List all pending (unsynced) offline queue items, oldest first.
-#[command]
-pub async fn list_pending_offline(
-    state: State<'_, AppState>,
-) -> Result<Vec<OfflineQueueItemDto>, AppError> {
-    let db = state.db.lock().await;
-    run_list_pending_offline(&db)
-}
-
 fn run_list_pending_offline(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<OfflineQueueItemDto>, AppError> {
     let store = Store::new(conn);
     let items = store.list_pending_offline()?;
-    let dtos: Vec<OfflineQueueItemDto> = items.into_iter().map(OfflineQueueItemDto::from).collect();
-    Ok(dtos)
-}
-
-/// List all offline queue items (most recent first).
-#[command]
-pub async fn list_all_offline(
-    state: State<'_, AppState>,
-) -> Result<Vec<OfflineQueueItemDto>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let items = store.list_all_offline()?;
     let dtos: Vec<OfflineQueueItemDto> = items.into_iter().map(OfflineQueueItemDto::from).collect();
     Ok(dtos)
 }
@@ -206,84 +150,6 @@ pub async fn pending_offline_count(state: State<'_, AppState>) -> Result<i64, Ap
     let count = store.pending_offline_count()?;
     drop(db);
     Ok(count)
-}
-
-/// Attempt to sync all pending offline items through the real cloud sync
-/// pipeline.
-///
-/// SYNC-04: this is NOT a placeholder — it delegates to the same
-/// authenticated push flow as `sync_run`: read pending items + config,
-/// POST the batch to the cloud server, then mark each item `synced` or
-/// `failed` only according to the server's per-item outcome.
-///
-/// Uses a three-phase split (read → async HTTP → write) so the DB lock
-/// is not held during the network round-trip, mirroring `sync_run`.
-#[command]
-pub async fn retry_offline_sync(state: State<'_, AppState>) -> Result<SyncResult, AppError> {
-    // Phase 1: Read pending items and config from DB (brief lock).
-    let (pending_items, config_opt) = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let pending = store.list_pending_offline()?;
-        let config = SyncConfig::from_settings(&store)?;
-        (pending, config)
-    };
-
-    let total_count = pending_items.len() as i64;
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            // SYNC-04: never fabricate a successful retry when sync is
-            // unconfigured — surface the error so the UI catch handler
-            // shows the honest failure and the items stay pending.
-            return Err(AppError::Invalid(
-                "Sync is not configured or disabled — items remain pending".into(),
-            ));
-        }
-    };
-
-    if pending_items.is_empty() {
-        return Ok(SyncResult {
-            synced_count: 0,
-            failed_count: 0,
-            total_count: 0,
-            plan_required: false,
-        });
-    }
-
-    // OFF-09: critical-before-normal ordering. `list_pending_offline`
-    // returns created_at ASC, so re-order the batch so Critical items
-    // always transmit before Normal/Low.
-    let mut pending_items = pending_items;
-    pending_items.sort_by_key(|i| i.priority);
-
-    // Phase 2: Async HTTP push (no DB lock held).
-    let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
-
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let attempt = match outcomes {
-        Ok(outcomes) => sync_client::apply_sync_outcomes(&store, &pending_items, &outcomes)?,
-        // ADR sync-plan-gating: a free tenant is gated, not broken. Do NOT
-        // mark the items failed — they stay `pending` and sync automatically
-        // once the tenant upgrades.
-        Err(sync_client::SyncHttpError::PlanRequired) => SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        },
-        Err(e) => sync_client::mark_all_failed(&store, &pending_items, &e.to_string())?,
-    };
-    drop(db);
-
-    Ok(SyncResult {
-        synced_count: attempt.synced as i64,
-        failed_count: attempt.failed as i64,
-        total_count,
-        plan_required: attempt.plan_required,
-    })
 }
 
 /// Delete a processed offline queue item.
@@ -300,38 +166,12 @@ pub async fn delete_offline_item(id: String, state: State<'_, AppState>) -> Resu
     Ok(())
 }
 
-/// Arguments for `requeue_remote_failure`.
+/// Arguments for `requeue_remote_failure_scoped`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequeueRemoteFailureArgs {
     /// Remote item id currently quarantined in `sync_remote_failures`.
     pub item_id: String,
-}
-
-/// Requeue a dead-lettered remote item so the next sync cycle retries it.
-///
-/// Operators call this after remediating the item's source (e.g. creating
-/// the missing product a remote sale referenced, or upgrading a client that
-/// rejected the payload). The quarantine row is cleared and the durable
-/// pull anchor is rewound, so the next pull re-fetches the item and retries
-/// it with a fresh attempt budget; the idempotency ledger makes the full
-/// re-pull safe.
-///
-/// An id that is not currently dead-lettered returns `NotFound` — a
-/// mistyped id must not be a silent no-op.
-#[command]
-pub async fn requeue_remote_failure(
-    args: RequeueRemoteFailureArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    validate_not_empty("itemId", &args.item_id).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let db = state.db.lock().await;
-    run_requeue_remote_failure(&db, &args.item_id)?;
-    drop(db);
-
-    tracing::info!(item_id = %args.item_id, "dead-lettered remote item requeued for sync retry");
-    Ok(())
 }
 
 /// Execute the requeue against a connection, extracted so the command
@@ -340,23 +180,6 @@ fn run_requeue_remote_failure(conn: &rusqlite::Connection, item_id: &str) -> Res
     let store = Store::new(conn);
     store.requeue_remote_failure(item_id)?;
     Ok(())
-}
-
-/// List retained remote-application failures (dead-letter discovery).
-///
-/// Operators call this to discover which remote items are quarantined (or
-/// still being retried) before deciding to `requeue_remote_failure` — the
-/// dead-letter workflow needs the ids, and the DTO carries the retained
-/// payload + last error so the remediation is informed. Returns the newest
-/// failure first, mirroring the store's ordering.
-#[command]
-pub async fn list_remote_failures(
-    state: State<'_, AppState>,
-) -> Result<Vec<RemoteSyncFailureDto>, AppError> {
-    let db = state.db.lock().await;
-    let failures = run_list_remote_failures(&db)?;
-    drop(db);
-    Ok(failures)
 }
 
 /// Execute the listing against a connection, extracted so the command
@@ -372,7 +195,7 @@ fn run_list_remote_failures(
         .collect())
 }
 
-/// Session-scoped variant of `enqueue_offline`.
+/// Manually enqueue a transaction for later sync resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn enqueue_offline_scoped(
@@ -407,7 +230,7 @@ pub async fn enqueue_offline_scoped(
     Ok(item.into())
 }
 
-/// Session-scoped variant of `list_pending_offline`.
+/// List all pending (unsynced) offline queue items, oldest first resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_pending_offline_scoped(
@@ -422,7 +245,7 @@ pub async fn list_pending_offline_scoped(
     run_list_pending_offline(&db)
 }
 
-/// Session-scoped variant of `list_all_offline`.
+/// List all offline queue items (most recent first) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_all_offline_scoped(
@@ -459,7 +282,7 @@ pub async fn pending_offline_count_scoped(
     Ok(count)
 }
 
-/// Session-scoped variant of `retry_offline_sync`.
+/// Attempt to sync all pending offline items through the real cloud sync resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn retry_offline_sync_scoped(
@@ -502,7 +325,7 @@ pub async fn retry_offline_sync_scoped(
         });
     }
 
-    // OFF-09: critical-before-normal ordering. `list_pending_offline`
+    // OFF-09: critical-before-normal ordering. `Store::list_pending_offline`
     // returns created_at ASC, so re-order the batch so Critical items
     // always transmit before Normal/Low.
     let mut pending_items = pending_items;
@@ -561,7 +384,7 @@ pub async fn delete_offline_item_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `requeue_remote_failure`.
+/// Requeue a dead-lettered remote item so the next sync cycle retries it resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn requeue_remote_failure_scoped(
@@ -584,7 +407,7 @@ pub async fn requeue_remote_failure_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `list_remote_failures`.
+/// List retained remote-application failures (dead-letter discovery) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_remote_failures_scoped(

@@ -220,7 +220,7 @@ fn enqueue_offline_args_debug() {
     assert!(d.contains("test"));
 }
 
-// ── list_remote_failures (dead-letter discovery) ────────────────
+// ── run_list_remote_failures (dead-letter discovery) ────────────────
 
 #[test]
 fn run_list_remote_failures_empty_db() {
@@ -276,7 +276,7 @@ fn run_list_remote_failures_returns_retained_failures_newest_first() {
     assert_eq!(retry.payload, "{}");
 }
 
-// ── requeue_remote_failure (dead-letter requeue workflow) ────────
+// ── run_requeue_remote_failure (dead-letter requeue workflow) ────────
 
 #[test]
 fn run_requeue_remote_failure_clears_dead_letter() {
