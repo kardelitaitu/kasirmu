@@ -1,0 +1,14 @@
+/* Self-hosted variable faces (fontsource) — Phase 3 of todo-font-system.md.
+   Same two packages the website uses, so there is one vendoring story.
+
+   The family names these packages register are 'Inter Variable' and
+   'JetBrains Mono Variable', NOT 'Inter' and 'JetBrains Mono'. tokens.css
+   therefore names the *Variable* family first. Importing a package without
+   naming the family it registers renders nothing at all: the @font-face
+   exists, no glyph ever uses it, and every gate still passes — which is
+   exactly the shape that made the old CDN link unverifiable.
+
+   No CSP change is needed: the shells set font-src 'self' data:, and Vite
+   emits these woff2 files as same-origin relatives under /assets/. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
