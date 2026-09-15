@@ -288,6 +288,54 @@ describe('verify-architecture-boundaries.py', () => {
     assert.match(result.output, /lib\.rs:2/);
   });
 
+  it('reports renderer vocabulary in an application-layer doc comment', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/lib.rs': '/// Rendered by `Row.tsx` and styled in `row.css`.\npub struct Row;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-framework-vocabulary/);
+    assert.match(result.output, /\.tsx/);
+    assert.match(result.output, /lib\.rs:1/);
+  });
+
+  it('ignores the same vocabulary inside a string literal', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/exts.rs': 'pub const EXTS: [&str; 2] = [".tsx", ".css"];\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 0, result.output);
+    assert.doesNotMatch(result.output, /ui-framework-vocabulary/);
+  });
+
+  it('does not let a lone lifetime apostrophe swallow the comments after it', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/lifetime.rs': "pub fn name() -> &'static str { NAME }\n/// Cited as `Row.tsx`.\npub struct Row;\n",
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-framework-vocabulary/);
+    assert.match(result.output, /lifetime\.rs:2/);
+  });
+
+  it('scans block comments, including the text after a nested close', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/block.rs': '/* outer /* inner */ still outer: `Row.tsx` */\npub struct Row;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-framework-vocabulary/);
+    assert.match(result.output, /block\.rs:1/);
+  });
+
   it('report-only returns zero for blocking findings', () => {
     const dir = fixture({ uiFiles: { 'ui/src/hooks/useBad.ts': "await invoke('bad');" } });
     const result = run(dir, ['--report-only']);

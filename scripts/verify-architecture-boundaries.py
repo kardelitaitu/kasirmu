@@ -40,6 +40,7 @@ RULES = {
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
     "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/oz-bridge toolkit-free (ADR #49): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
+    "ui-framework-vocabulary": {"category": "renderer", "severity": "P2", "hint": "Keep renderer vocabulary out of app-layer prose (ADR #53): cite the caller by its role, not by its .tsx/.css filename."},
 }
 BUSINESS_PREFIX = "modules-"
 BRIDGE_TOOLKIT_SECTIONS = ("[dependencies]", "[dev-dependencies]", "[build-dependencies]")
@@ -47,6 +48,14 @@ BRIDGE_TOOLKIT_PATTERN = re.compile(r"tauri|webkit|gtk", re.IGNORECASE)
 ALLOWED_PLATFORM_COMPOSER = "platform-startup"
 UI_API_PREFIX = "ui/src/api/"
 UI_INFRASTRUCTURE_ADAPTERS = {"ui/src/utils/logged-invoke.ts"}
+# ADR #53: a Rust char literal, as opposed to a lifetime (`&'a str`). Needed so the
+# comment-preserving mask does not open a fake string at a lifetime's apostrophe.
+CHAR_LITERAL_PATTERN = re.compile(r"'(?:\\.|[^\\'])'")
+# ADR #53: the application layer may not name a renderer or its file formats in
+# prose. Case-sensitive on purpose -- `\bReact\b` must not fire on the domain verb
+# `reactivate`, and `.tsx`/`.css` are lowercase in every citation this tree holds.
+UI_VOCABULARY_ROOTS = ("crates", "modules", "platform", "foundation")
+UI_VOCABULARY_PATTERN = re.compile(r"\bReact\b|\.tsx|\.css|component to render")
 
 
 def configure_streams() -> None:
@@ -362,6 +371,81 @@ def strip_comments_preserving_strings(text: str) -> str:
     return "".join(out)
 
 
+def mask_code_preserving_comments(text: str) -> str:
+    """Mask code and string contents while preserving comments and lines.
+
+    The inverse of `mask_comments_and_strings`, which blanks comments so a
+    code-scanning rule cannot see prose. This one blanks everything *except* the
+    prose, because `ui-framework-vocabulary`'s subject is the comment layer — a
+    rule graded through the masking helper would be measuring the layer the mask
+    keeps, which is how ADR #53's Option A first arrived with a zero that meant
+    nothing (see that record's Correction section).
+
+    Two differences from the masking helper, both load-bearing. Block comments
+    nest in Rust, so depth is counted rather than a boolean toggled. And a `'`
+    is treated as a char literal only when it closes within one character, so a
+    lifetime (`&'static str`) does not open a string that swallows the rest of
+    the file and hides every comment after it.
+    """
+    out: list[str] = []
+    i = 0
+    in_string: str | None = None
+    in_block = 0
+    while i < len(text):
+        char = text[i]
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if in_block:
+            if char == "/" and nxt == "*":
+                in_block += 1
+                out.extend("  ")
+                i += 2
+            elif char == "*" and nxt == "/":
+                in_block -= 1
+                out.extend("  ")
+                i += 2
+            else:
+                out.append(char)
+                i += 1
+            continue
+        if in_string:
+            if char == "\\" and i + 1 < len(text):
+                out.extend("  ")
+                i += 2
+                continue
+            if char == in_string:
+                in_string = None
+            out.append("\n" if char == "\n" else " ")
+            i += 1
+            continue
+        if char == "/" and nxt == "/":
+            while i < len(text) and text[i] != "\n":
+                out.append(text[i])
+                i += 1
+            continue
+        if char == "/" and nxt == "*":
+            in_block = 1
+            out.extend("  ")
+            i += 2
+            continue
+        if char in ('"', "`"):
+            in_string = char
+            out.append(" ")
+            i += 1
+            continue
+        if char == "'":
+            literal = CHAR_LITERAL_PATTERN.match(text, i)
+            if literal:
+                out.extend(" " * (literal.end() - i))
+                i = literal.end()
+            else:
+                out.append(" ")
+                i += 1
+            continue
+        out.append("\n" if char == "\n" else " ")
+        i += 1
+    return "".join(out)
+
+
 def invoke_callable_names(raw: str) -> set[str]:
     """Return direct, aliased, and namespace-qualified invoke call names."""
     import_code = strip_comments_preserving_strings(raw)
@@ -515,6 +599,46 @@ def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
     return dedupe_findings(findings)
 
 
+def ui_vocabulary_findings(root: Path) -> list[dict[str, Any]]:
+    """Report UI-framework vocabulary in the application layer's comments (ADR #53).
+
+    The application layer may not name a renderer or its file formats in prose.
+    `crates/`, `modules/`, `platform/` and `foundation/` are renderer-agnostic by
+    design: the stated goal is that the UI is replaceable, and a doc comment that
+    says "the React component renders this" or cites `Foo.tsx:120` binds the
+    layer's reasoning to one renderer and rots the moment that file moves.
+
+    Scanned through `mask_code_preserving_comments`, so string literals are
+    invisible. That is deliberate and is the rule's one known gap: a test-side
+    extension array (`.css`, `.tsx`) and the twelve `.tsx` evidence citations in
+    `platform/sync/src/queue_tests.rs` are string literals, and flagging an
+    extension list would be a false positive.
+
+    A fixture repository without any of the four roots yields no findings.
+    """
+    findings: list[dict[str, Any]] = []
+    for top in UI_VOCABULARY_ROOTS:
+        base = root / top
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.rs")):
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read application-layer source: {path}: {exc}") from exc
+            comments = mask_code_preserving_comments(raw)
+            for match in UI_VOCABULARY_PATTERN.finditer(comments):
+                findings.append(
+                    make_finding(
+                        "ui-framework-vocabulary",
+                        relative_path(path, root),
+                        match.group(0),
+                        comments.count("\n", 0, match.start()) + 1,
+                    )
+                )
+    return dedupe_findings(findings)
+
+
 def make_finding(rule: str, path: str, target: str, line: int | None) -> dict[str, Any]:
     policy = RULES[rule]
     return {"rule": rule, "category": policy["category"], "severity": policy["severity"], "path": normalize_path(path), "line": line, "target": target, "baseline_status": "new", "remediation": policy["hint"]}
@@ -643,7 +767,7 @@ def main() -> int:
         metadata = load_json(metadata_path, "Cargo metadata fixture") if metadata_path else metadata_from_cargo(root)
         check_graph_root(metadata, root)  # every route in, not only the deleted implicit one
         baseline = load_baseline(baseline_path, root)
-        findings = dedupe_findings(cargo_findings(metadata, root) + ui_findings(root) + bridge_toolkit_findings(root))
+        findings = dedupe_findings(cargo_findings(metadata, root) + ui_findings(root) + bridge_toolkit_findings(root) + ui_vocabulary_findings(root))
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)
     except (ValueError, OSError) as exc:
         return fail(str(exc))
