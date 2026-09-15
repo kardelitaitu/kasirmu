@@ -2305,6 +2305,11 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   const names = [...defined];
   const sources = walkedSourceText();
   const inert: string[] = [];
+  // A LEDGER HOLE, kept in its own list on purpose: an entry that cites no sheet whose
+  // classes are indexed can never produce a hit, so every prefix it declares would land in
+  // `inert` looking exactly like a real unowned allowance. A guard that cannot tell missing
+  // data from bad data gets blamed on the data, so the hole is named per entry instead.
+  const noSheets: string[] = [];
   const credited = new Map<string, string[]>();
   let graded = 0;
   for (const entry of SCREENS) {
@@ -2314,13 +2319,23 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
     // defined is collecting credit for a family this entry does not own.
     const own = new Set([...entry.css, ...(entry.parentCss ?? [])]);
     const ownClasses: string[] = [];
+    let sheetsIndexed = 0;
     for (const [sheet, classes] of index) {
-      if (own.has(sheet)) for (const cls of classes) ownClasses.push(cls);
+      if (!own.has(sheet)) continue;
+      sheetsIndexed += 1;
+      for (const cls of classes) ownClasses.push(cls);
+    }
+    const declared = entry.dynamicClassPrefixes ?? [];
+    if (declared.length > 0 && (own.size === 0 || sheetsIndexed === 0 || ownClasses.length === 0)) {
+      noSheets.push(
+        entry.name + ': declares ' + declared.length + ' dynamicClassPrefixes value(s) but reads 0 class names from its own citation (' + own.size + ' path(s) cited, ' + sheetsIndexed + ' indexed, ' + ownClasses.length + ' class names read; cited: ' + ([...own].join(', ') || 'none') + ') — its prefixes cannot be graded on the rule side at all, so they are reported HERE rather than as inert allowances',
+      );
     }
     for (const prefix of entry.dynamicClassPrefixes ?? []) {
       graded += 1;
       const hits = ownClasses.filter((cls) => prefixCovers(cls, prefix)).sort();
       if (hits.length > 0) credited.set(entry.name + ' :: ' + prefix, hits);
+      if (ownClasses.length === 0) continue; // ledger hole: one noSheets finding per entry, not N manufactured inert ones
       const hasRule = hits.length > 0;
       const hasSite = sources.includes(prefix);
       if (!hasRule && !hasSite) {
@@ -2329,7 +2344,7 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
     }
   }
   console.log(
-    'inert-prefix arm: ' + graded + ' dynamicClassPrefixes values graded against ' + names.length + ' defined class names over ' + index.size + ' sheets; ' + inert.length + ' inert',
+    'inert-prefix arm: ' + graded + ' dynamicClassPrefixes values graded against ' + names.length + ' defined class names over ' + index.size + ' sheets; ' + inert.length + ' inert; ' + noSheets.length + ' entries cite no indexed sheet; floor 100 of baseline 108',
   );
   // Extended, not replaced: the arm already printed graded/inert; it now also
   // prints how many of those graded values are rescued by a credit, and WHICH
@@ -2344,6 +2359,17 @@ it('no dynamicClassPrefixes value is an inert allowance (the prefix arm)', () =>
   // Floors, so no green can come from an empty walk or a shrunk population.
   expect(index.size).toBeGreaterThan(100);
   expect(names.length).toBeGreaterThan(100);
-  expect(graded).toBeGreaterThan(50);
-  expect(inert, 'inert dynamicClassPrefixes allowances (each mutes a family nothing can reach): ' + inert.join(' | ')).toEqual([]);
+  // MAGNITUDE floor, not an existence floor. An existence floor (`> 50`) let a ledger whose
+  // arrays were emptied one entry at a time stay green while grading almost nothing, and the
+  // arm's own verdict is `inert` toEqual `[]` — an empty against an empty passes on NOTHING,
+  // so the failure this arm exists to catch would have read as a clean tree. Headroom is named
+  // from the measured value, not invented: `graded` read **108** on 2026-09-15 at tip
+  // `766fed704` (`cd ui && npx vitest run src/__tests__/screenExtraction.test.ts` prints it),
+  // so 100 is ~7% of slack for a struck inert prefix (this box's own kind of edit struck 0) and
+  // fires long before the arm loses the power to disagree with anything.
+  expect(graded, 'inert-prefix arm graded only ' + graded + ' dynamicClassPrefixes values against a baseline of 108 (measured 2026-09-15 at 766fed704; floor is 100 with that headroom named in this message) — the population shrank, so a green here would be a toEqual of an empty against an empty grading nothing. Re-take the baseline with the same scoped run and change this number ON PURPOSE.').toBeGreaterThanOrEqual(100);
+  // Missing data first, bad data second: a ledger hole is not an allowance, and an entry that
+  // cites no sheet must never be allowed to speak for the tree.
+  expect(noSheets, noSheets.length + ' dynamicClassPrefixes entr(ies) read 0 class names from their own citation, so their prefixes were NOT graded on the rule side at all (fix the citation, do not strike the prefixes): ' + noSheets.join(' | ')).toEqual([]);
+  expect(inert, 'inert dynamicClassPrefixes allowances (each mutes a family nothing can reach; a ledger hole is reported separately above, never here): ' + inert.join(' | ')).toEqual([]);
 });
