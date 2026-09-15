@@ -250,3 +250,168 @@ export function extractUsedClassNames(tsx: string): Set<string> {
 
   return names;
 }
+
+// ── Composed class names (wave one: helper only, nothing wired) ───────
+/**
+ * resolveComposedClassNames credits class names the two readers above cannot see
+ * because the value is composed first and applied second. Four shapes, all lexical
+ * and single-file -- no parser, no typechecker:
+ *   1. an accumulator local (let cardClass = ... plus two cardClass += ...) at
+ *      features/products/ProductLookupScreen.tsx:495-497, applied at :501;
+ *   2. a conditional inside a template held in a local (const logoClass = ...) at
+ *      features/auth/StaffLoginScreen.tsx:345, applied at :352 and :359;
+ *   3. a function returning class literals, named from an interpolation: getRoleColor
+ *      at features/workspaces/WorkspaceHome.tsx:172-186, applied at :247;
+ *   4. an UPPER_SNAKE map indexed in a template: WS_COLORS at
+ *      WorkspaceHome.tsx:21-27, read at :777 and applied at :783 and :815.
+ *
+ * WHY THIS EXISTS, in this repo own words -- two production files were reshaped so
+ * the extractor could see them: features/kds/components/StationSelectorModal.tsx:45
+ * records that a value was put into a form the static scan can resolve, and
+ * features/kds/components/ModifierBadge.tsx:69 is the same class of workaround.
+ * Authors should not have to edit production code to suit a test extractor; this
+ * helper is the alternative, recorded here so the next author does not invent another.
+ *
+ * THE INVARIANT THAT MAKES IT SAFE: a harvested string is credited ONLY if it is
+ * already in definedInSheet, the set of classes the caller own stylesheet defines.
+ * The caller must supply that set -- there is no default, because a default that
+ * credited everything would turn a Fluent message id or a status-enum value into a
+ * class and land it as a used-but-not-defined failure in the OTHER direction.
+ * Intersecting with the sheet keeps the widening one-directional: it can only
+ * REMOVE a dead-class finding, never create a missing-class one.
+ *
+ * WHAT IT REFUSES, each pinned by a case in screenExtraction.utils.test.ts: the
+ * className / classNames prop pass-throughs, because crediting those is how a guard
+ * starts believing anything with the word className in it; any string that is not a
+ * literal in this file; map entries whose value is not a plain quoted literal; and
+ * every cross-file or cross-feature composition, since the callee or the map has to
+ * be declared here. That last refusal is deliberate -- a class one feature declares
+ * and another composes stays out of reach, which is the ledger axis, not this one.
+ * The 44 zero-evidence names are out of reach by the same construction: no literal
+ * anywhere names them, so nothing here can excuse them.
+ *
+ * WAVE ONE: nothing calls this yet. Until the dead-class case in
+ * screenExtraction.test.ts threads its ownIndex in, the used set is unchanged and
+ * so is every finding -- which is why the narrowing-by-construction note above
+ * quoteIsClassOperand still reads true on this commit.
+ */
+export function resolveComposedClassNames(
+  tsx: string,
+  definedInSheet: ReadonlySet<string>,
+): Set<string> {
+  const found = new Set<string>();
+  // No predicate, no credits. An empty sheet set means the caller never scoped
+  // this, and the safe answer then is silence rather than a guess.
+  if (definedInSheet.size === 0) return found;
+
+  const CLASS_TOKEN = /[a-z][A-Za-z0-9_-]*/g;
+  const creditTokens = (src: string): void => {
+    for (const m of src.matchAll(CLASS_TOKEN)) {
+      if (definedInSheet.has(m[0])) found.add(m[0]);
+    }
+  };
+  const QUOTED_SINGLE = /'([^']*)'/g;
+  const QUOTED_DOUBLE = /"([^"]*)"/g;
+  const TICK = '`';
+  const NEWLINE = '\n';
+  const APOS = String.fromCharCode(39); // a single quote, for slicing a literal
+  const COLON = String.fromCharCode(58);
+  // Quoted operands carry the branches of a conditional; the static text of a
+  // template literal carries its head and tail, with interpolated expressions
+  // stripped first so an expression never contributes its own identifiers.
+  const credit = (src: string): void => {
+    for (const m of src.matchAll(QUOTED_SINGLE)) creditTokens(m[1] ?? '');
+    for (const m of src.matchAll(QUOTED_DOUBLE)) creditTokens(m[1] ?? '');
+    const parts = src.split(TICK);
+    for (let i = 1; i < parts.length; i += 2) creditTokens(stripInterpolations(parts[i] ?? ''));
+  };
+
+  // Shapes 1 and 2. The name has to reach a className bare -- as the whole
+  // attribute value, or as an interpolation of itself -- and be written here.
+  // One line per right-hand side is the reach: every site this serves keeps its
+  // literals on the assigning line, and a build that does not is not credited.
+  const PASS_THROUGH = new Set(['className', 'classNames']);
+  const ATTR_NAME = /className=\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
+  const TEMPLATE_NAME = /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g;
+  const localNames = new Set<string>();
+  for (const m of tsx.matchAll(ATTR_NAME)) localNames.add(m[1]!);
+  for (const m of tsx.matchAll(TEMPLATE_NAME)) localNames.add(m[1]!);
+  const rightHandSide = (line: string, name: string): string | null => {
+    for (const op of [' =', ' +=', '=', '+=']) {
+      const i = line.indexOf(name + op);
+      if (i >= 0) return line.slice(i + name.length + op.length);
+    }
+    return null;
+  };
+  for (const name of localNames) {
+    if (PASS_THROUGH.has(name)) continue;
+    for (const line of tsx.split(NEWLINE)) {
+      const rhs = rightHandSide(line, name);
+      if (rhs) credit(rhs);
+    }
+  }
+
+  // Shape 3: an interpolation that calls a function. The function must be
+  // declared in this source and only its return literals count, so a callee
+  // declared elsewhere is the cross-file refusal, not a miss to chase.
+  const TEMPLATE_CALL = /\$\{\s*([A-Za-z_$][\w$]*)\s*\(/g;
+  // A switch arm keeps its return on the case line, so a return is matched
+  // anywhere in a body line, not only at its start.
+  const RETURN_LINE = /\breturn\s+/;
+  for (const m of tsx.matchAll(TEMPLATE_CALL)) {
+    const body = declarationBlock(tsx, ['function ' + m[1] + '(', 'const ' + m[1], 'let ' + m[1]]);
+    if (!body) continue;
+    for (const line of body.split(NEWLINE)) if (RETURN_LINE.test(line)) credit(line);
+  }
+
+  // Shape 4: an interpolation that indexes an UPPER_SNAKE map declared here. Only
+  // a value that is a plain single-quoted literal counts, so a map of computed
+  // values, nested templates or bare references credits nothing at all.
+  const TEMPLATE_INDEX = /\$\{\s*([A-Z][A-Z0-9_]*)\s*\[/g;
+  for (const m of tsx.matchAll(TEMPLATE_INDEX)) {
+    const block = declarationBlock(tsx, ['const ' + m[1], 'let ' + m[1]]);
+    if (!block) continue;
+    for (const raw of block.split(NEWLINE)) {
+      const entry = raw.trim();
+      const colon = entry.indexOf(COLON);
+      if (colon < 0) continue;
+      const value = entry.slice(colon + 1).trim();
+      if (!value.startsWith(APOS)) continue; // not a plain literal: refused by shape
+      const close = value.indexOf(APOS, 1);
+      if (close < 0) continue;
+      if (!/[,\s]*$/.test(value.slice(close + 1))) continue;
+      creditTokens(value.slice(1, close));
+    }
+  }
+
+  return found;
+}
+
+/**
+ * The text from the first { after the earliest matching declaration head through
+ * its matching }, counted by braces rather than indentation. An absent or
+ * unbalanced head returns null: a helper whose job is to stop calling things dead
+ * has to be able to say nothing.
+ */
+function declarationBlock(tsx: string, heads: string[]): string | null {
+  const OPEN = '{';
+  const CLOSE = '}';
+  let start = -1;
+  for (const h of heads) {
+    const i = tsx.indexOf(h);
+    if (i >= 0 && (start < 0 || i < start)) start = i;
+  }
+  if (start < 0) return null;
+  const rest = tsx.slice(start);
+  const k = rest.indexOf(OPEN);
+  if (k < 0) return null;
+  let depth = 0;
+  for (let j = k; j < rest.length; j += 1) {
+    if (rest[j] === OPEN) depth += 1;
+    else if (rest[j] === CLOSE) {
+      depth -= 1;
+      if (depth === 0) return rest.slice(k, j + 1);
+    }
+  }
+  return null;
+}
