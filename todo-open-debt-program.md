@@ -344,6 +344,7 @@ Recorded because each one is still live in some document a worker might read, an
 - **The parked arm** (`license.rs:670-683`) needs an owner ruling. Named as a task, not decided.
 - **The organisation scope axis** needs a design doc before a migration. Named as a task, not decided.
 - **Whether this file should be split** into `todo-open-debt-agents-N.md`. Owner's call; the fences already support it.
+- **The commit-message scope token is unchecked, and this file's author left proof of it.** `.githooks/commit-msg:53` enumerates types (`feat|fix|docs|style|refactor|perf|test|ci|chore|audit`) but `:55` is `^($TYPES)(\([^()]+\))?!?: .+` — the scope is only "non-empty and parenthesis-free", with no allowlist, exactly as its own comment at `:54` says ("Optional scope"). A typo in the area is therefore accepted and, because this repo forbids `--amend`, is permanent: `f18b62f45` shipped as `docs(clans):` instead of `docs(cloud-sync):`, noticed only after the commit, and the only available repair is a second commit that does not fix the first. Deliberately left as a named item rather than filed as a box: an allowlist has a maintenance cost that grows with the repo (new crate, new area, new gate to teach), and whether that trade is worth making is a policy call, not a docs-lane call. Cheap version, if the owner wants one: derive the legal areas from `crates/*/`, `apps/*/`, `platform/*/` plus a short prose list (`plans`, `docs`, `ci`), and warn rather than fail.
 
 ---
 
