@@ -1,4 +1,4 @@
-# todo-font-system.md — cross-OS typography
+# todo-font-system.md — cross-OS typography <!-- If you are the owner: the final block, "What is actually being asked", is the whole of it. Everything above is the evidence trail. -->
 
 **REVISION 3, 04:47. Two independent reviews, then my own re-measurement of both.** Revision 2 was written on a claim set that a fact-checker widened and partly corrected again; five counts drifted and two claims of mine were still false. **Owner: the D2 re-ruling request in Phase 3 still stands, and it is now better informed.** **Pointer (2026-09-15, HEAD `991be1424`):** the `line-height` census recorded below (218 by `git grep -o`; re-walked comment-blanked as **217 declarations across 70 sheets**, of which **173** carry a hard value) is now owner decision `## 10` on `docs/plans/notes.md` — **31** of those 173 already equal a token's number (16 at 1.5, 15 at 1.25, 0 at 1.625) and 142 are off-scale (`1` ×66, `1.4` ×34). Read the decision before re-deriving the count. **Refreshed 2026-09-15 at HEAD `001351e0f`, and the refresh is the load-bearing part: the 31 are gone.** `cd29143c4` (*adopt the leading tokens at the sites that already carry their value*) and `812c87ef1` (*…finish the leading-token adoption in the shared and shell sheets*) are both ancestors of this HEAD — `git merge-base --is-ancestor <sha> HEAD` exits 0 for each — so the cite-only tranche this pointer describes as pending has been spent upstream. Re-derived here: raw `git grep -o 'line-height:[^;]*' -- 'ui/src/**/*.css'` still reads **218**, of which exactly one match is comment text, so **217** real declarations across **70** sheets, splitting **75** token cites (42 `--leading-normal`, 23 `--leading-tight`, 9 `--leading-relaxed`, 1 `--leading-tight` carrying a fallback) against **142** non-token values (140 numeric plus 2 `inherit`) — and `1.25`, `1.5`, `1.625` occur as literals **0** times. **Name the unit here, because two honest greps disagree by one:** `git grep -o 'var(--leading-' -- 'ui/src/**/*.css'` reads **76** occurrences, and the 76th is not a line-height at all — `ui/src/features/restaurant/RestaurantMenu.css:583` spends `--leading-normal` inside `max-height: calc(var(--leading-normal) * 2em)`. That is the mirror image of the trap `notes.md` `## 10` records for the other direction, and it is why the cite figure is stated per declaration, not per substring. The walk closes exactly: 75 + 142 = 217 = 218 raw − 1 comment match, and `git grep` over the same patterns **at HEAD** returns the identical 218 / 70 / 76, so none of it is borrowed from another session's uncommitted edit (the only dirty `.css` in this tree, `ui/src/features/sales/CartPanelLineItem.css`, carries exactly 1 `line-height:` declaration on disk and 1 in the HEAD blob). The two clusters named above still read **66** and **34**. **The consequence for the owner is that `## 10` no longer has a free tranche underneath it:** every remaining substitution changes a rendered number, so the ruling is pure design with nothing review-clean left to bank first. The 31/173 figures stay above as the dated record of the tip they were measured at, per `:109`.
 
@@ -881,3 +881,57 @@ Round 15 caught one row of the reproduction block being unable to fail, and fixe
 - **One design decision worth keeping in the open:** a dirty shared tree is printed as `NOTE`, not `DRIFT`. Four paths under `ui/src` were dirty during this round -- another lane's cart work -- and had the tool called that drift, it would have exited `1` on most days of this checkout, which is how a signal gets ignored. The rule it encodes is AGENTS.md's: the green is a claim about the disk while any walked path is dirty, and the tool now states which kind of claim it just produced.
 
 **Boxes: open 2, ticked 11 — unchanged. The block can now be re-executed instead of re-believed, which is the only form a reproduction list has left in a tree that moves this fast.**
+
+---
+
+## What is actually being asked — the handover block, written to contain no number without the command that re-derives it
+
+This file is now long enough that an owner cannot act on it top-down. Everything below is the whole of what a human is needed for; the rest of this document is the trail that earned those sentences, and it is readable on demand rather than as a prerequisite.
+
+### Ask 1 — the visual ruling (the Phase 3 owner box)
+
+Bundling the two faces is merged, gated, priced, and measured. What has not been decided is whether it is the app that should exist:
+
+> **Should the POS render in the type the design tokens name, or should the tokens be made honest about the system face that a till has always used?**
+
+Both answers are defensible and each has a cost this file can state without asking you to trust a figure: the cost of the first is a horizontal text-width change that is uniform across the shipped type scale and zero vertical change, and the command that re-derives that claim in about thirty seconds is
+
+```
+node ui/e2e/font-visual-audit.mjs          # both shells: add --dist ui/dist-tablet
+```
+
+The second answer costs no rendering at all and instead removes a claim from `tokens.css` — which is a design-language edit, not this lane's to make. **The ruling has to come from someone who owns the look**; nothing in this plan is waiting on more measurement, and the 21 rounds of work above exist so that the decision can be made without guessing what it costs.
+
+### Ask 2 — look at the two pictures (`:67`'s remaining half)
+
+The before/after pair now sits in a durable gitignored directory instead of a temp folder that a restart deletes:
+
+```
+ui/dist/font-audit/desktop/  splash-with-fonts.png  splash-no-fonts.png  label-with-fonts.png  label-no-fonts.png
+ui/dist/font-audit/tablet/   (same four names)
+```
+
+Whether that directory still holds anything is answered by `Get-ChildItem ui/dist/font-audit -Recurse` — it is build output, `git check-ignore -v` confirms it is ignored, and it is regenerated by the command in Ask 1.
+
+**One measured simplification, with its command:** the eight files are only **four distinct images**. The desktop and tablet boot renders are byte-identical —
+
+```
+Get-ChildItem ui/dist/font-audit -Recurse -File | ForEach-Object { (Get-FileHash $_.FullName).Hash } | Sort-Object -Unique
+```
+
+— so **the pair has to be judged once, not twice.** The claim is deliberately narrow: it is about the boot document at one viewport, in the artifact currently on disk. The two apps are otherwise different builds (different sheet and chunk counts, which `node scripts/check-font-bundle.mjs --dist ui/dist-tablet` prints next to each other), and no statement is made here about any screen behind the splash.
+
+### What this lane cannot do, stated plainly
+
+The agent that wrote the tools above has **no image input in this session** — `read_image` fails with `model "qwen3.8-flash" does not declare image input; switch to an image-capable model to read images`, re-quoted verbatim this round rather than remembered — which is the recorded reason the visual box has stayed open across more than twenty rounds rather than being closed by a claim of having looked. The error also names the remedy: **any session on an image-capable model can open the four files above and close the box**, and nothing in the tooling needs to change to make that possible. Everything mechanical is done, gated in `dev-ci.yml#ui-test` by job name, and re-executable:
+
+```
+node scripts/check-font-claims.mjs         # the reproduction block, executed
+node scripts/check-font-bundle.mjs         # the built font surface, with artifact age
+node ui/e2e/font-visual-audit.mjs          # before/after, the type-scale table, artifacts
+cd ui && npx vitest run src/__tests__/themeTokenCompliance.test.ts   # the sixteen rules
+```
+
+**What remains is a judgement and a look. This block is the only part of the file that asks for either, and it carries no figure that is not printed beside the command that produces it — because in this repository, a number without its command has a half-life of hours.**
+
+**Boxes: open 2, ticked 11 — unchanged. Two rounds of work now point at the same two human acts, and no code change is waiting on anything except them.**
