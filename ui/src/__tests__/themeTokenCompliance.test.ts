@@ -31,10 +31,11 @@
  * two earlier baselines kept as provenance -- a reader who takes 193 as an
  * allowance mis-grades this gate by 193 violations.
  *
- * Appended after that gate: FIFTEEN font-reference portability rules. Four predate
+ * Appended after that gate: SIXTEEN font-reference portability rules, the last of
+ * which reads no CSS at all. Four predate
  * this plan -- blame gives rules 1-3 to `93c367b` and rule 4 to `6649571`, both
- * earlier lanes -- and eleven, rules 5 to 15, are todo-font-system.md's. Each rule
- * ships with its own probe case (15 rules = 30 cases, 22 of them this plan's). They
+ * earlier lanes -- and twelve, rules 5 to 16, are todo-font-system.md's. Each rule
+ * ships with its own probe case (16 rules = 32 cases, 24 of them this plan's). They
  * live HERE rather than in a new file because this file is already the live
  * font-family gate, and the `ui-test` job of `.github/workflows/dev-ci.yml` runs
  * `cd ui && npm test` on any commit under `ui/` -- its `changes` router matches the
@@ -63,20 +64,24 @@
  *      whatever the customer happens to have installed is this plan's own defect,
  *      one tier down from the CDN link, and it makes every dev-box measurement a
  *      statement about the dev box
+ *  16  the premise, not another CSS check: both shells pin font-src to 'self' data:,
+ *      in csp AND in devCsp. "A remote face cannot load in a shipped build" is why the
+ *      other fifteen are worth writing, and until this rule nothing in the repository
+ *      read the policy that makes it true
  *
  * Their scope is deliberately wider than the gate above. The font rules walk every
  * stylesheet under ui/src (collectCssFiles), both boot HTML documents, and reach
  * node_modules ONLY by resolving an @import that first-party CSS declares --
  * nothing here enumerates node_modules.
  *
- * None of the eleven rules this plan wrote added a line to the original scanner:
+ * None of the twelve rules this plan wrote added a line to the original scanner:
  * `git blame -L 1,600` at `c614e5667` attributed all 600 of those lines to eight
  * other commits, and to none of this plan's. The header sentences that WERE wrong --
  * a two-directory scope, a drift-guard figure, "three rules", and the provenance of
  * rules 1 to 4 -- are the only pre-existing lines this work has since edited, and
  * each was a claim about the tree that the tree had already moved past. The rule
- * count in this header has been corrected three times since that sentence was first
- * written (thirteen, fourteen, fifteen); treat any number in it as a claim to
+ * count in this header has been corrected four times since that sentence was first
+ * written (thirteen, fourteen, fifteen, sixteen); treat any number in it as a claim to
  * re-count from the file, not a fact to quote.
  */
 
@@ -2124,8 +2129,8 @@ describe('font-reference portability', () => {
     // requested, so a face declared there is the earliest-rendering face in the app,
     // and neither loop above can see it -- HTML is not in CSS_SOURCES and fonts.css
     // does not import it. Measured, not guessed: an inline
-    // `@font-face { src: local('Arial') }` satisfied all fifteen rules until this
-    // loop existed.
+    // `@font-face { src: local('Arial') }` satisfied every rule then in existence
+    // (fifteen of them) until this loop existed.
     for (const s of HTML_SOURCES) scan(shortFile(s.file), blankComments(s.text));
     expect(
       walked,
