@@ -2,7 +2,7 @@
 
 <!-- Audit stamp: 2026-09-14 · DSH · status: ACCURATE AFTER REPAIR (9 corrections) · MAJOR — the "Lane status (measured 2026-09-13): ZERO PROGRESS" header and the phase 3.1 staff box were overtaken by the tree: `ui/src/dev-mock/handlers/staff.ts` now EXISTS (572 lines, 33 command keys, its own header at :2-6 citing this work order's phase 3.1) and is imported at `tauri-api.ts:52` / registered at `:951`, so the box is ticked on that evidence and the lane status is restated as PARTIALLY landed. · DEAD REFS — the three sibling links (`todo-refactor-devmock-agents-1/-2/-4.md`) no longer resolve: those orders were retired under the `done-todo-` naming convention, so all three are now cited as BARE NAMES with no path prefix at all — this doc asserts nothing about where they currently sit, because that location is another session's in-flux work and a path here would make this doc false when it moves; the phase-4.5 anchor that this doc's load-bearing "SUPERSEDED BY PHASE 4.5" ownership claim hung on is re-pointed AND the claim is restated in prose so it stands without a resolvable path (read from the retired order, cited by its committed name: `done-todo-refactor-devmock-agents-4.md`:166 "Phase 4.5: Final Cleanup — OWNS the router consolidation (supersedes agent 3's phase 3.3)", restated at :204). · INVENTED SYMBOLS — the phase 3.1 box named `login_with_pin` and `assign_role`, which exist as IPC commands nowhere in `ui/` or `apps/` (searched both; also searched the sibling vocabulary: the staff surface is `staff_login` / `verify_pin` / `list_staff_scoped` / `create_staff_scoped` / `list_roles_scoped` — `apps/desktop-client/src/commands/staff.rs:119`, `:147`, `:231`); a worker following the old text would hunt for mocks that never existed. · STALE COUNTS — "as of 2026-09-13 it measures 2,375 lines … with 181 literal entries": today the router measures 1,127 lines (read-tool count; `wc -l` agrees) with ~123 named handlers still inline (92 quoted object keys + 31 `handlers['…'] =` additions, counted by rg); the 4,904 figure is now labelled unreproduced (no commit was found that measures it), while 5,226 / 4,991 are kept with the command that reproduces them. · FORBIDDEN PATHS list was incomplete — 9 further modules exist in `handlers/` outside this fence (analytics, crm, floorplan, kds, locations, loyalty, payment, system, topology-state); the 14th is this lane's own landed `staff.ts`. · SCOPE — dev-mock is a UI-only surface: 20 files / 6,174 lines under `ui/src/dev-mock/`, no crates/ or platform/ devmock layer. · METHOD: read/grep against the working tree only; no git command ran in this pass, so the three phase 3.3 wait-gate SHAs are carried from the reference-integrity audit (repo-wide `git cat-file`: 71/71 resolve) rather than re-derived here. -->
 
-**Document:** `todo-refactor-devmock-agents-3.md`  
+**Document:** `done-todo-refactor-devmock-agents-3.md` *(renamed in place from `todo-refactor-devmock-agents-3.md` by owner directive 2026-09-15 — see the dated owner-waiver note at the foot of this file for why the `done-` mark rests on a §4 waiver, not on a green `check:all`)*  
 **Role:** Orchestrator Agent 3 (Enterprise Mock Domain Architect)  
 **Goal:** Extract staff profiles, authentication tokens, roles/permissions, workspace instances, topology graph persistence, hardware printer mocks, and system settings from `ui/src/dev-mock/tauri-api.ts`. Reduce `tauri-api.ts` into a clean entry router.
 
@@ -330,20 +330,26 @@ choosing to scope the acceptance row to this lane's surfaces — which is an own
 bookkeeping edit, and is deliberately not taken here. The run log is `ui/checkall.log` (23,191
 lines), itself a working-tree artifact of this interval.
 
-**Owner waiver, dated 2026-09-15 — recorded, NOT applied to the name:** on the disposition above
-the human owner directed that this lane be treated as closed and accepted the `check:all` red as
-foreign. That is a §4 **rename waiver**, not a §4 **rename trigger**: the acceptance command was
-RUN and did NOT PASS, so the `done-todo-` prefix is explicitly *not* earned and the file keeps the
-name `todo-refactor-devmock-agents-3.md` on purpose — a `done-` name would assert a green that does
-not exist. The sibling `todo-tools-agents-3.md` → `done-todo-tools-agents-3.md` (`346e9771a`, same
-day) is the counter-example that binds this: it renamed only because `check:all` exited 0. What the
-owner closed is the *lane's responsibility*, not the gate: phases 3.1 and 3.2 are complete and
-verified; the three router boxes remain Agent 4's phase 4.5 on its own fence; and the whole-tree
-`check:all` is **migrated to whoever drives that consolidation**, deliberately not re-run from this
-lane because it cannot turn green here — `RestaurantMenu.css` is a committed HEAD red and
-`CartPanelLineItem.css` is an uncommitted foreign edit, neither inside this file's fence
-(`handlers/{staff,workspaces,topology,settings}.ts` + `tauri-api.ts`). Net state, so a future reader
-stops here rather than re-running the command: **done-by-scope · owner-closed · §4 rename waived ·
-whole-tree acceptance gate handed to Agent 4.** No rename, no move, no reticked box — this dated
-line is exactly the record §4 prescribes ("the other reasons a plan is not accepted … belong in a
-dated header line, never in the filename").
+**Owner waiver — applied to the name, 2026-09-15 — this note supersedes the "not earned / off the
+table / NOT applied" statements above it:** Those lines record a state that was true the moment they
+were written (acceptance red, `done-` not literally earned, rename on hold) and they stay here as the
+dated record they are. The owner then made the call that withheld it: judging the lane closed on its
+**done-by-scope** merits — code complete and verified (phases 3.1 + 3.2), and the `check:all` red
+*provably foreign* (0 assertion errors name a `dev-mock` path; the two blockers are
+`RestaurantMenu.css`, a committed restaurant-lane surface, and `CartPanelLineItem.css`, an uncommitted
+foreign edit, neither inside this file's fence) — the owner directed the in-place rename to
+`done-todo-refactor-devmock-agents-3.md` via `git mv` (at the root, where §4 renames happen — *not* a
+move into `.agents/archived/`). Deciding "done" is the owner's prerogative, not an agent's to block on
+a literal gate; §4 itself types this as "an owner decision, not a bookkeeping edit," and an agent
+refusing a decided owner is the rule-lawyering that note was warning against.
+
+**What makes the flag honest rather than silent, since the `done-` prefix is a one-bit signal
+automation reads (`ls todo-*.md` = open work, and this file now drops out of it):** the mark here
+rests on a §4 **rename waiver**, not on a §4 rename **trigger**. The acceptance command was RUN and
+did NOT PASS (`check:all` exited 1); the sibling `todo-tools-agents-3.md → done-todo-tools-agents-3.md`
+(`346e9771a`, same day) is the proof of the bar normally enforced — that one renamed only on an
+exit-0 run. This line is the reason, so a future reader who greps the file sees the green was absent
+and *why* the owner renamed anyway. Net state, and stop here rather than re-running the command from
+this lane: **done-by-scope · owner-closed · renamed under an explicit §4 waiver (green NOT present) ·
+whole-tree `check:all` handed to whoever drives Agent 4's router consolidation.** No box reticked, no
+line above this rewritten — only this dated note and the `**Document:**` self-reference at the header.
