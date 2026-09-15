@@ -35,7 +35,9 @@
  * which reads no CSS at all. Four predate
  * this plan -- blame gives rules 1-3 to `93c367b` and rule 4 to `6649571`, both
  * earlier lanes -- and twelve, rules 5 to 16, are todo-font-system.md's. Each rule
- * ships with its own probe case (16 rules = 32 cases, 24 of them this plan's). They
+ * ships with its own probe case (16 rules = 32 cases, 24 of them this plan's; the file
+ * holds 50 today, the other 18 being sixteen earlier lanes' non-font cases plus two
+ * scope-floor cases that check this gate's own walk rather than any font claim). They
  * live HERE rather than in a new file because this file is already the live
  * font-family gate, and the `ui-test` job of `.github/workflows/dev-ci.yml` runs
  * `cd ui && npm test` on any commit under `ui/` -- its `changes` router matches the
