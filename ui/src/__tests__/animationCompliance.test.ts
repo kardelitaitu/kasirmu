@@ -134,9 +134,15 @@ function harvestAnimationStats() {
       const declPos = declMatch.index;
       out.declarations++;
       const kfPos = findKeyframePosition(css, keyframeName!);
+      // Ordered so the VALUE excuse is evaluated before the miss is counted: an
+      // `animation: none` names no keyframes because it is not naming a keyframes at
+      // all, and counting it made the printed denominator report legitimate
+      // declarations as findings to chase. Only a declaration that survives that
+      // excuse needs a name, so only one is counted here. The essential-excuse order
+      // is unchanged and the two sets are disjoint, so no other bucket can move.
+      if (keyframeName === 'none' || keyframeName === 'auto') { out.excusedByValue++; continue; }
       if (kfPos === -1) out.unresolvedKeyframes++;
       if (ESSENTIAL_KEYFRAMES.has(keyframeName!)) { out.excusedByEssential++; continue; }
-      if (keyframeName === 'none' || keyframeName === 'auto') { out.excusedByValue++; continue; }
       if (positionInsideNoPreference(css, declPos)) { out.graded++; continue; }
       if (hasReduceBlock) {
         out.swallowedByFileWideReduce++;
