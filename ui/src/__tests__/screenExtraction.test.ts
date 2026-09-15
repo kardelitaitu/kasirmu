@@ -367,8 +367,23 @@ const SCREENS: ScreenEntry[] = [
     // never grade the theme sheet through this entry.
     parentCss: ['../frontend/themes/components.css'],
     dynamicClassPrefixes: [
-      // 'kds-column--' STRUCK 2026-09-16 · DSH · it was the arm's last residual: 108 graded
-      // = 107 credited + 0 inert + 1 residual, and the one residual printed as
+      // ── HEADER (rewritten 2026-09-16 · DSH) ── what the arm asserts is an IDENTITY, never a
+      // size: graded = credited + inert + residual, and this line describes that identity as the
+      // run prints it NOW — 100 graded = 100 credited + 0 inert + 0 residual, sum check 100=100,
+      // the 100 the FLOOR asserts being a floor and not this line's business (it is asserted at
+      // the foot of this file, with its own baseline literal, and is not stated here as a target).
+      // Every term is zero-or-equal except graded/credited, which move together when a value is
+      // struck. Re-derive instead of trusting this sentence:
+      //   cd ui && npx vitest run src/__tests__/screenExtraction.test.ts 2>&1 | grep 'prefix arm arithmetic'
+      // WHY a rewrite and not another dated line: this note read "108 graded = 107 credited +
+      // 0 inert + 1 residual" — the state BEFORE fffc4672f struck 'kds-column--' — and the
+      // residual term went FALSE in that very commit. It survived two later passes of this file
+      // unnoticed because nothing asserts over a comment: a stale header is invisible to a suite
+      // that never reads it, which is exactly how a count that is no longer true gets cited as if
+      // it were. History stays below, labelled as history.
+      //
+      // 'kds-column--' STRUCK 2026-09-16 · DSH (fffc4672f) · the dated read at that strike was
+      // 108 graded = 107 credited + 0 inert + 1 residual, the one residual printed as
       // `KdsScreen :: kds-column-- [own citation resolved to 441 class name(s) from 4 of 4
       // cited path(s) — citation resolved, so this is a site-only pass, NOT a lookup miss]`.
       // Read that label: a mute that credits NOTHING inside the entry's own reach and survives
@@ -399,9 +414,14 @@ const SCREENS: ScreenEntry[] = [
       // PREFIX-RESCUED 18 names and not one of them is a kds-column--* name, because the
       // extractor cannot see a class arriving through an array index — blindness pinned on
       // purpose at screenExtraction.utils.test.ts:267-268 — so the three names never entered
-      // `used` and never needed saving. Striking it therefore moves no finding: 270 passed
-      // before and after, with the same 2 pre-existing RestaurantMenu failures (another
-      // session's uncommitted features/restaurant edits, outside this fence).
+      // `used` and never needed saving. Striking it therefore moves no finding. The counts that
+      // box recorded — 270 passed, 2 pre-existing RestaurantMenu failures from another session's
+      // uncommitted features/restaurant edits, outside this fence — are a DATED working-tree
+      // reading, not a fact about any commit, and they are the other half of what went stale here:
+      // the same scoped run on this tree now prints 272 passed and no failures, and no cause is
+      // claimed for the delta. What witnesses the strike is membership, not either count: the
+      // PREFIX-RESCUED set it cited, 18 names, is the same 18 names this file prints today, none
+      // of them a kds-column--* name.
       //
       // Why NOT the "earn it" route: defining the three variants in KdsScreen.css would buy
       // the credit with empty rules. The sheet says the variants carry no extra visual rules
@@ -411,9 +431,14 @@ const SCREENS: ScreenEntry[] = [
       // styling difference which does not exist. The honest record of these three names is
       // already present and GRADED below, in `selectorOnlyClasses`.
       //
-      // Effect: graded 108 -> 107, credited stays 107, inert stays 0, residual 1 -> 0;
-      // sum check 107 = 107 + 0 + 0. A credit gained by removing a debt would have left
-      // graded unchanged — this is a removal.
+      // Effect AT THAT COMMIT (dated read, superseded as live state by the header above):
+      // graded 108 -> 107, credited stays 107, inert stays 0, residual 1 -> 0; sum check
+      // 107 = 107 + 0 + 0. A credit gained by removing a debt would have left graded unchanged —
+      // this is a removal. The chain from that read to the live one is 107 -> 100, every link a
+      // strike of values the census never credited as a sole claim, and every link closed the
+      // same way with inert and residual both still 0. 100 is the arithmetic result of those
+      // strikes, not a target: the size that guards this population is the floor asserted at the
+      // foot of this file, with its own baseline literal, and no line in this note moves it.
       // `kds-ticket kds-ticket--${level}` in KdsTicketCard.tsx:271.
       'kds-ticket',
       // Whole names, was the stem 'kds-workspace' (2026-09-15 · DSH): its 2 census
