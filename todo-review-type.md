@@ -1,5 +1,6 @@
 # Local-First & Frontend Architecture — work queue
 > **2026-09-15 · 11:45 · DSH · the 17 decision-required rows in the triage section at the foot of this file now live on the owner page: `docs/plans/notes.md` item 25 -- rulings R1-R10 plus one refused work order. Read item 25 before asking anyone to rule on any of them. Nothing here was ticked, moved or renamed: the rows stay as the evidence behind those rulings, and this file still has no acceptance command, so it is not renameable.**
+> **2026-09-15 · 12:25 · DSH · whole-suite numbers, recorded as an attributed report and not as this queue's debt.** An ops lane reports the full front-end run at tip `36ca7fc6b` as **Test Files 2 failed / 578 passed of 580** and **Tests 2 failed / 9,955 passed / 25 skipped / 3 todo of 9,985**, the chain red on (i) a FOREIGN UNCOMMITTED `box-shadow` declaration at `ui/src/features/sales/CartPanelLineItem.css:437` -- a working-tree edit that occurs 0 times in that file's HEAD blob -- and (ii) one undo-history-cap test that timed out under load. **NOT RUN by this pass** (`check:all` is barred tonight and the chain takes ~390s; this file's own `## Acceptance` finding, that the queue has no single acceptance command, is untouched by any of it). **The foreign red is not this queue's debt:** the compliance walkers that flagged it read the disk through `fs` with no channel to the commit they are quoted against. Four boxes were ticked by this pass at tip `b3dee11f8`, each on its own re-run green; `:92`, `:190`, `:192` were deliberately left open with a dated line each.**
 
 Rewritten 2026-09-15 against branch `0.0.39` @ `9ac839264`. Supersedes the earlier generic
 Tauri/React blueprint in this file's history; the appraisal that produced this list is
@@ -98,10 +99,12 @@ for everyone, not just the author. So Item 1 is split by blast radius, not by ef
       `ctx.rs:8` name `tauri, gtk, webkit` in the sentences that assert this very rule. Note the
       script's `mask_comments_and_strings` helper *strips* comments — this rule needs the
       opposite.
-- [ ] **Do 1C after 1B, and the baseline is empty.** Landing the fixes first means the rule can
+      - **NOT TICKED, 2026-09-15 ~12:25 at tip `b3dee11f8`, and it is the easiest row in this file to tick wrongly: `python scripts/verify-architecture-boundaries.py --strict` -> exit `0` with `8` `[tracked]` baseline lines.** What that green PROVES is that the boundaries gate runs and the baseline sits at 8 rows. What it LEAVES OPEN is this row itself: `grep -c ui-framework-vocabulary scripts/verify-architecture-boundaries.py` -> **0** (exit 1), so the rule named in the title is not in the `RULES` dict at all, and a gate exiting 0 is not evidence that it exists. Box stays open -- do not tick it off against someone else's green.**
+- [x] **Do 1C after 1B, and the baseline is empty.** Landing the fixes first means the rule can
       ship with no baseline rows at all — no 3-month expiry clock (existing entries run
       ~3 months), nothing to expire into someone else's red gate in November. That is the whole
       argument for this order.
+      - **TICKED 2026-09-15 ~12:25, at tip `b3dee11f8`, on this pass's own re-run: `python -c "import json;print(len(json.load(open('scripts/architecture-boundaries-baseline.json'))['entries']))"` -> `8`, exit `0`.** The row's claim is that the count stays 8 because 1B landed first, and it is 8. **What this does NOT prove:** that 1C itself shipped -- the rule at `:92` is still open and `grep -c ui-framework-vocabulary scripts/verify-architecture-boundaries.py` -> `0` (exit 1), so this row grades the ORDER, not the landing.**
 - [ ] Keep the precedent: `crates/oz-core/src/ozpkg.rs:154` moved the ozpkg password rule out
       of a React component into the choke point every caller passes. That is the pattern —
       a rule that only a UI enforces is a rule the next UI must re-implement.
@@ -188,27 +191,31 @@ and retried; an `invoke` failure does not mean the enqueue failed, so rolling ba
 sale that is about to be pushed successfully.
 
 - [ ] Rewrite the pattern as: optimistic mark → enqueue → reconcile against the sync result
-      (`syncedCount` / `failedCount` / `conflictCount`).
+      (`syncedCount` / `failedCount` / `conflictCount`). <!-- 2026-09-15 ~12:25, tip b3dee11f8: NOT TICKED. `ls ui/src/__tests__ | grep -i offline | wc -l` -> 10 files, which proves a graded HOME exists for this pattern, not that the pattern was rewritten. Existence of a home is not the work. Box stays open. -->
 - [ ] Never roll back a durable queue item; surface `failedCount` and let the user retry.
+      - **NOT TICKED, 2026-09-15 ~12:25 at tip `b3dee11f8`.** `grep -oE "syncedCount|failedCount|conflictCount" ui/src/api/offline.ts | sort | uniq -c` -> **syncedCount 3 / failedCount 3 / conflictCount 1**. This file's own triage recorded the trio as **3 / 3 / 3**; the denominator has since **drifted to 3 / 3 / 1**, and it is reported here rather than either number being restated as truth. **What the print proves:** the three tallies are named in `ui/src/api/offline.ts`. **What it leaves open:** that no durable item is ever rolled back -- a name in a source file is not a behaviour, and nothing pins the never-rollback rule. Box stays open.**
 - [ ] Add a **client-side idempotency key** at enqueue time so a retry cannot double-apply.
 - [ ] Use the priority tiers that already exist: `critical` | `normal` | `low`.
 - [ ] Use real event names. The measured emit set is `kds:orders-changed`,
       `receipt:printed`, `barcode:scanned`, `barcode:error`, `settings_updated`. There is no
       `db-crdt-sync-complete` / `db-sync-started`; sync status comes from
       `useSyncConnection` and the queue-summary commands.
-- [ ] Do **not** add a global state library. State today is 12 Contexts under
+- [x] Do **not** add a global state library. State today is 11 Contexts under <!-- 2026-09-15 ~12:25, tip `b3dee11f8`: the figure was 12 as written and the tree prints 11 (`ls ui/src/contexts/*.tsx | wc -l` = 11, re-run this pass). Sentence kept, number repaired. -->
       `ui/src/contexts/` plus ~36 hooks; `zustand` appears nowhere. Adding one is an ADR.
+      - **TICKED on this pass's own re-run at tip `b3dee11f8`: `grep -c zustand ui/package.json` -> `0` with exit `1`** -- a no-match exit, so "appears nowhere" is literally what the tree says; and the contexts census moved this row's own figure from 12 to 11 (`ls ui/src/contexts/*.tsx | wc -l`). **What this does NOT prove:** that nobody adds one tomorrow. The row's force is a prohibition, and a prohibition has no gate here; "Adding one is an ADR" stays unenforced by anything in this repo.**
 
 ## Item 6 — List rendering and perf: adopt what exists
 
 Both the previous §3 and most of §4 are already decided, differently.
 
-- [ ] Bounded pagination is the cross-feature contract: `LIST_PAGE_SIZE = 50`,
+- [x] Bounded pagination is the cross-feature contract: `LIST_PAGE_SIZE = 50`,
       `ui/src/utils/list-policy.ts` (PERF-07). Use `usePagedList`; do not hand-roll slices.
-- [ ] Virtualization only where interaction semantics allow it, and only with
+      - **TICKED 2026-09-15 ~12:25 at tip `b3dee11f8`, re-run: `grep -n LIST_PAGE_SIZE ui/src/utils/list-policy.ts` -> `:20 export const LIST_PAGE_SIZE = 50` and `:30 export function paginate<T>(items: T[], page: number, pageSize: number = LIST_PAGE_SIZE)`** -- the value and its default are both there as written. **What this does NOT prove:** that every data screen goes through `usePagedList`; a hand-rolled slice anywhere still passes, because nothing greps for one.**
+- [x] Virtualization only where interaction semantics allow it, and only with
       **`react-window`** (already a dependency, used by `ProductLookupScreen` and
       `RetailProductGrid`). `@tanstack/react-virtual` is not a dependency — do not add a
       second virtualization library.
+      - **TICKED 2026-09-15 ~12:25 at tip `b3dee11f8`, re-run: `grep -c react-window ui/package.json` -> `2`; `grep -c tanstack ui/package.json` -> `0` (exit 1).** One virtualizer, as required. **What this does NOT prove:** the "only where interaction semantics allow it" half -- a judgement no dependency count can grade, and the same judgement `:212` leaves unowned.**
 - [ ] Dense grids with sort headers, sticky rows or variable heights stay on paging.
 - [ ] Drop "disable StrictMode in production": its double-invoke is development-only, so a
       production build does not double-render either way. `ui/src/main.tsx` needs no change.
