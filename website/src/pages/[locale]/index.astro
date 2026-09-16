@@ -17,7 +17,7 @@ import trivyLogo from '../../assets/logo-trivy.svg?url';
 import postgresLogo from '../../assets/logo-postgresql.svg?url';
 
 const locale = Astro.currentLocale ?? 'en';
-const pageTitle = `OZ-POS — ${t(locale, 'hero.title')}`;
+const pageTitle = `kasir.mu — ${t(locale, 'hero.title')}`;
 const features = (dict(locale).features as { items: { title: string; description: string }[] }).items;
 const pricing = pricingFor(locale).slice(0, 3); // free, plus, pro
 const download = getRelativeLocaleUrl(locale, 'download');

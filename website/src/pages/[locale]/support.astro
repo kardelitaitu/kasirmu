@@ -7,7 +7,7 @@ import ContactForm from '../../components/ContactForm.tsx';
 import { t, dict } from '../../i18n';
 
 const locale = Astro.currentLocale ?? 'en';
-const pageTitle = `OZ-POS — ${t(locale, 'support.title')}`;
+const pageTitle = `kasir.mu — ${t(locale, 'support.title')}`;
 const faq = (dict(locale).support as { faq: { q: string; a: string }[] }).faq;
 const email = t(locale, 'support.email');
 ---

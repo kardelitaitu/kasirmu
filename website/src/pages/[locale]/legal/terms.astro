@@ -14,7 +14,7 @@ export async function getStaticPaths() {
 
 const { doc } = Astro.props;
 const locale = Astro.currentLocale ?? 'en';
-const pageTitle = `OZ-POS — ${t(locale, 'legal.termsTitle')}`;
+const pageTitle = `kasir.mu — ${t(locale, 'legal.termsTitle')}`;
 const { Content } = await render(doc);
 ---
 

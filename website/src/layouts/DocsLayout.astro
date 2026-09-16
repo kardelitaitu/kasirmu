@@ -56,7 +56,7 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
       <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
     ))}
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="OZ-POS" />
+    <meta property="og:site_name" content="kasir.mu" />
     <meta property="og:locale" content={locale} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description ?? t(locale, 'docs.title')} />
@@ -106,7 +106,7 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
           <div class="mt-12 rounded-xl border border-ink/10 bg-surface/50 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <p class="text-sm font-medium text-ink">{locale === 'id' ? 'Apakah halaman ini bermanfaat?' : 'Was this page helpful?'}</p>
-              <p class="text-xs text-muted mt-0.5">{locale === 'id' ? 'Bantu kami menyempurnakan dokumentasi OZ-POS' : 'Help us improve the OZ-POS documentation'}</p>
+              <p class="text-xs text-muted mt-0.5">{locale === 'id' ? 'Bantu kami menyempurnakan dokumentasi kasir.mu' : 'Help us improve the kasir.mu documentation'}</p>
             </div>
             <div class="flex items-center gap-2" data-doc-feedback-wrap>
               <button

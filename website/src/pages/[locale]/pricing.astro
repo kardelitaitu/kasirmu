@@ -11,7 +11,7 @@ import { pricing as enPricing, featureRows as enRows } from '../../content/prici
 import { pricing as idPricing, featureRows as idRows } from '../../content/pricing/id';
 
 const locale = Astro.currentLocale ?? 'en';
-const pageTitle = `OZ-POS — ${t(locale, 'pricingPage.title')}`;
+const pageTitle = `kasir.mu — ${t(locale, 'pricingPage.title')}`;
 const pricing = locale === 'id' ? idPricing : enPricing;
 const rows = locale === 'id' ? idRows : enRows;
 const downloadHref = getRelativeLocaleUrl(locale, 'download');
