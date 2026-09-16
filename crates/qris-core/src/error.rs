@@ -53,7 +53,9 @@ pub enum QrisError {
     InvalidAmount(String),
 
     /// Tip indicator (tag 55) is present but the paired detail tag (56 or 57) is missing.
-    #[error("tip indicator (tag 55) present but neither fixed-fee (56) nor percentage-fee (57) tag was found")]
+    #[error(
+        "tip indicator (tag 55) present but neither fixed-fee (56) nor percentage-fee (57) tag was found"
+    )]
     IncompleteTip,
 
     /// The NMID string does not conform to the expected structure.

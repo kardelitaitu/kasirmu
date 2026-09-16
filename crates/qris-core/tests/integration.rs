@@ -1,21 +1,19 @@
 //! Comprehensive integration tests for qris-core.
 
 use qris_core::{
-    is_valid_qris,
-    mcc::mcc_description,
+    InitiationMethod, QrisBuilder, QrisPayload, Tip, is_valid_qris, mcc::mcc_description,
     nmid::NmidInfo,
-    InitiationMethod, QrisBuilder, QrisPayload, Tip,
 };
 
 /// Ground-truth payload scanned directly from the real Bank Jatim QRIS sticker.
-const REAL_BANK_JATIM_STATIC_QRIS: &str =
-    "00020101021126710019ID.CO.BANKJATIM.WWW0215ID102300088575201189360011400000888720303UKE51440014ID.CO.QRIS.WWW0215ID10232699107000303UKE5204939953033605802ID5917082 PUSK TROWULAN6009MOJOKERTO61056136362070703A016304A923";
+const REAL_BANK_JATIM_STATIC_QRIS: &str = "00020101021126710019ID.CO.BANKJATIM.WWW0215ID102300088575201189360011400000888720303UKE51440014ID.CO.QRIS.WWW0215ID10232699107000303UKE5204939953033605802ID5917082 PUSK TROWULAN6009MOJOKERTO61056136362070703A016304A923";
 
 #[test]
 fn test_real_bank_jatim_sticker_full_parsing() {
     assert!(is_valid_qris(REAL_BANK_JATIM_STATIC_QRIS));
 
-    let payload = QrisPayload::parse(REAL_BANK_JATIM_STATIC_QRIS).expect("must parse valid real sticker");
+    let payload =
+        QrisPayload::parse(REAL_BANK_JATIM_STATIC_QRIS).expect("must parse valid real sticker");
 
     // Initiation method
     assert_eq!(payload.initiation, InitiationMethod::Static);
@@ -40,7 +38,10 @@ fn test_real_bank_jatim_sticker_full_parsing() {
     let bank_jatim_slot = &payload.merchant_accounts[0];
     assert_eq!(bank_jatim_slot.tag, 26);
     assert_eq!(bank_jatim_slot.guid, "ID.CO.BANKJATIM.WWW");
-    assert_eq!(bank_jatim_slot.merchant_pan.as_deref(), Some("936001140000088872"));
+    assert_eq!(
+        bank_jatim_slot.merchant_pan.as_deref(),
+        Some("936001140000088872")
+    );
     assert_eq!(bank_jatim_slot.nmid, "ID1023000885752");
     assert_eq!(bank_jatim_slot.criteria.as_deref(), Some("UKE"));
 
@@ -63,7 +64,10 @@ fn test_real_bank_jatim_sticker_full_parsing() {
     );
 
     // Tag 62 Additional Data
-    let ad = payload.additional_data.as_ref().expect("Tag 62 must be present");
+    let ad = payload
+        .additional_data
+        .as_ref()
+        .expect("Tag 62 must be present");
     assert_eq!(ad.terminal_label.as_deref(), Some("A01"));
 
     // Static sticker should have no amount or tip
@@ -95,7 +99,12 @@ fn test_generate_dynamic_with_pan_postal_and_fixed_fee() {
     assert_eq!(payload.merchant_pan(), Some("936001140000088872"));
     assert_eq!(payload.criteria(), Some("UKE"));
     assert_eq!(payload.postal_code.as_deref(), Some("61363"));
-    assert_eq!(payload.tip, Some(Tip::Fixed { amount: "700".to_string() }));
+    assert_eq!(
+        payload.tip,
+        Some(Tip::Fixed {
+            amount: "700".to_string()
+        })
+    );
 
     let ad = payload.additional_data.as_ref().unwrap();
     assert_eq!(ad.terminal_label.as_deref(), Some("A01"));
@@ -107,11 +116,11 @@ fn test_generate_dynamic_with_pan_postal_and_fixed_fee() {
     // Verify raw wire contents
     assert!(qris_str.starts_with("000201010212")); // 010212 = Dynamic
     assert!(qris_str.contains("0118936001140000088872")); // Tag 26 Sub-tag 01 (PAN)
-    assert!(qris_str.contains("0215ID1023000885752"));    // Tag 26 Sub-tag 02 (NMID)
-    assert!(qris_str.contains("0303UKE"));                // Tag 26 Sub-tag 03 (Criteria)
-    assert!(qris_str.contains("5406100000"));             // Tag 54 Amount Rp 100.000
-    assert!(qris_str.contains("5502025603700"));         // Tag 55 "02" + Tag 56 "700"
-    assert!(qris_str.contains("610561363"));             // Tag 61 Postal Code
+    assert!(qris_str.contains("0215ID1023000885752")); // Tag 26 Sub-tag 02 (NMID)
+    assert!(qris_str.contains("0303UKE")); // Tag 26 Sub-tag 03 (Criteria)
+    assert!(qris_str.contains("5406100000")); // Tag 54 Amount Rp 100.000
+    assert!(qris_str.contains("5502025603700")); // Tag 55 "02" + Tag 56 "700"
+    assert!(qris_str.contains("610561363")); // Tag 61 Postal Code
 
     // Parse back from string and ensure complete lossless fidelity
     let parsed_back = QrisPayload::parse(&qris_str).expect("must parse generated string");
@@ -120,9 +129,17 @@ fn test_generate_dynamic_with_pan_postal_and_fixed_fee() {
     assert_eq!(parsed_back.criteria(), Some("UKE"));
     assert_eq!(parsed_back.postal_code.as_deref(), Some("61363"));
     assert_eq!(parsed_back.amount.as_deref(), Some("100000"));
-    assert_eq!(parsed_back.tip, Some(Tip::Fixed { amount: "700".to_string() }));
     assert_eq!(
-        parsed_back.additional_data.as_ref().and_then(|a| a.bill_number.as_deref()),
+        parsed_back.tip,
+        Some(Tip::Fixed {
+            amount: "700".to_string()
+        })
+    );
+    assert_eq!(
+        parsed_back
+            .additional_data
+            .as_ref()
+            .and_then(|a| a.bill_number.as_deref()),
         Some("INV-2026-0001")
     );
 }
@@ -139,12 +156,22 @@ fn test_percentage_fee_generation_and_parsing() {
         .build()
         .unwrap();
 
-    assert_eq!(payload.tip, Some(Tip::Percentage { percent: "0.7".to_string() }));
+    assert_eq!(
+        payload.tip,
+        Some(Tip::Percentage {
+            percent: "0.7".to_string()
+        })
+    );
     let s = payload.to_qris_string();
     assert!(s.contains("55020357030.7")); // Tag 55 indicator 03, Tag 57 percent 0.7
 
     let parsed = QrisPayload::parse(&s).unwrap();
-    assert_eq!(parsed.tip, Some(Tip::Percentage { percent: "0.7".to_string() }));
+    assert_eq!(
+        parsed.tip,
+        Some(Tip::Percentage {
+            percent: "0.7".to_string()
+        })
+    );
 }
 
 #[test]
@@ -189,7 +216,12 @@ fn test_percentage_fee_0_01_accuracy_and_rounding_up() {
     assert!(is_valid_qris(&raw));
 
     let reparsed = QrisPayload::parse(&raw).unwrap();
-    assert_eq!(reparsed.tip, Some(Tip::Percentage { percent: "0.01".to_string() }));
+    assert_eq!(
+        reparsed.tip,
+        Some(Tip::Percentage {
+            percent: "0.01".to_string()
+        })
+    );
 }
 
 #[test]
@@ -198,7 +230,8 @@ fn test_sticker_mutation_into_dynamic_preserves_pan_and_postal() {
     let original = QrisPayload::parse(REAL_BANK_JATIM_STATIC_QRIS).unwrap();
 
     // Mutate using into_builder()
-    let dynamic = original.into_builder()
+    let dynamic = original
+        .into_builder()
         .amount("250000")
         .tip_fixed("1500")
         .bill_number("ORDER-7788")

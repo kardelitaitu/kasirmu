@@ -36,7 +36,7 @@ pub fn to_png(payload_str: &str, pixel_size: u32) -> Result<Vec<u8>, QrisError> 
 /// Uses error-correction level **M**. The SVG has no fixed width/height —
 /// use CSS to size it responsively.
 pub fn to_svg(payload_str: &str) -> Result<String, QrisError> {
-    use qrcode::{render::svg, EcLevel, QrCode};
+    use qrcode::{EcLevel, QrCode, render::svg};
 
     let code = QrCode::with_error_correction_level(payload_str.as_bytes(), EcLevel::M)
         .map_err(|e| QrisError::RenderError(e.to_string()))?;
@@ -62,7 +62,7 @@ pub fn to_png_with_logo(
     pixel_size: u32,
     logo_bytes: &[u8],
 ) -> Result<Vec<u8>, QrisError> {
-    use image::{imageops, DynamicImage, ImageFormat};
+    use image::{DynamicImage, ImageFormat, imageops};
     use qrcode::{EcLevel, QrCode};
 
     let code = QrCode::with_error_correction_level(payload_str.as_bytes(), EcLevel::H)
@@ -83,7 +83,7 @@ pub fn to_png_with_logo(
     let logo_scaled = logo.resize(logo_size, logo_size, imageops::FilterType::Lanczos3);
 
     // Centre the logo
-    let x = (qr_dynamic.width()  - logo_scaled.width())  / 2;
+    let x = (qr_dynamic.width() - logo_scaled.width()) / 2;
     let y = (qr_dynamic.height() - logo_scaled.height()) / 2;
 
     imageops::overlay(&mut qr_dynamic, &logo_scaled, x as i64, y as i64);
@@ -112,7 +112,11 @@ mod tests {
             .to_qris_string();
 
         let png = to_png(&payload, 300).unwrap();
-        assert_eq!(&png[..4], b"\x89PNG", "output must start with PNG magic bytes");
+        assert_eq!(
+            &png[..4],
+            b"\x89PNG",
+            "output must start with PNG magic bytes"
+        );
     }
 
     #[test]

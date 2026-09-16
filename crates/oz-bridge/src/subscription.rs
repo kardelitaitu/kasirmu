@@ -283,9 +283,7 @@ fn server_grant_for(
         // A warehouse workspace is an inventory-location surface; Free
         // tiers and withheld payload types both deny it server-side.
         AvailabilityFeature::Warehouses => Some(allowed(WAREHOUSE)),
-        AvailabilityFeature::PosInstances => {
-            Some(allowed(STORE_POS) || allowed(RESTAURANT_POS))
-        }
+        AvailabilityFeature::PosInstances => Some(allowed(STORE_POS) || allowed(RESTAURANT_POS)),
         _ => None,
     }
 }

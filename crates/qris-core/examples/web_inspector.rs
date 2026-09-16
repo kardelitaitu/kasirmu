@@ -1,12 +1,12 @@
 //! Web-based QRIS inspector and tester.
 
 use axum::{
+    Router,
     extract::{DefaultBodyLimit, Multipart},
     response::{Html, Json},
     routing::{get, post},
-    Router,
 };
-use qris_core::{mcc::mcc_description, nmid::NmidInfo, QrisBuilder, QrisPayload};
+use qris_core::{QrisBuilder, QrisPayload, mcc::mcc_description, nmid::NmidInfo};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 

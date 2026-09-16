@@ -94,11 +94,18 @@ pub enum InitiationMethod {
 impl InitiationMethod {
     /// Parse the wire value (`"11"` or `"12"`).
     pub(crate) fn from_wire(s: &str) -> Self {
-        if s == "12" { Self::Dynamic } else { Self::Static }
+        if s == "12" {
+            Self::Dynamic
+        } else {
+            Self::Static
+        }
     }
 
     /// Serialize to the wire value.
     pub(crate) fn to_wire(&self) -> &'static str {
-        match self { Self::Static => "11", Self::Dynamic => "12" }
+        match self {
+            Self::Static => "11",
+            Self::Dynamic => "12",
+        }
     }
 }

@@ -61,12 +61,19 @@ impl QrisBuilder {
 
     /// Pre-fill the builder from an existing [`QrisPayload`] for mutation.
     pub fn from_payload(mut p: QrisPayload) -> Self {
-        let (nmid, guid, merchant_pan, criteria, extra_accounts) = if !p.merchant_accounts.is_empty() {
-            let first = p.merchant_accounts.remove(0);
-            (Some(first.nmid), Some(first.guid), first.merchant_pan, first.criteria, p.merchant_accounts)
-        } else {
-            (None, None, None, None, Vec::new())
-        };
+        let (nmid, guid, merchant_pan, criteria, extra_accounts) =
+            if !p.merchant_accounts.is_empty() {
+                let first = p.merchant_accounts.remove(0);
+                (
+                    Some(first.nmid),
+                    Some(first.guid),
+                    first.merchant_pan,
+                    first.criteria,
+                    p.merchant_accounts,
+                )
+            } else {
+                (None, None, None, None, Vec::new())
+            };
 
         Self {
             nmid,
@@ -166,7 +173,9 @@ impl QrisBuilder {
     ///
     /// `percent` should be a decimal string such as `"2.5"`.
     pub fn tip_percent(mut self, percent: impl Into<String>) -> Self {
-        self.tip = Some(Tip::Percentage { percent: percent.into() });
+        self.tip = Some(Tip::Percentage {
+            percent: percent.into(),
+        });
         self
     }
 
@@ -198,35 +207,43 @@ impl QrisBuilder {
 
     /// Set the Bill Number (sub-tag 01 inside tag 62).
     pub fn bill_number(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.bill_number = Some(v.into()); self
+        self.additional_data.bill_number = Some(v.into());
+        self
     }
     /// Set the Mobile Number (sub-tag 02 inside tag 62).
     pub fn mobile_number(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.mobile_number = Some(v.into()); self
+        self.additional_data.mobile_number = Some(v.into());
+        self
     }
     /// Set the Store Label (sub-tag 03 inside tag 62).
     pub fn store_label(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.store_label = Some(v.into()); self
+        self.additional_data.store_label = Some(v.into());
+        self
     }
     /// Set the Loyalty Number (sub-tag 04 inside tag 62).
     pub fn loyalty_number(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.loyalty_number = Some(v.into()); self
+        self.additional_data.loyalty_number = Some(v.into());
+        self
     }
     /// Set the Reference Label (sub-tag 05 inside tag 62).
     pub fn reference_label(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.reference_label = Some(v.into()); self
+        self.additional_data.reference_label = Some(v.into());
+        self
     }
     /// Set the Customer Label (sub-tag 06 inside tag 62).
     pub fn customer_label(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.customer_label = Some(v.into()); self
+        self.additional_data.customer_label = Some(v.into());
+        self
     }
     /// Set the Terminal Label (sub-tag 07 inside tag 62).
     pub fn terminal_label(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.terminal_label = Some(v.into()); self
+        self.additional_data.terminal_label = Some(v.into());
+        self
     }
     /// Set the Purpose of Transaction (sub-tag 08 inside tag 62).
     pub fn purpose(mut self, v: impl Into<String>) -> Self {
-        self.additional_data.purpose = Some(v.into()); self
+        self.additional_data.purpose = Some(v.into());
+        self
     }
 
     // ── Build ─────────────────────────────────────────────────────────────
@@ -239,11 +256,14 @@ impl QrisBuilder {
     /// - [`QrisError::InvalidAmount`] — amount string is not a valid decimal
     pub fn build(self) -> Result<QrisPayload, QrisError> {
         let nmid = self.nmid.ok_or(QrisError::MissingNmid)?;
-        let merchant_name = self.merchant_name
+        let merchant_name = self
+            .merchant_name
             .ok_or(QrisError::MissingTag(TAG_MERCHANT_NAME))?;
-        let merchant_city = self.merchant_city
+        let merchant_city = self
+            .merchant_city
             .ok_or(QrisError::MissingTag(TAG_MERCHANT_CITY))?;
-        let merchant_category_code = self.merchant_category_code
+        let merchant_category_code = self
+            .merchant_category_code
             .ok_or(QrisError::MissingTag(TAG_MCC))?;
 
         // Validate amount string if provided
@@ -363,7 +383,8 @@ mod tests {
             .build()
             .unwrap();
 
-        let mutated = original.into_builder()
+        let mutated = original
+            .into_builder()
             .merchant_name("New Name")
             .build()
             .unwrap();

@@ -272,12 +272,7 @@ fn ambiguous_legacy_wire(
             Some("workspace" | "warehouse"),
             _
         ) | (Some("workspace"), _, Some("warehouse"), _)
-            | (
-                Some("workspace"),
-                RESTAURANT_POS,
-                Some("workspace"),
-                KDS
-            )
+            | (Some("workspace"), RESTAURANT_POS, Some("workspace"), KDS)
             | (Some("workspace"), KDS, Some("hardware"), _)
     )
 }

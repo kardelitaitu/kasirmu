@@ -180,7 +180,10 @@ mod tests {
 
     #[test]
     fn known_codes() {
-        assert_eq!(mcc_description("5812"), Some("Eating Places and Restaurants"));
+        assert_eq!(
+            mcc_description("5812"),
+            Some("Eating Places and Restaurants")
+        );
         assert_eq!(mcc_description("5814"), Some("Fast Food Restaurants"));
         assert_eq!(mcc_description("5912"), Some("Drug Stores and Pharmacies"));
         assert_eq!(mcc_description("4121"), Some("Taxicabs and Ride-hailing"));
@@ -191,6 +194,6 @@ mod tests {
     fn unknown_code_returns_none() {
         assert_eq!(mcc_description("0000"), None);
         assert_eq!(mcc_description("9999"), None);
-        assert_eq!(mcc_description(""),     None);
+        assert_eq!(mcc_description(""), None);
     }
 }

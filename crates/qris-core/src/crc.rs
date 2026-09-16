@@ -47,11 +47,14 @@ pub(crate) fn verify(full_payload: &str) -> Result<(), crate::error::QrisError> 
         });
     }
     let split = full_payload.len() - 4;
-    let pre_crc  = &full_payload[..split];
-    let crc_hex  = &full_payload[split..];
+    let pre_crc = &full_payload[..split];
+    let crc_hex = &full_payload[split..];
 
-    let expected = u16::from_str_radix(crc_hex, 16)
-        .map_err(|_| crate::error::QrisError::CrcMismatch { expected: 0, computed: 0 })?;
+    let expected =
+        u16::from_str_radix(crc_hex, 16).map_err(|_| crate::error::QrisError::CrcMismatch {
+            expected: 0,
+            computed: 0,
+        })?;
     let computed = crc16_ccitt(pre_crc);
 
     if expected != computed {

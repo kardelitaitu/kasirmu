@@ -37,9 +37,7 @@ fn decode_luma(img: image::GrayImage) -> Result<String, QrisError> {
     let w = width as usize;
     let h = height as usize;
 
-    let mut prepared = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| {
-        raw[y * w + x]
-    });
+    let mut prepared = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| raw[y * w + x]);
     let grids = prepared.detect_grids();
 
     if grids.is_empty() {
@@ -62,4 +60,3 @@ fn decode_luma(img: image::GrayImage) -> Result<String, QrisError> {
         "QR code grid(s) found but none could be decoded".to_string(),
     ))
 }
-

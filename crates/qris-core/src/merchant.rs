@@ -1,8 +1,8 @@
 //! Merchant Account Information and Additional Data structures.
 
+use crate::error::QrisError;
 use crate::tag::*;
 use crate::tlv;
-use crate::error::QrisError;
 
 /// One Merchant Account Information slot (EMVCo tags 26–51).
 ///
@@ -152,15 +152,15 @@ impl AdditionalData {
         let mut data = Self::default();
         for t in sub_tlvs {
             match t.tag {
-                SUB_TAG_BILL_NUMBER    => data.bill_number    = Some(t.value),
-                SUB_TAG_MOBILE_NUMBER  => data.mobile_number  = Some(t.value),
-                SUB_TAG_STORE_LABEL    => data.store_label    = Some(t.value),
+                SUB_TAG_BILL_NUMBER => data.bill_number = Some(t.value),
+                SUB_TAG_MOBILE_NUMBER => data.mobile_number = Some(t.value),
+                SUB_TAG_STORE_LABEL => data.store_label = Some(t.value),
                 SUB_TAG_LOYALTY_NUMBER => data.loyalty_number = Some(t.value),
-                SUB_TAG_REFERENCE_LABEL=> data.reference_label= Some(t.value),
+                SUB_TAG_REFERENCE_LABEL => data.reference_label = Some(t.value),
                 SUB_TAG_CUSTOMER_LABEL => data.customer_label = Some(t.value),
                 SUB_TAG_TERMINAL_LABEL => data.terminal_label = Some(t.value),
-                SUB_TAG_PURPOSE        => data.purpose        = Some(t.value),
-                _                      => data.extra.push((t.tag, t.value)),
+                SUB_TAG_PURPOSE => data.purpose = Some(t.value),
+                _ => data.extra.push((t.tag, t.value)),
             }
         }
         Ok(data)
@@ -171,20 +171,25 @@ impl AdditionalData {
         let mut fields: Vec<(u8, String)> = Vec::new();
         macro_rules! push_opt {
             ($sub:expr, $field:expr) => {
-                if let Some(ref v) = $field { fields.push(($sub, v.clone())); }
+                if let Some(ref v) = $field {
+                    fields.push(($sub, v.clone()));
+                }
             };
         }
-        push_opt!(SUB_TAG_BILL_NUMBER,     self.bill_number);
-        push_opt!(SUB_TAG_MOBILE_NUMBER,   self.mobile_number);
-        push_opt!(SUB_TAG_STORE_LABEL,     self.store_label);
-        push_opt!(SUB_TAG_LOYALTY_NUMBER,  self.loyalty_number);
+        push_opt!(SUB_TAG_BILL_NUMBER, self.bill_number);
+        push_opt!(SUB_TAG_MOBILE_NUMBER, self.mobile_number);
+        push_opt!(SUB_TAG_STORE_LABEL, self.store_label);
+        push_opt!(SUB_TAG_LOYALTY_NUMBER, self.loyalty_number);
         push_opt!(SUB_TAG_REFERENCE_LABEL, self.reference_label);
-        push_opt!(SUB_TAG_CUSTOMER_LABEL,  self.customer_label);
-        push_opt!(SUB_TAG_TERMINAL_LABEL,  self.terminal_label);
-        push_opt!(SUB_TAG_PURPOSE,         self.purpose);
-        for (t, v) in &self.extra { fields.push((*t, v.clone())); }
+        push_opt!(SUB_TAG_CUSTOMER_LABEL, self.customer_label);
+        push_opt!(SUB_TAG_TERMINAL_LABEL, self.terminal_label);
+        push_opt!(SUB_TAG_PURPOSE, self.purpose);
+        for (t, v) in &self.extra {
+            fields.push((*t, v.clone()));
+        }
 
-        fields.iter()
+        fields
+            .iter()
             .map(|(t, v)| tlv::encode_field(*t, v))
             .collect()
     }

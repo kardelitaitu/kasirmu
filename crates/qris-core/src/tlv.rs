@@ -32,7 +32,10 @@ pub(crate) fn parse_tlvs(payload: &str) -> Result<Vec<Tlv>, QrisError> {
     while pos < total {
         // Need at least tag(2) + len(2) = 4 characters
         if pos + 4 > total {
-            return Err(QrisError::TooShort { needed: pos + 4, got: total });
+            return Err(QrisError::TooShort {
+                needed: pos + 4,
+                got: total,
+            });
         }
 
         let tag_str: String = chars[pos..pos + 2].iter().collect();

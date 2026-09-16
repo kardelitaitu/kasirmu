@@ -13,7 +13,7 @@
 //! needs no widened visibility.
 
 use crate::conflict_resolution::{
-    build_conflict_row, classify, extract_terminal, ConflictCandidate, Decision, SyncConflictRow,
+    ConflictCandidate, Decision, SyncConflictRow, build_conflict_row, classify, extract_terminal,
 };
 use platform_sync::crdt::VersionVector;
 use rusqlite::params;

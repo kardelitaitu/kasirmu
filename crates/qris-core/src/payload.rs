@@ -239,7 +239,10 @@ impl QrisPayload {
         // 00: Payload Format Indicator
         out.push_str(&tlv::encode_field(TAG_PAYLOAD_FORMAT, "01"));
         // 01: Initiation Method
-        out.push_str(&tlv::encode_field(TAG_INITIATION_METHOD, self.initiation.to_wire()));
+        out.push_str(&tlv::encode_field(
+            TAG_INITIATION_METHOD,
+            self.initiation.to_wire(),
+        ));
 
         // 26–51: Merchant Account Info
         for slot in &self.merchant_accounts {
@@ -317,7 +320,11 @@ impl QrisPayload {
     ///
     /// Uses error-correction level H so up to 30% of the QR can be covered by the logo.
     #[cfg(feature = "render")]
-    pub fn to_qr_png_with_logo(&self, pixel_size: u32, logo_bytes: &[u8]) -> Result<Vec<u8>, QrisError> {
+    pub fn to_qr_png_with_logo(
+        &self,
+        pixel_size: u32,
+        logo_bytes: &[u8],
+    ) -> Result<Vec<u8>, QrisError> {
         crate::render::to_png_with_logo(&self.to_qris_string(), pixel_size, logo_bytes)
     }
 
@@ -367,21 +374,21 @@ impl QrisPayload {
                 26..=51 => {
                     merchant_accounts.push(MerchantAccountInfo::from_nested(t.tag, &t.value)?);
                 }
-                TAG_MCC             => merchant_category_code = t.value,
-                TAG_CURRENCY        => currency = t.value,
-                TAG_AMOUNT          => amount = Some(t.value),
-                TAG_TIP_INDICATOR   => tip_indicator = Some(t.value),
-                TAG_FEE_FIXED       => fee_fixed = Some(t.value),
-                TAG_FEE_PERCENT     => fee_percent = Some(t.value),
-                TAG_COUNTRY         => country_code = t.value,
-                TAG_MERCHANT_NAME   => merchant_name = t.value,
-                TAG_MERCHANT_CITY   => merchant_city = t.value,
-                TAG_POSTAL_CODE     => postal_code = Some(t.value),
+                TAG_MCC => merchant_category_code = t.value,
+                TAG_CURRENCY => currency = t.value,
+                TAG_AMOUNT => amount = Some(t.value),
+                TAG_TIP_INDICATOR => tip_indicator = Some(t.value),
+                TAG_FEE_FIXED => fee_fixed = Some(t.value),
+                TAG_FEE_PERCENT => fee_percent = Some(t.value),
+                TAG_COUNTRY => country_code = t.value,
+                TAG_MERCHANT_NAME => merchant_name = t.value,
+                TAG_MERCHANT_CITY => merchant_city = t.value,
+                TAG_POSTAL_CODE => postal_code = Some(t.value),
                 TAG_ADDITIONAL_DATA => {
                     additional_data = Some(AdditionalData::from_nested(&t.value)?);
                 }
                 TAG_CRC => {} // consumed by CRC verification, skip
-                _       => extra.push((t.tag, t.value)),
+                _ => extra.push((t.tag, t.value)),
             }
         }
 
@@ -481,8 +488,10 @@ mod tests {
     #[test]
     fn into_static_clears_amount() {
         let s = minimal_payload();
-        let p = QrisPayload::parse(&s).unwrap()
-            .into_dynamic("50000").unwrap()
+        let p = QrisPayload::parse(&s)
+            .unwrap()
+            .into_dynamic("50000")
+            .unwrap()
             .into_static();
         assert!(p.is_static());
         assert!(p.amount.is_none());

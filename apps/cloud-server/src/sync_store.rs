@@ -31,8 +31,8 @@ next: none | perf: multi-row fast path collapses N round trips into ~ceil(N/500)
 //! as `i64` and treats `0` as `false`, anything non-zero as `true` — the
 //! same 0/1 convention SQLite uses.
 
-mod pg;
 mod conflicts;
+mod pg;
 mod sqlite;
 mod tenant;
 

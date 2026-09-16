@@ -8,7 +8,7 @@ use rusqlite::params;
 
 use crate::error::CoreError;
 use crate::subscription::{QuotaError, SubscriptionTier, TenantSubscription};
-use crate::workspace_type::{is_pos_type, KDS, WAREHOUSE};
+use crate::workspace_type::{KDS, WAREHOUSE, is_pos_type};
 
 use super::Store;
 use super::*;

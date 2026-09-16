@@ -93,7 +93,7 @@ pub use builder::QrisBuilder;
 pub use error::QrisError;
 pub use merchant::{AdditionalData, MerchantAccountInfo};
 pub use nmid::NmidInfo;
-pub use payload::{is_valid_qris, QrisPayload, Tip};
+pub use payload::{QrisPayload, Tip, is_valid_qris};
 pub use tag::InitiationMethod;
 
 // ── Top-level utility functions ───────────────────────────────────────────────
