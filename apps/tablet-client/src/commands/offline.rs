@@ -142,30 +142,6 @@ fn run_list_pending_offline(
     Ok(dtos)
 }
 
-/// Get the count of pending offline items.
-#[command]
-pub async fn pending_offline_count(state: State<'_, AppState>) -> Result<i64, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let count = store.pending_offline_count()?;
-    drop(db);
-    Ok(count)
-}
-
-/// Delete a processed offline queue item.
-#[command]
-pub async fn delete_offline_item(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    store.delete_offline_item(&id)?;
-    drop(db);
-
-    tracing::info!(id, "offline queue item deleted");
-    Ok(())
-}
-
 /// Arguments for `requeue_remote_failure_scoped`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -264,7 +240,7 @@ pub async fn list_all_offline_scoped(
     Ok(dtos)
 }
 
-/// Session-scoped variant of `pending_offline_count`.
+/// Get the count of pending offline items resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn pending_offline_count_scoped(
@@ -360,7 +336,7 @@ pub async fn retry_offline_sync_scoped(
     })
 }
 
-/// Session-scoped variant of `delete_offline_item`.
+/// Delete a processed offline queue item resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_offline_item_scoped(
