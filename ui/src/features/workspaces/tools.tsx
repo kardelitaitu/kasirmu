@@ -16,6 +16,19 @@
 //
 // `settings/topology` and `settings/sync` are deep links into kept
 // sections of the Settings hub, not standalone page routes.
+//
+// `minimumRole` is the HOME front door, not the security gate. The route's own
+// gate is authoritative: `registerPage` declares `requiredRole` +
+// `requiredPermission`, and `passesGate` (platform/ui/page-registry) consults the
+// permission whenever the session carries granted keys. Home-stricter is the
+// documented policy (todo-tools.md:730), so a card hidden here does NOT mean the
+// route would refuse it — the two surfaces are meant to differ. Measured
+// 2026-09-16, six of these 17 tools do differ: `staff` `shifts` `analytics`
+// `reports` `audit` `settings`, and in five of the six the role that would gain
+// the card is `auditor`, which holds the read keys but ranks below the home
+// floor. Whether that stays policy or the grid moves to the permission
+// vocabulary is an open owner ruling, filed in
+// docs/records/audit-open-findings.md (2026-09-16).
 
 import type { ReactNode } from 'react';
 import type { TierKey } from '@/utils/tierLevel';
