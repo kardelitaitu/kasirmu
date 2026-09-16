@@ -38,6 +38,7 @@ restaurant-search-aria = Search menu items
 restaurant-search-clear-aria = Clear search
 restaurant-context-pin = Pin to top
 restaurant-context-unpin = Unpin from top
+restaurant-context-menu-aria = Menu item actions
 restaurant-context-available = Mark available
 restaurant-context-unavailable = Mark unavailable
 restaurant-card-pin-title = Pinned to top

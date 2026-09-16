@@ -34,6 +34,7 @@ restaurant-search-aria = Cari item menu
 restaurant-search-clear-aria = Hapus pencarian
 restaurant-context-pin = Sematkan ke atas
 restaurant-context-unpin = Lepas sematan
+restaurant-context-menu-aria = Tindakan item menu
 restaurant-context-available = Tandai tersedia
 restaurant-context-unavailable = Tandai tidak tersedia
 restaurant-card-pin-title = Disematkan ke atas

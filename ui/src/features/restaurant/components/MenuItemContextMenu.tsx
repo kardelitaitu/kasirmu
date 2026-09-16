@@ -154,10 +154,16 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
       ref={menuRef}
       className="restaurant-context-menu"
       style={{
-        left: Math.max(4, Math.min(menu.x, viewportWidth - 180)),
-        top: Math.max(4, Math.min(menu.y, viewportHeight - 280)),
+        // Measured clamp: read the rendered panel (min-width 8.75rem ≈ 140px
+        // plus padding/border) instead of assuming a fixed 180×280 box. The
+        // old magic numbers let a real menu run off the bottom when opened
+        // low on the screen; offsetWidth/Height reflect the palette as built
+        // (including the wrapped rows and the clear swatch when present).
+        left: Math.max(4, Math.min(menu.x, viewportWidth - (menuRef.current?.offsetWidth ?? 180) - 4)),
+        top: Math.max(4, Math.min(menu.y, viewportHeight - (menuRef.current?.offsetHeight ?? 280) - 4)),
       }}
       role="menu"
+      aria-label={l10n.getString('restaurant-context-menu-aria', undefined, 'Menu item actions')}
       tabIndex={-1}
       onKeyDown={handleContextMenuKeyDown}
     >
