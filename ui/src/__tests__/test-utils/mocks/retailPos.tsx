@@ -71,9 +71,7 @@ export function createRetailProductsApiMock() {
     createCategory: vi.fn(),
     updateCategory: vi.fn(),
     deleteCategory: vi.fn(),
-    getProductTrackSerial: vi.fn(() => Promise.resolve(false)),
     getProductTrackSerialScoped: vi.fn(() => Promise.resolve(false)),
-    getProductTrackSerialBatch: vi.fn((_skus: string[]) => Promise.resolve([])),
     // ADR #37 D3: fire-and-forget popularity search signal (non-blocking).
     recordProductSearchScoped: vi.fn(() => Promise.resolve(undefined)),
   };

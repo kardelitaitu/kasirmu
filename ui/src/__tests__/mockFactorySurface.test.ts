@@ -161,7 +161,7 @@ const KNOWN_DEAD: Record<string, string[]> = {
     'displayClear', 'displayShow', 'listDisplays',
   ],
   '@/api/products <- createRetailProductsApiMock': [
-    'createCategory', 'deleteCategory', 'getProductTrackSerialBatch', 'updateCategory',
+    'createCategory', 'deleteCategory', 'updateCategory',
   ],
   '@/api/currency <- createRetailCurrencyApiMock': [
     'listCurrencies', 'listExchangeRates',

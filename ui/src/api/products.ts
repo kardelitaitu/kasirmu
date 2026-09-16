@@ -160,10 +160,6 @@ export const lookupByBarcode = (barcode: string): Promise<ProductDto | null> =>
 export const lookupByBarcodeScoped = (sessionToken: string, barcode: string): Promise<ProductDto | null> =>
   loggedInvoke<ProductDto | null>('lookup_by_barcode_scoped', { sessionToken, barcode });
 
-/** Check whether a product tracks serial numbers. */
-export const getProductTrackSerial = (sku: string): Promise<boolean> =>
-  loggedInvoke<boolean>('get_product_track_serial', { sku });
-
 /** Check whether a product tracks serial numbers, store-scoped. ADR #7. */
 export const getProductTrackSerialScoped = (sessionToken: string, sku: string): Promise<boolean> =>
   loggedInvoke<boolean>('get_product_track_serial_scoped', { sessionToken, sku });

@@ -35,7 +35,7 @@ import {
   finalizeSale,
   voidPendingSale,
   setCartDiscountScoped,
-  getProductTrackSerialBatch,
+  getProductTrackSerialBatchScoped,
 } from '@/api/sales';
 
 describe('sales.ts IPC contract', () => {
@@ -157,13 +157,21 @@ describe('sales.ts IPC contract', () => {
     });
   });
 
-  it('getProductTrackSerialBatch invokes "get_product_track_serial_batch" with skus (PERF-03)', async () => {
+  // Moved off the unscoped `getProductTrackSerialBatch` on 2026-09-16 (T25) rather than
+  // deleted with it, because it was the ONLY wire-shape pin on either form of this call and it
+  // carries the load-bearing detail: the response rows are snake_case (`track_serial`), not the
+  // camelCase the DTO name suggests -- `SerialTrackRow` declares the wire spelling, so a
+  // "helpful" rename here would silently read `undefined` for every SKU and the cart would
+  // treat every tracked product as untracked. The door graded is now the one the retail cart
+  // actually invokes (RetailPosScreen.tsx:191).
+  it('getProductTrackSerialBatchScoped invokes "get_product_track_serial_batch_scoped" with sessionToken + skus (PERF-03)', async () => {
     mockInvoke.mockResolvedValue([
       { sku: 'TRACKED', track_serial: true },
       { sku: 'PLAIN', track_serial: false },
     ]);
-    const rows = await getProductTrackSerialBatch(['TRACKED', 'PLAIN']);
-    expect(mockInvoke).toHaveBeenCalledWith('get_product_track_serial_batch', {
+    const rows = await getProductTrackSerialBatchScoped('tok', ['TRACKED', 'PLAIN']);
+    expect(mockInvoke).toHaveBeenCalledWith('get_product_track_serial_batch_scoped', {
+      sessionToken: 'tok',
       skus: ['TRACKED', 'PLAIN'],
     });
     expect(rows).toEqual([

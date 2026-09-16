@@ -385,10 +385,6 @@ export const voidPendingSale = (sessionToken: string, saleId: string): Promise<v
 export const overrideCartDeductionLocation = (sessionToken: string, cartId: string): Promise<void> =>
   loggedInvoke<void>('override_cart_deduction_location_scoped', { sessionToken, cartId });
 
-/** Check whether a product is configured for serial number tracking. */
-export const getProductTrackSerial = (sku: string): Promise<boolean> =>
-  loggedInvoke<boolean>('get_product_track_serial', { sku });
-
 /** One serial-tracking flag row in a batch response. */
 export interface SerialTrackRow {
   sku: string;
@@ -396,13 +392,12 @@ export interface SerialTrackRow {
 }
 
 /**
- * Check serial-tracking flags for many SKUs in a single IPC round trip
- * (PERF-03 — replaces the N+1 per-SKU loop in the retail cart).
+ * ADR #7: Scoped batch serial-tracking — `userId` is read from session.
+ *
+ * PERF-03: many SKUs in a single IPC round trip, replacing the N+1 per-SKU loop in the retail
+ * cart. The unscoped twin of this call was deleted on 2026-09-16 (T25); its contract case came
+ * here with it, because this is the only form the cart uses (RetailPosScreen.tsx:191).
  */
-export const getProductTrackSerialBatch = (skus: string[]): Promise<SerialTrackRow[]> =>
-  loggedInvoke<SerialTrackRow[]>('get_product_track_serial_batch', { skus });
-
-/** ADR #7: Scoped batch serial-tracking — `userId` is read from session. */
 export const getProductTrackSerialBatchScoped = (sessionToken: string, skus: string[]): Promise<SerialTrackRow[]> =>
   loggedInvoke<SerialTrackRow[]>('get_product_track_serial_batch_scoped', { sessionToken, skus });
 
