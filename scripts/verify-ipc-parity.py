@@ -417,6 +417,66 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
     return hits
 
 
+def shell_rust_sources(lib_path: Path) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """(production, test) Rust sources of one shell, as (label, text) pairs.
+
+    Extracted so the F-006 classifier and the mirror-direction leg below read exactly the same
+    population. Two forks of "what counts as this shell's sources" is how one leg can look clean
+    while the other grades a different tree.
+    """
+    src = lib_path.parent
+    prod: list[tuple[str, str]] = []
+    tests: list[tuple[str, str]] = []
+    for path in sorted(src.rglob("*.rs")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        (tests if path.name.endswith("_tests.rs") else prod).append((path.name, text))
+    return prod, tests
+
+
+def unrequested_registrations(
+    prod: list[tuple[str, str]], registered: list[str], ui_names: set[str]
+) -> dict[str, list[str]]:
+    """Registered commands that no shipped UI file invokes, split by local Rust callers.
+
+    This is the direction F-006 never asked. F-006 counts "the renderer names a door nobody
+    registered"; a thin shell also has the opposite surface -- "a door is registered and nothing
+    on the client side ever names it" -- and until 2026-09-16 no instrument in this repo printed
+    it, so "the shells are thin" was only ever half-measured. Two sub-populations answer
+    differently and must not be summed into one scary number:
+
+    * `rust_called` -- no UI demand, but the shell's own code calls the fn (a sink wired from an
+      event handler, a command reused by another command). The registration may still be wrong,
+      but the body is load-bearing and deleting it breaks the build.
+    * `dead_registration` -- named by no shipped UI file and called by no Rust in this shell: the
+      only population that a retirement can start from.
+
+    What this deliberately does NOT claim. Demand is counted where the command STRING is written,
+    so a UI file that reaches a command through a wrapper under `ui/src/api` is credited, and a
+    name invoked only from a Vitest case or from `ui/src/dev-mock` reads as unrequested -- that is
+    correct for "shipped" and is the same population `extract_ui_commands` uses (`UI_SCAN_DIRS`
+    omits both; verified against the tree the day this leg was written: no invoke literal lives
+    outside the walked directories today, so a future file there would be invisible to both this
+    leg and F-006, which is the shared caveat to remember, not a claim that either is broken now).
+    A name the OTHER shell's UI calls is also unrequested here, so read the two shells' lists
+    together before believing any entry is dead everywhere.
+
+    Two limits, measured the same day rather than assumed. Demand is found by a LITERAL regex, so
+    `loggedInvoke(cmdVariable, ...)` would be invisible: the only non-literal invoke sites in
+    shipped UI are `ui/src/utils/logged-invoke.ts:14` and `:18`, which are the helper's own
+    parameter, so nothing hides behind a variable today -- and if a future pass adds one, this leg
+    and F-006 go quietly wrong together, because they share the census. And `rust_called` printed
+    zero for both shells that day: an unpopulated arm is not a broken arm, but no real input has
+    exercised it yet, which is what the four fixtures in the self-test exist to keep honest.
+    """
+    out: dict[str, list[str]] = {"rust_called": [], "dead_registration": []}
+    for name in sorted(set(registered)):
+        if name in ui_names:
+            continue
+        sites = fn_call_sites(name, prod)
+        (out["rust_called"] if sites else out["dead_registration"]).append(name)
+    return out
+
+
 def classify_unregistered(
     lib_path: Path, unregistered: list[str], ui_missing: set[str]
 ) -> dict[str, tuple[list[str], list[str]]]:
@@ -436,12 +496,7 @@ def classify_unregistered(
       reading the body AND the comment above it (T5-3 nearly collapsed a documented
       per-client policy; T12 nearly deleted a command another shell's fallback needs).
     """
-    src = lib_path.parent
-    prod: list[tuple[str, str]] = []
-    tests: list[tuple[str, str]] = []
-    for path in sorted(src.rglob("*.rs")):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        (tests if path.name.endswith("_tests.rs") else prod).append((path.name, text))
+    prod, tests = shell_rust_sources(lib_path)
     return {
         fn: (fn_call_sites(fn, prod), fn_call_sites(fn, tests)) for fn in unregistered
     }
@@ -2974,6 +3029,29 @@ def self_test() -> int:
     case("uinamed the real tree still holds at least three of the four named wrappers nobody uses",
          len(real_unref) >= 3)
 
+    # The mirror leg, four ways to be wrong. `unused_door` is the case that matters most: its own
+    # definition line contains the name, so an instrument that counted definitions as calls would
+    # report every single registered command as "load-bearing from Rust" and the leg would print
+    # zero forever -- a green that measures nothing.
+    mirror_src = [
+        ("a.rs", "async fn helper() -> u8 {\n    compute_total(1).await\n}"),
+        ("b.rs", "#[command]\npub async fn unused_door() -> Result<u8, E> {\n    Ok(0)\n}"),
+        ("c.rs", "fn warm(store: &Store) {\n    store.warm_cache();\n}"),
+    ]
+    mirror = unrequested_registrations(
+        mirror_src,
+        ["compute_total", "unused_door", "warm_cache", "live_door"],
+        {"live_door"},
+    )
+    case("unrequested a command the UI names is not unrequested at all",
+         "live_door" not in mirror["rust_called"] + mirror["dead_registration"])
+    case("unrequested a command this shell's Rust calls is not called dead",
+         mirror["rust_called"] == ["compute_total"])
+    case("unrequested a command's own definition is not a call of it",
+         mirror["dead_registration"] == ["unused_door", "warm_cache"])
+    case("unrequested a same-named method on a value is not a local caller",
+         "warm_cache" not in mirror["rust_called"])
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -3256,6 +3334,23 @@ def main() -> int:
             f"programmatic client + {len(unreferenced)} named only by an api wrapper nothing "
             f"imports (dead surface both sides, deletable; not a parity gap)"
             + (": " + ", ".join(unreferenced) if unreferenced else "")
+        )
+        # The mirror direction. F-006 measures doors the UI asks for that no shell opened; this
+        # measures doors a shell opened that no shipped UI asks for. Informational for the same
+        # reason every other leg here is: a registered command with no client is not a bug, it is
+        # a question with several legitimate answers (another shell's UI uses it, a Rust-side
+        # caller wires it, an external facade exposes it), and only the owner can tell them apart.
+        prod_rs, _tests = shell_rust_sources(REPO_ROOT / SHELLS[shell])
+        unreq = unrequested_registrations(prod_rs, handlers[shell], set(ui_commands))
+        dead = unreq["dead_registration"]
+        tail = ", ".join(dead[:8]) + (f" (+{len(dead) - 8} more)" if len(dead) > 8 else "")
+        print(
+            f"info[{shell}-unrequested]: {len(dead) + len(unreq['rust_called'])} "
+            f"of {len(handlers[shell])} registered commands are named by no shipped UI file = "
+            f"{len(unreq['rust_called'])} called by this shell's own Rust (load-bearing, not dead) "
+            f"+ {len(dead)} named by neither side (the only population a retirement can start "
+            f"from; read the other shell's UI before believing one is dead everywhere)"
+            + (": " + tail if dead else "")
         )
         # Informational, like every other F-006-adjacent leg: a fallback that cannot resolve is
         # an owner question (register the door, or change the branch), not a red gate this run
