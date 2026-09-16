@@ -690,15 +690,56 @@ fn drift_pin_debt_ceilings_only_shrink() {
         .filter(|(_, st)| *st == State::NoSessionResolution)
         .count();
     let assume = ungated - no_session;
+    // Name the movers. This leg used to print two counts and no identity, which meant a crossing
+    // could only be diagnosed by reimplementing the sweep somewhere else -- and the first attempt
+    // at that (a Python mirror, 2026-09-16) reported 17 where this leg reported 27, because its
+    // author wrote `pub async fn` where commands may be synchronous, then a non-recursive
+    // `glob` where the sweep walks subdirectories. Two bugs, one right name, and no way to know
+    // which of the three numbers to trust. The label-vs-state diff below is the same question the
+    // ledger can answer about itself, answered in the language that already owns the predicate.
+    let label_of = |n: &str| {
+        debt::DEBT_LEDGER
+            .iter()
+            .find(|(k, _)| *k == n)
+            .map(|(_, v)| *v)
+    };
+    let want = "resolves_session_names_no_permission";
+    let (mut homeless, mut migrated) = (Vec::new(), Vec::new());
+    for (name, st) in &s.ungated {
+        if *st != State::ResolvesSessionNamesNoPermission {
+            continue;
+        }
+        match label_of(name) {
+            None => homeless.push(name.clone()),
+            Some(old) if old != want => migrated.push(format!("{name} (ledger says {old})")),
+            Some(_) => {}
+        }
+    }
     assert!(
         no_session <= debt::NO_SESSION_RESOLUTION
             && assume <= debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
         "a per-state ceiling was crossed: measured {no_session} no_session_resolution \
          (ceiling {}) and {assume} resolves_session_names_no_permission (ceiling {}). The \
          second class is authenticate-then-assume and is the largest here; it moved \
-         without a decision.",
+         without a decision. Migrants into that class: {}. Names in it with no ledger row \
+         at all: {}. A migrant means a command whose measured state changed under a row \
+         that still describes the old one -- usually a session parameter that arrived \
+         without a permission check, which is a class-1 door becoming a class-2 door and \
+         empties one ceiling while filling the other. Either gate it, or move its ledger \
+         row to the true class AND raise that ceiling deliberately, naming the decision in \
+         docs/records/JOURNAL.md.",
         debt::NO_SESSION_RESOLUTION,
         debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
+        if migrated.is_empty() {
+            "none".to_string()
+        } else {
+            migrated.join(", ")
+        },
+        if homeless.is_empty() {
+            "none".to_string()
+        } else {
+            homeless.join(", ")
+        },
     );
 }
 
