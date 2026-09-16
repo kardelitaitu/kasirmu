@@ -471,6 +471,7 @@ refund-line-sku = SKU
 refund-line-qty = Qty
 refund-line-total = Total
 refund-action-refund = Refund
+refund-status-refunded = Refunded
 
 # Item Modifier Modal
 modifier-no-options = No options available

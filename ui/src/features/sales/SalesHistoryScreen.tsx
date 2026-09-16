@@ -1205,7 +1205,7 @@ export default function SalesHistoryScreen() {
                     {' '}{formatMoney(detail.total)}
                     {refunds.length > 0 && (
                       <Badge variant="warning" style={{ marginLeft: 8 }}>
-                        <Localized id="refund-title">
+                        <Localized id="refund-status-refunded">
                           <span>Refunded</span>
                         </Localized>
                       </Badge>

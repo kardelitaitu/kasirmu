@@ -447,6 +447,37 @@ describe('SalesHistoryScreen', () => {
     });
   });
 
+  // ── The already-refunded badge ─────────────────────────────────
+  // The badge is a STATUS label beside the grand total; refund-title is the modal's
+  // title ("Process Refund"), so wiring the badge to that key told the operator to
+  // perform the very action the badge exists to warn about. Pinned on the RESOLVED
+  // string, because the defect was the key -> string mapping, not a missing key.
+  it('labels the already-refunded badge as a refund status, not as the refund action', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    mockListRefunds.mockResolvedValue([{
+      id: 'refund-1', saleId: sampleDetail.id,
+      total: { minor_units: 12000, currency: 'IDR' },
+      reason: 'Damaged', note: '', processedBy: 'user-1',
+      createdAt: '2026-07-07T12:00:00.000Z', lines: [],
+    }]);
+    renderWithFluentSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    await waitFor(() => {
+      expect(screen.getByText('Previous Refunds')).toBeInTheDocument();
+    });
+
+    // Primary: the badge must not resolve to the modal's title.
+    expect(screen.queryByText('Process Refund')).toBeNull();
+    // And it must positively say the status it is warning about.
+    expect(screen.getByText('Refunded')).toBeInTheDocument();
+  });
+
   // ADR #7: a screen holding a session token must read through the scoped command so the store is
   // resolved from the session. This screen already applies the pattern to listStaffScoped two lines
   // from where it forgets it on listSales (see load(), SalesHistoryScreen.tsx:211-216), and reads

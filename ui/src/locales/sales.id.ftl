@@ -438,6 +438,10 @@ refund-line-sku = SKU
 refund-line-qty = Jml
 refund-line-total = Total
 refund-action-refund = Kembalikan
+# en: Refunded. Past participle of the verb this bundle already uses for the action
+# (refund-action-refund = Kembalikan) and the same word sales.id.ftl uses for the en
+# label "Refunded: { $amount }" at refund-done-amount.
+refund-status-refunded = Dikembalikan
 
 # Item Modifier Modal
 modifier-no-options = Tidak ada opsi tersedia
