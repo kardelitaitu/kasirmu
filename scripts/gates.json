@@ -337,7 +337,7 @@
       "id": "security-pr",
       "label": "Security PR baseline",
       "status": "retired",
-      "_note": "cargo audit and cargo deny appear in neither dev-ci.yml nor check.sh. Was ci.yml#security-pr."
+      "_note": "Retained as retired: this row names the ci.yml#security-pr JOB, and no live workflow runs either tool — `grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` still exits 1. What DID move is the local half of the old sentence: 'cargo audit and cargo deny appear in neither dev-ci.yml nor check.sh' was true when written and became false the moment scripts/check.sh grew the non-blocking 'supply chain advisories (advisory)' leg, which runs cargo-deny (gates.json -> audit, status advisory). cargo-audit still appears in neither file. Was ci.yml#security-pr."
     },
     {
       "id": "lighthouse",
@@ -353,9 +353,10 @@
     },
     {
       "id": "audit",
-      "label": "Dependency audit",
-      "status": "retired",
-      "_note": "Dependency audit ran in ci.yml#audit only. `npm ci --no-audit` in check.sh explicitly SUPPRESSES it. Was required-on-push."
+      "label": "Dependency audit (cargo-deny, advisory)",
+      "status": "advisory",
+      "runners": { "check.sh": ["supply chain advisories"] },
+      "_note": "RE-FILED, not restored: the runner named here is the local scripts/check.sh leg 'supply chain advisories (advisory)', which runs 'cargo deny check' against deny.toml and NEVER fails the run. Deliberately NO 'ci' block — no live workflow runs it (`grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1), so naming a job here would be a claim this checker is entitled to catch. Two of its outcomes are SKIPs — cargo-deny not installed, and the advisory database unreachable — and its fourth outcome is a non-blocking WARN, so a green check.sh is NOT proof the supply chain was checked; neither is a green PR, since .githooks/pre-push runs scripts/run-pre-push.py and never calls check.sh. Rust only: `npm ci --no-audit` in check.sh deliberately SUPPRESSES the npm side, and cargo-audit itself still runs nowhere — this row covers cargo-deny. Was 'retired / Dependency audit', ci.yml#audit only, and required-on-push before that."
     },
     {
       "id": "fuzz",

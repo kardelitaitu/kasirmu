@@ -177,6 +177,55 @@ else
     echo -e "${YELLOW}⚠ panic-inventory skipped (python3 not found)${NC}"
 fi
 
+# ── Supply chain: cargo-deny (deny.toml) — ADVISORY, never fails the run ──
+# This is the runner that deny.toml's own header used to say did not exist.
+# Three deliberate absences, each load-bearing:
+#   • It is NOT a step() call. step() ends in `exit 1` and this script runs
+#     under `set -euo pipefail` (:16), so wrapping an advisory check there
+#     would convert one advisory finding into a hard abort of the whole matrix.
+#   • It is NOT in CI. No live workflow invokes cargo-deny, and
+#     .githooks/pre-push runs scripts/run-pre-push.py, which never calls
+#     check.sh — so a green PR is no evidence this leg ran, and this leg
+#     running is no evidence that anything was enforced.
+#   • It is NOT npm dependency auditing. The UI and website legs below run
+#     `npm ci --no-audit`, a deliberate suppression, so this leg is Rust-only
+#     and must never be described more widely than that.
+# Branching is on rc==0 vs rc!=0 ONLY. No numeric exit code appears anywhere
+# in this block: cargo-deny's and cargo-audit's numeric failure semantics are
+# not knowable from this checkout, so a code-tested branch would be a guess.
+# What the leg does distinguish — an unreachable advisory DB vs a real finding
+# — it distinguishes by grepping the captured log, the same shape as the npm
+# EPERM/esbuild classifier above. This is the only leg in the matrix that
+# touches the network, so an outage must read as neither a pass nor a finding.
+# The `command -v` probe is for the NEXT clone, not this box: cargo-deny IS
+# installed on the machine that wrote this leg, so the skip branch below has
+# never fired here and exists only so that a checkout without the binary skips
+# loudly instead of dying under `set -u`.
+if command -v cargo-deny &>/dev/null; then
+    echo -n "supply chain advisories (advisory)... "
+    if deny_out=$(cargo deny check 2>&1); then
+        # Success: print the tool's own summary line (panic-inventory style) so
+        # the PASS says what was checked, not merely that it passed.
+        if deny_summary=$(printf '%s\n' "$deny_out" | grep -E '(advisories|bans|licenses|sources) ok' | tail -1); then
+            echo -e "${GREEN}PASS${NC} (${deny_summary})"
+        else
+            echo -e "${GREEN}PASS${NC} (cargo-deny reported no failures)"
+        fi
+    elif printf '%s\n' "$deny_out" | grep -qiE 'failed to (fetch|clone|download)|could not (connect|resolve)|network|offline|Updating advisory database'; then
+        # Network-class failure: the advisories were never evaluated. Yellow,
+        # and worded so the line cannot be misread as a pass.
+        echo -e "${YELLOW}⚠ SKIP (advisory database unreachable — supply chain NOT checked; this is not a pass)${NC}"
+    else
+        # A real finding. Advisory by design, on this repo's own reasoning from
+        # the a11y leg below: a gate that arrives yellow gets disabled within a
+        # day, so this reports and does not abort.
+        echo -e "${YELLOW}WARN (cargo-deny findings — non-blocking, and NOT checked in any CI workflow)${NC}"
+        printf '%s\n' "$deny_out" | tail -20
+    fi
+else
+    echo -e "${YELLOW}⚠ supply chain advisories skipped (cargo-deny not installed — cargo install cargo-deny)${NC}"
+fi
+
 # ── Go: license-server (mirrors CI `go` job — auto-detected) ────────────
 # The license-server is a Go service (auth, licensing, webhooks, revenue).
 # CI gates on gofmt + go vet + `go test -short`; the local gate mirrors
