@@ -2,7 +2,8 @@
 
 <!-- Authorship: opened 2026-09-15 at HEAD d6d06c3c7 by DSH, on the owner directive "continue the implementation, we go with your recommendation" after done-todo-refactor-devmock-agents-3.md's close surfaced that the router consolidation had no live owner. Every number below carries its command and is stamped to this commit; they move with every router edit. -->
 
-**Document:** `todo-refactor-devmock-router-consolidation.md`
+**Document:** `done-todo-refactor-devmock-router-consolidation.md`
+**Status:** ✅ COMPLETE — renamed to `done-` by **owner §4 waiver, 2026-09-16** (precedent: `273b0a455`, `agents-3`). Opened as `todo-refactor-devmock-router-consolidation.md` at `1938a0782`. `check:all` does not exit 0 in this shared checkout, but with **zero dev-mock/this-order reds** — the non-green is a moving mix of ~44 foreign **uncommitted** files the CSS/tree walkers grade, the documented i18n **WSL-bash env trap** (passes under Git `bin`), and the E2E **Dockerfile** infra defect (since fixed at HEAD `8f5ccba35`), none of which this order owns or may touch (§3). Every gate this order actually controls is re-verified green at HEAD `8f5ccba35`: ESLint, `tsc` exit 0, `10005` unit tests incl. all **96** `dev-mock-*` suites, and the **681**-command dispatcher identity (`105d29730df2…`). Full waiver record at the foot of this file.
 **Role:** Orchestrator Agent 5 (Dev-Mock Router Consolidation)
 **Goal:** Remove the last literal command entries from `ui/src/dev-mock/tauri-api.ts` so the file registers existing domain handler maps and nothing else — the end-state every one of the four `refactor-devmock-agents-*` lanes named but none actually executed.
 
@@ -345,3 +346,38 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
 > - i18n lint FAIL is the **WSL `bash` trap** (AGENTS.md): `check-ui.mjs` spawns `bash ../scripts/lint-i18n.sh`, which resolves to `C:\Windows\System32\bash.exe` → Linux node vs Windows `node_modules` → `@rollup/rollup-linux-x64-gnu` MODULE_NOT_FOUND. Same leg via `C:\Program Files\Git\bin\bash.exe` → "no issues detected", EXIT 0 (measured). Re-run with Git `bin` first on PATH fixed this leg: i18n PASS (6.0s).
 > - E2E FAIL is the **stale-image guard** (correct) on top of a **pre-existing Dockerfile defect**: `e2e-cloud-server:latest` (built 2026-09-08) predates its build-context change, so the guard rightly refuses; but `npm run e2e -- --build` cannot rebuild because `Dockerfile.server:28-32` installs `pkg-config libc-dev libssl-dev` with **no `libudev-dev`**, while `oz-cloud-server` pulls `libudev-sys` via `oz-hal` — `cargo build --package oz-cloud-server --release` dies at `libudev-sys-0.1.4/build.rs:38` (`libudev.pc` not found). Last Dockerfile touch was a version bump, not a build-dep change, so this predates every current lane. Fixing it is Docker/CI infra outside this order's fence — recorded, not fixed.
 > - Box stays **UNTICKED**: `check:all` did not exit 0, for reasons containing zero dev-mock defects (7 dev-mock suites still 96/96 inside the run).
+
+## Owner §4 waiver record — close-out (2026-09-16, HEAD `8f5ccba35`)
+
+**Decision.** The owner directed: "we go with your recommendation, proceed" → **(b)** an explicit **§4 waiver**
+to rename this file `todo-…` → `done-todo-…` even though its acceptance command (`npm run check:all`) does
+not exit 0 in this checkout. This mirrors the two established precedents in-repo: `273b0a455` (KDS merged
+lane renamed "by owner §4 waiver (check:all red on foreign grounds)") and the `agents-3` rename. Per §4 the
+rename is IN PLACE at the root, not into `.agents/archived/`.
+
+**What is DONE and verified (attributable to this order — re-derived at HEAD `8f5ccba35`, not inherited):**
+- `ui/src/dev-mock/tauri-api.ts` **851 → 368 lines**; `entryHandlers` reduced to its two imported spreads
+  (`...licenseHandlers`, `...settingsHandlers`) + 2 documented cross-domain residue stubs; the `<200`
+  target re-scoped to **code-lines** by owner directive — measured **119 code** / 213 comment / 36 blank.
+- Dispatcher identity **681 commands, sha256 `105d29730df2…60681c`** — byte-identical across all ~16
+  extraction slices; no command ever dropped to the `invoke()` warn.
+- **`tsc` exit 0**; **all seven `dev-mock-*` suites (96 tests) green** on a clean `ui/src/dev-mock/` tree;
+  ESLint PASS. No dead imports / unused local helpers (hand-audited; `tsc` here lacks `noUnusedLocals`).
+
+**Why `check:all` is not green, and why that is NOT this order's (per the 09:15 full run `402040ce1` +
+current tree):** the non-green is environmental / infra / foreign, with **zero dev-mock defects** (the 7
+dev-mock suites passed inside the full run):
+1. **i18n leg — WSL-bash env trap** (documented in AGENTS.md): `check-ui.mjs` spawns `bash` which resolves to
+   the Windows WSL shim → wrong node_modules → spurious MODULE_NOT_FOUND; under Git `bin\bash.exe` the same
+   leg reports "no issues detected", EXIT 0. A harness/environment artifact, not a code red.
+2. **E2E leg — Dockerfile.server build-dep defect** (`libudev-dev` missing) — a **pre-existing infra** issue
+   outside the UI fence; **since fixed at HEAD `8f5ccba35`** (`fix(ci): add libudev-dev …`) by an infra lane,
+   not by this order.
+3. **Foreign uncommitted churn** — ~44 dirty files repo-wide at rename time, incl. the sales lane's
+   `CartPanelLineItem.css`; the CSS-walking compliance suites read the WORKING tree, so they grade strangers'
+   in-flight edits. This order touched **no `.css`** and §3 forbids committing/reverting another lane's file.
+
+**The `check:all` acceptance box above therefore STAYS UNTICKED.** The waiver changes only the file's
+STATUS (it is finished work), not the honest record that the whole-tree green was never observed here. A
+later clean-tree run — after the foreign lanes land and the i18n leg is driven with Git `bash` on PATH — is
+the only thing that could legitimately tick that box; it is not this order's to force. **Nothing pushed.**
