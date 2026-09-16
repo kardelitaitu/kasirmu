@@ -260,6 +260,19 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   commands/customers.rs:193-195` already delegates), false of the tablet. A third
   two-shell fork for the same owner ruling as `history`'s five export doors and
   `settings`' six scoped setters.
+- **BR-S9** — **[PBD]** the two receipt-format **setters** are a two-shell gate fork, which is why they
+  are *not* delegated. The tablet runs **one** gate, the scope-aware
+  `require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT)`
+  (`apps/tablet-client/src/commands/receipt_format.rs:41`, `:99`); the bridge twins run the **same** gate
+  and then a **second**, ADR #47 hierarchical-resource gate —
+  `ctx.require_permission_for_session_resource(session, SETTINGS_EDIT, ScopeType::Location, …)` at
+  `crates/oz-bridge/src/receipt_format.rs:65-69` (the workspace id) and `:150-154` (the primary location
+  id, resolved by the bridge-only helper `primary_location_id`, `:120`). Delegating would therefore
+  **add** a gate the tablet has never enforced, which §4 forbids as plainly as removing one. The
+  tablet's own module doc (`receipt_format.rs:1-4`) already records why: *"the location-resource scoping
+  the desktop layers on top (ADR #47) has no tablet helper yet"*. `get_receipt_format_scoped` carries
+  only the shared gate and **is** delegated. Same owner question as BR-S8 and BR-X4: which shell's gate
+  set is authoritative.
 
 ### Correctness / robustness
 
