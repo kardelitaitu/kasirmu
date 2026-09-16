@@ -248,6 +248,18 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 - **BR-S7** — **[PBD]** `resolve_report_scope` authorises against the **global** identity db
   (`crates/oz-bridge/src/reports.rs:65`, `:67-69`) and then opens
   `session.store_id`'s store db (`:71-73`) with no re-check of the binding between them.
+- **BR-S8** — **[PBD]** `get_customer_scoped` is the one customer door that fails on gate
+  **kind** rather than gate order, and it is why the door is *not* delegated (ADR #49 §4:
+  *"Gates that are not scope-aware stay not scope-aware; an extraction is not the place to
+  widen a gate."*). The tablet gates with the **non-scope-aware**
+  `require_customer_permission` (`apps/tablet-client/src/commands/customers.rs:91` →
+  `require_permission_for_user` on the global identity db, `:279-286`), where
+  `crates/oz-bridge/src/customers.rs:428` uses the scope-aware
+  `ctx.require_session_permission`. The bridge's doc block (`:410-414`) asserts the shell
+  used the scope-aware form — true of the **desktop** (`apps/desktop-client/src/
+  commands/customers.rs:193-195` already delegates), false of the tablet. A third
+  two-shell fork for the same owner ruling as `history`'s five export doors and
+  `settings`' six scoped setters.
 
 ### Correctness / robustness
 
@@ -311,6 +323,21 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   still promises that store name / currency / features "may be exposed here in the future",
   while the generic key-value (`:274` `set_setting`), hardware (`:178`, `:351`) and batch
   (`:311` `set_settings_scoped`) commands are already exposed in that same file.
+- **BR-X4** — **[PBD]** and as a **two-shell fork** in `customers`, which is why five of its
+  seven doors are *not* delegated. The tablet opens the store db **before** the permission
+  gate (`resolve_scope` → `require_customer_permission`) at
+  `apps/tablet-client/src/commands/customers.rs:115-116` (`create`), `:141-142` (`update`),
+  `:167-168` (`delete`), `:194-195` (`search`) and `:226-227` (`history`); the bridge twins
+  gate first and open afterwards (`crates/oz-bridge/src/customers.rs:458-460`, `:488-490`,
+  `:516-518`, `:545-547`, `:579-581`). The bridge is **not** consistent about this — it
+  preserves the open-before-gate order in `gift_cards` (`:49-51`), `loyalty` (`:87-89`) and
+  `purchasing` (`:500-502`) — so this is the desktop body the module was ported from, not a
+  crate rule. It matters because `open_store` is not free: on a cache miss it creates the
+  directory, creates the database file and runs migrations
+  (`platform/core/src/database/manager.rs:73-103`). So against an unopenable store an
+  unauthorized caller gets `Internal("opening store db: …")` on the tablet and
+  `PermissionDenied` on the desktop. **Owner ruling needed** — one answer settles this,
+  BR-S8, `history`'s five export doors and `settings`' six scoped setters.
 
 ### Doc / test debt
 
