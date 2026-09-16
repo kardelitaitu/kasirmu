@@ -1,4 +1,28 @@
 
+## 2026-09-17 — Absorb: registration gate debt & gate audit census pins (desktop-client/records)
+
+**Context:**
+1. `topology::load_topology` was given session resolution via `ctx.resolve_session(&session_token)?` in `crates/oz-bridge/src/topology/commands.rs:177` (R1, mirroring `load_topology_template` and requiring an active session to read topology configuration while requiring no write permission). The command changed state from `no_session_resolution` (class 1) to `resolves_session_names_no_permission` (class 2). This shifted the measured class counts from 43/26 to 42/27, tripping `drift_pin_debt_ceilings_only_shrink` with migrant `topology::load_topology`. Total debt remains unchanged at 69 (`42 + 27 = 69`).
+2. Gate audit pins in `apps/desktop-client/tests/gate_audit.rs`:
+   - Desktop `pos` count bumped 15 -> 17 to account for the coursing commands `set_line_course_scoped` and `publish_course_fired_scoped` gated by `SALES_PROCESS`.
+   - Tablet `PINNED_TABLET` census updated to reflect ADR #49 delegation of scoped command bodies from `apps/tablet-client` to `oz-bridge`.
+
+**Changes:**
+1. `apps/desktop-client/src/commands/registration_gate_debt.generated.rs`:
+   - Updated `("topology::load_topology", "no_session_resolution")` -> `("topology::load_topology", "resolves_session_names_no_permission")`.
+   - Updated `NO_SESSION_RESOLUTION` 43 -> 42.
+   - Updated `RESOLVES_SESSION_NAMES_NO_PERMISSION` 26 -> 27.
+   - `DEBT_CEILING` untouched at 69.
+2. `apps/desktop-client/tests/gate_audit.rs`:
+   - Updated `pos` pin to 17 in `PINNED_DESKTOP`.
+   - Updated `PINNED_TABLET` rows to match current post-delegation census.
+
+**Verification:**
+- `cargo test -p oz-pos-app --lib registration_gate_tests` -> 13 passed; 0 failed, exit 0.
+- `cargo test -p oz-pos-app --test gate_audit` -> 3 passed; 0 failed, exit 0.
+- `cargo nextest run --workspace --all-features` -> 9802 passed; 0 failed, exit 0.
+
+
 ## 2026-09-13 — Absorb: the QRIS Auto pair lands on the desktop registration floor (desktop-client/records)
 
 **Context:**

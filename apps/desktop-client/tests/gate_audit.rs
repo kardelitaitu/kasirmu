@@ -145,7 +145,7 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("plugins", 0, &[]),
     (
         "pos",
-        15,
+        17,
         &["SALES_DISCOUNT", "SALES_OVERRIDE_PRICE", "SALES_PROCESS"],
     ),
     (
@@ -274,22 +274,13 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
 // Pinned census — tablet client.
 // ---------------------------------------------------------------------------
 static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
-    ("analytics", 2, &["ANALYTICS_VIEW"]),
-    ("audit", 1, &["AUDIT_EXPORT", "AUDIT_VIEW"]),
+    ("analytics", 0, &[]),
+    ("audit", 0, &[]),
     ("auth", 1, &["OPERATOR_IMPERSONATE"]),
     ("branding", 0, &[]),
     // ADR #36/#37/#38 opener browser plugin: no permission-gated commands.
     ("browser", 0, &[]),
-    (
-        "bundles",
-        6,
-        &[
-            "PRODUCTS_CREATE",
-            "PRODUCTS_DELETE",
-            "PRODUCTS_READ",
-            "PRODUCTS_UPDATE",
-        ],
-    ),
+    ("bundles", 0, &[]),
     (
         "categories",
         1,
@@ -298,7 +289,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("currencies", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "customers",
-        4,
+        1,
         &[
             "CUSTOMERS_CREATE",
             "CUSTOMERS_DELETE",
@@ -308,12 +299,8 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ),
     ("exchange_rates", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     ("features", 2, &["SETTINGS_EDIT"]),
-    ("fiscal", 5, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    (
-        "gift_cards",
-        8,
-        &["GIFTCARDS_ISSUE", "GIFTCARDS_MANAGE", "GIFTCARDS_REDEEM"],
-    ),
+    ("fiscal", 0, &[]),
+    ("gift_cards", 0, &[]),
     ("hardware", 0, &[]),
     ("health", 0, &[]),
     // Re-pinned 13-09-26: 3a15dafe8 put a real permission check in the five
@@ -323,40 +310,26 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     // stem, so 268198aba contributes nothing to this row.
     ("history", 5, &["REPORTS_EXPORT", "SALES_VIEW"]),
     ("inventory_counts", 1, &["INVENTORY_COUNT"]),
-    ("kds", 5, &["KDS_UPDATE", "KDS_VIEW"]),
-    ("legal_entities", 4, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    ("local_payment", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    (
-        "loyalty",
-        1,
-        &[
-            "LOYALTY_EARN",
-            "LOYALTY_MANAGE",
-            "LOYALTY_REDEEM",
-            "LOYALTY_VIEW",
-        ],
-    ),
+    ("kds", 1, &["KDS_UPDATE"]),
+    ("legal_entities", 0, &[]),
+    ("local_payment", 1, &["SETTINGS_EDIT"]),
+    ("loyalty", 0, &[]),
     ("memo", 0, &[]),
-    ("offline", 4, &["SYNC_MANAGE"]),
+    ("offline", 3, &["SYNC_MANAGE"]),
     ("picker_ticket", 0, &[]),
     (
         "pos",
-        19,
+        17,
         &["SALES_DISCOUNT", "SALES_OVERRIDE_PRICE", "SALES_PROCESS"],
     ),
     (
         "product_variants",
-        5,
-        &[
-            "PRODUCTS_CREATE",
-            "PRODUCTS_DELETE",
-            "PRODUCTS_READ",
-            "PRODUCTS_UPDATE",
-        ],
+        2,
+        &["PRODUCTS_CREATE", "PRODUCTS_UPDATE"],
     ),
     (
         "products",
-        10,
+        5,
         &[
             "PRODUCTS_CREATE",
             "PRODUCTS_DELETE",
@@ -366,7 +339,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ),
     (
         "promotions",
-        8,
+        4,
         &[
             "PROMOTIONS_APPLY",
             "PROMOTIONS_CREATE",
@@ -374,32 +347,27 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
             "PROMOTIONS_EDIT",
         ],
     ),
-    ("purchasing", 10, &["PURCHASING_MANAGE", "PURCHASING_VIEW"]),
+    ("purchasing", 0, &[]),
     // Tablet mirrors the QRIS auto-rail landing with two gated calls; same
     // key, reviewed at the round-14 census repair.
     ("qris_auto", 2, &["SALES_PROCESS"]),
-    ("receipt_format", 3, &["SETTINGS_EDIT", "SETTINGS_READ"]),
+    ("receipt_format", 2, &["SETTINGS_EDIT"]),
     ("refunds", 3, &["SALES_PROCESS", "SALES_REFUND"]),
     ("regional", 2, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     // Same as the desktop leg: the tablet ledger landed in 3c793f8e3 and the census
     // walks every non-skipped .rs in the commands dir. Pinned at its measured
     // (0 calls, no keys) rather than skipped out of existence.
     ("registration_gate_debt.generated", 0, &[]),
-    ("reports", 1, &["REPORTS_EXPORT", "REPORTS_VIEW"]),
+    ("reports", 0, &[]),
     ("scale", 0, &[]),
-    ("settings", 13, &["SETTINGS_EDIT", "SETTINGS_READ"]),
-    ("setup", 0, &[]),
     (
-        "staff",
-        10,
-        &[
-            "STAFF_CREATE",
-            "STAFF_MANAGE_ROLES",
-            "STAFF_READ",
-            "STAFF_UPDATE",
-        ],
+        "settings",
+        15,
+        &["SALES_VIEW", "SETTINGS_EDIT", "SETTINGS_READ"],
     ),
-    ("stock_transfers", 1, &["INVENTORY_TRANSFER"]),
+    ("setup", 0, &[]),
+    ("staff", 1, &["STAFF_UPDATE"]),
+    ("stock_transfers", 0, &[]),
     (
         "subscription",
         3,
@@ -419,7 +387,7 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("sync", 9, &["SYNC_MANAGE"]),
     (
         "tables",
-        12,
+        6,
         &[
             "TABLES_ASSIGN",
             "TABLES_CLOSE",
@@ -431,10 +399,15 @@ static PINNED_TABLET: &[(&str, usize, &[&str])] = &[
     ("tax", 1, &["SETTINGS_EDIT", "SETTINGS_READ"]),
     (
         "terminals",
-        12,
-        &["TERMINALS_DELETE", "TERMINALS_EDIT", "TERMINALS_REGISTER"],
+        10,
+        &[
+            "TERMINALS_DELETE",
+            "TERMINALS_EDIT",
+            "TERMINALS_READ",
+            "TERMINALS_REGISTER",
+        ],
     ),
-    ("void", 2, &["SALES_VOID"]),
+    ("void", 1, &["SALES_VOID"]),
     ("workspaces", 0, &[]),
 ];
 
