@@ -229,7 +229,7 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 | Layer | Test location | Conventions |
 |---|---|---|
 | Rust crate (`oz-*`, `platform/*`, `modules/*`) | sibling `*_tests.rs` per module, wired via `#[cfg(test)] #[path = ...] mod tests;` | Every new module needs ≥ 1 unit test (AGENTS.md). Tests never live inline in production files. Tests may use `unwrap()`/`expect()` freely. DB tests use transactions and assert atomicity (rollback on error). |
-| HAL driver | `crates/oz-hal/src/drivers/mock.rs` | Every driver needs a **mandatory mock** for testing (CI fails without it). |
+| HAL driver | `crates/oz-hal/src/drivers/mock.rs` | Every driver needs a **mock** — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. The mock is also the harness: tests and hardware-free dev machines can only exercise a driver through it. |
 | Tauri command | sibling `*_tests.rs` in the commands module + IPC contract tests in `ui/src/__tests__/` (the `api-*-contract.test.ts` files) | `invoke` calls go through `ui/src/api/`; contract tests pin the wire shape. |
 | React component/hook | `ui/src/__tests__/` | One test file per component/hook. Use `<Localized>` ids that exist in both the English `.ftl` and the `.id.ftl` bundle for the feature (bundle-parity gate fails otherwise). |
 | Money logic | anywhere in `oz-core`/`foundation` | Assert on `minor_units: i64`, never `f32`/`f64`. Test `checked_add`/`from_major` overflow and currency-mismatch paths. |

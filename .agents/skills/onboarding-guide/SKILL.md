@@ -102,7 +102,7 @@ When one of these grows a dedicated skill, add it to the router table above.
 ### "I'm adding a new device"
 
 1. Read `hal-drivers`. Define the trait, implement the driver.
-2. Add the **mandatory mock** in `crates/oz-hal/src/drivers/mock.rs` — CI fails without it.
+2. Add the **mock** in `crates/oz-hal/src/drivers/mock.rs` — required by the coding standard (`AGENTS.md` → *Database & Hardware* → **HAL Drivers**), enforced by review only — no CI job, no hook step and no checker under `scripts/` looks for it, so an unmocked driver reaches main and the first person to run it on a machine without that hardware finds out. Write it for the harness reason, not the threat: it is how you and every machine without that device can test the driver at all.
 3. If the device has a user-facing setup screen, read `ui-components` for the screen.
 4. If the device is invoked from a Tauri command, read `tauri-ipc` for the wiring.
 
