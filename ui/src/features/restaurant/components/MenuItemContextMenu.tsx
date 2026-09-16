@@ -65,13 +65,16 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
     menuRef.current?.querySelector<HTMLElement>('button[role="menuitem"]')?.focus();
   }, [menu]);
 
-  // A11Y-06: ArrowUp / ArrowDown roving focus between menuitems (wraps).
-  // When no menuitem currently has focus (idx === -1), ArrowDown lands on the
-  // first item and ArrowUp wraps to the last — robust for any item count.
+  // A11Y-06: ArrowUp / ArrowDown roving focus across every control in the
+  // menu — menuitems AND swatches. The swatches are plain buttons in a group
+  // (not menuitems), so the old `button[role="menuitem"]` query stranded
+  // arrow users above the palette; Tab still reaches everything.
   const handleContextMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     const items = Array.from(
-      e.currentTarget.querySelectorAll<HTMLElement>('button[role="menuitem"]'),
+      e.currentTarget.querySelectorAll<HTMLElement>(
+        'button[role="menuitem"], .restaurant-context-colors button',
+      ),
     );
     if (items.length === 0) return;
     const idx = items.indexOf(document.activeElement as HTMLElement);

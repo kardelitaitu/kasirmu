@@ -778,6 +778,25 @@ describe('RestaurantMenu', () => {
     expect(document.activeElement?.textContent).toContain('Pin to top');
   });
 
+  it('roves ArrowDown from the last menuitem into the colour swatches', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const card = screen.getByText('Nasi Goreng').closest('button')!;
+
+    card.focus();
+    await user.keyboard('{Shift>}{F10}{/Shift}');
+    await waitFor(() => {
+      expect(screen.getByText('Pin to top')).toBeTruthy();
+    });
+
+    // First menuitem focused on open; ArrowDown walks the menuitems, then
+    // reaches the first swatch instead of stranding above the palette.
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement?.textContent).toContain('Mark unavailable');
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement?.classList.contains('restaurant-context-swatch')).toBe(true);
+  });
+
   it('closes the context menu via Escape and restores focus to the card', async () => {
     renderMenu();
     const user = userEvent.setup();
