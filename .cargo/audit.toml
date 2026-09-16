@@ -25,5 +25,8 @@
 ignore = ["RUSTSEC-2023-0071"]
 
 # Informational warnings (unmaintained/unsound/yanked gtk-rs bindings,
-# spin, unic-ucd, etc.) stay visible but non-blocking by default; they are
-# reviewed as part of the weekly security.yml run.
+# spin, unic-ucd, etc.) stay visible but non-blocking by default. There is no
+# scheduled review of them either — the weekly `security.yml` that used to run
+# is retired (`security.yml.bak`), and `cargo audit` appears in neither live
+# workflow nor the pre-commit hook — so they are read when someone types the
+# command.
