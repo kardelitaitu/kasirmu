@@ -9,6 +9,31 @@ next: none | perf: N/A
 //! This module exposes the receipt-related subset of the `settings` table
 //! to the front-end. Other settings (store name, currency, features) are
 //! managed by the setup wizard and may be exposed here in the future.
+//!
+//! # ADR #49 extraction status — the remaining frontier is three refusals
+//!
+//! The census reads **3 of 24 doors portable** here, and all three are refused:
+//!
+//! - `get_user_preferences_scoped` and `set_user_preferences_scoped` read
+//!   body-identical but are on the registration-gate debt ledger
+//!   (`registration_gate_debt.generated.rs:98`, `:102`) as
+//!   `resolves_session_names_no_permission`. Delegating would flip them to
+//!   `Gated` and erase two real ledger rows — §1 forbids it. The drift-pin
+//!   evidence is in the note above [`get_user_preferences_scoped`].
+//! - `get_deployment_info` reads body-identical as well, and is refused on a
+//!   *provenance* fork rather than a gate: the desktop shell already delegates
+//!   (`apps/desktop-client/src/commands/settings.rs:341`), while this shell
+//!   builds the payload locally on purpose, because `env!("CARGO_PKG_VERSION")`
+//!   expands against the crate that writes it and a tablet terminal should
+//!   report the tablet build (see the comment above `build_deployment_info`).
+//!   Measured 2026-09-16: both crates take `version.workspace = true`
+//!   (`Cargo.toml:37`), so the two constants are equal *today* — the fork is
+//!   about which crate the string comes from, not about its value. That makes
+//!   it an owner decision rather than a mechanical port, so it is reported
+//!   here instead of being resolved by an extraction.
+//!
+//! Every other door in this file diverges in its own body, and those refusals
+//! are documented per door.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
