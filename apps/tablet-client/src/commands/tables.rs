@@ -76,7 +76,12 @@ pub async fn get_table_scoped(
 #[command]
 pub async fn create_table_scoped(
     session_token: String,
-    args: Table,
+    // Named `table`, as the desktop's identical command names it (and as this file's own
+    // `update_table_scoped` names its parameter below), because the parameter name IS the payload
+    // key Tauri looks for: `ui/src/api/tables.ts` sends `{ sessionToken, table }`, so this shell
+    // rejected every create-table call its twin accepted. The local that held the created row used
+    // to be `table`, which is why the rename reaches line 89 too. Found by the arg-shape leg (T34).
+    table: Table,
     state: State<'_, AppState>,
 ) -> Result<Table, AppError> {
     let (session, conn_arc) = state.resolve_scope(&session_token)?;
@@ -86,9 +91,9 @@ pub async fn create_table_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    let table = store.create_table(&args)?;
+    let created = store.create_table(&table)?;
     drop(db);
-    Ok(table)
+    Ok(created)
 }
 
 /// Update a table resolved from a session token. ADR #7.
