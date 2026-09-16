@@ -283,7 +283,8 @@
       "label": "Bundle budget",
       "status": "required",
       "runners": { "check:all": ["bundle budget", "bundle budget (tablet)"] },
-      "_note": "Local-only. The `Bundle budget` and `Bundle budget (tablet)` gates in scripts/check-ui.mjs run `npm run bundle:check` and `npm run bundle:check:tablet` -- gzip budgets on BOTH shipped artifacts (PERF-02; the tablet leg closes notes.md item 38, where the second script existed with zero callers). Cited by gate name, not line number, because this row's previous `check-ui.mjs:139` pointer had already rotted to :157. No live CI job builds the UI for size -- dev-ci.yml#ui-test typechecks, lints and tests but never runs `npm run build`. Reachable only via `cd ui && npm run check:all`."
+      "_note": "gzip budgets on BOTH artifacts built from one `ui/` tree. Enforced by the job named in this row's `ci` block: `dev-ci.yml#ui-test` declares `Bundle budget (desktop)` and `Bundle budget (tablet)`, which are the first CI steps to compile `ui/` at all -- each `bundle:check` script builds before it measures. The same two gates are declared locally in scripts/check-ui.mjs (`npm run check:all`), cited by gate name rather than line number, because this row once cited `check-ui.mjs:139` and it had rotted to :157. The woff2 line is `BUDGET_WOFF2_KB`, default 400 KB against a measured 296 KB -- 74 % of a ceiling set against today's payload, so the realistic way to fail it is a second family or a wider subset. PERF-02; the tablet leg closes notes.md item 38.",
+      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
     },
     {
       "id": "e2e",

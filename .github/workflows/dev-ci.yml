@@ -282,6 +282,18 @@ jobs:
       # Gate: scripts/gates.json -> "analytics-tz-invariance".
       - name: Analytics timezone invariance
         run: python3 scripts/check-tz-invariance.py
+      # The gzip size budgets, for BOTH artifacts shipped from one `ui/` tree. Each
+      # `bundle:check` script builds before it measures, so these are the first steps in
+      # CI that compile the UI at all: until them the budgets lived only behind
+      # `cd ui && npm run check:all`, a local command, and no live job ran `npm run build`.
+      # Two steps rather than one because the tablet artifact is a different tree -- 59
+      # stylesheets against 56, its own chunk graph and content hashes, its own ~296 KB
+      # woff2 payload (notes.md items 37, 38) -- and a red line should name which app broke.
+      # Gate: scripts/gates.json -> "bundle-budget".
+      - name: Bundle budget (desktop)
+        run: cd ui && npm run bundle:check
+      - name: Bundle budget (tablet)
+        run: cd ui && npm run bundle:check:tablet
 
   # ── 5. i18n: Fluent bundle quality gate ──────────────────────────────
   # Restored by the Fluent page audit. This step used to live in ci.yml, which
