@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install/uninstall.sh — OZ-POS uninstaller (Linux / macOS)
+# install/uninstall.sh — kasir.mu uninstaller (Linux / macOS)
 #
 # Mirrors install/win/uninstall.ps1: removes the footprints the installers
 # create, rather than guessing install paths:
@@ -31,7 +31,7 @@ OS="$(uname -s)"
 case "$OS" in
     Linux) ;;
     Darwin) ;;
-    *) echo "ERROR: Unsupported OS: $OS (this script removes OZ-POS on Linux and macOS)." >&2; exit 2 ;;
+    *) echo "ERROR: Unsupported OS: $OS (this script removes kasir.mu on Linux and macOS)." >&2; exit 2 ;;
 esac
 
 SUDO=""
@@ -42,7 +42,7 @@ fi
 found=0
 
 if [ "$OS" = "Darwin" ]; then
-    APP="/Applications/OZ-POS.app"
+    APP="/Applications/kasir.mu.app"
     if [ -d "$APP" ]; then
         echo "Removing $APP"
         if ! rm -rf "$APP" 2>/dev/null; then
@@ -100,12 +100,12 @@ else
 fi
 
 if [ "$found" = 0 ]; then
-    echo "OZ-POS is not installed (nothing to remove)."
+    echo "kasir.mu is not installed (nothing to remove)."
     exit 1
 fi
 
 if [ "$PURGE" = 1 ]; then
     echo "Local app data purged."
 fi
-echo "OZ-POS uninstalled."
+echo "kasir.mu uninstalled."
 exit 0

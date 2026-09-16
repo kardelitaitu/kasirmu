@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OZ-POS",
+  "productName": "kasir.mu",
   "version": "0.0.39",
   "identifier": "com.ozpos.app",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OZ-POS",
+        "title": "kasir.mu",
         "backgroundColor": "#000000",
         "width": 1280,
         "height": 800,
@@ -55,7 +55,7 @@
         ],
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico",
-        "startMenuFolder": "OZ-POS"
+        "startMenuFolder": "kasir.mu"
       },
       "wix": {
         "language": "en-US"

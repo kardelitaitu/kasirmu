@@ -163,13 +163,13 @@
 **Commit:** `refactor(config): rename productName and window title to kasir.mu`
 **Pathspec:** `apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json install/install.sh install/win/install.ps1 install/win/uninstall.ps1 install/uninstall.sh`
 
-- [ ] `apps/desktop-client/tauri.conf.json`
+- [x] `apps/desktop-client/tauri.conf.json`
   - `"productName": "OZ-POS"` → `"productName": "kasir.mu"`
   - window `"title": "OZ-POS"` → `"title": "kasir.mu"`
   - **identifier stays `com.ozpos.app` in this commit — moved in Phase 4**
-- [ ] `apps/tablet-client/tauri.conf.json`
+- [x] `apps/tablet-client/tauri.conf.json`
   - `"productName": "OZ-POS"` → `"productName": "kasir.mu"`
-- [ ] `install/**` — **added after review; this phase's original list omitted every file that consumes the artifact name.** `productName` drives the installer output, so these break here (not in the Tier-3 plan, which only takes their repo URLs):
+- [x] `install/**` — **added after review; this phase's original list omitted every file that consumes the artifact name.** `productName` drives the installer output, so these break here (not in the Tier-3 plan, which only takes their repo URLs):
   - `install/install.sh` — `OZ-POS.app` (`:224`), `/opt/oz-pos/OZ-POS.AppImage` (`:275,279,280,281,287,291`), `~/.local/bin/oz-pos.AppImage` (`:297,302,309,315,317`), `/usr/local/bin/oz-pos` (`:281`), `/usr/share/applications/oz-pos.desktop` (`:282,304,314`), and `dpkg -s oz-pos` (`:268,269,271`)
   - `install/win/install.ps1` — `Programs\OZ-POS\OZ-POS.exe`
   - `install/win/uninstall.ps1` — `DisplayName -like 'OZ-POS*'`, `Get-Process -Name 'OZ-POS'`

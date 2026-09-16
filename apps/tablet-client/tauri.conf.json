@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OZ-POS",
+  "productName": "kasir.mu",
   "version": "0.0.39",
   "identifier": "com.ozpos.tablet",
   "build": {

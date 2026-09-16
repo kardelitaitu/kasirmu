@@ -1,11 +1,11 @@
-# install/win/uninstall.ps1 — OZ-POS Windows uninstaller
+# install/win/uninstall.ps1 — kasir.mu Windows uninstaller
 <#
 .SYNOPSIS
-    Removes OZ-POS from Windows using the uninstaller registered by the
+    Removes kasir.mu from Windows using the uninstaller registered by the
     NSIS (per-user) or MSI (per-machine) installer.
 
 .DESCRIPTION
-    Finds the OZ-POS uninstall entry in the registry (HKCU for per-user
+    Finds the kasir.mu uninstall entry in the registry (HKCU for per-user
     installs, HKLM/WOW6432Node for per-machine), stops a running app, and
     runs the uninstaller silently (/S for NSIS; msiexec /x for MSI).
     Local app data (databases, settings) is preserved unless -Purge is given.
@@ -46,12 +46,12 @@ foreach ($root in $roots) {
         $props = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
         # PSObject.Properties guard: registry keys without a DisplayName must
         # not throw under Set-StrictMode.
-        if ($props.PSObject.Properties['DisplayName'] -and $props.DisplayName -like 'OZ-POS*') { $props }
+        if ($props.PSObject.Properties['DisplayName'] -and $props.DisplayName -like 'kasir.mu*') { $props }
     }
 }
 $entry = $found | Select-Object -First 1
 if (-not $entry) {
-    Write-Host 'OZ-POS is not installed (no uninstall entry found).'
+    Write-Host 'kasir.mu is not installed (no uninstall entry found).'
     exit 1
 }
 Write-Host "Found: $($entry.DisplayName)"
@@ -64,7 +64,7 @@ if (-not $command) { Fail 'Uninstall entry found but it carries no uninstall com
 Write-Host "Uninstall command: $command"
 
 # ── Stop a running app (NSIS aborts uninstall if the app is running) ─────
-Get-Process -Name 'OZ-POS' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process -Name 'kasir.mu' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # ── Run the uninstaller silently ─────────────────────────────────────────
 # UninstallString is usually a quoted exe path + args ("C:\...\uninstall.exe");
@@ -89,7 +89,7 @@ $p = Start-Process -FilePath $exePath -ArgumentList $installArgs -Wait -PassThru
 if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
     Fail "Uninstaller exited with code $($p.ExitCode)." 2
 }
-Write-Host 'OZ-POS uninstalled.'
+Write-Host 'kasir.mu uninstalled.'
 
 # ── Optional data purge ──────────────────────────────────────────────────
 if ($Purge) {

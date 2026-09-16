@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install/install.sh — OZ-POS bootstrap installer (Linux / macOS)
+# install/install.sh — kasir.mu bootstrap installer (Linux / macOS)
 #
 # Thin bootstrap mirroring install/win/install.ps1:
 #   1. Detect OS + CPU and resolve the platform manifest key from the
@@ -221,10 +221,10 @@ verify_asset() { # <url> <name> -> prints the verified file path
 if [ "$OS" = "Darwin" ]; then
     DMG="$(verify_asset "$ASSET_URL" "$ASSET_NAME")"
     if [ "$DRY_RUN" = 1 ]; then
-        echo "    Dry run: would mount $ASSET_NAME and copy OZ-POS.app to /Applications."
+        echo "    Dry run: would mount $ASSET_NAME and copy kasir.mu.app to /Applications."
         exit 0
     fi
-    echo "==> Installing OZ-POS $MANIFEST_VERSION (DMG -> /Applications)"
+    echo "==> Installing kasir.mu $MANIFEST_VERSION (DMG -> /Applications)"
     MOUNT="$TMPDIR/mnt"
     mkdir -p "$MOUNT"
     if ! hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT" "$DMG" >/dev/null; then
@@ -245,7 +245,7 @@ if [ "$OS" = "Darwin" ]; then
     echo "    Installed to /Applications/$(basename "$APP")"
     if [ "$NO_LAUNCH" != 1 ]; then
         open "/Applications/$(basename "$APP")" || true
-        echo "    Launching OZ-POS."
+        echo "    Launching kasir.mu."
     fi
 else
     if [ "$SYSTEM" = 1 ]; then
@@ -275,16 +275,16 @@ else
                 echo "    Dry run: would install $ASSET_NAME to /opt/oz-pos and symlink /usr/local/bin/oz-pos."
                 exit 0
             fi
-            echo "==> Installing OZ-POS $MANIFEST_VERSION (AppImage -> /opt)"
+            echo "==> Installing kasir.mu $MANIFEST_VERSION (AppImage -> /opt)"
             $SUDO mkdir -p /opt/oz-pos
-            $SUDO install -m755 "$APPIMAGE" /opt/oz-pos/OZ-POS.AppImage
-            $SUDO ln -sf /opt/oz-pos/OZ-POS.AppImage /usr/local/bin/oz-pos
+            $SUDO install -m755 "$APPIMAGE" /opt/oz-pos/kasir.mu.AppImage
+            $SUDO ln -sf /opt/oz-pos/kasir.mu.AppImage /usr/local/bin/oz-pos
             $SUDO sh -c 'cat > /usr/share/applications/oz-pos.desktop' <<EOF
 [Desktop Entry]
 Type=Application
-Name=OZ-POS
-Comment=OZ-POS point-of-sale
-Exec=/opt/oz-pos/OZ-POS.AppImage
+Name=kasir.mu
+Comment=kasir.mu point-of-sale
+Exec=/opt/oz-pos/kasir.mu.AppImage
 Terminal=false
 Categories=Office;Finance;
 EOF
@@ -297,28 +297,28 @@ EOF
             echo "    Dry run: would install $ASSET_NAME to $HOME/.local/bin/oz-pos.AppImage + .desktop entry."
             exit 0
         fi
-        echo "==> Installing OZ-POS $MANIFEST_VERSION (AppImage, per-user)"
+        echo "==> Installing kasir.mu $MANIFEST_VERSION (AppImage, per-user)"
         mkdir -p "$HOME/.local/bin"
         install -m755 "$APPIMAGE" "$HOME/.local/bin/oz-pos.AppImage"
         mkdir -p "$HOME/.local/share/applications"
         cat > "$HOME/.local/share/applications/oz-pos.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=OZ-POS
-Comment=OZ-POS point-of-sale
+Name=kasir.mu
+Comment=kasir.mu point-of-sale
 Exec=$HOME/.local/bin/oz-pos.AppImage
 Terminal=false
 Categories=Office;Finance;
-StartupWMClass=OZ-POS
+StartupWMClass=kasir.mu
 EOF
         chmod +x "$HOME/.local/share/applications/oz-pos.desktop"
-        echo "    Installed to $HOME/.local/bin/oz-pos.AppImage (launcher menu: OZ-POS)."
+        echo "    Installed to $HOME/.local/bin/oz-pos.AppImage (launcher menu: kasir.mu)."
         if [ "$NO_LAUNCH" != 1 ]; then
             nohup "$HOME/.local/bin/oz-pos.AppImage" >/dev/null 2>&1 &
-            echo "    Launching OZ-POS."
+            echo "    Launching kasir.mu."
         fi
     fi
 fi
 
-echo "    Done. OZ-POS $MANIFEST_VERSION installed."
+echo "    Done. kasir.mu $MANIFEST_VERSION installed."
 exit 0

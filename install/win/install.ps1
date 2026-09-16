@@ -1,7 +1,7 @@
-# install/win/install.ps1 — OZ-POS Windows bootstrap installer
+# install/win/install.ps1 — kasir.mu Windows bootstrap installer
 <#
 .SYNOPSIS
-    Installs (or upgrades) OZ-POS on Windows by downloading the official
+    Installs (or upgrades) kasir.mu on Windows by downloading the official
     release installer and verifying it before running it.
 
 .DESCRIPTION
@@ -72,7 +72,7 @@ function Write-Warn { param([string]$m) Write-Host "    $m" -ForegroundColor Yel
 function Fail       { param([string]$m, [int]$code) Write-Host "ERROR: $m" -ForegroundColor Red; exit $code }
 
 # ── OS / architecture detection ──────────────────────────────────────────
-if ($env:OS -ne 'Windows_NT') { Fail 'This script installs OZ-POS on Windows only.' 2 }
+if ($env:OS -ne 'Windows_NT') { Fail 'This script installs kasir.mu on Windows only.' 2 }
 
 $arch = $env:PROCESSOR_ARCHITECTURE
 # 32-bit PowerShell on 64-bit Windows reports x86 but runs under WOW64.
@@ -80,7 +80,7 @@ if ($arch -eq 'x86' -and $env:PROCESSOR_ARCHITEW6432) { $arch = $env:PROCESSOR_A
 switch ($arch) {
     'AMD64' { $platformKey = 'windows-x86_64'; $archTag = 'x64' }
     'ARM64' { $platformKey = 'windows-aarch64'; $archTag = 'arm64' }
-    default { Fail "Unsupported CPU architecture: $arch (OZ-POS ships x64 and arm64 builds)." 2 }
+    default { Fail "Unsupported CPU architecture: $arch (kasir.mu ships x64 and arm64 builds)." 2 }
 }
 Write-Step "Detected $arch ($platformKey)"
 
@@ -110,7 +110,7 @@ try {
     }
     $exeUrl = $manifest.platforms.$platformKey.url
     $exeName = Split-Path -Leaf $exeUrl
-    Write-Ok "Latest: OZ-POS $($manifest.version) ($platformKey)"
+    Write-Ok "Latest: kasir.mu $($manifest.version) ($platformKey)"
 } catch {
     Fail "Could not fetch the release manifest ($manifestUrl): $($_.Exception.Message)" 4
 }
@@ -181,7 +181,7 @@ try {
         Write-Step 'Installing per-machine (a UAC prompt may appear)...'
         $p = Start-Process msiexec.exe -ArgumentList @('/i', "`"$msi`"", '/qn', '/norestart') -Wait -PassThru
         if ($p.ExitCode -ne 0) { Fail "msiexec failed with exit code $($p.ExitCode)." 5 }
-        Write-Ok 'OZ-POS installed to Program Files.'
+        Write-Ok 'kasir.mu installed to Program Files.'
     } else {
         $exe = Get-VerifiedAsset -Url $exeUrl -FileName $exeName
 
@@ -193,23 +193,23 @@ try {
         else { Write-Warn "Authenticode status: $($sig.Status) — checksum already verified." }
 
         if ($DryRun) {
-            Write-Ok "Dry run: would run '$exeName /S' (per-user, %LOCALAPPDATA%\Programs\OZ-POS)."
+            Write-Ok "Dry run: would run '$exeName /S' (per-user, %LOCALAPPDATA%\Programs\kasir.mu)."
             exit 0
         }
-        Write-Step "Installing OZ-POS $($manifest.version) (silent)..."
+        Write-Step "Installing kasir.mu $($manifest.version) (silent)..."
         $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
         if ($p.ExitCode -ne 0) { Fail "Installer exited with code $($p.ExitCode)." 5 }
         Write-Ok 'Install complete.'
 
         if (-not $NoLaunch) {
-            $appExe = Join-Path $env:LOCALAPPDATA 'Programs\OZ-POS\OZ-POS.exe'
-            if (Test-Path $appExe) { Start-Process $appExe; Write-Ok 'Launching OZ-POS.' }
-            else { Write-Warn "App not found at $appExe — launch OZ-POS from the Start Menu." }
+            $appExe = Join-Path $env:LOCALAPPDATA 'Programs\kasir.mu\kasir.mu.exe'
+            if (Test-Path $appExe) { Start-Process $appExe; Write-Ok 'Launching kasir.mu.' }
+            else { Write-Warn "App not found at $appExe — launch kasir.mu from the Start Menu." }
         }
     }
 } finally {
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 }
 
-Write-Ok "Done. OZ-POS $($manifest.version) installed."
+Write-Ok "Done. kasir.mu $($manifest.version) installed."
 exit 0
