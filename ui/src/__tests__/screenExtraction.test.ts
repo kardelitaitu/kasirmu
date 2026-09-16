@@ -515,6 +515,15 @@ const SCREENS: ScreenEntry[] = [
       // three as dead CSS while every other suite stays green.
       'kds/components/KdsZoneChips.tsx',
       'kds/components/KdsHeaderRight.tsx',
+      // Phase 2.1 (Agent-2 plan, 2026-09-16): the line-item row and the SLA
+      // time+urgent badge moved out of components/KdsTicketCard.tsx into
+      // their own files. Their classes (kds-item*, kds-ticket-item-status*,
+      // kds-ticket-modifiers; kds-ticket-time*, kds-ticket-urgent-badge)
+      // remain styled by kds/KdsScreen.css — these two entries are what
+      // keeps them reachable; drop either and the guard reads those classes
+      // as dead CSS with every behaviour suite still green.
+      'kds/components/KdsTicketLineItem.tsx',
+      'kds/components/KdsTimerBadge.tsx',
       'kds/components/KdsHeaderTabs.tsx',
       'kds/components/KdsMainContent.tsx',
     ],
