@@ -27,15 +27,36 @@
 #      (e.g. "no fix available", "not exploitable in this runtime").
 #   3. Open a PR so the exception is reviewable before it lands on main.
 #
-# ── Reviewed baseline (2026-08-03) ─────────────────────────────────
+# ── Reviewed baseline: 15 accepted 2026-08-03, 17 listed today ───
 #
-# The cloud runtime (`debian:bookworm-slim` 12.15) carries 15 Debian OS
+# COUNT, RECONCILED 2026-09-16 FROM THE FILE HISTORY, NOT FROM A RE-SCAN.
+# `grep -cE "^CVE-" .trivyignore` reads 17; the sentence below said 15. The
+# split is dated rather than guessed: `git log --follow -p -- .trivyignore`,
+# counting only `^[+-]CVE-` lines per commit, attributes every entry.
+# `9f8b77392` (2026-08-03) created the file with this header and NO entries;
+# `20b7ec3da` (2026-08-03) added 15 entries AND this "carries 15" sentence in
+# the same commit; `d14bd3085` (2026-08-21, "add Trivy CVE exceptions + cache
+# Playwright browsers to avoid 403") appended exactly 2 and touched no
+# comment — CVE-2026-53613 (bsdutils/libblkid1/libmount1/libsmartcols1) and
+# CVE-2026-14456 (libssl3 / openssl). No CVE line has ever been removed
+# (`^-CVE-` matches 0 times over the whole follow history), so 15 + 2 = 17
+# closes exactly. The 15 was a true count of the 2026-08-03 scan, never a
+# statement about this file. NOTHING was added or dropped here to make the
+# two agree — only this paragraph moved.
+#
+# The cloud runtime (`debian:bookworm-slim` 12.15) carried those 15 Debian
 # package CVEs with NO fix available in the bookworm repos at scan time
 # (Trivy status `affected`/`fix_deferred`; `apt-get upgrade` verified to
 # not clear them — a derived image with `apt-get upgrade` still reports
 # the same set). They are all in runtime OS packages (perl-base,
 # ncurses, mount/bsdutils, gzip, libacl1, zlib) that the Rust binary does
-# not exercise, and the app layer itself scans clean (0 findings).
+# not exercise, and the app layer itself scans clean (0 findings). Both the
+# `apt-get upgrade` check and that clean-app-layer result are attributed to
+# the 2026-08-03 scan, and this package enumeration is the enumeration of
+# those 15 — it does NOT cover libssl3, which entered only with the
+# 2026-08-21 pair. Re-running either verification requires the docker scan
+# above; until someone runs it, treat 17 as "15 reviewed + 2 unreviewed
+# against a base-image refresh", not as one reviewed set.
 #
 # They were accepted as the reviewed baseline so the CI scan could be
 # BLOCKING for any NEW CRITICAL/HIGH finding. That blocking scan does not
