@@ -3668,11 +3668,27 @@ def main() -> int:
         helper = [n for n in unreachable_fns if cls[n][0]]
         uncalled = [n for n in unreachable_fns if not cls[n][0]]
         test_only = [n for n in uncalled if cls[n][1]]
+        # Name the deletion candidates, and name them as `module::fn`. This leg printed a count of
+        # candidates for weeks while the tool that acts on them requires `--module` and `--only`, so
+        # the number was not actionable without re-deriving the identity somewhere else -- the same
+        # defect fixed three times over (the ceiling leg in T32/T33, the arg-shape leg in T39), and
+        # here it cost this lane a full detour through the retirement tool's per-module report.
+        prod_rs, _tests = shell_rust_sources(REPO_ROOT / SHELLS[shell])
+
+        def _where(n: str, _src: list[tuple[str, str]] = prod_rs) -> str:
+            for label, text in _src:
+                if re.search(r"\bfn " + re.escape(n) + r"\s*\(", text):
+                    return f"{Path(label).stem}::{n}"
+            return f"?::{n}"
+
+        named = ", ".join(_where(n) for n in uncalled[:6])
         print(
             f"info[{shell}-f006]: {len(unregistered)} unregistered fns = {len(ui_named)} the UI "
             f"invokes (graded above) + {len(helper)} unreachable but called by this shell's own "
             f"code (helpers with a stale attribute, NOT dead) + {len(uncalled)} unreachable and "
             f"uncalled ({len(test_only)} of those still tested), i.e. deletion candidates"
+            + (f": {named}" + (f" (+{len(uncalled) - 6} more)" if len(uncalled) > 6 else "")
+               if uncalled else ": none")
         )
         # "The UI invokes it" is not one claim. A name can be reached by a screen, by the
         # programmatic client facade, or by nothing but a wrapper export and the contract test
