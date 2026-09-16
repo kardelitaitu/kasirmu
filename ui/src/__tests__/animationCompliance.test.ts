@@ -20,6 +20,49 @@ function findCssFiles(dir: string, results: string[] = []): string[] {
 }
 
 /**
+ * Blanks every CSS block comment before the walker looks at a sheet, and does it
+ * LENGTH-PRESERVING: each comment byte becomes a space except newlines, so every
+ * character offset the patterns match and every line number a violation prints
+ * still addresses the same place in the real file.
+ *
+ * WHY. Every read below is a regex over sheet text — the declaration search, the
+ * @keyframes lookup, the no-preference brace walk, and the reduce-block test that
+ * grants Pattern B's file-wide amnesty. A comment is text CSS never parses, so any
+ * of those four can be opened by prose. Measured in this tree before the blank:
+ * features/sales/CartPanel.css:484 and :510 each matched a declaration named
+ * "slides" out of a header reading "Cart entry animation: slides from right with
+ * overshoot jiggle", and features/kds/KdsScreen.css:2288 matched an "animation:
+ * none" that sits inside a comment describing what tokens.css does globally. Three
+ * phantom declarations, two of them counted as graded and one as excused-by-value,
+ * plus one phantom transition in the instrumentation total. The amnesty is the
+ * hazard worth naming: a comment merely mentioning a reduced-motion block would
+ * excuse every animation in its sheet, which is why hasReduceBlock reads blanked
+ * text too (no sheet's amnesty is comment-only as of this commit — reduce-block
+ * sheets measured 30 both ways — so nothing here is excused by prose).
+ *
+ * Scope is block comments only, deliberately: string literals and url() contents
+ * are left alone, and no line-comment form is invented, because that is not a CSS
+ * comment and eating text that CSS does parse would trade one phantom class for
+ * another.
+ */
+function stripBlockComments(css: string): string {
+  let out = '';
+  let i = 0;
+  while (i < css.length) {
+    if (css[i] === '/' && css[i + 1] === '*') {
+      const closed = css.indexOf('*/', i + 2);
+      const stop = closed === -1 ? css.length : closed + 2;
+      out += css.slice(i, stop).replace(/[^\n]/g, ' ');
+      i = stop;
+    } else {
+      out += css[i];
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
  * Keyframe names that are UX-essential (loading indicators, feedback,
  * status pulses). These may play even with reduced-motion preference.
  */
@@ -123,7 +166,7 @@ function harvestAnimationStats() {
     transitionDecls: 0,
   };
   for (const filePath of cssFiles) {
-    const css = readFileSync(filePath, 'utf-8');
+    const css = stripBlockComments(readFileSync(filePath, 'utf-8'));
     const hasReduceBlock = /@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/.test(css);
     if (hasReduceBlock) out.reduceBlockSheets++;
     out.transitionDecls += (css.match(/\btransitions?\s*:/g) ?? []).length;
@@ -183,7 +226,7 @@ describe('CSS animation reduced-motion compliance', () => {
     const violations: string[] = [];
 
     for (const filePath of cssFiles) {
-      const css = readFileSync(filePath, 'utf-8');
+      const css = stripBlockComments(readFileSync(filePath, 'utf-8'));
       const hasReduceBlock = /@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/.test(css);
 
       const declRegex = /animation:\s*([a-zA-Z0-9_-]+)/g;
