@@ -5,10 +5,11 @@
 //! the server URL and API key. What the front-end can invoke is the scoped set plus
 //! `test_sync_connection`, which is registered without a session-token twin.
 //!
-//! The unscoped `sync_run` named above is registered in neither shell and has no
-//! caller in this crate; it survives only because `sync_tests.rs` still calls it
-//! directly, which makes its removal a decision about tests rather than about dead
-//! code (T19's census, 2026-09-16).
+//! The unscoped `sync_run` that used to sit beside it is retired: registered in
+//! neither shell, called by no production code, and kept alive only by a test that
+//! exercised the plan-gating policy through a door no real build can open. That case
+//! now runs against `sync_run_scoped`, so the invariant is graded on the path the
+//! tablet ships (named by T19's census on 2026-09-16, closed by T27 the same day).
 
 use serde::{Deserialize, Serialize};
 use tauri::{State, command};
@@ -92,72 +93,6 @@ pub fn update_sync_settings_data(
     Settings::set_sync_enabled(&tx, args.enabled)?;
     tx.commit()?;
     Ok(())
-}
-
-/// Immediately run a sync cycle that pushes pending sales, credit, and
-/// other queued offline transactions to the configured cloud server.
-///
-/// Uses a three-phase split (read → async HTTP → write) so the DB
-/// lock is not held during the network round-trip.
-#[command]
-pub async fn sync_run(state: State<'_, AppState>) -> Result<SyncAttemptResult, AppError> {
-    // Phase 1: Read pending items and config from DB (brief lock).
-    let (pending_items, config_opt) = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let pending = store.list_pending_offline()?;
-        let config = SyncConfig::from_settings(&store)?;
-        (pending, config)
-    };
-
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            return Ok(SyncAttemptResult {
-                synced: 0,
-                failed: 0,
-                error: Some("Sync is not configured or disabled".into()),
-                plan_required: false,
-            });
-        }
-    };
-
-    if pending_items.is_empty() {
-        return Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: None,
-            plan_required: false,
-        });
-    }
-
-    // Phase 2: Async HTTP push (no DB lock held).
-    let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
-
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    match outcomes {
-        Ok(outcomes) => Ok(sync_client::apply_sync_outcomes(
-            &store,
-            &pending_items,
-            &outcomes,
-        )?),
-        // ADR sync-plan-gating: a free tenant is gated, not broken. Do NOT
-        // mark the items failed — they stay `pending` and sync automatically
-        // once the tenant upgrades.
-        Err(sync_client::SyncHttpError::PlanRequired) => Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        }),
-        Err(e) => Ok(sync_client::mark_all_failed(
-            &store,
-            &pending_items,
-            &e.to_string(),
-        )?),
-    }
 }
 
 /// Test the cloud sync connection by pinging the configured server.
@@ -249,7 +184,7 @@ pub async fn update_sync_settings_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `sync_run`.
+/// Immediately run a sync cycle that pushes pending sales, credit, and resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn sync_run_scoped(

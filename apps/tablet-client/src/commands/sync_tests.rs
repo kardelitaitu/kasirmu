@@ -475,15 +475,16 @@ fn update_sync_settings_data_clear_url_writes_empty_row() {
 
 #[tokio::test]
 async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
-    // ADR sync-plan-gating, ported off the unscoped `sync_run` on 2026-09-16 (T27): a 403
+    // ADR sync-plan-gating, ported off this command's unscoped twin on 2026-09-16 (T27): a 403
     // plan_required from the server must keep queued items `pending` (never mark them failed)
     // and flag plan_required so the UI can show an upgrade prompt.
     //
-    // It used to run against a command registered in neither shell, so the invariant was
-    // graded through a door no real build can open while the door the tablet actually calls
-    // -- this one, SYNC_MANAGE-gated -- had no plan-gate case. The two bodies are separate
-    // copies of the same three-phase logic, so passing here says something the old test could
-    // not: that the shipped path gates the plan the same way.
+    // It used to run against the unscoped sibling of this command, which was registered in
+    // neither shell, so the invariant was graded through a door no real build can open while
+    // the door the tablet actually calls -- this one, SYNC_MANAGE-gated -- had no plan-gate
+    // case. The two bodies were separate copies of the same three-phase logic, so passing
+    // here said something the old test could not: the shipped path gates the plan the same
+    // way. That is why the dead copy could be retired rather than merely left uncalled.
     use crate::state::AppState;
     use oz_core::Store;
     use oz_core::auth;
