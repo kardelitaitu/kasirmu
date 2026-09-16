@@ -14,34 +14,30 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, command};
 use tokio::sync::oneshot;
 
-use oz_core::permissions;
 use oz_core::{Currency, Money, Settings};
 use oz_hal::BarcodeScanner;
 use oz_hal::DisplayContent;
 use oz_hal::drivers::receipt;
 use oz_hal::transport::usb::{UsbDeviceInfo, probe_all};
 
-use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
 // ── Cash drawer ─────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-/// Opencashdrawerargs.
-pub struct OpenCashDrawerArgs {
-    /// Optional device id; defaults to "default" which is the mock drawer
-    /// registered at startup.
-    #[serde(default)]
-    pub device_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Opencashdrawerresult.
-pub struct OpenCashDrawerResult {
-    /// Opened.
-    pub opened: bool,
-}
+// ADR #49: re-exported from the bridge rather than redefined, because
+// `open_cash_drawer_scoped` now delegates and the bridge's signature names its
+// own two types. Both sides declare the same fields with no `rename_all`, so
+// the wire shape is unchanged: `device_id: Option<String>` in, `opened: bool`
+// out.
+//
+// One asymmetry is real and is recorded rather than assumed harmless: this
+// shell's `OpenCashDrawerArgs` carried `#[serde(default)]` on `device_id` and
+// the bridge's does not. If that attribute was load-bearing, a caller that
+// omits `device_id` entirely would have deserialised before and error now.
+// `hardware_tests.rs::open_cash_drawer_args_default_device` deserialises `{}`
+// and asserts `None`, so it is the pin: it passes today and must still pass.
+pub use oz_bridge::hardware::{OpenCashDrawerArgs, OpenCashDrawerResult};
 
 #[command]
 /// Open cash drawer.
@@ -290,6 +286,24 @@ pub async fn stop_scanner(state: State<'_, AppState>) -> Result<(), AppError> {
 }
 
 /// Session-scoped variant of `open_cash_drawer`.
+///
+/// ADR #49: the body is the bridge's. This door earned its delegation in two
+/// steps, and the order matters. **First the gate:** this shell resolved the
+/// session and discarded it as `_session`, so the drawer opened for any
+/// authenticated caller, while the twin gates with `permissions::PAYMENTS_CASH`
+/// under the same `F-017` finding. That was closed here *before* delegating,
+/// because §4 forbids widening **or narrowing** a gate inside an extraction —
+/// delegating an ungated door would have flipped the ledger's reading of it.
+/// With the gate at parity the rest is an identity: same `resolve_session`
+/// first, same `"no cash drawer registered as '{id}'"` text, same
+/// `drawer.open()`.
+///
+/// One delta, reported rather than hidden: the bridge calls
+/// `ctx.resolve_scope(session_token)?` after the gate and discards the result,
+/// so it also requires the session's *store* DB to resolve. This shell opened
+/// nothing. That is the desktop's behaviour, so it is parity — but it means a
+/// cash-drawer command now depends on the store DB being openable, which it
+/// never did before. The same delta was accepted for `start_scanner_scoped`.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn open_cash_drawer_scoped(
@@ -297,22 +311,10 @@ pub async fn open_cash_drawer_scoped(
     args: OpenCashDrawerArgs,
     state: State<'_, AppState>,
 ) -> Result<OpenCashDrawerResult, AppError> {
-    // F-017: the `oz_bridge::hardware` twin of this command gates it, and the
-    // bridge's own comment names the same finding. This shell resolved the
-    // session and then discarded it as `_session`, so the drawer opened for
-    // any authenticated caller. Gated here with the permission the bridge
-    // uses — `PAYMENTS_CASH` — and before the drawer is looked up, so a denied
-    // caller never reaches the device.
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PAYMENTS_CASH).await?;
-    let id = args.device_id.as_deref().unwrap_or("default");
-    let drawer = state
-        .registry
-        .cash_drawer(id)
+    let ctx = state.bridge_ctx();
+    oz_bridge::hardware::open_cash_drawer_scoped(&ctx, args, &session_token)
         .await
-        .ok_or_else(|| AppError::Invalid(format!("no cash drawer registered as '{id}'")))?;
-    drawer.open().await?;
-    Ok(OpenCashDrawerResult { opened: true })
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of `print_receipt`.
