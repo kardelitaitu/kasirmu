@@ -162,8 +162,18 @@ UI_EXPORT_INVOKE_RE = re.compile(
 # `sessionToken ? () => scopedWrapper(sessionToken) : plainWrapper` and the call-immediately
 # form, captured as (token-taking wrapper, fallback wrapper).
 UI_FALLBACK_TERNARY_RE = re.compile(
-    r"sessionToken\s*\?\s*(?:\(\s*\)\s*=>\s*)?([A-Za-z]\w*)\s*\(([^)]*)\)\s*:\s*([A-Za-z]\w*)\b"
+    r"sessionToken\s*\?\s*(?:\(\s*[^)]*\)\s*=>\s*)?([A-Za-z]\w*)\s*\(([^)]*)\)\s*:\s*([A-Za-z]\w*)\b"
 )
+# The parameter list in the optional arrow prefix is load-bearing and was missing until 2026-09-16:
+# it used to be `(\s*)`, which matches only a ZERO-ARGUMENT arm. So
+#     const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id) : startScanner
+# did not match at all, while `? () => stopScannerScoped(sessionToken) : stopScanner` did -- and the
+# leg under-reported its own population because of it: `start_scanner` and `lookup_by_barcode` sit in
+# exactly that shape at ui/src/features/sales/useBarcodeScanner.ts:63 and :83 and never appeared in
+# the counts the T21 decision was going to be made from. Same shape as the round-24 near-miss, where
+# requiring `wrapper(` hid every bare `: listScanners`: a matcher written against the FIRST form it
+# saw reads as a clean census of a family it cannot see. `[^)]*` cannot cross the closing paren of
+# the parameter list, so widening it this far is safe.
 
 
 def no_token_fallbacks(
@@ -3095,6 +3105,27 @@ def self_test() -> int:
          len(no_token_fallbacks([fb_api, fb_hook, fb_noise], {"list_scanners_scoped"})) == 1
          and len(no_token_fallbacks([fb_api, fb_hook, fb_noise],
                                     {"list_scanners_scoped"})["list_scanners"]) == 1)
+    # The parameterised arm, earned 2026-09-16. The three cases above are all ZERO-ARGUMENT arrows,
+    # which is how the leg could be green while `const start = sessionToken
+    # ? (id: string) => startScannerScoped(sessionToken, id) : startScanner` went unseen: the
+    # fixture and the regex had been written against the same single form, so they agreed with each
+    # other and not with the tree. Two names per shell were missing from the count a T21 decision
+    # was going to be made from.
+    fb_api2 = ("ui/src/api/hardware.ts",
+               "export const startScanner = (id: string): Promise<boolean> =>\n"
+               "  loggedInvoke<boolean>('start_scanner', { id });\n"
+               "export const startScannerScoped = (t: string, id: string): Promise<boolean> =>\n"
+               "  loggedInvoke<boolean>('start_scanner_scoped', { t, id });\n")
+    fb_param = ("ui/src/features/sales/useBarcodeScanner.ts",
+                "const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id)"
+                " : startScanner;\n")
+    case("fallback an arrow arm that takes parameters is the same shape and must be caught",
+         list(no_token_fallbacks([fb_api2, fb_param], {"start_scanner_scoped"})) == ["start_scanner"])
+    case("fallback a parameterised arm whose else-branch is not a wrapper stays silent",
+         no_token_fallbacks([fb_api2, fb_noise], {"start_scanner_scoped"}) == {})
+    case("fallback both arrow forms are reported together without doubling a name",
+         len(no_token_fallbacks([fb_api, fb_hook, fb_api2, fb_param],
+                                {"list_scanners_scoped", "start_scanner_scoped"})) == 2)
     # And the real tree, so a regex that matched only its own fixture cannot pass: if a future
     # pass registers these doors and this case goes red, delete the case after reading the
     # print, not before -- it is the only thing here that knows the shape was ever broken.
