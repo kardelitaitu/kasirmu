@@ -12,7 +12,7 @@ function findCssFiles(dir: string, results: string[] = []): string[] {
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules') continue;
       findCssFiles(fullPath, results);
-    } else if (entry.name.endsWith('.css') && !entry.name.endsWith('.module.css')) {
+    } else if (entry.name.endsWith('.css')) {
       results.push(fullPath);
     }
   }
