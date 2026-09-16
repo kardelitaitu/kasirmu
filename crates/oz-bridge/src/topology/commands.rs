@@ -553,7 +553,16 @@ pub async fn apply_topology_diff(
     {
         let global_db = ctx.db.lock().await;
         let branch_conn = ctx.db_manager.open_store(&session.store_id).map_err(|e| {
-            BridgeError::Internal(format!("opening store db for topology gate: {e}"))
+            // M5 / ruling R3: the open_store cause interpolates filesystem
+            // detail that must not cross IPC into a renderer toast; the full
+            // error is logged, the returned one is path-free. (Which store
+            // this line OPENS is Phase 1's question — this changes only the
+            // error TEXT.)
+            tracing::error!(store = %session.store_id, error = %e, "topology Apply: opening store db failed for the ownership gate");
+            BridgeError::Internal(format!(
+                "opening store db for topology gate: store '{}'",
+                session.store_id
+            ))
         })?;
         let branch_db = branch_conn
             .lock()
@@ -676,8 +685,11 @@ pub async fn apply_topology_diff(
             .db_manager
             .open_store(&effective_store_id)
             .map_err(|e| {
+                // M5 / ruling R3: cause is logged, not returned (path-free error).
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for workspace CRUD");
                 BridgeError::Internal(format!(
-                    "opening store db for store '{effective_store_id}': {e}"
+                    "opening store db for store '{}'",
+                    effective_store_id
                 ))
             })?;
         let db = conn
@@ -936,7 +948,12 @@ pub async fn apply_topology_diff(
     };
     let save_result = {
         let branch_conn = ctx.db_manager.open_store(&session.store_id).map_err(|e| {
-            BridgeError::Internal(format!("opening store db for topology save: {e}"))
+            // M5 / ruling R3: cause is logged, not returned (path-free error).
+            tracing::error!(store = %session.store_id, error = %e, "topology Apply: opening store db failed for the diagram save");
+            BridgeError::Internal(format!(
+                "opening store db for topology save: store '{}'",
+                session.store_id
+            ))
         })?;
         let branch_db = branch_conn
             .lock()
@@ -1020,7 +1037,12 @@ pub async fn apply_topology_diff(
             .db_manager
             .open_store(&effective_store_id)
             .map_err(|e| {
-                BridgeError::Internal(format!("opening store db for topology audit: {e}"))
+                // M5 / ruling R3: cause is logged, not returned (path-free error).
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for the audit write");
+                BridgeError::Internal(format!(
+                    "opening store db for topology audit: store '{}'",
+                    effective_store_id
+                ))
             })?;
         let db = store_conn
             .lock()
