@@ -8,11 +8,44 @@
 //! lifecycle `state`; a missing/tampered/unreadable subscription yields
 //! Free entitlements + `unavailable` instead of an IPC error, because the
 //! UI's error path renders gates open.
+//!
+//! # ADR #49 extraction status — 0 of 4 doors delegated, deliberately
+//!
+//! All four doors have twins in `crates/oz-bridge/src/subscription.rs`, and
+//! none may be delegated. Three distinct grounds:
+//!
+//! 1. [`get_subscription_capabilities`] is on the registration-gate debt
+//!    ledger (`registration_gate_debt.generated.rs`): it resolves no session
+//!    and names no permission, so delegating would flip it to `Gated` and
+//!    erase ledger debt as a side effect of a port — §1 forbids it.
+//! 2. [`explain_feature_availability_scoped`]'s own body IS
+//!    statement-identical to its twin, and the census accordingly reports it
+//!    portable. It is still refused, because its last statement calls this
+//!    module's [`load_feature_verdict`], and *that* helper's twin diverges by
+//!    one statement: the bridge applies `ent.apply_debug_upgrade()`
+//!    (`crates/oz-bridge/src/subscription.rs:376`) where this file does not.
+//!    Delegating the door would silently swap the callee and make a tablet
+//!    verdict report `premium` while this client's own caps payload reports
+//!    `free` — the exact contradiction the helper's comment exists to
+//!    prevent. **A DIVERGENT helper pair disqualifies every door that calls
+//!    that helper, even when the door itself reads identical.**
+//! 3. [`get_over_quota_report`] and [`get_over_quota_report_scoped`] diverge
+//!    in their own bodies: the shell locks `state.db` and then calls the
+//!    synchronous `load_over_quota_report(&db)`, while the twin calls the
+//!    async, ctx-taking `compute_over_quota_report(ctx)`. §4 pins lock order
+//!    and statement sequence, so neither may be delegated.
+//!
+//! This module is therefore a ceiling, not a backlog. Ground 3 is structural;
+//! grounds 1-2 are owner decisions (ledger retirement, and whether the
+//! debug-upgrade divergence should be unified at all). What *is* shared is the
+//! query: `load_over_quota_report` is the bridge's, re-used here instead of
+//! re-implemented (§1b.9 — port the query, keep the door).
 
 use chrono;
 use serde::Serialize;
 use tauri::{State, command};
 
+use oz_bridge::subscription::load_over_quota_report;
 use oz_core::availability::{AvailabilityFeature, FeatureVerdict, UsageCounts};
 use oz_core::db::Store;
 use oz_core::db::assignments::ScopeType;
@@ -480,21 +513,12 @@ pub async fn get_over_quota_report_scoped(
     Ok(report)
 }
 
-/// The synchronous body of both tablet over-quota commands, split out so
-/// the tests exercise the exact production path (the desktop twin of this
-/// helper carries the same rationale). Returns the effective tier
-/// alongside the report so callers can render against the gates-enforced
-/// tier without re-deriving entitlements.
-fn load_over_quota_report(
-    db: &rusqlite::Connection,
-) -> Result<(OverQuotaReport, SubscriptionTier), AppError> {
-    let store = Store::new(db);
-    let ent = build_entitlements(&store, gather_usage(&store), false);
-    let markers = store.persist_over_quota_markers()?;
-    let mut report = store.assess_downgrade(&ent.tier)?;
-    report.markers = markers;
-    Ok((report, ent.tier))
-}
+// The synchronous body of both tablet over-quota commands is the bridge's
+// `oz_bridge::subscription::load_over_quota_report`, imported above rather
+// than re-implemented here (§1b.9): the two bodies were statement-identical
+// apart from the error type, and `From<BridgeError> for AppError` maps
+// `Core { sub_kind, message }` field-for-field, so the error shape is
+// unchanged. The desktop twin of this helper carries the same rationale.
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
