@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# scripts/check.sh — local pre-push gate. Mirrors .github/workflows/ci.yml.
+# scripts/check.sh — the FULL local matrix, run by hand (bash scripts/check.sh).
+# It is NOT what `git push` runs. .githooks/pre-push invokes
+# scripts/run-pre-push.py and nothing else, and that script is a SUBSET of this
+# one — its Tier 0 static gates plus path-routed cargo check, cargo fmt --check,
+# ui typecheck, ui vitest, analytics timezone invariance, website checks and
+# lint-i18n — and it never calls check.sh. So a red pre-push is not a failure of
+# this matrix, and a green push does not mean these steps ran.
+# Nothing here mirrors .github/workflows/ci.yml either: that workflow was
+# retired to ci.yml.bak in 23c96330, and the two live ones are dev-ci.yml (PRs
+# and pushes to main) and release.yml (v* tags). See docs/operations/ci-pipeline.md.
 #
 # Usage:  bash scripts/check.sh
 #         (run from the workspace root)

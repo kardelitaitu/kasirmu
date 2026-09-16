@@ -88,7 +88,7 @@
       "label": "Clippy",
       "status": "required",
       "runners": { "check.sh": ["clippy"] },
-      "_note": "Local-only / manual. Skipped in CI, verified locally in check.sh / pre-push."
+      "_note": "Runs locally only, and not everywhere locally: its two runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml -- so a green CI says nothing about clippy. It is also NOT run before a push: .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier. status=\"required\" is the policy this project holds, not a claim that a gate enforces it."
     },
     {
       "id": "rust-tests",
