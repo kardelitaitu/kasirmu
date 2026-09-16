@@ -177,12 +177,18 @@ function useToastIfAvailable(): ReturnType<typeof useToast> | null {
  * Nothing else is safe to do from here: a retry would re-destroy a token this client
  * has already let go of, and a UI state would have to answer a question this lane has
  * not decided (does a half-teardown block navigation?). So the requirement is only
- * that the failure is OBSERVABLE. Same shape as every other diagnostic in this file
- * -- `console.warn("WorkspaceContext: <what failed>", err)` (see :304, :378, :455,
- * :486) -- with `where` naming which teardown broke.
+ * that the failure is OBSERVABLE.
+ *
+ * Same MESSAGE shape as every other diagnostic in this file --
+ * `"WorkspaceContext: <what failed>", err` (the degraded reads at :328, :404, :483,
+ * :514) -- with `where` naming which teardown broke, but one LEVEL LOUDER: those four
+ * warn because a read came back short and the app still knows its own state. This one
+ * means the client believes it is signed out while the server session may not be, which
+ * on a shared till becomes the next operator's problem -- so it goes to
+ * `console.error` and does not share a volume with "failed to list workspaces".
  */
 function reportTeardownFailure(where: string, err: unknown): void {
-  console.warn(
+  console.error(
     `WorkspaceContext: server-side session teardown failed (${where}) -- the local token was cleared but the server session may still be live`,
     err,
   );
