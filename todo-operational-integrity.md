@@ -257,3 +257,15 @@ The file's claim — *"The write reports success and does nothing"*, *"No new re
 
 *Review method, stated so its limits travel with it: every figure above is a working-tree reading at HEAD `5ca3cd5c0` on one machine, taken with the command printed beside it, and HEAD moved twice during the pass (`aaa19bc16` → `af4b27238` → `5ca3cd5c0`) as concurrent sessions committed — so each number is worth exactly its timestamp. The single write this review performed was the Phase 3 probe in finding (a); it is the one entry in this review that touched shared `.git/` state, it was reverted, and the revert was verified by ref count rather than assumed.*
 
+---
+
+**Correction, dated 2026-09-16 (appended; the rows above stand as written, per this file's own convention). Both legs of the thesis have moved, and the review block immediately above is now the stale one.** Re-measured at HEAD `675d49a35`:
+
+- **"no live workflow names `--release`" is now FALSE.** `grep -c -e "--release" .github/workflows/dev-ci.yml .github/workflows/release.yml` → **2** and **0**. The live one is `dev-ci.yml:287` — `run: cargo nextest run -p oz-bridge --release` — inside job `release-bridge-test` (added `9d5c33c68`), which that file's own comment block at `:266-268` documents together with the `-P release` flag trap. So the sentence above reading "`dev-ci.yml` 0, `release.yml` 0" was true when written and is false now; `todo-open-debt-program.md` Phase 1 owns the change and closed on it 2026-09-16.
+- **"the deploy condition is still broader than its trigger" is now FALSE.** `sed -n '760p' .github/workflows/dev-ci.yml` → `if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'`. The `startsWith(github.ref, 'refs/heads/0.0.')` arm is gone, so a dispatch from a release branch can no longer deploy — the hole Phase 2 warned about is closed, and Phase 2 carries the tick.
+- **The `:27` correction is therefore stale on both of the legs it named**, and it is the correction that carried the thesis forward for a reader. Treat it as superseded by this entry, not as current.
+
+**What still holds, so the thesis is weakened rather than dead.** Dev CI still does not run on the working branch — `dev-ci.yml:6-7` is `push: branches: [main]` — so every green produced on `0.0.39` is still a local green. The 20-check pre-push suite still runs only by hand, and `scripts/verify-pg-tests-ran.py` is still nothing's acceptance command. What changed is that the two rows an orchestrator was most likely to act on are closed, so "a green result proves less than it appears to" has narrowed to **"a green on a release branch is not a CI green."**
+
+**Independent evidence the hooks are live — stronger than the config read.** Two commits made this pass were accepted only after `.githooks/pre-commit` actually ran: the second printed `verify-bundle-parity: 0 missing key(s)` over 34 key sites as part of the commit. `git config --get core.hooksPath` printing `.githooks` shows the *setting*; a hook firing shows the *behaviour*, and `:37`'s acceptance asks for the second. Re-derive: `git config --get core.hooksPath; git log --oneline -1`.
+
