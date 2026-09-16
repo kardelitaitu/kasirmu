@@ -297,6 +297,10 @@ def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> li
 
 PROSE_LINE_RE = re.compile(r"^\s*(?://[/*]?|\*)")
 DEF_LINE_RE = re.compile(r"^\s*pub (?:async )?fn\b")
+# The text immediately before a match, when the match is the name being DEFINED. `DEF_LINE_RE`
+# only anchors the `pub` form, so `#[test] fn list_roles()` read as a call of the `list_roles`
+# command; this catches any visibility, and `async` anywhere in the prefix.
+FN_DEFINITION_BEFORE_RE = re.compile(r"\bfn\s+$")
 TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
 # Path prefixes that name somebody else's function. This is the shape the whole sharing
 # programme produces, so it is not an edge case: a desktop shim whose own body reads
@@ -332,6 +336,14 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
     * a `///`, `//` or `*` line -> prose. Two earlier probes in this programme were
       contaminated exactly that way.
     * a line starting `pub fn` / `pub async fn` -> the definition itself.
+    * the match sitting immediately after `fn` on the same line -> a definition of `name` under
+       any visibility. Earned 2026-09-16: the bullet above is anchored on `pub`, so a Rust test
+       written as `#[test] fn pending_offline_count()` counted as a call of the command of the
+       same name, and three deletion candidates sat behind a refusal that had no evidence in
+       it. The bodies were `store.pending_offline_count()` -- the Store method -- which the
+       first bullet already rejects, so the only "caller" in the crate was the test's own
+       title. A check that reads a name as a call wherever the name appears cannot tell a
+       caller from a thing named after the caller.
     """
     # `\w` only -- a preceding `.` or `::` is rejected in the loop below, where the reason can
     # be written out and a fixture can reach it. That rejection used to ALSO sit in this
@@ -345,6 +357,8 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
                 continue
             for match in pattern.finditer(line):
                 before = line[:match.start()]
+                if FN_DEFINITION_BEFORE_RE.search(before):
+                    continue  # `fn name(` / `async fn name(`: this is the definition, not a call
                 if before.endswith("."):
                     continue
                 if before.endswith("::"):
@@ -2833,6 +2847,8 @@ def self_test() -> int:
             "    .create_bundle;",
             "    oz_bridge::bundles::create_bundle(&ctx);",
             "    crate::commands::bundles::create_bundle(&x);",
+            "fn create_bundle() {",
+            "async fn create_bundle() -> Result<(), E> {",
         ]))])
     case("call   a free call is counted", "m.rs:1" in call_sites)
     case("call   a same-named method is NOT (this is the bug the census had)",
@@ -2843,6 +2859,12 @@ def self_test() -> int:
     case("call   the signature itself is not a call", "m.rs:6" not in call_sites)
     case("call   the whole answer is exactly the three real calls",
          call_sites == ["m.rs:1", "m.rs:4", "m.rs:9"])
+    # The sixth exclusion, earned on 2026-09-16: `offline_tests.rs` opens a case with
+    # `fn pending_offline_count()` and its body calls `store.pending_offline_count()`. The
+    # first is a test title, the second a Store method, so the command had NO caller and the
+    # refusal gate said it had one -- three candidates sat behind that verdict for rounds.
+    case("call   a private or async test fn named after the command is not a call",
+         "m.rs:10" not in call_sites and "m.rs:11" not in call_sites)
 
     # The shim shape, which is what this programme keeps producing and therefore what the leg
     # will keep meeting: a command whose body calls the bridge's same-named function. That is
