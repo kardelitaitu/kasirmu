@@ -8025,7 +8025,9 @@ describe('NodeTopologyEditor — per-branch viewport memory', () => {
 
   it('loads topology data for the active branch', async () => {
     renderEditor({ branchId: 'branch-a' });
-    await waitFor(() => expect(mockLoadTopology).toHaveBeenCalledWith('branch-a'));
+    // R1 (2026-09-16): the read carries the session first — this harness
+    // renders with MOCK_SESSION_TOKEN, so that is what the mock receives.
+    await waitFor(() => expect(mockLoadTopology).toHaveBeenCalledWith('mock-session-token', 'branch-a'));
   });
 });
 
