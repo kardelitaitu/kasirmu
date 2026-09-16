@@ -9,20 +9,19 @@
 //! serialized error shape are unchanged; it borrows a `BridgeCtx` from
 //! `AppState`, calls the bridge, and maps `BridgeError` back to `AppError`
 //! variant-for-variant. The DTOs and args structs moved with the bodies and
-//! are re-exported here so `use super::*;` in `audit_tests.rs` and
-//! `audit_security_events_tests.rs` keeps resolving them.
+//! are re-exported here for the IPC surface.
+//!
+//! **This shell has no audit test module.** The tablet's `audit.rs` re-exports
+//! the same names for its `audit_tests.rs`, but nothing under
+//! `apps/desktop-client` declares one, so the re-export here serves the
+//! registered commands alone.
 //!
 //! Gate order runs inside the bridge, in the same order as before: resolve
 //! the scope, enforce the Premium+ audit tier, then `audit:view` /
 //! `audit:export` through the domain's own non-scope-aware gate pair, and
 //! only then read or write.
 
-#[allow(unused_imports)] // sibling audit_tests.rs depends on it
-use serde::{Deserialize, Serialize};
 use tauri::State;
-
-#[allow(unused_imports)] // sibling audit_tests.rs depends on it
-use oz_core::db::Store;
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -32,15 +31,6 @@ pub use oz_bridge::audit::{
     ExportSecurityEventsArgs, ListAuditLogArgs, ListAuditLogScopedArgs,
     ListSecurityEventsScopedArgs, MarkAuditReviewedArgs, ReviewCheckpointDto,
 };
-
-/// Build an RFC-4180 CSV row from the given fields (quotes embedded quotes).
-///
-/// Thin adapter over `oz_bridge::audit::csv_row`: the name, parameter list
-/// and return type are unchanged so the sibling test module keeps calling it.
-#[allow(dead_code)] // retained by the Wave-E E5 extraction contract for sibling tests
-fn csv_row(fields: &[&str]) -> String {
-    oz_bridge::audit::csv_row(fields)
-}
 
 /// Fetch audit log entries scoped to the session's store (AUD-01).
 #[tauri::command]
