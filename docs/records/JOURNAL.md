@@ -11241,3 +11241,19 @@ Stage 1 (wired, unenforced) printed the honest red: `58 passed; 1 failed` with t
 Two of four rulings now land with prints; Phase 1/R4 remains — the only one whose facts (which database holds a fresh branch profile's row) still need establishing empirically, and the fixture worry that blocked it ("needs a two-store harness") is now doubly retired: this round added a second reusable session-seeding pattern to the same file.
 
 **Commit:** `8286f43ae` + plan ticks `docs(topology)` -- never push without a direct user order.
+
+## 2026-09-16 — Phase 1/R4: the ownership gate finally reads the store it writes — and the fact clause outranked the literal recommendation (topology)
+
+**Context:**
+The last of the four ratified rulings, and the one whose recommendation contained an unresolved tension: R4 said "[global, effective], never [global, session] alone", while the gate block's own comment claimed fresh profiles live in the session registry — swapping literally would resurrect the forever-reject. The goal's fact clause pre-authorized choosing by established fact; this entry records the choice and how the facts were forced to speak.
+
+**Changes:**
+`32abb9cbb` (3 files, +538/−53). Facts first, by execution: the bridge's own green test (`locations_tests.rs:148-154`) pins that scoped creates write the profile row into the SESSION store db, and `create_store_db` runs migrations only — every new store db holds exactly one 'default' seed, never a self-named row. So the alignment ADDS the effective store's registry rather than swapping: gate and save now validate `[global, session, effective]`. Three new tests: the referee (`self_describing_store_passes_the_ownership_gate`) — a store whose OWN registry names it could not be written into before this commit, its red print (`unknown store_profile_id: char-gate-self`) is F1 made executable; the false-reject guard (session-row fresh-create flow, green before and after — its purpose is to make a wrong fix fail); and the accepted residual, pinned as documented behavior with an upgrade note (ANY-registry semantics survive; closing it fully needs the write-side self-seed, outside this fence). The red-first discipline caught an unplanned second site: after the gate was aligned, the referee STILL failed — at the SAVE boundary, whose `Some(&branch_db)` passes its own [global, session] ownership re-check. A theorized fix stopping at the gate would have shipped a one-armed alignment; the passing-through test found where the request actually died. The save function gained a registries-form twin with the 9-arg Option signature kept as a thin delegating adapter — zero edits across its 40-odd test callers.
+
+**Verification:**
+Referee red `61 passed; 1 failed`; after the save-site fix `62 passed; 0 failed; 0 ignored` (57.94s desktop) + `314 passed; 0 failed; 0 ignored` (6.94s bridge) + `verify-ipc-parity.py` exit 0 (tripwire, unchanged surface) + `rustfmt --edition 2024` clean scoped to the three files (the edition matters — these files carry let-chains; and workspace-wide fmt remains off-limits while other lanes are mid-edit). R4(a) needed no change: the existing char harness already proves out-of-scope named stores are refused — that half of the ruling was code-true before it was owner-true.
+
+**What it means:**
+All three ruled phases now carry EXECUTED records with prints; the topology program's open boxes are the two reviewer-judgement rows (:469/:471) that no ruling covers. Residuals named, not missed: the ANY-registry gap (T3 pin, upgrade note) and the create-and-migrate file side effect on rejected diagrams (recorded at the site). If a future lane adds the write-side self-seed, T3 fails on purpose and says so.
+
+**Commit:** `32abb9cbb` + plan ticks; this entry rides its own docs(journal) commit -- never push without a direct user order.
