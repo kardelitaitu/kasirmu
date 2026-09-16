@@ -235,3 +235,45 @@ Recorded so the next reader knows the edges of these claims:
 ---
 
 > Every count in this document was produced by the command shown beside it. First pass at HEAD `97a176e5f`; second pass at HEAD `074655fb0c`, which re-verified F1 and F3 unchanged (one production importer of `ItemModifierModal`; 26 tautologies of 106, 34 repo-wide) and sharpened F2. Where I could not close a claim I have said so rather than rounded it — and one of those, §5.2, was closed rather than carried.
+
+---
+
+## 7. Corrections, 2026-09-16 at HEAD `51936522f` (third pass)
+
+The branch moved under this review. Three findings are superseded — kept verbatim above per
+convention, corrected here with the commit that changed each:
+
+- **F2 — CLOSED (assignment half in the cart; persistence + firing now wired end to end).**
+  The chip + `assignCourse` prop the second pass already noted (`CartPanel.tsx:131,585-589`)
+  are joined by: `course` on `foundation::CartLine` (`foundation/src/cart.rs:62-78`, normalized
+  `drinks→beverage`), `set_line_course_scoped` + `AddLineArgs.course` in `oz_bridge::pos`,
+  `from_cart_with_user` filling `course` from the cart (`modules/sales/src/models.rs:198`),
+  the fan-out's existing `course: l.course.clone()` (`kds_lines.rs:159`) now receiving `Some`,
+  the checkout push carrying `course` on both `lineArgs` loops (`PaymentModal.tsx:597-612,
+  :902-917`) and the shortfall rebuild (`pos.rs:1808-1816`, `CartLineData.course` both sides),
+  and a sale-based `publish_course_fired_scoped` emitting `order.course_fired` with the REAL
+  `sale_id` after the KDS fan-out (`PaymentModal:publishFiredCourses`, both checkout tails).
+  The cart-id-as-correlation design from the plan's §2/§4.6 was superseded before landing:
+  firing publishes at checkout, where the sale exists. What remains UI-only by design:
+  `coursingStatus` (hold/fired) never crosses IPC, so fired-but-uncompleted state does not
+  survive reload. Vocabulary unified on the KDS set (`CourseId =
+  appetizer|main|side|dessert|beverage`, `ui/src/types/domain.ts:39`; legacy `drinks`
+  normalizes at every boundary). `restaurant.course_firing` now actually gates the bar + chip
+  (`PosScreen.tsx:493-501`, `CartPanel.tsx:556,593`; null/failure-open by design).
+- **F3 — CLOSED.** `PosScreen.integration.test.tsx` now holds 80 cases with the `expect(true)`
+  string surviving only in the header comment (`:9`). The 26 tautologies are gone.
+- **F4 — CLOSED (moot).** The vestigial workspace settings modal was dropped (`3af8e2989`);
+  no `workspaceType=` remains in `PosScreen.tsx`. There is no hardcode left to fix.
+- **F5 — DOCUMENTED, still open as a product question.** The two-tier split is now recorded
+  in code (`RestaurantMenu.tsx:42-63`) and in `f4455548a`, but `unavailable` (86) staying
+  terminal-local is still an undocumented intent vs gap — no ADR or product decision backs it.
+- **F1 — STILL OPEN, unchanged.** `ItemModifierModal`'s only production importer is still
+  `RetailPosScreen`; the restaurant path still cannot attach modifiers. Explicitly deferred
+  to a later tranche (same wire, once the picker has a home) — see the tackle-all plan §1.
+
+Committed in this pass: `a8a5eeb79` (backend: cart course, set/fire commands, sale fill,
+fan-out course test), `b07e8c3ac` (sale-based publish rework, UI API types), `51936522f`
+(checkout carry, publish-per-fired-course, gating, vocabulary, 188-case scoped green).
+`set_line_course_scoped` is registered but callerless by design (no live backend cart exists
+at chip time — the UI cart is local-only until checkout) and sits on the IPC parity
+`scoped_orphans` allowlist; it leaves the list when a live-cart caller wires it.
