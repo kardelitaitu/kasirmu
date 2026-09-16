@@ -43,6 +43,16 @@ restaurant-context-unavailable = Tandai tidak tersedia
 restaurant-card-pin-title = Disematkan ke atas
 restaurant-menu-items-aria = Item menu
 restaurant-color-swatch-aria = Warna { $color }
+restaurant-color-emerald = Zamrud
+restaurant-color-red = Merah
+restaurant-color-orange = Oranye
+restaurant-color-amber = Kuning
+restaurant-color-green = Hijau
+restaurant-color-cyan = Sian
+restaurant-color-blue = Biru
+restaurant-color-violet = Ungu
+restaurant-color-fuchsia = Fuksia
+restaurant-color-pink = Merah muda
 
 # Error Boundary
 product-lookup-dev-fallback = Menggunakan data contoh (IPC tidak tersedia)

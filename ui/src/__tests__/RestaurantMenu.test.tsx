@@ -911,7 +911,7 @@ describe('RestaurantMenu', () => {
     const card = screen.getByText('Nasi Goreng').closest('button')!;
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('button', { name: 'Color #ef4444' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Color Red' }));
 
     expect(card.style.getPropertyValue('--btn-color')).toBe('#ef4444');
     expect(localStorage.getItem('restaurant-user-1-colors')).toBe(JSON.stringify({ 'NASI-GORENG': '#ef4444' }));

@@ -47,6 +47,16 @@ restaurant-context-unavailable = Mark unavailable
 restaurant-card-pin-title = Pinned to top
 restaurant-menu-items-aria = Menu items
 restaurant-color-swatch-aria = Color { $color }
+restaurant-color-emerald = Emerald
+restaurant-color-red = Red
+restaurant-color-orange = Orange
+restaurant-color-amber = Amber
+restaurant-color-green = Green
+restaurant-color-cyan = Cyan
+restaurant-color-blue = Blue
+restaurant-color-violet = Violet
+restaurant-color-fuchsia = Fuchsia
+restaurant-color-pink = Pink
 
 # Product Lookup
 product-lookup-dev-fallback = Using sample data (IPC unavailable)

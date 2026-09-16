@@ -33,17 +33,17 @@ export interface RestaurantContextMenuState {
   fromKeyboard: boolean;
 }
 
-const COLOR_PALETTE = [
-  '#10b981',
-  '#ef4444',
-  '#f97316',
-  '#eab308',
-  '#22c55e',
-  '#06b6d4',
-  '#3b82f6',
-  '#8b5cf6',
-  '#d946ef',
-  '#ec4899',
+const COLOR_PALETTE: { hex: string; nameId: string; fallback: string }[] = [
+  { hex: '#10b981', nameId: 'restaurant-color-emerald', fallback: 'Emerald' },
+  { hex: '#ef4444', nameId: 'restaurant-color-red', fallback: 'Red' },
+  { hex: '#f97316', nameId: 'restaurant-color-orange', fallback: 'Orange' },
+  { hex: '#eab308', nameId: 'restaurant-color-amber', fallback: 'Amber' },
+  { hex: '#22c55e', nameId: 'restaurant-color-green', fallback: 'Green' },
+  { hex: '#06b6d4', nameId: 'restaurant-color-cyan', fallback: 'Cyan' },
+  { hex: '#3b82f6', nameId: 'restaurant-color-blue', fallback: 'Blue' },
+  { hex: '#8b5cf6', nameId: 'restaurant-color-violet', fallback: 'Violet' },
+  { hex: '#d946ef', nameId: 'restaurant-color-fuchsia', fallback: 'Fuchsia' },
+  { hex: '#ec4899', nameId: 'restaurant-color-pink', fallback: 'Pink' },
 ];
 
 export interface MenuItemContextMenuProps {
@@ -129,11 +129,11 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
     onClose();
   }, [menu.sku, setUnavailable, onClose]);
 
-  const setColor = useCallback((color: string) => {
+  const setColor = useCallback((hex: string) => {
     const sku = menu.sku;
     setColors((prev) => {
-      if (color === prev[sku]) return prev;
-      return { ...prev, [sku]: color };
+      if (hex === prev[sku]) return prev;
+      return { ...prev, [sku]: hex };
     });
     onClose();
   }, [menu.sku, setColors, onClose]);
@@ -174,6 +174,7 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
         type="button"
         className="restaurant-context-item"
         aria-label={l10n.getString(menu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin')}
+        aria-pressed={menu.isPinned}
         onClick={togglePin}
         role="menuitem"
       >
@@ -186,6 +187,7 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
           type="button"
           className="restaurant-context-item"
           aria-label={l10n.getString(menu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable')}
+          aria-pressed={menu.isUnavailable}
           onClick={toggleUnavailable}
           role="menuitem"
         >
@@ -197,14 +199,15 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
       <div className="restaurant-context-divider" role="separator" />
       <span className="restaurant-context-label"><Localized id="restaurant-context-color-label"><span>Colorize Add</span></Localized></span>
       <div className="restaurant-context-colors" role="group" aria-label={l10n.getString('restaurant-context-color-label')}>
-        {COLOR_PALETTE.map((c) => (
+        {COLOR_PALETTE.map(({ hex, nameId, fallback }) => (
           <button
-            key={c}
+            key={hex}
             type="button"
-            className={`restaurant-context-swatch${menu.currentColor === c ? ' restaurant-context-swatch--active' : ''}`}
-            style={{ background: c }}
-            onClick={() => setColor(c)}
-            aria-label={l10n.getString('restaurant-color-swatch-aria', { color: c }, c)}
+            className={`restaurant-context-swatch${menu.currentColor === hex ? ' restaurant-context-swatch--active' : ''}`}
+            style={{ background: hex }}
+            onClick={() => setColor(hex)}
+            aria-label={l10n.getString('restaurant-color-swatch-aria', { color: l10n.getString(nameId, undefined, fallback) }, fallback)}
+            aria-pressed={menu.currentColor === hex}
           />
         ))}
         {menu.currentColor && (
