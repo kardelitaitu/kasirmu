@@ -32,13 +32,13 @@
 **Commit:** `refactor(i18n): rebrand OZ-POS → kasir.mu in all FTL bundles`
 **Pathspec:** `ui/src/locales/sales.ftl ui/src/locales/sales.id.ftl ui/src/locales/settings.ftl ui/src/locales/settings.id.ftl ui/src/locales/shared.ftl ui/src/locales/shared.id.ftl ui/src/locales/staff.ftl ui/src/locales/staff.id.ftl`
 
-- [ ] `ui/src/locales/sales.ftl`
+- [x] `ui/src/locales/sales.ftl`
   - `payment-qris-merchant-name = OZ-POS Store` → `kasir.mu Store`
   - `receipt-preview-store-name = OZ-POS Store` → `kasir.mu Store`
-- [ ] `ui/src/locales/sales.id.ftl`
+- [x] `ui/src/locales/sales.id.ftl`
   - `payment-qris-merchant-name = OZ-POS Store` → `kasir.mu Store`
   - `receipt-preview-store-name = Toko OZ-POS` → `Toko kasir.mu`
-- [ ] `ui/src/locales/settings.ftl`
+- [x] `ui/src/locales/settings.ftl`
   - `setup-logo = OZ-POS` → `kasir.mu`
   - `setup-launch = Launch OZ-POS` → `Launch kasir.mu`
   - `.placeholder = OZ-POS Store` → `kasir.mu Store`
@@ -47,7 +47,7 @@
   - `appearance-store-name-fallback = OZ-POS` → `kasir.mu`
   - `data-mgmt-import-desc` — `…created by OZ-POS export` → `…created by kasir.mu export` and `.kasirpkg` extension (see Phase 6)
   - `addon-support-desc` — `…from the OZ-POS team` → `…from the kasir.mu team`
-- [ ] `ui/src/locales/settings.id.ftl`
+- [x] `ui/src/locales/settings.id.ftl`
   - `setup-logo = OZ-POS` → `kasir.mu`
   - `setup-launch = Luncurkan OZ-POS` → `Luncurkan kasir.mu`
   - `.placeholder = Toko OZ-POS` → `Toko kasir.mu`
@@ -56,15 +56,13 @@
   - `settings-app-version = OZ-POS Enterprise v{ $version }` → `kasir.mu Enterprise v{ $version }`
   - `settings-copyright-notice-value = OZ-POS © 2025–2026 OZ Systems. Seluruh hak cipta dilindungi.` → `kasir.mu © 2025–2026. Seluruh hak cipta dilindungi.`
   - `addon-support-desc` — `…dari tim OZ-POS` → `…dari tim kasir.mu`
-- [ ] `ui/src/locales/shared.ftl`
+- [x] `ui/src/locales/shared.ftl`
   - `auth-copyright = OZ-POS © { $year } All rights reserved.` → `kasir.mu © { $year } All rights reserved.`
-- [ ] `ui/src/locales/shared.id.ftl`
+- [x] `ui/src/locales/shared.id.ftl`
   - `-app-name = OZ-POS` → `kasir.mu`
   - `auth-copyright = OZ-POS © { $year } Hak Cipta Dilindungi.` → `kasir.mu © { $year } Hak Cipta Dilindungi.`
-- [ ] `ui/src/locales/staff.ftl`
-  - `staff-login-copyright = © 2026 OZ-POS. All rights reserved.` → `© 2026 kasir.mu. All rights reserved.`
-- [ ] `ui/src/locales/staff.id.ftl`
-  - `staff-login-copyright = © 2026 OZ-POS. Seluruh hak cipta dilindungi.` → `© 2026 kasir.mu. Seluruh hak cipta dilindungi.`
+- [ ] `ui/src/locales/staff.ftl` / `ui/src/locales/staff.id.ftl` (deferred to Phase 2 commit where `staff-login-copyright` is wired to `StaffLoginScreen.tsx` to satisfy `verify-ftl-orphans.py`)
+  - `staff-login-copyright`
 
 **Pre-commit gate:** steps 2 (bundle parity), 3 (FTL dedupe), 7 (FTL orphan lint) — all must pass.
 
@@ -72,7 +70,7 @@
 
 ## Phase 2 — UI hardcoded strings + test fixtures
 **Commit:** `refactor(ui): remove hardcoded OZ-POS brand strings; use FTL or kasir.mu`
-**Pathspec:** `ui/src/features/auth/SessionLockScreen.tsx ui/src/features/auth/StaffLoginScreen.tsx ui/src/features/auth/LicenseActivationScreen.tsx ui/src/features/setup/SetupWizard.tsx ui/src/features/settings/components/SettingsFooter.tsx ui/src/features/settings/components/ImportSection.tsx ui/src/features/settings/sections/AboutSection.tsx ui/src/features/settings/sections/GeneralSection.tsx ui/src/features/settings/AppearanceSettings.tsx ui/src/features/sales/ReceiptPreview.tsx ui/src/features/kiosk/KioskScreen.tsx ui/src/frontend/shell/AppLayout.tsx ui/src/dev-mock/handlers/settings.ts ui/src/features/design/brand-tokens.css ui/src/features/design/TooltipPreview.tsx ui/src/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/StaffLoginKeyboard.test.tsx ui/src/__tests__/StaffLoginScreen.test.tsx ui/src/__tests__/AppearanceSettings.test.tsx ui/src/__tests__/QrisQrDisplay.test.tsx ui/src/__tests__/ReceiptPreview.test.tsx ui/src/__tests__/GeneralSection.test.tsx ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/a11y/axe-helper.tsx ui/src/__tests__/a11y/WorkspaceHome.a11y.test.tsx ui/src/__tests__/a11y/StaffLoginScreen.a11y.test.tsx ui/src/__tests__/a11y/SettingsPage.a11y.test.tsx ui/src/__tests__/a11y/SalesHistoryScreen.a11y.test.tsx ui/src/__tests__/a11y/ProductLookupScreen.a11y.test.tsx`
+**Pathspec:** `ui/src/locales/staff.ftl ui/src/locales/staff.id.ftl ui/src/features/auth/SessionLockScreen.tsx ui/src/features/auth/StaffLoginScreen.tsx ui/src/features/auth/LicenseActivationScreen.tsx ui/src/features/setup/SetupWizard.tsx ui/src/features/settings/components/SettingsFooter.tsx ui/src/features/settings/components/ImportSection.tsx ui/src/features/settings/sections/AboutSection.tsx ui/src/features/settings/sections/GeneralSection.tsx ui/src/features/settings/AppearanceSettings.tsx ui/src/features/sales/ReceiptPreview.tsx ui/src/features/kiosk/KioskScreen.tsx ui/src/frontend/shell/AppLayout.tsx ui/src/dev-mock/handlers/settings.ts ui/src/features/design/brand-tokens.css ui/src/features/design/TooltipPreview.tsx ui/src/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/StaffLoginKeyboard.test.tsx ui/src/__tests__/StaffLoginScreen.test.tsx ui/src/__tests__/AppearanceSettings.test.tsx ui/src/__tests__/QrisQrDisplay.test.tsx ui/src/__tests__/ReceiptPreview.test.tsx ui/src/__tests__/GeneralSection.test.tsx ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/a11y/axe-helper.tsx ui/src/__tests__/a11y/WorkspaceHome.a11y.test.tsx ui/src/__tests__/a11y/StaffLoginScreen.a11y.test.tsx ui/src/__tests__/a11y/SettingsPage.a11y.test.tsx ui/src/__tests__/a11y/SalesHistoryScreen.a11y.test.tsx ui/src/__tests__/a11y/ProductLookupScreen.a11y.test.tsx`
 
 > **The list below was rebuilt from `git grep -n "OZ-POS" -- ui/src` at `442473337`.** The previous
 > version named 6 items; the tree holds **15 user-visible source files** (19 bullets, since some files
