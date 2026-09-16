@@ -316,6 +316,15 @@ pub async fn open_cash_drawer_scoped(
 }
 
 /// Session-scoped variant of `print_receipt`.
+///
+/// ADR #49 — NOT delegated. The bridge's twin (`crates/oz-bridge/src/hardware.rs:443`)
+/// is this body plus one block: it calls `printer.get_status()`, rejects the print with
+/// `"Printer is not ready: check paper supply and cover"` when `status.has_fault()`
+/// (`:454-459`), and warns on low paper (`:460-462`). This shell has neither, so
+/// delegating would add a refusal path to a command that currently prints — a check that
+/// can start refusing what it accepted before, which §4 forbids inside an extraction.
+/// Same shape as the `set_brand_logo_path` refusal in `branding.rs`. Whether the tablet
+/// should gain the fault check is an owner call, not a port.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn print_receipt_scoped(
@@ -340,6 +349,17 @@ pub async fn print_receipt_scoped(
 }
 
 /// Print sales receipt resolved from a session token. ADR #7.
+///
+/// ADR #49 — NOT delegated, on the same ground as `print_receipt_scoped`: the bridge's
+/// `run_print_receipt_inner` (`crates/oz-bridge/src/hardware.rs:309`) is this body plus
+/// the `get_status()` / `has_fault()` rejection at `:321-333`. Everything after that
+/// block matches — same `format_sales_receipt`, same `line_count = receipt.items.len()
+/// + 6`, same `print_raw` — so the added refusal is the only obstacle.
+///
+/// A second, smaller delta is worth an owner's eye rather than a port: this body
+/// resolves the printer *before* the session (`:350-354`), so a missing printer is
+/// reported ahead of an invalid token, whereas the bridge resolves the store first. That
+/// ordering lets an unauthenticated caller distinguish printer states.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn print_sales_receipt_scoped(
