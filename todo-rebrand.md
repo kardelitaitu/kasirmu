@@ -61,8 +61,9 @@
 - [x] `ui/src/locales/shared.id.ftl`
   - `-app-name = OZ-POS` → `kasir.mu`
   - `auth-copyright = OZ-POS © { $year } Hak Cipta Dilindungi.` → `kasir.mu © { $year } Hak Cipta Dilindungi.`
-- [ ] `ui/src/locales/staff.ftl` / `ui/src/locales/staff.id.ftl` (deferred to Phase 2 commit where `staff-login-copyright` is wired to `StaffLoginScreen.tsx` to satisfy `verify-ftl-orphans.py`)
-  - `staff-login-copyright`
+- [x] `ui/src/locales/staff.ftl` / `ui/src/locales/staff.id.ftl` (wired in Phase 2)
+  - `staff-login-copyright = © 2026 kasir.mu. All rights reserved.`
+  - `staff-login-copyright = © 2026 kasir.mu. Seluruh hak cipta dilindungi.`
 
 **Pre-commit gate:** steps 2 (bundle parity), 3 (FTL dedupe), 7 (FTL orphan lint) — all must pass.
 
@@ -78,43 +79,43 @@
 > pathspec above. As written before, the phase would have shipped a half-rebranded UI and a red suite.
 
 ### User-visible hardcoded strings (source)
-- [ ] `ui/src/features/auth/SessionLockScreen.tsx:357`
+- [x] `ui/src/features/auth/SessionLockScreen.tsx:357`
   `OZ-POS © {new Date().getFullYear()} All rights reserved.` — wire the existing `auth-copyright` FTL key instead of this hardcode
-- [ ] `ui/src/features/auth/StaffLoginScreen.tsx:597`
+- [x] `ui/src/features/auth/StaffLoginScreen.tsx:597`
   `© OZ-POS. All rights reserved.` — wire `staff-login-copyright` FTL key instead
-- [ ] `ui/src/features/auth/StaffLoginScreen.tsx:363,369`
+- [x] `ui/src/features/auth/StaffLoginScreen.tsx:363,369`
   `alt={storeName || 'OZ-POS'}` — a11y-visible alt text; the fallback is the brand
-- [ ] `ui/src/features/auth/LicenseActivationScreen.tsx:178` — `alt="OZ-POS Logo"`
-- [ ] `ui/src/features/auth/LicenseActivationScreen.tsx:338`
+- [x] `ui/src/features/auth/LicenseActivationScreen.tsx:178` — `alt="OZ-POS Logo"`
+- [x] `ui/src/features/auth/LicenseActivationScreen.tsx:338`
   `OZ-POS © {new Date().getFullYear()} All rights reserved.` — the same hardcode as SessionLockScreen:357; both should use `auth-copyright`
-- [ ] `ui/src/features/setup/SetupWizard.tsx:415,460`
+- [x] `ui/src/features/setup/SetupWizard.tsx:415,460`
   `<div className="setup-logo">OZ-POS</div>` — hardcoded, although the FTL key `setup-logo` exists (Phase 1); wire it
-- [ ] `ui/src/features/setup/SetupWizard.tsx:441`
+- [x] `ui/src/features/setup/SetupWizard.tsx:441`
   `<Localized id="setup-launch">Launch OZ-POS</Localized>` — JSX fallback text; update with the FTL value
-- [ ] `ui/src/features/settings/components/SettingsFooter.tsx:149` — `OZ-POS Enterprise v{appVersion}`
-- [ ] `ui/src/features/settings/sections/AboutSection.tsx:38` — `OZ-POS Enterprise v{appVersion}`
-- [ ] `ui/src/features/settings/sections/AboutSection.tsx:60` — `&copy; 2024-2026 OZ-POS Contributors. All Rights Reserved.`
-- [ ] `ui/src/features/settings/sections/GeneralSection.tsx:75` — `placeholder="OZ-POS Store"`
-- [ ] `ui/src/features/settings/AppearanceSettings.tsx:416` — `<Localized id="appearance-store-name-fallback"><span>OZ-POS</span></Localized>` fallback text
-- [ ] `ui/src/features/settings/components/ImportSection.tsx:62` — "created by OZ-POS export." (prose, user-visible)
-- [ ] `ui/src/features/sales/ReceiptPreview.tsx:65` — `l10n.getString('receipt-preview-store-name', null, 'OZ-POS Store')` fallback
-- [ ] `ui/src/features/kiosk/KioskScreen.tsx:113` — `<h1 className="kiosk-attract-title">OZ-POS</h1>` (attract screen — the most customer-visible string in the app)
-- [ ] `ui/src/frontend/shell/AppLayout.tsx:129,132,133,151,171` — document title (`${store_name} — OZ-POS` / `'OZ-POS'`) and the sidebar/tooltip store-name fallbacks
-- [ ] `ui/src/dev-mock/handlers/settings.ts:121,127` — `store_name: 'OZ-POS Demo'` → `'kasir.mu Demo'`
-- [ ] `ui/src/features/design/brand-tokens.css:2,9` — `--brand-app-name: 'OZ-POS'` (and `:10` `--brand-company: 'OZ POS Inc.'`). ⚠️ `themeTokenCompliance.test.ts` pins the company value, so this file and that test move together
-- [ ] `ui/src/features/design/TooltipPreview.tsx:440` — `OZ-POS v0.0.39` (dev-preview surface only)
+- [x] `ui/src/features/settings/components/SettingsFooter.tsx:149` — `OZ-POS Enterprise v{appVersion}`
+- [x] `ui/src/features/settings/sections/AboutSection.tsx:38` — `OZ-POS Enterprise v{appVersion}`
+- [x] `ui/src/features/settings/sections/AboutSection.tsx:60` — `&copy; 2024-2026 OZ-POS Contributors. All Rights Reserved.`
+- [x] `ui/src/features/settings/sections/GeneralSection.tsx:75` — `placeholder="OZ-POS Store"`
+- [x] `ui/src/features/settings/AppearanceSettings.tsx:416` — `<Localized id="appearance-store-name-fallback"><span>OZ-POS</span></Localized>` fallback text
+- [x] `ui/src/features/settings/components/ImportSection.tsx:62` — "created by OZ-POS export." (prose, user-visible)
+- [x] `ui/src/features/sales/ReceiptPreview.tsx:65` — `l10n.getString('receipt-preview-store-name', null, 'OZ-POS Store')` fallback
+- [x] `ui/src/features/kiosk/KioskScreen.tsx:113` — `<h1 className="kiosk-attract-title">OZ-POS</h1>` (attract screen — the most customer-visible string in the app)
+- [x] `ui/src/frontend/shell/AppLayout.tsx:129,132,133,151,171` — document title (`${store_name} — OZ-POS` / `'OZ-POS'`) and the sidebar/tooltip store-name fallbacks
+- [x] `ui/src/dev-mock/handlers/settings.ts:121,127` — `store_name: 'OZ-POS Demo'` → `'kasir.mu Demo'`
+- [x] `ui/src/features/design/brand-tokens.css:2,9` — `--brand-app-name: 'OZ-POS'` (and `:10` `--brand-company: 'OZ POS Inc.'`). ⚠️ `themeTokenCompliance.test.ts` pins the company value, so this file and that test move together
+- [x] `ui/src/features/design/TooltipPreview.tsx:440` — `OZ-POS v0.0.39` (dev-preview surface only)
 
 ### Test fixtures that pin the old text (must move in the same commit)
-- [ ] `ui/src/__tests__/LicenseActivationScreen.test.tsx:80` — `'auth-copyright': 'OZ-POS © {year} All rights reserved.'`
-- [ ] `ui/src/__tests__/StaffLoginKeyboard.test.tsx:47,76` — `staff-login-title = OZ-POS` and `staff-login-copyright = © 2026 OZ-POS. All rights reserved.`
-- [ ] `ui/src/__tests__/StaffLoginScreen.test.tsx:41,48` — `store_name: 'OZ-POS'` fixture and `staff-login-title = OZ-POS`
-- [ ] `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:51,634,636,644` — inline `auth-copyright` snapshot, the logo-hero test name, `getByAltText('OZ-POS Logo')`, and the `OZ-POS © ${year}` regex
-- [ ] `ui/src/__tests__/AppearanceSettings.test.tsx:343,346` — test name + `expect(screen.getByText('OZ-POS'))`
-- [ ] `ui/src/__tests__/QrisQrDisplay.test.tsx:188` — `expect(screen.getByText('OZ-POS Store'))`
-- [ ] `ui/src/__tests__/ReceiptPreview.test.tsx:64,199` — `'OZ-POS Store'` and `'Toko OZ-POS'`
-- [ ] `ui/src/__tests__/GeneralSection.test.tsx:34` — `'settings-store-name-placeholder': 'OZ-POS Store'`
-- [ ] `ui/src/__tests__/a11y/axe-helper.tsx:51,54,63` — `store_name: 'OZ-POS'` fixtures and `staff-login-title = OZ-POS`
-- [ ] `ui/src/__tests__/a11y/WorkspaceHome.a11y.test.tsx:42` · `StaffLoginScreen.a11y.test.tsx:32` · `SettingsPage.a11y.test.tsx:47,53` · `SalesHistoryScreen.a11y.test.tsx:39` · `ProductLookupScreen.a11y.test.tsx:51` — `store_name: 'OZ-POS'` fixtures
+- [x] `ui/src/__tests__/LicenseActivationScreen.test.tsx:80` — `'auth-copyright': 'OZ-POS © {year} All rights reserved.'`
+- [x] `ui/src/__tests__/StaffLoginKeyboard.test.tsx:47,76` — `staff-login-title = OZ-POS` and `staff-login-copyright = © 2026 OZ-POS. All rights reserved.`
+- [x] `ui/src/__tests__/StaffLoginScreen.test.tsx:41,48` — `store_name: 'OZ-POS'` fixture and `staff-login-title = OZ-POS`
+- [x] `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:51,634,636,644` — inline `auth-copyright` snapshot, the logo-hero test name, `getByAltText('OZ-POS Logo')`, and the `OZ-POS © ${year}` regex
+- [x] `ui/src/__tests__/AppearanceSettings.test.tsx:343,346` — test name + `expect(screen.getByText('OZ-POS'))`
+- [x] `ui/src/__tests__/QrisQrDisplay.test.tsx:188` — `expect(screen.getByText('OZ-POS Store'))`
+- [x] `ui/src/__tests__/ReceiptPreview.test.tsx:64,199` — `'OZ-POS Store'` and `'Toko OZ-POS'`
+- [x] `ui/src/__tests__/GeneralSection.test.tsx:34` — `'settings-store-name-placeholder': 'OZ-POS Store'`
+- [x] `ui/src/__tests__/a11y/axe-helper.tsx:51,54,63` — `store_name: 'OZ-POS'` fixtures and `staff-login-title = OZ-POS`
+- [x] `ui/src/__tests__/a11y/WorkspaceHome.a11y.test.tsx:42` · `StaffLoginScreen.a11y.test.tsx:32` · `SettingsPage.a11y.test.tsx:47,53` · `SalesHistoryScreen.a11y.test.tsx:39` · `ProductLookupScreen.a11y.test.tsx:51` — `store_name: 'OZ-POS'` fixtures
 
 ### Deliberately NOT in this phase
 - CSS section headers (`ui/src/**/*.css:2`) and `//!` doc comments (`ui/src/api/client/*.ts`) carry the
