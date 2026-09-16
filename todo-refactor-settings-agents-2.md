@@ -83,6 +83,7 @@
   About/Cloud-Sync form fields … inputs left the page"). A second, live receipt surface exists at
   `screens/ReceiptFormatSettingsCard.tsx`, mounted by `screens/BusinessDefaultsScreen.tsx:26`.
 - [ ] Extract `<PrinterSettingsPanel />` into `panels/PrinterSettingsPanel.tsx`. — **RETIRED 2026-09-14, with proof; not open work.** → **CLOSED AS RETIRED, 2026-09-15.** A retirement with proof is a disposition, not remaining work; the glyph stays `- [ ]` deliberately, because a tick would claim an acceptance leg that never ran — there was nothing to extract. Re-check: `ls ui/src/features/settings/` prints `components`, `hooks`, `screens`, `sections`, `workspace-cards`, `__tests__` and **no `panels/`**, and none is planned.
+  > **[Board sweep 2026-09-16]** Premise re-checked live: `Test-Path ui/src/features/settings/panels` → **False**. The RETIRED-with-proof disposition stands; the unticked glyph is NOT work and was deliberately left alone by this sweep.
   Proof, so this is not a silence: **Store Info** ships at `workspace-cards/StoreInfoCard.tsx` (84 ln) and is opened by
   `WorkspaceSettingsModal.tsx` (236 ln), not by this page; **printer/hardware** configuration ships at
   `workspace-cards/WorkspaceStorePosSettings.tsx` / `WorkspaceRestaurantPosSettings.tsx`, reached through that modal, and
@@ -130,6 +131,7 @@
   `useUnsavedChangesGuard` `:286-292`; `handleSave` `:406-537` (named `saveTasks`, `Promise.allSettled`,
   per-task `changedKeys`); Revert + Save bar `:764-806`; Ctrl+S/Cmd+S `:546-549`.
 - [ ] Extract `<GeneralSettingsPanel />` and `<TaxSettingsPanel />`. — **RETIRED 2026-09-14, with proof; not open work.** → **CLOSED AS RETIRED, 2026-09-15.** Same disposition, same reason for the unticked glyph: `panels/` exists nowhere and is not planned, so this is a closed question, not open work. Triage that reads `- [ ]` as remaining work will overstate this cluster — which is how a dispatch tonight quoted "fifty-one ticked boxes" for a cluster holding fourteen.
+  > **[Board sweep 2026-09-16]** Re-checked: `sections/` holds 8 files incl. `ReceiptSection.tsx`; no `panels/`. Disposition stands; glyph untouched on purpose — a re-dispatch must keep reading these two as the closed questions they record themselves to be.
   Proof: **Receipt** shipped as `sections/ReceiptSection.tsx` (257 ln; test-only importers) plus the live
   `screens/ReceiptFormatSettingsCard.tsx` (488 ln); **Tax** is still `features/tax/TaxConfigurationScreen.tsx` (1,027 ln,
   route `tax-config`) — what this page mounts is a DIFFERENT file of the same basename, a placeholder lazy-imported at
