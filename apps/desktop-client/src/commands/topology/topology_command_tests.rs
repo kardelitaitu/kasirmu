@@ -1223,7 +1223,9 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
         oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none(),
-        "the recovery journal must be cleared after a compensated failure"
+        "the FIRST Apply's journal must be finalized by recovery, not left pending \
+         (this stale retry wrote none — it returned at the revision gate; see the \
+         comment above)"
     );
     assert_eq!(
         current_topology_revision(&db, TOPOLOGY_SETTING_KEY).unwrap(),
