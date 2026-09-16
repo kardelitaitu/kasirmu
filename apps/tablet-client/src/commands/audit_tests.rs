@@ -194,6 +194,16 @@ fn page_args() -> ListAuditLogScopedArgs {
     }
 }
 
+fn security_page_args() -> ListSecurityEventsScopedArgs {
+    ListSecurityEventsScopedArgs {
+        limit: 50,
+        outcome: None,
+        query: None,
+        before_created_at: None,
+        before_id: None,
+    }
+}
+
 #[tokio::test]
 async fn list_command_passes_the_tier_gate_without_panicking() {
     let app = app_for("premium");
@@ -222,6 +232,53 @@ async fn export_command_passes_the_tier_gate_without_panicking() {
     )
     .await;
     assert!(exported.is_ok(), "{:?}", exported.err());
+}
+
+#[tokio::test]
+async fn security_events_list_command_passes_the_tier_gate_without_panicking() {
+    // The two security-event shims were the only doors the audit port left
+    // without a tier-gate case here: the tablet-side coverage for them lived in
+    // `audit_security_events_tests.rs`, whose subject was the tablet bodies that
+    // moved to `oz_bridge::audit`. Its replacement covers the bridge; this is
+    // the shim's own fourth move, which the bridge cannot test.
+    let app = app_for("premium");
+    let page = list_security_events_scoped("tok".into(), security_page_args(), app.state()).await;
+    assert!(page.is_ok(), "{:?}", page.err());
+    assert_eq!(page.unwrap().total, 0);
+}
+
+#[tokio::test]
+async fn security_events_export_command_passes_the_tier_gate_without_panicking() {
+    let app = app_for("premium");
+    let exported = export_security_events_scoped(
+        "tok".into(),
+        ExportSecurityEventsArgs {
+            actor: None,
+            date_from: None,
+            date_to: None,
+        },
+        app.state(),
+    )
+    .await;
+    assert!(exported.is_ok(), "{:?}", exported.err());
+}
+
+#[tokio::test]
+async fn security_events_page_denies_a_free_tier_session() {
+    // The read side of the same per-client invariant the list case above pins,
+    // on the security page specifically: the bridge has no below-premium case
+    // for this page (its only one is on the export), so this is the case the
+    // tablet's own suite was carrying when the bodies moved to oz_bridge::audit.
+    let app = app_for("free");
+    let err = list_security_events_scoped("tok".into(), security_page_args(), app.state())
+        .await
+        .unwrap_err();
+    match err {
+        AppError::PermissionDenied(msg) => {
+            assert!(msg.contains("Premium"), "expected the tier refusal: {msg}")
+        }
+        other => panic!("expected a Premium tier refusal, got {other:?}"),
+    }
 }
 
 #[tokio::test]
