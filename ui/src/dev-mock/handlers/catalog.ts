@@ -301,10 +301,6 @@ const catalogHandlers: Record<string, MockHandler> = {
     const { sku } = args as { sku: string };
     return MOCK_PRODUCTS.find(p => p.sku === sku) ?? null;
   },
-  'lookup_by_barcode': (args) => {
-    const { barcode } = args as { barcode: string };
-    return MOCK_PRODUCTS.find(p => p.barcode === barcode) ?? null;
-  },
   'lookup_by_barcode_scoped': (args) => {
     const { barcode } = args as { barcode: string };
     return MOCK_PRODUCTS.find(p => p.barcode === barcode) ?? null;

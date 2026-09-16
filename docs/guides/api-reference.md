@@ -523,7 +523,6 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`list_warehouse_products`** [T] — Fetch warehouse-tracked products only (excludes services).
 - **`list_warehouse_products_at_location`** [D] — Fetch inventory-tracked products with stock at a specific location.
 - **`list_warehouse_products_scoped`** [T] — Session-scoped variant of `list_warehouse_products`.
-- **`lookup_by_barcode`** [T] — Look up a single product by barcode.
 - **`lookup_by_barcode_scoped`** [D+T] — Look up a product by barcode for the store resolved from a
 - **`lookup_product_by_sku`** [T] — Look up a single product by SKU.
 - **`lookup_product_by_sku_scoped`** [D+T] — Look up a product by SKU for the store resolved from a
