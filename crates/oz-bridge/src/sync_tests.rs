@@ -32,6 +32,23 @@ fn sync_settings_no_url_disabled() {
     assert_eq!(json["hasApiKey"], false);
     assert_eq!(json["enabled"], false);
 }
+// ── The probe fallback is a two-profile pair, not one debug-only test ──
+//
+// `LOCAL_DEV_SYNC_URL` (`sync.rs:172-173`) exists only under
+// `#[cfg(debug_assertions)]`, so this case CANNOT be dropped into the release
+// profile: there the fallback is deliberately absent and the same call returns
+// `None` (`sync.rs:196-209`). Asserting the debug answer in release would be a
+// guaranteed red, not a coverage win.
+//
+// What was missing was the other half. "Production must never probe a URL the
+// operator did not configure" is a security property, and until this pair
+// existed it had NO test at all — the only caller test was compiled out of
+// exactly the profile the property is about. The release twin below pins it.
+//
+// Consequence for anyone totalling a run: both profiles now carry one arm of
+// this pair, so **debug total − release total is 0**, not the 1 that
+// `sync_tests.rs` used to account for on its own. A gap of 1 now means a real
+// test is missing from one side; see `todo-open-debt-program.md:111`.
 #[cfg(debug_assertions)]
 #[test]
 fn sync_probe_falls_back_to_cloud_url_when_unconfigured() {
@@ -45,6 +62,34 @@ fn sync_probe_falls_back_to_cloud_url_when_unconfigured() {
     );
     // Explicit allow_local_fallback = false still returns None (production).
     assert_eq!(resolve_sync_probe_url(None, None, false), None);
+}
+
+/// The release arm of the pair above: an unconfigured sync resolves to
+/// NOTHING, even with the fallback flag set.
+///
+/// `allow_local_fallback` is still passed by every caller in every profile
+/// (`sync.rs:193-197`), so the property under test is that release *ignores*
+/// it rather than that the flag is absent — a caller that started honouring it
+/// in release would make this red while leaving the debug arm green.
+#[cfg(not(debug_assertions))]
+#[test]
+fn sync_probe_does_not_fall_back_to_cloud_url_in_release() {
+    assert_eq!(
+        resolve_sync_probe_url(None, None, true),
+        None,
+        "release must not probe a URL the operator did not configure"
+    );
+    assert_eq!(
+        resolve_sync_probe_url(None, Some(String::new()), true),
+        None,
+        "an empty saved URL is unconfigured, not a fallback trigger"
+    );
+    // A configured URL still wins in release — this is the behaviour that
+    // must survive the fallback being absent.
+    assert_eq!(
+        resolve_sync_probe_url(Some("https://sync.example.com".into()), None, true).as_deref(),
+        Some("https://sync.example.com")
+    );
 }
 
 #[test]
