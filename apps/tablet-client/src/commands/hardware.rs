@@ -482,6 +482,24 @@ pub async fn list_scanners_scoped(
 }
 
 /// Session-scoped variant of `start_scanner`.
+///
+/// ADR #49: the body is the bridge's. This was a byte-identical second copy of
+/// `oz_bridge::hardware::start_scanner_scoped` — same cancel-then-take, same
+/// `"no scanner registered as '{}'"` text, same `AppHandle unavailable` error
+/// for the headless case, same `poll(300)`, same 500 ms backoff, and the same
+/// four log strings and two `barcode:*` payloads. The only deltas are the ones
+/// the delegation exists to remove: the emit moves from a held `AppHandle` to
+/// `ctx.emitter` (the same `TauriEventSink` this shell installs), and the
+/// error type converts through the `From<BridgeError> for AppError` seam.
+///
+/// One delta is real and is reported rather than hidden: the bridge resolves
+/// with `ctx.resolve_scope(..)`, which opens the session's store DB, where this
+/// body used `resolve_session` and opened nothing. That is the desktop's
+/// behaviour (the desktop has delegated this door all along), so it is parity
+/// rather than a regression — but it does add a store open to every scanner
+/// start, and the scanner state it writes (`scanner_cancel`) is the same
+/// `Arc<Mutex<..>>` this shell's own `stop_scanner` reads, because
+/// `bridge_ctx()` binds `scanner_cancel: &self.scanner_cancel`.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn start_scanner_scoped(
@@ -489,78 +507,10 @@ pub async fn start_scanner_scoped(
     scanner_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    // Stop any existing scanner first.
-    {
-        let mut cancel = state.scanner_cancel.lock().await;
-        if let Some(sender) = cancel.take() {
-            let _ = sender.send(());
-        }
-    }
-
-    let driver: Arc<dyn BarcodeScanner> = state
-        .registry
-        .scanner(&scanner_id)
+    let ctx = state.bridge_ctx();
+    oz_bridge::hardware::start_scanner_scoped(&ctx, &scanner_id, &session_token)
         .await
-        .ok_or_else(|| AppError::Invalid(format!("no scanner registered as '{scanner_id}'")))?;
-
-    let app = state
-        .app
-        .clone()
-        .ok_or_else(|| AppError::Internal("AppHandle unavailable".into()))?;
-
-    let (tx, mut rx) = oneshot::channel::<()>();
-
-    tokio::spawn(async move {
-        // Attempt to connect (idempotent – a second connect is a no-op).
-        let mut scanner = match driver.connect().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
-                let _ = app.emit(
-                    "barcode:error",
-                    serde_json::json!({ "error": e.to_string() }),
-                );
-                return;
-            }
-        };
-
-        tracing::info!(scanner = %scanner_id, "barcode scanner started");
-
-        loop {
-            tokio::select! {
-                _ = &mut rx => {
-                    tracing::info!(scanner = %scanner_id, "barcode scanner stopped");
-                    break;
-                }
-                result = scanner.poll(300) => {
-                    match result {
-                        Ok(Some(barcode)) => {
-                            let payload = serde_json::json!({
-                                "code": barcode.code,
-                                "symbology": format!("{:?}", barcode.symbology),
-                            });
-                            let _ = app.emit("barcode:scanned", payload);
-                        }
-                        Ok(None) => {
-                            // Timeout — loop again.
-                        }
-                        Err(e) => {
-                            tracing::warn!(scanner = %scanner_id, error = %e, "scanner poll error");
-                            let _ = app.emit("barcode:error", serde_json::json!({ "error": e.to_string() }));
-                            // Keep trying after a brief backoff.
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Store the cancel-sender so a subsequent start_scanner or stop_scanner can shut it down.
-    state.scanner_cancel.lock().await.replace(tx);
-
-    Ok(())
+        .map_err(Into::into)
 }
 
 /// Session-scoped variant of `stop_scanner`.
