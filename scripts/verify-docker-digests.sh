@@ -7,8 +7,20 @@
 #
 # The pinning policy (see .trivyignore and Dockerfile comments) is: pin
 # immutable multi-arch index digests, refresh deliberately via a
-# dependency-update process. This gate automates the "deliberate" part —
-# a scheduled CI run alerts on drift so pins never silently rot.
+# dependency-update process. This gate automates the "deliberate" part,
+# BUT NOTHING RUNS IT — pins DO silently rot and nobody is alerted.
+#
+#   Measured 2026-09-16: the only reference to this script anywhere is
+#   .github/workflows/docker-digest-drift.yml.bak:37, and that file is a
+#   RETIRED workflow (its own header still advertises cron "0 5 * * 1",
+#   Mondays 05:00, in inert .bak text GitHub never executes). A grep of
+#   "verify-docker-digests" across scripts/check.sh, scripts/gates.json,
+#   .github/workflows/*.yml and .githooks/ returns ZERO hits: no schedule,
+#   no PR gate, no pre-commit step, no pre-push step calls this gate.
+#
+#   The one other live caller, scripts/verify-docker-all.sh:57, is itself
+#   called by nothing in those four places either — so the honest state is
+#   "manual script", not "gate". Run it by hand before refreshing a pin.
 #
 # Usage:
 #   bash scripts/verify-docker-digests.sh
