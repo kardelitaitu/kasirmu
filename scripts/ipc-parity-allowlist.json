@@ -193,20 +193,65 @@
   "_scoped_orphans_comment": "Scoped commands registered in a shell's generate_handler! that no client invokes, accepted as host-only. Each entry is a permission check that currently guards nothing, so this list is a work queue, not a clean bill of health. An entry that gains a caller fails the gate as stale. The memo authoring entries (create/publish/list_authored) are NOT host-only orphans \u2014 the authoring screen now invokes all three from the shared api (3fb745cf), so they left this list and moved to the tablet allowlist with a recorded product choice: authoring is desktop-only, following the legal-entity precedent. They return here only if tablet registration would leave them caller-less again. The four payables entries (create/list/record_payment/write_off) are the desktop-only AP authoring surface landed ahead of its UI: the Hutang screen is a later slice, so these commands currently have no caller at all (unlike memo authoring, which already has one). They leave this list when the payables UI wires them, exactly as the memo entries did. `list_security_events_scoped` left this list on 2026-09-09, when its caller landed in `ui/src/api/audit.ts` — it was never host-only, just early, and the exit condition recorded here is the one it met. It is NOT clean: the same command now sits under `dev_mock` because the browser mock still has no handler. Moving between these two lists is the honest bookkeeping; disappearing from both is not the same claim.",
   "_dev_mock_comment": "UI command strings that no handler anywhere under ui/src/dev-mock can answer -- the gate walks that whole tree since cb0175ce26 and reads tauri-api.ts as only its router, so a name listed here has no handler in tauri-api.ts OR in handlers/<domain>.ts and no unscoped twin for the alias rule (core/mockDispatcher.ts) to reach, so invoke() resolves to null in browser dev preview. That silent null is the R36-02 failure mode the mock itself warns about, so every entry here is recorded debt, not a clean pass. Entries appear when a slice adds a UI caller while dev-mock -- a hot file owned by another stream -- has no handler yet; the gap is recorded rather than editing that file. An entry fails the gate as stale the moment a handler appears, which is what makes the list self-clearing. list_role_holders_scoped was the first entry here — added 2026-09-08 with the role-holders slice, when the command was registered and gated (staff:read) in both shells with a live caller and no mock — and cleared 2026-09-09 once dev-mock gained its handler. It is the only entry that has ever self-cleared, which is the point of the staleness check: an entry that outlives its gap makes the gate lie in the other direction. list_security_events_scoped joined 2026-09-09 with the audit security-events UI half, and is the SAME command moving lists rather than new debt: it left scoped_orphans the day its caller landed, so the remaining gap is only the browser mock. Note what its null resolved to there, because it was not benign in the way an empty list would be — the backend refuses a Free tier outright, so a browser preview could not distinguish tier refusal from a transport failure and would always show the failure path. It cleared on 2026-09-09 with SecurityTrailScreen: the handler returns a plausible page and honors the outcome and query args, so the preview exercises the same filtering the real command does server-side. What the list still cannot see is a handler with the WRONG SHAPE. export_audit_log_scoped returned an empty string to an object DTO and mark_audit_reviewed_scoped returned null to one; get_audit_review_status_scoped was NOT a shape violation (its checkpoint/unreviewed_count pair matched AuditReviewStatusDto exactly) but was inert, hard-coding a null checkpoint and a zero count so a review could never be previewed. All three were corrected 2026-09-09 and are pinned by ui/src/__tests__/dev-mock-audit-shapes.test.ts against the Rust field names rather than against the mock. That test also caught a subtler sibling of the same class: invoke() hands a handler args?.['args'] ?? args, so a handler that reads args.args receives nothing and silently ignores every filter — list_security_events_scoped did exactly that when it was written here, under a comment claiming it honored them. A mock can therefore lie about its OUTPUT, its INPUT, or its INERTNESS, and this gate has only ever been asked about absence.",
   "dev_mock": [
-    "delete_topology_template",
-    "gateway_status",
-    "list_topology_templates",
-    "load_topology_template",
-    "local_api_mint_token_scoped",
-    "local_api_rotate_secret_scoped",
-    "local_api_set_enabled_scoped",
-    "local_api_set_port_scoped",
-    "local_api_set_store_scoped",
-    "local_api_status_scoped",
-    "preview_promoted_total_from_lines_scoped",
-    "products_clear_image_scoped",
-    "products_list_images_scoped",
-    "products_set_image_scoped",
-    "save_topology_template"
+    {
+      "name": "delete_topology_template",
+      "reason": "Deletes one per-branch diagram template from the store DB (crates/oz-bridge/src/topology/commands.rs::delete_topology_template -> template_delete, behind authorize_topology_write / TOPOLOGY_WRITE). NOT hardware- or shell-bound: dev-mock already keeps a localStorage topology slice (ui/src/dev-mock/handlers/topology.ts, handlers/topology-state.ts) with graph, apply and revision handlers, so a parallel template map is writable. LIKELY OWED rather than accepted -- no rationale recorded beyond the dev-mock hot-file rule in _dev_mock_comment. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "gateway_status",
+      "reason": "Returns the three configured/online gateway booleans computed server-side from deny-listed secret settings (crates/oz-bridge/src/settings.rs::gateway_status), read live by ui/src/frontend/shell/StatusBar.tsx through useGatewayStatus. NOT hardware-bound: the mock already stubs the same store with 'get_setting': () => null (ui/src/dev-mock/handlers/settings.ts:71), so an all-false three-entry handler is trivial. LIKELY OWED -- no recorded rationale beyond the _dev_mock_comment hot-file rule. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "list_topology_templates",
+      "reason": "Names a branch's saved templates, sorted (crates/oz-bridge/src/topology/commands.rs::list_topology_templates -> template_list; needs a session, not the write capability). NOT hardware- or shell-bound -- same localStorage topology slice already exists in dev-mock. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "load_topology_template",
+      "reason": "Loads one template payload, None when absent or unreadable (crates/oz-bridge/src/topology/commands.rs::load_topology_template -> template_load). NOT hardware- or shell-bound -- dev-mock already models the topology graph it returns. LIKELY OWED; see delete_topology_template. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "local_api_mint_token_scoped",
+      "reason": "Signs a long-lived JWT with the per-install secret read or created on the global DB (apps/desktop-client/src/commands/local_api.rs::local_api_mint_token_scoped -> local_api::load_or_create_secret + local_api::mint_token). ACCEPTED as structurally unmockable: the secret is deny-listed and deliberately never crosses IPC, so a browser mock has no key to sign with and its token would validate against nothing."
+    },
+    {
+      "name": "local_api_rotate_secret_scoped",
+      "reason": "Replaces the per-install signing secret, immediately invalidating every minted token and changing the operator X-Admin-Key, restarting a running server on the same port (apps/desktop-client/src/commands/local_api.rs::local_api_rotate_secret_scoped -> run_rotate_secret). ACCEPTED: destructive device-secret mutation whose value the module doc states never crosses the IPC boundary -- nothing faithful for a mock to return."
+    },
+    {
+      "name": "local_api_set_enabled_scoped",
+      "reason": "Enable binds 127.0.0.1:<port> against the primary store's database and persists local_api.enabled across restarts; a port conflict errors and leaves the setting off (apps/desktop-client/src/commands/local_api.rs::local_api_set_enabled_scoped -> run_set_enabled). ACCEPTED: process-bound -- a browser preview owns no server process to start or stop."
+    },
+    {
+      "name": "local_api_set_port_scoped",
+      "reason": "Persists a new listen port and restarts the running handle on it, the failed restart leaving the new port persisted (apps/desktop-client/src/commands/local_api.rs::local_api_set_port_scoped -> run_set_port). ACCEPTED: process-bound -- the port means nothing without the loopback listener this preview does not run."
+    },
+    {
+      "name": "local_api_set_store_scoped",
+      "reason": "Chooses which store the local API serves (empty resets to locations.is_primary) and restarts a running server against that store's own connection via open_api_store_connection (apps/desktop-client/src/commands/local_api.rs::local_api_set_store_scoped -> run_set_store). ACCEPTED: process- and DB-bound -- the preview has neither the server nor a second store handle."
+    },
+    {
+      "name": "local_api_status_scoped",
+      "reason": "Reports enabled/running/port built by build_status over the live server handle plus the global DB (apps/desktop-client/src/commands/local_api.rs::local_api_status_scoped), so every field describes a process the preview is not running -- the accepted reading of this entry follows its five unmockable siblings. Weakest case in the family, though: dev-mock's get_pg_sync_settings shows a statically-off shape is possible, so whether an inert enabled:false handler is owed instead is undecided. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "preview_promoted_total_from_lines_scoped",
+      "reason": "PROMO-3 preview of the engine-exact payable over caller-supplied cart lines -- cart, sale, tax (with Lua plugin overrides) and the promotion engine on a store-DB connection (crates/oz-bridge/src/pos.rs::preview_promoted_total_from_lines_scoped). Its sibling IS MOCKED: preview_promoted_total_scoped at ui/src/dev-mock/handlers/sales.ts:420 mirrors the same discount math via applyMockPromotionDiscounts, and ui/src/features/sales/PaymentModal.tsx:540 invokes this variant live, so the split is unexplained. LIKELY OWED. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "products_clear_image_scoped",
+      "reason": "Removes only the product_images DB slot assignment; the content-addressed file is left for the GC sweep (apps/desktop-client/src/commands/products_images.rs::products_clear_image_scoped). Not itself filesystem-bound, but dev-mock models no image-slot state at all -- its only image-adjacent handler is 'open_product_images_scoped': () => null (ui/src/dev-mock/handlers/catalog.ts:294) -- so a handler would clear nothing. LIKELY OWED behind that missing model. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "products_list_images_scoped",
+      "reason": "Lists a product's image assignments for slots 1..=5, ordered, which the editor calls on open (apps/desktop-client/src/commands/products_images.rs::products_list_images_scoped). Reads DB rows only, so nothing structural blocks it -- but the mock has no product_images model to list (see products_clear_image_scoped), so the gap is a missing mock data model, not an impossibility. LIKELY OWED. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "products_set_image_scoped",
+      "reason": "Full ingest pipeline on the authoring (desktop) device: reads the source file chosen through the native dialog plugin, sniffs magic bytes, enforces size/dimension caps, decodes, resizes to 512 px, encodes lossy WebP, SHA-256s it and atomically writes images/{hash16}.webp under app_cache_dir (apps/desktop-client/src/commands/products_images.rs::products_set_image_scoped -> oz_bridge::products_images::set_image_scoped with BridgeCtx::media_cache_dir). ACCEPTED: filesystem- and media-bound by design -- zero image bytes cross IPC, so the preview supplies neither the path's bytes nor the media root. Tablet registers no ingest surface at all."
+    },
+    {
+      "name": "save_topology_template",
+      "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/oz-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
+    }
   ]
 }
