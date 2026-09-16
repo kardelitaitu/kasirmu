@@ -60,6 +60,9 @@ pub struct Migration {
 pub fn run(conn: &mut Connection, migrations: &[Migration]) -> Result<(), PlatformError> {
     ensure_schema_migrations_table(conn)?;
     let applied = load_applied_with_checksums(conn)?;
+    // Before anything is applied: a database from a newer build must be refused
+    // rather than half-migrated by this one.
+    check_not_forward_migrated(&applied, migrations)?;
     for mig in migrations {
         match applied.get(mig.id) {
             Some(Some(stored)) => {
@@ -232,6 +235,73 @@ fn load_applied_ordered(conn: &Connection) -> Result<Vec<String>, PlatformError>
         ids.push(id?);
     }
     Ok(ids)
+}
+
+/// The `YYYYMMDD` prefix of a date-shaped migration id, else `None`.
+///
+/// Production ids are date-prefixed, which makes their lexicographic order the
+/// same as their chronological order -- so "later than everything I know" is
+/// answerable from the id alone. A non-date-shaped id (`001_sales.sql`, a
+/// pre-reset row, or a fixture id) has no position in that order and is
+/// therefore never read as coming from the future.
+fn date_prefix(id: &str) -> Option<&str> {
+    let digits = id.split_once('_')?.0;
+    if digits.len() == 8 && digits.bytes().all(|b| b.is_ascii_digit()) {
+        Some(digits)
+    } else {
+        None
+    }
+}
+
+/// Refuse to run against a database that a NEWER build already migrated.
+///
+/// [`run`] deliberately ignores ledger rows it does not recognise: a pre-reset
+/// dev database carries ids the registry no longer lists, and booting anyway is
+/// the documented upgrade path (see
+/// `existing_db_with_legacy_rows_upgrades_idempotently` in
+/// `crates/oz-core/src/migrations_tests.rs`). That tolerance has a second
+/// consequence. A database migrated forward by a newer build also carries only
+/// *later* ids -- ones this binary has never heard of -- and once its schema has
+/// been renamed or dropped by a migration this build cannot see, every query
+/// after startup starts failing on a table name that no longer exists. That is
+/// how a build from `0.0.38` came to panic with
+/// `seeding primary store: no such table: store_profiles` against a database the
+/// `0.0.39` build had renamed to `locations`: the runner "succeeded", because
+/// all 21 migrations it knows were already recorded, and 38 recorded names it
+/// had never seen were silently ignored.
+///
+/// The two cases are separable by the id itself, so the split is exact rather
+/// than a policy choice: a date-shaped id sorting after the newest date-shaped
+/// id in this registry cannot be history this build has lost, it belongs to a
+/// build ahead of this one. Anything older or unparseable keeps its tolerance.
+fn check_not_forward_migrated(
+    applied: &HashMap<String, Option<String>>,
+    migrations: &[Migration],
+) -> Result<(), PlatformError> {
+    // An registry with no date-shaped id (a test fixture, or a crate that embeds
+    // none) has no vantage point from which to call anything "the future"; the
+    // guard stays inert rather than reading every row as foreign.
+    let Some(newest) = migrations.iter().filter_map(|m| date_prefix(m.id)).max() else {
+        return Ok(());
+    };
+    let mut ahead: Vec<&str> = applied
+        .keys()
+        .filter(|id| date_prefix(id).is_some_and(|d| d > newest))
+        .map(|s| s.as_str())
+        .collect();
+    if ahead.is_empty() {
+        return Ok(());
+    }
+    ahead.sort_unstable();
+    let shown = ahead.iter().take(3).copied().collect::<Vec<_>>().join(", ");
+    Err(PlatformError::Internal(format!(
+        "{} recorded migration(s) are newer than this build knows (e.g. {shown}; this build's newest is \
+         {newest}_*.sql), so this database was migrated by a later release. Refusing to run: its schema may \
+         already have been renamed or dropped by migrations this binary cannot see, which surfaces later as \
+         a confusing `no such table` in whatever opens first. Boot a build at least as new as the database, \
+         or point this one at its own database file.",
+        ahead.len()
+    )))
 }
 
 /// SHA-256 hex checksum of a migration's SQL (DB-02).
@@ -1101,6 +1171,109 @@ mod tests {
             sql: "ALTER TABLE test_table ADD COLUMN name TEXT",
         },
     ];
+
+    /// A registry in production's shape: date-prefixed ids, so the guard has a
+    /// vantage point from which "newer than me" means something.
+    const DATE_REGISTRY: &[Migration] = &[Migration {
+        id: "20260101_first.sql",
+        sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY)",
+    }];
+
+    fn ledger_has(conn: &Connection, id: &str) -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            == 1
+    }
+
+    fn table_exists(conn: &Connection, name: &str) -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?1",
+            params![name],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            == 1
+    }
+
+    #[test]
+    fn a_database_migrated_by_a_newer_build_is_refused_before_anything_applies() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema_migrations_table(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (id) VALUES ('20991231_from_the_future.sql')",
+            [],
+        )
+        .unwrap();
+
+        let err = run(&mut conn, DATE_REGISTRY).unwrap_err().to_string();
+        assert!(
+            err.contains("newer than this build") && err.contains("20991231_from_the_future.sql"),
+            "unhelpful refusal: {err}"
+        );
+        // The point of checking first: nothing was applied on the way out.
+        assert!(
+            !table_exists(&conn, "test_table"),
+            "the registry's own migration ran despite the refusal"
+        );
+    }
+
+    #[test]
+    fn a_legacy_row_the_registry_no_longer_lists_still_upgrades() {
+        // The documented dev-DB path, at this level: `001_sales.sql` is not
+        // date-shaped, so it has no position in the chronology and must not be
+        // read as coming from the future.
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema_migrations_table(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (id) VALUES ('001_sales.sql')",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn, DATE_REGISTRY).unwrap();
+        assert!(
+            ledger_has(&conn, "001_sales.sql"),
+            "the legacy row was pruned"
+        );
+        assert!(table_exists(&conn, "test_table"));
+    }
+
+    #[test]
+    fn a_pruned_older_date_shaped_migration_is_tolerated() {
+        // History this build lost is not the future: an id that sorts BEFORE the
+        // newest known one cannot come from a build ahead of this one.
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema_migrations_table(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (id) VALUES ('20250101_pruned_away.sql')",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn, DATE_REGISTRY).unwrap();
+        assert!(table_exists(&conn, "test_table"));
+    }
+
+    #[test]
+    fn a_registry_with_no_date_shaped_ids_cannot_call_anything_the_future() {
+        // Guard stays inert rather than refusing everything: the `001_`/`002_`
+        // fixture corpus has no vantage point, and must not acquire one by
+        // accident. A genuinely-future row here is ignored, as before.
+        let mut conn = Connection::open_in_memory().unwrap();
+        ensure_schema_migrations_table(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (id) VALUES ('20991231_from_the_future.sql')",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn, TEST_MIGRATIONS).unwrap();
+        assert!(table_exists(&conn, "test_table"));
+    }
 
     #[test]
     fn first_run_applies_all_migrations() {
