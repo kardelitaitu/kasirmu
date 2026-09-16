@@ -33,19 +33,19 @@
     "menu": "Menu",
     "theme": "Ganti tema",
     "language": "Bahasa",
-    "homeAria": "Beranda OZ-POS",
+    "homeAria": "Beranda kasir.mu",
     "mainNav": "Navigasi utama"
   },
   "pageDesc": {
     "features": "Kasir offline-first: penjualan, shift, dan stok yang tetap berjalan tanpa koneksi sama sekali.",
     "pricing": "Lima paket — Gratis selamanya, Plus, Pro, Premium, dan Enterprise. Tahunan = 2 bulan gratis.",
-    "download": "Unduh OZ-POS untuk Windows. macOS, Linux, Android, dan iOS segera hadir.",
-    "support": "Dapatkan bantuan OZ-POS — dukungan email dan jawaban untuk pertanyaan paling umum.",
-    "login": "Masuk ke akun OZ-POS Anda hanya dengan email.",
-    "account": "Lisensi, langganan, dan informasi penagihan OZ-POS Anda.",
-    "privacy": "Bagaimana OZ-POS mengumpulkan, menggunakan, dan melindungi data Anda.",
-    "terms": "Ketentuan yang mengatur penggunaan OZ-POS Anda.",
-    "signup": "Buat akun OZ-POS Anda — buat kata sandi dan verifikasi email."
+    "download": "Unduh kasir.mu untuk Windows. macOS, Linux, Android, dan iOS segera hadir.",
+    "support": "Dapatkan bantuan kasir.mu — dukungan email dan jawaban untuk pertanyaan paling umum.",
+    "login": "Masuk ke akun kasir.mu Anda hanya dengan email.",
+    "account": "Lisensi, langganan, dan informasi penagihan kasir.mu Anda.",
+    "privacy": "Bagaimana kasir.mu mengumpulkan, menggunakan, dan melindungi data Anda.",
+    "terms": "Ketentuan yang mengatur penggunaan kasir.mu Anda.",
+    "signup": "Buat akun kasir.mu Anda — buat kata sandi dan verifikasi email."
   },
   "support": {
     "title": "Dukungan",
@@ -64,11 +64,11 @@
     "faqTitle": "Pertanyaan yang sering diajukan",
     "faq": [
       {
-        "q": "Bagaimana mulai menggunakan OZ-POS secara gratis?",
-        "a": "Unduh OZ-POS dan jalankan — paket gratis langsung aktif, tanpa pendaftaran."
+        "q": "Bagaimana mulai menggunakan kasir.mu secara gratis?",
+        "a": "Unduh kasir.mu dan jalankan — paket gratis langsung aktif, tanpa pendaftaran."
       },
       {
-        "q": "Apakah OZ-POS berfungsi tanpa internet?",
+        "q": "Apakah kasir.mu berfungsi tanpa internet?",
         "a": "Ya. Semua fitur berjalan offline dan tersinkron ke cloud saat koneksi kembali."
       },
       {
@@ -95,7 +95,7 @@
       "cards": [
         {
           "title": "Memulai",
-          "description": "Instalasi, transaksi pertama, lisensi, dan panduan harian menjalankan OZ-POS.",
+          "description": "Instalasi, transaksi pertama, lisensi, dan panduan harian menjalankan kasir.mu.",
           "cta": "Buka panduan"
         },
         {
@@ -105,7 +105,7 @@
         },
         {
           "title": "API Rust",
-          "description": "Referensi cargo doc untuk crate backend OZ-POS.",
+          "description": "Referensi cargo doc untuk crate backend kasir.mu.",
           "cta": "Jelajahi API"
         },
         {
@@ -179,9 +179,9 @@
         "description": "Catatan riwayat lengkap dan anti-manipulasi untuk setiap pembukaan laci kas, void, pembatalan, dan pergantian shift kasir."
       }
     ],
-    "comparisonTitle": "OZ-POS vs POS Cloud Konvensional",
-    "comparisonSubtitle": "Lihat mengapa arsitektur offline-first dan paket all-inclusive membuat OZ-POS unggul jauh.",
-    "comparisonOzPos": "OZ-POS",
+    "comparisonTitle": "kasir.mu vs POS Cloud Konvensional",
+    "comparisonSubtitle": "Lihat mengapa arsitektur offline-first dan paket all-inclusive membuat kasir.mu unggul jauh.",
+    "comparisonOzPos": "kasir.mu",
     "comparisonOthers": "POS Lainnya",
     "comparisonHeaderFeature": "Fitur & Kapabilitas",
     "comparisonRows": [
@@ -237,7 +237,7 @@
   "ctaBanner": {
     "title": "Mulai gratis hari ini",
     "subtitle": "Tanpa kartu kredit. Unduh dan langsung berjualan.",
-    "cta": "Unduh OZ-POS"
+    "cta": "Unduh kasir.mu"
   },
   "pricingPage": {
     "title": "Harga",
@@ -256,7 +256,7 @@
     }
   },
   "download": {
-    "title": "Unduh OZ-POS",
+    "title": "Unduh kasir.mu",
     "subtitle": "Versi 0.0.39 — gratis selamanya, tanpa pendaftaran.",
     "version": "Versi saat ini",
     "versionValue": "0.0.39",
@@ -376,7 +376,7 @@
     "terminalUnlimited": "Terminal tanpa batas",
     "terminalCount": "Termasuk 1 terminal",
     "terminalCountLive": "{count} terminal",
-    "unbindHint": "Untuk migrasi ke perangkat baru, masukkan kunci lisensi Anda ke aplikasi terminal OZ-POS yang baru.",
+    "unbindHint": "Untuk migrasi ke perangkat baru, masukkan kunci lisensi Anda ke aplikasi terminal kasir.mu yang baru.",
     "revokeDevice": "Cabut",
     "billingInvoices": "Tagihan & Kuitansi",
     "billingInvoicesHint": "Lihat kuitansi transaksi dan riwayat faktur pajak untuk akun Anda.",
@@ -456,10 +456,10 @@
     "regionHint": "Menentukan harga dan metode pembayaran"
   },
   "vertical": {
-    "positioning": "OZ-POS — kasir native QRIS dengan keandalan offline-first, harga untuk pasar Indonesia.",
-    "whyTitle": "Mengapa OZ-POS untuk bisnis Anda?",
+    "positioning": "kasir.mu — kasir native QRIS dengan keandalan offline-first, harga untuk pasar Indonesia.",
+    "whyTitle": "Mengapa kasir.mu untuk bisnis Anda?",
     "otherTitle": "Dibuat untuk jenis bisnis Anda",
-    "otherSubtitle": "OZ-POS menyesuaikan cara Anda berjualan — pilih industri Anda.",
+    "otherSubtitle": "kasir.mu menyesuaikan cara Anda berjualan — pilih industri Anda.",
     "ctaSecondary": "Unduh gratis",
     "bundleCta": "Plus + KDS — Paket Restaurant Starter",
     "kafe": {
@@ -617,7 +617,7 @@
   },
   "enterpriseTrial": {
     "title": "Trial Enterprise Mandiri",
-    "metaDesc": "Mulai trial Enterprise 30 hari OZ-POS dengan kode persetujuan Anda.",
+    "metaDesc": "Mulai trial Enterprise 30 hari kasir.mu dengan kode persetujuan Anda.",
     "subtitle": "Masukkan kode persetujuan Anda untuk memulai trial Enterprise 30 hari dengan toko, staf, dan semua jenis workspace tanpa batas.",
     "codeLabel": "Kode Persetujuan",
     "codePlaceholder": "ENT-XXXXXXXX",
@@ -625,10 +625,10 @@
     "emailPlaceholder": "anda@perusahaan.com",
     "submitButton": "Minta Trial Enterprise",
     "successTitle": "Kunci Trial Enterprise Anda Siap!",
-    "successMessage": "Salin kunci di bawah dan tempel ke aplikasi OZ-POS saat diminta untuk mengaktifkan. Trial Anda mencakup toko, staf, dan semua jenis workspace tanpa batas selama 30 hari.",
+    "successMessage": "Salin kunci di bawah dan tempel ke aplikasi kasir.mu saat diminta untuk mengaktifkan. Trial Anda mencakup toko, staf, dan semua jenis workspace tanpa batas selama 30 hari.",
     "yourKeyLabel": "Kunci Lisensi Anda",
     "copyButton": "Salin",
-    "nextSteps": "Langkah berikutnya: Buka OZ-POS, tempel kunci ini bersama email Anda, dan mulai menggunakan fitur Enterprise segera.",
-    "downloadButton": "Unduh OZ-POS"
+    "nextSteps": "Langkah berikutnya: Buka kasir.mu, tempel kunci ini bersama email Anda, dan mulai menggunakan fitur Enterprise segera.",
+    "downloadButton": "Unduh kasir.mu"
   }
 }
