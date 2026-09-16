@@ -105,6 +105,22 @@ cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
     step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet" cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
     step "test doctests" "cargo test --doc --workspace" cargo test --doc --workspace
+    # Grade the run's JUnit report, not its summary line. A retry-rescued flake is
+    # invisible to every other reader: nextest turns a genuine failure into
+    # `... passed (1 flaky)` with exit 0, and the report's OWN `failures=` attributes
+    # count that as a pass -- `<flakyFailure>` is the only place it survives. Measured
+    # 2026-09-16 on this repo's real suite: 1084 tests, `failures=0`, exit 0, over a
+    # revenue-netting assertion that had in fact failed and been bought back.
+    #
+    # Deliberately in this branch only: the `cargo test` fallback below emits no JUnit
+    # report at all, and a missing report must not be able to read as a clean one.
+    #
+    # The path is the DEFAULT profile's artifact directory. This command passes no
+    # `--profile`, so `path = "junit.xml"` in .config/nextest.toml resolves to
+    # target/nextest/default/junit.xml -- nextest resolves it relative to the profile's
+    # own dir, not the workspace root, which is why the old config value wrote a
+    # doubled path nobody read.
+    step "test workspace flake receipt (junit)" "python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml" python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml
 else
     echo -e "${YELLOW}⚠ nextest not found — falling back to cargo test (slower)${NC}"
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"

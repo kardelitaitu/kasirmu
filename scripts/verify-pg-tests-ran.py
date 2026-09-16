@@ -473,7 +473,7 @@ test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 # ever referenced the undoubled path is `.github/workflows/ci.yml.bak:433`, a
 # retired workflow GitHub does not execute.
 FLAKY_JUNIT = """<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="nextest-run" tests="2" failures="0" errors="0">
+<testsuites name="nextest-run" tests="2" failures="0" errors="0" uuid="d6d92697-be2f-4920-93fd-2fb7464403c0" timestamp="2026-09-16T12:14:24.215+07:00" time="0.024">
   <testsuite name="flake_probe" tests="2" disabled="0" errors="0" failures="0">
     <testcase name="always_passes" classname="flake_probe" time="0.024">
     </testcase>
@@ -516,7 +516,8 @@ def parse_junit(xml_text: str) -> dict:
     root = ET.fromstring(xml_text)
     rep = {
         "cases": 0, "flaky": [], "failed": [], "skipped": 0,
-        "attrs": {k: root.get(k, "?") for k in ("tests", "failures", "errors")},
+        "attrs": {k: root.get(k, "?") for k in
+                  ("tests", "failures", "errors", "timestamp", "uuid")},
     }
     for tc in root.iter("testcase"):
         rep["cases"] += 1
@@ -544,6 +545,15 @@ def grade_junit(xml_text: str, *, source: str) -> int:
     a = rep["attrs"]
     print(f"      the report's own totals: tests={a['tests']} failures={a['failures']}"
           f" errors={a['errors']}  (these count rescued flakes as passes)")
+    # Run identity, because the report path is a single mutable slot, not an archive:
+    # every `cargo nextest` invocation overwrites it, whatever the filter. A lane that
+    # ran a 38-case filtered suite at 11:40 and grades the path at 11:50 is reading
+    # 38 cases while believing it graded the workspace -- measured on 2026-09-16, when
+    # that is exactly what happened here and it produced a green with no failure in it.
+    # So the run being graded is named on the line, not implied by the path.
+    print(f"      run identity: timestamp={a['timestamp']} uuid={a['uuid']}"
+          "  -- confirm this is the run you just made (the path is overwritten by every"
+          " nextest invocation, so a stale report can otherwise read as a fresh one)")
 
     ok = True
     if rep["failed"]:
@@ -841,6 +851,20 @@ def self_test() -> int:
     expect("  ...and the rescued test is named", "flaky_on_first_attempt" in out)
     expect("  ...and the contradicting totals are printed, not hidden",
            "failures=0" in out)
+    # (9b) Run identity. The report path is a single mutable slot: every `cargo
+    #      nextest` invocation overwrites it regardless of filter, so a grade can
+    #      silently describe an older run. That happened on 2026-09-16 -- a 38-case
+    #      filtered report sat at the path where a 1084-case workspace run had been
+    #      graded, and it read as clean. The fix is not to trust the path: name the
+    #      run, in the output, so a human sees which one was graded...
+    expect("  ...and the run graded is named by uuid+timestamp, not by the path",
+           rep_flaky["attrs"]["uuid"] != "?"
+           and rep_flaky["attrs"]["timestamp"].startswith("2026-09-16T12:14:24"))
+    expect("  ...and that identity reaches the human reading the grade",
+           "run identity:" in out and "uuid=d6d92697" in out)
+    # ...and a report that carries no identity must say so rather than looking valid.
+    expect("  ...and a missing identity reads as unknown, never as blank-and-fine",
+           parse_junit(CLEAN_JUNIT)["attrs"]["uuid"] == "?")
     buf = io.StringIO()
     with redirect_stdout(buf):
         rc_jclean = grade_junit(CLEAN_JUNIT, source="<fixture>")
