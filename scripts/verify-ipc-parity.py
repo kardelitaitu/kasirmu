@@ -3202,10 +3202,16 @@ def self_test() -> int:
          == {'x/handlers/a.ts': {'dead_one', 'dead_scoped', 'alive_seed'}})
 
     # The F-006 leg's own eyes, both directions. Only the qualified attribute matched before
-    # 2026-09-16, and the tablet spells its commands with the imported short form -- so 20 of
-    # its 326 command declarations were visible and the leg printed a confident 0 unregistered
-    # fns for a shell that has 59. A pattern fix with no fixture behind it can be tightened
-    # back into blindness by anyone, which is exactly how this happened the first time.
+    # 2026-09-16, and the tablet spells its commands with the imported short form -- so a fifth
+    # of its command declarations were visible and the leg printed a confident 0 unregistered
+    # fns for a shell that had plenty. The two figures this comment used to carry in present
+    # tense (20 of 326 declarations visible, 59 unregistered fns) were a tree reading too, and
+    # the leg below prints the live pair every run: 4 unregistered fns for the tablet at
+    # 3a9637ece, 7 at 3162b97b6 an hour earlier -- re-derive with
+    #     python scripts/verify-ipc-parity.py | grep "info[tablet]:"
+    # The shape claim is the fixture's job and is unchanged: a pattern fix with no fixture
+    # behind it can be tightened back into blindness by anyone, which is exactly how this
+    # happened the first time.
     case("f006   the qualified attribute is matched",
          COMMAND_FN_RE.findall("#[tauri::command]\npub async fn list_staff(") == ['list_staff'])
     case("f006   the imported short attribute is matched as well",
