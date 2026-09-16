@@ -17,7 +17,24 @@ each with a different failure mode:
      zero-grep-count stops meaning "unused". That self-disabling is the whole
      reason this third check is safe to enforce rather than advisory.
 
-Exit 0 = clean, 1 = violations, 2 = the guard itself could not run (missing dir).
+KNOWN LIMIT -- what the orphan rule cannot see while a dynamic resolver exists.
+In that state this tool grades NOTHING about whether an asset is referenced: an
+unreferenced file that is a real vector and fits under --max-bytes walks through
+green. Rules 1 and 2 still apply, so the hole left open is "small, clean, nobody
+imports it" -- not an oversized or base64-bearing file, which those rules still
+catch. Do NOT repair the hole by adding a floor or a non-zero exit: any repo with
+a dynamic resolver would then fail every run, which is why the downgrade is a
+print problem and not a gate problem. What the fix does guarantee is that the
+closing sentence never claims the hole was checked.
+Which branch a tree takes is printed, not guessed: run the tool and look for an
+"orphan check SKIPPED" note (downgraded) or the absence of one (active); the
+closing sentence names exactly the rules that ran. Re-derive the current branch
+with `python3 -c "import importlib.util as u; s=u.spec_from_file_location('v',
+'scripts/verify-website-assets.py'); m=u.module_from_spec(s); s.loader.exec_module(m); print(len(m.find_dynamic_resolvers()))"`
+-- 0 means the orphan rule is ACTIVE on this tree.
+
+Exit 0 = clean for every rule that ran (a legitimate downgrade still exits 0),
+1 = violations, 2 = the guard itself could not run (missing dir).
 """
 
 from __future__ import annotations
@@ -90,6 +107,16 @@ def collect_referenced() -> set[str]:
     return refs
 
 
+def list_graded(items: list[str]) -> str:
+    """'a','b' -> 'a or b'; 'a','b','c' -> 'a, b, or c'. Lets the passing line
+    enumerate only the rules that actually ran."""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return " or ".join(items)
+    return ", ".join(items[:-1]) + ", or " + items[-1]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--max-bytes", type=int, default=100 * 1024,
@@ -129,6 +156,7 @@ def main() -> int:
 
     # 3: orphans, but only while the reference style is provably static.
     dyn = find_dynamic_resolvers()
+    orphan_graded = not dyn
     if dyn:
         notes.append(
             f"orphan check SKIPPED: {len(dyn)} dynamic asset resolution site(s) found "
@@ -151,7 +179,20 @@ def main() -> int:
         if problems:
             print(f"\n\033[0;31mFAIL: {len(problems)} asset problem(s)\033[0m")
         else:
-            print("  \033[0;32mOK\033[0m: no oversized, raster-in-svg, or orphaned assets")
+            # Compose the verdict from the rules that ACTUALLY RAN. When the
+            # orphan rule self-disabled, this line must not certify a negative it
+            # did not examine; the note above carries the full reason, so the tail
+            # names the gap in one clause and points at it. The sentence for a
+            # fully-graded run is unchanged from before this fix.
+            graded = ["oversized", "raster-in-svg"]
+            if orphan_graded:
+                graded.append("orphaned")
+            verdict = "no " + list_graded(graded) + " assets"
+            if not orphan_graded:
+                verdict += (
+                    " (orphans NOT assessed: a dynamic asset resolver defeats the "
+                    "grep -- see the skip note above)")
+            print(f"  \033[0;32mOK\033[0m: {verdict}")
 
     return 1 if problems else 0
 
