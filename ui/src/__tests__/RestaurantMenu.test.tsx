@@ -531,6 +531,55 @@ describe('RestaurantMenu', () => {
     });
   });
 
+  it('calls the fullscreen and theme handlers from the hamburger rows', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const hamburger = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+
+    await user.click(hamburger);
+    await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+
+    await user.click(screen.getByText('Toggle Fullscreen'));
+    expect(mockToggleFullscreen).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText('Manual')).toBeNull());
+
+    await user.click(hamburger);
+    await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+    // The theme row shows the OPPOSITE mode ("Light Mode" while dark). The
+    // mocked theme is 'light', so the row reads 'Dark Mode' here.
+    const themeBtn = Array.from(
+      document.querySelectorAll('.restaurant-hamburger-dropdown .restaurant-hamburger-item'),
+    ).find((b) => /Mode/i.test(b.textContent ?? '')) as HTMLButtonElement;
+    await user.click(themeBtn);
+    expect(mockToggleTheme).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires app:lock from the Lock Terminal row instead of logging out', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const hamburger = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+    const lockFired: Event[] = [];
+    const onLock = (e: Event) => lockFired.push(e);
+    window.addEventListener('app:lock', onLock);
+
+    try {
+      await user.click(hamburger);
+      await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+      await user.click(screen.getByText('Lock Terminal'));
+      expect(lockFired).toHaveLength(1);
+      expect(mockLogout).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('app:lock', onLock);
+    }
+  });
+
+  it('returns to the workspace picker from the back button', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Back to workspaces' }));
+    expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
+  });
+
   it('closes the hamburger menu with Escape and restores focus to its trigger', async () => {
     renderMenu();
     const user = userEvent.setup();
