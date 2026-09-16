@@ -150,12 +150,22 @@ check('scripts/check.sh has no budget step (its header claims otherwise)', clean
   shGate.out.trim() === '' ? 'no match (case-INsensitive: the step is capitalised "Bundle budget", so a case-sensitive grep reads an absent file)' : shGate.out.trim(),
   '0 -- this is the half of notes.md item 37 that dd12da524 did not close');
 
-const tabletCallers = run(['git', '--no-optional-locks', 'grep', '-n', 'bundle:check:tablet', '--', ...WIRING]);
+// This claim was INVERTED by b89747b28: the tablet budget used to have no caller, and the
+// row existed to say so. It fired the moment the leg landed, which is the whole point of
+// putting it here -- but it also over-counted, reporting 2 calls where there is 1, because
+// the second hit was this lane's own comment line naming the script inside the file that
+// calls it. A line mentioning a command is not a line running it, and that is true inside
+// code files as well as inside .md, so the row now separates the two numbers and shows the
+// surviving line rather than asking to be believed.
+const tabletHits = run(['git', '--no-optional-locks', 'grep', '-n', 'bundle:check:tablet', '--', ...WIRING]);
+const strip = (l) => l.replace(/^[^:]+:\d+:/, '');
+const allHits = tabletHits.out.trim() ? tabletHits.out.trim().split('\n').filter(Boolean) : [];
+const codeHits = allHits.filter((l) => !/^\s*(\/\/|\*|#)/.test(strip(l)));
 const tabletProse = run(['git', '--no-optional-locks', 'grep', '-l', 'bundle:check:tablet', '--', '.']);
 const proseCount = tabletProse.out.trim().split('\n').filter(Boolean).length;
-check('the tablet budget has no executable caller', cleanAbsence(tabletCallers, [0, 1]),
-  `wiring paths (${WIRING.join(', ')}): ${(tabletCallers.out.trim().split('\n').filter(Boolean).length)} call(s); whole-repo mentions: ${proseCount} -- all prose about the absence, which is why this row is path-scoped`,
-  '0 call sites -- notes.md item 38; if it drifts, repair item 38 and the note in scripts/check-font-bundle.mjs');
+check('the tablet budget is called by the runner that exists', tabletHits.ran && codeHits.length >= 1,
+  `${allHits.length} mention(s) in ${WIRING.join(', ')}, ${codeHits.length} outside comments${codeHits.length ? ` -- \`${strip(codeHits[0]).trim().replace(/\s+/g, ' ')}\`` : ''}; files repo-wide naming it: ${proseCount}`,
+  '>=1 non-comment call -- notes.md item 38, closed by b89747b28. If this drifts the leg was deleted, and the `bundle budget (tablet)` needle in scripts/gates.json has become a lie as well');
 
 const gateRows = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.find(x=>x.id==='bundle-budget');console.log(JSON.stringify({found:!!r,status:r&&r.status,runners:r&&r.runners,ci:(r&&r.ci)??'absent'}))"]);
 let gj = {};
