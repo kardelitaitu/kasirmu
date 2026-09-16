@@ -11209,3 +11209,19 @@ The Sibling's stated condition — land it, then re-dump at HEAD — executed: c
 Two lanes can now be cited as the protocol model for this checkout: claims released mid-flight when the other side is writing, frozen-guard populations updated only by re-measurement inside the commit that legitimately moved them, and a registration-invariant digest held across 54 keys' relocation by five different moves. What remains on the router is the lane's own inventory: two deferred singletons (`get_local_ip` → system, `get_low_stock_alerts` → inventory), the ~20 cross-domain patches, the two spreads, `pushKdsOrderFromCart`, and the <200-line 5.5 target.
 
 **Commit:** `55a71106d` + `ca08178ae` + `93ed08fc5` + the docs(plans) tick commit; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — Phase 3/R2 lands red-then-green: the probe and the pin now answer through the scoped gate (topology)
+
+**Context:**
+The owner ratified all four section-5 rulings ("we go with your recommendation"); the armed goal works them smallest-blast-radius first. R3/M5 had closed the same morning (`a718dd1e4`, three-becomes-four sites). This entry covers R2: the F2 probe/enforcement disagreement and the M3 scope-free pin.
+
+**Changes:**
+`4efcb0971`: `can_save_topology` takes the branch it probes (bridge + desktop shim + `ui/src/api/topology.ts` all threaded), and both the probe and `pin_topology_revision` now gate through `require_user_permission_scoped(…, branch_id, None)`; the two "global admin tool" comments that asserted the opposite policy were rewritten citing the ruling. Two-stage TDD: stage 1 wired the parameter while BOTH bodies stayed scope-free — the new `probe_and_enforcement_agree_for_a_branch_scoped_writer` failed exactly at the R2 assertion (`57 passed; 1 failed`), with the four older role-based probe assertions holding green so the delta is provably scope, not role. Stage 2 swapped the bodies: `58 passed; 0 failed; 0 ignored`.
+
+**Verification:**
+The acceptance printed at the wired state: `cargo test -p oz-pos-app --lib topology` 58/0; `cargo test -p oz-bridge topology` 314/0 (baseline exact); `verify-ipc-parity.py` OK exit 0 (names-only gate — the signature change needed no allowlist entry); `api-topology-contract` + `api-ipc-contract` + `dev-mock-stores` 63/63 (the added `branchId: undefined` key passes frozen payload pins by undefined-equality — recorded so a future wrapper change re-verifies rather than assumes it). Ticked with a REACH note: the modern screen gates client-side and never consulted the probe, so what was fixed is the registered command's ANSWER for any current or future caller — the disagreement was real, its user-visible blast radius was smaller than F2's prose implied.
+
+**What it means:**
+The plan's Phase 3 went from 5 NEEDS-RULING boxes to 5 ticked with prints in one round, and the two-store-plus-assignment fixture pattern now demonstrably lives in the DESKTOP test file — which retires the earlier "the harness cannot be built in 15 minutes" note's reach for Phase 1: the `:183` box had studied the BRIDGE file only. Next up in the goal: Phase 2/R1 (session-thread `load_topology`), then Phase 1/R4, which the fresh fixture makes materially less hypothetical.
+
+**Commit:** `4efcb0971` + plan ticks `43090bf46`; this entry rides its own docs(journal) commit -- never push without a direct user order.
