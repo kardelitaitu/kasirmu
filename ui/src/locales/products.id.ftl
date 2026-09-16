@@ -18,6 +18,9 @@ restaurant-clear-color-aria = Hapus warna
 restaurant-categories-aria = Kategori menu
 restaurant-menu-loading = Memuat menu…
 restaurant-menu-empty = Menu kosong
+restaurant-menu-no-match = Tidak ada item yang cocok dengan pencarian
+restaurant-menu-clear-search = Hapus pencarian
+restaurant-menu-retry = Coba lagi
 restaurant-size-label = Ukuran
 restaurant-sort-label = Urutkan
 # "Manual" and "A–Z" are intentionally identical to English — both are used

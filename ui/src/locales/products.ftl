@@ -19,6 +19,9 @@ restaurant-clear-color-aria = Clear color
 restaurant-categories-aria = Menu categories
 restaurant-menu-loading = Loading menu…
 restaurant-menu-empty = Menu is empty
+restaurant-menu-no-match = No items match your search
+restaurant-menu-clear-search = Clear search
+restaurant-menu-retry = Retry
 restaurant-size-label = Size
 restaurant-sort-label = Sort
 # Sort options for the restaurant menu grid. RestaurantMenu.tsx:732 builds

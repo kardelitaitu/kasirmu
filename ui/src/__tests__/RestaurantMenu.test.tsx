@@ -106,6 +106,8 @@ beforeEach(() => {
     categories: ['Makanan', 'Minuman'],
     categoryMeta: [],
     loading: false,
+    error: null,
+    reload: vi.fn(),
   });
 });
 
@@ -128,7 +130,7 @@ describe('RestaurantMenu', () => {
   });
 
   it('shows empty state', () => {
-    mockUseProducts.mockReturnValue({ products: [], categories: [], categoryMeta: [], loading: false });
+    mockUseProducts.mockReturnValue({ products: [], categories: [], categoryMeta: [], loading: false, error: null, reload: vi.fn() });
     renderMenu();
     // Real bundle value (products.ftl) now that the bundle is loaded.
     expect(screen.getByText('Menu is empty')).toBeTruthy();
@@ -655,9 +657,35 @@ describe('RestaurantMenu', () => {
   });
 
   it('shows empty state when no products match filter', () => {
-    mockUseProducts.mockReturnValue({ products: [], categories: ['Makanan'], categoryMeta: [], loading: false });
+    mockUseProducts.mockReturnValue({ products: [], categories: ['Makanan'], categoryMeta: [], loading: false, error: null, reload: vi.fn() });
     renderMenu();
     expect(screen.getByText('Menu is empty')).toBeTruthy();
+  });
+
+  it('shows the no-match state with a clear-search recovery when a filter empties the grid', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const searchbox = screen.getByRole('searchbox', { name: 'Search menu items' });
+    await user.type(searchbox, 'zzz-no-such-item');
+    await waitFor(() => expect(screen.getByText('No items match your search')).toBeTruthy());
+    // The search box's own × ("Clear search input") and the grid recovery
+    // ("Clear search") share a substring; scope to the empty-state panel.
+    const empty = screen.getByText('No items match your search').closest('.restaurant-empty')!;
+    const gridClear = empty.querySelector('.restaurant-empty-retry') as HTMLButtonElement;
+    await user.click(gridClear);
+    await waitFor(() => expect(screen.queryByText('No items match your search')).toBeNull());
+    expect(screen.getByText('Nasi Goreng')).toBeTruthy();
+  });
+
+  it('shows the fetch error with a retry action instead of an empty catalog', async () => {
+    const reload = vi.fn();
+    mockUseProducts.mockReturnValue({ products: [], categories: [], categoryMeta: [], loading: false, error: 'IPC unavailable', reload });
+    renderMenu();
+    expect(screen.getByText('IPC unavailable')).toBeTruthy();
+    expect(screen.queryByText('Menu is empty')).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it('hides out-of-stock products when marked unavailable via context menu', async () => {

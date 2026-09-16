@@ -759,8 +759,10 @@
 /* ── Empty / loading state ───────────────────────── */
 .restaurant-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
   padding: var(--space-16) var(--space-4);
   color: var(--color-fg-tertiary);
   text-align: center;
@@ -769,6 +771,30 @@
 .restaurant-empty-text {
   font-size: var(--text-base);
   font-weight: var(--font-weight-medium);
+}
+
+.restaurant-empty-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.restaurant-empty-retry:hover {
+  background: var(--color-bg-hover);
+}
+
+.restaurant-empty-retry:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 /* ── Context menu ──────────────────────────────── */

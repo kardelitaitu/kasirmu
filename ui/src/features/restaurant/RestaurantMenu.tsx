@@ -148,7 +148,7 @@ export default function RestaurantMenu({
   cartActions,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
-  const { products, categoryMeta, loading } = useProducts();
+  const { products, categoryMeta, loading, error, reload } = useProducts();
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { session } = useAuth();
   const { sessionToken } = useWorkspace();
@@ -467,7 +467,11 @@ export default function RestaurantMenu({
       {/* ── Product grid ───────────────────────────── */}
       <MenuItemGrid
         loading={loading}
+        error={error}
+        onRetry={reload}
         items={filtered}
+        hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
+        onClearFilter={() => { setSearchQuery(''); setActiveCategory('All'); }}
         pinned={pinned}
         unavailable={unavailable}
         colors={colors}
