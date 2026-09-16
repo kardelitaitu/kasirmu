@@ -211,6 +211,7 @@ fn shortfall_line_unit_price_uses_wire_currency_over_sale_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -224,6 +225,7 @@ fn shortfall_line_unit_price_falls_back_to_sale_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -236,6 +238,7 @@ fn shortfall_line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = shortfall_line_unit_price(&line_data, usd()).unwrap_err();
     assert!(
@@ -1338,6 +1341,7 @@ async fn settle_shortfall_resolution(
                 qty: 2,
                 unit_price_minor: 350,
                 unit_price_currency: None,
+                course: None,
             }],
             total_minor: 700,
             currency: "USD".into(),
@@ -1873,7 +1877,7 @@ async fn set_line_course_rejects_unknown_cart_and_line() {
 }
 
 #[tokio::test]
-async fn set_line_course_and_fire_course_reject_invalid_token() {
+async fn set_line_course_and_publish_course_fired_reject_invalid_token() {
     let conn = crate::testing::temp_conn();
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
@@ -1889,30 +1893,34 @@ async fn set_line_course_and_fire_course_reject_invalid_token() {
     .await;
     assert!(matches!(set, Err(BridgeError::InvalidSession)));
 
-    let fire = fire_course_scoped(
+    let publish = publish_course_fired_scoped(
         &bridge.ctx(),
         "bad-token",
-        FireCourseArgs {
-            cart_id: CartId::new(),
+        PublishCourseFiredArgs {
+            sale_id: "sale-1".into(),
             course_id: "main".into(),
+            display_number: None,
+            items: vec![],
         },
     )
     .await;
-    assert!(matches!(fire, Err(BridgeError::InvalidSession)));
+    assert!(matches!(publish, Err(BridgeError::InvalidSession)));
 }
 
 #[tokio::test]
-async fn fire_course_rejects_unknown_cart_and_empty_course() {
+async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
     let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
 
-    let missing = fire_course_scoped(
+    let missing = publish_course_fired_scoped(
         &bridge.ctx(),
         "tok",
-        FireCourseArgs {
-            cart_id: CartId::new(),
+        PublishCourseFiredArgs {
+            sale_id: "no-such-sale".into(),
             course_id: "main".into(),
+            display_number: None,
+            items: vec![],
         },
     )
     .await;
@@ -1927,14 +1935,37 @@ async fn fire_course_rejects_unknown_cart_and_empty_course() {
     )
     .await
     .unwrap();
-    let empty = fire_course_scoped(
+    let sale_id = complete_sale_scoped(
         &bridge.ctx(),
         "tok",
-        FireCourseArgs {
+        CompleteSaleScopedArgs {
             cart_id: started.cart_id,
-            course_id: "  ".into(),
+            payment_method: "cash".into(),
+            tendered_minor: Some(500),
+            customer_id: None,
+            payment_splits: None,
+            customer_name: None,
+            serial_numbers: None,
+            base_currency: None,
+            base_total_minor: None,
+            tender_rate_millionths: None,
+            tip_minor: None,
+            service_charge_minor: None,
+            promotion_ids: None,
+            attempt_id: None,
+            tax_estimated: None,
         },
     )
-    .await;
+    .await
+    .map(|r| r.sale_id);
+    // Release profile: the settlement may be refused (missing signature row)
+    // — the empty-course rejection below does not depend on it.
+    let empty_args = PublishCourseFiredArgs {
+        sale_id: sale_id.unwrap_or_else(|_| "no-such-sale".into()),
+        course_id: "  ".into(),
+        display_number: None,
+        items: vec![],
+    };
+    let empty = publish_course_fired_scoped(&bridge.ctx(), "tok", empty_args).await;
     assert!(matches!(empty, Err(BridgeError::Invalid(_))));
 }

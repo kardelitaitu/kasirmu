@@ -33,13 +33,13 @@ use crate::state::AppState;
 pub use oz_bridge::pos::{
     AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
     CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
-    FireCourseArgs, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
-    OverrideLinePriceScopedArgs, PaymentKind, PreviewLineArgs, PreviewPromotedTotalArgs,
-    PreviewPromotedTotalFromLinesArgs, PreviewPromotedTotalResult, PreviewPromotionDiscount,
-    SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs, SetLineCourseArgs,
-    StartSaleArgs, StartSaleResult, default_bill_type, resolve_runtime_stock_target,
-    resolve_runtime_stock_targets, runtime_stock_target_instances, shortfall_line_unit_price,
-    stamp_attempt_split_keys, tax_scope_now,
+    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs,
+    PaymentKind, PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
+    PreviewPromotedTotalResult, PreviewPromotionDiscount, PublishCourseFiredArgs,
+    PublishCourseFiredItem, SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs,
+    SetLineCourseArgs, StartSaleArgs, StartSaleResult, default_bill_type,
+    resolve_runtime_stock_target, resolve_runtime_stock_targets, runtime_stock_target_instances,
+    shortfall_line_unit_price, stamp_attempt_split_keys, tax_scope_now,
 };
 
 /// Resolve the unit price for an add_line request (FRONTEND-03) with the
@@ -130,16 +130,17 @@ pub async fn set_line_course_scoped(
         .map_err(Into::into)
 }
 
-/// Fire a restaurant course from an active cart (ADR #7).
-/// Publishes `order.course_fired` with the cart id as correlation id.
+/// Publish one fired course for a completed sale (ADR #7).
+/// Called at checkout after the KDS fan-out, once per course whose lines the
+/// waiter fired. Carries the real sale id and the ticket display number.
 #[tauri::command]
-pub async fn fire_course_scoped(
+pub async fn publish_course_fired_scoped(
     session_token: String,
-    args: FireCourseArgs,
+    args: PublishCourseFiredArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::fire_course_scoped(&ctx, &session_token, args)
+    oz_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }

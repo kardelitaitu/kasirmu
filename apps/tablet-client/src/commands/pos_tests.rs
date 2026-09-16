@@ -336,6 +336,7 @@ fn shortfall_line_unit_price_uses_wire_currency_over_sale_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -349,6 +350,7 @@ fn shortfall_line_unit_price_falls_back_to_sale_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -361,6 +363,7 @@ fn shortfall_line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = shortfall_line_unit_price(&line_data, usd()).unwrap_err();
     assert!(
@@ -837,6 +840,7 @@ fn shortfall_args(sku: &str, attempt: Option<&str>) -> CompleteSaleWithResolvedS
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         }],
         total_minor: 700,
         currency: "USD".into(),

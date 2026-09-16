@@ -30,6 +30,13 @@ export interface AddLineArgs {
    * from the cart's currency; omitted lines fall back to the cart currency.
    */
   unitPriceCurrency?: string;
+  /**
+   * Restaurant course assignment (e.g. "appetizer", "main"). Normalized
+   * backend-side (legacy "drinks" → "beverage"); omitted leaves the line
+   * unassigned. Carried on the checkout push so `sale_lines.course`
+   * reaches the KDS fan-out.
+   */
+  course?: string;
 }
 
 /** Result of adding a line item to a cart. */
@@ -279,6 +286,12 @@ export interface CartLineData {
    * back to the sale currency.
    */
   unitPriceCurrency?: string;
+  /**
+   * Restaurant course assignment, carried on the shortfall-retry
+   * reconstruction so the retried sale keeps the course the first
+   * submission pushed. Normalized backend-side like `AddLineArgs.course`.
+   */
+  course?: string;
 }
 
 export interface CompleteSaleWithResolvedShortfallsArgs {

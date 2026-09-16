@@ -543,33 +543,49 @@ pub fn run_set_line_course_unchecked(
     Ok(())
 }
 
-// ── Fire Course ────────────────────────────────────────────────────
+// ── Publish Course Fired ───────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-/// Firecourseargs.
-pub struct FireCourseArgs {
-    /// ID of the associated cart (pre-sale: no sale exists yet).
-    pub cart_id: CartId,
-    /// Restaurant course to fire (e.g. "appetizer", "main").
+/// Publishcoursefiredargs.
+pub struct PublishCourseFiredArgs {
+    /// ID of the completed sale this course belongs to.
+    pub sale_id: String,
+    /// Restaurant course that was fired (e.g. "appetizer", "main").
+    /// Normalized through `foundation::cart::normalize_course`.
     pub course_id: String,
+    /// Display number shown on the ticket (from the KDS fan-out), if any.
+    #[serde(default)]
+    pub display_number: Option<i64>,
+    /// Items in this course.
+    pub items: Vec<PublishCourseFiredItem>,
 }
 
-/// Fire a restaurant course from an active cart.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// A single item within a fired course (mirrors `CourseItem`).
+pub struct PublishCourseFiredItem {
+    /// Stock-keeping unit.
+    pub sku: String,
+    /// Quantity fired.
+    pub qty: i64,
+    /// Human-readable item name.
+    pub name: String,
+}
+
+/// Publish one fired course for a completed sale.
 ///
-/// Publishes the already-defined `order.course_fired` event (which the LAN
-/// forwarder already consumes) with the cart id as correlation id — firing
-/// happens pre-sale, so no `sale.id` exists yet and no display number has
-/// been assigned. The event is fire-and-forget (`publish_event` logs and
-/// swallows a bus failure), so a committed fire never becomes a failed
-/// response. Unassigned lines are NOT auto-included: the event carries only
-/// the lines already assigned to `course_id`. Fired-but-uncompleted state
-/// does not survive reload — the flag lives in the cart, not the database.
-/// Requires `SALES_PROCESS`.
-pub async fn fire_course_scoped(
+/// Called at checkout after the KDS fan-out, once per course whose lines the
+/// waiter fired. Carries the REAL sale id (firing publishes at checkout, not
+/// on the pre-sale cart, so no cart-id correlation is needed) and the ticket
+/// display number. The event is fire-and-forget (`publish_event` logs and
+/// swallows a bus failure), so a committed sale never becomes a failed
+/// response. Unassigned lines are NOT auto-included: the caller groups only
+/// the lines already fired for `course_id`. Requires `SALES_PROCESS`.
+pub async fn publish_course_fired_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
-    args: FireCourseArgs,
+    args: PublishCourseFiredArgs,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
@@ -578,11 +594,10 @@ pub async fn fire_course_scoped(
     let course_id = foundation::normalize_course(Some(args.course_id.as_str()))
         .ok_or_else(|| BridgeError::Invalid(format!("empty course id: {}", args.course_id)))?;
 
-    // Scope-limit the DB access so every guard (`conn`, `db`, `store`) is
-    // dropped before the publish `.await` below: tauri's `#[command]`
-    // requires the command future to be `Send`, and `MutexGuard<Connection>`
-    // is not. Only owned values (`items`) escape the block.
-    let items = {
+    // Confirm the sale exists in this store (no sale join for the consumer —
+    // the id is correlation, but a typo'd id must fail loudly, not publish
+    // an event for a sale that never happened).
+    {
         let conn = ctx
             .db_manager
             .open_store(&session.store_id)
@@ -591,36 +606,25 @@ pub async fn fire_course_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let store = Store::new(&db);
-        let cart = store
-            .load_active_cart(&args.cart_id)?
-            .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-
-        let mut items = Vec::new();
-        for line in cart.lines() {
-            if line.course.as_deref() != Some(course_id.as_str()) {
-                continue;
-            }
-            let name = store
-                .get_product(line.sku.as_str())
-                .ok()
-                .flatten()
-                .map(|p| p.product.name)
-                .unwrap_or_else(|| line.sku.as_str().to_owned());
-            items.push(CourseItem {
-                sku: line.sku.as_str().to_owned(),
-                qty: line.qty,
-                name,
-            });
-        }
-        items
-    }; // conn, db, store dropped here
+        store
+            .get_sale(&args.sale_id)?
+            .ok_or_else(|| BridgeError::Invalid(format!("sale not found: {}", args.sale_id)))?;
+    } // conn, db, store dropped before the publish `.await` (Send, see below)
 
     ctx.publish_event(&CourseFired {
-        sale_id: args.cart_id.to_string(),
+        sale_id: args.sale_id,
         store_id: Some(session.store_id.clone()),
         course_id,
-        display_number: None,
-        items,
+        display_number: args.display_number,
+        items: args
+            .items
+            .into_iter()
+            .map(|i| CourseItem {
+                sku: i.sku,
+                qty: i.qty,
+                name: i.name,
+            })
+            .collect(),
     })
     .await;
     Ok(())
@@ -1368,6 +1372,11 @@ pub struct CartLineData {
     /// `Cart::add_line` enforces it matches the sale currency; absent
     /// (legacy callers) falls back to the sale currency as before.
     pub unit_price_currency: Option<String>,
+    /// Restaurant course assignment, carried on the shortfall-retry
+    /// reconstruction so the retried sale keeps the first submission's
+    /// course. Normalized through `foundation::cart::normalize_course`.
+    #[serde(default)]
+    pub course: Option<String>,
 }
 
 /// Resolve the unit price for a reconstructed shortfall line
@@ -1803,8 +1812,9 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     let mut cart = oz_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let line =
+        let mut line =
             oz_core::CartLine::new(oz_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
+        line.set_course(line_data.course.as_deref());
         cart.add_line(line)
             .map_err(|e| BridgeError::Invalid(e.to_string()))?;
     }

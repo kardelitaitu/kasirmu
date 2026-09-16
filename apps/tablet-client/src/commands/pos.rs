@@ -49,11 +49,12 @@ use crate::state::AppState;
 pub use oz_bridge::pos::{
     AddLineArgs, AddLineResult, BILL_TYPE_OPEN_BILL, CartLineData, CompleteSaleArgs,
     CompleteSaleResult, CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs,
-    DeductionLocationInfo, FireCourseArgs, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
+    DeductionLocationInfo, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
     OverrideLinePriceScopedArgs, PreviewLineArgs, PreviewPromotedTotalArgs,
     PreviewPromotedTotalFromLinesArgs, PreviewPromotedTotalResult, PreviewPromotionDiscount,
-    SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs, SetLineCourseArgs,
-    StartSaleArgs, StartSaleResult, is_restaurant_pos_workspace,
+    PublishCourseFiredArgs, PublishCourseFiredItem, SerialNumberArg, SetCartDiscountArgs,
+    SetCartDiscountScopedArgs, SetLineCourseArgs, StartSaleArgs, StartSaleResult,
+    is_restaurant_pos_workspace,
 };
 
 /// The tax scope for a sale rung up at `location_id` right now.
@@ -369,24 +370,22 @@ pub async fn set_line_course_scoped(
     .map_err(Into::into)
 }
 
-// ── Fire Course ────────────────────────────────────────────────────
+// ── Publish Course Fired ───────────────────────────────────────────
 
-/// Fire a restaurant course from an active cart. ADR #7.
+/// Publish one fired course for a completed sale. ADR #7.
 ///
-/// Thin shell over `oz_bridge::pos::fire_course_scoped`, which resolves the
-/// session, gates on `SALES_PROCESS`, and publishes `order.course_fired`.
-/// Kept in the bridge (rather than native like the price override) because
-/// the body needs product-name resolution plus event publishing — both live
-/// behind `BridgeCtx`. The tablet kernel carries the bus, so the publish
+/// Thin shell over `oz_bridge::pos::publish_course_fired_scoped`, which
+/// resolves the session, gates on `SALES_PROCESS`, and publishes
+/// `order.course_fired`. The tablet kernel carries the bus, so the publish
 /// lands there; the LAN forward remains desktop-only (no oz-lan dep here).
 #[command]
-pub async fn fire_course_scoped(
+pub async fn publish_course_fired_scoped(
     session_token: String,
-    args: FireCourseArgs,
+    args: PublishCourseFiredArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::pos::fire_course_scoped(&ctx, &session_token, args)
+    oz_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
         .await
         .map_err(Into::into)
 }
