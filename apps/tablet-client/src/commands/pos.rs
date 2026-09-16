@@ -49,11 +49,11 @@ use crate::state::AppState;
 pub use oz_bridge::pos::{
     AddLineArgs, AddLineResult, BILL_TYPE_OPEN_BILL, CartLineData, CompleteSaleArgs,
     CompleteSaleResult, CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs,
-    DeductionLocationInfo, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
+    DeductionLocationInfo, FireCourseArgs, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
     OverrideLinePriceScopedArgs, PreviewLineArgs, PreviewPromotedTotalArgs,
     PreviewPromotedTotalFromLinesArgs, PreviewPromotedTotalResult, PreviewPromotionDiscount,
-    SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs, StartSaleArgs,
-    StartSaleResult, is_restaurant_pos_workspace,
+    SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs, SetLineCourseArgs,
+    StartSaleArgs, StartSaleResult, is_restaurant_pos_workspace,
 };
 
 /// The tax scope for a sale rung up at `location_id` right now.
@@ -337,6 +337,58 @@ pub async fn override_line_price_scoped(
 
     tracing::info!(cart_id = %args.cart_id, line_id = %args.line_id, new_price_minor = args.new_price_minor, "line price overridden (scoped)");
     Ok(())
+}
+
+// ── Set Line Course ────────────────────────────────────────────────
+
+/// Assign (or clear) the restaurant course on an active cart line. ADR #7.
+///
+/// Delegated to `oz_bridge::pos::run_set_line_course_unchecked` so the
+/// cart mutation stays in one place; the `SALES_PROCESS` gate runs here,
+/// ahead of the bridge body (same order as the price-override command).
+#[command]
+pub async fn set_line_course_scoped(
+    session_token: String,
+    args: SetLineCourseArgs,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    require_permission_for_user(
+        &store,
+        &session.user_id,
+        oz_core::permissions::SALES_PROCESS,
+    )?;
+    oz_bridge::pos::run_set_line_course_unchecked(
+        &db,
+        &args.cart_id,
+        &args.line_id,
+        args.course.as_deref(),
+    )
+    .map_err(Into::into)
+}
+
+// ── Fire Course ────────────────────────────────────────────────────
+
+/// Fire a restaurant course from an active cart. ADR #7.
+///
+/// Thin shell over `oz_bridge::pos::fire_course_scoped`, which resolves the
+/// session, gates on `SALES_PROCESS`, and publishes `order.course_fired`.
+/// Kept in the bridge (rather than native like the price override) because
+/// the body needs product-name resolution plus event publishing — both live
+/// behind `BridgeCtx`. The tablet kernel carries the bus, so the publish
+/// lands there; the LAN forward remains desktop-only (no oz-lan dep here).
+#[command]
+pub async fn fire_course_scoped(
+    session_token: String,
+    args: FireCourseArgs,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::fire_course_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Get Cart Deduction Location ───────────────────────────────────────

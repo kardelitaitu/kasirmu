@@ -42,6 +42,21 @@ impl std::fmt::Display for CartId {
     }
 }
 
+/// Normalize a restaurant course identifier to the canonical KDS vocabulary
+/// (`appetizer | main | side | dessert | beverage`).
+///
+/// The legacy POS value `"drinks"` maps to `"beverage"`; an empty or
+/// whitespace-only value maps to `None` (opt-in coursing — unassigned lines
+/// stay `None` and the KDS sorts them last under "other").
+#[must_use]
+pub fn normalize_course(course: Option<&str>) -> Option<String> {
+    match course.map(str::trim) {
+        None | Some("") => None,
+        Some("drinks") => Some("beverage".to_owned()),
+        Some(c) => Some(c.to_owned()),
+    }
+}
+
 /// A single line in a cart.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CartLine {
@@ -55,6 +70,11 @@ pub struct CartLine {
     pub unit_price: Money,
     /// Optional per-line price override.
     pub overridden_price: Option<Money>,
+    /// Restaurant course assignment (e.g. "appetizer", "main").
+    /// `None` for non-restaurant lines or unassigned lines. `#[serde(default)]`
+    /// so carts persisted before this field existed still deserialize.
+    #[serde(default)]
+    pub course: Option<String>,
 }
 
 impl CartLine {
@@ -70,6 +90,7 @@ impl CartLine {
             qty,
             unit_price,
             overridden_price: None,
+            course: None,
         }
     }
 
@@ -118,6 +139,14 @@ impl CartLine {
         }
         self.overridden_price = Some(price);
         Ok(())
+    }
+
+    /// Assign (or clear) the restaurant course for this line.
+    ///
+    /// The value is normalized through [`normalize_course`]: legacy `"drinks"`
+    /// becomes `"beverage"`, and an empty value clears the assignment.
+    pub fn set_course(&mut self, course: Option<&str>) {
+        self.course = normalize_course(course);
     }
 }
 

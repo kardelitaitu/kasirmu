@@ -539,6 +539,8 @@ pub fn run() {
                 commands::health::get_local_ip,
                 commands::pos::start_sale_scoped,
                 commands::pos::add_line_scoped,
+                commands::pos::set_line_course_scoped,
+                commands::pos::fire_course_scoped,
                 commands::pos::preview_promoted_total_scoped,
                 commands::pos::preview_promoted_total_from_lines_scoped,
                 commands::pos::complete_sale_scoped,

@@ -117,6 +117,7 @@ fn add_line_args_fields() {
         qty: 3,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     assert_eq!(args.qty, 3);
     assert_eq!(args.unit_price_minor, 350);
@@ -151,6 +152,7 @@ fn line_unit_price_uses_wire_currency_over_cart_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -165,6 +167,7 @@ fn line_unit_price_falls_back_to_cart_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -178,6 +181,7 @@ fn line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = line_unit_price(&args, usd()).unwrap_err();
     assert!(
@@ -411,6 +415,7 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             qty: 3,
             unit_price_minor: 1000,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1023,6 +1028,7 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1065,6 +1071,7 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             qty: 1,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1195,6 +1202,7 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1229,6 +1237,7 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
             qty: 1,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1281,6 +1290,7 @@ async fn voided_sale_does_not_satisfy_a_replay() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1374,6 +1384,7 @@ async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1423,6 +1434,7 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1457,6 +1469,7 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
             qty: 1,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1544,6 +1557,7 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1700,4 +1714,227 @@ fn complete_sale_scoped_args_accept_the_ui_wire() {
     assert_eq!(args.payment_method, "cash");
     assert_eq!(args.attempt_id.as_deref(), Some("att-1"));
     assert_eq!(args.tax_estimated, Some(false));
+}
+
+// ── Restaurant coursing: set_line_course_scoped ────────────────
+
+#[tokio::test]
+async fn set_line_course_assigns_and_clears_with_normalization() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let added = add_line_scoped(
+        &bridge.ctx(),
+        "tok",
+        AddLineArgs {
+            cart_id: started.cart_id,
+            sku: Sku::new("STEAK"),
+            qty: 1,
+            unit_price_minor: 1500,
+            unit_price_currency: None,
+            course: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("main".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course.as_deref(), Some("main"));
+    }
+
+    // Legacy "drinks" normalizes to "beverage" on the same path.
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("drinks".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course.as_deref(), Some("beverage"));
+    }
+
+    // Empty clears the assignment.
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course, None);
+    }
+}
+
+#[tokio::test]
+async fn set_line_course_rejects_unknown_cart_and_line() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let added = add_line_scoped(
+        &bridge.ctx(),
+        "tok",
+        AddLineArgs {
+            cart_id: started.cart_id,
+            sku: Sku::new("STEAK"),
+            qty: 1,
+            unit_price_minor: 1500,
+            unit_price_currency: None,
+            course: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let missing_cart = set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: CartId::new(),
+            line_id: added.line_id,
+            course: Some("main".into()),
+        },
+    )
+    .await;
+    assert!(matches!(missing_cart, Err(BridgeError::Invalid(_))));
+
+    let missing_line = set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: LineId::new(),
+            course: Some("main".into()),
+        },
+    )
+    .await;
+    assert!(matches!(missing_line, Err(BridgeError::Invalid(_))));
+}
+
+#[tokio::test]
+async fn set_line_course_and_fire_course_reject_invalid_token() {
+    let conn = crate::testing::temp_conn();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let set = set_line_course_scoped(
+        &bridge.ctx(),
+        "bad-token",
+        SetLineCourseArgs {
+            cart_id: CartId::new(),
+            line_id: LineId::new(),
+            course: Some("main".into()),
+        },
+    )
+    .await;
+    assert!(matches!(set, Err(BridgeError::InvalidSession)));
+
+    let fire = fire_course_scoped(
+        &bridge.ctx(),
+        "bad-token",
+        FireCourseArgs {
+            cart_id: CartId::new(),
+            course_id: "main".into(),
+        },
+    )
+    .await;
+    assert!(matches!(fire, Err(BridgeError::InvalidSession)));
+}
+
+#[tokio::test]
+async fn fire_course_rejects_unknown_cart_and_empty_course() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let missing = fire_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        FireCourseArgs {
+            cart_id: CartId::new(),
+            course_id: "main".into(),
+        },
+    )
+    .await;
+    assert!(matches!(missing, Err(BridgeError::Invalid(_))));
+
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let empty = fire_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        FireCourseArgs {
+            cart_id: started.cart_id,
+            course_id: "  ".into(),
+        },
+    )
+    .await;
+    assert!(matches!(empty, Err(BridgeError::Invalid(_))));
 }

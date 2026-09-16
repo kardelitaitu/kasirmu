@@ -22,7 +22,7 @@ use serde_json::Value;
 
 use foundation::Percentage;
 use oz_core::db::Store;
-use oz_core::events::{SaleCompleted, SaleCompletedLine};
+use oz_core::events::{CourseFired, CourseItem, SaleCompleted, SaleCompletedLine};
 use oz_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
 
 use crate::ctx::BridgeCtx;
@@ -300,6 +300,12 @@ pub struct AddLineArgs {
     /// `Cart::add_line` enforces it matches the cart's currency; when
     /// absent (legacy callers) the cart currency is stamped as before.
     pub unit_price_currency: Option<String>,
+    /// Restaurant course assignment at add time (e.g. "appetizer", "main").
+    /// Normalized through `foundation::cart::normalize_course` (legacy
+    /// "drinks" → "beverage"); `None` leaves the line unassigned.
+    /// Modifiers ride this same wire in a later tranche.
+    #[serde(default)]
+    pub course: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -368,7 +374,8 @@ pub async fn add_line_scoped(
         .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", args.cart_id)))?;
 
     let unit_price = line_unit_price(&args, cart.currency())?;
-    let line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    let mut line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    line.set_course(args.course.as_deref());
     let line_id = line.id;
     let line_total = line.total();
     cart.add_line(line)
@@ -464,6 +471,158 @@ pub fn run_override_line_price_unchecked(
     store.save_active_cart(&cart, None)?;
 
     tracing::info!(%cart_id, %line_id, new_price_minor, "line price overridden");
+    Ok(())
+}
+
+// ── Set Line Course ────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Setlinecourseargs.
+pub struct SetLineCourseArgs {
+    /// ID of the associated cart.
+    pub cart_id: CartId,
+    /// ID of the associated line.
+    pub line_id: LineId,
+    /// Restaurant course to assign (e.g. "appetizer", "main"); empty or
+    /// absent clears the assignment. Normalized through
+    /// `foundation::cart::normalize_course` (legacy "drinks" → "beverage").
+    #[serde(default)]
+    pub course: Option<String>,
+}
+
+/// Assign (or clear) the restaurant course on an active cart line.
+///
+/// The UI assigns course after the line exists (`assignCourse(lineId,
+/// courseId)`), so this is a dedicated command rather than an `add_line`
+/// extension. Requires `SALES_PROCESS` — the same gate as adding a line.
+pub async fn set_line_course_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: SetLineCourseArgs,
+) -> Result<(), BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    run_set_line_course_unchecked(&db, &args.cart_id, &args.line_id, args.course.as_deref())
+}
+
+/// The cart/line mutation behind set_line_course_scoped, with no permission
+/// check of its own (the gate runs in the caller, verbatim order).
+pub fn run_set_line_course_unchecked(
+    db: &rusqlite::Connection,
+    cart_id: &CartId,
+    line_id: &LineId,
+    course: Option<&str>,
+) -> Result<(), BridgeError> {
+    let store = Store::new(db);
+    let mut cart = store
+        .load_active_cart(cart_id)?
+        .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", cart_id)))?;
+
+    let assigned = {
+        let line = cart
+            .lines_mut()
+            .iter_mut()
+            .find(|l| l.id == *line_id)
+            .ok_or_else(|| BridgeError::Invalid(format!("line not found: {}", line_id)))?;
+        line.set_course(course);
+        line.course.clone()
+    };
+
+    store.save_active_cart(&cart, None)?;
+
+    tracing::info!(%cart_id, %line_id, course = ?assigned, "line course assigned");
+    Ok(())
+}
+
+// ── Fire Course ────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Firecourseargs.
+pub struct FireCourseArgs {
+    /// ID of the associated cart (pre-sale: no sale exists yet).
+    pub cart_id: CartId,
+    /// Restaurant course to fire (e.g. "appetizer", "main").
+    pub course_id: String,
+}
+
+/// Fire a restaurant course from an active cart.
+///
+/// Publishes the already-defined `order.course_fired` event (which the LAN
+/// forwarder already consumes) with the cart id as correlation id — firing
+/// happens pre-sale, so no `sale.id` exists yet and no display number has
+/// been assigned. The event is fire-and-forget (`publish_event` logs and
+/// swallows a bus failure), so a committed fire never becomes a failed
+/// response. Unassigned lines are NOT auto-included: the event carries only
+/// the lines already assigned to `course_id`. Fired-but-uncompleted state
+/// does not survive reload — the flag lives in the cart, not the database.
+/// Requires `SALES_PROCESS`.
+pub async fn fire_course_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: FireCourseArgs,
+) -> Result<(), BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+        .await?;
+
+    let course_id = foundation::normalize_course(Some(args.course_id.as_str()))
+        .ok_or_else(|| BridgeError::Invalid(format!("empty course id: {}", args.course_id)))?;
+
+    // Scope-limit the DB access so every guard (`conn`, `db`, `store`) is
+    // dropped before the publish `.await` below: tauri's `#[command]`
+    // requires the command future to be `Send`, and `MutexGuard<Connection>`
+    // is not. Only owned values (`items`) escape the block.
+    let items = {
+        let conn = ctx
+            .db_manager
+            .open_store(&session.store_id)
+            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        let cart = store
+            .load_active_cart(&args.cart_id)?
+            .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", args.cart_id)))?;
+
+        let mut items = Vec::new();
+        for line in cart.lines() {
+            if line.course.as_deref() != Some(course_id.as_str()) {
+                continue;
+            }
+            let name = store
+                .get_product(line.sku.as_str())
+                .ok()
+                .flatten()
+                .map(|p| p.product.name)
+                .unwrap_or_else(|| line.sku.as_str().to_owned());
+            items.push(CourseItem {
+                sku: line.sku.as_str().to_owned(),
+                qty: line.qty,
+                name,
+            });
+        }
+        items
+    }; // conn, db, store dropped here
+
+    ctx.publish_event(&CourseFired {
+        sale_id: args.cart_id.to_string(),
+        store_id: Some(session.store_id.clone()),
+        course_id,
+        display_number: None,
+        items,
+    })
+    .await;
     Ok(())
 }
 

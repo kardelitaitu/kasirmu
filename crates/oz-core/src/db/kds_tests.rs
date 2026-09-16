@@ -3820,3 +3820,45 @@ fn a_ticket_with_no_store_at_all_stamps_empty() {
     let id = ticket_for(&conn, None);
     assert_eq!(stamped_prefix(&conn, &id), "");
 }
+
+/// Restaurant coursing end to end: a course assigned on the cart must reach
+/// `sale_lines.course` (via `Sale::from_cart`) and then `kds_line_items.course`
+/// (via the fan-out's `course: l.course.clone()`). Until the coursing wire
+/// landed, no test drove `Sale(course: Some…)` into the fan-out — every
+/// course-aware test seeded `CreateKdsLineItemInput.course` by hand.
+#[test]
+fn complete_sale_to_kds_fanout_propagates_assigned_course() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+    seed_product(&conn, "SALAD", "Garden Salad");
+    seed_product(&conn, "SODA", "Cola");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    cart.lines_mut()[0].set_course(Some("main"));
+    cart.add_line(CartLine::new(Sku::new("SALAD"), 1, price(600)))
+        .unwrap();
+    cart.lines_mut()[1].set_course(Some("appetizer"));
+    cart.add_line(CartLine::new(Sku::new("SODA"), 1, price(300)))
+        .unwrap();
+
+    let sale = Sale::from_cart(&cart).unwrap();
+    assert_eq!(sale.lines[0].course.as_deref(), Some("main"));
+    assert_eq!(sale.lines[1].course.as_deref(), Some("appetizer"));
+    assert_eq!(sale.lines[2].course, None);
+    s.create_sale(&sale).unwrap();
+
+    let orders = s.complete_sale_to_kds(&sale.id, None).unwrap();
+    assert_eq!(orders.len(), 1, "one zone-shared ticket, got: {orders:?}");
+    let lines = s.get_kds_order_lines(&orders[0].id).unwrap();
+    assert_eq!(lines.len(), 3);
+    let by_sku: std::collections::HashMap<&str, &str> = lines
+        .iter()
+        .map(|l| (l.sku.as_str(), l.course.as_deref().unwrap_or("<none>")))
+        .collect();
+    assert_eq!(by_sku["STEAK"], "main");
+    assert_eq!(by_sku["SALAD"], "appetizer");
+    assert_eq!(by_sku["SODA"], "<none>");
+}
