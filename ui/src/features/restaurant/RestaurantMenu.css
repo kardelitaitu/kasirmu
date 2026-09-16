@@ -17,7 +17,7 @@
   box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   gap: var(--space-2);
-  transition: padding-left 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: padding-left var(--duration-300) var(--ease-out);
 }
 
 .restaurant-menu--sidebar-open {
@@ -43,7 +43,7 @@
      background keeps scrolled cards from showing through. */
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-base);
   background: var(--color-bg);
   padding-block: var(--space-1);
   margin-block: calc(var(--space-1) * -1);
@@ -104,7 +104,7 @@
   border-right: 1px solid var(--color-border);
   border-radius: 0;
   box-shadow: var(--shadow-md);
-  z-index: 100;
+  z-index: var(--z-dropdown);
   isolation: isolate;
   display: flex;
   flex-direction: column;
@@ -131,7 +131,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .restaurant-sidebar,
   .restaurant-hamburger-dropdown {
-    animation: restaurant-sidebar-jiggle-in 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: restaurant-sidebar-jiggle-in var(--duration-400) var(--ease-out) both;
   }
 
   @keyframes restaurant-sidebar-jiggle-in {
@@ -157,7 +157,7 @@
 
   .restaurant-hamburger-btn--active svg,
   .restaurant-hamburger-btn[aria-expanded="true"] svg {
-    animation: restaurant-icon-jiggle 0.35s var(--ease-out);
+    animation: restaurant-icon-jiggle var(--duration-400) var(--ease-out);
   }
 
   @keyframes restaurant-icon-jiggle {
@@ -197,6 +197,12 @@
 .restaurant-hamburger-item--sort {
   padding-left: var(--space-7);
   position: relative;
+}
+
+/* Close row: same row treatment, no extra paint — the modifier exists so the
+   class the TSX renders always has a rule (screenExtraction). */
+.restaurant-hamburger-item--close {
+  font-weight: var(--font-weight-semibold);
 }
 
 .restaurant-hamburger-label {
@@ -279,7 +285,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .restaurant-search:focus-within {
-    animation: search-pulse 0.6s var(--ease-in-out);
+    animation: search-pulse var(--duration-600) var(--ease-in-out);
   }
 
   @keyframes search-pulse {
@@ -364,7 +370,7 @@
   /* Sticky under the header: same scroll container, stacked below it. */
   position: sticky;
   top: calc(var(--space-11) + var(--space-2));
-  z-index: 9;
+  z-index: var(--z-base);
   background: var(--color-bg);
 }
 
@@ -479,7 +485,7 @@
   height: calc(var(--space-14) + var(--space-8) + var(--space-1) + var(--card-size, 0) * 14px + var(--font-size, 0) * 8px);
   transition:
     border-color var(--duration-150) var(--ease-out),
-    transform var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--duration-200) var(--ease-out),
     box-shadow var(--duration-200) var(--ease-out),
     background-color var(--duration-150) var(--ease-out);
 }
@@ -501,7 +507,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .restaurant-card--added {
-    animation: restaurant-card-added 450ms var(--ease-out);
+    animation: restaurant-card-added var(--duration-500) var(--ease-out);
   }
 
   @keyframes restaurant-card-added {
@@ -800,7 +806,7 @@
 /* ── Context menu ──────────────────────────────── */
 .restaurant-context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-overlay);
   /* Opaque panel: --color-bg-surface is a 5% alpha tint in the glass theme,
      which makes menu text blend with the cards underneath (THM-08). The
      popover token is opaque in every theme. */
