@@ -457,9 +457,6 @@ describe('settings.ts IPC contract', () => {
 
 import {
   listProducts,
-  lookupProductBySku,
-  createProduct,
-  deleteProduct,
   adjustStock,
 } from '@/api/products';
 
@@ -472,43 +469,8 @@ describe('products.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('list_products', undefined);
   });
 
-  it('lookupProductBySku invokes "lookup_product_by_sku" with sku', async () => {
-    mockInvoke.mockResolvedValue(null);
-    await lookupProductBySku('SKU-001');
-    expect(mockInvoke).toHaveBeenCalledWith('lookup_product_by_sku', { sku: 'SKU-001' });
-  });
 
-  it('createProduct invokes "create_product" with CreateProductArgs (includes userId)', async () => {
-    mockInvoke.mockResolvedValue({ sku: 'NEW' });
-    await createProduct({
-      userId: 'u1',
-      sku: 'NEW',
-      name: 'New',
-      priceMinor: 500,
-      currency: 'USD',
-      initialStock: 10,
-      taxRateIds: [],
-    });
-    expect(mockInvoke).toHaveBeenCalledWith('create_product', {
-      args: {
-        userId: 'u1',
-        sku: 'NEW',
-        name: 'New',
-        priceMinor: 500,
-        currency: 'USD',
-        initialStock: 10,
-        taxRateIds: [],
-      },
-    });
-  });
 
-  it('deleteProduct invokes "delete_product" with args(userId, sku)', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    await deleteProduct({ userId: 'u1', sku: 'OLD' });
-    expect(mockInvoke).toHaveBeenCalledWith('delete_product', {
-      args: { userId: 'u1', sku: 'OLD' },
-    });
-  });
 
   it('adjustStock invokes "adjust_stock" with AdjustStockArgs(sku, delta, reason)', async () => {
     mockInvoke.mockResolvedValue(20);
@@ -520,7 +482,7 @@ describe('products.ts IPC contract', () => {
 
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('not found'));
-    await expect(lookupProductBySku('MISSING')).rejects.toThrow('not found');
+    await expect(adjustStock({ sku: 'SKU-1', delta: 10, reason: 'restock' })).rejects.toThrow('not found');
   });
 });
 

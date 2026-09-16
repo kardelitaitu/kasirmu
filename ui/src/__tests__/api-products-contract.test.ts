@@ -6,11 +6,8 @@ vi.mock('@/utils/logged-invoke', () => ({
 }));
 
 import {
-  createProduct,
   createProductScoped,
-  updateProduct,
   updateProductScoped,
-  deleteProduct,
   deleteProductScoped,
   lookupByBarcode,
   recordProductSearchScoped,
@@ -23,21 +20,6 @@ describe('products.ts API contract', () => {
     vi.clearAllMocks();
   });
 
-  it('createProduct calls correct command', async () => {
-    const args = {
-      userId: 'u1',
-      sku: 'SKU-001',
-      name: 'Test Product',
-      priceMinor: 10000,
-      currency: 'IDR',
-      initialStock: 10,
-      taxRateIds: ['t1'],
-    };
-    mockInvoke.mockResolvedValue({ sku: 'SKU-001' });
-    const result = await createProduct(args);
-    expect(mockInvoke).toHaveBeenCalledWith('create_product', { args });
-    expect(result.sku).toBe('SKU-001');
-  });
 
   it('createProductScoped calls correct command', async () => {
     const args = {
@@ -57,12 +39,6 @@ describe('products.ts API contract', () => {
     });
   });
 
-  it('updateProduct calls correct command', async () => {
-    const args = { userId: 'u1', sku: 'SKU-001', name: 'Updated', priceMinor: 15000, currency: 'IDR', taxRateIds: ['t1'] };
-    mockInvoke.mockResolvedValue({ sku: 'SKU-001' });
-    await updateProduct(args);
-    expect(mockInvoke).toHaveBeenCalledWith('update_product', { args });
-  });
 
   it('updateProductScoped calls correct command', async () => {
     const args = { sku: 'SKU-001', name: 'Updated', priceMinor: 15000, currency: 'IDR', taxRateIds: [] };
@@ -74,11 +50,6 @@ describe('products.ts API contract', () => {
     });
   });
 
-  it('deleteProduct calls correct command', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    await deleteProduct({ userId: 'u1', sku: 'SKU-001' });
-    expect(mockInvoke).toHaveBeenCalledWith('delete_product', { args: { userId: 'u1', sku: 'SKU-001' } });
-  });
 
   it('deleteProductScoped calls correct command', async () => {
     mockInvoke.mockResolvedValue(undefined);
@@ -107,9 +78,8 @@ describe('products.ts API contract', () => {
   it('propagates errors', async () => {
     mockInvoke.mockRejectedValue(new Error('sku duplicate'));
     await expect(
-      createProduct({
-        userId: 'u1',
-        sku: 'DUP',
+      createProductScoped(TOKEN, {
+                sku: 'DUP',
         name: 'Dup',
         priceMinor: 0,
         currency: 'IDR',
@@ -121,9 +91,8 @@ describe('products.ts API contract', () => {
 
   it('passes return type through', async () => {
     mockInvoke.mockResolvedValue({ sku: 'SKU-NEW' });
-    const result = await createProduct({
-      userId: 'u1',
-      sku: 'SKU-NEW',
+    const result = await createProductScoped(TOKEN, {
+            sku: 'SKU-NEW',
       name: 'Product',
       priceMinor: 10000,
       currency: 'IDR',

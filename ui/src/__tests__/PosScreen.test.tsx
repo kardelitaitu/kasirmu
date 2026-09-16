@@ -465,7 +465,7 @@ describe('PosScreen – bundle scanning toast', () => {
     expect(screen.getByText(/Cart is empty/)).toBeInTheDocument();
   });
 
-  it('silently swallows when expandBundleItems rejects with a ScannerError via lookupProductBySku (typed error)', async () => {
+  it('silently swallows when expandBundleItems rejects with a ScannerError via lookupProductBySkuScoped (typed error)', async () => {
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
     await waitFor(() => {
