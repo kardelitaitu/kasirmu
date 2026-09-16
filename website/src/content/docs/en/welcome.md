@@ -1,14 +1,14 @@
 ---
-title: Welcome to OZ-POS
-description: What OZ-POS is and how this documentation is organized.
+title: Welcome to kasir.mu
+description: What kasir.mu is and how this documentation is organized.
 category: gettingStarted
 order: 1
 updated: "2026-08-30"
 ---
 
-## What is OZ-POS?
+## What is kasir.mu?
 
-OZ-POS is an offline-first point-of-sale platform for cafes, restaurants, and
+kasir.mu is an offline-first point-of-sale platform for cafes, restaurants, and
 retail. Every feature keeps working with no internet connection — sales,
 shifts, stock, and settings all write to the local database first, then sync
 to the cloud the moment the connection returns.
@@ -43,7 +43,7 @@ and speaks both English and Bahasa Indonesia out of the box.
 
 ## Hardware & devices
 
-OZ-POS works with the hardware a counter already has: barcode scanners,
+kasir.mu works with the hardware a counter already has: barcode scanners,
 receipt printers, cash drawers, customer displays, and NFC readers. Devices
 are managed as terminals — register them, bind them to a store and a
 workspace, and tune features per device. See [Terminals](../terminals/) and
@@ -51,14 +51,14 @@ workspace, and tune features per device. See [Terminals](../terminals/) and
 
 ## Plans & pricing
 
-OZ-POS is **free forever** to get started — one store, one register, one
+kasir.mu is **free forever** to get started — one store, one register, one
 warehouse, and 3 months of sales history. Paid plans add more stores,
 registers, and warehouses, plus QRIS payments, cloud sync, and automation.
 See [Licensing & Plans](../licensing/).
 
 ## Where to start
 
-1. [Install OZ-POS](../installation/) on Windows — the free plan starts on
+1. [Install kasir.mu](../installation/) on Windows — the free plan starts on
    first launch, no account required. Other platforms are coming soon.
 2. Complete the setup wizard — business name and default currency.
 3. [Ring up your first sale](../first-sale/) — even without internet.

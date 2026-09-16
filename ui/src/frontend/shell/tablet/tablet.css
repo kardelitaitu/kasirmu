@@ -114,7 +114,7 @@
 
 .tablet-shell h2 {
   font-size: var(--tablet-font-xl);
-  line-height: 1.25;
+  line-height: var(--leading-tight);
   margin-bottom: calc(var(--tablet-spacing) * 0.75);
 }
 
@@ -128,7 +128,7 @@
 .tablet-shell li,
 .tablet-shell label {
   font-size: var(--tablet-font-base);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 /* ── Button overrides (larger touch targets) ─────── */

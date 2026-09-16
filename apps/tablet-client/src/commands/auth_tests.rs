@@ -1211,3 +1211,64 @@ fn create_session_args_require_the_ui_wire_picker_ticket() {
         "absent ticket must fail loudly, got: {err}"
     );
 }
+
+/// The `debug_upgrade` flag is a PER-CLIENT policy, and the two shells answer it
+/// differently on purpose.
+///
+/// `crates/oz-core/src/db/audit_security.rs:369-373` says so in the shared store's own doc
+/// ("desktop's dev Free->Premium promotion records in a debug build ... and tablet passes
+/// `false` so it never mirrors the desktop divergence"). The values are therefore not drift
+/// to be fixed -- which matters because everything else in this shell is being consolidated,
+/// and a reader arriving with that mandate would collapse the two in one line and silently
+/// change what a dev tablet writes into the security trail. So the asymmetry is pinned as
+/// text on all three legs: the tablet call, the bridge call, and the store doc that gives
+/// the difference a reason. Move any one and this fails with an instruction, not a mystery.
+///
+/// What this does NOT pin, stated because the gap is real: the runtime EFFECT of the flag.
+/// That needs a validly-signed Active Free subscription row, and the only fixture that mints
+/// one lives behind the bridge's private `#[cfg(test)] mod testing`
+/// (`crates/oz-bridge/src/lib.rs:153`), unreachable from this crate. The effect is pinned
+/// there, by `staff_login_on_free_records_only_because_a_debug_build_promotes_it`. If the
+/// bridge ever exports that fixture, the assertion this one stands in for is "a verified Free
+/// tenant records nothing on the tablet path and one row on the desktop path, in a debug
+/// build" -- and not in release, where an unverifiable row fails open and both record.
+#[test]
+fn the_debug_upgrade_policy_is_per_client_by_design() {
+    let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let read = |rel: &str| {
+        std::fs::read_to_string(here.join(rel)).unwrap_or_else(|e| {
+            panic!(
+                "cannot read {rel}: {e} -- the file moved, so this pin \
+                                        would be grading nothing"
+            )
+        })
+    };
+
+    let tablet = read("src/commands/auth.rs");
+    let bridge = read("../../crates/oz-bridge/src/auth.rs");
+    let store = read("../../crates/oz-core/src/db/audit_security.rs");
+
+    assert!(
+        tablet.contains("record_security_event(event, false)"),
+        "the tablet's recorder no longer passes debug_upgrade: false. If the policies are \
+         genuinely being merged, change crates/oz-core/src/db/audit_security.rs's per-client \
+         paragraph and T5-3 in todo-refactor-oz-pos-app-agents-3.md in the same pass -- \
+         flipping one call site is not a decision about the other"
+    );
+    assert!(
+        !tablet.contains("record_security_event(event, true)"),
+        "the tablet now passes both values, so this shell no longer has the single definition \
+         its own doc comment claims (auth.rs: `pub(crate)` so staff shares one statement)"
+    );
+    assert!(
+        bridge.contains("record_security_event(event, true)"),
+        "the bridge -- the desktop's implementation -- no longer passes debug_upgrade: true, \
+         so the desktop half of the per-client policy moved and the store doc is stale"
+    );
+    assert!(
+        store.contains("tablet passes `false`"),
+        "the divergence is no longer documented in the shared code that declares it. Two \
+         call sites whose values differ and whose reason is written nowhere is the exact \
+         state this test exists to make impossible"
+    );
+}

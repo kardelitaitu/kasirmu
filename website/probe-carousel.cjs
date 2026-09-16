@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('PAGEERROR: ' + e.message));
 
-  await page.goto('https://ozpos.my.id/en/', { waitUntil: 'networkidle' });
+  await page.goto('https://kasir.mu/en/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
 
   const info = await page.evaluate(() => ({

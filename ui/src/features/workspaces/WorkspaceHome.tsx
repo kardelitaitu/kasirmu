@@ -10,6 +10,7 @@ import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
+import { ROLE_HIERARCHY, roleAtLeast } from '@/utils/role';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
@@ -68,6 +69,19 @@ function saveLastUsed(lastUsed: Record<string, number>) {
 
 // ── Workspace sort order ──────────────────────────────────────────
 
+/**
+ * How many cards a single digit keypress can reach. The handler accepts exactly
+ * `1`-`9` and maps them with `parseInt(e.key, 10) - 1`, so indices 0-8 are
+ * addressable and index 9 is not: a tenth card would have to be named by the
+ * two-character sequence "10", which arrives as two keydowns (`1` then `0`) and
+ * selects nothing. The cap is therefore the design, not an oversight -- what was
+ * wrong is the overlay label that advertised a key no handler can receive. Gate
+ * the label on this; do not renumber the cards, which would only move the lie to
+ * the last slot. Pinned by WorkspaceHome.test.tsx "advertises a digit shortcut
+ * only for the cards that digit can reach".
+ */
+const MAX_DIGIT_SHORTCUT = 9;
+
 const WS_ORDER: Record<string, number> = {
   'restaurant-pos': 1,
   'store-pos': 2,
@@ -93,19 +107,6 @@ const WS_ORDER: Record<string, number> = {
 //      honor the §B admin gate, which locks the moment the
 //      subscription leaves `active` (grace never re-opens admin
 //      features).
-
-const ROLE_HIERARCHY: Record<string, number> = {
-  owner: 5,
-  'role-owner': 5,
-  admin: 4,
-  'role-admin': 4,
-  manager: 3,
-  'role-manager': 3,
-  staff: 2,
-  'role-staff': 2,
-  auditor: 1,
-  'role-auditor': 1,
-};
 
 // (The Tools catalogue — entries, icons, groups, access policy — lives
 // in `./tools` and is imported below.)
@@ -373,10 +374,18 @@ export default function WorkspaceHome() {
 
   // ── Tools gates (todo-tools.md role/tier matrix) ─────────────
 
+  // Routed through `roleAtLeast` rather than compared inline, so this gate and
+  // the settings-page gate read ONE vocabulary instead of two with opposite
+  // defaults. The inline form was `roleLevel >= (ROLE_HIERARCHY[minimumRole] ?? 0)`
+  // — an unrecognised `minimumRole` demanded **0** and the gate FAILED OPEN,
+  // while `roleAtLeast` (role.ts:72) demands `Number.MAX_SAFE_INTEGER` for an
+  // unknown floor. Ruled FAIL CLOSED (2026-09-16): an unknown floor on an
+  // admin-tool gate must deny, not allow. Type-blocked today — `ToolRole` is
+  // 'owner' | 'admin' | 'manager' (tools.tsx:25) and all three are in the
+  // table — so this is behaviour-neutral now and removes a latent fail-open.
   const canAccessTool = useCallback(
-    (access: ToolItem['access']): boolean =>
-      roleLevel >= (ROLE_HIERARCHY[access.minimumRole] ?? 0),
-    [roleLevel],
+    (access: ToolItem['access']): boolean => roleAtLeast(roleName, access.minimumRole),
+    [roleName],
   );
 
   // C2.2/§B: capabilities + lifecycle state drive the tier and validity
@@ -851,6 +860,11 @@ export default function WorkspaceHome() {
                           </div>
                         </div>
                         <div className="workspace-card-overlay" aria-hidden="true">
+                          {/* Capped at MAX_DIGIT_SHORTCUT: a card past the ninth is real, but
+                              no single keypress can name it -- the handler maps one key
+                              character with parseInt(e.key, 10) - 1. The label is the part
+                              that was wrong, so the label stops advertising it. */}
+                          {idx < MAX_DIGIT_SHORTCUT && (
                           <span className="workspace-card-overlay-hint">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" width="12" height="12">
                               <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -861,6 +875,7 @@ export default function WorkspaceHome() {
                               <span>Press {idx + 1} to open</span>
                             </Localized>
                           </span>
+                          )}
                         </div>
                       </button>
                     );

@@ -471,6 +471,7 @@ refund-line-sku = SKU
 refund-line-qty = Qty
 refund-line-total = Total
 refund-action-refund = Refund
+refund-status-refunded = Refunded
 
 # Item Modifier Modal
 modifier-no-options = No options available
@@ -850,14 +851,6 @@ scale-weigh-add-aria = Weigh & add { $name }
 scale-weigh-added = Added { $weight }g of { $name }
 scale-target-set = { $name } selected for weighing
 scale-clear-aria = Clear weigh target
-weight-scale-aria = Weight Scale
-weight-scale-stable = Stable
-weight-scale-unstable = Unstable
-weight-scale-error = Scale error
-weight-scale-idle = —
-weight-scale-weigh-aria = Weigh
-weight-scale-weighing = Weighing…
-weight-scale-weigh = Weigh
 
 # ── Retail POS shortcut keys ───────────────────────────────────────────────
 retail-fn-quick-return = Quick Return

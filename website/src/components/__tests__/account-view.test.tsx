@@ -929,7 +929,7 @@ describe('AccountView — Devices & Invoices', () => {
       assertText(container, 'Billing & Receipts');
       assertText(container, 'Access Billing Portal & Receipts');
 
-      const mailtoInvoice = container.querySelector('a[href^="mailto:sales@ozpos.my.id"]');
+      const mailtoInvoice = container.querySelector('a[href^="mailto:sales@kasir.mu"]');
       expect(mailtoInvoice).not.toBeNull();
     } finally {
       act(() => root.unmount());
@@ -1653,7 +1653,7 @@ describe('AccountView — billing invoice mailto', () => {
     stubMe();
     const { container, root } = await renderAccount('en');
     try {
-      const mailto = container.querySelector<HTMLAnchorElement>('a[href^="mailto:sales@ozpos.my.id"]');
+      const mailto = container.querySelector<HTMLAnchorElement>('a[href^="mailto:sales@kasir.mu"]');
       expect(mailto).not.toBeNull();
       // Subject is "Invoice Request - {email}" with the email URL-encoded.
       const href = mailto!.getAttribute('href') ?? '';
@@ -1671,7 +1671,7 @@ describe('AccountView — billing invoice mailto', () => {
     stubMe();
     const { container, root } = await renderAccount('id');
     try {
-      const mailto = container.querySelector<HTMLAnchorElement>('a[href^="mailto:sales@ozpos.my.id"]');
+      const mailto = container.querySelector<HTMLAnchorElement>('a[href^="mailto:sales@kasir.mu"]');
       expect(mailto).not.toBeNull();
       expect(mailto!.textContent).toContain('Akses Portal Tagihan & Kuitansi');
     } finally {

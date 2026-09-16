@@ -112,7 +112,10 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "subscription::get_subscription_capabilities",
         "no_session_resolution",
     ),
-    ("topology::load_topology", "no_session_resolution"),
+    (
+        "topology::load_topology",
+        "resolves_session_names_no_permission",
+    ),
     (
         "topology::can_save_topology",
         "resolves_session_names_no_permission",
@@ -178,12 +181,12 @@ pub const REGISTERED_TOTAL: usize = 447;
 pub const DEBT_CEILING: usize = 69;
 
 /// Names that never resolve a session at all.
-/// 43: the deleted `rotate_encryption_key` sat in THIS bucket, so it is the one
-/// that moves. `43 + 26 = 69` still partitions `DEBT_CEILING`.
-pub const NO_SESSION_RESOLUTION: usize = 43;
+/// 42: `topology::load_topology` now resolves session (moved to class 2, mirroring
+/// `load_topology_template`). `42 + 27 = 69` still partitions `DEBT_CEILING`.
+pub const NO_SESSION_RESOLUTION: usize = 42;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 26;
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

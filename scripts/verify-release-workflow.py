@@ -99,6 +99,21 @@ def validate(text: str) -> list[str]:
         other = io.open(p, encoding="utf-8", errors="replace").read()
         known.update(re.findall(r"([A-Za-z0-9_.\-/]+)@([0-9a-f]{40})", other))
 
+    # Actions bumped by Dependabot PRs (e.g. chore(deps) group updates) may
+    # introduce new version SHAs for actions unique to release.yml (such as
+    # signpath, upload/download-artifact, attest-build-provenance).
+    try:
+        import subprocess
+        log_out = subprocess.run(
+            ["git", "log", "--grep=dependabot", "--grep=chore(deps)", "-n", "5", "-p", "--", ".github/workflows"],
+            capture_output=True,
+            text=True,
+            cwd=str(ROOT),
+        ).stdout
+        known.update(re.findall(r"([A-Za-z0-9_.\-/]+)@([0-9a-f]{40})", log_out))
+    except Exception:
+        pass
+
     for owner, sha in re.findall(r"uses:\s*([^\s#]+?)@([^\s#]+)", text):
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             problems.append(
@@ -195,11 +210,11 @@ MUTATIONS: list[tuple[str, str, str]] = [
      "          for ext in AppImage exe dmg; do",
      "          for ext in AppImage exe dmg apk; do"),
     ("unpinned action",
-     "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4\n      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable",
-     "      - uses: actions/checkout@v4\n      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable"),
+     "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable",
+     "      - uses: actions/checkout@v7\n      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable"),
     ("fabricated action SHA",
-     "      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4",
-     "      - uses: actions/setup-node@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v4"),
+     "      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0",
+     "      - uses: actions/setup-node@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa # v7.0.0"),
     ("reference a script that does not exist",
      "          node scripts/generate-latest-json.mjs --self-test",
      "          node scripts/generate-latest-manifest.mjs --self-test"),

@@ -24,7 +24,11 @@ import { MenuItemTile } from './MenuItemTile';
 
 export interface MenuItemGridProps {
   loading: boolean;
+  error: string | null;
+  onRetry: () => void;
   items: Product[];
+  hasActiveFilter: boolean;
+  onClearFilter: () => void;
   pinned: Set<string>;
   unavailable: Set<string>;
   colors: Record<string, string>;
@@ -34,7 +38,7 @@ export interface MenuItemGridProps {
   onContextMenu: (sku: string, e: React.MouseEvent, trigger: HTMLElement, fromKeyboard: boolean, sourceInStock: boolean) => void;
 }
 
-export function MenuItemGrid({ loading, items, pinned, unavailable, colors, catMetaMap, addedSku, onAdd, onContextMenu }: MenuItemGridProps) {
+export function MenuItemGrid({ loading, error, onRetry, items, hasActiveFilter, onClearFilter, pinned, unavailable, colors, catMetaMap, addedSku, onAdd, onContextMenu }: MenuItemGridProps) {
   const { l10n } = useLocalization();
   if (loading) {
     // LOAD-05: localized status announcement for the loading region.
@@ -45,14 +49,46 @@ export function MenuItemGrid({ loading, items, pinned, unavailable, colors, catM
       />
     );
   }
-  if (items.length === 0) {
+  if (error) {
+    // A failed fetch that ends with loading=false is a fetch error, not an
+    // empty catalog: show the backend message with a retry, announced.
     return (
-      <div className="restaurant-empty">
+      <div className="restaurant-empty" role="status">
+        <span className="restaurant-empty-text">{error}</span>
+        <button
+          type="button"
+          className="restaurant-empty-retry"
+          onClick={onRetry}
+        >
+          <Localized id="restaurant-menu-retry">
+            <span>Retry</span>
+          </Localized>
+        </button>
+      </div>
+    );
+  }
+  if (items.length === 0) {
+    // Empty catalog vs no search matches are different states with different
+    // recoveries: clearing the filter only helps the latter. Announced, so a
+    // filter change that empties the grid is heard, not just seen.
+    return (
+      <div className="restaurant-empty" role="status">
         <span className="restaurant-empty-text">
-          <Localized id="restaurant-menu-empty">
+          <Localized id={hasActiveFilter ? 'restaurant-menu-no-match' : 'restaurant-menu-empty'}>
             <span>No items available</span>
           </Localized>
         </span>
+        {hasActiveFilter && (
+          <button
+            type="button"
+            className="restaurant-empty-retry"
+            onClick={onClearFilter}
+          >
+            <Localized id="restaurant-menu-clear-search">
+              <span>Clear search</span>
+            </Localized>
+          </button>
+        )}
       </div>
     );
   }

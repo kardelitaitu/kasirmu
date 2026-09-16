@@ -72,7 +72,11 @@ WHAT IT CHECKS
      .githooks/commit-msg actually accepts. A mirror omitting a valid type
      forbids work the gate allows.
   5. VERSION LOCK -- every mirror must carry the current version.
-  6. TRIGGER CLAIM -- a mirror saying CI runs on push must match the workflows.
+  6. TRIGGER CLAIMS -- both directions: "CI runs on push" must match a workflow that
+     declares one, and "there is no push trigger" must match one that does not. Graded
+     per workflow (the workflow the sentence names decides), never OR-ed across them.
+     Every exemption reaches only as far as its reason: a dated record, a quoted phrase,
+     a branch FILTER, checker prose adjacent to the claim -- not the whole paragraph.
 
 Usage:
     python3 scripts/verify-agents-mirrors.py
@@ -329,16 +333,235 @@ def workflow_jobs(text: str) -> list[str]:
 
 
 def triggers_of(text: str) -> list[str]:
-    """Event names in the `on:` block."""
-    m = re.search(r"^(?:on|True):\s*$((?:^[ \t]+\S.*\n?)+)", text, re.M)
+    r"""Event names in the `on:` block, taken at the block's own indent.
+
+    REPAIRED 2026-09-14, and the repair is load-bearing. The old block pattern was
+    `^(?:on|True):\s*$((?:^[ \t]+\S.*\n?)+)`: under re.M the \s* can only land the
+    match at the END of the `on:` line, so the group -- which must begin with `^` --
+    was asked to match at a position that is not a line start, and the block branch
+    never fired. Measured on this tree's own `dev-ci.yml`, which DOES declare `push`,
+    the old function answered `[]`; `release.yml` likewise. A ground truth that
+    silently resolves to nothing is worse than none: it makes every "CI runs on push"
+    sentence false and every denial of one true, so a rule reading it can only ever
+    fire in one direction no matter how many directions it writes. Nested children are
+    now excluded by taking one indent level (the old 2-4 space scan returned the
+    `branches:` keys as if they were events).
+    """
+    m = re.search(r"^(?:on|True):[ \t]*\r?\n((?:^[ \t]+\S.*\n?)+)", text, re.M)
     if not m:
-        m2 = re.search(r"^(?:on|True):\s*(\[[^\]]*\])", text, re.M)
-        if m2:
-            return re.findall(r"[\w_]+", m2.group(1))
-        return []
+        m2 = re.search(r"^(?:on|True):[ \t]*(\[[^\]]*\])", text, re.M)
+        return re.findall(r"[\w_]+", m2.group(1)) if m2 else []
     body = m.group(1)
-    # Only the immediate children (4 or 2 spaces), not nested `on:` keys.
-    return re.findall(r"^[ \t]{2,4}([a-z_]+):?", body, re.M)
+    indents = [len(l) - len(l.lstrip()) for l in body.splitlines() if l.strip()]
+    return re.findall(r"^ {%d}([A-Za-z_][\w.-]*):" % min(indents), body, re.M)
+
+
+# ── Push-trigger claims, in BOTH directions ─────────────────────────────────
+#
+# Rule (6) used to grade one sentence shape against one OR-ed fact: "CI runs on push"
+# versus "does ANY live workflow declare push". Both halves were weak. The phrase half
+# missed the mirrors' actual wording ("a push to main therefore does run CI") and the
+# fact half could not see a per-workflow lie, so a doc denying a trigger that exists
+# read as green. Two claim kinds are now read -- an ASSERTION that a push trigger
+# exists and a DENIAL that one does -- each graded against the on: set of the workflow
+# the sentence names, or against every live workflow when it names none. A denial is
+# never excused by some other workflow's trigger.
+#
+# HISTORICAL_MARKERS (the same tuple the enumeration and skill parsers already use)
+# skips a whole line, and that exclusion is load-bearing here: the dated audit stamps
+# record "dev-ci triggers pull_request + workflow_dispatch and no push trigger" as the
+# state of the tree on the day they were written. Falsifying a point-in-time record is
+# worse than the stale sentence it carries, and a gate that punished the stamps would
+# get switched off. QUOTED_PHRASE_RE then blanks anything inside quotation marks,
+# because both mirrors legitimately DISCUSS the phrase -- they print it as the example
+# of the lie, not as a claim -- and CHECKER_PROSE_RE skips a sentence whose subject is
+# the checker rather than CI. CI_SUBJECT_RE requires the claim be attributed to CI.
+
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+CI_SUBJECT_RE = re.compile(r"\bCI\b|dev[\s_-]?ci|\bworkflows?\b|\bActions\b", re.I)
+QUOTED_PHRASE_RE = re.compile(r"\u201c[^\u201d]*\u201d|\x22[^\x22]*\x22")
+PUSH_RE = r"(?<![\w-])push(?:ing|es)?(?![\w-])"
+
+# "CI runs on push", "Dev CI is triggered by a push", "a push therefore does run CI".
+# The lookbehind keeps pre-push, run-pre-push.py and git push out of it: a hook that
+# runs before a push is not a workflow triggered by one, and the mirrors say pre-push
+# eleven times between them.
+PUSH_ASSERTION_RES = (
+    re.compile(r"(?:\bCI\b|dev[\s_-]?ci|GitHub\s+Actions|\bworkflows?)\b[^.\n]{0,90}?"
+               r"\b(?:runs?|trigger[s]?|fires?|deploys?|publish(?:es)?)\b[^.\n]{0,45}?"
+               + PUSH_RE, re.I),
+    re.compile(PUSH_RE + r"[^.\n]{0,60}?\b(?:does\s+run|will\s+run|runs?|triggers?|"
+               r"fires?|deploys?)\b[^.\n]{0,30}?(?:\bCI\b|dev[\s_-]?ci|\bworkflows?\b"
+               r"|\bpipelines?\b)", re.I),
+    re.compile(r"\b(?:is|are|was|were)\s+(?:also\s+)?triggered\s+by[^.\n]{0,25}?"
+               + PUSH_RE, re.I),
+)
+
+# "there is no push trigger", "has no push trigger at all", "CI does not run on push",
+# "a push runs nothing". Each branch names the trigger or the running of CI, because a
+# sentence saying something happens "without a push" is not a claim that the trigger is
+# absent -- "cannot be verified without a real tag push" is the first false lead the
+# looser shape gives.
+PUSH_DENIAL_RES = (
+    re.compile(r"\bno\W+(?:\w+\W+){0,4}?" + PUSH_RE + r"(?:\W+\w+){0,3}?\W*trigger",
+               re.I),
+    re.compile(r"\bhas\s+no\b[^.\n]{0,30}?" + PUSH_RE + r"[^.\n]{0,25}?trigger", re.I),
+    re.compile(r"\b(?:does|do|did)\s+not\b[^.\n]{0,35}?" + PUSH_RE
+               + r"[^.\n]{0,35}?\b(?:runs?|triggers?|fires?|deploys?)\b", re.I),
+    re.compile(r"\b(?:is|are|was|were)\s+not\s+triggered\s+by[^.\n]{0,25}?" + PUSH_RE,
+               re.I),
+    re.compile(r"\bnever\b[^.\n]{0,30}?\b(?:runs?|triggers?|fires?)\b[^.\n]{0,30}?"
+               + PUSH_RE, re.I),
+    re.compile(PUSH_RE + r"[^.\n]{0,45}?\b(?:runs?|triggers?|fires?|deploys?)\s+nothing\b",
+               re.I),
+)
+
+# A trigger FILTER is not a trigger ABSENCE: "the case that runs nothing is a push to a
+# non-main branch" stands while push: exists with branches: [main]. Naming a branch
+# qualifier is what tells the two apart, so a filtered sentence is not graded.
+BRANCH_QUALIFIER_RE = re.compile(r"non-[\s*\x60]*main", re.I)
+
+# Sentences whose subject is the checker, a mirror, a finding or the rule are meta: they
+# quote a phrasing instead of claiming the fact. Both mirrors' scope paragraphs run
+# this way, and one of them is the paragraph that describes this very check. Tested
+# against the CLAIM plus a window (CHECKER_PROSE_WINDOW) rather than the whole slice --
+# see the window's comment for why a slice-wide test inverted this guard.
+CHECKER_PROSE_RE = re.compile(
+    r"verify-agents-mirrors|says_push|any_push|\bmirrors?\b|\bchecker\b|\bfinding\w*\b"
+    r"|\bunenforced\b|\brules?\b|\bprose\b|\bpolic(?:e|es|ing)\b|\bgates?\b", re.I)
+
+# How far either side of a claim span the checker-prose exemption reaches. It used to be
+# the whole sentence, and line_sentences() hands back a SLICE OF A MARKDOWN LINE, not a
+# sentence: these mirrors carry 3,000-character paragraphs, so one occurrence of the word
+# "mirrors" anywhere in the slice exempted every CI claim inside it. That inverted the
+# guard -- a false claim could hide just by being written in the same paragraph as the word
+# "checker". A claim is meta prose only when the token is part of the claim, so the test is
+# now a window around the matched span, and 48 characters is that window: enough to cover
+# "the checker flags 'there is no push trigger'" and "this rule does not run on push", not
+# enough to reach a stray "mirrors" two hundred characters away. Measured on the shipped
+# mirrors: at 48 both stay clean, and the denial that sat invisible in .agents/AGENTS.md:41
+# is graded again.
+CHECKER_PROSE_WINDOW = 48
+
+
+def checker_prose_span(sent: str, start: int, end: int) -> bool:
+    """True when a checker-prose token sits inside the claim itself, not merely nearby.
+
+    START/END are offsets into SENT. The window is symmetric because the noun can be the
+    subject ahead of the verb ("the checker never reads a push trigger") or the object
+    after it ("a push trigger the checker does not read").
+    """
+    lo = max(0, start - CHECKER_PROSE_WINDOW)
+    hi = min(len(sent), end + CHECKER_PROSE_WINDOW)
+    return bool(CHECKER_PROSE_RE.search(sent[lo:hi]))
+
+
+def line_sentences(line: str) -> list[tuple[int, str]]:
+    """[(start offset in LINE, text)] for each sentence slice of one markdown line.
+
+    Offsets, not just text: a claim inside a quotation is found by asking whether the
+    MATCH sits inside a quoted span of the same line, which needs the position.
+    """
+    out: list[tuple[int, str]] = []
+    pos = 0
+    for m in SENTENCE_SPLIT_RE.finditer(line):
+        if line[pos:m.start()].strip():
+            out.append((pos, line[pos:m.start()]))
+        pos = m.end()
+    if line[pos:].strip():
+        out.append((pos, line[pos:]))
+    return out
+
+
+def workflow_name_aliases(name: str, text: str) -> list[str]:
+    """What a sentence can call this workflow: its file name and its own name: header."""
+    aliases = [name, name.rsplit(".", 1)[0]]
+    m = re.search(r"^name:[ \t]*(.+?)[ \t]*$", text, re.M)
+    if m:
+        aliases.append(m.group(1))
+    return [a.lower() for a in aliases if a]
+
+
+def named_workflows(sentence: str, wfs: dict[str, str]) -> list[str]:
+    """The live workflows a sentence names; empty when it names none.
+
+    Scoping is what turns the old OR into a per-workflow comparison, and the alias comes
+    from each workflow file's own name: header rather than from a list hardcoded here.
+    """
+    low = sentence.lower()
+    return [n for n, t in wfs.items()
+            if any(a in low for a in workflow_name_aliases(n, t))]
+
+
+def push_claim_findings(text: str, rel: str, wf_trigs: dict[str, list[str]],
+                        wfs: dict[str, str]) -> list[str]:
+    """Findings for false push-trigger claims in a mirror, in both directions.
+
+    An assertion fails when no workflow IN SCOPE declares push; a denial fails when any
+    workflow in scope does, because an unspecific denial is a claim about all of them.
+    Scope is the workflow the sentence names, or every live workflow when it names none,
+    and each finding prints the file name plus the event set read from its own on: block.
+    """
+    findings: list[str] = []
+    for ln, line in enumerate(text.splitlines(), 1):
+        # A dated audit stamp IS a record in its entirety: it lives on its own line inside
+        # an HTML comment and every claim in it speaks for the day it was written. That
+        # whole-line exemption is what the mirrors depend on, and it stays. What must NOT
+        # work this way is ordinary live prose, which in these mirrors runs to 3,500
+        # characters on one line -- see the per-slice test below.
+        stamped_record = line.lstrip().lower().startswith("<!--")
+        if stamped_record and any(k in line.lower() for k in HISTORICAL_MARKERS):
+            continue
+        quoted = [(m.start(), m.end()) for m in QUOTED_PHRASE_RE.finditer(line)]
+
+        def is_quoted(a: int, b: int) -> bool:
+            return any(s <= a and b <= e for s, e in quoted)
+
+        for off, sent in line_sentences(line):
+            # Dated records are exempt, but the unit has to be the claim's own slice, not
+            # the LINE: these mirrors park a whole dated paragraph on one markdown line, so
+            # a line-level test let a single "previously" standing 1,009 characters away
+            # exempt every CI claim in a 3,516-character paragraph (measured on
+            # .agents/AGENTS.md:41, which is why a false denial sat there invisibly while
+            # the identical claim in AGENTS.md:41 was caught). Same reasoning as the
+            # checker-prose window below: an exemption reaches as far as its reason does.
+            if any(marker in sent.lower() for marker in HISTORICAL_MARKERS):
+                continue
+            # Attribution is still a whole-slice test -- a claim needs a CI-ish subject
+            # somewhere in the text it sits in. The checker-prose exemption is NOT, and is
+            # applied to the matched span below (see CHECKER_PROSE_WINDOW).
+            if not CI_SUBJECT_RE.search(sent):
+                continue
+
+            # Denials are tested FIRST: "there is no push trigger" also contains the
+            # words the third assertion pattern reads (push + trigger), and grading it as
+            # an assertion would report a true sentence as a false one.
+            unquoted = lambda rx: next((m for m in rx.finditer(sent)
+                                        if not is_quoted(off + m.start(), off + m.end())), None)
+            m = next((x for x in (unquoted(rx) for rx in PUSH_DENIAL_RES) if x), None) \
+                if not BRANCH_QUALIFIER_RE.search(sent) else None
+            kind = "denies" if m else None
+            if not kind:
+                m = next((x for x in (unquoted(rx) for rx in PUSH_ASSERTION_RES) if x), None)
+                kind = "asserts" if m else None
+            if not kind:
+                continue
+            if checker_prose_span(sent, m.start(), m.end()):
+                continue
+            scope = named_workflows(sent, wfs) or list(wf_trigs)
+            has_push = [n for n in scope if "push" in wf_trigs[n]]
+            detail = ("; ".join(f"{n} on: {', '.join(wf_trigs[n]) or '(no events)'}"
+                                for n in scope) or "no live workflow found")
+            frag = m.group(0).strip()
+            if kind == "asserts" and not has_push:
+                findings.append(
+                    f"{rel}:{ln} asserts a push trigger, but no workflow in scope has one"
+                    f" -- {detail} (phrase: {frag!r})")
+            elif kind == "denies" and has_push:
+                findings.append(
+                    f"{rel}:{ln} denies a push trigger that {', '.join(has_push)} declares"
+                    f" -- {detail} (phrase: {frag!r})")
+    return findings
 
 
 def accepted_commit_types(root: Path) -> set[str]:
@@ -580,6 +803,9 @@ def scan(root: Path, head_hook_text: str | None = None,
             f"the rest are reported here, because a permanent red while another lane "
             f"is mid-edit teaches people to ignore the gate.")
     wfs = live_workflows(root)
+    # One parsed on: set per workflow, read once and reused by the trigger rule and by
+    # the GROUND TRUTH block, so what the gate compares prose against is on screen.
+    wf_trigs = {n: triggers_of(t) for n, t in wfs.items()}
     all_ci_text = "\n".join(wfs.values())
     types = accepted_commit_types(root)
     # (ordinal, name, line) for the gates an enumeration is graded against, plus the line
@@ -827,13 +1053,15 @@ def scan(root: Path, head_hook_text: str | None = None,
                 problems.append(
                     f"{rel}: documents commit type(s) the gate rejects: {sorted(extra)}")
 
-        # (6) trigger claims
-        says_push = bool(re.search(r"(?:CI|dev-ci)[^\n]{0,80}\bruns on[^\n]{0,40}push",
-                                   text, re.I))
-        any_push = any("push" in triggers_of(t) for t in wfs.values())
-        if says_push and not any_push:
-            problems.append(
-                f"{rel}: claims CI runs on push, but no live workflow has a push trigger")
+        # (6) TRIGGER CLAIMS, BOTH DIRECTIONS, per workflow. This used to read one
+        # sentence shape -- the literal verb pair "runs on" within 80 characters of CI and
+        # of push -- against one OR-ed fact (does ANY live workflow declare push). So a
+        # mirror writing the true thing in other words ("a push to main therefore does run
+        # CI") scored no match, and a mirror DENYING a trigger that every live workflow
+        # declares scored no match either: both read as silence, and silence is green. Now
+        # an assertion fails when no workflow IN SCOPE has a push trigger and a denial
+        # fails when one does, scope being the workflow the sentence itself names.
+        problems.extend(push_claim_findings(text, rel, wf_trigs, wfs))
 
     # (3) MISSING COVERAGE: a mirror asserting CI runs a job that does not exist.
     for rel in MIRRORS:
@@ -891,6 +1119,12 @@ def report(root: Path) -> int:
     for ordinal, name in steps:
         print(f"      step {ordinal:<2} {name}")
     print(f"    live workflows            : {', '.join(wfs) or '(none)'}")
+    # Per-surface visibility for the trigger rule: the set each workflow's own on: block
+    # yields is what every push claim is graded against, so a parse that silently returns
+    # nothing (the old triggers_of bug) is visible on the screen instead of only inside a
+    # finding that can no longer fire.
+    for _n, _t in wfs.items():
+        print(f"      triggers of {_n:<24}: {', '.join(triggers_of(_t)) or '(no on: block parsed)'}")
     print(f"    commit types accepted     : {sorted(accepted_commit_types(root))}")
     wc = walk_counts(root)
     # Printed only when the walk is NOT whole, which is what makes a zero walk unable to
@@ -994,10 +1228,16 @@ MUTATIONS = [
     ("phantom CI job cited",
      lambda t: t.replace("dev-ci.yml#static-gates", "dev-ci.yml#go-job", 1),
      "#go-job"),
-    ("push trigger claimed",
+    # Repointed 2026-09-14: with triggers_of() repaired, dev-ci.yml DOES declare push, so
+    # "Dev CI runs on push to main" stopped being a false claim -- a mutation that plants a
+    # true sentence cannot test anything, and the assertion direction now lives in case (16)
+    # where the fixture workflow is stripped of its push trigger. This entry keeps the
+    # denial direction honest on the tree as it stands.
+    ("push trigger falsely denied",
      lambda t: t.replace("Two workflows are live",
-                         "Dev CI runs on push to main. Two workflows are live", 1),
-     "runs on push"),
+                         "Dev CI has no push trigger in dev-ci.yml. "
+                         "Two workflows are live", 1),
+     "denies a push trigger"),
 ]
 
 # Per-mirror mutation tables. A mirror that phrases the same facts differently
@@ -1625,6 +1865,58 @@ def _self_test_cases() -> int:
                       f"expected={expect_line}, missing={wc15['missing']}, "
                       f"walked={wc15['walked']}, lines={[l.strip()[:56] for l in got]}")
                 bad += 1
+
+    # (16) ASSERTION DIRECTION against a workflow with NO push trigger. The tree as it
+    # stands has a push trigger in both live workflows, so no mirror-only mutation can make
+    # "CI runs on push" false -- which is exactly why the old single-direction rule looked
+    # covered while it graded one phrasing. Here the fixture workflow is stripped, so the
+    # claim is false because that workflow says so, not because the parser said nothing.
+    # Two guards keep this from reading as clean when it is dead: the strip must change the
+    # PARSED set (a broken triggers_of would strip nothing and still "pass"), and the
+    # finding must cite the line the plant was put on (an untouched mirror in a push-less
+    # fixture also has false claims, so a needle alone would match vacuously).
+    mirror16 = MIRRORS[0]
+    devci_rel = ".github/workflows/dev-ci.yml"
+    devci_base = read(src, devci_rel)
+    devci_stripped = re.sub(r"(?m)^  push:[ \t]*\r?\n(?:    .*\r?\n)*", "", devci_base, count=1)
+    if devci_stripped == devci_base:
+        print(f"  WRONG {mirror16:20s} push trigger stripped from the fixture workflow -- "
+              "no push: block to remove, so the case controls nothing")
+        bad += 1
+    elif "push" not in triggers_of(devci_base):
+        print(f"  WRONG {mirror16:20s} fixture dev-ci.yml parses as {triggers_of(devci_base)} "
+              "-- triggers_of() cannot see a push trigger that is on disk, so no assertion "
+              "case can be graded")
+        bad += 1
+    elif "push" in triggers_of(devci_stripped):
+        print(f"  WRONG {mirror16:20s} the strip left push in the parsed set "
+              f"{triggers_of(devci_stripped)} -- the fixture controls nothing")
+        bad += 1
+    else:
+        plant16 = ("Dev CI: a push to main therefore does run CI in dev-ci.yml.")
+        base16 = read(src, mirror16).splitlines()
+        mutated16 = "\n".join([base16[0], plant16] + base16[1:]) + "\n"
+        if mutated16 == "\n".join(base16) + "\n":
+            print(f"  WRONG {mirror16:20s} planting the assertion changed nothing")
+            bad += 1
+        else:
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                make_fixture(src, tmp)
+                io.open(tmp / devci_rel, "w", encoding="utf-8", newline="\n").write(
+                    devci_stripped)
+                io.open(tmp / mirror16, "w", encoding="utf-8", newline="\n").write(mutated16)
+                probs16 = scan(tmp)
+                hit16 = [p for p in probs16
+                         if p.startswith(f"{mirror16}:2 asserts a push trigger")]
+                if hit16:
+                    print(f"  CAUGHT  {mirror16:20s} assertion of a push trigger that the "
+                          f"named fixture workflow does not declare (parsed "
+                          f"{triggers_of(devci_stripped)} after the strip)")
+                else:
+                    print(f"  MISSED  {mirror16:20s} assertion on a push-less fixture "
+                          f"workflow -- {[p[:70] for p in probs16[:3]]}")
+                    bad += 1
 
     print(f"\n  {'self-test: all mutations caught' if not bad else f'{bad} gap(s)'}")
     return 1 if bad else 0

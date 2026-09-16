@@ -45,7 +45,7 @@ export default function SearchModal({ isOpen, onClose, locale }: Props) {
       { id: 'warehouse', title: locale === 'id' ? 'Solusi Manajemen & Sinkronisasi Gudang' : 'Solutions for Warehouse Sync & Stock Management', category: 'pages', url: `/${locale}/warehouse`, keywords: 'warehouse stock inventory 3pl transfer logistics offline' },
 
       // Documentation
-      { id: 'doc-welcome', title: locale === 'id' ? 'Pengenalan OZ-POS' : 'Welcome to OZ-POS', category: 'docs', url: `/${locale}/docs/welcome`, keywords: 'getting started overview architecture introduction' },
+      { id: 'doc-welcome', title: locale === 'id' ? 'Pengenalan kasir.mu' : 'Welcome to kasir.mu', category: 'docs', url: `/${locale}/docs/welcome`, keywords: 'getting started overview architecture introduction' },
       { id: 'doc-activation', title: locale === 'id' ? 'Aktivasi Lisensi & Terminal' : 'License & Terminal Activation', category: 'docs', url: `/${locale}/docs/activation`, keywords: 'activate license key register terminal offline token' },
       { id: 'doc-installation', title: locale === 'id' ? 'Panduan Instalasi' : 'Installation Guide', category: 'docs', url: `/${locale}/docs/installation`, keywords: 'install desktop windows linux macos build' },
       { id: 'doc-first-sale', title: locale === 'id' ? 'Membuat Transaksi Pertama' : 'Processing Your First Sale', category: 'docs', url: `/${locale}/docs/first-sale`, keywords: 'pos checkout cash card barcode print receipt' },

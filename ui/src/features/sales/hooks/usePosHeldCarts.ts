@@ -102,6 +102,10 @@ export function usePosHeldCarts({
           name: l.name,
           qty: l.qty,
           unit_price: l.unit_price,
+          // Restaurant coursing: a held bill resumes through the checkout
+          // push, so the assignment must survive the hold.
+          ...(l.courseId ? { courseId: l.courseId } : {}),
+          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
         })),
         discountPercent,
         discountLabel,
@@ -133,13 +137,17 @@ export function usePosHeldCarts({
       if (!full) return;
       const data = JSON.parse(full.cart_data);
       if (data.lines && Array.isArray(data.lines)) {
-        setLines(data.lines.map((l: { sku: string; name?: string; qty: number; unit_price: { minor_units: number; currency: string }; category?: string }) => ({
+        setLines(data.lines.map((l: { sku: string; name?: string; qty: number; unit_price: { minor_units: number; currency: string }; category?: string; courseId?: CartLine['courseId']; coursingStatus?: CartLine['coursingStatus'] }) => ({
           id: `restored-${Date.now()}-${Math.random().toString(36).slice(2)}` as LineId,
           sku: l.sku as Sku,
           name: l.name,
           category: l.category,
           qty: l.qty,
           unit_price: l.unit_price,
+          // Restaurant coursing: carried through the hold so a resumed bill
+          // keeps its assignments (validated by the CourseId type below).
+          ...(l.courseId ? { courseId: l.courseId } : {}),
+          ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
         })));
       }
       if (typeof data.discountPercent === 'number') {

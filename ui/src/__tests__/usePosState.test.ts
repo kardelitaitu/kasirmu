@@ -350,12 +350,12 @@ describe('usePosState', () => {
       act(() => { result.current.addProduct(makeProduct()); });
 
       act(() => {
-        result.current.addProduct(makeProduct(), 2, { courseId: 'drinks' });
+        result.current.addProduct(makeProduct(), 2, { courseId: 'beverage' });
       });
 
       expect(result.current.lines).toHaveLength(1);
       expect(result.current.lines[0]!.qty).toBe(3);
-      expect(result.current.lines[0]!.courseId).toBe('drinks');
+      expect(result.current.lines[0]!.courseId).toBe('beverage');
     });
 
     it('leaves the line untouched when meta is omitted (default add behavior)', () => {

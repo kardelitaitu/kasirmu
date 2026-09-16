@@ -59,46 +59,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "features::list_all_features_scoped",
         "resolves_session_names_no_permission",
     ),
-    (
-        "inventory_counts::create_stock_count_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::get_stock_count_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::list_stock_counts_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::get_count_lines_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::add_count_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::update_count_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::remove_count_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::complete_stock_count_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::update_stock_count_status_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "inventory_counts::list_stock_adjustments_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("health::ping", "no_session_resolution"),
     ("health::version", "no_session_resolution"),
     ("health::get_device_id", "no_session_resolution"),
@@ -124,61 +84,15 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "pos::get_cart_deduction_location_scoped",
         "resolves_session_names_no_permission",
     ),
-    (
-        "stock_transfers::create_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::get_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::list_stock_transfers_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::list_in_transit_transfers_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::get_stock_transfer_lines_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::add_stock_transfer_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::remove_stock_transfer_line_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::send_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::receive_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "stock_transfers::cancel_stock_transfer_scoped",
-        "resolves_session_names_no_permission",
-    ),
     ("history::list_sales", "no_session_resolution"),
     ("history::get_sale", "no_session_resolution"),
     ("history::export_daily_summary", "no_session_resolution"),
     ("history::export_sales_by_hour", "no_session_resolution"),
     ("history::export_eod_report", "no_session_resolution"),
     ("settings::get_receipt_settings", "no_session_resolution"),
-    ("settings::set_receipt_settings", "no_session_resolution"),
     ("settings::get_store_settings", "no_session_resolution"),
-    ("settings::set_store_settings", "no_session_resolution"),
     ("settings::get_credit_settings", "no_session_resolution"),
-    ("settings::set_credit_settings", "no_session_resolution"),
-    ("settings::list_credit_sales", "no_session_resolution"),
-    ("settings::settle_credit", "no_session_resolution"),
     ("settings::get_hardware_settings", "no_session_resolution"),
-    ("settings::set_hardware_settings", "no_session_resolution"),
     (
         "settings::get_user_preferences_scoped",
         "resolves_session_names_no_permission",
@@ -229,10 +143,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     (
         "hardware::list_scanners_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "hardware::open_cash_drawer_scoped",
         "resolves_session_names_no_permission",
     ),
     (
@@ -324,30 +234,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "resolves_session_names_no_permission",
     ),
     (
-        "settings::get_credit_settings_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "settings::get_hardware_settings_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "settings::get_receipt_settings_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "settings::get_setting_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "settings::get_store_settings_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "settings::list_credit_sales_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
         "sync::get_sync_settings_scoped",
         "resolves_session_names_no_permission",
     ),
@@ -363,37 +249,44 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "tables::list_tables_scoped",
         "resolves_session_names_no_permission",
     ),
-    (
-        "terminals::get_terminal_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "terminals::list_terminal_overrides_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "terminals::list_terminals_scoped",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "terminals::ping_terminal_scoped",
-        "resolves_session_names_no_permission",
-    ),
 ];
 
 /// Registered commands the sweep found today. The floor in
 /// registration_gate_tests.rs is asserted equal to this, so a regenerated ledger
 /// that disagrees with a hand-kept floor fails the build.
-pub const REGISTERED_TOTAL: usize = 318;
+pub const REGISTERED_TOTAL: usize = 319;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
-pub const DEBT_CEILING: usize = 125;
+///
+/// Lowered from 125 by the terminals F-017 pass: four `terminals::*` reads
+/// (`get_terminal_scoped`, `list_terminal_overrides_scoped`,
+/// `list_terminals_scoped`, `ping_terminal_scoped`) stopped being
+/// authenticate-then-assume when each gained the session-derived
+/// `TERMINALS_READ` gate its `oz_bridge` twin already enforced.
+///
+/// Lowered from 90 by the hardware F-017 pass: `hardware::open_cash_drawer_scoped`
+/// stopped being authenticate-then-assume when it gained the `PAYMENTS_CASH`
+/// gate its `oz_bridge::hardware` twin already enforced under the same finding
+/// number. It is the only one of the seven `hardware::*` rows with a gate to
+/// copy — the other six are ungated in the bridge too, so they stay as debt
+/// until an owner rules on what permission they should carry.
+pub const DEBT_CEILING: usize = 88;
+
+/// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
+/// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
+/// the actor the permission check asks about -- and the session-scoped twin was already
+/// registered, so once the UI stopped naming the unscoped door (`7b756b9c7`) the shell
+/// kept the one that derives identity from the session and dropped the one that took it
+/// on faith. This retires a REGISTERED command, which `scripts/retire-legacy-commands.py`
+/// refuses to do by design: it deletes unregistered leftovers, and a live door needs the
+/// call sites moved first.
 
 /// Names that never resolve a session at all.
-pub const NO_SESSION_RESOLUTION: usize = 47;
+pub const NO_SESSION_RESOLUTION: usize = 41;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 78;
+/// 47 + 41 = 88 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 47;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).
 pub const UNSOURCED: usize = 0;

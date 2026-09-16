@@ -22,7 +22,7 @@ use serde_json::Value;
 
 use foundation::Percentage;
 use oz_core::db::Store;
-use oz_core::events::{SaleCompleted, SaleCompletedLine};
+use oz_core::events::{CourseFired, CourseItem, SaleCompleted, SaleCompletedLine};
 use oz_core::{Cart, CartId, CartLine, Currency, LineId, Money, PaymentSplitArg, Sku};
 
 use crate::ctx::BridgeCtx;
@@ -300,6 +300,12 @@ pub struct AddLineArgs {
     /// `Cart::add_line` enforces it matches the cart's currency; when
     /// absent (legacy callers) the cart currency is stamped as before.
     pub unit_price_currency: Option<String>,
+    /// Restaurant course assignment at add time (e.g. "appetizer", "main").
+    /// Normalized through `foundation::cart::normalize_course` (legacy
+    /// "drinks" → "beverage"); `None` leaves the line unassigned.
+    /// Modifiers ride this same wire in a later tranche.
+    #[serde(default)]
+    pub course: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -368,7 +374,8 @@ pub async fn add_line_scoped(
         .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", args.cart_id)))?;
 
     let unit_price = line_unit_price(&args, cart.currency())?;
-    let line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    let mut line = CartLine::new(args.sku.clone(), args.qty, unit_price);
+    line.set_course(args.course.as_deref());
     let line_id = line.id;
     let line_total = line.total();
     cart.add_line(line)
@@ -467,6 +474,162 @@ pub fn run_override_line_price_unchecked(
     Ok(())
 }
 
+// ── Set Line Course ────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Setlinecourseargs.
+pub struct SetLineCourseArgs {
+    /// ID of the associated cart.
+    pub cart_id: CartId,
+    /// ID of the associated line.
+    pub line_id: LineId,
+    /// Restaurant course to assign (e.g. "appetizer", "main"); empty or
+    /// absent clears the assignment. Normalized through
+    /// `foundation::cart::normalize_course` (legacy "drinks" → "beverage").
+    #[serde(default)]
+    pub course: Option<String>,
+}
+
+/// Assign (or clear) the restaurant course on an active cart line.
+///
+/// The UI assigns course after the line exists (`assignCourse(lineId,
+/// courseId)`), so this is a dedicated command rather than an `add_line`
+/// extension. Requires `SALES_PROCESS` — the same gate as adding a line.
+pub async fn set_line_course_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: SetLineCourseArgs,
+) -> Result<(), BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+        .await?;
+    let conn = ctx
+        .db_manager
+        .open_store(&session.store_id)
+        .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    run_set_line_course_unchecked(&db, &args.cart_id, &args.line_id, args.course.as_deref())
+}
+
+/// The cart/line mutation behind set_line_course_scoped, with no permission
+/// check of its own (the gate runs in the caller, verbatim order).
+pub fn run_set_line_course_unchecked(
+    db: &rusqlite::Connection,
+    cart_id: &CartId,
+    line_id: &LineId,
+    course: Option<&str>,
+) -> Result<(), BridgeError> {
+    let store = Store::new(db);
+    let mut cart = store
+        .load_active_cart(cart_id)?
+        .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", cart_id)))?;
+
+    let assigned = {
+        let line = cart
+            .lines_mut()
+            .iter_mut()
+            .find(|l| l.id == *line_id)
+            .ok_or_else(|| BridgeError::Invalid(format!("line not found: {}", line_id)))?;
+        line.set_course(course);
+        line.course.clone()
+    };
+
+    store.save_active_cart(&cart, None)?;
+
+    tracing::info!(%cart_id, %line_id, course = ?assigned, "line course assigned");
+    Ok(())
+}
+
+// ── Publish Course Fired ───────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Publishcoursefiredargs.
+pub struct PublishCourseFiredArgs {
+    /// ID of the completed sale this course belongs to.
+    pub sale_id: String,
+    /// Restaurant course that was fired (e.g. "appetizer", "main").
+    /// Normalized through `foundation::cart::normalize_course`.
+    pub course_id: String,
+    /// Display number shown on the ticket (from the KDS fan-out), if any.
+    #[serde(default)]
+    pub display_number: Option<i64>,
+    /// Items in this course.
+    pub items: Vec<PublishCourseFiredItem>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// A single item within a fired course (mirrors `CourseItem`).
+pub struct PublishCourseFiredItem {
+    /// Stock-keeping unit.
+    pub sku: String,
+    /// Quantity fired.
+    pub qty: i64,
+    /// Human-readable item name.
+    pub name: String,
+}
+
+/// Publish one fired course for a completed sale.
+///
+/// Called at checkout after the KDS fan-out, once per course whose lines the
+/// waiter fired. Carries the REAL sale id (firing publishes at checkout, not
+/// on the pre-sale cart, so no cart-id correlation is needed) and the ticket
+/// display number. The event is fire-and-forget (`publish_event` logs and
+/// swallows a bus failure), so a committed sale never becomes a failed
+/// response. Unassigned lines are NOT auto-included: the caller groups only
+/// the lines already fired for `course_id`. Requires `SALES_PROCESS`.
+pub async fn publish_course_fired_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: PublishCourseFiredArgs,
+) -> Result<(), BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
+        .await?;
+
+    let course_id = foundation::normalize_course(Some(args.course_id.as_str()))
+        .ok_or_else(|| BridgeError::Invalid(format!("empty course id: {}", args.course_id)))?;
+
+    // Confirm the sale exists in this store (no sale join for the consumer —
+    // the id is correlation, but a typo'd id must fail loudly, not publish
+    // an event for a sale that never happened).
+    {
+        let conn = ctx
+            .db_manager
+            .open_store(&session.store_id)
+            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
+        let db = conn
+            .lock()
+            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+        let store = Store::new(&db);
+        store
+            .get_sale(&args.sale_id)?
+            .ok_or_else(|| BridgeError::Invalid(format!("sale not found: {}", args.sale_id)))?;
+    } // conn, db, store dropped before the publish `.await` (Send, see below)
+
+    ctx.publish_event(&CourseFired {
+        sale_id: args.sale_id,
+        store_id: Some(session.store_id.clone()),
+        course_id,
+        display_number: args.display_number,
+        items: args
+            .items
+            .into_iter()
+            .map(|i| CourseItem {
+                sku: i.sku,
+                qty: i.qty,
+                name: i.name,
+            })
+            .collect(),
+    })
+    .await;
+    Ok(())
+}
+
 // ── Get Cart Deduction Location ───────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -561,6 +724,31 @@ pub async fn compute_cart_tax_scoped(
 
 // ── Hold Orders ──────────────────────────────────────────────────────
 
+/// The `bill_type` value marking a held cart as an open bill.
+pub const BILL_TYPE_OPEN_BILL: &str = "open_bill";
+
+/// True when the session is bound to the Restaurant POS workspace vertical.
+///
+/// The vertical is read from `session.type_key` — validated by `create_session`
+/// against the licence's `allowed_types` and fixed for the session's lifetime —
+/// which is what makes it a sound basis for an authorization decision, unlike
+/// [`HoldCartArgs::bill_type`], which arrives afresh on every call and was
+/// previously trusted exactly as sent.
+///
+/// Named `…_workspace`, not `is_restaurant_pos`, to keep it distinct from
+/// `SessionContext::restaurant_pos_id`: that field is a **terminal id** (the
+/// ADR #40 peer-terminal binding used to resolve the effective store), not a
+/// vertical. The two are unrelated and only the name distinguishes them.
+///
+/// An open bill is a Restaurant POS concept: its only reader,
+/// `list_open_bills_scoped`, is reached from the restaurant terminal alone, and
+/// the shared `PaymentModal` offers it as the "Open Bill" tender. Every other
+/// vertical — [`oz_core::workspace_type::STORE_POS`], `kds`, `warehouse`,
+/// `admin` — is refused.
+pub fn is_restaurant_pos_workspace(session: &oz_core::session::SessionContext) -> bool {
+    oz_core::workspace_type::is_restaurant_pos_type(&session.type_key)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Holdcartargs.
@@ -601,6 +789,16 @@ pub struct HoldCartResult {
 /// Hold a cart in the store resolved from a session token. ADR #7.
 ///
 /// Requires `SALES_PROCESS` permission.
+///
+/// # Terminal identity
+///
+/// `bill_type` is checked against the caller's workspace type rather than
+/// trusted. `open_bill` is a Restaurant POS concept, so a session whose
+/// `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused fail-closed. Before
+/// this check the value was written through as sent, which let the retail
+/// terminal create an open bill — reachable through the shared `PaymentModal`,
+/// whose Open Bill tender was not workspace-gated. A plain `hold` stays
+/// available to every terminal.
 pub async fn hold_cart_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -609,6 +807,13 @@ pub async fn hold_cart_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
         .await?;
+    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
+        return Err(BridgeError::PermissionDenied(format!(
+            "workspace '{}' may not create an open bill; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
+        )));
+    }
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -660,6 +865,14 @@ pub async fn list_held_carts_scoped(
 /// List open bills for the store resolved from a session token. ADR #7.
 ///
 /// Requires `SALES_PROCESS` permission.
+///
+/// # Terminal identity
+///
+/// Restaurant POS only. An open bill is that terminal's own concept — the
+/// restaurant cart reads it as "Open Bills" while the retail cart reads
+/// `list_held_carts_scoped` as "Held Carts" — so a session whose `type_key` is
+/// not [`oz_core::workspace_type::RESTAURANT_POS`] is refused rather than served an empty list,
+/// which would read as "there are none" instead of "this is not your terminal".
 pub async fn list_open_bills_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -667,6 +880,13 @@ pub async fn list_open_bills_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, oz_core::permissions::SALES_PROCESS)
         .await?;
+    if !is_restaurant_pos_workspace(&session) {
+        return Err(BridgeError::PermissionDenied(format!(
+            "workspace '{}' may not list open bills; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
+        )));
+    }
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -858,7 +1078,7 @@ pub struct CompleteSaleArgs {
 /// UI's `attemptId` vanish silently on the tablet while looking guarded.
 /// Every field the wire can carry is listed field-for-field against
 /// `ui/src/api/sales.ts::CompleteSaleScopedArgs` (15 fields) and both
-/// senders in `ui/src/features/sales/PaymentModal.tsx` (the main path and
+/// senders in the payment modal (the main path and
 /// the QRIS path, whose extra spread is `tenderSnapshot` — tip, service
 /// charge and the three CUR-02 fields, all present below). An unknown key
 /// now fails loudly instead of being dropped — on every shell.
@@ -1152,6 +1372,11 @@ pub struct CartLineData {
     /// `Cart::add_line` enforces it matches the sale currency; absent
     /// (legacy callers) falls back to the sale currency as before.
     pub unit_price_currency: Option<String>,
+    /// Restaurant course assignment, carried on the shortfall-retry
+    /// reconstruction so the retried sale keeps the first submission's
+    /// course. Normalized through `foundation::cart::normalize_course`.
+    #[serde(default)]
+    pub course: Option<String>,
 }
 
 /// Resolve the unit price for a reconstructed shortfall line
@@ -1180,7 +1405,7 @@ pub fn shortfall_line_unit_price(
 /// [`CompleteSaleScopedArgs`]: enumerated field-for-field against
 /// `ui/src/api/sales.ts::CompleteSaleWithResolvedShortfallsArgs`
 /// (20 fields), whose only sender is
-/// `ui/src/features/sales/StockShortfallDialog.tsx`. Ported from the
+/// the stock-shortfall dialog. Ported from the
 /// tablet shell's copy (Phase 3.3 T4) so every shell fails loudly on an
 /// unknown key.
 #[derive(Debug, Deserialize)]
@@ -1587,8 +1812,9 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
     let mut cart = oz_core::Cart::new(currency);
     for line_data in &args.lines {
         let unit_price = shortfall_line_unit_price(line_data, cart.currency())?;
-        let line =
+        let mut line =
             oz_core::CartLine::new(oz_core::Sku::new(&line_data.sku), line_data.qty, unit_price);
+        line.set_course(line_data.course.as_deref());
         cart.add_line(line)
             .map_err(|e| BridgeError::Invalid(e.to_string()))?;
     }

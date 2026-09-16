@@ -39,6 +39,30 @@ fn make_node_cmd(id: &str) -> TopologyNodePayload {
     }
 }
 
+/// R1 (ruled 2026-09-16): `load_topology` now rides a session like the
+/// template reads. The older command tests seed this session at their call
+/// sites — same shape the auth-gated tests build by hand further down the
+/// file; the token is constant because the load gate checks existence and
+/// liveness, nothing about identity.
+fn seed_topology_session(state: &AppState) -> String {
+    let token = "token-topology-loader".to_string();
+    let mut sessions = state.session_store.write().unwrap();
+    sessions.insert(
+        token.clone(),
+        SessionContext::new(
+            "user-loader".into(),
+            "role-admin".into(),
+            "term-loader".into(),
+            "store-1".into(),
+            "inst-loader".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    token
+}
+
 #[tokio::test]
 async fn tauri_save_topology_persists_and_load_returns_it() {
     let state = AppState::for_test();
@@ -60,7 +84,13 @@ async fn tauri_save_topology_persists_and_load_returns_it() {
     )
     .await
     .unwrap();
-    let loaded = load_topology(None, app.state()).await.unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap();
     assert!(loaded.is_some());
     let data = loaded.unwrap();
     assert_eq!(data["nodes"].as_array().unwrap().len(), 1);
@@ -98,7 +128,14 @@ async fn tauri_save_topology_overwrites_previous() {
     .await
     .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 1);
     assert_eq!(loaded["nodes"][0]["id"], "second");
 }
@@ -133,11 +170,12 @@ async fn tauri_topology_commands_are_branch_scoped() {
     .await
     .unwrap();
 
-    let branch_a = load_topology(Some("branch-a".into()), app.state())
+    let token = seed_topology_session(app.state::<AppState>().inner());
+    let branch_a = load_topology(token.clone(), Some("branch-a".into()), app.state())
         .await
         .unwrap()
         .unwrap();
-    let branch_b = load_topology(Some("branch-b".into()), app.state())
+    let branch_b = load_topology(token, Some("branch-b".into()), app.state())
         .await
         .unwrap()
         .unwrap();
@@ -171,7 +209,14 @@ async fn tauri_load_topology_serves_stored_node_without_display_name_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     // Raw passthrough: the nameless node is served intact (the editor
     // renders the card without a title and heals it on the next edit).
     assert!(loaded["nodes"][0].get("name").is_none());
@@ -191,7 +236,13 @@ async fn tauri_load_topology_returns_none_for_fresh_app() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap();
     assert!(loaded.is_none());
 }
 
@@ -243,7 +294,14 @@ async fn tauri_save_topology_with_wires_roundtrips_fully() {
     save_topology(nodes, wires, None, app.state())
         .await
         .unwrap();
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
 
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 2);
     assert_eq!(loaded["wires"].as_array().unwrap().len(), 1);
@@ -277,7 +335,14 @@ async fn tauri_load_topology_serves_corrupt_stored_direction_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     // Raw passthrough: the editor's normalizeWireDirection folds the
     // corrupt value to one-way and heals the row on the next Apply.
     assert_eq!(loaded["wires"][0]["direction"], "bidirectional");
@@ -312,8 +377,61 @@ async fn tauri_load_topology_serves_semantic_contract_violation_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn load_topology_requires_a_session() {
+    // R1 (todo-topology-editor.md §5, ruled 2026-09-16): reading a branch's
+    // diagram reveals its configuration, so it rides the same session gate
+    // the template reads ride — the "the draft endpoint stays open for
+    // pre-session canvases" asymmetry was the oversight this ruling ends.
+    // The eight older command tests prove the gate ACCEPTS a live session;
+    // this proves it REFUSES without one, and that the refusal comes from
+    // the session rather than the branch, the key, or the stored row — the
+    // same call succeeds once a session exists.
+    let state = AppState::for_test();
+    {
+        let mut conn = state.db.lock().await;
+        migrations::run(&mut conn).unwrap();
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    save_topology(
+        vec![serde_json::to_value(make_node_cmd("secret-plan")).unwrap()],
+        vec![],
+        Some("branch-under-read".into()),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let anon = load_topology(
+        "token-never-issued".into(),
+        Some("branch-under-read".into()),
+        app.state(),
+    )
+    .await;
+    assert!(
+        matches!(anon, Err(AppError::InvalidSession)),
+        "an unknown token must not read a branch's diagram, got {anon:?}"
+    );
+    let token = seed_topology_session(app.state::<AppState>().inner());
+    let seen = load_topology(token, Some("branch-under-read".into()), app.state())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(seen["nodes"][0]["id"], "secret-plan");
 }
 // ── Audit follow-up: node-id uniqueness + enum validation + atomicity ─
 //
@@ -1126,7 +1244,7 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
                 "INSERT OR IGNORE INTO tenant_subscription \
                      (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, \
                       allowed_types_json, signature, signed_payload, api_key, updated_at) \
-                     VALUES ('default', 'pro', 'active', NULL, 2, 3, '[]', 'BOOTSTRAP_FREE', \
+                     VALUES ('default', 'pro', 'active', NULL, 2, 3, '[\"pos\"]', 'BOOTSTRAP_FREE', \
                              '', '', '2026-08-10T00:00:00.000Z')",
                 [],
             )
@@ -1185,9 +1303,12 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     .unwrap();
     assert_eq!(first.revision, 1);
 
-    // Second Apply replays the STALE base revision (0) while the document
-    // is already at 1 — the save rejects AFTER the store transaction
-    // commits, so the live error path must compensate and restore.
+    // Second Apply replays the STALE base revision (0) while the document is
+    // already at 1, and the revision gate rejects it at the FRONT of
+    // apply_topology_diff (crates/oz-bridge/src/topology/commands.rs:527-541):
+    // that return runs before the recovery journal is written (:646) and before
+    // the store transaction opens (:674-905), so this call commits nothing and
+    // there is nothing here for the live error path to compensate.
     let second = apply_topology_diff(
         token.clone(),
         vec![],
@@ -1210,11 +1331,19 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
 
     let app_state = app.state::<AppState>();
     let db = app_state.db.lock().await;
+    // What this assertion actually grades, since the wording below it has long
+    // suggested a compensation: this Apply wrote no journal at all (it returned
+    // at the revision gate). The journal it finds gone is the FIRST, successful
+    // Apply's, finalized by recover_pending_topology_apply at commands.rs:526
+    // through the "apply completed, just finalize" branch. So this is a
+    // recovery-finalization check, not a compensation check.
     assert!(
         oz_core::Settings::get(&db, TOPOLOGY_APPLY_RECOVERY_KEY)
             .unwrap()
             .is_none(),
-        "the recovery journal must be cleared after a compensated failure"
+        "the FIRST Apply's journal must be finalized by recovery, not left pending \
+         (this stale retry wrote none — it returned at the revision gate; see the \
+         comment above)"
     );
     assert_eq!(
         current_topology_revision(&db, TOPOLOGY_SETTING_KEY).unwrap(),
@@ -1228,11 +1357,16 @@ async fn stale_revision_apply_is_rejected_without_residue_end_to_end() {
     );
 
     // ADR #46 Verification: "a test forcing Apply compensation asserts no
-    // revision row survives it." This test already forces exactly that path —
-    // the stale Apply fails AFTER the store transaction commits, so it is
-    // compensated — which makes it the right place to pin the §3 claim that
-    // the revision INSERT lives inside the committing transaction. A row here
-    // would mean history recorded a deploy that was rolled back.
+    // revision row survives it." This test does NOT force that path — the stale
+    // Apply returns at the revision gate above, before any store commit — so
+    // what the count below pins is the narrower and still real claim that a
+    // refused Apply writes no revision row of its own (the single row is the
+    // first, successful Apply's, whose envelope assertion above holds it at 1).
+    // The §3 claim that the revision INSERT lives inside the committing
+    // transaction is owned by the two tests that do land after a commit:
+    // crash_after_store_commit_compensates_both_databases and
+    // recovery_finalizes_without_compensating_a_completed_apply. No duplicate
+    // belongs here.
     let revisions: i64 = db
         .query_row(
             "SELECT COUNT(*) FROM topology_revisions WHERE branch_id = ''",
@@ -1396,19 +1530,23 @@ async fn can_save_topology_probe_gates_on_topology_write_permission() {
         .unwrap();
 
     assert!(
-        can_save_topology(owner_token, app.state()).await.unwrap(),
+        can_save_topology(owner_token, None, app.state())
+            .await
+            .unwrap(),
         "an owner session must be allowed to save topology"
     );
     assert!(
-        can_save_topology(admin_token, app.state()).await.unwrap(),
+        can_save_topology(admin_token, None, app.state())
+            .await
+            .unwrap(),
         "an admin session must be allowed to save topology"
     );
-    let manager_denied = can_save_topology(manager_token, app.state()).await;
+    let manager_denied = can_save_topology(manager_token, None, app.state()).await;
     assert!(
         matches!(manager_denied, Err(AppError::PermissionDenied(_))),
         "a manager session (has staff:update, lacks topology:write) must be denied by the capability probe, got {manager_denied:?}"
     );
-    let denied = can_save_topology(cashier_token, app.state()).await;
+    let denied = can_save_topology(cashier_token, None, app.state()).await;
     assert!(
         matches!(denied, Err(AppError::PermissionDenied(_))),
         "a limited session must be denied by the capability probe, got {denied:?}"
@@ -1494,6 +1632,121 @@ async fn authorize_topology_write_enforces_location_scope() {
     assert!(
         matches!(key_err, Err(AppError::PermissionDenied(_))),
         "scoped manager must be denied on an unassigned branch, got {key_err:?}"
+    );
+}
+
+#[tokio::test]
+async fn probe_and_enforcement_agree_for_a_branch_scoped_writer() {
+    // R2 / Phase 3 (todo-topology-editor.md §5, ruled 2026-09-16): topology
+    // is LOCATION-SCOPED, and the capability probe must answer through the
+    // same gate the enforcement uses. A writer whose assignment covers
+    // store-allowed only hears "yes" from the probe exactly where
+    // authorize_topology_write says "yes", and "no" — same error kind —
+    // exactly where it says no. The pin arm (M3, same ruling) asserts the
+    // scope check runs BEFORE the revision-row lookup: revision 99 exists
+    // nowhere, so PermissionDenied proves the gate fired first, while any
+    // not-found answer would prove the old scope-free body reached the row
+    // lookup unguarded. Fixture shape is authorize_topology_write_enforces_location_scope's,
+    // reused so the two checks demonstrably read one rule and one assignment.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute_batch(
+                "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+                    ('role-topo-mgr2', 'Topo Mgr2', 'Scoped Topo 2', '[\"topology:write\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+            )
+            .unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                 VALUES ('user-scoped-mgr2', 'scoped-mgr2', 'hash', 'Scoped Mgr 2', 'role-topo-mgr2', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        store
+            .set_assignment(
+                "user-scoped-mgr2",
+                "role-topo-mgr2",
+                &oz_core::db::assignments::AssignmentSpec {
+                    scope_mode: oz_core::db::assignments::ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec!["store-allowed".into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: oz_core::db::assignments::ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    let token = "token-scoped-mgr2".to_string();
+    {
+        let mut sessions = state.session_store.write().unwrap();
+        sessions.insert(
+            token.clone(),
+            SessionContext::new(
+                "user-scoped-mgr2".into(),
+                "role-topo-mgr2".into(),
+                "term-2".into(),
+                "store-allowed".into(),
+                "inst-2".into(),
+                "admin".into(),
+                None,
+                0,
+            ),
+        );
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // The assigned branch: probe and enforcement must both answer yes.
+    let probe_ok =
+        can_save_topology(token.clone(), Some("store-allowed".into()), app.state()).await;
+    let write_ok = authorize_topology_write(&token, &app.state(), Some("store-allowed")).await;
+    assert!(
+        matches!(probe_ok, Ok(true)),
+        "the probe must allow the branch the assignment covers, got {probe_ok:?}"
+    );
+    assert!(
+        write_ok.is_ok(),
+        "the enforcement allows the covered branch"
+    );
+
+    // The unassigned branch: BOTH answer no, with the SAME error kind —
+    // agreeing on a different failure is not the property.
+    let probe_no = can_save_topology(token.clone(), Some("store-denied".into()), app.state()).await;
+    let write_no = authorize_topology_write(&token, &app.state(), Some("store-denied")).await;
+    assert!(
+        matches!(probe_no, Err(AppError::PermissionDenied(_))),
+        "R2: the probe must deny a branch the assignment does not cover, got {probe_no:?}"
+    );
+    assert!(
+        matches!(write_no, Err(AppError::PermissionDenied(_))),
+        "the enforcement already denies it — the disagreement this ruling ends"
+    );
+
+    // Pin (M3 arm): scope BEFORE row lookup. Revision 99 exists nowhere, so
+    // a PermissionDenied answer can only have come from the gate, while the
+    // old scope-free body would fall through to the row lookup.
+    let pin_no = pin_topology_revision(
+        token.clone(),
+        Some("store-denied".into()),
+        99,
+        true,
+        app.state(),
+    )
+    .await;
+    assert!(
+        matches!(pin_no, Err(AppError::PermissionDenied(_))),
+        "pin must scope-check the named branch before touching any row, got {pin_no:?}"
     );
 }
 
@@ -1729,4 +1982,890 @@ async fn crash_recovery_with_snapshots_restores_pre_mutation_rows() {
             .unwrap(),
         previous
     );
+}
+
+// ── Two-store characterisation: docs/plans/notes.md item 20 ────────────────
+//
+// OBSERVES which database receives the writes when the SESSION store and the
+// DIAGRAM store_profile_id differ. It changes no production line and demands no
+// policy: whether the behaviour is intended is the open owner question recorded
+// as notes.md item 20. Reuses the helpers this file already carries --
+// crash_creation (:863) and store_has_instance (:917) -- so it is a case, not a
+// new harness.
+
+async fn char_apply(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    token: &str,
+    diagram_store: &str,
+    request_id: &str,
+) -> Result<oz_bridge::topology::commands::TopologyApplyResult, crate::error::AppError> {
+    let nodes = vec![serde_json::json!({
+        "id": "branch-char",
+        "type": "branch-location",
+        "name": "Branch",
+        "store_profile_id": diagram_store,
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    apply_topology_diff(
+        token.to_string(),
+        vec![crash_creation(diagram_store, "ws-char-1")],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        request_id.to_string(),
+        None,
+        Some("characterise foreign-store apply".into()),
+        app.state(),
+    )
+    .await
+}
+
+fn char_audit_count(state: &AppState, store_id: &str) -> i64 {
+    let conn = state.db_manager.open_store(store_id).unwrap();
+    let db = conn.lock().unwrap();
+    db.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0))
+        .unwrap_or(-1)
+}
+
+#[tokio::test]
+async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes() {
+    use oz_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    let store_a = "char-store-a"; // the SESSION store, both users
+    let store_b = "char-store-b"; // the DIAGRAM store_profile_id -- foreign
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute_batch(
+                r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES ('role-topo-mgr', 'Topo Manager', 'Scoped Topo', '["topology:write"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
+            )
+            .unwrap();
+        global
+            .execute_batch(
+                r#"INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES ('user-legacy', 'legacy', 'hash', 'Legacy Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z'), ('user-scoped', 'scoped', 'hash', 'Scoped Mgr', 'role-topo-mgr', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
+            )
+            .unwrap();
+        for sid in [store_a, store_b] {
+            global
+                .execute(
+                    "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
+                    rusqlite::params![sid, sid],
+                )
+                .unwrap();
+        }
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '[]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+        // user-scoped carries an explicit branch LIST naming store_a only, so
+        // store_b sits outside it, and workspaces_all = true so the workspace
+        // dimension cannot be the reason for any denial: the question is the
+        // branch intersection at crates/oz-core/src/db/assignments.rs:204.
+        store
+            .set_assignment(
+                "user-scoped",
+                "role-topo-mgr",
+                &AssignmentSpec {
+                    scope_mode: ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec![store_a.into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    for (tok, uid, rid) in [
+        ("token-legacy", "user-legacy", "role-owner"),
+        ("token-scoped", "user-scoped", "role-topo-mgr"),
+    ] {
+        state.session_store.write().unwrap().insert(
+            tok.to_string(),
+            SessionContext::new(
+                uid.into(),
+                rid.into(),
+                "terminal-1".into(),
+                store_a.into(),
+                "instance-1".into(),
+                "pos".into(),
+                None,
+                0,
+            ),
+        );
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let legacy = char_apply(&app, "token-legacy", store_b, "request-char-legacy").await;
+    let scoped = char_apply(&app, "token-scoped", store_b, "request-char-scoped").await;
+    let st = app.state::<AppState>();
+    let obs = format!(
+        "legacy_ok={} scoped_ok={} inst_a={} inst_b={} audit_a={} audit_b={}",
+        legacy.is_ok(),
+        scoped.is_ok(),
+        store_has_instance(&st, store_a, "ws-char-1"),
+        store_has_instance(&st, store_b, "ws-char-1"),
+        char_audit_count(&st, store_a),
+        char_audit_count(&st, store_b),
+    );
+    let errs = format!(
+        "legacy_err={:?} scoped_err={:?}",
+        legacy.as_ref().err(),
+        scoped.as_ref().err()
+    );
+    // CHARACTERISATION, not contract. Observed at this SHA; whether it is intended
+    // is the open owner question in docs/plans/notes.md item 20. Two facts are
+    // pinned, both about WHERE the request stopped, because neither user reaches a
+    // write:
+    //
+    //  * user-legacy (role-owner, NO assignments row) is refused with a
+    //    SUBSCRIPTION-tier message, not a scope message. The permission call at
+    //    crates/oz-bridge/src/topology/commands.rs:476-482 runs BEFORE the tier
+    //    check (commands.rs:~713), so an assignment-less session passing scope on a
+    //    store it merely NAMED in the diagram is the observation -- the write was
+    //    stopped by an entitlement that has nothing to do with store identity.
+    //  * user-scoped (explicit branch list = [store_a], store_b named by the
+    //    diagram) is refused with "branch/workspace out of scope", which is
+    //    crates/oz-core/src/db/assignments.rs:204 intersecting exactly as written.
+    //
+    // No row landed in either store, so the residual-state assertions are the
+    // point: whatever the ruling on item 20 turns out to be, today the divergence
+    // does not reach the databases in this configuration.
+    let legacy_msg = legacy
+        .as_ref()
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    let scoped_msg = scoped
+        .as_ref()
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(
+        legacy.is_err() && legacy_msg.contains("subscription tier"),
+        "assignment-less Apply should stop at the entitlement gate, not at scope; got [{}] on {}",
+        legacy_msg,
+        obs,
+    );
+    assert!(
+        scoped.is_err() && scoped_msg.contains("out of scope"),
+        "Scoped Apply naming a store outside its branch list should deny on scope; got [{}]",
+        scoped_msg,
+    );
+    assert_eq!(
+        (
+            store_has_instance(&st, store_a, "ws-char-1"),
+            store_has_instance(&st, store_b, "ws-char-1"),
+            char_audit_count(&st, store_a),
+            char_audit_count(&st, store_b),
+        ),
+        (false, false, 0, 0),
+        "no instance and no audit row may exist in either store; observed {} errors [{}]",
+        obs,
+        errs,
+    );
+    let _ = dir;
+}
+
+// ── Phase 1 / R4: the ownership gate must consult the store it writes ──────
+//
+// The ruled design (todo-topology-editor.md §5, 2026-09-16) confirms the
+// diagram's storeProfileId MAY select the write store, but every gate layer
+// must resolve against the TARGET store. The permission layer already does
+// (`char_apply`'s scoped user is refused out-of-scope; `commands.rs` passes
+// `Some(&effective_store_id)`). The ownership gate did not: `validate_apply_gate`
+// saw [global, session] and NEVER the target's own registry, so a store that
+// describes itself — its own `locations` carries its id — could not be a
+// write target, while the reverse acceptance path stayed undocumented.
+//
+// Fact of record, established BEFORE choosing the fix: the scoped-create
+// family writes the profile row into the SESSION store's database — pinned
+// green by `create_location_profile_scoped_end_to_end_owner` at
+// `crates/oz-bridge/src/locations_tests.rs:148-154` (count == 2 after create),
+// and `platform_core::StoreDatabaseManager::create_store_db` runs migrations
+// only — which seed every new store database exactly one row under the id
+// 'default', never a self-named row. So the ruling's literal
+// [global, effective] alone WOULD
+// recreate the forever-reject the old comment guards (a freshly created
+// branch profile exists only in the session registry) — the goal's fact
+// clause selects [global, session, EFFECTIVE]: the target is finally
+// consulted, and no working flow loses its arm.
+//
+// Each test below builds its own state (fresh global, legacy-owner session,
+// NOTHING in any locations table beyond migration defaults) and adds
+// registry rows explicitly — the registry placement IS the variable.
+#[tokio::test]
+async fn self_describing_store_passes_the_ownership_gate() {
+    // R4 referee: the profile row exists ONLY in the named store's own
+    // registry. Today the gate never reads that registry, so Apply answers
+    // `unknown-branch-location` — the target's self-knowledge is worthless.
+    // After the alignment the gate must accept (diagram-only apply saves).
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-gate-owner', 'gateowner', 'hash', 'Gate Owner', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    // The session store exists but carries no char-gate rows.
+    {
+        let c = state.db_manager.open_store("char-gate-sess").unwrap();
+        drop(c.lock().unwrap());
+    }
+    // The target store exists and describes ITSELF — and nothing else does:
+    // not the global identity DB, not the session registry.
+    {
+        let c = state.db_manager.open_store("char-gate-self").unwrap();
+        let db = c.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name) VALUES ('char-gate-self', 'Self Named')",
+            [],
+        )
+        .unwrap();
+    }
+    let token = "token-gate-owner".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-gate-owner".into(),
+            "role-owner".into(),
+            "terminal-g".into(),
+            "char-gate-sess".into(),
+            "instance-g".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let nodes = vec![serde_json::json!({
+        "id": "branch-g",
+        "type": "branch-location",
+        "name": "Self",
+        "store_profile_id": "char-gate-self",
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    let result = apply_topology_diff(
+        token,
+        vec![],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        "request-gate-self".to_string(),
+        None,
+        Some("R4 referee: target registry consulted".into()),
+        app.state(),
+    )
+    .await;
+    let msg = result
+        .as_ref()
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(
+        result.is_ok(),
+        "a store whose own registry names its profile must pass the ownership gate (R4); got [{}]",
+        msg,
+    );
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn session_registry_row_still_authorizes_the_fresh_branch() {
+    // The forever-reject guard (green BEFORE and AFTER the alignment — its
+    // job is to make a wrong fix fail): a freshly scoped-created profile
+    // lives ONLY in the session registry (locations_tests.rs:148-154). The
+    // aligned gate keeps that arm, so the same apply that works today must
+    // still work after the target registry joins the slice.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-gate-fresh', 'gatefresh', 'hash', 'Gate Fresh', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    {
+        let c = state.db_manager.open_store("char-gate-sess2").unwrap();
+        let db = c.lock().unwrap();
+        // Exactly what create_location_profile_scoped leaves behind: the row
+        // in the SESSION store's registry, and a bare store db for the
+        // target with only its 'default' migration seed.
+        db.execute(
+            "INSERT INTO locations (id, name) VALUES ('char-gate-freshb', 'Fresh Branch')",
+            [],
+        )
+        .unwrap();
+    }
+    {
+        let c = state.db_manager.open_store("char-gate-freshb").unwrap();
+        drop(c.lock().unwrap());
+    }
+    let token = "token-gate-fresh".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-gate-fresh".into(),
+            "role-owner".into(),
+            "terminal-g2".into(),
+            "char-gate-sess2".into(),
+            "instance-g2".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let nodes = vec![serde_json::json!({
+        "id": "branch-f",
+        "type": "branch-location",
+        "name": "Fresh",
+        "store_profile_id": "char-gate-freshb",
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    let result = apply_topology_diff(
+        token,
+        vec![],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        "request-gate-fresh".to_string(),
+        None,
+        Some("R4 false-reject guard".into()),
+        app.state(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "the session-registry arm must survive the alignment or the \
+         documented forever-reject returns; got {:?}",
+        result.as_ref().err(),
+    );
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn session_only_row_authorizing_a_foreign_target_is_the_accepted_residual() {
+    // ACCEPTED RESIDUAL, pinned deliberately (R4 round, 2026-09-16): the
+    // gate keeps ANY-registry semantics, so a row sitting in the SESSION's
+    // registry still authorises writing into a DIFFERENT target store whose
+    // own registry does not name it — here the target store db exists and
+    // carries only its 'default' seed. Closing this fully needs either a
+    // write-side change (scoped create seeds a self-row into the new store
+    // db — touches the §I locations family, outside this phase's fence) or
+    // dropping the session arm (which the fresh-create fact above shows
+    // would regress real flows). The alignment records the gap, not misses
+    // it; this test fails the day either closure lands, and whoever breaks
+    // it should read this comment as the upgrade note it is.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-gate-res', 'gateres', 'hash', 'Gate Res', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    {
+        let c = state.db_manager.open_store("char-gate-sess3").unwrap();
+        let db = c.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name) VALUES ('char-gate-resb', 'Residual Branch')",
+            [],
+        )
+        .unwrap();
+    }
+    {
+        // Target exists WITHOUT a self row — the non-target membership is
+        // what still accepts.
+        let c = state.db_manager.open_store("char-gate-resb").unwrap();
+        drop(c.lock().unwrap());
+    }
+    let token = "token-gate-res".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-gate-res".into(),
+            "role-owner".into(),
+            "terminal-g3".into(),
+            "char-gate-sess3".into(),
+            "instance-g3".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let nodes = vec![serde_json::json!({
+        "id": "branch-r",
+        "type": "branch-location",
+        "name": "Residual",
+        "store_profile_id": "char-gate-resb",
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    let result = apply_topology_diff(
+        token,
+        vec![],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        "request-gate-res".to_string(),
+        None,
+        Some("R4 residual pinned".into()),
+        app.state(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "the accepted residual is documented behavior, not an oversight — \
+         if this fails, the closure landed; upgrade the comment above; got {:?}",
+        result.as_ref().err(),
+    );
+    let _ = dir;
+}
+
+// ── Replay coverage per request_id ────────────────────────────────────────
+//
+// Two promises, one test each, both stated so they can FAIL:
+//   * a retried `request_id` is answered from the request ledger and repeats
+//     no workspace mutation (it must also be distinguishable from a first
+//     application, which is why a NEW id at the stale base revision is
+//     refused with topology-revision-conflict and does not advance), and
+//   * a DIFFERENT `request_id` carrying the SAME content is not a retry at all
+//     — the id, not the payload, is the replay key.
+// The ledger is written by `apply_topology_diff` via
+// `topology_apply_request_key(&request_id)` and read back in the block that
+// returns `Ok(TopologyApplyResult { revision })` before the revision gate, in
+// `crates/oz-bridge/src/topology/commands.rs`. Neither case touches the
+// two-store question owned by notes.md item 20.
+
+fn replay_app(
+    store_id: &str,
+) -> (
+    tempfile::TempDir,
+    tauri::App<tauri::test::MockRuntime>,
+    String,
+) {
+    // The same session/subscription/store-DB shape the stale-revision e2e case
+    // builds inline; factored out so both replay cases grade the same harness.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
+                rusqlite::params![store_id, "Replay Store"],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    // Provision the store DB the way `commit_creation_to_store` does: the Apply
+    // path INSERTs a workspace instance, whose FKs need both the store's own
+    // `locations` row and a `workspace_types` row for the type it creates. The
+    // two existing Apply cases never reach this — neither passes a creation.
+    {
+        let store_conn = state.db_manager.open_store(store_id).unwrap();
+        let store = store_conn.lock().unwrap();
+        store
+            .execute(
+                "INSERT OR IGNORE INTO locations (id, name) VALUES (?1, ?2)",
+                rusqlite::params![store_id, "Replay Store"],
+            )
+            .unwrap();
+        store
+            .execute(
+                "INSERT OR IGNORE INTO workspace_types \
+                     (key, name, description, layout_mode, icon, sort_order, accent_colour) \
+                     VALUES ('store-pos', 'Store POS', '', 'fullscreen', '', 0, '')",
+                [],
+            )
+            .unwrap();
+    }
+    let token = "token-replay".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            store_id.into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    (dir, app, token)
+}
+
+async fn replay_apply(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    token: &str,
+    store_id: &str,
+    instance_id: &str,
+    request_id: &str,
+    base_revision: u64,
+) -> Result<oz_bridge::topology::commands::TopologyApplyResult, AppError> {
+    let creations = vec![CreateInstanceRequest {
+        id: instance_id.into(),
+        type_key: "store-pos".into(),
+        store_id: store_id.into(),
+        name: format!("Replay {instance_id}"),
+        purpose_key: Some("general".into()),
+        description: None,
+        colour: None,
+    }];
+    let nodes = vec![serde_json::json!({
+        "id": "branch-replay",
+        "type": "branch-location",
+        "name": "Branch",
+        "store_profile_id": store_id,
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    apply_topology_diff(
+        token.to_string(),
+        creations,
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        base_revision,
+        request_id.to_string(),
+        None,
+        Some("replay coverage".into()),
+        app.state(),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_retried_request_id_answers_from_the_ledger_without_repeating_the_mutation() {
+    let store_id = "store-replay-same";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+
+    let first = replay_apply(&app, &token, store_id, "ws-replay-1", "req-replay-same", 0)
+        .await
+        .expect("the first Apply must succeed");
+    assert_eq!(
+        first.revision, 1,
+        "a first Apply must advance a fresh document to revision 1"
+    );
+    assert!(
+        store_has_instance(state, store_id, "ws-replay-1"),
+        "the first Apply must have created the workspace instance"
+    );
+    let audit_after_first = char_audit_count(state, store_id);
+    assert!(
+        audit_after_first > 0,
+        "the first Apply must leave an audit trail to compare against; got {audit_after_first}"
+    );
+
+    // The retry: same request_id, same content, and the SAME stale base_revision
+    // — precisely what a client that never received the response re-sends. The
+    // ledger sits before the revision gate, so answering a revision conflict
+    // here would mean the id never bought the idempotence it promises.
+    let retry = replay_apply(&app, &token, store_id, "ws-replay-1", "req-replay-same", 0)
+        .await
+        .expect("a retried request_id must be answered from the ledger, not rejected as stale");
+    assert_eq!(
+        retry.revision, first.revision,
+        "a replay must return the ORIGINAL revision, not a new one: first {} retry {}",
+        first.revision, retry.revision
+    );
+    assert_eq!(
+        char_audit_count(state, store_id),
+        audit_after_first,
+        "a replay must not write a second audit row (was {audit_after_first}, now {})",
+        char_audit_count(state, store_id)
+    );
+
+    // WHAT MAKES THIS DISTINGUISHABLE FROM A FIRST APPLICATION: the calls above
+    // are the same request with the same stale base revision, and the only way
+    // the second one can return revision 1 is by reading the ledger — a first
+    // application of that payload is what produced revision 1 in the first place,
+    // and a second application under a NEW request id is test 2's subject (it is
+    // refused by the revision gate, which proves the id is the replay key). A
+    // third mutation cannot be used as the control here: the tier this fixture
+    // resolves to (see the note on `replay_app`) caps the store at ONE pos
+    // instance, so a control Apply would fail on quota and prove nothing.
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn a_different_request_id_carrying_the_same_content_is_not_treated_as_a_replay() {
+    let store_id = "store-replay-other";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+
+    let first = replay_apply(&app, &token, store_id, "ws-replay-3", "req-original", 0)
+        .await
+        .expect("the first Apply must succeed");
+    assert_eq!(first.revision, 1);
+
+    // Identical content, fresh id, stale base revision: the ledger has never
+    // seen this id, so this is a NEW Apply and the revision gate is the correct
+    // answer. A replay guard keyed on the payload instead of the id would
+    // return Ok(1) here and this assertion is what catches that swap.
+    let other = replay_apply(&app, &token, store_id, "ws-replay-3", "req-different-id", 0).await;
+    assert!(
+        matches!(other, Err(AppError::TopologyValidation { ref code, .. })
+            if code == "topology-revision-conflict"),
+        "a different request_id must be graded as a new Apply, not excused as a replay; got {other:?}"
+    );
+    assert!(
+        store_has_instance(state, store_id, "ws-replay-3"),
+        "the refused Apply must not have disturbed the committed instance"
+    );
+    let _ = dir;
+}
+
+// The other two arms of the same idempotency block, one test each:
+//   * a reused request_id carrying a DIFFERENT payload is refused by name --
+//     "topology request id was already used for a different Apply"
+//     (crates/oz-bridge/src/topology/commands.rs:502-507), and
+//   * a ledger entry with no fingerprint field is REMOVED, not answered from
+//     and not treated as an idempotent success (commands.rs:516-519).
+// Both were first written to assert the WRONG promise and shown to fail: the
+// first printed  got Err(Invalid("topology request id was already used for a
+// different Apply"))  where a plain replay was claimed, and the second read
+// back  left: None, right: Some("{\"revision\":7}")  where survival was claimed.
+
+#[tokio::test]
+async fn a_reused_request_id_carrying_a_different_payload_is_refused_by_name() {
+    let store_id = "store-replay-idreuse";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+
+    let first = replay_apply(&app, &token, store_id, "ws-reuse-a", "req-reuse-payload", 0)
+        .await
+        .expect("the first Apply must succeed");
+    assert_eq!(first.revision, 1, "a first Apply must reach revision 1");
+    let audit_after_first = char_audit_count(state, store_id);
+    let request_key = topology_apply_request_key("req-reuse-payload").unwrap();
+    let ledger_after_first = {
+        let db = state.db.lock().await;
+        oz_core::Settings::get(&db, &request_key)
+            .unwrap()
+            .expect("a successful Apply must write a request ledger")
+    };
+
+    // Same request id, a DIFFERENT payload (a second workspace instance), and
+    // the same stale base_revision 0. The ledger is read before the revision
+    // gate, so the stale revision never gets to speak.
+    let reuse = replay_apply(&app, &token, store_id, "ws-reuse-b", "req-reuse-payload", 0).await;
+    // The refusal must NAME itself. base_revision 0 is stale against the
+    // committed revision 1, so a call reaching the generic replay answer would
+    // return Ok(1), and one reaching the revision gate would return
+    // topology-revision-conflict. Either fails this assertion; only the id-reuse
+    // branch produces the string below.
+    const ID_REUSE: &str = "topology request id was already used for a different Apply";
+    assert!(
+        matches!(&reuse, Err(AppError::Invalid(m)) if m.as_str() == ID_REUSE),
+        "a reused request id carrying a different payload must be refused by the id-reuse \
+         branch naming itself; got {reuse:?}"
+    );
+    assert!(
+        matches!(&reuse, Err(e) if e.to_string().contains(ID_REUSE)),
+        "the refusal must carry that message through Display into the IPC payload; \
+         got {reuse:?}"
+    );
+
+    // Read the ledger back unchanged, and prove the refused payload created
+    // nothing: the refusal is graded on state, not on its return value.
+    let db = state.db.lock().await;
+    assert_eq!(
+        oz_core::Settings::get(&db, &request_key)
+            .unwrap()
+            .as_deref(),
+        Some(ledger_after_first.as_str()),
+        "a refused id reuse must not overwrite the ledger it is refusing"
+    );
+    assert_eq!(
+        current_topology_revision(&db, TOPOLOGY_SETTING_KEY).unwrap(),
+        1,
+        "a refused id reuse must not advance the document"
+    );
+    drop(db);
+    assert!(
+        !store_has_instance(state, store_id, "ws-reuse-b"),
+        "the refused payload's workspace instance must not exist"
+    );
+    assert!(
+        store_has_instance(state, store_id, "ws-reuse-a"),
+        "the refused Apply must leave the committed instance intact"
+    );
+    assert_eq!(
+        char_audit_count(state, store_id),
+        audit_after_first,
+        "a refused id reuse must write no second audit row"
+    );
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn a_pre_fingerprint_ledger_entry_is_removed_rather_than_replayed() {
+    let store_id = "store-replay-prefp";
+    let (dir, app, token) = replay_app(store_id);
+    let state_guard = app.state::<AppState>();
+    let state: &AppState = &state_guard;
+    let request_id = "req-prefingerprint";
+    let request_key = topology_apply_request_key(request_id).unwrap();
+    // Exactly the shape an interrupted development build left behind: a ledger
+    // entry carrying a revision and no fingerprint at all.
+    let seeded = r#"{"revision":7}"#;
+
+    {
+        let db = state.db.lock().await;
+        oz_core::Settings::set(&db, &request_key, seeded).unwrap();
+        assert_eq!(
+            oz_core::Settings::get(&db, &request_key)
+                .unwrap()
+                .as_deref(),
+            Some(seeded),
+            "the seeded pre-fingerprint ledger must round-trip before the Apply"
+        );
+    }
+
+    // base_revision 9 against a fresh document (current 0): the revision gate
+    // is what refuses this call either way, so the ONLY thing this run grades is
+    // whether the branch ahead of it cleared the unbound key.
+    let res = replay_apply(&app, &token, store_id, "ws-prefp-1", request_id, 9).await;
+    assert!(
+        matches!(&res, Err(AppError::TopologyValidation { code, .. })
+            if code == "topology-revision-conflict"),
+        "an unbound request id must not be excused as an idempotent success; got {res:?}"
+    );
+    let db = state.db.lock().await;
+    // The branch deletes it -- read back, not inferred. With the remove line
+    // absent this call still fails on the revision gate above and the key stays
+    // on disk holding the seeded value; that was the first form of this
+    // assertion, and it failed with left: None.
+    assert!(
+        oz_core::Settings::get(&db, &request_key).unwrap().is_none(),
+        "the pre-fingerprint ledger entry must be removed by the branch ahead of the \
+         revision gate, not left for the next caller"
+    );
+    assert_eq!(
+        current_topology_revision(&db, TOPOLOGY_SETTING_KEY).unwrap(),
+        0,
+        "a refused Apply must not have advanced the document"
+    );
+    drop(db);
+    assert!(
+        !store_has_instance(state, store_id, "ws-prefp-1"),
+        "the refused Apply must have created no workspace instance"
+    );
+    let _ = dir;
 }

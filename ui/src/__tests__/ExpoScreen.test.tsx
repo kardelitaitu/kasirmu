@@ -3,10 +3,26 @@
 // Conventions mirror KdsScreen.test.tsx: the @/api/kds module is mocked at
 // the boundary via vi.hoisted fakes, useTicketSla/useSound are stubbed, and
 // async mount effects render through renderWithFluent.
+//
+// FIRST TO FAIL PER SEEDED MUTATION (all measured on this file, 21 cases):
+//  - .then guard at ExpoScreen.ts:195-196 replaced by an unconditional
+//    unlisten = fn (late-settle cancel path deleted): ExpoScreen/10 ALONE
+//    (1 failed / 20 passed). /10 stays the subscription arm only — it
+//    asserts nothing about the timer or listener arms.
+//  - clearInterval(id) dropped from the cleanup (:214): /11 ALONE.
+//  - removeEventListener dropped from the cleanup (:215): /11 ALONE.
+//  - the !document.hidden gate on the poll tick (:203) removed: /12 ALONE.
+// /10 + /11 + /12 pin the whole :188-217 effect, one seam per case — mixing
+// a microtask-timing assertion with a timer assertion is how a pin turns
+// flaky, which is why /11 owns interval-death AND listener balance (both are
+// unmount-state claims) while /12 owns only the hidden gate and never
+// unmounts. (The other two sites of this guard shape: useKdsRealtime.ts:95,
+// pinned by that file's late/2, and useUnsavedChangesGuard.ts:81, pinned by
+// that file's /9.)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, act } from '@testing-library/react';
-import { renderWithFluent } from '@/__tests__/test-utils/render';
+import { renderWithFluent, renderWithFluentSync } from '@/__tests__/test-utils/render';
 import ExpoScreen, {
   groupByStation,
   readyToServe,
@@ -66,6 +82,47 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspaceScope: () => null,
 }));
 
+// ── Seam: the Tauri event plugin (the subscription arm only) ─────────
+// ExpoScreen subscribes through @/api/tauri's `listen` re-export. test-setup.ts:69
+// already stubs @tauri-apps/api/event as `listen: () => Promise.resolve(() => {})`,
+// so the .then at ExpoScreen.ts:194 DOES run here today — but into a SHARED,
+// uncountable no-op, and always before an unmount, because every existing case
+// awaits its render. That is why :195 is unasserted, and why this file needs its
+// own seam: not to make the promise resolve, but to make the release OBSERVABLE.
+// One counted unlisten per call, so "released exactly once" is a statement about
+// the subscription THIS mount created. importOriginal leaves every other export
+// (invoke / getCurrentWindow / getVersion) exactly as the global mocks have it.
+
+interface FakeListen {
+  event: string;
+  unlisten: () => void;
+  /** How many times this subscription's unlisten has been called. */
+  calls: () => number;
+}
+
+const tauri = vi.hoisted(() => {
+  const subs: Array<{ event: string; unlisten: () => void; calls: () => number }> = [];
+  const listen = (event: string, _handler: (payload: unknown) => void): Promise<() => void> => {
+    let n = 0;
+    const unlisten = (): void => {
+      n += 1;
+    };
+    subs.push({ event, unlisten, calls: () => n });
+    return Promise.resolve(unlisten);
+  };
+  return { subs, listen };
+});
+
+vi.mock('@/api/tauri', async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  listen: tauri.listen,
+}));
+
+/** The kds:orders-changed subscriptions made so far — the seam this case pins. */
+function expoSubs(): FakeListen[] {
+  return tauri.subs.filter((s) => s.event === 'kds:orders-changed');
+}
+
 function makeOrder(overrides: Partial<KdsOrder>): KdsOrder {
   return {
     id: 'order-x',
@@ -92,6 +149,119 @@ function renderExpo() {
   return renderWithFluent(<ExpoScreen />, sharedFtl, kdsFtl);
 }
 
+// ── Seams for /11 and /12: the two arms /10 deliberately excluded ─────
+// Counting machinery for the setInterval(EXPO_POLL_MS) handle and the
+// visibilitychange pair. The listener half is the live-Set idiom from
+// useKdsRealtime.test.ts:74-155 — removing a function OTHER than the one
+// added leaves the original live, and a Set sees that while a counter does
+// not. The interval half records {id, ms} from a wrapper around
+// globalThis.setInterval and every globalThis.clearInterval id, so "cleared
+// exactly once, by the unmount, never while mounted" is a claim about state.
+// Both wrappers are installed INSIDE the two cases, not in beforeEach, so
+// the other 19 mounts in this file never see them; the interval wrapper goes
+// ON TOP of vi.useFakeTimers' own replacement (vi swaps the global itself —
+// wrapping before it would be wrapped away). jsdom makes window ===
+// globalThis, so KdsScreenFooter's 30s clock (KdsScreenFooter.tsx:45) is
+// recorded too; the EXPO_POLL_MS delay filter picks Expo's handle out
+// deterministically (the only other interval in this tree is that 30_000 one).
+
+function installIntervalSeam() {
+  const created: Array<{ id: number; ms: number }> = [];
+  const cleared: number[] = [];
+  const origSet = globalThis.setInterval;
+  const origClear = globalThis.clearInterval;
+  const setFn = origSet as unknown as (...args: unknown[]) => number;
+  const clearFn = origClear as unknown as (id: unknown) => void;
+  globalThis.setInterval = ((...args: unknown[]) => {
+    const id = setFn(...args);
+    // vi's fake setInterval returns an OBJECT whose valueOf is the numeric
+    // timer id (sinon-style); the real one returns that number directly.
+    // Number() on both sides is what makes created.id === cleared[i].
+    created.push({ id: Number(id), ms: Number(args[1]) });
+    return id;
+  }) as unknown as typeof globalThis.setInterval;
+  globalThis.clearInterval = ((id: unknown) => {
+    if (id !== undefined && id !== null) cleared.push(Number(id));
+    clearFn(id);
+  }) as unknown as typeof globalThis.clearInterval;
+  return {
+    created,
+    cleared,
+    restore: () => {
+      globalThis.setInterval = origSet;
+      globalThis.clearInterval = origClear;
+    },
+  };
+}
+
+const VIS = 'visibilitychange';
+
+function installVisibilitySeam() {
+  const live = new Set<EventListener>();
+  const adds: EventListener[] = [];
+  const removes: EventListener[] = [];
+  const origAdd = document.addEventListener;
+  const origRemove = document.removeEventListener;
+  const nativeAdd = origAdd.bind(document) as unknown as (
+    t: string,
+    l: EventListenerOrEventListenerObject | null,
+    o?: boolean | AddEventListenerOptions,
+  ) => void;
+  const nativeRemove = origRemove.bind(document) as unknown as (
+    t: string,
+    l: EventListenerOrEventListenerObject | null,
+    o?: boolean | EventListenerOptions,
+  ) => void;
+  document.addEventListener = ((
+    t: string,
+    l: EventListenerOrEventListenerObject | null,
+    o?: boolean | AddEventListenerOptions,
+  ) => {
+    if (t === VIS && typeof l === 'function') {
+      const fn = l as EventListener;
+      live.add(fn);
+      adds.push(fn);
+    }
+    nativeAdd(t, l, o);
+  }) as unknown as typeof document.addEventListener;
+  document.removeEventListener = ((
+    t: string,
+    l: EventListenerOrEventListenerObject | null,
+    o?: boolean | EventListenerOptions,
+  ) => {
+    if (t === VIS && typeof l === 'function') {
+      const fn = l as EventListener;
+      live.delete(fn);
+      removes.push(fn);
+    }
+    nativeRemove(t, l, o);
+  }) as unknown as typeof document.removeEventListener;
+  return {
+    live,
+    adds,
+    removes,
+    restore: () => {
+      document.addEventListener = origAdd;
+      document.removeEventListener = origRemove;
+    },
+  };
+}
+
+/** Flip the webview's visibility WITHOUT dispatching anything: only the two
+ * getters production reads (:203, :207) change. Restore re-exposes the
+ * jsdom default (hidden === false, useKdsRealtime.test.ts:402). */
+function setDocHidden(hidden: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => (hidden ? 'hidden' : 'visible'),
+  });
+}
+
+function restoreDocHidden() {
+  setDocHidden(false);
+}
+
 beforeEach(() => {
   localStorage.clear();
   mockList.mockReset().mockResolvedValue([]);
@@ -99,6 +269,9 @@ beforeEach(() => {
   mockUpdateLineItem.mockReset().mockResolvedValue(undefined);
   mockSpeak.mockReset();
   mockLines.mockReset().mockResolvedValue([]);
+  // Per-test subscriptions: every case renders the screen, so without this the
+  // counts below would accumulate across the file.
+  tauri.subs.length = 0;
 });
 
 // ── 1. Pure helpers ─────────────────────────────────────────────────
@@ -333,5 +506,142 @@ describe('ExpoScreen', () => {
     // Per-user persistence (the modal closed after selection).
     expect(localStorage.getItem('oz-kds-expo-station-user-1')).toBe('grill');
     expect(screen.queryByTestId('kds-station-dialog')).toBeNull();
+  });
+
+  // ── the late-settle branch: listen resolves after the screen is gone ──
+  it('calls the returned unlisten itself when the subscription settles after the screen unmounted', async () => {
+    // ExpoScreen.ts:195 `if (cancelled) fn();` — the third copy of this guard
+    // (the others: useKdsRealtime.ts:95, pinned by that file's late/2, and
+    // useUnsavedChangesGuard.ts:81, pinned by /9 of its own file). It is NOT
+    // reachable through this file's usual `renderExpo()`: that helper awaits
+    // (renderInAct), which crosses a microtask boundary, so the .then has
+    // always landed and taken the else at :196 long before an unmount. Here the
+    // SYNC variant renders and unmounts with no await between them, so the
+    // cleanup runs while `unlisten` is still undefined (:213 is a no-op) with
+    // :212 having set cancelled = true. After the flush, :195 is the only code
+    // left that can release fn — drop the guard and the expo board keeps a live
+    // 'kds:orders-changed' handler pointing at an unmounted screen.
+    //
+    // ONE SEAM ONLY, deliberately: the setInterval(EXPO_POLL_MS) arm at :201
+    // and the visibilitychange arm at :206-209 are NOT asserted here, and
+    // nothing in this case is a statement about them or about clearInterval.
+    const { unmount } = renderWithFluentSync(<ExpoScreen />, sharedFtl, kdsFtl);
+    const subs = expoSubs();
+
+    // The subscription exists — it is only its RELEASE that is still pending.
+    expect(subs).toHaveLength(1);
+    expect(subs[0]!.calls()).toBe(0);
+
+    unmount();
+
+    // Still unreleased: the cleanup had no unlisten to call yet.
+    expect(subs[0]!.calls()).toBe(0);
+
+    // Deliver the in-flight resolution, now that the mount is gone.
+    await act(async () => {});
+
+    // The guard ran, exactly once, and no second subscription appeared.
+    expect(subs[0]!.calls()).toBe(1);
+    expect(expoSubs()).toHaveLength(1);
+  });
+
+  // ── /11 — the cleanup PAIR: same unmount releases subscription, interval,
+  // listener; nothing is released early; the interval is provably dead ──
+  it('clears the poll interval with the same cleanup that releases the subscription, never while mounted', async () => {
+    vi.useFakeTimers();
+    const timers = installIntervalSeam();
+    const vis = installVisibilitySeam();
+    try {
+      mockList.mockResolvedValue([]);
+      const { unmount } = await renderExpo();
+      // Unlike /10, the .then at :194 HAS settled here (renderWithFluent
+      // crosses a microtask boundary), so :196 assigned unlisten and the
+      // :213 release below is the real one, made by the cleanup.
+      const subs = expoSubs();
+      expect(subs).toHaveLength(1);
+      expect(subs[0]!.calls()).toBe(0);
+
+      const expoTicks = timers.created.filter((t) => t.ms === EXPO_POLL_MS);
+      expect(expoTicks).toHaveLength(1);
+      const expoId = expoTicks[0]!.id;
+      expect(vis.adds).toHaveLength(1);
+      expect(vis.removes).toHaveLength(0);
+      expect(vis.live.size).toBe(1);
+
+      // Alive while mounted: one interval's advance reaches the IPC...
+      const beforePoll = mockList.mock.calls.length;
+      await act(async () => {
+        vi.advanceTimersByTime(EXPO_POLL_MS + 500);
+      });
+      expect(mockList.mock.calls.length).toBeGreaterThan(beforePoll);
+      // ...and NOTHING was released to get there — no early clearInterval,
+      // no detached listener, no cancelled subscription (a self-clearing
+      // tick or a double-run cleanup dies on these three lines).
+      expect(timers.cleared).not.toContain(expoId);
+      expect(vis.live.size).toBe(1);
+      expect(subs[0]!.calls()).toBe(0);
+
+      unmount();
+
+      // ONE cleanup, three releases: :213 unlisten, :214 clearInterval,
+      // :215 removeEventListener. The removed handler is the exact function
+      // that was added — Set identity, not a call tally.
+      expect(subs[0]!.calls()).toBe(1);
+      expect(timers.cleared.filter((id) => id === expoId)).toHaveLength(1);
+      expect(vis.removes).toHaveLength(1);
+      expect(vis.removes[0]).toBe(vis.adds[0]);
+      expect(vis.live.size).toBe(0);
+
+      // The interval is DEAD, not merely unobserved: three more periods
+      // produce zero further IPC. Delete clearInterval(id) from ExpoScreen
+      // and a ghost 5s poll outlives the screen — this line is its noose.
+      const afterUnmount = mockList.mock.calls.length;
+      await act(async () => {
+        vi.advanceTimersByTime(3 * EXPO_POLL_MS + 1500);
+      });
+      expect(mockList.mock.calls.length).toBe(afterUnmount);
+    } finally {
+      vis.restore();
+      timers.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  // ── /12 — the hidden-webview gate on the poll arm (:203) ────────────
+  it('skips the poll IPC while the webview is hidden and resumes it when visible', async () => {
+    vi.useFakeTimers();
+    const timers = installIntervalSeam();
+    setDocHidden(true);
+    try {
+      mockList.mockResolvedValue([]);
+      await act(async () => {
+        await renderExpo();
+      });
+      // Hidden at mount still REGISTERS the backstop — :203 gates the tick,
+      // not the setInterval itself.
+      expect(timers.created.filter((t) => t.ms === EXPO_POLL_MS)).toHaveLength(1);
+      const mounted = mockList.mock.calls.length; // the mount fetch (:220-222)
+      expect(mounted).toBeGreaterThanOrEqual(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(3 * EXPO_POLL_MS + 1500);
+      });
+      // Three ticks fired, zero IPC: a hidden board costs nothing. Drop the
+      // !document.hidden check at :203 and this line is the first to know.
+      expect(mockList.mock.calls.length).toBe(mounted);
+
+      setDocHidden(false);
+      await act(async () => {
+        vi.advanceTimersByTime(EXPO_POLL_MS + 500);
+      });
+      // Visible again with NO event dispatched and no re-subscribe: the SAME
+      // interval resumes, which also proves the skip above was the gate and
+      // not a dead timer.
+      expect(mockList.mock.calls.length).toBeGreaterThan(mounted);
+    } finally {
+      restoreDocHidden();
+      timers.restore();
+      vi.useRealTimers();
+    }
   });
 });

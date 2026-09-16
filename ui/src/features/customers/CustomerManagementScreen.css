@@ -413,7 +413,7 @@
 .customer-mgmt-history-sale-meta {
   display: flex;
   flex-direction: column;
-  gap: var(--space-0-5);
+  gap: var(--space-0_5);
 }
 
 .customer-mgmt-history-sale-date {

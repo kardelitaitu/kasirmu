@@ -22,13 +22,19 @@ pub use foundation::events::{ProductCreated, SaleCompleted, SaleCompletedLine, S
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CourseFired {
     /// Sale/order ID this course belongs to.
+    ///
+    /// Firing happens pre-sale on the active cart, so when published from
+    /// `fire_course_scoped` this carries the cart ID as the correlation ID
+    /// (no `sale.id` exists yet and no display number has been assigned).
+    /// A KDS consumer correlates by cart/table, not by joining to `sales`.
     pub sale_id: String,
     /// The store where the order was placed (ADR #8).
     ///
     /// `None` in single-store/legacy deployments or test contexts.
     /// In multi-store mode, always set from the session's `store_id`.
     pub store_id: Option<String>,
-    /// Course identifier (e.g. "appetizer", "main", "dessert", "drinks").
+    /// Course identifier in the canonical KDS vocabulary
+    /// (`appetizer | main | side | dessert | beverage`).
     pub course_id: String,
     /// Display number shown on the ticket.
     pub display_number: Option<i64>,

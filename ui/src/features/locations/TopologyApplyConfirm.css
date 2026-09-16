@@ -207,11 +207,64 @@
 
 /* ── Note textarea ─────────────────────────────────────────────── */
 
+/* The caption over the change-note textarea (TSX :283) is the SAME object as the PIN
+   caption below — a muted medium-weight label over one field — so it joins that rule
+   rather than restating it: zero new declarations, and the two captions cannot drift
+   apart. It is listed FIRST because TSX :283 precedes TSX :309, so sheet order keeps
+   tracking document order, and the "Note textarea" heading at :208 was left with only
+   this one answer under it when the note block was written. */
+.topology-apply-confirm-note-label,
 .topology-apply-confirm-pin-label {
   display: block;
   margin-bottom: var(--space-1);
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
+  color: var(--color-fg-muted);
+}
+
+/* The parenthetical inside that caption. ONE declaration: the grouped label rule sets
+   --font-weight-medium (see the block above), and the marker is not part of the question.
+   NodeTopologyEditor.css:1415 / :2843 already drop nested text to --font-weight-normal in
+   this feature, so the token and the move are both borrowed, not minted. NO colour: the
+   parent's --color-fg-muted already paints it, and NO font-size, because this span sits
+   one line above -note-count, which renders an amount. */
+.topology-apply-confirm-note-optional {
+  font-weight: var(--font-weight-normal);
+}
+
+/* The change-note field (TSX :289, a <textarea rows={2}>). Every declaration below is a
+   copy of THIS sheet's own field treatment — -pin at :219-231 — minus the three that
+   belong to a masked numeric PIN and not to prose: height:40px (rows=2 sizes it),
+   text-align:center and letter-spacing:0.2em (the mask's spacing). resize:vertical is
+   borrowed from LocalPaymentSettingsCard.css:57, the other <textarea> rule in the tree,
+   so a dragged note cannot blow the dialog's width. font-family:inherit is load-bearing
+   on a textarea, which defaults to monospace. DECLINED: font-size beyond the field's own
+   (inherited shape), line-height, min-height (rows=2 owns it), any margin or gap (the
+   caption's margin-bottom above owns the space over this field and -note-count below
+   owns the space under it), and a [disabled] rule (the sheet has none for -pin either,
+   which is that rule's problem, not this one's). */
+.topology-apply-confirm-note {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg);
+  font-size: var(--text-base);
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+/* The "12 / 280" counter (TSX :300). display:block because it is a <span>, and a span on
+   its own line takes no margin; the space under the field is the same one -pin-error takes
+   under the PIN field (margin: var(--space-1) 0 0, two rules below). Colour is this sheet's
+   subordinate-text colour (--color-fg-muted, as at -empty :150 and -type :142). NO
+   font-size: the element renders an amount, and topology shows counts and station numbers
+   beside each other, so the type scale stays where the sheet put it. */
+.topology-apply-confirm-note-count {
+  display: block;
+  margin-top: var(--space-1);
   color: var(--color-fg-muted);
 }
 
@@ -231,6 +284,7 @@
   box-sizing: border-box;
 }
 
+.topology-apply-confirm-note:focus,
 .topology-apply-confirm-pin:focus {
   outline: none;
   border-color: var(--color-accent);
@@ -252,6 +306,24 @@
   margin: var(--space-1) 0 0;
   font-size: var(--text-xs);
   color: var(--color-danger);
+}
+
+/* The "Remember PIN for this session" row (TSX :337). It is a CONTROL, not a label: a
+   <label> wrapping an <input type="checkbox"> plus its caption, so it takes the tree's
+   existing checkbox-row treatment, .rcptfmt-check (ReceiptFormatSettingsCard.css:70-77).
+   flex + align-items:center because the box and the caption are two boxes on one line;
+   gap IS in scope here (this row has two children, unlike a single-child wrapper where it
+   would be inert) and var(--space-2) is 0.5rem, the same value .rcptfmt-check uses raw;
+   cursor:pointer so the whole row advertises the target. NO colour and NO font-size:
+   .rcptfmt-check's own colour is a hex-with-fallback (var(--text-primary, #1a1a1a)), the
+   exact shape the token gates keep out of a sheet, and the row inherits the dialog's text
+   size already. It sits AFTER -pin-error because that is the document order (TSX :332
+   then :337) and before the actions block, which follows TSX :347. */
+.topology-apply-confirm-pin-remember {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
 }
 
 /* ── Action buttons ────────────────────────────────────────────── */

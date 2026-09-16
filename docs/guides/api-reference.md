@@ -17,14 +17,28 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > part.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
 > registered surface is **454 distinct commands** (re-measured 08-09-26; 429 in
 > `apps/desktop-client/src/lib.rs`, 301 in `apps/tablet-client/src/lib.rs`, 276 in
-> both). This page lists **547 entries across 54 modules**, and every one of the 454
-> registered commands now has a row: the 41 that were missing were added 08-09-26 — five
+> both) — a point-in-time record, kept as written. **Re-measured 2026-09-14: 478
+> distinct registered commands — 453 in `apps/desktop-client/src/lib.rs:845-1340`, 322 in
+> `apps/tablet-client/src/lib.rs:445`, 297 in both shells** — printed by
+> `python .agents/skills/docs-auditor/scripts/check-api-surface.py`, whose first line is
+> `registered   desktop=453 tablet=322 distinct=478`; the 297-both figure is NOT printed
+> by it or by `python scripts/verify-ipc-parity.py` (which agrees per shell: 453 registered
+> desktop, 322 tablet, EXIT 0) and comes from intersecting the two `generate_handler!`
+> lists. The page's own shape is unchanged and re-derivable:
+> `grep -c '^### `commands::' docs/guides/api-reference.md` = 54 sections,
+> `grep -cE '^- \*\*`' docs/guides/api-reference.md` = 547 rows, and the `(N)` on every
+> section header sums to 547 with zero sections whose annotation disagrees with their own
+> row count. **What did move: 25 registered commands now have no row here** (the bucket
+> below was 0 on 08-09-26), so "every one of the registered commands has a row" is true
+> only of the 08-09-26 set; the 25 names and their modules are listed in the count note
+> below. The 41 that were missing were added 08-09-26 — five
 > new sections (`commands::legal_entities`, `local_api`, `memo`, `payables`,
 > `products_images`) plus 17 rows folded into existing ones. Each summary is that command
 > own `///` line copied from the source, and each [D]/[T]/[D+T] marker was read out of the
 > two `generate_handler!` lists rather than inferred.
 >
-> The two sets now overlap completely — all 454 registered commands are listed — and the
+> The two sets overlapped completely **as at 08-09-26** — all 454 registered commands were
+> listed then; they are not now (25 registered commands have no row, count note below) — and the
 > arithmetic still closes:
 > 547 documented minus 93 that are not wired (86 + 7 below) = 454, and 454 + 0
 > registered-but-undocumented = 454 registered. The identity held for the old numbers
@@ -59,6 +73,26 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > it was 154 on 31-08-26, 158 by 08-09-26, entirely because 4 new command groups landed
 > (`memos`, `payables`, `legal_entities`, `local_api`) without a doc row each. Do not
 > hardcode a target number into CI; derive it.
+>
+> **Count note 2026-09-14 · DSH · comment-only pass ·** the four-class table above is
+> dated 08-09-26 and is left as written; today the same command prints
+> `marker wrong : 0`, `listed, not registered anywhere : 86`,
+> `listed, not defined anywhere : 8`, `registered, not listed : 25`,
+> `DRIFT: 119 discrepancies` and exits 1. Two of those moved against the table: the
+> not-defined bucket is 8 not 7 because `rotate_encryption_key` joined it (its row is now
+> marked, above), and registered-not-listed reopened from 0 to 25 — the arithmetic identity
+> that used to close (547 documented − 94 unwired = 453 listed-and-registered, + 25
+> registered-not-listed = 478) now leaves 25 commands registered in a handler list with no
+> row on this page. They come from 12 command modules, not one new group — measured
+> 2026-09-14 by grepping each name the checker prints back to the file that defines it
+> under `apps/*/src/commands/` (both shells collapsed onto one basename, so a command
+> living in both clients counts once): `fiscal.rs` 5, `receipt_format.rs` 3, then 2 each
+> in `regional`, `qris_auto`, `local_payment`, `sync`, `locations`, `kds_routing`,
+> `auth` (7 × 2 = 14), and 1 each in `tax`, `subscription`, `audit` — 5 + 3 + 14 + 3 = 25,
+> which is the whole bucket and re-derives from the checker's own name list.
+> Those 25 rows were NOT written here: this pass was scoped to counts, and
+> adding summaries for 25 commands from their `///` lines is a separate change. Until then
+> this page is complete for 453 of 478, not for all of them.
 >
 > Each entry shows availability — **[D+T]** both clients, **[D]** desktop-only,
 > **[T]** tablet-only — followed by the command's own `///` summary line. The
@@ -221,7 +255,6 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`display_clear_scoped`** [D+T] — Clear a customer-facing pole display (scoped).
 - **`display_show_scoped`** [D+T] — Show content on a customer-facing pole display (scoped).
 - **`list_displays_scoped`** [D+T] — List all registered customer displays (scoped).
-- **`list_scanners`** [T] — List all registered barcode scanners.
 - **`list_scanners_scoped`** [D+T] — List all registered barcode scanners (scoped).
 - **`open_cash_drawer`** [T] — Open cash drawer.
 - **`open_cash_drawer_scoped`** [D+T] — Open cash drawer (scoped — requires valid session).
@@ -229,9 +262,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`print_receipt_scoped`** [D+T] — Print receipt (scoped — requires valid session).
 - **`print_sales_receipt`** [T] — Print sales receipt.
 - **`print_sales_receipt_scoped`** [D+T] — Print sales receipt for the store resolved from a session token. ADR #7.
-- **`start_scanner`** [T] — Start a background polling task for the named scanner.
 - **`start_scanner_scoped`** [D+T] — Start a barcode scanner (scoped).
-- **`stop_scanner`** [T] — Stop the active barcode scanner background task (if any).
 - **`stop_scanner_scoped`** [D+T] — Stop the active barcode scanner (scoped).
 
 ### `commands::health` (8)
@@ -492,7 +523,6 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`list_warehouse_products`** [T] — Fetch warehouse-tracked products only (excludes services).
 - **`list_warehouse_products_at_location`** [D] — Fetch inventory-tracked products with stock at a specific location.
 - **`list_warehouse_products_scoped`** [T] — Session-scoped variant of `list_warehouse_products`.
-- **`lookup_by_barcode`** [T] — Look up a single product by barcode.
 - **`lookup_by_barcode_scoped`** [D+T] — Look up a product by barcode for the store resolved from a
 - **`lookup_product_by_sku`** [T] — Look up a single product by SKU.
 - **`lookup_product_by_sku_scoped`** [D+T] — Look up a product by SKU for the store resolved from a
@@ -596,7 +626,8 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 
 - **`get_key_rotation_info`** [D] — Get the current key rotation status (key age, creation timestamp).
 - **`get_key_rotation_info_scoped`** [D] — Session-scoped variant of [`get_key_rotation_info`].
-- **`rotate_encryption_key`** [D] — Rotate (re-generate) the encryption key.
+- **`rotate_encryption_key`** [not an IPC command] — Rotate (re-generate) the encryption key.
+  Retired by `a32b13aaa` ("drop the ungated rotate_encryption_key command"): no `#[command]` of this name exists in either client today (`grep -rn 'fn rotate_encryption_key' --include=*.rs apps crates` returns only the `_scoped` command at `apps/desktop-client/src/commands/security.rs:105` and the plain bridge fn at `crates/oz-bridge/src/security.rs:156`). The callable surface is `rotate_encryption_key_scoped`; measured 2026-09-14.
 - **`rotate_encryption_key_scoped`** [D] — Session-scoped variant of [`rotate_encryption_key`].
 
 ### `commands::settings` (29)
@@ -618,7 +649,6 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`list_credit_sales_scoped`** [D+T] — List credit sales for the store resolved from a session token. ADR #7.
 - **`set_credit_settings`** [T] — Set credit settings.
 - **`set_credit_settings_scoped`** [D+T] — Set credit settings resolved from a session token. ADR #7.
-- **`set_hardware_settings`** [T] — Set hardware settings.
 - **`set_hardware_settings_scoped`** [D+T] — Set hardware settings resolved from a session token. ADR #7.
 - **`set_receipt_settings`** [T] — Set receipt settings.
 - **`set_receipt_settings_scoped`** [D+T] — Set receipt settings resolved from a session token. ADR #7.

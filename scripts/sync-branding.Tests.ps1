@@ -224,3 +224,50 @@ Describe 'Multi-field patching simulation' {
         $desktopId | Should -Be 'com.ozpos.app'
     }
 }
+
+Describe 'Brand CSS token emission' {
+
+    # Pester 5 runs an It body in its own scope, so the generator is read in
+    # BeforeAll, not in the script body. (The 23 older Its in this file fail
+    # for exactly that reason -- their pattern variables are set outside any
+    # block and arrive empty. Pre-existing, unrelated to this Describe.)
+    BeforeAll {
+        $gen = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'sync-branding.ps1' } else { 'scripts/sync-branding.ps1' }
+        $brandLines = @((Get-Content $gen -Raw) -split '\r?\n' |
+            Where-Object { $_ -match '^\s*--brand-(font-family|app-name|company):' })
+        $brandRoot = if ($PSScriptRoot) { Join-Path $PSScriptRoot '../assets/branding' } else { 'assets/branding' }
+    }
+
+    It 'emits --brand-font-family as a CSS family LIST, not one quoted string' {
+        $fontLine = @($brandLines | Where-Object { $_ -match '--brand-font-family:' }) | Select-Object -First 1
+        ($fontLine | Measure-Object).Count | Should -Be 1
+        # A font-family value is a comma-separated list, so the generator must
+        # interpolate the manifest value raw. Wrapping the list in one pair of
+        # quotes makes CSS read it as a single family named "Inter, sans-serif"
+        # -- which no engine has -- and the generic fallback goes with it.
+        $fontLine.Trim() | Should -Be '--brand-font-family: $($tokens.fontFamily);'
+
+        $prefix = '--brand-font-family: '
+        $checked = 0
+        foreach ($manifest in Get-ChildItem -Path $brandRoot -Recurse -Filter 'manifest.json') {
+            $family = (Get-Content $manifest.FullName -Raw | ConvertFrom-Json).themeTokens.fontFamily
+            if (-not $family) { continue }
+            $emitted = $fontLine.Trim().Replace('$($tokens.fontFamily)', $family)
+            $value = ($emitted -replace ('^' + [regex]::Escape($prefix)), '').TrimEnd(';')
+            # Unchanged by emission: per-family quoting stays the manifest's
+            # business and the generator adds none of its own.
+            $value | Should -Be $family
+            $checked += 1
+        }
+        $checked | Should -BeGreaterThan 0
+    }
+
+    It 'keeps --brand-app-name and --brand-company as quoted single strings' {
+        # The other side of the same shape rule: these ARE one string each and
+        # are read from content:/title contexts, so they keep their quotes.
+        $app = @($brandLines | Where-Object { $_ -match '--brand-app-name:' }) | Select-Object -First 1
+        $company = @($brandLines | Where-Object { $_ -match '--brand-company:' }) | Select-Object -First 1
+        $app.Trim() | Should -Be '--brand-app-name: ''$appName'';'
+        $company.Trim() | Should -Be '--brand-company: ''$companyName'';'
+    }
+}

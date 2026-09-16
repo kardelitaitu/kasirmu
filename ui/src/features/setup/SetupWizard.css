@@ -318,7 +318,7 @@
   width: 1.125rem;
   height: 1.125rem;
   border-radius: var(--radius-full);
-  background: var(--color-bg, #ffffff);
+  background: var(--color-bg);
   box-shadow: var(--shadow-sm);
   transition: transform var(--duration-150) var(--ease-out);
 }
@@ -331,6 +331,13 @@
   transform: translateX(1.25rem);
 }
 
+/* The focusable element in this control is the visually-hidden checkbox input,
+   not either <span> — neither .toggle-track nor .toggle-thumb carries a
+   tabIndex, so a .toggle-track:focus-visible rule could never match and would
+   be dead CSS written at a guard. One ring, drawn on the track the keyboard user
+   is actually looking at, driven by the input that is really focused: same token
+   and geometry as .setup-preset-card:focus-visible above and
+   .setup-feature-row:has(input:focus-visible). */
 .toggle-switch input:focus-visible + .toggle-track {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;

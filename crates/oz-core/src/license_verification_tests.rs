@@ -63,11 +63,20 @@ fn verify_tampered_payload_fails() {
     assert!(result.is_err(), "tampered payload should fail verification");
 }
 
+/// The BOOTSTRAP_FREE short-circuit is compiled only under
+/// `#[cfg(debug_assertions)]`, so this assertion can hold only in a
+/// debug-profile test run. In a release build the sentinel is not accepted and
+/// the call returns Err, which is why the test is gated rather than paired with
+/// a second assertion -- the honest counterpart of a debug-only bypass is no
+/// assertion in release. Gated in the form `entitlements_tests.rs:150` and
+/// `:176` use.
+#[cfg(debug_assertions)]
 #[test]
 fn verify_bootstrap_free_bypasses_rsa_in_debug() {
-    // The BOOTSTRAP_FREE sentinel should pass without a real key
-    // in debug/dev/test builds (where #[cfg(debug_assertions)] applies).
-    // This test is always compiled in test mode (which is debug).
+    // The BOOTSTRAP_FREE sentinel passes without a real key, but only in debug
+    // /dev/test builds where the production guard at license_verification.rs
+    // :391-392 is compiled in. See the note at the bottom of this file for what
+    // a release build does with the sentinel instead.
     let result = verify_license_signature("anything", "BOOTSTRAP_FREE");
     assert!(result.is_ok());
 }
@@ -88,11 +97,26 @@ fn verify_rejects_garbage_signatures() {
     assert!(result.is_err(), "empty signature should fail: {result:?}");
 }
 
-/// NOTE: There is intentionally no test that BOOTSTRAP_FREE is *rejected*
-/// in release builds, because `cargo test` always runs with
-/// `debug_assertions` enabled. The `#[cfg(debug_assertions)]` guard is
-/// validated by inspection and by running `cargo build --release` and
-/// confirming the symbol is absent.
+// NOTE: the sentinel short-circuit lives behind `#[cfg(debug_assertions)]` at
+// license_verification.rs:391-392 (true when this note was written at 38bfcdd41; the guard is at :397 and the comparison at :398 at HEAD 4a4c5fc9e, six lines lower because 9927adec1 grew the comment above it from 3 lines to 9 — marked, not silently repointed, and re-grepped here rather than copied). In a release build execution falls through
+// to `base64::STANDARD.decode("BOOTSTRAP_FREE")`, which fails with
+// `InvalidByte(9, 95)`: offset 9 is the first underscore of the sentinel and 95
+// is that underscore's byte value. The decode error is wrapped at
+// license_verification.rs:399-403 (likewise true at 38bfcdd41; the same six-line shift puts that block at :405-409 at HEAD 4a4c5fc9e) as
+// `CoreError::InvalidSubscriptionSignature`, carrying the text
+// "failed to decode base64 signature: InvalidByte(9, 95)".
+//
+// That is the first panic a release-profile run reports for a sentinel-signed
+// row, and it is the signature of a migration-seeded row rather than of any test
+// literal: 20260813_init.sql:1514 and its generated PG twin at :2101 INSERT
+// BOOTSTRAP_FREE as the default tenant subscription signature.
+//
+// What this note used to claim -- that `cargo test` always runs with
+// `debug_assertions` enabled -- is false, and that false premise is why
+// `verify_bootstrap_free_bypasses_rsa_in_debug` carried no guard: `cargo test
+// --release` clears `debug_assertions`, so the assertion was red by construction
+// in that profile. It is now `#[cfg(debug_assertions)]`-gated. No release-side
+// counterpart is added; see the doc comment on that test.
 
 #[test]
 fn embedded_public_key_is_loadable() {

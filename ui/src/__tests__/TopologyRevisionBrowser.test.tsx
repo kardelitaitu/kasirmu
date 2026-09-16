@@ -67,11 +67,15 @@ const node = (id: string, name: string, x = 0): TopologyNodePayload => ({
 /** Apply through the real dev-mock, so the rows are the ones the
  *  backend-shaped code produces — including deflation past the budget. */
 const deploy = async (nodes: TopologyNodePayload[], note: string, branchId?: string) => {
-  // baseRevision must be the LIVE one. `applyTopologyDiff` declares it as
-  // `baseRevision = 0`, so passing `undefined` sends 0 rather than omitting
-  // it, and the dev-mock's conflict gate (correctly) rejects the second
-  // deploy in any test.
-  const current = await api.loadTopology();
+  // baseRevision must be the LIVE one FOR THE BRANCH BEING DEPLOYED TO —
+  // since the T-1 fix (2026-09-16) the dev-mock keys envelope and counter
+  // per branch exactly like the real `topology_setting_key(branch_id)`, so
+  // an unbranched snapshot here would read the legacy default slot and the
+  // second deploy to any named branch would carry the wrong base.
+  // `applyTopologyDiff` declares `baseRevision = 0`, so passing `undefined`
+  // sends 0 rather than omitting it, and the dev-mock's conflict gate
+  // (correctly) rejects the second deploy in any test.
+  const current = await api.loadTopology(TOKEN, branchId);
   return api.applyTopologyDiff(
     TOKEN, [], [], [], nodes, [], branchId,
     current?.revision ?? 0,

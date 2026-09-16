@@ -19,11 +19,16 @@ import {
   getNestedDepth,
   onNestedDepthChange,
 } from './nestedModalDepth';
+import type { WorkspaceType } from './workspaceType';
 import styles from './WorkspaceSettingsModal.module.css';
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export type WorkspaceType = 'store-pos' | 'restaurant-pos' | 'kds' | 'warehouse';
+// Re-exported: the union is owned by ./workspaceType so AppShell and
+// TabletAppShell can map a workspace type_key without importing this
+// component (which they lazy-load). Existing `from '@/features/settings/
+// WorkspaceSettingsModal'` type imports keep working.
+export type { WorkspaceType };
 export type ModalPresentation = 'overlay' | 'slideover';
 
 export interface WorkspaceSettingsModalProps {

@@ -143,9 +143,21 @@
   --color-overlay:         rgba(0, 0, 0, 0.60);
 
   /* ── Font ─────────────────────────────────────────────────── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+  /* THEME-INVARIANT, on the same ground as --color-paper above: declared in
+     this :root block only, never overridden per theme. A bare var(--font-sans)
+     or var(--font-mono) — which is how most of the UI spends them — has no
+     fallback of its own, so a per-theme restatement would silently retypeface
+     most of the app with nothing failing. themeTokenCompliance rule 5 fails
+     the build if either name is declared a second time.
+
+     The *Variable* family comes first because that is the name the fontsource
+     packages imported by fonts.css actually register ('Inter Variable', not
+     'Inter'). The plain name stays behind it so a machine that has the static
+     face installed still resolves. The generic keyword stays LAST in both:
+     it is the floor that keeps the UI off a browser-default serif. */
+  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display',
     'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code',
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code',
     ui-monospace, monospace;
 
   /* ── Type scale ───────────────────────────────────────────── */

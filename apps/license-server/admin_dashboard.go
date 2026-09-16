@@ -1,7 +1,7 @@
 package main
 
 // Admin dashboard API endpoints (ADR #42 Phase 3) — internal operations
-// for the OZ-POS admin panel at admin.ozpos.my.id. All endpoints require
+// for the kasir.mu admin panel at admin.kasir.mu. All endpoints require
 // Authorization: Bearer <OZ_ADMIN_KEY> (a server-side secret, never the
 // tenant API key). They expose tenant management: list, drill-down, and
 // lifecycle actions (activate/renew/revoke/tier-override).
@@ -37,7 +37,7 @@ import (
 // workspace Cargo.toml rather than against a copy of itself, so a bump that
 // misses this file goes red instead of silently misreporting.
 // scripts/bump-version.ps1 updates this line as part of a bump.
-const adminDashboardVersion = "0.0.37"
+const adminDashboardVersion = "0.0.39"
 
 // adminKeyOK validates the Authorization: Bearer <admin_key> header.
 // Reads the key from OZ_ADMIN_KEY env; a missing env or wrong key is 401.

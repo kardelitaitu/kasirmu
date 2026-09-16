@@ -9,6 +9,31 @@ next: none | perf: N/A
 //! This module exposes the receipt-related subset of the `settings` table
 //! to the front-end. Other settings (store name, currency, features) are
 //! managed by the setup wizard and may be exposed here in the future.
+//!
+//! # ADR #49 extraction status — the remaining frontier is three refusals
+//!
+//! The census reads **3 of 24 doors portable** here, and all three are refused:
+//!
+//! - `get_user_preferences_scoped` and `set_user_preferences_scoped` read
+//!   body-identical but are on the registration-gate debt ledger
+//!   (`registration_gate_debt.generated.rs:98`, `:102`) as
+//!   `resolves_session_names_no_permission`. Delegating would flip them to
+//!   `Gated` and erase two real ledger rows — §1 forbids it. The drift-pin
+//!   evidence is in the note above [`get_user_preferences_scoped`].
+//! - `get_deployment_info` reads body-identical as well, and is refused on a
+//!   *provenance* fork rather than a gate: the desktop shell already delegates
+//!   (`apps/desktop-client/src/commands/settings.rs:341`), while this shell
+//!   builds the payload locally on purpose, because `env!("CARGO_PKG_VERSION")`
+//!   expands against the crate that writes it and a tablet terminal should
+//!   report the tablet build (see the comment above `build_deployment_info`).
+//!   Measured 2026-09-16: both crates take `version.workspace = true`
+//!   (`Cargo.toml:37`), so the two constants are equal *today* — the fork is
+//!   about which crate the string comes from, not about its value. That makes
+//!   it an owner decision rather than a mechanical port, so it is reported
+//!   here instead of being resolved by an extraction.
+//!
+//! Every other door in this file diverges in its own body, and those refusals
+//! are documented per door.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -25,299 +50,143 @@ use crate::commands::authz::{require_permission_for_session, require_permission_
 use crate::error::AppError;
 use crate::state::AppState;
 
+/// Phase 3.3 T4: these settings wire types are re-exported from
+/// `oz_bridge::settings` — the same move T3 made for `LocalPaymentRailArgs`
+/// and the regional DTOs — so a field rename or a `rename_all` edit lands once
+/// instead of having to be made twice and noticed a third time. Until this
+/// slice each was a byte-identical second definition in this file, and the
+/// renderer's TypeScript interface was the only place the three copies agreed.
+///
+/// `HardwareSettingsDto` is deliberately NOT on the list, and that is a defect
+/// being reported rather than a shortcut being taken: the bridge type carries
+/// fifteen keys (scale connection / path / baud / zero-on-boot / auto-zero,
+/// kitchen printer connection / path, sound volume, dark mode, schema version)
+/// while this shell's type — and both of its command bodies — carry five. A
+/// re-export here would let `set_hardware_settings_scoped` ACCEPT ten keys
+/// it then never writes, converting a visible absence into a silent drop. The
+/// two shells also read different stores for the same screen (this one reads
+/// the `settings` KV table through `Settings::get_printer_*`; the bridge reads
+/// `hardware_profiles` through `TerminalProfile` and needs `base_dir`), so the
+/// repair is a storage-source decision plus the `AppState` → `BridgeCtx` seam
+/// T2 deferred — not a `pub use`. Measured and recorded in the 2026-09-15 T4
+/// entry of `todo-refactor-oz-pos-app-agents-3.md`.
+pub use oz_bridge::settings::{
+    CreditSaleDto, CreditSettingsDto, DeploymentInfo, GatewayStatusEntry, ReceiptSettingsDto,
+    StoreSettingsDto, UserPrefEntry,
+};
+
 // ── Receipt settings DTO ─────────────────────────────────
-
-/// All receipt display options in one shot – the UI loads these on
-/// mount and sends the whole struct back on save.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ReceiptSettingsDto {
-    /// Show currency symbol prefix on amounts.
-    pub show_currency: bool,
-    /// Decimal separator: `"dot"`, `"comma"`, or `"none"`.
-    pub decimal_separator: String,
-    /// Show the tax line.
-    pub show_tax: bool,
-    /// Footer text (empty = disabled).
-    pub footer: String,
-    /// Paper width: `"standard"` or `"narrow"`.
-    pub paper_width: String,
-    /// Show table number on cart and receipts.
-    pub show_table_number: bool,
-    /// Top margin (mm).
-    pub margin_top: i64,
-    /// Bottom margin (mm).
-    pub margin_bottom: i64,
-    /// Left margin (mm).
-    pub margin_left: i64,
-    /// Right margin (mm).
-    pub margin_right: i64,
-    /// Tax rounding mode: `"half_up"` or `"truncate"`. Default `"half_up"`.
-    #[serde(default = "default_tax_rounding_mode")]
-    pub tax_rounding_mode: String,
-}
-
-fn default_tax_rounding_mode() -> String {
-    "half_up".to_string()
-}
+//
+// `ReceiptSettingsDto` comes from `oz_bridge::settings` (see the re-export
+// above); the eleven camelCase keys it carries are pinned against
+// `ui/src/api/settings.ts` by
+// `wire_pin_receipt_settings_carries_every_key_the_renderer_declares`.
+// `taxRoundingMode` is the one key of the eleven that is optional on the wire:
+// absent means "leave the stored mode alone", because the restaurant POS card
+// sends ten of the eleven (T4-2 in `todo-refactor-oz-pos-app-agents-3.md`).
 
 // ── Get receipt settings ──────────────────────────────────
 
 #[command]
 /// Get receipt settings.
+///
+/// ADR #49: the body is the bridge's, and this delegation is a pure identity
+/// rather than a merge. `oz_bridge::settings::get_receipt_settings` locks
+/// `ctx.db` — which `AppState::bridge_ctx` binds to this same `state.db` — and
+/// calls the same `run_get_receipt_settings` in the same order, and the bridge
+/// documents its twin as "gate-free exactly as in the shell". So delegating adds
+/// no gate and removes none. `run_get_receipt_settings` stays below as this
+/// suite's seam, because 25 of this file's 50 tests drive the `run_*` helpers
+/// rather than the doors (measured 2026-09-16, not carried over).
 pub async fn get_receipt_settings(
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
-    let conn = state.db.lock().await;
-    run_get_receipt_settings(&conn)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_receipt_settings(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
-/// Business logic for `get_receipt_settings` (extracted for testing).
+/// Business logic for `get_receipt_settings` (extracted for testing). The body
+/// is the bridge's; what is tablet-specific is the error type, converted by the
+/// `From<BridgeError> for AppError` seam in `authz.rs` that landed with T1.
 fn run_get_receipt_settings(conn: &rusqlite::Connection) -> Result<ReceiptSettingsDto, AppError> {
-    Ok(ReceiptSettingsDto {
-        show_currency: Settings::get_receipt_show_currency(conn)?,
-        decimal_separator: Settings::get_receipt_decimal_separator(conn)?,
-        show_tax: Settings::get_receipt_show_tax(conn)?,
-        footer: Settings::get_receipt_footer(conn)?,
-        paper_width: Settings::get_receipt_paper_width(conn)?,
-        show_table_number: Settings::get_receipt_show_table_number(conn)?,
-        margin_top: Settings::get_receipt_margin_top(conn)?,
-        margin_bottom: Settings::get_receipt_margin_bottom(conn)?,
-        margin_left: Settings::get_receipt_margin_left(conn)?,
-        margin_right: Settings::get_receipt_margin_right(conn)?,
-        tax_rounding_mode: Settings::get_tax_rounding_mode(conn)?
-            .wire_name()
-            .to_string(),
-    })
+    Ok(oz_bridge::settings::run_get_receipt_settings(conn)?)
 }
 
 // ── Set receipt settings ──────────────────────────────────
 
-#[command]
-/// Set receipt settings.
-pub async fn set_receipt_settings(
-    args: ReceiptSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_receipt_settings(&conn, &args)
-}
-
-/// Business logic for `set_receipt_settings` (extracted for testing).
+/// Business logic behind `set_receipt_settings_scoped` (extracted for testing). Body is
+/// the bridge's; see `run_get_receipt_settings` for why a forwarder stays.
 fn run_set_receipt_settings(
     conn: &rusqlite::Connection,
     args: &ReceiptSettingsDto,
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-
-    Settings::set_receipt_show_currency(&tx, args.show_currency)?;
-    Settings::set_receipt_decimal_separator(&tx, &args.decimal_separator)?;
-    Settings::set_receipt_show_tax(&tx, args.show_tax)?;
-    Settings::set_receipt_footer(&tx, &args.footer)?;
-    Settings::set_receipt_paper_width(&tx, &args.paper_width)?;
-    Settings::set_receipt_show_table_number(&tx, args.show_table_number)?;
-    Settings::set_receipt_margin_top(&tx, args.margin_top)?;
-    Settings::set_receipt_margin_bottom(&tx, args.margin_bottom)?;
-    Settings::set_receipt_margin_left(&tx, args.margin_left)?;
-    Settings::set_receipt_margin_right(&tx, args.margin_right)?;
-    Settings::set_tax_rounding_mode_str(&tx, &args.tax_rounding_mode)?;
-
-    tx.commit()?;
-
-    Ok(())
+    Ok(oz_bridge::settings::run_set_receipt_settings(conn, args)?)
 }
 
 // ── Store info DTO ────────────────────────────────────────────
-
-/// Store name, address, tax ID, currency, branch, and logo – shown on printed receipts.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreSettingsDto {
-    /// Display name.
-    pub name: String,
-    /// Street address.
-    pub address: String,
-    /// ID of the associated tax.
-    pub tax_id: String,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// Branch.
-    pub branch: String,
-    /// Logo.
-    pub logo: String,
-}
+//
+// `StoreSettingsDto` comes from `oz_bridge::settings`; its six camelCase keys
+// are pinned by `wire_pin_store_settings_carries_every_key_the_renderer_declares`.
 
 // ── Get store settings ────────────────────────────────────────
 
 #[command]
 /// Get store settings.
+///
+/// ADR #49: the body is the bridge's, and as with `get_receipt_settings` the
+/// delegation is a pure identity — same `ctx.db` (bound to this `state.db`),
+/// same `run_get_store_settings`, same order, and the bridge's twin is
+/// documented "gate-free exactly as in the shell".
 pub async fn get_store_settings(state: State<'_, AppState>) -> Result<StoreSettingsDto, AppError> {
-    let conn = state.db.lock().await;
-    run_get_store_settings(&conn)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_store_settings(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for `get_store_settings` (extracted for testing).
 fn run_get_store_settings(conn: &rusqlite::Connection) -> Result<StoreSettingsDto, AppError> {
-    Ok(StoreSettingsDto {
-        name: Settings::get_store_name(conn)?.unwrap_or_default(),
-        address: Settings::get_store_address(conn)?.unwrap_or_default(),
-        tax_id: Settings::get_store_tax_id(conn)?.unwrap_or_default(),
-        currency: Settings::get_default_currency(conn)?.unwrap_or_else(|| "IDR".into()),
-        branch: Settings::get_store_branch(conn)?.unwrap_or_default(),
-        logo: Settings::get_store_logo(conn)?.unwrap_or_default(),
-    })
+    Ok(oz_bridge::settings::run_get_store_settings(conn)?)
 }
 
 // ── Set store settings ────────────────────────────────────────
 
-#[command]
-/// Set store settings.
-pub async fn set_store_settings(
-    args: StoreSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    run_set_store_settings(&conn, &args)
-}
-
-/// Business logic for `set_store_settings` (extracted for testing).
+/// Business logic behind `set_store_settings_scoped` (extracted for testing).
 fn run_set_store_settings(
     conn: &rusqlite::Connection,
     args: &StoreSettingsDto,
 ) -> Result<(), AppError> {
-    let tx = conn.unchecked_transaction()?;
-
-    Settings::set_store_name(&tx, &args.name)?;
-    Settings::set_store_address(&tx, &args.address)?;
-    Settings::set_store_tax_id(&tx, &args.tax_id)?;
-    Settings::set_default_currency(&tx, &args.currency)?;
-    Settings::set_store_branch(&tx, &args.branch)?;
-    Settings::set_store_logo(&tx, &args.logo)?;
-
-    tx.commit()?;
-
-    Ok(())
+    Ok(oz_bridge::settings::run_set_store_settings(conn, args)?)
 }
 
 // ── Credit Settings DTO ─────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Creditsettingsdto.
-pub struct CreditSettingsDto {
-    /// Enabled.
-    pub enabled: bool,
-    /// Reminder Interval Hours.
-    pub reminder_interval_hours: i64,
-    /// Max Limit Minor.
-    pub max_limit_minor: i64,
-}
+//
+// `CreditSettingsDto` comes from `oz_bridge::settings`.
 
 #[command]
 /// Get credit settings.
+///
+/// ADR #49: the body is the bridge's. Its twin
+/// `oz_bridge::settings::get_credit_settings` is documented there as
+/// "gate-free exactly as in the shell", so delegating adds no gate and removes
+/// none — what stood here was a byte-identical second copy of that body.
 pub async fn get_credit_settings(
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
-    let conn = state.db.lock().await;
-    Ok(CreditSettingsDto {
-        enabled: Settings::is_credit_enabled(&conn)?,
-        reminder_interval_hours: Settings::get_credit_reminder_interval(&conn)?,
-        max_limit_minor: Settings::get_credit_max_limit(&conn)?,
-    })
-}
-
-#[command]
-/// Set credit settings.
-pub async fn set_credit_settings(
-    args: CreditSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
-    Settings::set_credit_enabled(&tx, args.enabled)?;
-    Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
-    Settings::set_credit_max_limit(&tx, args.max_limit_minor)?;
-    tx.commit()?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_credit_settings(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Credit sale DTO ──────────────────────────────────────────────
-
-#[derive(Debug, Serialize, Deserialize)]
-/// Creditsaledto.
-pub struct CreditSaleDto {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Customer Name.
-    pub customer_name: String,
-    /// Total amount in minor currency units.
-    pub total_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// Settled At.
-    pub settled_at: Option<String>,
-    /// Cashier Name.
-    pub cashier_name: String,
-}
-
-#[command]
-/// List credit sales.
-pub async fn list_credit_sales(state: State<'_, AppState>) -> Result<Vec<CreditSaleDto>, AppError> {
-    let conn = state.db.lock().await;
-    let mut stmt = conn.prepare(
-        "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
-                p.settled_at, COALESCE(u.display_name, '')
-         FROM sales s
-         JOIN payments p ON p.sale_id = s.id
-         LEFT JOIN users u ON u.id = s.user_id
-         WHERE s.status = 'completed'
-           AND p.method = 'credit'
-         ORDER BY s.created_at DESC",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CreditSaleDto {
-            sale_id: row.get(0)?,
-            customer_name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-            total_minor: row.get(2)?,
-            currency: row.get(3)?,
-            created_at: row.get(4)?,
-            settled_at: row.get(5)?,
-            cashier_name: row.get(6)?,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
-}
-
-#[command]
-/// Settle credit.
-pub async fn settle_credit(
-    sale_id: String,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
-    let now = chrono::Utc::now().to_rfc3339();
-    tx.execute(
-        "UPDATE payments SET settled_at = ?1 WHERE sale_id = ?2 AND method = 'credit'",
-        rusqlite::params![now, sale_id],
-    )?;
-    tx.commit()?;
-    Ok(())
-}
+//
+// `CreditSaleDto` comes from `oz_bridge::settings`. Its wire keys are camelCase
+// as of the 2026-09-15 T4 repair, because the retail credit list reads
+// `saleId`/`customerName`/`totalMinor`/`createdAt`/`settledAt`; the pin lives in
+// `settings_tests.rs::wire_pin_credit_sale_carries_every_key_the_renderer_declares`.
 
 // ── Hardware settings (printer + scanner) ───────────────────────
 
@@ -352,58 +221,20 @@ pub async fn get_hardware_settings(
     })
 }
 
-#[command]
-/// Set hardware settings.
-pub async fn set_hardware_settings(
-    args: HardwareSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
-    Settings::set_printer_connection(&tx, &args.printer_connection)?;
-    Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
-    Settings::set_printer_paper_size(&tx, &args.printer_paper_size)?;
-    Settings::set_scanner_device_id(&tx, &args.scanner_device_id)?;
-    Settings::set_scanner_input_mode(&tx, &args.scanner_input_mode)?;
-    tx.commit()?;
-    Ok(())
-}
-
 // ── User preferences ───────────────────────────────────────────
-
-/// One key-value pair within a user's preferences.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UserPrefEntry {
-    /// Key.
-    pub key: String,
-    /// Value.
-    pub value: String,
-}
-
-#[command]
-/// Get user preferences.
-pub async fn get_user_preferences(
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<HashMap<String, String>, AppError> {
-    let conn = state.db.lock().await;
-    Ok(UserPreferences::get_all(&conn, &user_id)?)
-}
-
-#[command]
-/// Set user preferences.
-pub async fn set_user_preferences(
-    user_id: String,
-    prefs: Vec<UserPrefEntry>,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let pairs: Vec<(String, String)> = prefs.into_iter().map(|e| (e.key, e.value)).collect();
-    Ok(UserPreferences::set_batch(&conn, &user_id, &pairs)?)
-}
+//
+// `UserPrefEntry` comes from `oz_bridge::settings` (two single-word keys; the
+// pin is `wire_pin_user_pref_entry_carries_every_key_the_renderer_declares`).
+//
+// The unscoped `get_user_preferences` / `set_user_preferences` pair used to sit
+// here. It was **dead surface**: registered in neither shell's
+// `generate_handler!` block, absent from the desktop crate altogether, and
+// called by nothing in the tree — only the dev-mock and the UI's test mocks
+// answered those names, which is what made them read as live. Both also took a
+// caller-supplied `user_id`, the forgeable shape the six scoped setters above
+// dropped the same day (T4-1), so *registering* them would have re-opened it.
+// Deleted under T4-4 of `todo-refactor-oz-pos-app-agents-3.md`; the scoped twins
+// below derive the user from the session and are what both shells register.
 
 #[command]
 /// Get user preferences resolved from a session token. ADR #7.
@@ -412,6 +243,25 @@ pub async fn set_user_preferences(
 /// session's store database, so a tablet terminal persists the same
 /// per-user preferences (menu sort, card/font size) that the desktop
 /// client writes.
+///
+/// ADR #49 NOT APPLIED, deliberately. The body is still the shell's, even
+/// though `oz_bridge::settings::get_user_preferences_scoped` is byte-identical
+/// to it. Delegating would make this shell's registration-gate sweep read the
+/// `oz_bridge::` call as evidence that the shared funnel owns the RBAC — and
+/// for this pair it does not: the bridge twin is ungated beyond the session,
+/// by design, because a caller's own UI preferences need no `settings:read`.
+/// So the delegation would flip `settings::get_user_preferences_scoped` from
+/// "ungated debt on the ledger" to "gated" without a permission being added,
+/// i.e. it would erase a real entry from the ratchet. §4 of the ADR forbids
+/// exactly this: an extraction must not widen a gate. Measured: delegating this
+/// pair turned
+/// `registration_gate_tests::drift_pin_three_way_partition_is_complete_and_sums`
+/// red with "on the ledger but no longer ungated: settings::get_user_preferences_scoped,
+/// settings::set_user_preferences_scoped". Re-confirmed 2026-09-17: both entries
+/// are still on `registration_gate_debt.generated.rs` (as
+/// `resolves_session_names_no_permission`) and the bridge twin still documents
+/// itself as *"nothing here is gated beyond the session either"*, so the refusal
+/// stands rather than being an artifact of a stale comment.
 pub async fn get_user_preferences_scoped(
     session_token: String,
     state: State<'_, AppState>,
@@ -434,6 +284,9 @@ pub async fn get_user_preferences_scoped(
 /// session's store database — parity with the desktop client so
 /// the restaurant-menu hamburger configuration persists to the
 /// shared user settings on tablet terminals.
+///
+/// ADR #49 NOT APPLIED — see the getter above for the measurement. The pair
+/// moves together or not at all.
 pub async fn set_user_preferences_scoped(
     session_token: String,
     prefs: Vec<UserPrefEntry>,
@@ -461,19 +314,20 @@ pub async fn get_setting(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let conn = state.db.lock().await;
-    run_get_setting(&conn, &key)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::get_setting(&ctx, &key)
+        .await
+        .map_err(Into::into)
 }
 
-/// Business logic for `get_setting` (extracted for testing).
+/// Business logic for `get_setting`, kept as this suite's seam.
 ///
-/// C-2: Secret keys are denied — never return plaintext credentials,
-/// API keys, passwords, or PSKs to the IPC surface.
+/// ADR #49: the body is the bridge's. What stood here was not a forwarder but
+/// a second copy of the body — the secret-key refusal plus `Settings::get` —
+/// and the local `is_secret_key` wrapper that fed it goes with it, because
+/// `platform_core::settings::keys` is the one list both shells read.
 fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, AppError> {
-    if is_secret_key(key) {
-        return Ok(None);
-    }
-    Ok(Settings::get(conn, key)?)
+    Ok(oz_bridge::settings::run_get_setting(conn, key)?)
 }
 
 // The hand copy of SECRET_KEY_DENY_LIST that used to sit here is deleted. The
@@ -485,18 +339,10 @@ fn run_get_setting(conn: &rusqlite::Connection, key: &str) -> Result<Option<Stri
 // entirely - so both credentials were readable through this shell's
 // get_setting while the tests that named them stayed green.
 
-/// Status entry for one payment gateway.
-#[derive(Debug, Serialize)]
-pub struct GatewayStatusEntry {
-    /// Display name of the gateway.
-    pub name: String,
-    /// Whether a credential is configured.
-    pub configured: bool,
-    /// Whether the gateway is usable for charging (same as `configured`
-    /// today; kept separate so reachability checks can land later without
-    /// changing the wire shape).
-    pub online: bool,
-}
+// `GatewayStatusEntry` is re-exported from `oz_bridge::settings`. The three
+// emitted keys are the whole contract, and they are pinned in
+// `settings_tests.rs` because a fourth key here would put a credential on the
+// wire that UI-1 exists to keep off it.
 
 /// Report which payment gateways have credentials configured.
 ///
@@ -504,42 +350,18 @@ pub struct GatewayStatusEntry {
 /// credential values never leave the backend — the gateway keys are on the
 /// shared `SECRET_KEY_DENY_LIST` (platform_core::settings::keys), and the
 /// renderer only ever sees booleans.
+///
+/// ADR #49: the body is the bridge's. This one was byte-identical to
+/// `oz_bridge::settings::gateway_status` — same closure, same three entries,
+/// same order — so the credential contract does not move with it.
 #[tauri::command]
 pub async fn gateway_status(
     state: State<'_, AppState>,
 ) -> Result<Vec<GatewayStatusEntry>, AppError> {
-    let conn = state.db.lock().await;
-    let configured = |key: &str| -> Result<bool, AppError> {
-        Ok(Settings::get(&conn, key)?.is_some_and(|v| !v.is_empty()))
-    };
-    let stripe = configured("stripe.api_key")?;
-    let square = configured("square.api_key")?;
-    let midtrans = configured("midtrans.server_key")?;
-    Ok(vec![
-        GatewayStatusEntry {
-            name: "Stripe".into(),
-            configured: stripe,
-            online: stripe,
-        },
-        GatewayStatusEntry {
-            name: "Square".into(),
-            configured: square,
-            online: square,
-        },
-        GatewayStatusEntry {
-            name: "QRIS (Midtrans)".into(),
-            configured: midtrans,
-            online: midtrans,
-        },
-    ])
-}
-
-/// Returns `true` if the given settings key should be blocked from
-/// the raw `get_setting` IPC surface.
-///
-/// Thin delegation to the shared predicate: one list, one match, both shells.
-fn is_secret_key(key: &str) -> bool {
-    platform_core::settings::keys::is_secret_setting_key(key)
+    let ctx = state.bridge_ctx();
+    oz_bridge::settings::gateway_status(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Write (or overwrite) a single setting value.
@@ -666,7 +488,11 @@ pub async fn get_receipt_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -678,15 +504,17 @@ pub async fn get_receipt_settings_scoped(
 pub async fn set_receipt_settings_scoped(
     session_token: String,
     args: ReceiptSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    // The session names the user; the caller cannot. `require_permission_for_session`
+    // is also scope-aware (ADR #35 D5), so this is strictly stronger than the
+    // `user_id` argument it replaces — and that argument was unfillable from the
+    // renderer, which sends only `{ sessionToken, args }`.
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_receipt_settings(&db_guard, &args)
 }
 
@@ -696,7 +524,11 @@ pub async fn get_store_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<StoreSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -708,15 +540,13 @@ pub async fn get_store_settings_scoped(
 pub async fn set_store_settings_scoped(
     session_token: String,
     args: StoreSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_store_settings(&db_guard, &args)
 }
 
@@ -726,7 +556,11 @@ pub async fn get_credit_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -742,15 +576,13 @@ pub async fn get_credit_settings_scoped(
 pub async fn set_credit_settings_scoped(
     session_token: String,
     args: CreditSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     let tx = db_guard.unchecked_transaction()?;
     Settings::set_credit_enabled(&tx, args.enabled)?;
     Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
@@ -760,37 +592,40 @@ pub async fn set_credit_settings_scoped(
 }
 
 /// Session-scoped variant of `list_credit_sales`.
+///
+/// ADR #49: the **query** is the bridge's; the door is not. `run_list_credit_sales`
+/// below is byte-identical to the twenty-two lines of SQL that stood here — same
+/// statement text, same seven columns, same `unwrap_or_default` on the cashier
+/// name — so collapsing them removes a duplicate without touching behaviour.
+///
+/// The door itself deliberately keeps its own gate and lock order rather than
+/// delegating to `oz_bridge::settings::list_credit_sales_scoped`. That twin opens
+/// the store *after* its gate (`resolve_session` → gate → `resolve_store`), while
+/// this shell's `resolve_scope` opens it *before* the gate, so whole-door
+/// delegation would change which side effects a **denied** request performs. §4
+/// pins lock and gate order, so the difference is preserved, not smoothed over.
+///
+/// Two claims that stood here are retired by measurement (2026-09-17):
+/// - the comment cited *"the same registration-gate reason spelled out on
+///   `list_credit_sales`"* — but that function no longer exists; `613d72f12`
+///   deleted it along with four other legacy settings commands.
+/// - it said this path *"resolves a session and then drops it (`_session`)
+///   without asking for `sales:view`"* — the gate below was added by `4bdb4b4d7`,
+///   which is why the body can be a read at all. The gap it described is closed.
 #[command]
 pub async fn list_credit_sales_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CreditSaleDto>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let mut stmt = db_guard.prepare(
-        "SELECT s.id, p.gateway_reference, s.total_minor, s.currency, s.created_at,
-                p.settled_at, COALESCE(u.display_name, '')
-         FROM sales s
-         JOIN payments p ON p.sale_id = s.id
-         LEFT JOIN users u ON u.id = s.user_id
-         WHERE s.status = 'completed'
-           AND p.method = 'credit'
-         ORDER BY s.created_at DESC",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CreditSaleDto {
-            sale_id: row.get(0)?,
-            customer_name: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-            total_minor: row.get(2)?,
-            currency: row.get(3)?,
-            created_at: row.get(4)?,
-            settled_at: row.get(5)?,
-            cashier_name: row.get(6)?,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    Ok(oz_bridge::settings::run_list_credit_sales(&db_guard)?)
 }
 
 /// Session-scoped variant of `settle_credit`.
@@ -798,15 +633,13 @@ pub async fn list_credit_sales_scoped(
 pub async fn settle_credit_scoped(
     session_token: String,
     sale_id: String,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     let tx = db_guard.unchecked_transaction()?;
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute(
@@ -823,7 +656,11 @@ pub async fn get_hardware_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<HardwareSettingsDto, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -836,20 +673,20 @@ pub async fn get_hardware_settings_scoped(
     })
 }
 
-/// Session-scoped variant of `set_hardware_settings`.
+/// Session-scoped hardware write: the only one. The unscoped `set_hardware_settings`
+/// this used to sit beside took `user_id` from the renderer, which is the actor the
+/// permission check asks about, so it was retired with T11 rather than repaired.
 #[command]
 pub async fn set_hardware_settings_scoped(
     session_token: String,
     args: HardwareSettingsDto,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     let tx = db_guard.unchecked_transaction()?;
     Settings::set_printer_connection(&tx, &args.printer_connection)?;
     Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
@@ -867,7 +704,11 @@ pub async fn get_setting_scoped(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // F-017/T10: the `oz_bridge::settings` twin gates this command and this shell
+    // resolved the session, bound it to a store, then ignored it. Gated here before
+    // the store lock is taken, so no await sits inside a held lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -880,7 +721,6 @@ pub async fn set_setting_scoped(
     session_token: String,
     key: String,
     value: String,
-    user_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     // Extract terminal_id before locking the DB — no await inside the lock.
@@ -891,12 +731,14 @@ pub async fn set_setting_scoped(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    let (_session, conn_arc) = state.resolve_scope(&session_token)?;
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // The permission check is awaited BEFORE the store conn is locked, so no
+    // await is ever held inside that lock.
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let store = oz_core::db::Store::new(&db_guard);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
     run_set_setting(&db_guard, &key, &value, &terminal_id)?;
     // SYNC-10 parity: enqueue the change so the tablet's sync daemon
     // pushes it to the cloud (and the desktop's pull re-applies it).
@@ -907,22 +749,83 @@ pub async fn set_setting_scoped(
     Ok(())
 }
 
+/// Session-scoped batch write of settings keys. ADR #7.
+///
+/// The tablet twin of the bridge's `set_settings_scoped`. It exists because
+/// three workspace settings cards call this name —
+/// `ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:114`,
+/// `WorkspaceKdsSettings.tsx:136` and `WorkspaceInventorySettings.tsx:97` — and
+/// the tablet mounts the same `WorkspaceSettingsModal` the desktop shell does
+/// (`ui/src/frontend/shell/tablet/TabletAppShell.tsx:71-91` registers the F10
+/// route, `:125` renders it). Before this command existed, those three cards
+/// could not save on a tablet at all. The name was registered on desktop and
+/// absent here, which is why `scripts/ipc-parity-allowlist.json` carried it
+/// (T4-4 in `todo-refactor-oz-pos-app-agents-3.md`).
+///
+/// Two deliberate differences from the bridge body, both measured rather than
+/// assumed:
+/// - **The enqueue goes to the STORE queue, not the global one.** The bridge
+///   enqueues on `ctx.db` because the desktop daemon watches the global queue
+///   (`crates/oz-bridge/src/settings.rs`, "the sync daemon only watches the
+///   global queue"). The tablet's daemon drains the *store* queue:
+///   `sync_run_scoped` reads it through `resolve_scope` (`sync.rs:400-411`) and
+///   its Phase 3 comment at `:437-447` records that writing these marks to the
+///   global connection instead stranded the store rows as `pending` forever.
+///   This matches the singular `set_setting_scoped` above, which already
+///   enqueues on the store.
+/// - **The tenant is the tablet's staged sentinel `"default"`**, the same value
+///   `enqueue_settings_update` passes, rather than the bridge's
+///   `session.store_id`.
+#[command]
+pub async fn set_settings_scoped(
+    session_token: String,
+    entries: HashMap<String, String>,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let terminal_id = state
+        .terminal_id
+        .lock()
+        .await
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db_guard);
+
+    // All-or-nothing, like the desktop twin: the batch funnel pre-flights every
+    // key before it writes any, so one refused key aborts the whole batch.
+    let written = {
+        let tx = db_guard.unchecked_transaction()?;
+        let written = oz_bridge::settings::run_set_settings_batch(&tx, &entries, &terminal_id)?;
+        tx.commit()?;
+        written
+    };
+
+    // Enqueue the values AS WRITTEN — the funnel merges `smtp_config`
+    // internally, so `entries` is not what replication is offered.
+    // Warn-and-continue: the local write already committed. SYNC-10.
+    if let Err(e) =
+        oz_bridge::settings::enqueue_settings_updates(&store, &written, &terminal_id, "default")
+    {
+        tracing::warn!(
+            key_count = written.len(),
+            error = %e,
+            "failed to enqueue settings.update sync items"
+        );
+    }
+    Ok(())
+}
+
 // ── Deployment / version read (operator tooling, saas-3 L162) ─────
 
-/// Running deployment metadata for the operator/support "About" surface in
-/// Diagnostics (todo-global-saas-3.md, L162 operator tooling). The version is
-/// organization-global — the build version is identical across every store — so
-/// there is no store to resolve; a `_scoped` variant would be an empty ceremony
-/// (category 2, per `scripts/verify-scoped-coverage.sh`, alongside
-/// `get_over_quota_report`). It is still gated on `settings:read` inline so only
-/// roles that can already read store/system settings see it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeploymentInfo {
-    /// The running build version (`CARGO_PKG_VERSION`, locked to the release
-    /// line — 0.0.37 at this writing).
-    pub app_version: String,
-}
+// `DeploymentInfo` is re-exported from `oz_bridge::settings`; the value is
+// built HERE, on purpose, because `CARGO_PKG_VERSION` expands against the crate
+// that writes it — a tablet terminal reports the tablet build, exactly as the
+// About identity constants resolve in the tablet shim (T1's decision).
 
 /// Read-only deployment metadata for the signed-in operator. Authenticates the
 /// session and checks `settings:read` inline (category 2 unscoped command).

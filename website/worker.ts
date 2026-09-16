@@ -1,14 +1,14 @@
 /**
- * Cloudflare Worker for the OZ-POS website — marketing site + dashboard subdomains.
+ * Cloudflare Worker for the kasir.mu website — marketing site + dashboard subdomains.
  *
  * Hostname routing:
- *   ozpos.my.id          → marketing site (static assets, runtime config, contact form)
- *   dashboard.ozpos.my.id → user dashboard (auth-gated, placeholder for now)
- *   admin.ozpos.my.id     → admin panel (auth-gated, placeholder for now)
+ *   kasir.mu          → marketing site (static assets, runtime config, contact form)
+ *   dashboard.kasir.mu → user dashboard (auth-gated, placeholder for now)
+ *   admin.kasir.mu     → admin panel (auth-gated, placeholder for now)
  *
  * Auth gate (ADR #42):
  *   Dashboard subdomains check for an httpOnly `oz_session` cookie. If missing:
- *     1. User is redirected to https://ozpos.my.id/login?redirect=<original_url>
+ *     1. User is redirected to https://kasir.mu/login?redirect=<original_url>
  *     2. After login, AuthForm.tsx redirects to the dashboard subdomain with
  *        a one-time exchange code (?code=)
  *     3. This worker catches the ?code= param, exchanges it for a session
@@ -69,27 +69,27 @@ const JSON_HEADERS = { 'Content-Type': 'application/json', 'Cache-Control': 'no-
 const COOKIE_NAME = 'oz_session';
 
 /** Subdomains that require authentication (admin-only). */
-const DASHBOARD_HOSTS = new Set(['admin.ozpos.my.id']);
+const DASHBOARD_HOSTS = new Set(['admin.kasir.mu']);
 
 /** Customer dashboard subdomain — redirects to the marketing account portal. */
-const CUSTOMER_DASHBOARD_HOST = 'dashboard.ozpos.my.id';
+const CUSTOMER_DASHBOARD_HOST = 'dashboard.kasir.mu';
 
 /** Marketing site domain — no auth required. */
-const MARKETING_HOST = 'ozpos.my.id';
+const MARKETING_HOST = 'kasir.mu';
 
 /** Origins the /api/v1/ proxy will echo as Access-Control-Allow-Origin
  * (WEB-2): the marketing host and the two auth-gated subdomains. Any
  * other Origin falls back to the marketing host. */
 const ALLOWED_CORS_ORIGINS = new Set([
-  'https://ozpos.my.id',
-  'https://dashboard.ozpos.my.id',
-  'https://admin.ozpos.my.id',
+  'https://kasir.mu',
+  'https://dashboard.kasir.mu',
+  'https://admin.kasir.mu',
 ]);
 
 /** URL the customer dashboard subdomain redirects to for account management. */
-const CUSTOMER_ACCOUNT_URL = 'https://ozpos.my.id/en/account/';
+const CUSTOMER_ACCOUNT_URL = 'https://kasir.mu/en/account/';
 /** URL the customer dashboard subdomain redirects to for login. */
-const CUSTOMER_LOGIN_URL = 'https://ozpos.my.id/en/login';
+const CUSTOMER_LOGIN_URL = 'https://kasir.mu/en/login';
 
 /** Parse a named cookie value from the Cookie header. */
 function getCookie(headers: Headers, name: string): string | null {
@@ -105,8 +105,8 @@ function getCookie(headers: Headers, name: string): string | null {
 /** Build a Set-Cookie header string for the oz_session token.
  *
  * H4 (hardening): the cookie is scoped to the specific dashboard subdomain
- * (admin.ozpos.my.id or dashboard.ozpos.my.id) instead of the parent
- * `.ozpos.my.id`, so it is never sent to the marketing site or other
+ * (admin.kasir.mu or dashboard.kasir.mu) instead of the parent
+ * `.kasir.mu`, so it is never sent to the marketing site or other
  * subdomains — no cross-subdomain session exposure. */
 function setCookieHeader(token: string, maxAge: number, domain: string): string {
   return `${COOKIE_NAME}=${token}; Domain=${domain}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
@@ -131,7 +131,7 @@ function withStrictCSP(resp: Response): Response {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data:",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://ozpos.my.id https://*.code.run https://*.ozpos.my.id https://open.er-api.com",
+    "connect-src 'self' https://kasir.mu https://*.code.run https://*.kasir.mu https://open.er-api.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -191,10 +191,10 @@ export default {
     const hostname = url.hostname;
 
     // ── Customer dashboard subdomain redirect ─────────────────────────
-    // dashboard.ozpos.my.id is no longer a separate SPA; it redirects
+    // dashboard.kasir.mu is no longer a separate SPA; it redirects
     // transparently to the fully-featured account portal on the marketing
-    // host (ozpos.my.id/en/account/). This eliminates the cookie isolation
-    // problem (separate Domain=dashboard.ozpos.my.id) and removes the
+    // host (kasir.mu/en/account/). This eliminates the cookie isolation
+    // problem (separate Domain=dashboard.kasir.mu) and removes the
     // fragile vanilla-JS duplicate of AccountView.tsx.
     if (hostname === CUSTOMER_DASHBOARD_HOST) {
       const isLoginPath = url.pathname.includes('login');
@@ -213,9 +213,9 @@ export default {
     if (DASHBOARD_HOSTS.has(hostname)) {
       // ── API Proxy to license server (resolves CORS and in-handler Origin checks) ──
       if (url.pathname.startsWith('/api/v1/')) {
-        const targetUrl = (env.LICENSE_API_URL ?? 'https://license.ozpos.my.id') + url.pathname + url.search;
+        const targetUrl = (env.LICENSE_API_URL ?? 'https://license.kasir.mu') + url.pathname + url.search;
         const reqHeaders = new Headers(request.headers);
-        reqHeaders.set('Origin', 'https://ozpos.my.id');
+        reqHeaders.set('Origin', 'https://kasir.mu');
         // WEB-2: never forward the dashboard host's Cookie header to the
         // backend — the SPA authenticates with a Bearer token obtained
         // same-origin from /__oz/session, so Cookie here is pure
@@ -237,7 +237,7 @@ export default {
         const requestOrigin = request.headers.get('Origin') ?? '';
         const corsOrigin = ALLOWED_CORS_ORIGINS.has(requestOrigin)
           ? requestOrigin
-          : 'https://ozpos.my.id';
+          : 'https://kasir.mu';
         respHeaders.set('Access-Control-Allow-Origin', corsOrigin);
         respHeaders.set('Vary', 'Origin');
         return new Response(res.body, { status: res.status, headers: respHeaders });
@@ -266,7 +266,7 @@ export default {
         // OPEN REDIRECT (both 302s below use this URL raw).
         const safePath = '/' + url.pathname.replace(/^[/\\]+/, '');
         const cleanUrl = safePath + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
-        const apiUrl = (env.LICENSE_API_URL ?? 'https://license.ozpos.my.id') + '/api/v1/web/exchange-consume';
+        const apiUrl = (env.LICENSE_API_URL ?? 'https://license.kasir.mu') + '/api/v1/web/exchange-consume';
         try {
           const res = await fetch(apiUrl, {
             method: 'POST',
@@ -294,7 +294,7 @@ export default {
         // Code invalid or exchange failed — send the browser back through
         // the login flow. B24 fix: the old code 302'd to the MARKETING
         // host's /admin/login — but login.js computes API='' for any
-        // *.ozpos.my.id host and POSTs relative /api/v1/... calls, and
+        // *.kasir.mu host and POSTs relative /api/v1/... calls, and
         // the proxy is gated to DASHBOARD_HOSTS. On the marketing host
         // those calls 404: the user was stranded on a dead login form.
         // Redirect to the clean URL on THIS host instead — the no-session
@@ -486,7 +486,7 @@ export default {
 
       // Step 1b-5: UPTIME_PATH — the ONLY surface probeable from inside
       // the Worker (edge vantage): the Northflank license API, which lives
-      // on a different zone. Everything on the ozpos.my.id zone is
+      // on a different zone. Everything on the kasir.mu zone is
       // unprobeable from here: same-zone subrequests bypass Workers
       // routes and fall through to a nonexistent origin (dashboard/admin
       // are Worker routes) or an orange-to-orange apex — both bogus 522s
@@ -495,7 +495,7 @@ export default {
       // by the CSP's first-party connect-src entries).
       if (url.pathname === UPTIME_PATH) {
         if (!sessionCookie) return new Response(JSON.stringify({ error: 'not signed in' }), { status: 401, headers: JSON_HEADERS });
-        const checks = await Promise.all([['license api', 'https://license.ozpos.my.id/api/health']].map(async ([name, target]) => {
+        const checks = await Promise.all([['license api', 'https://license.kasir.mu/api/health']].map(async ([name, target]) => {
           const t0 = Date.now();
           try {
             const res = await fetch(target, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(6000) });
@@ -613,9 +613,9 @@ export default {
         // Redirect to the same subdomain (admin/dashboard), so the login
         // page is served through the Worker with the /api/v1/ proxy — the
         // login.js uses relative API (API='') which requires the proxy on
-        // the same host. The marketing host (ozpos.my.id) does NOT have it.
-        const loginUrl = hostname === 'admin.ozpos.my.id'
-          ? 'https://admin.ozpos.my.id/'
+        // the same host. The marketing host (kasir.mu) does NOT have it.
+        const loginUrl = hostname === 'admin.kasir.mu'
+          ? 'https://admin.kasir.mu/'
           : `https://${MARKETING_HOST}/en/login`;
         return new Response(null, {
           status: 302,
@@ -630,11 +630,11 @@ export default {
       }
 
       // Step 2: No session cookie — serve dedicated login page on the same
-      // subdomain (admin.ozpos.my.id → /admin/login, dashboard.ozpos.my.id
+      // subdomain (admin.kasir.mu → /admin/login, dashboard.kasir.mu
       // → /dashboard/login), so the login.js relative API calls go through
       // the Worker's /api/v1/ proxy. The marketing host has no proxy.
       if (!sessionCookie) {
-        if (hostname === 'admin.ozpos.my.id') {
+        if (hostname === 'admin.kasir.mu') {
           const isStatic = /\.(css|js|svg|png|jpg|jpeg|webp|gif|ico|woff2?|ttf|map)$/i.test(url.pathname);
           if (isStatic) {
             const asset = new URL(request.url);
@@ -655,7 +655,7 @@ export default {
         });
       }
 
-      // Step 3: Cookie present — only admin.ozpos.my.id reaches here now.
+      // Step 3: Cookie present — only admin.kasir.mu reaches here now.
       // Rewrite the request path to /admin/* so ASSETS returns the admin SPA.
       const rewritten = new URL(request.url);
       rewritten.hostname = MARKETING_HOST;
@@ -668,13 +668,13 @@ export default {
       return withStrictCSP(spaResp);
     }
 
-    // ── Marketing site (ozpos.my.id) — no auth required ───────────
+    // ── Marketing site (kasir.mu) — no auth required ───────────
     // Serve the runtime config, contact form API, static assets, plus the
     // account-portal session endpoints (R1): the account dashboard reads
     // its session from the httpOnly cookie instead of XSS-readable
     // sessionStorage, so the Worker must expose /__oz/session and
     // /__oz/logout on the marketing host too (the account portal lives at
-    // ozpos.my.id/en/account).
+    // kasir.mu/en/account).
 
     // One-time exchange code (hardening F1, R1): the login page
     // authenticates, gets a short-lived single-use code via
@@ -688,7 +688,7 @@ export default {
     if (codeParam && /^[0-9a-f]{48}$/.test(codeParam)) {
       url.searchParams.delete('code');
       const cleanUrl = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '');
-      const apiUrl = (env.LICENSE_API_URL ?? 'https://license.ozpos.my.id') + '/api/v1/web/exchange-consume';
+      const apiUrl = (env.LICENSE_API_URL ?? 'https://license.kasir.mu') + '/api/v1/web/exchange-consume';
       try {
         const res = await fetch(apiUrl, {
           method: 'POST',
@@ -815,7 +815,7 @@ export default {
             { name: 'Email', value: email.slice(0, 200), inline: true },
             { name: 'Message', value: message.slice(0, 1024) },
           ],
-          color: 0x147efb, // OZ-POS blue
+          color: 0x147efb, // kasir.mu blue
           timestamp: new Date().toISOString(),
         };
         const discordRes = await fetch(env.CONTACT_WEBHOOK_URL, {

@@ -1,7 +1,7 @@
-# OZ-POS Website — Cloudflare Workers (static assets)
+# kasir.mu Website — Cloudflare Workers (static assets)
 #
 # The site is a pure static build (Astro outputs dist/), served at
-# https://ozpos.my.id. Workers static assets honors public/_headers (CSP)
+# https://kasir.mu. Workers static assets honors public/_headers (CSP)
 # and public/_redirects (301s) exactly like Pages does.
 #
 # Deploy (from website/):   npm run build && npx wrangler deploy
@@ -28,7 +28,7 @@ compatibility_date = "2026-08-16"
 # Runtime backend URL — overrides the build-time PUBLIC_LICENSE_API_URL.
 # Update this (dashboard → Worker → Settings → Variables, or wrangler.toml)
 # when the Northflank host changes; no site rebuild required.
-LICENSE_API_URL = "https://license.ozpos.my.id"
+LICENSE_API_URL = "https://license.kasir.mu"
 CONTACT_WEBHOOK_URL = "https://discord.com/api/webhooks/154258447961xxxxxx"
 # Cloudflare account for the Health-tab deployments proxy (/__oz/cf-deploys).
 # The API token itself is a Worker secret: npx wrangler secret put CF_API_KEY
@@ -43,11 +43,11 @@ enabled = true
 invocation_logs = true
 
 # ── Routes (ADR #42) ─────────────────────────────────────────────
-# dashboard.ozpos.my.id and admin.ozpos.my.id route to this Worker.
+# dashboard.kasir.mu and admin.kasir.mu route to this Worker.
 # The Worker's hostname dispatch auth-gates them (302 → login when
 # no session cookie, placeholder when authenticated).
 routes = [
-  "dashboard.ozpos.my.id/*",
-  "admin.ozpos.my.id/*",
+  "dashboard.kasir.mu/*",
+  "admin.kasir.mu/*",
 ]
 

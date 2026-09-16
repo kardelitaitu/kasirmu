@@ -2,9 +2,19 @@
 # .githooks/pre-push — parallelized path-aware local gate, run once per push.
 #
 # WHY THIS EXISTS
-# dev-ci.yml is the only live workflow and it re-runs the whole matrix on every
-# push to an open PR. Locally, running static gates and language suites concurrently
-# across CPU cores drops pre-push validation time from ~2.5 minutes to ~15-60s.
+# dev-ci.yml re-runs the whole matrix on every push to an open PR. Locally, running
+# static gates and language suites concurrently across CPU cores drops pre-push
+# validation time from ~2.5 minutes to ~15-60s.
+#
+# (Corrected 2026-09-15: this comment used to read "dev-ci.yml is the only live
+# workflow". It is not, and had not been since release.yml was restored on 09-04 by
+# 3b10ea3a2 — .github/workflows/ holds two live workflows, dev-ci.yml and
+# release.yml, alongside 11 .bak files. The claim was inert here, but this is the
+# header a reader trusts when deciding which workflow a `push` will run, so it is
+# corrected rather than left as a dated record: it is live prose, not a stamp.
+# Note also that release.yml is tag-triggered only (`on.push.tags: ['v*']`), which
+# is why it does not re-run the matrix on a branch push and why the rationale above
+# still holds with dev-ci.yml named as the workflow it is about.)
 #
 # Escape hatch: `git push --no-verify` skips this entirely, silently.
 
@@ -70,10 +80,76 @@ else
 fi
 
 echo "pre-push: $(printf '%s\n' "$CHANGED" | grep -c . ) changed file(s) detected"
+
+# ── The silent-green path: no interpreter, or no orchestrator ──────────────
+# This guard DECIDES NOTHING NEW: same verdict as before, exit 0, the push
+# proceeds. What changed is that the verdict can no longer be missed. Three
+# defects in the old two-line else:
+#   1. It printed to STDOUT. git surfaces a hook's STDERR to the developer;
+#      stdout from a pre-push hook is not shown the same way, so the one line
+#      that said "nothing was checked" went where nobody reads it. Now stderr.
+#   2. It named one cause ("python not found") for TWO conditions that fail
+#      differently and are fixed differently -- (a) no interpreter on PATH,
+#      (b) the orchestrator absent from the working tree. Both fired the same
+#      text, so a pruned checkout looked like a missing package. They now say
+#      which is which.
+#   3. It said "checks skipped" without saying WHICH. The list below uses
+#      scripts/run-pre-push.py's own Tier names verbatim (Tier 0: static,
+#      Tier 1: Rust / UI / Website / i18n) and names the checks. It quotes NO
+#      count, deliberately: N was the number that used to lie in that script's
+#      summary, and a second copy of it in this file is a second number that
+#      rots the day a gate lands. The authoritative list stays in the script.
+#
+# WHY exit 0 IS DELIBERATE, AND WHY IT DIFFERS FROM pre-commit:
+# .githooks/pre-commit:19-22 treats a missing interpreter as
+# "error: ... Aborting commit." + exit 1. This hook does NOT, and the asymmetry
+# was noticed, not missed. A commit is local and costs one retry; a blocked
+# push on a machine that simply has no python stops work that dev-ci.yml
+# re-runs on every push to an open PR anyway. Making this fail is a
+# developer-friction decision above the level of a hook edit. Refusing the
+# friction was that call; shipping it silently was not: the friction stays 0
+# and the noise does not.
+#
+# REACHABILITY, for anyone exercising this by hand: FLAGS is computed ABOVE
+# this guard, from the ref lines git writes to stdin, and stdin is consumed at
+# the ANY_PUSH guard earlier in the file, which exits 0 on empty input. So
+# `bash .githooks/pre-push` with no stdin never reaches this branch at all --
+# it has to be fed at least one real "<lref> <loid> <rref> <roid>" line.
+
+skip_notice() {
+    {
+        echo ""
+        echo "pre-push: ######## NOTHING WAS CHECKED -- THIS PUSH IS UNVERIFIED ########"
+        echo "pre-push:   reason: $1"
+        echo "pre-push:   routing computed for this push before bailing out: ${FLAGS:- (none: the diff touched no Tier 1 area)}"
+        echo "pre-push:   checks this push did NOT run:"
+        echo "pre-push:     - Tier 0: static  -- every static gate: dedupe-ftl, bundle-parity (full census),"
+        echo "pre-push:                         verify-ipc-parity, verify-architecture-boundaries,"
+        echo "pre-push:                         verify-no-hardcoded-money, verify-feature-registry,"
+        echo "pre-push:                         verify-topology-parity, verify-windows-config,"
+        echo "pre-push:                         verify-plugin-guide-parity, verify-migration-column-types,"
+        echo "pre-push:                         verify-pg-schema-drift, verify-no-raw-params,"
+        echo "pre-push:                         verify-scoped-coverage (H-1)"
+        echo "pre-push:     - Tier 1: Rust    -- cargo check --workspace, cargo fmt --check"
+        echo "pre-push:     - Tier 1: UI      -- ui typecheck, ui vitest, analytics timezone invariance"
+        echo "pre-push:     - Tier 1: Website -- website asset hygiene, website astro check, website vitest"
+        echo "pre-push:     - Tier 1: i18n    -- lint-i18n"
+        echo "pre-push:   A Tier 1 whose area the diff never routed to was not owed to this push: that is"
+        echo "pre-push:   ROUTING, not a skip. Tier 0 is owed on every push, and was not run either."
+        echo "pre-push:   No count is quoted -- nothing ran, so there is no total. Not a total."
+        echo "pre-push:   exit 0 here is a DELIBERATE policy, documented above: the push goes through"
+        echo "pre-push:   unchecked, and dev-ci.yml is the only thing that will look at this commit."
+        echo "pre-push: ############################################"
+    } >&2
+    exit 0
+}
+
 if [ -n "$PYTHON" ] && [ -f "scripts/run-pre-push.py" ]; then
     "$PYTHON" scripts/run-pre-push.py $FLAGS
     exit $?
-else
-    echo "warning: python not found on PATH, pre-push checks skipped"
-    exit 0
 fi
+
+if [ -z "$PYTHON" ]; then
+    skip_notice "(a) NO INTERPRETER: neither python3 nor python is on PATH on this machine, so no gate could be executed at all. Fix: install Python, or run 'python scripts/run-pre-push.py --all' by hand."
+fi
+skip_notice "(b) NO ORCHESTRATOR: python IS on PATH (found as $PYTHON) but scripts/run-pre-push.py is absent from this working tree, so there was nothing to execute. Fix: restore the file -- a partial or sparse checkout, or a pruned scripts/, lands here."

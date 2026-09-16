@@ -1,6 +1,10 @@
 use super::*;
 use crate::picker;
 use crate::testing::TestBridge;
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
+
+// The release leg for a command this file drives through the subscription gate.
+//-- The release leg for these sessions lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 
 /// The picker-ticket HMAC key the desktop's AppState::for_test_with_conn seeds
 /// (apps/desktop-client/src/state.rs:826), so tickets minted and verified here
@@ -328,7 +332,7 @@ async fn create_session_allows_real_owner() {
     seed_owner(&conn);
     let app = test_app(conn);
 
-    let result = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -341,8 +345,14 @@ async fn create_session_allows_real_owner() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let result = settled.unwrap();
     assert_eq!(result.context.role_id, "role-owner");
     assert_eq!(result.context.user_id, "user-owner");
     assert_eq!(app.sessions().read().unwrap().len(), 1);
@@ -377,6 +387,15 @@ async fn create_session_denies_tier_disallowed_workspace_type() {
     .await;
 
     let err = result.expect_err("Free tier must not open a kds session");
+    // Release: the row that carries the tier and its allowed-types cannot be
+    // signed, so the command refuses at `verify_signature()?` before the tier
+    // gate is ever computed. That refusal is the propagated Core arm, not the
+    // BridgeError::Invalid the tier gate produces; the match below is the debug
+    // leg and stays intact, asserting both of its facts there.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, Err::<(), BridgeError>(err), "free").await;
+        return;
+    }
     match err {
         BridgeError::Invalid(msg) => {
             assert!(
@@ -449,7 +468,7 @@ async fn refresh_picker_ticket_returns_fresh_ticket() {
     let app = test_app(conn);
 
     // Create a session first.
-    let session_token = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -462,9 +481,14 @@ async fn refresh_picker_ticket_returns_fresh_ticket() {
             org_id: None,
         },
     )
-    .await
-    .unwrap()
-    .session_token;
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let session_token = settled.unwrap().session_token;
 
     let result = refresh_picker_ticket(&app.ctx(), &session_token).unwrap();
 
@@ -541,7 +565,7 @@ async fn refreshed_picker_ticket_can_be_used_for_create_session() {
     let app = test_app(conn);
 
     // Step 1: Create a session.
-    let session_token = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -554,9 +578,14 @@ async fn refreshed_picker_ticket_can_be_used_for_create_session() {
             org_id: None,
         },
     )
-    .await
-    .unwrap()
-    .session_token;
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let session_token = settled.unwrap().session_token;
 
     // Step 2: Refresh the picker ticket.
     let refresh_result = refresh_picker_ticket(&app.ctx(), &session_token).unwrap();
@@ -813,13 +842,54 @@ async fn staff_login_records_an_unknown_account_against_the_attempted_name() {
     assert!(details.contains("unknown_user"), "got {details}");
 }
 
+/// Run the recorder itself over a confirmed-Free tenant, once WITH the desktop's
+/// dev promotion and once without, and return each verdict (`true` = written).
+///
+/// A side database, so neither call pollutes the audit rows of the app under
+/// test. This is the narrow function behind
+/// `staff_login_on_free_records_only_because_a_debug_build_promotes_it`: the
+/// command reaches it through `record_security_event` (auth.rs:159-169).
+fn free_tenant_recorder_verdicts() -> (bool, bool) {
+    let conn = crate::testing::temp_conn();
+    set_tier(&conn, "free");
+    let store = Store::new(&conn);
+    let promoted = store
+        .record_security_event(
+            &SecurityEvent::login_success("user-x", "x", None::<String>),
+            true,
+        )
+        .unwrap();
+    let plain = store
+        .record_security_event(
+            &SecurityEvent::login_success("user-y", "y", None::<String>),
+            false,
+        )
+        .unwrap();
+    (promoted, plain)
+}
+
 #[tokio::test]
 async fn staff_login_on_free_records_only_because_a_debug_build_promotes_it() {
     // The desktop passes debug_upgrade: true to its tier reads, matching
     // require_audit_tier. apply_debug_upgrade is cfg!(debug_assertions)-gated,
-    // so this row records in a test/dev build while a production Free tenant
-    // writes nothing. Pinned as an equality so flipping either half — the
-    // client flag or the core gate — fails one of the two branches.
+    // so the promotion only exists in a test/dev build.
+    //
+    // The row count is 1 in BOTH profiles, and the assertion used to read
+    // `usize::from(cfg!(debug_assertions))` — i.e. 0 in release. That prediction
+    // was wrong about the product, not merely about the profile:
+    // `Store::record_security_event` skips only on `ent.loaded &&
+    // tier.audit_retention_days().is_none()` (db/audit_security.rs:386-389), so the
+    // skip needs a CONFIRMED Free row. In release the migration-seeded
+    // BOOTSTRAP_FREE signature never verifies, `loaded` is false, and the recorder
+    // writes ON PURPOSE — the asymmetry is documented at db/audit_security.rs:
+    // 360-366 ("an attacker who corrupts one row" must not be able to switch the
+    // security trail off, and "a stray audit row costs nothing, while a missing
+    // security event costs the evidence"). Debug reaches 1 by the other route: the
+    // verified Active Free row is promoted to Premium, which carries 365 days.
+    //
+    // So the count cannot separate the two reasons; the promotion flag can, and
+    // asserting it is what keeps this case's name honest instead of pinning a
+    // debug-only rendering of a number that release also produces.
     let app = login_app(Some("free"));
     staff_login(
         &app.ctx(),
@@ -833,9 +903,36 @@ async fn staff_login_on_free_records_only_because_a_debug_build_promotes_it() {
     .unwrap();
     assert_eq!(
         audit_rows(&app).await.len(),
-        usize::from(cfg!(debug_assertions)),
-        "Free records only through the dev promotion"
+        1,
+        "a Free tenant's login is recorded in both profiles — the fork below is \
+         about WHY, not about WHETHER"
     );
+
+    let (promoted, plain) = free_tenant_recorder_verdicts();
+    if seeded_row_loads() {
+        // Debug: the row verifies, so the promotion is load-bearing — with the
+        // flag off the confirmed Free row is refused, which is the whole claim
+        // in this test's name.
+        assert!(
+            promoted,
+            "with debug_upgrade the verified Free row must reach the table: {promoted}"
+        );
+        assert!(
+            !plain,
+            "without the promotion a CONFIRMED Free row must be skipped — that is \
+             what the dev upgrade is buying: {plain}"
+        );
+    } else {
+        // Release: the flag is inert, because nothing is confirmed. Assert that
+        // rather than the old invented skip, so this leg names the reason the
+        // row exists here.
+        assert!(
+            promoted && plain,
+            "an unverifiable row is never a confirmed Free row, so the recorder \
+             writes with the promotion off too — the fail-closed asymmetry, not a \
+             tier grant: promoted={promoted} plain={plain}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -1025,7 +1122,7 @@ async fn l194_create_session_org_wide_user_gets_label() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let result = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1038,8 +1135,14 @@ async fn l194_create_session_org_wide_user_gets_label() {
             org_id: Some("org-a".into()),
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let result = settled.unwrap();
 
     assert_eq!(result.context.org_label.as_deref(), Some("Alpha Co"));
     assert_eq!(app.sessions().read().unwrap().len(), 1);
@@ -1088,7 +1191,7 @@ async fn l194_switch_organization_old_token_dead() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1101,8 +1204,14 @@ async fn l194_switch_organization_old_token_dead() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
     let old_token = login.session_token.clone();
     assert!(
         app.ctx().resolve_session(&old_token).is_ok(),
@@ -1145,7 +1254,7 @@ async fn l194_switch_organization_records_an_org_switch_event() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1158,8 +1267,14 @@ async fn l194_switch_organization_records_an_org_switch_event() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "premium").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     switch_organization(&app.ctx(), &login.session_token, "org-a", "1234")
         .await
@@ -1188,7 +1303,7 @@ async fn l194_switch_organization_wrong_pin_keeps_old_token() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1201,8 +1316,14 @@ async fn l194_switch_organization_wrong_pin_keeps_old_token() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
     let old_token = login.session_token.clone();
 
     let result = switch_organization(
@@ -1232,7 +1353,7 @@ async fn l194_switch_organization_enumerated_list_only() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1245,8 +1366,14 @@ async fn l194_switch_organization_enumerated_list_only() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
     let old_token = login.session_token.clone();
 
     let result = switch_organization(
@@ -1276,7 +1403,7 @@ async fn l194_switch_organization_requires_assignment_coverage() {
     seed_legal_entity(&conn, "default", "org-b", "Bravo Co");
     let (app, uid) = l194_app_with(conn, Some("org-a"));
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1289,8 +1416,14 @@ async fn l194_switch_organization_requires_assignment_coverage() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
     let old_token = login.session_token.clone();
 
     let result = switch_organization(&app.ctx(), &old_token, "org-b", "1234").await;
@@ -1315,7 +1448,7 @@ async fn l194_switch_organization_no_grant_carryover() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1328,8 +1461,14 @@ async fn l194_switch_organization_no_grant_carryover() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
     assert_eq!(login.context.org_label, None, "login session had no org");
     let old_token = login.session_token.clone();
 
@@ -1353,7 +1492,7 @@ async fn l194_switch_organization_rejects_tampered_db() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1366,8 +1505,14 @@ async fn l194_switch_organization_rejects_tampered_db() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
     let old_token = login.session_token.clone();
 
     // Tamper: inject a foreign-tenant user row so check_tenant_integrity fails.
@@ -1401,7 +1546,7 @@ async fn l194_switch_organization_happy_path_returns_label_and_token() {
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
-    let login = create_session(
+    let settled = create_session(
         &app.ctx(),
         &CreateSessionArgs {
             user_id: uid.clone(),
@@ -1414,8 +1559,14 @@ async fn l194_switch_organization_happy_path_returns_label_and_token() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature
+    // check (the terminals.rs:432 shape), so no session exists to assert on.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&app, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let switched = switch_organization(&app.ctx(), &login.session_token, "org-a", "1234")
         .await

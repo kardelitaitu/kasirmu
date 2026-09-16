@@ -35,7 +35,7 @@ import {
   finalizeSale,
   voidPendingSale,
   setCartDiscountScoped,
-  getProductTrackSerialBatch,
+  getProductTrackSerialBatchScoped,
 } from '@/api/sales';
 
 describe('sales.ts IPC contract', () => {
@@ -157,13 +157,21 @@ describe('sales.ts IPC contract', () => {
     });
   });
 
-  it('getProductTrackSerialBatch invokes "get_product_track_serial_batch" with skus (PERF-03)', async () => {
+  // Moved off the unscoped `getProductTrackSerialBatch` on 2026-09-16 (T25) rather than
+  // deleted with it, because it was the ONLY wire-shape pin on either form of this call and it
+  // carries the load-bearing detail: the response rows are snake_case (`track_serial`), not the
+  // camelCase the DTO name suggests -- `SerialTrackRow` declares the wire spelling, so a
+  // "helpful" rename here would silently read `undefined` for every SKU and the cart would
+  // treat every tracked product as untracked. The door graded is now the one the retail cart
+  // actually invokes (RetailPosScreen.tsx:191).
+  it('getProductTrackSerialBatchScoped invokes "get_product_track_serial_batch_scoped" with sessionToken + skus (PERF-03)', async () => {
     mockInvoke.mockResolvedValue([
       { sku: 'TRACKED', track_serial: true },
       { sku: 'PLAIN', track_serial: false },
     ]);
-    const rows = await getProductTrackSerialBatch(['TRACKED', 'PLAIN']);
-    expect(mockInvoke).toHaveBeenCalledWith('get_product_track_serial_batch', {
+    const rows = await getProductTrackSerialBatchScoped('tok', ['TRACKED', 'PLAIN']);
+    expect(mockInvoke).toHaveBeenCalledWith('get_product_track_serial_batch_scoped', {
+      sessionToken: 'tok',
       skus: ['TRACKED', 'PLAIN'],
     });
     expect(rows).toEqual([
@@ -193,16 +201,23 @@ import {
 describe('topology.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
 
-  it('loadTopology invokes "load_topology" with no args', async () => {
+  it('loadTopology invokes "load_topology" with the session only', async () => {
     mockInvoke.mockResolvedValue(null);
-    await loadTopology();
-    expect(mockInvoke).toHaveBeenCalledWith('load_topology', undefined);
+    await loadTopology('tok');
+    // R1 (2026-09-16): sessioned read; no branch means the session's scope.
+    expect(mockInvoke).toHaveBeenCalledWith('load_topology', {
+      sessionToken: 'tok',
+      branchId: undefined,
+    });
   });
 
-  it('loadTopology invokes "load_topology" with a branch id', async () => {
+  it('loadTopology invokes "load_topology" with a session and a branch id', async () => {
     mockInvoke.mockResolvedValue(null);
-    await loadTopology('branch-a');
-    expect(mockInvoke).toHaveBeenCalledWith('load_topology', { branchId: 'branch-a' });
+    await loadTopology('tok', 'branch-a');
+    expect(mockInvoke).toHaveBeenCalledWith('load_topology', {
+      sessionToken: 'tok',
+      branchId: 'branch-a',
+    });
   });
 
   it('applyTopologyDiff invokes "apply_topology_diff" with full diff payload', async () => {
@@ -282,7 +297,7 @@ describe('topology.ts IPC contract', () => {
 
   it('loadTopology returns null when no topology saved', async () => {
     mockInvoke.mockResolvedValue(null);
-    const result = await loadTopology();
+    const result = await loadTopology('tok');
     expect(result).toBeNull();
   });
 
@@ -360,7 +375,7 @@ describe('topology.ts IPC contract', () => {
 
 import {
   getHardwareSettings,
-  setHardwareSettings,
+  setHardwareSettingsScoped,
   getEnabledFeatures,
   completeSetup,
   dismissSetupWizard,
@@ -392,7 +407,10 @@ describe('settings.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('get_hardware_settings', undefined);
   });
 
-  it('setHardwareSettings invokes "set_hardware_settings" with args + userId', async () => {
+  it('setHardwareSettingsScoped invokes "set_hardware_settings_scoped" with sessionToken + args', async () => {
+    // T11 retired the unscoped `set_hardware_settings` wrapper: it carried `userId` from the
+    // renderer, which is the actor the permission check asks about. The payload pin moves to the
+    // only door that remains rather than being dropped with the old one.
     mockInvoke.mockResolvedValue(undefined);
     const args = {
       printerConnection: 'usb',
@@ -411,8 +429,11 @@ describe('settings.ts IPC contract', () => {
       darkMode: true,
       scaleAutoZero: false,
     };
-    await setHardwareSettings(args, 'u1');
-    expect(mockInvoke).toHaveBeenCalledWith('set_hardware_settings', { args, userId: 'u1' });
+    await setHardwareSettingsScoped('tok-1', args);
+    expect(mockInvoke).toHaveBeenCalledWith('set_hardware_settings_scoped', {
+      sessionToken: 'tok-1',
+      args,
+    });
   });
 
   it('getEnabledFeatures invokes "get_enabled_features" with no args', async () => {
@@ -449,59 +470,24 @@ describe('settings.ts IPC contract', () => {
 // ── products.ts ───────────────────────────────────────────────────
 
 import {
-  listProducts,
-  lookupProductBySku,
-  createProduct,
-  deleteProduct,
+  listProductsScoped,
   adjustStock,
 } from '@/api/products';
 
 describe('products.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
 
-  it('listProducts invokes "list_products" with no args', async () => {
+  // T21: the unscoped `list_products` door was deleted from the module -- neither app shell
+  // registers it, and the desktop has no body for it at all. This asserts the door that exists
+  // instead of arranging a response on a name nothing can call.
+  it('listProductsScoped invokes "list_products_scoped" with the session token', async () => {
     mockInvoke.mockResolvedValue([]);
-    await listProducts();
-    expect(mockInvoke).toHaveBeenCalledWith('list_products', undefined);
+    await listProductsScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('list_products_scoped', { sessionToken: 'tok' });
   });
 
-  it('lookupProductBySku invokes "lookup_product_by_sku" with sku', async () => {
-    mockInvoke.mockResolvedValue(null);
-    await lookupProductBySku('SKU-001');
-    expect(mockInvoke).toHaveBeenCalledWith('lookup_product_by_sku', { sku: 'SKU-001' });
-  });
 
-  it('createProduct invokes "create_product" with CreateProductArgs (includes userId)', async () => {
-    mockInvoke.mockResolvedValue({ sku: 'NEW' });
-    await createProduct({
-      userId: 'u1',
-      sku: 'NEW',
-      name: 'New',
-      priceMinor: 500,
-      currency: 'USD',
-      initialStock: 10,
-      taxRateIds: [],
-    });
-    expect(mockInvoke).toHaveBeenCalledWith('create_product', {
-      args: {
-        userId: 'u1',
-        sku: 'NEW',
-        name: 'New',
-        priceMinor: 500,
-        currency: 'USD',
-        initialStock: 10,
-        taxRateIds: [],
-      },
-    });
-  });
 
-  it('deleteProduct invokes "delete_product" with args(userId, sku)', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    await deleteProduct({ userId: 'u1', sku: 'OLD' });
-    expect(mockInvoke).toHaveBeenCalledWith('delete_product', {
-      args: { userId: 'u1', sku: 'OLD' },
-    });
-  });
 
   it('adjustStock invokes "adjust_stock" with AdjustStockArgs(sku, delta, reason)', async () => {
     mockInvoke.mockResolvedValue(20);
@@ -513,7 +499,7 @@ describe('products.ts IPC contract', () => {
 
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('not found'));
-    await expect(lookupProductBySku('MISSING')).rejects.toThrow('not found');
+    await expect(adjustStock({ sku: 'SKU-1', delta: 10, reason: 'restock' })).rejects.toThrow('not found');
   });
 });
 

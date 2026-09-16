@@ -75,13 +75,14 @@ comment written by the fix that missed the real site.
 
 WHAT EVERY RUN PRINTS
 
-Two lines above the verdict, on stdout, before any FAIL and before any 'clean for': how many
-production files were walked, against which allowlist file; and how many allowlisted names
-resolved to a wrapper, per shell. Both are reports about the SITUATION, and neither is a
-verdict -- nothing in this file reads either number to decide an exit code, which is the
-difference between making a thin wrapper map legible and pretending this gate owns the
-threshold that would call one insufficient. Measured on the real tree the moment the line
-landed: 26 of 27 on the default desktop run, 150 of 181 across both shells. Read straight, that
+Three lines above the verdict, on stdout, before any FAIL and before any 'clean for': how many
+production files were walked, against which allowlist file; how many allowlisted names
+resolved to a wrapper, per shell; and how many call sites the guard window cleared, per shell.
+All three are reports about the SITUATION, and none is a verdict -- nothing in this file reads
+any of their numbers to decide an exit code, which is the difference between making a thin
+wrapper map legible and pretending this gate owns the threshold that would call one
+insufficient. Measured on the real tree the moment the line landed: 26 of 27 on the default
+desktop run, 150 of 181 across both shells. Read straight, that
 says 31 allowlisted names have no wrapper to search for and never could have produced a finding.
 Read a day later it says something else: the ratio is only as honest as the pattern that builds
 the map, and WRAPPER_RE could not see the 'export async function' idiom at all, so most of those
@@ -91,6 +92,16 @@ lesson is the reason the line exists and the reason it stays informational: a nu
 number somebody checks, and what they check next is the tool that produced it. The ninth guard
 still cannot see a thin map (it refuses only a map with ZERO rows), which is what case 21 pins on
 a synthetic fixture instead of on a tree that will drift.
+
+A FOURTH LINE, for shells, printed only when the run grades fewer sections than the allowlist
+has: what an UNGRADED section would report. '--shell' defaults to 'desktop', and desktop
+contributes 0 findings on this tree while 'tablet' contributes 101 at exit 1 (101 at the tip the
+line shipped on and 101 re-measured two peer commits later at e6d211b98 -- the number is the
+tree's, the sentence is this file's), so the bare runs (dev-ci.yml#static-gates,
+scripts/check.sh) were printing a clean verdict over an allowlist whose other half is where every
+finding lives. That number is stated, never scored -- same contract as
+the three above, and case 39 pins both halves: the line prints what an independent audit of the
+other section computed, and the run's exit code does not move whether it says 0 or 101.
 
 usage:
     python scripts/verify-scoped-reads.py                # check the tree
@@ -757,11 +768,27 @@ def _is_call_site(text, start):
 def allowlist_names(payload, section, problems, source=ALLOWLIST):
     """The command names in one allowlist section, plus a sentence per member not read.
 
-    Two shapes are in circulation in the file: a bare command name -- the shape every
-    section has always used, and still the shape every entry on disk is written in today --
-    and the object form {"name": ..., "reason": ...}, accepted by the validator in the two
-    sections named in OBJECT_ALLOWED_SECTIONS above. `reason` exists to be read by a human
-    and says nothing to this gate, so only `name` is taken out of an object.
+    Two shapes are in circulation in the file: a bare command name and the object form
+    {"name": ..., "reason": ...}, accepted by the validator in the two sections named in
+    OBJECT_ALLOWED_SECTIONS above. Which sections hold which shape is not a guess and was not
+    true as this clause stood until 0.0.39. Measured by isinstance over the four sections of
+    scripts/ipc-parity-allowlist.json at e6d211b98, and re-derivable in one line
+    (python -c "import json;d=json.load(open('scripts/ipc-parity-allowlist.json',encoding='utf-8'));print({k:(sum(1 for x in v if isinstance(x,str)),sum(1 for x in v if isinstance(x,dict))) for k,v in d.items() if isinstance(v,list)})"):
+    "desktop" is 15 bare names and 0 objects, "tablet" 143 bare and 0 objects,
+    "scoped_orphans" 25 bare and 0 objects, and "dev_mock" is 0 bare and 15 OBJECTS -- so "the
+    shape every entry on disk is written in today" was false on its own page: every dev_mock
+    entry contradicts it, and since ce0c12357 the two sections this reader takes objects from
+    are the ones where the bare shape is now the minority. The graded sections
+    ("desktop"/"tablet") do still hold bare names only, which is what the strict-section
+    rejection below is aimed at.
+    THE 15 ABOVE IS NOT THE 16 THIS CLAUSE CARRIED AN HOUR EARLIER, and that is the hazard of
+    writing a tree count into a docstring at all: 54133fd12 deleted the desktop member
+    "set_hardware_settings", which was the one name in that section resolving to no wrapper
+    (this gate's own line printed "15 of 16 (desktop 15 of 16)" while it stood, and prints
+    "15 of 15" now). The shape split this clause is about did not move -- desktop was bare-only
+    at 16 and is bare-only at 15 -- so read the COUNTS as dated and the SHAPE claim as the
+    point. `reason` exists to be read by a human and says nothing to this gate, so only `name`
+    is taken out of an object.
 
     Anything that cannot become a command name is appended to `problems` and skipped in the
     local sense of "not added to the returned list" -- which is why the caller has to fail on
@@ -1164,6 +1191,68 @@ def describe_clearance(cleared):
             + str(len(cleared)) + " (" + per_shell + "), across "
             + str(len(set(row[2] for row in cleared))) + " file(s) and "
             + str(len(set(row[1] for row in cleared))) + " command(s).")
+
+
+def describe_unggraded(shells, allowlist):
+    """One line: what the shell sections this run did NOT grade would have reported.
+
+    Informational by the same contract as describe_coverage() and describe_clearance(), aimed
+    at the same blind spot from the other side. Those two say how much of the GRADED shell was
+    read; this says what an UNGRADED section of the same allowlist is sitting on. It exists
+    because --shell defaults to "desktop" (see build_argparser), so the bare runs -- the one
+    .github/workflows/dev-ci.yml makes and the one scripts/check.sh:72 makes -- grade the
+    shell that contributes zero findings here and never mention that the other section is
+    where every finding lives. Measured the moment the line landed, at 8a9954d7c: bare = 0
+    findings at exit 0; --shell tablet = 101 findings at exit 1. Nothing in a log of the first
+    run hints that the second exists, so the 101 was real and invisible at once -- knowable
+    only by someone who already knew to pass the flag. Re-measured at e6d211b98 after two peer
+    commits moved the data this reads -- 54133fd12 dropped a desktop member and d29a7c0f4
+    retired a registered tablet door -- and the stated figure is 101 unchanged, 57 cleared
+    unchanged, exit 1 unchanged. It is a timestamp on a checkout, not a constant: any later
+    reader who sees a different number has a changed tree, not a broken line, and the number
+    this file owns is the presence of the sentence, never its digits.
+
+    Nothing reads what this prints. No exit code branches on it, no threshold lives near it,
+    and the three-way contract is untouched: 0 a clean verdict, 1 a verdict that found
+    something in the GRADED shells, 2 a refusal that graded nothing. Stating a number is not
+    acting on one, and this file has already drawn that line twice.
+
+    THE COST, stated because a line that looks free is a line nobody can review: the numbers
+    are not free, they are an audit of the other shell, so a bare run pays one extra
+    walk-and-scan per ungraded section (measured here at e6d211b98 on this machine: bare 1.0 s
+    before the line, --shell tablet 8.0 s, bare WITH this line about 9 s). That is the price of
+    the 101 reaching a CI log instead of
+    staying in one developer's terminal. It is paid only when a section goes ungraded: a run
+    that names every shell passes --shell desktop,tablet, prints nothing here and pays nothing.
+
+    A section this run cannot grade at all -- a probe allowlist with no such key, which audit()
+    refuses rather than reads as empty -- is stated as undrawable, not dropped: an absent number
+    and a zero read the same to a reader and mean different things, which is the defect the
+    other two lines were built to avoid.
+    """
+    others = [shell for shell in SHELL_SECTIONS if shell not in shells]
+    if not others:
+        return None
+    parts = []
+    for shell in others:
+        try:
+            violations, _shape, _scanned, _coverage, cleared = audit([shell], allowlist=allowlist)
+        except AllowlistUnreadable:
+            parts.append(shell + ": not computable here (audit refuses that section)")
+            continue
+        files = len(set(row[2] for row in violations))
+        commands = len(set(row[1] for row in violations))
+        parts.append(shell + ": " + str(len(violations)) + " unguarded call site(s) across "
+                     + str(files) + " file(s) and " + str(commands) + " command(s), "
+                     + str(len(cleared)) + " cleared")
+    graded = ", ".join(shells)
+    flags = ", ".join("pass --shell " + shell for shell in others)
+    return ("verify-scoped-reads: " + str(len(others)) + " shell section"
+            + ("" if len(others) == 1 else "s") + " graded by no verdict in this run -- "
+            + "; ".join(parts)
+            + " -- stated for visibility only; nothing in this run reads these numbers, the "
+            + "verdict below covers " + graded + " alone, and grading them is one flag: "
+            + flags + ".")
 
 
 def describe_surfaces(scanned, allowlist, how):
@@ -2333,6 +2422,90 @@ def _coverage_self_test():
         for label, _ok, want, got in bad:
             print(f"                 {label}: want {want} -- got {got}")
         failures += 1
+    # Case 39: the FOURTH line -- what an ungraded shell section is holding. This group owns
+    # the informational prints, and the line is here for the reason the other two are: the
+    # number it carries is the one this gate never reports anywhere else, because --shell
+    # defaults to "desktop" and desktop is the shell with nothing wrong on this tree.
+    #
+    # Written so it can fail in the three ways that matter. If the line is DELETED, or stops
+    # naming the shell, or stops carrying the digits, the first check fires. If somebody
+    # starts BRANCHING on the number, the bare run stops exiting 0 next to a stated finding,
+    # and the second check fires. If the informational path and the graded path ever disagree
+    # about how many sites there are -- the same tree, two invocations -- the third fires.
+    UNGRADED_RE = re.compile(r"graded by no verdict in this run -- (\w+): (\d+) unguarded "
+                             r"call site\(s\) across (\d+) file\(s\) and (\d+) command\(s\)")
+
+    def ungraded_lines(out):
+        return [ln for ln in out.splitlines() if "graded by no verdict" in ln]
+
+    def build_case(unguarded, tablet_names=("zz_beta",)):
+        return build({"desktop": ["zz_alpha"], "tablet": list(tablet_names)},
+                     ["zz_alpha", "zz_beta"], unguarded)
+
+    # A tablet-only violation: one call site, one file, one command, none cleared. Hand
+    # counted from the two lines build() writes -- not read back out of the gate.
+    root, al = build_case("wv1_zz_beta")
+    try:
+        bare_rc, bare_out = drive(root, al)
+        both_rc, both_out = drive(root, al, ("--shell", "desktop,tablet"))
+        truth = len(real_audit(["tablet"], repo=root, allowlist=al)[0])
+    finally:
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+
+    # A probe allowlist whose UNGRADED section does not exist at all: audit refuses it, and the
+    # line must say so rather than vanish -- an absent number and a zero read alike to a reader.
+    root2, al2 = build({"desktop": ["zz_alpha"]}, ["zz_alpha"], None)
+    try:
+        missing_rc, missing_out = drive(root2, al2)
+    finally:
+        import shutil
+        shutil.rmtree(root2, ignore_errors=True)
+
+    lines = ungraded_lines(bare_out)
+    parsed = UNGRADED_RE.search(lines[0]) if len(lines) == 1 else None
+    stated = (parsed.group(1), int(parsed.group(2)), int(parsed.group(3)),
+              int(parsed.group(4))) if parsed else None
+    both_stated = UNGRADED_RE.search(" ".join(ungraded_lines(both_out))) if ungraded_lines(both_out) else None
+    checks39 = [
+        ("a bare run STATES the shell it did not grade, once, naming it",
+         len(lines) == 1 and stated is not None and stated[0] == "tablet",
+         "exactly one ungraded line, about tablet", "lines=%r" % (lines,)),
+        ("its digits are the hand-counted fixture, not a copy of the print",
+         stated == ("tablet", 1, 1, 1),
+         "1 site across 1 file and 1 command", "stated=%r" % (stated,)),
+        ("and they are what grading that shell independently computes",
+         stated is not None and stated[1] == truth,
+         "stated == len(audit(['tablet'])[0])", "stated=%r truth=%r" % (stated, truth)),
+        ("stating a finding moves NO exit code: the desktop run stays clean at 0",
+         bare_rc == 0 and "clean for desktop." in bare_out and "FAIL:" not in bare_out,
+         "rc 0, the usual clean sentence, no FAIL line",
+         "rc=%r verdict=%r" % (bare_rc, "clean for desktop." in bare_out)),
+        ("grading both shells retires the line and reports the SAME number as a verdict",
+         both_stated is None and both_rc == 1 and "FAIL: 1 call site(s)" in both_out,
+         "no ungraded line, rc 1, FAIL says 1",
+         "rc=%r line=%r" % (both_rc, bool(both_stated))),
+        ("a section that cannot be audited reads as undrawable, not as zero",
+         missing_rc == 0 and len(ungraded_lines(missing_out)) == 1
+         and "not computable" in ungraded_lines(missing_out)[0],
+         "one line, saying not computable, still exit 0",
+         "rc=%r lines=%r" % (missing_rc, ungraded_lines(missing_out))),
+    ]
+    bad39 = [c for c in checks39 if not c[1]]
+    if not bad39:
+        print("    ok   case 39 the ungraded-shell line is present on a bare run, states the "
+              "other")
+        print("                 section's real count twice over (against the fixture and against an")
+        print("                 independent audit), exits 0 beside a stated finding, disappears when")
+        print("                 every shell is graded, and says 'not computable' rather than zero")
+        print("                 (%d assertions, no tree count pinned)" % len(checks39))
+    else:
+        print(f"    FAIL case 39  {len(bad39)} of {len(checks39)} relationships about the "
+              "ungraded-shell line did not hold")
+        for label, _ok, want, got in bad39:
+            print(f"                 {label}: want {want} -- got {got}")
+        failures += 1
+
     if audit.__defaults__ != saved_defaults:
         print("    FAIL the coverage self-test left audit()'s defaults rebound")
         failures += 1
@@ -2807,6 +2980,13 @@ def main(argv=None):
     # declared an error by the one file that does not own that number.
     print(describe_coverage(coverage))
     print(describe_clearance(cleared))
+    # Third informational line, same seat above the verdict and the same rule attached to it: what
+    # the sections this run did NOT grade are holding. Printed LAST of the three so the ratio
+    # and the clearance keep the line positions the self-test pins, and tested only for
+    # presence -- never on a number inside the string.
+    ungraded = describe_unggraded(shells, allowlist)
+    if ungraded:
+        print(ungraded)
     if shape_problems:
         # Ahead of the violations, because a member this gate could not read makes every
         # number it then prints -- including a reassuring zero -- a guess about a file it

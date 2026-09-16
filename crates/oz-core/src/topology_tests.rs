@@ -10,25 +10,38 @@ use serde_json::json;
 
 /// The semantic contract is vendored into oz-core so server builds never
 /// depend on the UI tree (the `include_str!` above resolves to the local
-/// copy). The UI file remains the TypeScript side's source; this test
-/// keeps the two byte-identical whenever the full repo is checked out,
-/// and skips gracefully in a server-only build context where `ui/` is
-/// not part of the source tree (e.g. the Docker builder stage).
+/// copy). The UI file remains the TypeScript side's source, and this test is
+/// the in-suite twin of `scripts/verify-topology-parity.py`: it requires the UI
+/// canonical file to be present and then fails on any byte of drift.
+///
+/// It deliberately does NOT return early when the path is missing. The path
+/// used to be spelled `ui/src/features/stores/`, that directory became
+/// `locations/`, and the missing-file branch kept this test printing `ok`
+/// while comparing zero bytes — a green that measured nothing, in a repo where
+/// every test run is a full checkout (`dev-ci#cargo-nextest`), so the branch
+/// was never a real server-only accommodation. A test whose premise is absent
+/// is a failure: fix the path or restore the file, and do not put the silent
+/// `return` back.
 #[test]
 fn vendored_contract_matches_ui_canonical() {
     let ui_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../ui/src/features/stores/topologySemantics.json");
-    if !ui_path.exists() {
-        eprintln!("topology parity: ui/ absent (server-only build context) — skipping");
-        return;
-    }
+        .join("../../ui/src/features/locations/topologySemantics.json");
+    assert!(
+        ui_path.exists(),
+        "topology parity: no UI canonical contract at {} — this test compares the \
+         vendored crates/oz-core/src/topologySemantics.json against that file, so a \
+         missing path means it has checked nothing. Either the UI file was deleted or \
+         this path went stale again (stores/ -> locations/ has already happened once); \
+         scripts/verify-topology-parity.py names the same pair.",
+        ui_path.display()
+    );
     let ui_bytes =
         std::fs::read(&ui_path).unwrap_or_else(|e| panic!("read {}: {e}", ui_path.display()));
     assert_eq!(
         SHARED_TOPOLOGY_SEMANTICS_JSON.as_bytes(),
         ui_bytes.as_slice(),
         "vendored crates/oz-core/src/topologySemantics.json drifted from \
-         ui/src/features/stores/topologySemantics.json — copy the file \
+         ui/src/features/locations/topologySemantics.json — copy the file \
          across (scripts/verify-topology-parity.py enforces this too)"
     );
 }

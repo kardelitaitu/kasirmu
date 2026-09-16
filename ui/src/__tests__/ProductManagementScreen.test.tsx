@@ -227,7 +227,7 @@ describe('ProductManagementScreen', () => {
     });
   });
 
-  it('requires confirmation before calling deleteProduct (PROD-02)', async () => {
+  it('requires confirmation before calling deleteProductScoped (PROD-02)', async () => {
     renderWithFluentSync(<ProductManagementScreen />, productsFtl);
     await waitForTable();
 

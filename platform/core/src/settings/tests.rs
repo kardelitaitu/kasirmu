@@ -1601,7 +1601,7 @@ fn write_delta_concurrent_same_pair_never_loses_delta() {
 fn brand_primary_colour_unset_returns_empty_string() {
     let conn = fresh();
     // A fresh store must NOT report a colour: the UI treats "" as "no
-    // override", letting themes/tokens.css pick the per-theme primary
+    // override", letting the theme token sheet pick the per-theme primary
     // (light #147EFB, dark #1155CC). The old "#147EFB" fallback pinned
     // both themes to the light blue on every fresh install.
     assert_eq!(

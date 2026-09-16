@@ -426,9 +426,15 @@ describe('SettingsContext', () => {
     // Resolve after unmount — should not crash (mount guard prevents setState)
     resolveHang!(mocks.receiptSettings);
 
-    // No assertion needed — the test passes if no "Can't perform a React state update
-    // on an unmounted component" warning/error is thrown
-    expect(true).toBe(true);
+    // React 18 dropped the "Can't perform a React state update on an unmounted
+    // component" warning, so the old premise — "no assertion needed, the absence
+    // of a warning IS the test" — no longer holds: there is no warning left to
+    // assert against, which is what made this vacuous. What remains observable
+    // is that the late resolution settles instead of throwing or leaking an
+    // unhandled rejection, i.e. the guard swallowed it cleanly.
+    await act(async () => {
+      await expect(hangPromise).resolves.toBe(mocks.receiptSettings);
+    });
   });
 
   it('handles unmount when all 7 APIs are pending (no stale side effects)', async () => {

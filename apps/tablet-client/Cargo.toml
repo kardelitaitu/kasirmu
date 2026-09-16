@@ -38,6 +38,11 @@ rand = { workspace = true }
 oz-hal = { workspace = true }
 oz-logging = { workspace = true }
 oz-security = { workspace = true }
+# ADR #49 Slice 0: `AppState::bridge_ctx` has to name `PluginManager` to own the
+# `BridgeCtx::plugins` leg (its type is `&Mutex<Option<PluginManager>>`), so the
+# tablet build needs the crate even though this shell never loads a plugin.
+# Same dependency the desktop shell declares at apps/desktop-client/Cargo.toml:44.
+oz-plugin = { workspace = true }
 modules-crm = { workspace = true }
 modules-inventory = { workspace = true }
 modules-settings = { workspace = true }

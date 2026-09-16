@@ -13,6 +13,11 @@
 
 use super::*;
 use oz_core::db::Store;
+
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
+
+/// The release leg for a scoped command this file drives through the
+//-- The release leg for these locations lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 use oz_core::migrations;
 use oz_core::session::SessionContext;
 use serde_json::json;
@@ -126,6 +131,14 @@ async fn create_location_profile_scoped_end_to_end_owner() {
     )
     .await;
 
+    // Release: the create is refused at the signature, so there is no DTO and
+    // the `COUNT(*) FROM locations == 2` below has no written row to count -
+    // it stays debug-only rather than being re-cut into a second assertion of
+    // the same cause.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, result, "free").await;
+        return;
+    }
     let created = result.unwrap();
     assert_eq!(created.id, "location-test-1");
     assert_eq!(created.name, "Second Branch");
@@ -193,6 +206,21 @@ async fn create_location_profile_scoped_rejects_when_plus_quota_reached() {
     )
     .await;
 
+    // Release: this fixture re-tiers the row to plus, which by itself breaks
+    // the signature over the payload, so the command refuses on the signature
+    // BEFORE the quota gate can answer - the same wrong-sub_kind shape as
+    // auth's tier-denial case. The assert below would otherwise read
+    // "invalidsubscriptionsignature" and call it a quota bug.
+    //
+    // The stamp is "free" on purpose: the re-tier above writes tier_key='plus'
+    // into the STORE db (db_manager().open_store("default")) - the row the quota
+    // gate reads - while the pin reads the GLOBAL identity row that
+    // seeded_row_loads() is about, still free and still the sentinel. Passing
+    // "plus" here would assert the wrong table's fact.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, result, "free").await;
+        return;
+    }
     match result {
         // Typed quota rejection is the CORRECT outcome (mapped to the
         // subscription error copy on the front-end).

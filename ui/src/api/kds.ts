@@ -87,6 +87,34 @@ export const createKdsOrderFromSale = (sessionToken: string, saleId: string): Pr
 export const createKdsOrderFromSaleScoped = (sessionToken: string, saleId: string): Promise<KdsOrder[]> =>
   loggedInvoke<KdsOrder[]>('create_kds_order_from_sale_scoped', { sessionToken, saleId });
 
+/** A single item within a fired course (mirrors Rust CourseItem). */
+export interface FiredCourseItem {
+  sku: string;
+  qty: number;
+  name: string;
+}
+
+/** Arguments for publishing a fired course (mirrors Rust FireCourseForSaleArgs). */
+export interface FireCourseForSaleArgs {
+  saleId: string;
+  courseId: string;
+  displayNumber?: number | null;
+  items: FiredCourseItem[];
+}
+
+/**
+ * Publish one fired course for a completed sale (scoped — ADR #7).
+ *
+ * Called at checkout after the KDS fan-out, once per course whose lines the
+ * waiter fired (`coursingStatus === 'fired'`). Carries the REAL sale id and
+ * the ticket display number — firing happens at checkout, not on the
+ * pre-sale cart, so no cart-id correlation is needed. Best-effort like the
+ * KDS ticket call: the sale is already committed; a publish failure must
+ * surface as a warning, never as a failed checkout.
+ */
+export const publishCourseFiredScoped = (sessionToken: string, args: FireCourseForSaleArgs): Promise<void> =>
+  loggedInvoke<void>('publish_course_fired_scoped', { sessionToken, args });
+
 /** Get a single KDS order by its identifier (session-scoped — ADR #7). */
 export const getKdsOrder = (sessionToken: string, id: string): Promise<KdsOrder | null> =>
   loggedInvoke<KdsOrder | null>('get_kds_order_scoped', { sessionToken, id });

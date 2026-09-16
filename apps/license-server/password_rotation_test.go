@@ -152,8 +152,8 @@ func TestBuildPasswordRotationEmail_HasCorrectContent(t *testing.T) {
 	msg := buildPasswordRotationEmail("from@test.com", "admin@test.com",
 		"Test Subject", "Test Body")
 	body := string(msg)
-	if !stringsContains(body, "From: OZ-POS Security") {
-		t.Error("expected 'From: OZ-POS Security'")
+	if !stringsContains(body, "From: kasir.mu Security") {
+		t.Error("expected 'From: kasir.mu Security'")
 	}
 	if !stringsContains(body, "To: admin@test.com") {
 		t.Error("expected 'To: admin@test.com'")

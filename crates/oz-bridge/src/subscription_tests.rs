@@ -1,5 +1,11 @@
 use super::*;
+
+use crate::testing::{
+    FAIL_CLOSED_GATES_LOCKED, FAIL_CLOSED_STATE, FAIL_CLOSED_TIER, seeded_row_loads,
+};
+use oz_core::availability::AvailabilityReason;
 use oz_core::migrations;
+use oz_core::subscription::TenantSubscription;
 
 fn fresh_db() -> rusqlite::Connection {
     migrations::fresh_db()
@@ -15,6 +21,107 @@ fn seed_tier(conn: &rusqlite::Connection, tier_key: &str) {
 
 fn caps(conn: &rusqlite::Connection) -> SubscriptionCapabilitiesDto {
     load_capabilities(conn).unwrap()
+}
+
+// -- The shared fork contract (crate::testing; RULE at testing.rs:204-208) --
+
+// Every entitlement expectation below is a RUNTIME fork, never a single
+// arm: seeded_row_loads() answers whether the seeded BOOTSTRAP_FREE row
+// verifies IN THE RUNNING PROFILE (debug yes, release no), and the
+// release-side arm asserts the FAIL-CLOSED PROJECTION rather than the debug
+// truth. No #[cfg(not(debug_assertions))] arm is introduced here: such an
+// arm cannot be reached through a runtime branch, and it also trips
+// unused_imports under RUSTFLAGS=-D warnings in dev-ci#cargo-check.
+
+/// The guard every release-side arm runs FIRST. seeded_row_loads() == false
+// collapses five causes (lost row, mis-shaped table, public-key failure, the
+// intended base64 reject, a real RSA mismatch), so a fail-closed assertion
+// about an ABSENT row proves nothing: pin the row, the tier stamp this
+// fixture wrote, and the row's own signature verdict before projecting.
+fn assert_seeded_row(conn: &rusqlite::Connection, stamped_tier: &str) -> TenantSubscription {
+    let row = TenantSubscription::load(conn, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the fixture's tier stamp must be on the row the release arm is reading"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture reads must be the row the fork predicate is about"
+    );
+    row
+}
+
+/// The caps DTO as the read projects it when NO row verifies. The Free caps
+// (1 / 1 / 1 / 90 days) are the same numbers
+// capabilities_reflect_free_tier_and_zero_usage pins on its release leg, so
+// nothing here is invented to fit this fork.
+fn assert_caps_fail_closed(dto: &SubscriptionCapabilitiesDto) {
+    assert_eq!(
+        dto.tier, FAIL_CLOSED_TIER,
+        "an unverifiable row projects the fail-closed tier, never the stamped one"
+    );
+    assert_eq!(
+        dto.state, FAIL_CLOSED_STATE,
+        "the lifecycle axis reports the failed read, not the row's status column"
+    );
+    assert_eq!(dto.status, FAIL_CLOSED_STATE, "status reads the same row");
+    assert_eq!(dto.expires_at, None, "an unreadable row yields no date");
+    assert_eq!(dto.grace_until, None, "and no grace deadline");
+    assert!(!dto.is_expired, "Unavailable is deliberately not Expired");
+    assert!(dto.addons.is_empty(), "no add-on survives a failed read");
+    assert_eq!(
+        dto.max_locations,
+        Some(1),
+        "the caps are Free caps, because the tier is the fail-closed Free"
+    );
+    assert_eq!(dto.max_pos_instances, Some(1), "Free POS cap");
+    assert_eq!(dto.max_staff_users, Some(1), "Free staff cap");
+    assert_eq!(dto.sales_history_days, Some(90), "Free history cap");
+    assert_eq!(
+        dto.supports_qris, FAIL_CLOSED_GATES_LOCKED,
+        "a rejected row grants nothing"
+    );
+    assert_eq!(
+        dto.supports_analytics, FAIL_CLOSED_GATES_LOCKED,
+        "a rejected row grants nothing"
+    );
+    assert_eq!(
+        dto.supports_loyalty, FAIL_CLOSED_GATES_LOCKED,
+        "a rejected row grants nothing"
+    );
+}
+
+/// The verdict as the read explains itself when NO row verifies: lifecycle
+// outranks the other five axes, so a forked verdict fixture lands on
+// lifecycle whatever tier, quota, role, scope or server-policy answer the
+// debug arm names. Pinned to the product accessor, not a remembered string.
+fn assert_verdict_fail_closed(v: &FeatureVerdict) {
+    assert_eq!(
+        v.available, FAIL_CLOSED_GATES_LOCKED,
+        "no gate opens for an unverifiable row"
+    );
+    assert_eq!(
+        v.reason_code(),
+        Some(AvailabilityReason::Lifecycle.as_str()),
+        "lifecycle is the highest-precedence denial left standing when nothing verified"
+    );
+    assert_eq!(
+        v.detail.tier, FAIL_CLOSED_TIER,
+        "the verdict echoes the fail-closed tier"
+    );
+    assert_eq!(
+        v.detail.state, FAIL_CLOSED_STATE,
+        "the verdict echoes the fail-closed state"
+    );
+    assert_eq!(
+        v.detail.expires_at, None,
+        "no expiry is readable from the row"
+    );
+    assert_eq!(v.detail.grace_until, None, "and no grace deadline");
 }
 
 #[test]
@@ -56,23 +163,35 @@ fn capabilities_reflect_plus_and_pro_tiers() {
     let conn = fresh_db();
     seed_tier(&conn, "plus");
     let dto = caps(&conn);
-    assert_eq!(dto.tier, "plus");
-    assert_eq!(dto.max_locations, Some(1));
-    assert_eq!(dto.max_pos_instances, Some(2));
-    assert_eq!(dto.max_staff_users, Some(5));
-    assert_eq!(dto.sales_history_days, Some(365));
-    assert!(dto.supports_qris);
-    assert!(!dto.supports_analytics, "analytics stays Pro+");
-    assert!(!dto.supports_loyalty, "loyalty stays Premium+");
+    if seeded_row_loads() {
+        assert_eq!(dto.tier, "plus");
+        assert_eq!(dto.max_locations, Some(1));
+        assert_eq!(dto.max_pos_instances, Some(2));
+        assert_eq!(dto.max_staff_users, Some(5));
+        assert_eq!(dto.sales_history_days, Some(365));
+        assert!(dto.supports_qris);
+        assert!(!dto.supports_analytics, "analytics stays Pro+");
+        assert!(!dto.supports_loyalty, "loyalty stays Premium+");
 
-    seed_tier(&conn, "pro");
-    let dto = caps(&conn);
-    assert_eq!(dto.tier, "pro");
-    assert_eq!(dto.max_locations, Some(2));
-    assert_eq!(dto.max_pos_instances, Some(5));
-    assert_eq!(dto.max_staff_users, Some(20));
-    assert!(dto.supports_analytics);
-    assert!(!dto.supports_loyalty);
+        seed_tier(&conn, "pro");
+        let dto = caps(&conn);
+        assert_eq!(dto.tier, "pro");
+        assert_eq!(dto.max_locations, Some(2));
+        assert_eq!(dto.max_pos_instances, Some(5));
+        assert_eq!(dto.max_staff_users, Some(20));
+        assert!(dto.supports_analytics);
+        assert!(!dto.supports_loyalty);
+    } else {
+        // Release: the row exists and still carries the PLUS stamp in its own
+        // column, and none of it reaches the caller — the caps are the
+        // fail-closed Free projection for both legs.
+        assert_seeded_row(&conn, "plus");
+        assert_caps_fail_closed(&dto);
+        seed_tier(&conn, "pro");
+        let dto = caps(&conn);
+        assert_seeded_row(&conn, "pro");
+        assert_caps_fail_closed(&dto);
+    }
 }
 
 #[test]
@@ -80,15 +199,21 @@ fn capabilities_reflect_premium_tier() {
     let conn = fresh_db();
     seed_tier(&conn, "premium");
     let dto = caps(&conn);
-    assert_eq!(dto.tier, "premium");
-    // C4.2: Premium allows up to 5 stores self-serve
-    assert_eq!(dto.max_locations, Some(5));
-    assert_eq!(dto.max_pos_instances, None);
-    assert_eq!(dto.max_staff_users, Some(50));
-    assert_eq!(dto.sales_history_days, None); // unlimited
-    assert!(dto.supports_qris);
-    assert!(dto.supports_analytics);
-    assert!(dto.supports_loyalty);
+    if seeded_row_loads() {
+        assert_eq!(dto.tier, "premium");
+        // C4.2: Premium allows up to 5 stores self-serve
+        assert_eq!(dto.max_locations, Some(5));
+        assert_eq!(dto.max_pos_instances, None);
+        assert_eq!(dto.max_staff_users, Some(50));
+        assert_eq!(dto.sales_history_days, None); // unlimited
+        assert!(dto.supports_qris);
+        assert!(dto.supports_analytics);
+        assert!(dto.supports_loyalty);
+    } else {
+        // Release: the PREMIUM stamp is on the row; the caps are Free.
+        assert_seeded_row(&conn, "premium");
+        assert_caps_fail_closed(&dto);
+    }
 }
 
 // ── Lifecycle state + fail-closed (todo-global-saas-1.md §B) ─────────
@@ -97,11 +222,26 @@ fn capabilities_reflect_premium_tier() {
 fn capabilities_report_active_state_for_bootstrap_row() {
     let conn = fresh_db();
     let dto = caps(&conn);
-    assert_eq!(dto.state, "active");
-    assert_eq!(dto.status, "active");
-    assert_eq!(dto.expires_at, None);
-    assert_eq!(dto.grace_until, None);
-    assert!(!dto.is_expired);
+    if seeded_row_loads() {
+        assert_eq!(dto.state, "active");
+        assert_eq!(dto.status, "active");
+        assert_eq!(dto.expires_at, None);
+        assert_eq!(dto.grace_until, None);
+        assert!(!dto.is_expired);
+    } else {
+        // Release: the row is present, its status COLUMN still reads active,
+        // and the read projects unavailable for all of it.
+        let row = assert_seeded_row(&conn, "free");
+        assert_eq!(
+            row.status, "active",
+            "the seeded column must still say active - it is the READ that fails, not the data"
+        );
+        assert_eq!(dto.state, FAIL_CLOSED_STATE, "the read is unavailable");
+        assert_eq!(dto.status, FAIL_CLOSED_STATE, "status reads the same row");
+        assert_eq!(dto.expires_at, None, "no date survives an unreadable row");
+        assert_eq!(dto.grace_until, None);
+        assert!(!dto.is_expired, "Unavailable is not Expired");
+    }
 }
 
 #[test]
@@ -158,14 +298,27 @@ fn capabilities_report_grace_state_within_offline_grace() {
     )
     .unwrap();
     let dto = caps(&conn);
-    assert_eq!(dto.state, "grace");
-    assert_eq!(dto.status, "active");
-    assert_eq!(dto.expires_at.as_deref(), Some(recent.as_str()));
-    assert!(dto.grace_until.is_some(), "grace deadline must be computed");
-    assert!(!dto.is_expired);
-    // Within grace the REAL tier applies (operational continuity) — the
-    // debug Free→Premium upgrade does not mask the state.
-    assert_eq!(dto.tier, "premium");
+    if seeded_row_loads() {
+        assert_eq!(dto.state, "grace");
+        assert_eq!(dto.status, "active");
+        assert_eq!(dto.expires_at.as_deref(), Some(recent.as_str()));
+        assert!(dto.grace_until.is_some(), "grace deadline must be computed");
+        assert!(!dto.is_expired);
+        // Within grace the REAL tier applies (operational continuity) — the
+        // debug Free→Premium upgrade does not mask the state.
+        assert_eq!(dto.tier, "premium");
+    } else {
+        // Release: the PREMIUM stamp and the expiry this fixture wrote are both
+        // still on the row; the grace machine never sees them, because the
+        // signature gate closes before the state machine runs.
+        let row = assert_seeded_row(&conn, "premium");
+        assert_eq!(
+            row.expires_at.as_deref(),
+            Some(recent.as_str()),
+            "the fixture expiry stamp must be on the row the release arm reads"
+        );
+        assert_caps_fail_closed(&dto);
+    }
 }
 
 #[test]
@@ -180,16 +333,30 @@ fn capabilities_report_expired_state_and_free_entitlements() {
     )
     .unwrap();
     let dto = caps(&conn);
-    assert_eq!(dto.state, "expired");
-    assert_eq!(dto.status, "active");
-    assert_eq!(dto.expires_at.as_deref(), Some(old.as_str()));
-    assert_eq!(dto.grace_until, None, "grace deadline is None when expired");
-    assert!(dto.is_expired, "is_expired is true when in expired state");
-    assert_eq!(
-        dto.tier, "free",
-        "outside grace the tier downgrades to Free"
-    );
-    assert!(!dto.supports_qris);
+    if seeded_row_loads() {
+        assert_eq!(dto.state, "expired");
+        assert_eq!(dto.status, "active");
+        assert_eq!(dto.expires_at.as_deref(), Some(old.as_str()));
+        assert_eq!(dto.grace_until, None, "grace deadline is None when expired");
+        assert!(dto.is_expired, "is_expired is true when in expired state");
+        assert_eq!(
+            dto.tier, "free",
+            "outside grace the tier downgrades to Free"
+        );
+        assert!(!dto.supports_qris);
+    } else {
+        // Release: the PLUS stamp and the past expiry are on the row, and the
+        // read still cannot get to them - so the answer is the fail-closed
+        // projection, which is NOT the same fact as "expired": a rejected
+        // signature yields unknown, never a date.
+        let row = assert_seeded_row(&conn, "plus");
+        assert_eq!(
+            row.expires_at.as_deref(),
+            Some(old.as_str()),
+            "the fixture expiry stamp must be on the row the release arm reads"
+        );
+        assert_caps_fail_closed(&dto);
+    }
 }
 
 #[test]
@@ -204,8 +371,20 @@ fn capabilities_report_canceled_state_even_with_live_expiry() {
     )
     .unwrap();
     let dto = caps(&conn);
-    assert_eq!(dto.state, "canceled");
-    assert_eq!(dto.tier, "free", "canceled is never within grace");
+    if seeded_row_loads() {
+        assert_eq!(dto.state, "canceled");
+        assert_eq!(dto.tier, "free", "canceled is never within grace");
+    } else {
+        // Release: the CANCELED status is on the row (and the PRO stamp), yet
+        // the projected state is unavailable - the read never reaches the
+        // lifecycle machine that would name it canceled.
+        let row = assert_seeded_row(&conn, "pro");
+        assert_eq!(
+            row.status, "canceled",
+            "the fixture status stamp must be on the row"
+        );
+        assert_caps_fail_closed(&dto);
+    }
 }
 
 #[test]
@@ -218,11 +397,22 @@ fn capabilities_report_paused_state() {
     )
     .unwrap();
     let dto = caps(&conn);
-    assert_eq!(dto.state, "paused");
-    assert_eq!(
-        dto.tier, "plus",
-        "pause flags the state; entitlements unchanged here"
-    );
+    if seeded_row_loads() {
+        assert_eq!(dto.state, "paused");
+        assert_eq!(
+            dto.tier, "plus",
+            "pause flags the state; entitlements unchanged here"
+        );
+    } else {
+        // Release: PAUSED is on the row and PLUS is the stamped tier; the
+        // projection is unavailable + Free because nothing verified.
+        let row = assert_seeded_row(&conn, "plus");
+        assert_eq!(
+            row.status, "paused",
+            "the fixture status stamp must be on the row"
+        );
+        assert_caps_fail_closed(&dto);
+    }
 }
 
 #[test]
@@ -233,8 +423,17 @@ fn capabilities_reflect_server_status_refresh() {
 
     // Initially active without expiry
     let before = caps(&conn);
-    assert_eq!(before.status, "active");
-    assert_eq!(before.expires_at, None);
+    if seeded_row_loads() {
+        assert_eq!(before.status, "active");
+        assert_eq!(before.expires_at, None);
+    } else {
+        assert_seeded_row(&conn, "pro");
+        assert_eq!(
+            before.status, FAIL_CLOSED_STATE,
+            "release reads unavailable whatever the status column says"
+        );
+        assert_eq!(before.expires_at, None);
+    }
 
     // Refresh status from server (e.g. check_license_status response)
     oz_core::license_verification::refresh_subscription_status_from_server(
@@ -247,10 +446,27 @@ fn capabilities_reflect_server_status_refresh() {
 
     // Cache should immediately reflect refreshed status and expiry
     let after = caps(&conn);
-    assert_eq!(after.status, "active");
-    assert_eq!(after.expires_at.as_deref(), Some(future.as_str()));
-    assert_eq!(after.state, "active");
-    assert!(!after.is_expired);
+    if seeded_row_loads() {
+        assert_eq!(after.status, "active");
+        assert_eq!(after.expires_at.as_deref(), Some(future.as_str()));
+        assert_eq!(after.state, "active");
+        assert!(!after.is_expired);
+    } else {
+        // Release: the refresh DID write - the row carries both stamps - and
+        // the read still projects the fail-closed pair, because an
+        // unverifiable row is never trusted with a status or a date.
+        let row = assert_seeded_row(&conn, "pro");
+        assert_eq!(
+            row.status, "active",
+            "the refreshed status stamp must be on the row"
+        );
+        assert_eq!(
+            row.expires_at.as_deref(),
+            Some(future.as_str()),
+            "the refreshed expiry stamp must be on the row"
+        );
+        assert_caps_fail_closed(&after);
+    }
 
     // Now simulate cancellation from server
     oz_core::license_verification::refresh_subscription_status_from_server(
@@ -262,8 +478,17 @@ fn capabilities_reflect_server_status_refresh() {
     .unwrap();
 
     let canceled = caps(&conn);
-    assert_eq!(canceled.status, "canceled");
-    assert_eq!(canceled.state, "canceled");
+    if seeded_row_loads() {
+        assert_eq!(canceled.status, "canceled");
+        assert_eq!(canceled.state, "canceled");
+    } else {
+        let row = assert_seeded_row(&conn, "pro");
+        assert_eq!(
+            row.status, "canceled",
+            "the server-sent cancellation must be on the row the release arm reads"
+        );
+        assert_caps_fail_closed(&canceled);
+    }
 }
 
 // ── Feature-availability verdicts (Phase 3 observability) ────────────
@@ -295,11 +520,19 @@ fn verdict_names_tier_when_the_flag_is_missing() {
     let conn = fresh_db();
     seed_tier(&conn, "plus");
     let v = verdict_with_owner(&conn, "supports_analytics");
-    assert!(!v.available);
-    assert_eq!(v.reason_code(), Some("tier"));
+    // The feature key and the gate permission it consults are read from the
+    // registry, not from the subscription, so they are profile-independent.
     assert_eq!(v.feature, "supports_analytics");
     assert_eq!(v.detail.permission.as_deref(), Some("analytics:view"));
-    assert_eq!(v.detail.state, "active");
+    if seeded_row_loads() {
+        assert!(!v.available);
+        assert_eq!(v.reason_code(), Some("tier"));
+        assert_eq!(v.detail.state, "active");
+    } else {
+        // Release: the tier axis is never reached - lifecycle outranks it.
+        assert_seeded_row(&conn, "plus");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -314,17 +547,32 @@ fn verdict_names_quota_at_the_cap_and_clears_one_below() {
     )
     .unwrap();
     let v = verdict_with_owner(&conn, "locations");
-    assert!(!v.available, "pro at its 2-location cap must deny");
-    assert_eq!(v.reason_code(), Some("quota"));
-    assert_eq!(v.detail.limit, Some(2));
-    assert_eq!(v.detail.usage, Some(2));
+    if seeded_row_loads() {
+        assert!(!v.available, "pro at its 2-location cap must deny");
+        assert_eq!(v.reason_code(), Some("quota"));
+        assert_eq!(v.detail.limit, Some(2));
+        assert_eq!(v.detail.usage, Some(2));
 
-    conn.execute("DELETE FROM locations WHERE id = 'loc-2'", [])
-        .unwrap();
-    let v =
-        load_feature_verdict(&conn, "user-owner", "locations", "default", "retail-pos").unwrap();
-    assert!(v.available, "one below the cap must clear");
-    assert_eq!(v.reason_code(), None);
+        conn.execute("DELETE FROM locations WHERE id = 'loc-2'", [])
+            .unwrap();
+        let v = load_feature_verdict(&conn, "user-owner", "locations", "default", "retail-pos")
+            .unwrap();
+        assert!(v.available, "one below the cap must clear");
+        assert_eq!(v.reason_code(), None);
+    } else {
+        // Release: the quota machine is never consulted - and note the
+        // fail-closed Entitlements carries DEFAULT usage, not gathered usage,
+        // so even the numbers below are the failed read, not the topology.
+        assert_seeded_row(&conn, "pro");
+        assert_verdict_fail_closed(&v);
+
+        conn.execute("DELETE FROM locations WHERE id = 'loc-2'", [])
+            .unwrap();
+        let v = load_feature_verdict(&conn, "user-owner", "locations", "default", "retail-pos")
+            .unwrap();
+        assert_seeded_row(&conn, "pro");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -332,7 +580,14 @@ fn verdict_names_server_policy_when_the_tier_withholds_the_workspace_type() {
     let conn = fresh_db();
     seed_tier(&conn, "plus");
     let v = verdict_with_owner(&conn, "supports_qris");
-    assert!(v.available, "plus supports qris");
+    if seeded_row_loads() {
+        assert!(v.available, "plus supports qris");
+    } else {
+        // Release: PLUS supports qris on the tier ladder and the row says so;
+        // the caller never learns, because the row did not verify.
+        assert_seeded_row(&conn, "plus");
+        assert_verdict_fail_closed(&v);
+    }
 
     // The bootstrap Free row's allowed workspace types exclude
     // `warehouse` — the same `allows_workspace_type` answer the
@@ -340,14 +595,22 @@ fn verdict_names_server_policy_when_the_tier_withholds_the_workspace_type() {
     // whatever the effective tier's flags say.
     let conn = fresh_db();
     let v = verdict_with_owner(&conn, "warehouses");
-    assert!(!v.available);
-    assert_eq!(v.reason_code(), Some("server_policy"));
-
-    // The gate permission still echoes for diagnostics.
+    // The gate permission is registry data, not subscription data, so it
+    // echoes for diagnostics in either profile.
     assert_eq!(
         v.detail.permission.as_deref(),
         Some("inventory:locations_manage")
     );
+    if seeded_row_loads() {
+        assert!(!v.available);
+        assert_eq!(v.reason_code(), Some("server_policy"));
+    } else {
+        // Release: the allowed workspace types live in the signed payload, so
+        // the server-policy answer is unreadable too and lifecycle is what is
+        // left standing.
+        assert_seeded_row(&conn, "free");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -369,10 +632,16 @@ fn verdict_names_role_for_a_role_without_the_gate_permission() {
         "retail-pos",
     )
     .unwrap();
-    // Premium grants analytics on the tier; the caller's role is the
-    // missing axis.
-    assert!(!v.available);
-    assert_eq!(v.reason_code(), Some("role"));
+    if seeded_row_loads() {
+        // Premium grants analytics on the tier; the caller's role is the
+        // missing axis.
+        assert!(!v.available);
+        assert_eq!(v.reason_code(), Some("role"));
+    } else {
+        // Release: lifecycle outranks role, so the role axis is never named.
+        assert_seeded_row(&conn, "premium");
+        assert_verdict_fail_closed(&v);
+    }
 
     let v = load_feature_verdict(
         &conn,
@@ -382,7 +651,16 @@ fn verdict_names_role_for_a_role_without_the_gate_permission() {
         "retail-pos",
     )
     .unwrap();
-    assert!(v.available, "loyalty:view holds the loyalty gate");
+    if seeded_row_loads() {
+        assert!(v.available, "loyalty:view holds the loyalty gate");
+    } else {
+        // Release: the row exists and the role axis really does hold - the
+        // permission is registry data and still echoes - but the failed
+        // subscription read denies before any of it is consulted.
+        assert_seeded_row(&conn, "premium");
+        assert_eq!(v.detail.permission.as_deref(), Some("loyalty:view"));
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -400,8 +678,24 @@ fn verdict_names_lifecycle_for_an_expired_subscription() {
     let v = verdict_with_owner(&conn, "supports_loyalty");
     assert!(!v.available);
     assert_eq!(v.reason_code(), Some("lifecycle"));
-    assert_eq!(v.detail.state, "expired");
-    assert_eq!(v.detail.expires_at.as_deref(), Some("2025-01-01T00:00:00Z"));
+    if seeded_row_loads() {
+        assert_eq!(v.detail.state, "expired");
+        assert_eq!(v.detail.expires_at.as_deref(), Some("2025-01-01T00:00:00Z"));
+    } else {
+        // Release: the SAME reason code for a different reason. Debug names
+        // this verdict lifecycle off a real expiry the row carries; release
+        // names it lifecycle off the failed read - so the detail, which is
+        // the part that came from the row, reads unavailable with no date.
+        let row = assert_seeded_row(&conn, "premium");
+        assert_eq!(
+            row.expires_at.as_deref(),
+            Some("2025-01-01T00:00:00Z"),
+            "the expired-row stamp must be on the row the release arm reads"
+        );
+        assert_eq!(v.detail.state, FAIL_CLOSED_STATE);
+        assert_eq!(v.detail.expires_at, None);
+        assert_eq!(v.detail.grace_until, None);
+    }
 }
 
 #[test]
@@ -417,10 +711,18 @@ fn verdict_in_grace_stays_available_and_carries_the_deadline() {
     )
     .unwrap();
     let v = verdict_with_owner(&conn, "supports_loyalty");
-    assert!(v.available, "grace passes operational entitlements (§B)");
-    assert_eq!(v.reason_code(), None);
-    assert_eq!(v.detail.state, "grace");
-    assert!(v.detail.grace_until.is_some(), "UI renders the deadline");
+    if seeded_row_loads() {
+        assert!(v.available, "grace passes operational entitlements (§B)");
+        assert_eq!(v.reason_code(), None);
+        assert_eq!(v.detail.state, "grace");
+        assert!(v.detail.grace_until.is_some(), "UI renders the deadline");
+    } else {
+        // Release: the grace window is a property of a VERIFIED row; an
+        // unverifiable one has no window to grant, so the deadline the UI
+        // would render is gone with the rest of it.
+        assert_seeded_row(&conn, "premium");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -434,8 +736,19 @@ fn verdict_addon_grant_clears_the_tier_denial_for_analytics() {
     )
     .unwrap();
     let v = verdict_with_owner(&conn, "supports_analytics");
-    assert!(v.available, "the add-on answers the tier question");
-    assert_eq!(v.reason_code(), None);
+    if seeded_row_loads() {
+        assert!(v.available, "the add-on answers the tier question");
+        assert_eq!(v.reason_code(), None);
+    } else {
+        // Release: the add-on list is read OUT of the signed payload, so a
+        // row that will not verify carries no add-on the caller can spend.
+        let row = assert_seeded_row(&conn, "plus");
+        assert!(
+            row.signed_payload.contains("advanced_analytics"),
+            "the fixture must still have written the add-on payload onto the row - otherwise this leg would be asserting about a row it never shaped"
+        );
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 // ── Over-quota report (§J remediation) ───────────────────────────────
@@ -576,10 +889,19 @@ fn verdict_scope_denies_when_the_assignment_excludes_the_session_location() {
         "retail-pos",
     )
     .unwrap();
-    // Premium + the gate permission both clear; scope is the missing axis.
-    assert!(!v.available, "out-of-scope session location must deny");
-    assert_eq!(v.reason_code(), Some("scope"));
+    // The scope axis is an assignment question, not a subscription question,
+    // so it answers the same way in either profile.
     assert_eq!(v.detail.scope_granted, Some(false));
+    if seeded_row_loads() {
+        // Premium + the gate permission both clear; scope is the missing axis.
+        assert!(!v.available, "out-of-scope session location must deny");
+        assert_eq!(v.reason_code(), Some("scope"));
+    } else {
+        // Release: scope still denies on the facts, but lifecycle outranks it,
+        // so the verdict is not about scope at all.
+        assert_seeded_row(&conn, "premium");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -596,9 +918,18 @@ fn verdict_scope_clears_inside_the_assigned_location() {
         "retail-pos",
     )
     .unwrap();
-    assert!(v.available, "in-scope session location must clear");
-    assert_eq!(v.reason_code(), None);
+    // The scope axis is an assignment question, not a subscription question:
+    // in-scope clears on the facts in either profile.
     assert_eq!(v.detail.scope_granted, Some(true));
+    if seeded_row_loads() {
+        assert!(v.available, "in-scope session location must clear");
+        assert_eq!(v.reason_code(), None);
+    } else {
+        // Release: an in-scope caller on an unverifiable row is still denied,
+        // and the reason is the read, not the assignment.
+        assert_seeded_row(&conn, "premium");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -615,9 +946,16 @@ fn verdict_scope_denies_when_the_workspace_dimension_excludes_the_session_type()
         "warehouse",
     )
     .unwrap();
-    assert!(!v.available, "out-of-scope workspace type must deny");
-    assert_eq!(v.reason_code(), Some("scope"));
     assert_eq!(v.detail.scope_granted, Some(false));
+    if seeded_row_loads() {
+        assert!(!v.available, "out-of-scope workspace type must deny");
+        assert_eq!(v.reason_code(), Some("scope"));
+    } else {
+        // Release: same shape as the location leg - the workspace axis is
+        // answered, and lifecycle is what the verdict reports.
+        assert_seeded_row(&conn, "premium");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 // ── Phase D1 payload feature-grant precedence (recorded debt: coder-1 ──
@@ -647,7 +985,21 @@ fn verdict_payload_false_withholds_where_tier_allows() {
         !v.available,
         "explicit false must withhold where the tier allows"
     );
-    assert_eq!(v.reason_code(), Some("server_policy"));
+    if seeded_row_loads() {
+        assert_eq!(v.reason_code(), Some("server_policy"));
+    } else {
+        // Release: the explicit instruction lives INSIDE the signed payload,
+        // so an unverifiable row cannot deliver it. The denial is the same
+        // size, but it is named lifecycle and not server_policy - and the
+        // payload is still on the row, so this is a read failure, not a lost
+        // write.
+        let row = assert_seeded_row(&conn, "premium");
+        assert!(
+            row.signed_payload.contains("supports_analytics"),
+            "the fixture must still have written the payload onto the row the release arm reads"
+        );
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -661,8 +1013,20 @@ fn verdict_payload_true_grants_beyond_tier() {
     // "beyond tier" behaviour.
     seed_payload(&conn, r#"{"features":{"supports_analytics":true}}"#);
     let v = verdict_with_owner(&conn, "supports_analytics");
-    assert!(v.available, "explicit true must grant beyond the tier");
-    assert_eq!(v.reason_code(), None);
+    if seeded_row_loads() {
+        assert!(v.available, "explicit true must grant beyond the tier");
+        assert_eq!(v.reason_code(), None);
+    } else {
+        // Release: a server grant can outrank the TIER axis, but it never
+        // outlives the signature that carries it. The explicit true is on the
+        // row and grants nothing to a caller who cannot read it.
+        let row = assert_seeded_row(&conn, "plus");
+        assert!(
+            row.signed_payload.contains("supports_analytics"),
+            "the fixture must still have written the payload onto the row the release arm reads"
+        );
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 #[test]
@@ -671,23 +1035,39 @@ fn verdict_absent_features_block_leaves_the_tier_answer() {
     // Premium natively supports analytics: with no `features` block the
     // tier answer stands (available, no denial reason).
     seed_tier(&conn, "premium");
-    let v = verdict_with_owner(&conn, "supports_analytics");
-    assert!(
-        v.available,
-        "absent payload must not withhold a tier-granted feature"
-    );
-    assert_eq!(v.reason_code(), None);
+    if seeded_row_loads() {
+        let v = verdict_with_owner(&conn, "supports_analytics");
+        assert!(
+            v.available,
+            "absent payload must not withhold a tier-granted feature"
+        );
+        assert_eq!(v.reason_code(), None);
 
-    // Plus denies analytics on the tier: with no `features` block the tier
-    // denial stands (no payload opinion, so the tier answers).
-    let conn = fresh_db();
-    seed_tier(&conn, "plus");
-    let v = verdict_with_owner(&conn, "supports_analytics");
-    assert!(
-        !v.available,
-        "absent payload must not grant a tier-denied feature"
-    );
-    assert_eq!(v.reason_code(), Some("tier"));
+        // Plus denies analytics on the tier: with no `features` block the tier
+        // denial stands (no payload opinion, so the tier answers).
+        let conn = fresh_db();
+        seed_tier(&conn, "plus");
+        let v = verdict_with_owner(&conn, "supports_analytics");
+        assert!(
+            !v.available,
+            "absent payload must not grant a tier-denied feature"
+        );
+        assert_eq!(v.reason_code(), Some("tier"));
+    } else {
+        // Release: with no readable payload there is no tier answer either.
+        // Both legs collapse onto the same fail-closed projection - the
+        // precedence table this case is really about stays pinned in
+        // oz-core/availability_tests.rs, where no sentinel row is involved.
+        let v = verdict_with_owner(&conn, "supports_analytics");
+        assert_seeded_row(&conn, "premium");
+        assert_verdict_fail_closed(&v);
+
+        let conn = fresh_db();
+        seed_tier(&conn, "plus");
+        let v = verdict_with_owner(&conn, "supports_analytics");
+        assert_seeded_row(&conn, "plus");
+        assert_verdict_fail_closed(&v);
+    }
 }
 
 // ── §J B3: per-location quota rows ───────────────────────────────────

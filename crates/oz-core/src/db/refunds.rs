@@ -270,7 +270,7 @@ impl Store<'_> {
             //
             // A RANGE, not an equality, for two verified reasons. (a) A price
             // override legitimately stores line_minor != unit_minor * qty:
-            // CartLine::total uses the overridden price (foundation/cart.rs
+            // CartLine::total uses the overridden price (foundation/src/cart.rs
             // :54-57, :94-106) while the model keeps unit_price as the BASE
             // and line_total as the OVERRIDE (modules/sales/src/models.rs
             // :181-188) - equality would reject refunds on lines the server
@@ -284,7 +284,7 @@ impl Store<'_> {
             // Discounts never touch per-line figures, so this ceiling may sit
             // ABOVE what the customer actually paid for the line: cart percent
             // and fixed discounts apply to the summed total only
-            // (foundation/cart.rs:284-296), promotions subtract at sale level
+            // (foundation/src/cart.rs:284-296), promotions subtract at sale level
             // and promotion_applications carries no sale_line_id
             // (20260813_init.sql:459-466), loyalty is sale-level
             // (db/loyalty.rs:447-459), and tax-inclusive vs exclusive adds to

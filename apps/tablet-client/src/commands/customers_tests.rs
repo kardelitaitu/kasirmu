@@ -800,6 +800,12 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     // get_customer (no session, no permission, global db) while the
     // desktop had moved to get_customer_scoped. The scoped variant
     // must enforce customers:view like every other customer read.
+    //
+    // The legacy fn named above was retired on 2026-09-16 in the T19 thinning. It had
+    // already been absent from `generate_handler!` for both shells by then, which is the
+    // difference that matters here: the finding was about an UNGUARDED COMMAND, this test
+    // is about the guarded one, and deleting the former changed no behavior -- so the
+    // history stays worth reading without anyone going looking for a function that is gone.
     let conn = oz_core::migrations::fresh_db();
     let store = Store::new(&conn);
     store.seed_default_roles().unwrap();

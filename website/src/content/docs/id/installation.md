@@ -1,6 +1,6 @@
 ---
 title: Instalasi
-description: Pasang OZ-POS di Windows, macOS, atau Linux.
+description: Pasang kasir.mu di Windows, macOS, atau Linux.
 category: gettingStarted
 order: 2
 updated: "2026-08-17"
@@ -32,7 +32,7 @@ Unduh penginstal dari
 diperlukan akun.
 
 **Windows** — jalankan `OZ-POS_<versi>_x64-setup.exe` (atau `.msi`) dan ikuti
-petunjuknya. Terpasang ke akun pengguna Anda dan menambahkan entri OZ-POS ke
+petunjuknya. Terpasang ke akun pengguna Anda dan menambahkan entri kasir.mu ke
 menu Mulai.
 
 ## Peluncuran pertama
@@ -43,7 +43,7 @@ pertama; Anda dapat naik paket kapan saja dari Pengaturan → Lisensi.
 
 ## Pembaruan
 
-OZ-POS memeriksa pembaruan saat dimulai, dan Anda dapat memeriksanya kapan
+kasir.mu memeriksa pembaruan saat dimulai, dan Anda dapat memeriksanya kapan
 saja dari Pengaturan → Tentang → Periksa Pembaruan. Pembaruan diverifikasi
 tanda tangannya dan dipasang lewat penginstal platform, jadi tidak ada yang
 diterapkan tanpa konfirmasi Anda. Tidak ada tombol rollback — versi

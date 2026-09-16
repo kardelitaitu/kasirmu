@@ -395,8 +395,8 @@ const ProductTileCell = function ProductTileCell({
         style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 4, padding: 8, border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm, 4px)', background: 'var(--color-bg)', cursor: isOutOfStock ? 'not-allowed' : 'pointer' }}
       >
         <ProductThumb hash={product.image_hash ?? null} name={product.name} hue={catHue(product.category)} size={TILE_WIDTH - 16} className="retail-tile-thumb" />
-        <span className="retail-tile-name" style={{ fontSize: 'var(--text-xs)', fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{product.name}</span>
-        <span className="retail-tile-price" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-secondary)' }}>{formatMoney(product.price)}</span>
+        <span className="retail-tile-name">{product.name}</span>
+        <span className="retail-tile-price">{formatMoney(product.price)}</span>
       </button>
     </div>
   );

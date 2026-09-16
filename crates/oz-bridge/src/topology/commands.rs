@@ -30,19 +30,29 @@ use super::semantics::*;
 ///
 /// The frontend uses this capability probe for UI gating; the Apply command
 /// repeats the permission check server-side and remains authoritative.
+///
+/// R2 (todo-topology-editor.md §5, ruled 2026-09-16): topology is a
+/// LOCATION-SCOPED tool, so the probe answers through the SAME scoped gate
+/// `authorize_topology_write` and Apply use — a writer whose assignment
+/// excludes the branch must hear "no" from the probe, not learn it by
+/// authoring a diagram that dies at Apply. Global assignments and legacy
+/// users without an assignment row stay unrestricted by the scoped checker
+/// itself (`ctx.rs` — the same carve-outs the enforcement respects).
 pub async fn can_save_topology(
     ctx: &BridgeCtx<'_>,
     session_token: String,
+    branch_id: Option<String>,
 ) -> Result<bool, BridgeError> {
     let session = ctx.resolve_session(&session_token)?;
-    // Topology is a global admin tool — use scope-free permission check.
     {
         let global_db = ctx.db.lock().await;
         let global_store = ctx.store(&global_db);
-        ctx.require_permission_for_user(
+        ctx.require_user_permission_scoped(
             &global_store,
             &session.user_id,
             permissions::TOPOLOGY_WRITE,
+            branch_id.as_deref(),
+            None,
         )?;
     }
     Ok(true)
@@ -153,9 +163,18 @@ pub async fn delete_topology_template(
 /// editor repair it.
 pub async fn load_topology(
     ctx: &BridgeCtx<'_>,
+    // R1 (todo-topology-editor.md §5, ruled 2026-09-16): this read requires
+    // a session, mirroring load_topology_template — the parameter landed in
+    // all three layers before the body enforced it, so the session test in
+    // `topology_command_tests.rs` failed for the RIGHT reason (behavior,
+    // not compile) against the stage-1 body.
+    session_token: String,
     branch_id: Option<String>,
 ) -> Result<Option<Value>, BridgeError> {
     let setting_key = topology_setting_key(branch_id.as_deref())?;
+    // Resolve BEFORE the settings lookup: an unauthorized caller learns
+    // nothing about whether a diagram exists, in this branch or any other.
+    ctx.resolve_session(&session_token)?;
     let conn = ctx.db.lock().await;
     let raw = match oz_core::Settings::get(&conn, &setting_key)? {
         Some(json) => Some(json),
@@ -237,7 +256,10 @@ pub struct TopologyRevisionGraphResult {
 /// Reading history answers an auditor's question, so it rides `AUDIT_VIEW`;
 /// pinning changes what stays RESTORABLE, which is an operational topology
 /// decision and the same gate Apply itself needs. A user who cannot deploy
-/// should not decide which deploys are protected.
+/// should not decide which deploys are protected. "The same gate" is now
+/// literal (R2, ruled 2026-09-16): the check is scoped to the branch whose
+/// revisions are being pinned, as Apply's is — the branch_id was already a
+/// parameter; only the gate's scope was missing.
 pub async fn pin_topology_revision(
     ctx: &BridgeCtx<'_>,
     session_token: String,
@@ -249,10 +271,12 @@ pub async fn pin_topology_revision(
     let global_db = ctx.db.lock().await;
     {
         let global_store = ctx.store(&global_db);
-        ctx.require_permission_for_user(
+        ctx.require_user_permission_scoped(
             &global_store,
             &session.user_id,
             permissions::TOPOLOGY_WRITE,
+            branch_id.as_deref(),
+            None,
         )?;
     }
     set_topology_revision_pinned(
@@ -544,21 +568,69 @@ pub async fn apply_topology_diff(
     // requires canonical semantic node and wire fields, semantic ownership,
     // and structural validity.
     //
-    // Ownership registries: branch profiles created through the scoped
-    // commands land in the SESSION's store database (store-<id>.sqlite),
-    // while the global database only carries the seeded default profile.
-    // The gate therefore accepts a canonical branch profile from either
-    // registry — validating the global one alone rejected every freshly
-    // created branch with `unknown-branch-location` forever.
+    // Ownership registries (R4, ruled 2026-09-16): [global, session,
+    // EFFECTIVE].
+    //   * SESSION stays required by fact, not habit: branch profiles created
+    //     through the scoped commands land in the session store's database
+    //     (`locations_tests.rs:148-154` pins it green), and a store database
+    //     is migrated with only a 'default' seed — dropping this arm would
+    //     return every freshly created branch to the `unknown-branch-location`
+    //     forever-reject the previous comment on this block guarded.
+    //   * EFFECTIVE is NEW: the store the diagram actually writes into is
+    //     finally consulted about its own identity. Before this line existed,
+    //     a self-describing store's registry could not authorize an Apply
+    //     into it — the referee is
+    //     `self_describing_store_passes_the_ownership_gate`.
+    //   * ACCEPTED RESIDUAL, pinned by
+    //     `session_only_row_authorizing_a_foreign_target_is_the_accepted_residual`:
+    //     ownership keeps ANY-registry semantics, so a session-side row can
+    //     still authorize writes into a target that does not name itself.
+    //     Full closure needs a write-side self-seed in the §I locations
+    //     family (outside this fence) or removal of the session arm (which
+    //     the fresh-create fact rules out). Recorded, not missed.
     {
         let global_db = ctx.db.lock().await;
         let branch_conn = ctx.db_manager.open_store(&session.store_id).map_err(|e| {
-            BridgeError::Internal(format!("opening store db for topology gate: {e}"))
+            // M5 / ruling R3: cause is logged, not returned (path-free error).
+            tracing::error!(store = %session.store_id, error = %e, "topology Apply: opening store db failed for the ownership gate");
+            BridgeError::Internal(format!(
+                "opening store db for topology gate: store '{}'",
+                session.store_id
+            ))
         })?;
         let branch_db = branch_conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        validate_apply_gate(&[&global_db, &branch_db], &diagram_nodes, &diagram_wires)?;
+        // The effective store's registry joins the slice — same physical DB
+        // when the diagram names the session's own store, so that case does
+        // not re-open or double-lock. Note: `open_store` creates-and-migrates
+        // an absent file, so a diagram naming an entirely unknown id can now
+        // leave an empty store database behind even as the gate rejects it —
+        // file-only, zero rows, identical to what `create_store_db` already
+        // produces on the success path. Accepted side effect, recorded.
+        let effective_conn = (effective_store_id != session.store_id)
+            .then(|| ctx.db_manager.open_store(&effective_store_id))
+            .transpose()
+            .map_err(|e| {
+                // M5 / ruling R3 discipline holds on the new arm too.
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening the effective store db failed for the ownership gate");
+                BridgeError::Internal(format!(
+                    "opening store db for topology gate: store '{}'",
+                    effective_store_id
+                ))
+            })?;
+        let effective_db = effective_conn
+            .as_ref()
+            .map(|c| {
+                c.lock()
+                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))
+            })
+            .transpose()?;
+        let mut registries: Vec<&rusqlite::Connection> = vec![&global_db, &branch_db];
+        if let Some(db) = effective_db.as_deref() {
+            registries.push(db);
+        }
+        validate_apply_gate(&registries, &diagram_nodes, &diagram_wires)?;
     }
 
     // Capture lengths before the workspace block consumes the vectors
@@ -676,8 +748,11 @@ pub async fn apply_topology_diff(
             .db_manager
             .open_store(&effective_store_id)
             .map_err(|e| {
+                // M5 / ruling R3: cause is logged, not returned (path-free error).
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for workspace CRUD");
                 BridgeError::Internal(format!(
-                    "opening store db for store '{effective_store_id}': {e}"
+                    "opening store db for store '{}'",
+                    effective_store_id
                 ))
             })?;
         let db = conn
@@ -936,12 +1011,43 @@ pub async fn apply_topology_diff(
     };
     let save_result = {
         let branch_conn = ctx.db_manager.open_store(&session.store_id).map_err(|e| {
-            BridgeError::Internal(format!("opening store db for topology save: {e}"))
+            // M5 / ruling R3: cause is logged, not returned (path-free error).
+            tracing::error!(store = %session.store_id, error = %e, "topology Apply: opening store db failed for the diagram save");
+            BridgeError::Internal(format!(
+                "opening store db for topology save: store '{}'",
+                session.store_id
+            ))
         })?;
         let branch_db = branch_conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        save_topology_json_at_key_with_revision(
+        // R4: the save boundary's ownership re-check must agree with the
+        // gate it follows — same [global, session, EFFECTIVE] slice, built
+        // the same way (no re-open when the diagram names the session's own
+        // store). The second site of the same class was real: the referee
+        // passed the gate and died HERE before this line existed.
+        let effective_conn = (effective_store_id != session.store_id)
+            .then(|| ctx.db_manager.open_store(&effective_store_id))
+            .transpose()
+            .map_err(|e| {
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening the effective store db failed for the diagram save");
+                BridgeError::Internal(format!(
+                    "opening store db for topology save: store '{}'",
+                    effective_store_id
+                ))
+            })?;
+        let effective_db = effective_conn
+            .as_ref()
+            .map(|c| {
+                c.lock()
+                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))
+            })
+            .transpose()?;
+        let mut save_registries: Vec<&rusqlite::Connection> = vec![&global_db, &branch_db];
+        if let Some(db) = effective_db.as_deref() {
+            save_registries.push(db);
+        }
+        save_topology_json_at_key_with_registries(
             &global_db,
             diagram_nodes,
             diagram_wires,
@@ -949,10 +1055,10 @@ pub async fn apply_topology_diff(
             &resolved_issue_keys,
             Some(base_revision),
             Some((&request_key, &request_fingerprint)),
-            Some(&branch_db),
+            &save_registries,
             Some(&revision_ctx),
         )
-        // branch_db and branch_conn drop here with the block.
+        // The guards and slice drop here with the block.
     };
     if let Err(save_error) = save_result {
         drop(global_db);
@@ -1020,7 +1126,12 @@ pub async fn apply_topology_diff(
             .db_manager
             .open_store(&effective_store_id)
             .map_err(|e| {
-                BridgeError::Internal(format!("opening store db for topology audit: {e}"))
+                // M5 / ruling R3: cause is logged, not returned (path-free error).
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for the audit write");
+                BridgeError::Internal(format!(
+                    "opening store db for topology audit: store '{}'",
+                    effective_store_id
+                ))
             })?;
         let db = store_conn
             .lock()

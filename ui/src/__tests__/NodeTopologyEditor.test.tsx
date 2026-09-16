@@ -74,7 +74,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-wire-label-transfer': 'Transfer',
   'topology-toast-fallback-warehouse': 'Multi-warehouse stock deduction fallback wires require a Pro Tier license.',
   'topology-toast-load-error': 'Failed to load topology',
-  'topology-toast-selection-dropped': 'The selected element is not part of this preset and was deselected.',
   'topology-confirm-delete-node-title': 'Delete Node',
   'topology-confirm-delete-wire-title': 'Delete Wire',
   'topology-confirm-delete-node-msg':
@@ -104,8 +103,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-port-location-out-aria': 'Location port',
   'topology-port-location-in-aria': 'Location port',
   'topology-port-aria': 'Topology port',
-  'topology-wire-flip-hint-connecting':
-    'Flip direction? Clicking keeps your connection in progress.',
   'topology-port-workspace-out': 'Operation',
   'topology-port-stock-in': 'Stock In',
   'topology-port-stock-out': 'Stock Out',
@@ -156,16 +153,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-empty-state-body':
     'Drag tools from the palette onto the canvas, or press 1–4 to add a node. Connect nodes with the port sockets on each card.',
   'topology-unsaved': 'Unsaved changes',
-  'topology-shortcuts-aria': 'Keyboard shortcuts',
-  'topology-shortcuts-title': 'Shortcuts',
-  'topology-shortcuts-help': 'Show keyboard shortcuts',
-  'topology-shortcuts-pan': 'Pan the canvas',
-  'topology-shortcuts-duplicate-drag': 'Duplicate by dragging',
-  'topology-shortcuts-additive-marquee': 'Add to the selection',
-  'topology-shortcuts-spawn': 'Spawn a node from the palette slot',
-  'topology-shortcuts-nudge': 'Move selected nodes (Shift = snap to grid)',
-  'topology-shortcuts-esc': 'Deselect or cancel the in-flight action',
-  'topology-shortcuts-inspector': 'Focus the inspector name field',
   'topology-context-add-title': 'Add Node',
   'topology-context-select-all': 'Select All',
   'topology-context-selection-title': '{count} selected',
@@ -198,7 +185,6 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-finder-aria': 'Find node',
   'topology-finder-placeholder': 'Search nodes…',
   'topology-finder-no-matches': 'No nodes match',
-  'topology-shortcuts-find': 'Find node',
   'topology-auto-layout': 'Auto-layout',
   'topology-layout-announce': 'Topology arranged automatically',
   'topology-rack-share-title': 'topology-rack-share-title',
@@ -6589,68 +6575,6 @@ describe('NodeTopologyEditor — wire crossing under cards', () => {
     expect(document.querySelectorAll('.node-wires-crossing path')).toHaveLength(0);
   });
 
-  // SKIPPED — unfixable, not flaky. This test drives a "Test Order
-  // Simulation" button that no longer exists: 4653d966 (2026-08-26, "PIN
-  // remember checkbox, presets popover, validation UX improvements") deleted
-  // the `.simulation-btn` control along with its `isSimulating` state. The
-  // `topology-sim-start` / `topology-sim-stop` Fluent keys and the
-  // `.wire-simulation-pulse` CSS rule survived that commit and are now
-  // referenced by nothing outside this file and the a11y mock dictionary, so
-  // `getByText` can never resolve. Left in place rather than deleted because
-  // the geometry it asserts is real and still supported: `polylinePoint` and
-  // `wireUnderCardSegments` (topologyWireGeometry.ts:134) exist precisely so
-  // "a simulation pulse crosses each segment at constant speed". If the
-  // control is ever restored, this test should pass unchanged — restore it
-  // then. Until then it must NOT be re-widened into a describe.skip: the
-  // other five tests in this block cover the live round-146 under-card
-  // overlay and were silently skipped alongside it for 11 days.
-  it.skip('rides the simulation pulse over the card it passes under', async () => {
-    // Round 147: the wire reads continuous (round 146) but the simulation
-    // pulse still travelled along the BASE path — under a card it blinked
-    // out and re-emerged, breaking the continuity the overlay just fixed.
-    // The hidden pulse must render on the overlay (same class, so the same
-    // info-blue dot) and disappear once it clears the card.
-    mockLoadTopology.mockResolvedValueOnce({
-      nodes: [
-        { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140 },
-        { id: 'ws-1', type: 'workspace', name: 'POS', x: 380, y: 260, metadata: { typeKey: 'store-pos' } },
-        { id: 'wh-1', type: 'warehouse', name: 'Stock', x: 680, y: 140 },
-      ],
-      wires: [
-        {
-          id: 'w-cross', from_node_id: 'store-1', from_port: 'right', to_node_id: 'wh-1', to_port: 'left',
-          from_port_id: 'location-out', to_port_id: 'location-in', relationship_type: 'location',
-          direction: 'one-way', label: 'Binds Store',
-        },
-      ],
-    } as never);
-    renderEditor();
-    await waitFor(() => expect(getWireCount()).toBe(1));
-
-    // Fake timers only AFTER the async load settles — waitFor must not run
-    // under frozen time.
-    vi.useFakeTimers();
-    try {
-      fireEvent.click(screen.getByText('Test Order Simulation'));
-      // Advance to t=0.5 (step 50): the straight wire runs y=364 from
-      // x=320 to x=680, so the pulse sits at (500, 364) — inside ws-1's
-      // box [380,620]×[260,500]. The overlay must show it.
-      act(() => {
-        vi.advanceTimersByTime(30 * 50);
-      });
-      expect(document.querySelectorAll('.node-wires-crossing circle')).toHaveLength(1);
-
-      // Advance past the card: t=0.95 → x≈662, clear of the box — the
-      // overlay dot must vanish (the base dot renders again).
-      act(() => {
-        vi.advanceTimersByTime(30 * 45);
-      });
-      expect(document.querySelectorAll('.node-wires-crossing circle')).toHaveLength(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('mirrors the base wire hover on the under-card overlay segment', async () => {
     // Round 151: the base wire brightens + thickens on hover
     // (.wire-group:hover .wire-path) but the round-146 overlay path had no
@@ -6766,7 +6690,10 @@ describe('NodeTopologyEditor — fresh-node animation pulse', () => {
 // ── Undo history cap ────────────────────────────────────────────
 
 describe('NodeTopologyEditor — undo history cap', () => {
-  it('caps the undo stack at 50 entries, evicting the oldest', () => {
+  // This case drives 51 adds + 50 undos synchronously: 5.4 s on an idle runner,
+  // which the 10 s global testTimeout (ui/vite.config.ts) does not cover under
+  // full-suite load, so the cap budget is raised here, not the assertions.
+  it('caps the undo stack at 50 entries, evicting the oldest', { timeout: 30_000 }, () => {
     renderEditor();
     const initial = getNodeCount(); // retail preset: 3
 
@@ -8098,7 +8025,9 @@ describe('NodeTopologyEditor — per-branch viewport memory', () => {
 
   it('loads topology data for the active branch', async () => {
     renderEditor({ branchId: 'branch-a' });
-    await waitFor(() => expect(mockLoadTopology).toHaveBeenCalledWith('branch-a'));
+    // R1 (2026-09-16): the read carries the session first — this harness
+    // renders with MOCK_SESSION_TOKEN, so that is what the mock receives.
+    await waitFor(() => expect(mockLoadTopology).toHaveBeenCalledWith('mock-session-token', 'branch-a'));
   });
 });
 

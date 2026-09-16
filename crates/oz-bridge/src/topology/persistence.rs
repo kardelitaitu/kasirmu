@@ -249,6 +249,28 @@ pub fn sort_template_names(mut names: Vec<String>) -> Vec<String> {
 /// profile may live in EITHER `conn` (global registry) or this connection
 /// (the session store's database, where the scoped profile family writes
 /// branch profiles). Pass `None` for single-registry callers and tests.
+///
+/// CONTRACT — callers must gate; this is not safe to call directly. It re-runs
+/// semantic OWNERSHIP only (`validate_semantic_ownership[_in]` above, its first
+/// statements), and nothing else: `validate_apply_gate`'s canonical-semantic
+/// and structural checks, `validate_warehouse_quota`, `validate_warehouse_capacity`
+/// and the session/entitlement resolution are the CALLER's, all of which
+/// `commands.rs` runs before it reaches this function at `:944`. A client that
+/// saves through this helper without them can publish a diagram the Apply
+/// command would reject — the hazard M4 (`todo-topology-editor.md:408`) exists
+/// to close.
+///
+/// STAYS `pub`, and the reason is a LIVE caller, not a shim: the desktop
+/// test build reaches it through a three-link chain —
+/// `apps/desktop-client/src/commands/topology/topology_command_tests.rs:55`,
+/// `:84`, `:92` call the `#[cfg(test)]` command harness
+/// `commands.rs:236 save_topology`, which calls
+/// `persistence.rs:221 save_topology_json_at_key` (also `#[cfg(test)]`), which
+/// calls the adapter at `:154`, which calls THIS function at `:165`. Its
+/// sibling `validate_warehouse_quota` had no such chain — that adapter was
+/// unreferenced and is now deleted, which let the quota helper go
+/// `pub(crate)`; this one cannot follow until the round-trip harness is
+/// rehomed, which is an `apps/**` change with its own owner.
 #[allow(clippy::too_many_arguments)]
 pub fn save_topology_json_at_key_with_revision(
     conn: &Connection,
@@ -261,10 +283,60 @@ pub fn save_topology_json_at_key_with_revision(
     branch_registry: Option<&Connection>,
     revision_ctx: Option<&TopologyRevisionContext<'_>>,
 ) -> Result<u64, BridgeError> {
-    match branch_registry {
-        Some(branch_db) => validate_semantic_ownership_in(&[conn, branch_db], &nodes, &wires)?,
-        None => validate_semantic_ownership(conn, &nodes, &wires)?,
-    }
+    // Thin adapter over the registries form (R4 alignment): one optional
+    // extra registry becomes the two-element slice Apply used before the
+    // target store joined it; the 40-odd test callers keep this shape.
+    let registries: Vec<&Connection> = match branch_registry {
+        Some(b) => vec![conn, b],
+        None => vec![conn],
+    };
+    save_topology_json_at_key_with_registries(
+        conn,
+        nodes,
+        wires,
+        setting_key,
+        resolved_issue_keys,
+        expected_revision,
+        request,
+        &registries,
+        revision_ctx,
+    )
+}
+
+/// The registries form of the save-boundary ownership re-check.
+///
+/// `ownership_registries` is the caller's FULL set — every database whose
+/// `locations` table may vouch for the canonical Branch Location profile.
+/// Production Apply passes `[global, session, effective]` (R4, ruled
+/// 2026-09-16, mirroring `validate_apply_gate`'s slice at its call site:
+/// the save boundary that did NOT consult the target registry was the second
+/// site of the same class and is the reason the R4 referee test
+/// (`self_describing_store_passes_the_ownership_gate`) failed here first).
+/// `conn` (the settings database the envelope lands in) is not implicit —
+/// pass it explicitly as the first element; the old single-`branch_registry`
+/// adapter constructs exactly `[conn]` or `[conn, b]`.
+///
+/// CONTRACT — callers must gate; this is not safe to call directly. It re-runs
+/// semantic OWNERSHIP only (`validate_semantic_ownership_in`, its first
+/// statement), and nothing else: `validate_apply_gate`'s canonical-semantic
+/// and structural checks, `validate_warehouse_quota`, `validate_warehouse_capacity`
+/// and the session/entitlement resolution are the CALLER's. A client that
+/// saves through this helper without them can publish a diagram the Apply
+/// command would reject — the hazard M4 (`todo-topology-editor.md:408`) exists
+/// to close.
+#[allow(clippy::too_many_arguments)]
+pub fn save_topology_json_at_key_with_registries(
+    conn: &Connection,
+    nodes: Vec<Value>,
+    wires: Vec<Value>,
+    setting_key: &str,
+    resolved_issue_keys: &[String],
+    expected_revision: Option<u64>,
+    request: Option<(&str, &str)>,
+    ownership_registries: &[&Connection],
+    revision_ctx: Option<&TopologyRevisionContext<'_>>,
+) -> Result<u64, BridgeError> {
+    validate_semantic_ownership_in(ownership_registries, &nodes, &wires)?;
     // The legacy typed structs validate geometry and known serialized node
     // kinds. `branch-location` is a semantic alias, so normalize only the
     // temporary validation copy; the raw command payload is persisted intact.
@@ -649,7 +721,20 @@ pub fn validate_semantic_ownership_in(
 /// here — running them only at the final save would let a malformed
 /// diagram mutate workspace rows and then fail at save, forcing the
 /// compensation cycle to unwind a partial apply.
-pub fn validate_apply_gate(
+///
+/// CONTRACT — this is the gate, not a helper behind it: a caller that mutates
+/// workspaces or saves an envelope without having run it first has skipped the
+/// only place the canonical semantic shape is required. Production runs it
+/// from `apply_topology_diff`'s ownership block in
+/// `crates/oz-bridge/src/topology/commands.rs` (the `validate_apply_gate`
+/// call), before the workspace block — by name, not line number, because
+/// R4 moved the block the old `commands.rs:561` citation pointed at.
+///
+/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:408`). Its whole
+/// caller set is inside this crate — `commands.rs:561` plus the mounted
+/// `topology_tests.rs` cases — and, unlike its two sibling helpers, no shell
+/// adapter names it, so a third client cannot reach an ungated copy of it.
+pub(crate) fn validate_apply_gate(
     registries: &[&Connection],
     nodes: &[Value],
     wires: &[Value],
@@ -672,7 +757,22 @@ pub fn validate_apply_gate(
 }
 
 /// Enforce the subscription-tier warehouse count quota for a topology save.
-pub fn validate_warehouse_quota(
+///
+/// CONTRACT — callers must gate; this is not safe to call directly. It checks
+/// ONE axis (tier × warehouse count) and no others: not `validate_apply_gate`
+/// (semantic shape, ownership, structural validity), not
+/// `validate_warehouse_capacity`, not session authority, not the revision
+/// conflict. A command that reaches for this helper alone has bypassed every
+/// other gate on the path. Production calls it at `commands.rs:638`, after the
+/// apply gate and before any save.
+///
+/// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:408`, finished by
+/// the follow-up that deleted the desktop shell's `#[allow(dead_code)]`
+/// `validate_warehouse_quota` adapter — the only out-of-crate reference). Its
+/// remaining callers are all in this crate: `commands.rs:638` on the Apply path
+/// plus the mounted `persistence_tests.rs` and `topology_command_tests.rs`
+/// cases, so no client can reach a quota check that skipped the gates above it.
+pub(crate) fn validate_warehouse_quota(
     nodes: &[Value],
     tier: &oz_core::subscription::SubscriptionTier,
 ) -> Result<(), BridgeError> {

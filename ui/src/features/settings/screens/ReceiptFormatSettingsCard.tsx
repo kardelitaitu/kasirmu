@@ -285,13 +285,13 @@ export function ReceiptFormatSettingsCard() {
           </span>
         )}
         {contentDraft && (
-          <div className="rcptfmt-content-editor">
-            <span className="rcptfmt-required-label">
+          <div>
+            <span>
               <Localized id="settings-rcptfmt-required-fields">Market-mandated elements</Localized>
             </span>
-            <div className="rcptfmt-required-picker">
+            <div>
               {RECEIPT_ELEMENT_CODES.map((code) => (
-                <span key={code} className="rcptfmt-required-item">
+                <span key={code}>
                   <input
                     type="checkbox"
                     id={`rcptfmt-req-${code}`}
@@ -357,7 +357,7 @@ export function ReceiptFormatSettingsCard() {
                 </option>
               </select>
             </div>
-            <p className="rcptfmt-content-note">
+            <p>
               <Localized id="settings-rcptfmt-content-note">
                 Written at the market-mandated (legal entity) layer — applies to every location of this entity.
               </Localized>
@@ -389,7 +389,7 @@ export function ReceiptFormatSettingsCard() {
           </div>
         )}
       </div>
-      <div className="rcptfmt-layout-source">
+      <div>
         <Localized id={layoutSourceKey(layoutSource)}>{layoutSource}</Localized>
       </div>
       <div className="rcptfmt-rows">

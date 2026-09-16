@@ -8,7 +8,7 @@ updated: "2026-08-17"
 
 ## Plans
 
-OZ-POS has five tiers: `free`, `plus`, `pro`, `premium`, and `enterprise`.
+kasir.mu has five tiers: `free`, `plus`, `pro`, `premium`, and `enterprise`.
 What each plan unlocks — stores, registers, warehouses, QRIS payments, cloud
 sync, and scripting — is shown on the [pricing page](../../pricing/).
 

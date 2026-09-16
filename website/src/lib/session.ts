@@ -1,7 +1,7 @@
 /**
  * Session token access for the account portal (R1 — httpOnly cookie
  * migration). The Worker owns the session cookie on the marketing host
- * (ozpos.my.id); the browser reads it back same-origin from /__oz/session,
+ * (kasir.mu); the browser reads it back same-origin from /__oz/session,
  * so the token never needs to live in XSS-readable sessionStorage in
  * production.
  *

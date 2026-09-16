@@ -12,6 +12,7 @@ import { renderInAct } from '@/test-utils/renderInAct';
 import userEvent from '@testing-library/user-event';
 import { withFluent } from '@/locales/test-utils';
 import { ToastProvider } from '@/frontend/shared/Toast';
+import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import salesFtl from '@/locales/sales.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import type { Money, CartLine, Sku, LineId } from '@/types/domain';
@@ -100,6 +101,14 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     workspaces: [],
     loading: false,
   }),
+  // This mock REPLACES the module (it does not spread the global harness's
+  // `...actual`), so `useWorkspaceScope` has to be declared here or the modal's
+  // import resolves to undefined. A `vi.fn` so a test can put the modal on a
+  // named terminal: the Open Bill tender is gated on the workspace type. The
+  // default is null — fail-closed, the tender stays hidden — and the file's
+  // `beforeEach` declares the Restaurant POS terminal, which the PINNED tender
+  // list below requires.
+  useWorkspaceScope: vi.fn(() => null),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
@@ -136,6 +145,18 @@ vi.mock('@/components/QrisQrDisplay', () => ({
 
 beforeEach(() => {
   invokeMock.mockClear();
+  // The modal is shared by both POS terminals, and the Open Bill tender is now
+  // gated on the workspace type: an open bill is the restaurant terminal's own
+  // concept, and `hold_cart_scoped` refuses it from anywhere else. The global
+  // harness returns a generic `typeKey` ('default'), which hides that tender, so
+  // this file declares the Restaurant POS terminal — the PINNED tender list
+  // asserted below includes `open_bill`. The store-pos direction is covered by
+  // `the store terminal does not offer the open bill tender`, which overrides this.
+  vi.mocked(useWorkspaceScope).mockReturnValue({
+    storeId: 'store-1',
+    instanceId: 'instance-1',
+    typeKey: 'restaurant-pos',
+  });
 });
 
 describe('PaymentModal — sale flow', () => {
@@ -1029,6 +1050,45 @@ describe('PaymentModal — EDC card-present tender', () => {
     );
     view.unmount();
   });
+
+  // W4-d (CardTenderPanel): the panel's own `terminalPending` operand. The
+  // three guards on the pay button are NOT one condition -- `processing` is
+  // false the moment the capture answer lands, so what keeps the button dark
+  // over a DECLINED exchange is `edc !== null` alone. Drop that operand and
+  // the second assertion below fails: a cashier could tap a fresh capture onto
+  // the terminal while still reading the decline. The dismiss end is asserted
+  // too, so the guard cannot be satisfied by leaving it dark forever.
+  it('a declined terminal answer keeps the pay button disabled until it is dismissed', async () => {
+    const view = await mount();
+    await overrideInvoke(
+      'edc_sale',
+      () =>
+        Promise.resolve({
+          success: false,
+          transactionId: null,
+          authCode: null,
+          cardScheme: null,
+          cardLast4: null,
+          message: 'insufficient funds',
+        }),
+      async () => {
+        await clickTerminalPay();
+        const dismiss = await screen.findByRole('button', { name: /back to payment/i });
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: /pay on card terminal/i }),
+          ).toBeDisabled(),
+        );
+        await userEvent.click(dismiss);
+        await waitFor(() =>
+          expect(
+            screen.getByRole('button', { name: /pay on card terminal/i }),
+          ).not.toBeDisabled(),
+        );
+      },
+    );
+    view.unmount();
+  });
 });
 
 // ── Local payment rails gating (agents-5 R1) ─────────────────────────
@@ -1212,5 +1272,211 @@ describe('PaymentModal — local payment rails gating', () => {
     expect(JSON.parse(writeStaticQrPayload(bag, ''))).toEqual({ banner: 'hello' });
     // ...and refuses to launder a malformed bag into fresh JSON.
     expect(writeStaticQrPayload('{oops', 'PAY')).toBe('{oops');
+  });
+
+  // ── PINNED tender list ───────────────────────────────────────────
+  //
+  // These four cases pin TODAY'S rendered tender list, not new behaviour:
+  // each asserts the exact ordered set of `payment-method` radios the
+  // operator sees for one named rail configuration, read from the DOM in
+  // document order. They exist as the equivalence harness for the
+  // `visibleMethods` derivation (todo-payment.md :446) that replaces the
+  // hardcoded literal at PaymentModal.tsx:1501. If any of them changes
+  // when the literal is replaced, the derivation and what rendered before
+  // disagree — that is a product ruling, not a refactor.
+  //
+  // `other` and `open_bill` are asserted too even though they are fixed
+  // markup outside the literal: they are part of what the operator sees,
+  // and a derivation that grew to cover the whole group has to keep them
+  // in this position.
+  const renderedTenders = async (rails: unknown[] | 'reject'): Promise<string[]> => {
+    const { view, restore } = await mountWithRails(rails);
+    try {
+      // The rails fetch resolves on mount; wait for a rail-gated outcome
+      // before reading the list so the read is post-settle, not mid-fetch.
+      await waitFor(() =>
+        expect(view.container.querySelector('input[name="payment-method"]')).not.toBeNull(),
+      );
+      return Array.from(
+        view.container.querySelectorAll<HTMLInputElement>('input[name="payment-method"]'),
+      ).map((input) => input.value);
+    } finally {
+      restore();
+      view.unmount();
+    }
+  };
+
+  const ALL_TENDERS = ['cash', 'card', 'qris', 'credit', 'other', 'open_bill'];
+
+  // The other direction of the workspace gate. `open_bill` is the restaurant
+  // terminal's own concept — `hold_cart_scoped` refuses it from any other
+  // workspace and `list_open_bills_scoped` will not serve one — so the shared
+  // modal must not offer the tender to a store-pos cashier, or Complete would
+  // submit a bill the backend rejects.
+  it('the store terminal does not offer the open bill tender', async () => {
+    vi.mocked(useWorkspaceScope).mockReturnValue({
+      storeId: 'store-1',
+      instanceId: 'instance-1',
+      typeKey: 'store-pos',
+    });
+
+    expect(await renderedTenders([rail(true)])).toEqual([
+      'cash',
+      'card',
+      'qris',
+      'credit',
+      'other',
+    ]);
+  });
+
+  it('PINNED: every rail offered renders cash, card, qris, credit, other, open bill', async () => {
+    expect(
+      await renderedTenders([
+        rail(true),
+        { rail_code: 'edc', label: 'EDC', is_enabled: true, scope: 'location', parameters: '{}' },
+      ]),
+    ).toEqual(ALL_TENDERS);
+  });
+
+  it('PINNED: an edc-withheld site renders the SAME tender list (the rail gates the terminal button, not the card tab)', async () => {
+    const edcWithheld = [
+      rail(true),
+      { rail_code: 'edc', label: 'EDC', is_enabled: false, scope: 'location', parameters: '{}' },
+    ];
+    // Same ordered set as the all-rails-on configuration above.
+    expect(await renderedTenders(edcWithheld)).toEqual(ALL_TENDERS);
+    // ...and the difference the rail DOES make lives inside the card panel:
+    // no pay-on-terminal button, manual card still selectable.
+    const { view, restore } = await mountWithRails(edcWithheld);
+    try {
+      await userEvent.click(await screen.findByRole('radio', { name: /card/i }));
+      expect(screen.queryByRole('button', { name: /pay on card terminal/i })).toBeNull();
+      expect(screen.getByRole('radio', { name: /card/i })).toBeChecked();
+    } finally {
+      restore();
+      view.unmount();
+    }
+  });
+
+  it('PINNED: a disabled qris rail drops qris from the middle of the list, in place', async () => {
+    expect(await renderedTenders([rail(false)])).toEqual([
+      'cash',
+      'card',
+      'credit',
+      'other',
+      'open_bill',
+    ]);
+  });
+
+  it('PINNED: an empty rail list fails open to the full tender list', async () => {
+    expect(await renderedTenders([])).toEqual(ALL_TENDERS);
+  });
+
+  // ── PINNED label TEXT ─────────────────────────────────────────────────
+  //
+  // The four cases above read `input.value`, so none of them can see what a
+  // tab is CALLED. That gap was the one fragile place in the derivation: the
+  // strip rendered its name through a nested ternary whose ELSE-BRANCH was
+  // `payment-method-credit`, so a 5th TENDER_RAILS row (`ewallet`) would have
+  // compiled clean, kept every value list above matching, and handed the
+  // cashier a tab labelled Credit that tendered an e-wallet (Correctness
+  // review of 994c0e364, PaymentModal.tsx:1516). This case is the runtime net
+  // under the compile-time one (`PAYMENT_METHOD_MESSAGE_IDS` is total over the
+  // union): each row is paired with the text the cashier actually reads, so a
+  // new tab -- or a new tab borrowing an existing name -- goes red here too.
+  it('PINNED: every tender tab renders its own label text, in order', async () => {
+    const { view, restore } = await mountWithRails([
+      rail(true),
+      { rail_code: 'edc', label: 'EDC', is_enabled: true, scope: 'location', parameters: '{}' },
+    ]);
+    const labelOf: string[] = [];
+    try {
+      // Post-settle read, same discipline as renderedTenders(): wait for a
+      // rail-gated tab to exist before naming the list.
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+      const inputs = Array.from(
+        view.container.querySelectorAll<HTMLInputElement>('input[name="payment-method"]'),
+      );
+      for (const input of inputs) {
+        const row = input.closest('label, div.payment-method-label');
+        // What the cashier reads for this row: its label span, or -- for the
+        // free-text `other` row, which has no span -- the placeholder the
+        // Localized wrapper resolves onto its text input.
+        const name = row?.querySelector('.payment-method-name')?.textContent?.trim() ||
+          (row?.querySelector<HTMLInputElement>('.payment-other-input'))?.placeholder ||
+          '';
+        labelOf.push(input.value + ': ' + name);
+      }
+    } finally {
+      restore();
+      view.unmount();
+    }
+
+    expect(labelOf).toEqual([
+      'cash: Cash',
+      'card: Card',
+      'qris: QRIS',
+      'credit: Credit',
+      'other: Other...',
+      'open_bill: Open Bill',
+    ]);
+  });
+
+  // ── The checked-tender signal, row by row ─────────────────────────────
+  //
+  // PaymentModal.css:184 styles the selected tender through an ADJACENT-
+  // SIBLING rule - `input[type="radio"]:checked + .payment-method-name` - so a
+  // row is only treated when the element right after its radio carries that
+  // class. The case above reads each row's NAME; nobody read whether the name
+  // is in the position the rule can reach, and the free-text Other row was not
+  // (:1575-1595 - radio, then the .payment-other-input, no treated name), so
+  // selecting Other left the one checked row on screen with neither the accent
+  // nor the semibold every other tender gets. Reviewer's repro: type Voucher
+  // in Other and look.
+  it('PINNED: every tender row, Other included, has a .payment-method-name in the position the :checked rule reaches', async () => {
+    const { view, restore } = await mountWithRails([rail(true)]);
+    try {
+      await waitFor(() =>
+        expect(screen.getByRole('radio', { name: /qris/i })).toBeInTheDocument(),
+      );
+      const radios = Array.from(
+        view.container.querySelectorAll<HTMLInputElement>('input[name="payment-method"]'),
+      );
+      expect(radios.map((r) => r.value)).toEqual(['cash', 'card', 'qris', 'credit', 'other', 'open_bill']);
+
+      // The structural precondition of the CSS rule, per row. `+` needs the
+      // classed element to be the radio's own next sibling, so this fails for a
+      // row that names itself anywhere else in the row - and for Other, which
+      // named itself only through an input placeholder.
+      for (const radio of radios) {
+        const next = radio.nextElementSibling;
+        expect(
+          next?.classList.contains('payment-method-name'),
+          `tender ${radio.value}: its radio's next sibling must carry .payment-method-name or :checked cannot reach it`,
+        ).toBe(true);
+      }
+
+      // Now the repro itself: select Other, type a tender name, and require the
+      // element the rule treats to be the live one showing what was typed.
+      const other = radios.find((r) => r.value === 'other')!;
+      await userEvent.click(other);
+      const name = other.nextElementSibling!;
+      expect(name.classList.contains('payment-method-name'), 'the treated element').toBe(true);
+      await userEvent.type(name as HTMLInputElement, 'Voucher');
+      expect((name as HTMLInputElement).value, 'what the cashier typed is the treated element\'s own content').toBe('Voucher');
+      expect(other.checked).toBe(true);
+      // Every OTHER radio is now unchecked, and the row still named by a span is
+      // untouched - the change must not have moved a name out of any other row.
+      for (const radio of radios.filter((r) => r !== other)) {
+        expect(radio.checked, `tender ${radio.value} should be unchecked`).toBe(false);
+        expect(radio.nextElementSibling!.classList.contains('payment-method-name'),
+          `tender ${radio.value} lost its name element`).toBe(true);
+      }
+    } finally {
+      restore();
+      view.unmount();
+    }
   });
 });

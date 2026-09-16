@@ -8,9 +8,20 @@ fn sync_settings_serialize() {
         enabled: true,
     };
     let json = serde_json::to_value(&dto).unwrap();
-    assert_eq!(json["server_url"], "https://sync.example.com");
-    assert_eq!(json["has_api_key"], true);
+    // The shared settings page reads camelCase (ui/src/api/offline.ts
+    // `SyncSettingsDto`); snake_case here reads as `undefined` on the tablet
+    // and the page then re-sends a null URL, which wipes the stored one.
+    assert_eq!(json["serverUrl"], "https://sync.example.com");
+    assert_eq!(json["hasApiKey"], true);
     assert_eq!(json["enabled"], true);
+    assert!(
+        json.get("server_url").is_none(),
+        "snake_case key must not reach the UI"
+    );
+    assert!(
+        json.get("has_api_key").is_none(),
+        "snake_case key must not reach the UI"
+    );
 }
 
 #[test]
@@ -21,24 +32,146 @@ fn sync_settings_no_url_disabled() {
         enabled: false,
     };
     let json = serde_json::to_value(&dto).unwrap();
-    assert!(json["server_url"].is_null());
+    assert!(json["serverUrl"].is_null());
     assert!(!json["enabled"].as_bool().unwrap());
 }
 
 #[test]
 fn update_sync_settings_deserialize() {
-    let json = r#"{"server_url":"https://sync.example.com","api_key":"sk-123","enabled":true}"#;
+    // This is the payload the settings page really sends — camelCase, built at
+    // ui/src/features/settings/hooks/saveDiff.ts and forwarded unconverted by
+    // ui/src/api/offline.ts. The snake_case version of this line used to pass
+    // green while certifying the bug: serde filled both Option fields with
+    // None and `update_sync_settings_data` wrote "" over the saved URL.
+    let json = r#"{"serverUrl":"https://sync.example.com","apiKey":"sk-123","enabled":true}"#;
     let args: UpdateSyncSettingsArgs = serde_json::from_str(json).unwrap();
     assert_eq!(args.server_url.unwrap(), "https://sync.example.com");
     assert_eq!(args.api_key.unwrap(), "sk-123");
+    assert!(args.enabled);
 }
 
 #[test]
 fn update_sync_settings_deserialize_no_key() {
-    let json = r#"{"server_url":null,"api_key":null,"enabled":false}"#;
+    // The masked key field is only sent when the user typed one, so the
+    // omitted-`apiKey` shape is the common case.
+    let json = r#"{"serverUrl":null,"enabled":false}"#;
     let args: UpdateSyncSettingsArgs = serde_json::from_str(json).unwrap();
     assert!(args.server_url.is_none());
     assert!(args.api_key.is_none());
+    assert!(!args.enabled);
+}
+
+#[test]
+fn update_sync_settings_wire_keys_match_bridge_twin() {
+    // The drift guard. One JSON object — the bytes the UI sends — must land in
+    // the tablet struct AND in `oz_bridge::sync::UpdateSyncSettingsArgs` (the
+    // type the desktop shell re-exports at
+    // apps/desktop-client/src/commands/sync.rs) with equal effective values.
+    // Both divergent fields are Option, so a casing mismatch on ONE side used
+    // to be invisible to every other test: it deserialises fine and silently
+    // carries None into the unwrap_or("") that wipes the stored URL. Equalising
+    // the two structs is what makes that read red.
+    //
+    // Payload 2 is the snake_case shape, included so the assertion bites in
+    // BOTH directions: if the tablet struct ever reverts to snake_case it
+    // fills Some where the bridge fills None and the pair fails, while
+    // payload 1 pins that camelCase — not the empty pair of Nones — is what
+    // the tablet actually accepts.
+    const PAYLOADS: [&str; 3] = [
+        r#"{"serverUrl":"https://sync.example.com","apiKey":"sk-123","enabled":true}"#,
+        r#"{"server_url":"https://sync.example.com","api_key":"sk-123","enabled":true}"#,
+        r#"{"serverUrl":null,"enabled":false}"#,
+    ];
+    for json in PAYLOADS {
+        let tablet: UpdateSyncSettingsArgs =
+            serde_json::from_str(json).unwrap_or_else(|e| panic!("tablet must accept {json}: {e}"));
+        let bridge: oz_bridge::sync::UpdateSyncSettingsArgs =
+            serde_json::from_str(json).unwrap_or_else(|e| panic!("bridge must accept {json}: {e}"));
+        assert_eq!(
+            tablet.server_url, bridge.server_url,
+            "server_url casing drift on {json}"
+        );
+        assert_eq!(
+            tablet.api_key, bridge.api_key,
+            "api_key casing drift on {json}"
+        );
+        assert_eq!(
+            tablet.enabled, bridge.enabled,
+            "enabled casing drift on {json}"
+        );
+    }
+
+    // And the UI's own shape must resolve to values, not to two matching Nones.
+    let tablet: UpdateSyncSettingsArgs = serde_json::from_str(PAYLOADS[0]).unwrap();
+    assert_eq!(
+        tablet.server_url.as_deref(),
+        Some("https://sync.example.com")
+    );
+    assert_eq!(tablet.api_key.as_deref(), Some("sk-123"));
+    assert!(tablet.enabled);
+}
+
+#[test]
+fn sync_settings_dto_wire_keys_match_bridge_twin() {
+    // Read-path half of the same guard: the page cannot show a URL the tablet
+    // serialised as `server_url`, and the blank field it shows instead is what
+    // the next save writes back.
+    let tablet_dto = SyncSettingsDto {
+        server_url: Some("https://sync.example.com".into()),
+        has_api_key: true,
+        enabled: true,
+    };
+    let tablet = serde_json::to_value(&tablet_dto).unwrap();
+    let bridge = serde_json::to_value(oz_bridge::sync::SyncSettingsDto {
+        server_url: tablet_dto.server_url.clone(),
+        has_api_key: tablet_dto.has_api_key,
+        enabled: tablet_dto.enabled,
+    })
+    .unwrap();
+    assert_eq!(
+        tablet, bridge,
+        "tablet/bridge SyncSettingsDto wire keys drifted"
+    );
+
+    // The equality above is a ONE-SIDED guard: it fires when the two derives
+    // disagree and stays silent when they agree on nothing. Two serialised
+    // empty objects are equal, and `Option<String>` fields deserialise to
+    // `None` on both sides -- so a case whose only assertion is this pair
+    // passes on the exact shape that wiped the stored URL tonight: the UI
+    // reads `serverUrl`, gets nothing, shows a blank field, and the next save
+    // writes the blank back. Every pin below reads a KEY THE UI ACTUALLY
+    // NAMES and demands a VALUE behind it, on both twins, so an emptied
+    // fixture fails here instead of agreeing with itself.
+    for (side, obj) in [("tablet", &tablet), ("bridge", &bridge)] {
+        assert_eq!(
+            obj["serverUrl"], "https://sync.example.com",
+            "{side} must serialise serverUrl with the URL in it, not a key holding null"
+        );
+        assert_eq!(
+            obj["hasApiKey"], true,
+            "{side} must serialise hasApiKey from a real key"
+        );
+        assert_eq!(obj["enabled"], true, "{side} must serialise enabled");
+        // ...and must not ALSO carry the snake_case spellings: a camelCase key
+        // present plus a snake_case key present is a casing leak, which is how
+        // one side drifting reads as clean to a value pin alone.
+        assert!(
+            obj.get("server_url").is_none(),
+            "{side}: snake_case server_url key must not reach the UI"
+        );
+        assert!(
+            obj.get("has_api_key").is_none(),
+            "{side}: snake_case has_api_key key must not reach the UI"
+        );
+    }
+
+    // Non-emptiness of the fixture itself, named rather than implied: if the
+    // DTO above is ever reduced to all-None/false to make another case pass,
+    // this fails with a sentence about the fixture, not a null-vs-null diff.
+    assert!(
+        tablet_dto.server_url.is_some() && tablet_dto.has_api_key && tablet_dto.enabled,
+        "this case grades a POPULATED DTO; an empty one makes the value pins vacuous"
+    );
 }
 
 #[test]
@@ -341,14 +474,24 @@ fn update_sync_settings_data_clear_url_writes_empty_row() {
 }
 
 #[tokio::test]
-async fn sync_run_plan_required_keeps_items_pending() {
-    // ADR sync-plan-gating: a 403 plan_required from the server must
-    // keep queued items `pending` (never mark them failed) and flag
-    // plan_required so the UI can show an upgrade prompt.
+async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
+    // ADR sync-plan-gating, ported off this command's unscoped twin on 2026-09-16 (T27): a 403
+    // plan_required from the server must keep queued items `pending` (never mark them failed)
+    // and flag plan_required so the UI can show an upgrade prompt.
+    //
+    // It used to run against the unscoped sibling of this command, which was registered in
+    // neither shell, so the invariant was graded through a door no real build can open while
+    // the door the tablet actually calls -- this one, SYNC_MANAGE-gated -- had no plan-gate
+    // case. The two bodies were separate copies of the same three-phase logic, so passing
+    // here said something the old test could not: the shipped path gates the plan the same
+    // way. That is why the dead copy could be retired rather than merely left uncalled.
     use crate::state::AppState;
     use oz_core::Store;
+    use oz_core::auth;
     use oz_core::migrations;
     use oz_core::offline::OfflineQueueStatus;
+    use oz_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
     use tauri::Manager as _;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -371,15 +514,45 @@ async fn sync_run_plan_required_keeps_items_pending() {
     });
 
     let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "plan-gate-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
     let app = tauri::test::mock_builder()
-        .manage(AppState::for_test_with_conn(conn))
+        .manage(state)
         .build(tauri::generate_context!())
         .unwrap();
+
+    // Settings and the queued item go through the STORE db, which is the queue the scoped
+    // push reads (see `sync_run_scoped_marks_store_queue_and_leaves_global_untouched`).
     {
         let state = app.state::<AppState>();
-        let db = state.db.lock().await;
+        let conn_arc = state.resolve_store("plan-gate-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
         update_sync_settings_data(
-            &db,
+            &db_guard,
             &UpdateSyncSettingsArgs {
                 server_url: Some(server_url),
                 api_key: Some("test-jwt".into()),
@@ -387,26 +560,35 @@ async fn sync_run_plan_required_keeps_items_pending() {
             },
         )
         .unwrap();
-        Store::new(&db)
-            .enqueue_offline("complete_sale", r#"{"id":"tablet-plan-gate"}"#)
+        Store::new(&db_guard)
+            .enqueue_offline("complete_sale", r#"{"id":"tablet-plan-gate-scoped"}"#)
             .unwrap();
     }
 
-    let result = sync_run(app.state()).await.unwrap();
+    let result = sync_run_scoped("plan-gate-token".into(), app.state())
+        .await
+        .unwrap();
     task.await.unwrap();
 
     assert!(result.plan_required, "must flag plan_required for the UI");
-    assert_eq!(result.synced, 0);
+    assert_eq!(result.synced, 0, "a plan gate syncs nothing");
     assert_eq!(result.failed, 0, "a plan gate is not a failure");
 
     let state = app.state::<AppState>();
-    let db = state.db.lock().await;
-    let items = Store::new(&db).list_all_offline().unwrap();
+    let conn_arc = state.resolve_store("plan-gate-token").unwrap();
+    let db_guard = conn_arc.lock().unwrap();
+    let store = Store::new(&db_guard);
+    let items = store.list_all_offline().unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(
         items[0].status,
         OfflineQueueStatus::Pending,
         "plan-gated items must stay pending so they sync after upgrade"
+    );
+    assert_eq!(
+        store.pending_offline_count().unwrap(),
+        1,
+        "the queue must still be offered on the next cycle"
     );
 }
 

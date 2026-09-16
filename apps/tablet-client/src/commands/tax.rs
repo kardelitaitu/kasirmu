@@ -4,7 +4,6 @@
 //! category-level tax rate assignments for the TaxConfigurationScreen
 //! front-end.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::db::Store;
@@ -31,56 +30,28 @@ async fn require_tax_permission(
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────
-
-/// DTO for a tax rate sent to the front-end.
-#[derive(Debug, Serialize)]
-pub struct TaxRateDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Rate Bps.
-    pub rate_bps: i64,
-    /// Whether this is default.
-    pub is_default: bool,
-    /// Whether this is inclusive.
-    pub is_inclusive: bool,
-    /// Display Rate.
-    pub display_rate: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 last-update timestamp.
-    pub updated_at: String,
-    /// The rate's authoring scope, joined from `list_tax_rate_scopes`
-    /// (Option B side-channel: the core `TaxRate` struct stays 7 fields and
-    /// the sync snapshot wire is untouched). `None` only when the active
-    /// row has no scope entry, which a migrated database does not produce.
-    pub scope: Option<TaxRateScopeDto>,
-    /// The rate's validity window, joined the same way.
-    pub window: Option<TaxRateWindowDto>,
-}
-
-/// The authoring scope of a tax-rate row, in wire form.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TaxRateScopeDto {
-    /// `global` | `legal_entity` | `location`.
-    pub scope: String,
-    /// The owning legal entity, for entity-scoped rows.
-    pub legal_entity_id: Option<String>,
-    /// The owning location, for location-scoped rows.
-    pub location_id: Option<String>,
-}
-
-/// The validity window of a tax-rate row, in wire form.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TaxRateWindowDto {
-    /// Inclusive first business date, `YYYY-MM-DD`. `None` = no lower bound.
-    pub effective_from: Option<String>,
-    /// EXCLUSIVE last business date, `YYYY-MM-DD`. `None` = never expires.
-    pub effective_to: Option<String>,
-}
+//
+// One wire definition, not two. Every type these commands speak is re-exported
+// from `oz_bridge::tax` — which the desktop shell already re-exports — so the
+// two shells can no longer disagree about a key name. All eight field sets and
+// their serde attributes were diffed item by item before the local copies were
+// deleted; every one was identical, so the swap is wire-neutral by
+// construction and the tablet test module keeps constructing these DTOs by
+// name unchanged.
+//
+// `TaxRateDependencyCountsDto` is the reason to care about the copies at all:
+// the tablet's carried `rename_all = "camelCase"`, which emitted `saleLines`,
+// while the renderer reads `sale_lines` (`ui/src/api/tax.ts:114`, consumed by
+// the delete guard at
+// `ui/src/features/tax/TaxConfigurationScreen.tsx:933`). The guard therefore
+// read `undefined`, `undefined > 0` is `false`, and a rate that historical sale
+// lines reference was offered for deletion with no warning — the backend
+// refused it anyway, so the bug cost the operator the warning, not the rows.
+// Sharing the type makes the bridge's corrected wire the only wire.
+pub use oz_bridge::tax::{
+    CategoryTaxRateRow, CreateTaxRateArgs, SetCategoryTaxRatesArgs, TaxRateDependencyCountsDto,
+    TaxRateDto, TaxRateScopeDto, TaxRateWindowDto, UpdateTaxRateArgs,
+};
 
 fn scope_dto(s: &oz_core::db::tax::TaxRateScope) -> TaxRateScopeDto {
     use oz_core::db::tax::TaxRateScope;
@@ -124,76 +95,6 @@ fn to_dto(r: oz_core::tax_rate::TaxRate) -> TaxRateDto {
         scope: None,
         window: None,
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Createtaxrateargs.
-pub struct CreateTaxRateArgs {
-    /// Display name.
-    pub name: String,
-    /// Rate Bps.
-    pub rate_bps: i64,
-    /// Whether this is default.
-    pub is_default: bool,
-    /// Whether this is inclusive.
-    pub is_inclusive: bool,
-    /// Scope the rate to this legal entity (mutually exclusive with
-    /// `location_id`; omit both for the tenant-global arm).
-    pub legal_entity_id: Option<String>,
-    /// Scope the rate to this location (mutually exclusive with
-    /// `legal_entity_id`).
-    pub location_id: Option<String>,
-    /// Inclusive first business date, `YYYY-MM-DD`. Strict; `None` = no
-    /// lower bound.
-    pub effective_from: Option<String>,
-    /// EXCLUSIVE last business date, `YYYY-MM-DD`. Strict; `None` = never
-    /// expires.
-    pub effective_to: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Updatetaxrateargs.
-pub struct UpdateTaxRateArgs {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Rate Bps.
-    pub rate_bps: i64,
-    /// Whether this is default.
-    pub is_default: bool,
-    /// Whether this is inclusive.
-    pub is_inclusive: bool,
-    /// New scope for the rate (mutually exclusive with `location_id`).
-    /// F1 SURFACING DEBT: moving a rate between tiers silently empties the
-    /// vacated tier's default — the configuration UI must warn.
-    pub legal_entity_id: Option<String>,
-    /// New location scope (mutually exclusive with `legal_entity_id`).
-    pub location_id: Option<String>,
-    /// New inclusive first business date, `YYYY-MM-DD`.
-    pub effective_from: Option<String>,
-    /// New exclusive last business date, `YYYY-MM-DD`.
-    pub effective_to: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Setcategorytaxratesargs.
-pub struct SetCategoryTaxRatesArgs {
-    /// ID of the associated category.
-    pub category_id: String,
-    /// Tax Rate Ids.
-    pub tax_rate_ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Categorytaxraterow.
-pub struct CategoryTaxRateRow {
-    /// ID of the associated category.
-    pub category_id: String,
-    /// Tax Rate Ids.
-    pub tax_rate_ids: Vec<String>,
 }
 
 // ── Tax Rate CRUD ─────────────────────────────────────────────────────
@@ -451,19 +352,8 @@ pub async fn delete_tax_rate_scoped(
 }
 
 // ── Dependency Counts (TAX-03) ───────────────────────────────────────
-
-/// DTO for tax-rate reference counts sent to the front-end.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Taxratedependencycountsdto.
-pub struct TaxRateDependencyCountsDto {
-    /// Number of product assignments referencing this rate.
-    pub products: i64,
-    /// Number of category assignments referencing this rate.
-    pub categories: i64,
-    /// Number of historical sale lines referencing this rate.
-    pub sale_lines: i64,
-}
+//
+// The DTO itself is re-exported above; this section holds only its commands.
 
 /// Get dependency (reference) counts for a tax rate in the store resolved
 /// from a session token. ADR #7.

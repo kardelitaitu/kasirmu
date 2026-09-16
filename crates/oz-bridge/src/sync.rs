@@ -170,7 +170,7 @@ pub fn update_pg_sync_settings_data(
 // indicator can recover while auto-provisioning is still writing the
 // persisted settings row. Points at the unified cloud server.
 #[cfg(debug_assertions)]
-const LOCAL_DEV_SYNC_URL: &str = "https://license.ozpos.my.id";
+const LOCAL_DEV_SYNC_URL: &str = "https://license.kasir.mu";
 
 /// Resolve the URL used by the status-bar health probe.
 ///
@@ -189,6 +189,12 @@ pub fn resolve_sync_probe_url(
     if let Some(url) = saved.filter(|url| !url.trim().is_empty()) {
         return Some(url);
     }
+
+    // Every caller still passes this flag in every profile; only the debug arm below
+    // reads it, because production must not probe an unexpected URL. Name the unused
+    // arm rather than renaming the parameter or deleting the caller's intent.
+    #[cfg(not(debug_assertions))]
+    let _ = allow_local_fallback;
 
     // The health indicator must be able to probe the cloud server before
     // the asynchronous bootstrap has persisted URL/key settings. Keep this

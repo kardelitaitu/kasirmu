@@ -1473,15 +1473,15 @@ func TestPaddleWebhook_BundleTamperRejected(t *testing.T) {
 
 func TestBuildReceiptEmail_RFC5322Headers(t *testing.T) {
 	msg := buildReceiptEmail(
-		"no-reply@ozpos.my.id", "buyer@example.com",
+		"no-reply@kasir.mu", "buyer@example.com",
 		"OZ-PRO-XXXX-YYYY-ZZZZ", "pro", "2027-01-01T00:00:00Z",
 	)
 	s := string(msg)
 
 	for _, want := range []string{
-		"From: OZ-POS <no-reply@ozpos.my.id>",
+		"From: kasir.mu <no-reply@kasir.mu>",
 		"To: buyer@example.com",
-		"Subject: Your OZ-POS license key",
+		"Subject: Your kasir.mu license key",
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=utf-8",
 		"Date:",

@@ -36,26 +36,6 @@ pub async fn read_scale_weight(
     }
 }
 
-/// List all registered weight scales.
-#[command]
-pub async fn list_scale_devices(
-    state: State<'_, AppState>,
-) -> Result<Vec<ScaleDeviceInfo>, AppError> {
-    let ids = state.registry.scale_ids().await;
-    let mut devices = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(scale) = state.registry.scale(&id).await {
-            let info = scale.device_info();
-            devices.push(ScaleDeviceInfo {
-                vendor_id: info.vendor,
-                product_id: info.model,
-                device_path: info.serial,
-            });
-        }
-    }
-    Ok(devices)
-}
-
 /// Session-scoped variant of `read_scale_weight`.
 #[command]
 pub async fn read_scale_weight_scoped(
@@ -73,7 +53,7 @@ pub async fn read_scale_weight_scoped(
     }
 }
 
-/// Session-scoped variant of `list_scale_devices`.
+/// List all registered weight scales resolved from a session token. ADR #7.
 #[command]
 pub async fn list_scale_devices_scoped(
     session_token: String,

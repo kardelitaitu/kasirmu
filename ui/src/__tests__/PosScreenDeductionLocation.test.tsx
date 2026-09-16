@@ -38,7 +38,6 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
 });
 
 vi.mock('@/api/products', () => ({
-  lookupByBarcode: vi.fn(() => Promise.resolve(null)),
   lookupByBarcodeScoped: vi.fn(() => Promise.resolve(null)),
   lookupProductBySku: vi.fn((sku: string) => {
     const products: Record<string, unknown> = {

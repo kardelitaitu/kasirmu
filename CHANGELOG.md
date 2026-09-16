@@ -24,6 +24,12 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 > their runners are in `docs/operations/ci-pipeline.md`; `.agents/skills/docs-auditor/scripts/check-ci-claims.py`
 > polices every other doc against these two files.
 
+## [0.0.39] — 2026-09-14
+
+Release notes: see docs/releases/CHANGELOG-0.0.39.md (reviewed before tagging).
+
+---
+
 ## [0.0.37] — 2026-09-04
 
 Release notes: see docs/releases/CHANGELOG-0.0.37.md (reviewed before tagging).

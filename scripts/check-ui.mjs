@@ -8,13 +8,20 @@
  *
  * Usage:  cd ui && npm run check:all
  *
- * Gates (in order):
- *   1. Lint          — ESLint (jsx-a11y, react-hooks)
- *   2. TypeScript    — tsc --noEmit (strict type checking)
- *   3. Unit tests    — vitest run (214 files, 3230+ tests)
- *   4. i18n lint     — Fluent key consistency check *  5. FTL dedupe    — detect duplicate Fluent keys
- *  6. Bundle budget — gzip budgets on the production build (PERF-02)
- *  7. E2E tests     — Playwright (SKIPPED if Docker is unavailable)
+ * Gates (in order; the numbering matches the section comments in main()):
+ *   1.  Lint          — ESLint (jsx-a11y, react-hooks)
+ *   2.  TypeScript    — tsc --noEmit (strict type checking)
+ *   3.  Unit tests    — vitest run. File and case counts are printed by the leg
+ *       itself; the numbers previously quoted here (214 files / 3230 tests) had
+ *       rotted by a factor of ~3 while nobody was looking, which is why they are
+ *       no longer in a comment.
+ *   4.  i18n lint     — Fluent key consistency check
+ *   5.  FTL dedupe    — detect duplicate Fluent keys
+ *   6.  Bundle budget — gzip budgets on the desktop production build (PERF-02)
+ *   6b. Bundle budget — the same budgets on the TABLET production build
+ *   7.  E2E tests     — Playwright via scripts/run-e2e.mjs (SKIPPED if Docker is unavailable)
+ *   8.  Perf smoke    — Playwright runtime budgets, desktop + tablet (SKIPPED if
+ *       browsers are not installed)
  */
 
 import { execSync } from 'child_process';
@@ -63,16 +70,24 @@ const results = []; // { gate, status, duration }
  * @param {string}  name         Human-readable gate name.
  * @param {string}  command      Shell command to execute.
  * @param {object}  [opts]
- * @param {number}  [opts.timeout]  Timeout in ms (default 300_000).
+ * @param {number}  [opts.timeout]    Timeout in ms (default 300_000).
+ * @param {number}  [opts.maxBuffer]  Cap on the stdout this gate captures.
+ *   Left unset it inherits execSync's own 1 MiB — and exceeding that does not
+ *   truncate the capture, it kills the child with SIGTERM and throws ENOBUFS,
+ *   which the catch below files as a FAIL. So a leg whose PASSING output is
+ *   near 1 MiB is graded by its verbosity, not its result: set maxBuffer on
+ *   any leg that can print that much when nothing is wrong.
  */
 function gate(name, command, opts = {}) {
   const timeout = opts.timeout ?? 300_000;
+  const execOpts = { stdio: 'pipe', timeout };
+  if (opts.maxBuffer !== undefined) execOpts.maxBuffer = opts.maxBuffer;
   const start = Date.now();
 
   process.stdout.write(`  ${CYAN}▶${NC} ${name} ... `);
 
   try {
-    execSync(command, { stdio: 'pipe', timeout });
+    execSync(command, execOpts);
     const sec = ((Date.now() - start) / 1000).toFixed(1);
     console.log(`${GREEN}PASS (${sec}s)${NC}`);
     results.push({ gate: name, status: 'pass', duration: sec });
@@ -127,7 +142,17 @@ function main() {
   gate('TypeScript type check', 'npm run typecheck');
 
   // ── 3. Unit tests ──────────────────────────────────────────────────────
-  gate('Unit tests (vitest)', 'npm run test', { timeout: 600_000 });
+  // Sized from this leg's own print, not guessed: measured 2026-09-15 the
+  // GREEN run is 1,335,496 bytes (580 files / 9,988 cases) — 27% OVER execSync's
+  // 1 MiB default, which is how a passing suite was being filed as a FAIL.
+  // 64 MiB is 50x that print, and maxBuffer ceilings accumulated bytes rather
+  // than reserving them, so unused headroom costs nothing. RESIDUAL RISK left
+  // on purpose: a suite that outgrows even 64 MiB reproduces the same bug
+  // rarer — green reported as FAIL with no failing test named. The structural
+  // fix is stdio: 'inherit' here, since gate() parses none of this output; the
+  // other seven legs keep the pipe because their GREEN print is small enough
+  // that overflow can only follow a real failure, which is already their verdict.
+  gate('Unit tests (vitest)', 'npm run test', { timeout: 600_000, maxBuffer: 64 * 1024 * 1024 });
 
   // ── 4. i18n lint ───────────────────────────────────────────────────────
   gate('i18n lint', 'npm run lint:i18n');
@@ -137,6 +162,19 @@ function main() {
 
   // ── 6. Bundle budget (PERF-02) — production build + gzip size gates ────
   gate('Bundle budget', 'npm run bundle:check', { timeout: 300_000 });
+
+  // ── 6b. Bundle budget, TABLET artifact — the second shipped app ─────────
+  // Two apps build from this one `ui/` tree and the tablet artifact is not the
+  // desktop one under a new name: 59 stylesheets against 56, its own chunk
+  // graph, its own content hashes, and its own ~296 KB font payload. The script
+  // for it (`npm run bundle:check:tablet`) has existed since 2b762b08f and had
+  // ZERO callers repo-wide, so a tablet-only size regression passed this runner
+  // without a word -- recorded as notes.md item 38. Cost of closing it, measured rather
+  // than assumed: 9.4s for this leg against the desktop leg's 9.6s in the same run
+  // (`cd ui && npm run check:all`, whose summary prints both durations), so the second
+  // build is not the tax it was written as if it would be. A red line now says which of
+  // the two artifacts broke.
+  gate('Bundle budget (tablet)', 'npm run bundle:check:tablet', { timeout: 300_000 });
 
   // ── 7. E2E tests (optional — requires Docker) ──────────────────────────
   // AUDIT-27 CI-07: use `npm run e2e` (scripts/run-e2e.mjs) which

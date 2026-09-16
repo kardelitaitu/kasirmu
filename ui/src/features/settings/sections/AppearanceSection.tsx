@@ -1,3 +1,9 @@
+// DEAD (2026-09-15 · HEAD f0ad9b170e): the route is closed — no `appearance` key exists among the 14 in
+// SETTINGS_SCREENS (screens/registry.ts:27-42), so renderSection (SettingsPage.tsx:63-66) can never
+// mount it. Nothing in production imports it; its tests grade UI no user can reach. A SECOND unmounted
+// copy of the same UI lives at ../AppearanceSettings.tsx, which IS registered as a screen at
+// __tests__/screenExtraction.test.ts:651-653 — two orphan bodies of one interface, neither reachable.
+// Comment only — the code below is deliberately untouched.
 import { Localized } from '@fluent/react';
 import type { ReactLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';

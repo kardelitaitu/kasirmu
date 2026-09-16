@@ -320,3 +320,118 @@ async fn status_requires_bearer_token() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+// ── QRIS acquirer plumbing (MIDTRANS_QRIS_ACQUIRER) ──────────────────
+//
+// 6a32cc9dd removed the hardcoded "airpay shopee" from the driver and made
+// the acquirer opt-in, but nothing on the server could set it. These tests
+// own both directions of the new plumb: the generic default survives an unset
+// config, and a configured value reaches the wire verbatim.
+
+/// The charge body the server actually puts on the wire, for a processor built
+/// from the given acquirer setting (`None` = unset config, the default).
+///
+/// Goes through [`build_qris_processor`] — the same function
+/// [`PaymentState::from_state_with_rate_limiter`] uses at startup — with only
+/// the endpoint swapped for the mock, so what is asserted is the body a live
+/// merchant would receive.
+async fn sent_charge_body(acquirer: Option<&str>) -> serde_json::Value {
+    let mock = midtrans_mock().await;
+    let api_base = format!("{mock_uri}/v2", mock_uri = mock.uri());
+    let processor = build_qris_processor("sk-test", true, acquirer, Some(&api_base));
+    let state = PaymentState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        rate_limiter: RateLimiterState::new(),
+        processor: Some(processor),
+    };
+    let resp = payment_router(state)
+        .oneshot(authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-acq","amount_minor":15000}"#,
+            Some("tenant-A"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let received = mock.received_requests().await.unwrap();
+    assert_eq!(received.len(), 1, "exactly one charge per request");
+    serde_json::from_slice(&received[0].body).expect("charge body is JSON")
+}
+
+/// UNSET CONFIG PRESERVES THE GENERIC DEFAULT: with `MIDTRANS_QRIS_ACQUIRER`
+/// unset the charge body carries no `qris` object at all — not an empty one,
+/// not a fallback. This is what a live merchant sends today; the test is what
+/// keeps 6a32cc9dd's fix from rotting back into a hardcode.
+#[tokio::test]
+async fn charge_omits_qris_object_entirely_when_acquirer_unset() {
+    let body = sent_charge_body(None).await;
+    assert!(
+        body.get("qris").is_none(),
+        "unset acquirer must omit `qris` entirely, body: {body}"
+    );
+    // The rest of the charge is untouched by the acquirer plumbing.
+    assert_eq!(body["payment_type"], "qris", "body: {body}");
+    assert_eq!(body["custom_expiry"]["unit"], "second", "body: {body}");
+}
+
+/// A CONFIGURED ACQUIRER FLOWS VERBATIM into `qris.acquirer`: the server does
+/// not trim, case-fold, alias or otherwise rewrite it, because which acquirer
+/// a merchant may name is governed by that merchant's Midtrans activation.
+#[tokio::test]
+async fn charge_sends_configured_acquirer_verbatim() {
+    let body = sent_charge_body(Some("shopeepay")).await;
+    assert_eq!(
+        body["qris"]["acquirer"], "shopeepay",
+        "configured acquirer must reach the wire verbatim, body: {body}"
+    );
+    // Same non-acquirer fields as the generic charge: the acquirer is additive.
+    assert_eq!(body["payment_type"], "qris", "body: {body}");
+    assert_eq!(
+        body["transaction_details"]["gross_amount"], "15000",
+        "body: {body}"
+    );
+}
+
+/// Server-wide state carrying an acquirer setting, with a key present so the
+/// processor is actually built.
+fn cloud_state_with_acquirer(acquirer: Option<&str>) -> CloudServerState {
+    CloudServerState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        started_at: std::time::Instant::now(),
+        health_depth_cache: crate::HealthDepthCache::default(),
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: Some("sk-test".into()),
+        midtrans_sandbox: true,
+        midtrans_qris_acquirer: acquirer.map(str::to_owned),
+    }
+}
+
+/// The startup wiring, which the two body tests cannot see on their own:
+/// `PaymentState` reads the acquirer off `CloudServerState` and lands it on
+/// the processor — and leaves it `None` when unset.
+#[test]
+fn payment_state_carries_acquirer_setting_from_cloud_state() {
+    let unset = PaymentState::from_state_with_rate_limiter(
+        cloud_state_with_acquirer(None),
+        RateLimiterState::new(),
+    );
+    assert_eq!(
+        unset.processor.expect("key set").acquirer(),
+        None,
+        "unset config must leave the processor generic"
+    );
+
+    let set = PaymentState::from_state_with_rate_limiter(
+        cloud_state_with_acquirer(Some("gopay")),
+        RateLimiterState::new(),
+    );
+    assert_eq!(
+        set.processor.expect("key set").acquirer(),
+        Some("gopay"),
+        "configured acquirer must reach the processor"
+    );
+}

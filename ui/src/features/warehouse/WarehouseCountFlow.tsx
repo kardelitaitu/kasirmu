@@ -29,6 +29,24 @@ import {
 } from '@/api/inventoryCounts';
 import { listWarehouseProductsAtLocation, type ProductDto } from '@/api/products';
 
+/**
+ * One settled read. `ok: false` means the call NEVER ANSWERED — a different
+ * fact from "answered, and the answer was an empty list". The shape is the
+ * sanctioned boot idiom (frontend/shell/AppShell.tsx:87-94); the load-bearing
+ * half is that the caller writes nothing on `ok: false`, so the state keeps
+ * its UNKNOWN value instead of being overwritten with a plausible empty one.
+ */
+type Read<T> = { ok: true; value: T } | { ok: false };
+
+async function settle<T>(label: string, read: Promise<T>): Promise<Read<T>> {
+  try {
+    return { ok: true, value: await read };
+  } catch (err) {
+    console.error(`[warehouse-count] ${label} read failed — recording unknown:`, err);
+    return { ok: false };
+  }
+}
+
 interface Props {
   sessionToken: string;
   locationId: string;
@@ -44,7 +62,12 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
   const [counts, setCounts] = useState<StockCountDto[]>([]);
   const [activeCount, setActiveCount] = useState<StockCountDto | null>(null);
   const [lines, setLines] = useState<StockCountLineDto[]>([]);
-  const [products, setProducts] = useState<ProductDto[]>([]);
+  // null = UNKNOWN (the catalogue read never answered); [] = the ANSWER that
+  // this location has no products. They render the same empty picker and the
+  // same failed scan, which is the whole bug this file had: only one of them
+  // is a fact about the store, so a cashier was told "no product matches that
+  // barcode" about a catalogue nobody had been able to read.
+  const [products, setProducts] = useState<ProductDto[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,12 +96,20 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
 
   useEffect(() => {
     if (!sessionToken || !locationId) {
-      setProducts([]);
+      // Nothing was asked, so nothing is known — NOT "there are none".
+      setProducts(null);
       return;
     }
-    void listWarehouseProductsAtLocation(sessionToken, locationId)
-      .then(setProducts)
-      .catch(() => setProducts([]));
+    let cancelled = false;
+    void settle('product catalogue', listWarehouseProductsAtLocation(sessionToken, locationId)).then(
+      (read) => {
+        // A throw writes nothing, so the catalogue stays UNKNOWN.
+        if (!cancelled && read.ok) setProducts(read.value);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [sessionToken, locationId]);
 
   const loadLines = useCallback(async () => {
@@ -132,6 +163,15 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
       if (!sessionToken || !activeCount) return;
       const q = code.trim();
       if (!q) return;
+      if (products === null) {
+        // The catalogue never answered. Reporting that as a non-matching scan
+        // would be a false lockout — the product may exist perfectly well.
+        addToast({
+          type: 'error',
+          message: requiredLocalized(l10n, 'retail-load-error-unavailable'),
+        });
+        return;
+      }
       const product =
         products.find((p) => p.barcode === q) ?? products.find((p) => p.sku === q);
       if (!product) {
@@ -248,6 +288,12 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
         </div>
 
         {error && <div className="warehouse-error" role="alert">{error}</div>}
+
+        {products === null && (
+          <div className="warehouse-error" role="alert">
+            {requiredLocalized(l10n, 'retail-load-error-unavailable')}
+          </div>
+        )}
 
         {loading ? (
           <>

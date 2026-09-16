@@ -25,6 +25,7 @@ fn test_state() -> CloudServerState {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     }
 }
 
@@ -39,6 +40,7 @@ fn test_state_with_stripe(secret: &str) -> CloudServerState {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     }
 }
 
@@ -53,6 +55,7 @@ fn test_state_with_square(secret: &str, url: &str) -> CloudServerState {
         square_webhook_url: Some(url.to_owned()),
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     }
 }
 
@@ -645,6 +648,7 @@ async fn pg_integration_webhooks_read_write_postgres() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let tenant = format!("pg-webhook-{}", uuid::Uuid::now_v7());
     let sale_id = format!("sale-{}", uuid::Uuid::now_v7());
@@ -992,6 +996,7 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         square_webhook_url: None,
         midtrans_server_key: None,
         midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
     };
     let app = webhooks_router(state.clone());
     let secret = "whsec_rls_test";

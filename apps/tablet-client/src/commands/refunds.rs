@@ -1,6 +1,5 @@
 //! Refund commands — process refund against a completed sale.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
 use oz_core::db::Store;
@@ -11,83 +10,51 @@ use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Refundlinearg.
-pub struct RefundLineArg {
-    /// ID of the associated sale line.
-    pub sale_line_id: String,
-    /// Stock-keeping unit identifier.
-    pub sku: String,
-    /// Quantity.
-    pub qty: i64,
-    /// Unit Price Minor.
-    pub unit_price_minor: i64,
-    /// ISO-4217 currency code.
-    pub currency: String,
-    /// Total amount in minor currency units.
-    pub line_total_minor: i64,
-}
-
-#[derive(Debug, Deserialize)]
-/// Processrefundargs.
-pub struct ProcessRefundArgs {
-    /// ID of the original completed sale.
-    pub sale_id: String,
-    /// Reason for the refund.
-    pub reason: String,
-    /// Optional internal note.
-    pub note: Option<String>,
-    /// User ID of the staff processing the refund.
-    pub user_id: String,
-    /// Lines being refunded.
-    pub lines: Vec<RefundLineArg>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-/// Processrefundresult.
-pub struct ProcessRefundResult {
-    /// ID of the associated refund.
-    pub refund_id: String,
-    /// Total amount in minor currency units.
-    pub total_minor: i64,
-}
-
-/// Process a refund against a completed sale.
+/// The refund wire contracts are owned by `oz-bridge`; the tablet re-exports
+/// them instead of declaring a copy.
 ///
-/// Requires `sales:refund` permission.
-#[command]
-pub async fn process_refund(
-    args: ProcessRefundArgs,
-    state: State<'_, AppState>,
-) -> Result<ProcessRefundResult, AppError> {
-    let db = state.db.lock().await;
-    let result = run_process_refund(
-        &db,
-        &args.user_id,
-        &args.sale_id,
-        &args.reason,
-        args.note.as_deref(),
-        &args.lines,
-    );
-    drop(db);
-    result
-}
-
-/// Args for `process_refund_scoped` — without `user_id`.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProcessRefundScopedArgs {
-    /// ID of the associated sale.
-    pub sale_id: String,
-    /// Reason.
-    pub reason: String,
-    /// Note.
-    pub note: Option<String>,
-    /// Lines.
-    pub lines: Vec<RefundLineArg>,
-}
+/// The tablet's own `ProcessRefundArgs` was one of the three structs the
+/// 2026-09-15 tablet IPC wire audit named as declaring itself twice, and the
+/// only one whose copy had ALSO lost the `#[serde(rename_all = "camelCase")]`
+/// its bridge twin carries — same five fields (`sale_id`, `reason`, `note`,
+/// `user_id`, `lines`), one accepted key set on each shell. Because
+/// `sale_id` and `user_id` are required `String` and only `note` is an
+/// `Option`, the tablet copy answered the front-end's camelCase with a hard
+/// `missing field \`sale_id\`` error, not a silent `None`.
+///
+/// This is NOT a data-loss fix. `process_refund` was registered in neither
+/// shell (`grep -rn refunds::process_refund apps/*/src/lib.rs` returns the two
+/// `process_refund_scoped` lines only: tablet `lib.rs:609`, desktop
+/// `lib.rs:1120`), and nothing sends this struct a payload at all
+/// (`grep -rn process_refund ui/src/api` returns one hit, `sales.ts:657`, and
+/// it invokes the scoped command; the unscoped name exists only as a dev-mock
+/// handler and in `dev-mock-envelope-shapes.test.ts:63`, whose own comment
+/// says it has no caller). So what was removed is a latent trap exactly one
+/// `generate_handler!` line from live — the shape tonight's audit predicted.
+///
+/// The fn itself was retired from this shell on 2026-09-16 (T19), which is what turns
+/// "a latent trap exactly one `generate_handler!` line from live" into a closed door.
+/// The reasoning above stays, because it is why the DTO direction was chosen, and the
+/// greps it cites answer the same way now: the scoped command is the only refund path,
+/// and the unscoped name survives only in the dev-mock and in
+/// `dev-mock-envelope-shapes.test.ts`, whose own comment already said it has no caller.
+///
+/// The direction is not a coin flip either: the bridge is the type that agrees
+/// with the front-end, since `ui/src/api/sales.ts:606-613` declares
+/// `ProcessRefundArgs` as `{ saleId, reason, note?, userId, lines }` over
+/// camelCase line items. Re-exporting cannot break a working refund path —
+/// there is no path to this struct — and if one is ever registered, the keys
+/// that will arrive are the ones this type already accepts.
+///
+/// `RefundLineArg` comes along because the bridge's `ProcessRefundArgs.lines`
+/// is a `Vec` of the bridge's own line type while one business path
+/// ([`run_process_refund`]) serves both commands; the two copies were
+/// field-for-field identical, so nothing on the wire moves. The scoped and
+/// result structs WERE local copies too; they are re-exported on the same line now, so
+/// the tablet shell has exactly one declaration of every refund wire contract it serves.
+pub use oz_bridge::refunds::{
+    ProcessRefundArgs, ProcessRefundResult, ProcessRefundScopedArgs, RefundLineArg,
+};
 
 /// Process a refund within the session scope. ADR #7.
 ///
@@ -191,19 +158,6 @@ fn run_process_refund(
     })
 }
 
-/// Look up a sale by its receipt barcode for quick return.
-#[command]
-pub async fn lookup_sale_by_receipt_barcode(
-    barcode: String,
-    state: State<'_, AppState>,
-) -> Result<Option<Sale>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let sale = store.lookup_sale_by_receipt_barcode(&barcode)?;
-    drop(db);
-    Ok(sale)
-}
-
 /// Look up a sale by receipt barcode in the session scope. ADR #7.
 #[command]
 pub async fn lookup_sale_by_receipt_barcode_scoped(
@@ -222,19 +176,6 @@ pub async fn lookup_sale_by_receipt_barcode_scoped(
     let sale = store.lookup_sale_by_receipt_barcode(&barcode)?;
     drop(db);
     Ok(sale)
-}
-
-/// List all refunds for a sale.
-#[command]
-pub async fn list_refunds(
-    sale_id: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<Refund>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let refunds = store.list_refunds_for_sale(&sale_id)?;
-    drop(db);
-    Ok(refunds)
 }
 
 /// List refunds in the session scope. ADR #7.

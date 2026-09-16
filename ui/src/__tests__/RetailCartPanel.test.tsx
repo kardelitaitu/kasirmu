@@ -228,7 +228,7 @@ describe('RetailCartPanel — course dropdown', () => {
     render(
       <RetailCartPanel
         {...makeProps({
-          lines: [makeLine({ courseId: 'drinks' as CourseId })],
+          lines: [makeLine({ courseId: 'beverage' as CourseId })],
           lineActions: { ...makeProps().lineActions, onAssignCourse },
         })}
       />,

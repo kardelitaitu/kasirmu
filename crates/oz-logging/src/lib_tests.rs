@@ -283,3 +283,71 @@ fn uuid_like() -> String {
         .as_nanos()
         .to_string()
 }
+
+// ── RUST_LOG handling: "not set" is not a parse failure ─────────────
+//
+// `EnvFilter::try_from_default_env()` cannot tell an absent variable from a bad
+// one, and the code this replaces printed "RUST_LOG parse failed" for both -- so
+// every developer who had never set RUST_LOG saw a failure report about a value
+// they never wrote. These four cases keep the two apart; none of them touches
+// the real environment, because `filter_for` takes the value as an argument.
+
+#[test]
+fn unset_rust_log_falls_back_without_claiming_a_failure() {
+    let (filter, warning) = filter_for(None);
+    assert!(
+        warning.is_none(),
+        "an unset RUST_LOG was reported as a parse failure: {warning:?}"
+    );
+    assert_eq!(
+        filter.max_level_hint(),
+        EnvFilter::new("info").max_level_hint()
+    );
+}
+
+#[test]
+fn an_empty_or_whitespace_rust_log_is_the_same_unset_case() {
+    // Measured on the real machine that motivated this: the variable was absent
+    // at every scope, and callers can also pass an empty one. Both are "unset".
+    for raw in ["", "   ", "\t"] {
+        let (filter, warning) = filter_for(Some(raw));
+        assert!(
+            warning.is_none(),
+            "RUST_LOG={raw:?} was reported as a parse failure: {warning:?}"
+        );
+        assert_eq!(
+            filter.max_level_hint(),
+            EnvFilter::new("info").max_level_hint()
+        );
+    }
+}
+
+#[test]
+fn a_valid_value_is_parsed_and_stays_silent() {
+    let (filter, warning) = filter_for(Some("debug"));
+    assert!(warning.is_none(), "a valid value warned: {warning:?}");
+    assert_ne!(
+        filter.max_level_hint(),
+        EnvFilter::new("info").max_level_hint(),
+        "RUST_LOG=debug was ignored and info applied"
+    );
+}
+
+#[test]
+fn an_unparseable_value_falls_back_and_names_the_value() {
+    // An unbalanced field matcher is genuinely rejected. A plain nonsense WORD is
+    // not: `not-a-level` parses as a target directive and yields no warning at all,
+    // which is the version of this test that failed first -- the premise about the
+    // code was right and the premise about the input was wrong.
+    let (filter, warning) = filter_for(Some("foo{bar=("));
+    let warning = warning.expect("an unparseable RUST_LOG must be reported");
+    assert!(
+        warning.contains("RUST_LOG") && warning.contains("foo{bar=("),
+        "the warning does not name the value it rejected: {warning}"
+    );
+    assert_eq!(
+        filter.max_level_hint(),
+        EnvFilter::new("info").max_level_hint(),
+        "the fallback is not info"
+    );
+}

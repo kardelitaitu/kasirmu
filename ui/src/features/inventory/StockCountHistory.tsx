@@ -14,6 +14,9 @@ import {
 } from '@/api/inventoryCounts';
 import { Skeleton } from '@/components/Skeleton';
 import './StockCountHistory.css';
+// The sc-badge family this screen paints at :161 lives in its own sheet, not in the
+// list screen's -- import it here so the styling no longer depends on the flow's static import.
+import './StockCountBadge.css';
 
 /** Stock count history screen — lists completed and cancelled counts alongside stock adjustments with drill-down into individual count lines. */
 export default function StockCountHistory() {

@@ -45,65 +45,6 @@ export interface ProductDto {
   images?: ProductImageDto[];
 }
 
-/** Arguments for creating a new product. */
-export interface CreateProductArgs {
-  userId: string;
-  sku: string;
-  name: string;
-  priceMinor: number;
-  currency: string;
-  categoryId?: string | null;
-  barcode?: string | null;
-  initialStock: number;
-  productType?: string;
-  taxRateIds: string[];
-  /** Cost price in minor units (ADR #36). */
-  costMinor?: number;
-  /** Brand (free text). */
-  brand?: string | null;
-  /** Rack position code. */
-  rackLocation?: string | null;
-  /** Free-text notes. */
-  notes?: string | null;
-  /** Unit of measure. */
-  unit?: string | null;
-  /** Active/sellable status (default true). */
-  isActive?: boolean;
-  /** Default supplier FK (local-only). */
-  defaultSupplierId?: string | null;
-}
-
-/** Arguments for updating an existing product. */
-export interface UpdateProductArgs {
-  userId: string;
-  sku: string;
-  name: string;
-  priceMinor: number;
-  currency: string;
-  categoryId?: string | null;
-  barcode?: string | null;
-  productType?: string;
-  taxRateIds: string[];
-  /** Cost price in minor units (ADR #36). */
-  costMinor?: number;
-  /** Brand (free text). */
-  brand?: string | null;
-  /** Rack position code. */
-  rackLocation?: string | null;
-  /** Free-text notes. */
-  notes?: string | null;
-  /** Unit of measure. */
-  unit?: string | null;
-  /** Active/sellable status (default true). */
-  isActive?: boolean;
-  /** Default supplier FK (local-only). */
-  defaultSupplierId?: string | null;
-}
-
-/** List all products. */
-export const listProducts = (): Promise<ProductDto[]> =>
-  loggedInvoke<ProductDto[]>('list_products');
-
 /**
  * Fetch products scoped to the store resolved from a session token.
  *
@@ -111,15 +52,12 @@ export const listProducts = (): Promise<ProductDto[]> =>
  * `sessionToken` to a `SessionContext` (containing `store_id`), opens
  * the store-scoped database, and returns only that store's products.
  *
- * Prefer this over the unscoped `listProducts()` in multi-store
- * deployments.
+ * This is the only door: the unscoped `list_products` it used to be preferred over is gone (T21)
+ * -- neither shell registers it, and the desktop has no body for it at all, so "prefer this" was
+ * describing a choice between one working call and one that cannot.
  */
 export const listProductsScoped = (sessionToken: string): Promise<ProductDto[]> =>
   loggedInvoke<ProductDto[]>('list_products_scoped', { sessionToken });
-
-/** Create a new product. */
-export const createProduct = (args: CreateProductArgs): Promise<{ sku: string }> =>
-  loggedInvoke('create_product', { args });
 
 /**
  * List inventory-tracked products with stock at a specific warehouse location.
@@ -164,10 +102,6 @@ export interface CreateProductScopedArgs {
 export const createProductScoped = (sessionToken: string, args: CreateProductScopedArgs): Promise<{ sku: string }> =>
   loggedInvoke<{ sku: string }>('create_product_scoped', { sessionToken, args });
 
-/** Update an existing product. */
-export const updateProduct = (args: UpdateProductArgs): Promise<{ sku: string }> =>
-  loggedInvoke('update_product', { args });
-
 /** ADR #7: Scoped product update — `userId` is read from session, not args. */
 export interface UpdateProductScopedArgs {
   sku: string;
@@ -209,31 +143,15 @@ export const recordProductSearchScoped = (sessionToken: string, sku: string): Pr
     console.warn('record_product_search_scoped failed (ignored)', err);
   });
 
-/** Delete a product by SKU. */
-export const deleteProduct = (args: { userId: string; sku: string }): Promise<void> =>
-  loggedInvoke('delete_product', { args });
-
 /** ADR #7: Scoped product deletion — `userId` is read from session, not args. */
 export const deleteProductScoped = (sessionToken: string, sku: string): Promise<void> =>
   loggedInvoke('delete_product_scoped', { sessionToken, args: { sku } });
 
 // ── Barcode / SKU Lookup ───────────────────────────────────────────
 
-/** Look up a product by its barcode. */
-export const lookupByBarcode = (barcode: string): Promise<ProductDto | null> =>
-  loggedInvoke<ProductDto | null>('lookup_by_barcode', { barcode });
-
 /** ADR #7: Scoped barcode lookup using session token. */
 export const lookupByBarcodeScoped = (sessionToken: string, barcode: string): Promise<ProductDto | null> =>
   loggedInvoke<ProductDto | null>('lookup_by_barcode_scoped', { sessionToken, barcode });
-
-/** Look up a product by its SKU. */
-export const lookupProductBySku = (sku: string): Promise<ProductDto | null> =>
-  loggedInvoke<ProductDto | null>('lookup_product_by_sku', { sku });
-
-/** Check whether a product tracks serial numbers. */
-export const getProductTrackSerial = (sku: string): Promise<boolean> =>
-  loggedInvoke<boolean>('get_product_track_serial', { sku });
 
 /** Check whether a product tracks serial numbers, store-scoped. ADR #7. */
 export const getProductTrackSerialScoped = (sessionToken: string, sku: string): Promise<boolean> =>
@@ -354,10 +272,6 @@ export interface UpdateCategoryArgs {
   /** Icon identifier, e.g. "dots-2". */
   icon: string;
 }
-
-/** List all product categories. */
-export const listCategories = (): Promise<CategoryDto[]> =>
-  loggedInvoke<CategoryDto[]>('list_categories');
 
 /** List all product categories for the store resolved from a session token. ADR #7. */
 export const listCategoriesScoped = (sessionToken: string): Promise<CategoryDto[]> =>

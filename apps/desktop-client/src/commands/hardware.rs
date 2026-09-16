@@ -25,44 +25,6 @@ pub use oz_bridge::hardware::{
     ScannerInfo,
 };
 
-#[tauri::command]
-/// Open cash drawer.
-pub async fn open_cash_drawer(
-    args: OpenCashDrawerArgs,
-    state: State<'_, AppState>,
-) -> Result<OpenCashDrawerResult, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::hardware::open_cash_drawer(&ctx, args)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-/// Print receipt.
-pub async fn print_receipt(
-    args: PrintReceiptArgs,
-    state: State<'_, AppState>,
-) -> Result<PrintReceiptResult, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::hardware::print_receipt(&ctx, args)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-/// Print sales receipt.
-///
-/// **Deprecated for multi-store (ADR #7):** Use `print_sales_receipt_scoped`.
-pub async fn print_sales_receipt(
-    args: PrintSalesReceiptArgs,
-    state: State<'_, AppState>,
-) -> Result<PrintSalesReceiptResult, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::hardware::print_sales_receipt(&ctx, args)
-        .await
-        .map_err(Into::into)
-}
-
 /// Print sales receipt for the store resolved from a session token. ADR #7.
 /// Settings (store name, address, receipt config) are loaded from the
 /// store-scoped database, while the printer hardware itself is not

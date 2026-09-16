@@ -35,14 +35,17 @@ describe('KdsDeviceStatusIndicator', () => {
     const { KdsDeviceStatusIndicator } = await import(
       '@/features/kds/components/KdsDeviceStatusIndicator'
     );
-    // Should not throw when no devices are registered (returns null).
-    render(
+    // Should not throw when no devices are registered.
+    const { container } = render(
       <TestWrapper>
         <KdsDeviceStatusIndicator sessionToken="test-token" />
       </TestWrapper>,
     );
-    // If we reach here without error, the test passes.
-    expect(true).toBe(true);
+    // Correcting the comment this replaced: it claimed the indicator "returns
+    // null" with no devices. It does not — it renders a real button showing a
+    // 0/0 count. The old assertion was `expect(true)`, so nobody ever checked.
+    expect(screen.getByRole('button')).toBeInTheDocument();
+    expect(container.textContent).toMatch(/0\s*\/\s*0/);
   });
 });
 

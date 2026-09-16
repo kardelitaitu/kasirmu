@@ -38,7 +38,7 @@ vi.mock('@/api/hardware', async () => {
 });
 
 // Mock useBarcodeScanner to capture the onProductFound callback
-// instead of doing its own lookupByBarcode (which would bypass
+// instead of doing its own lookupByBarcodeScoped (which would bypass
 // PosScreen's bundle expansion logic — the hook only calls
 // onProductFound when its own barcode lookup succeeds).
 vi.mock('@/features/sales/useBarcodeScanner', async () => {
@@ -47,12 +47,15 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
   return createBarcodeScannerModuleMock();
 });
 
-// Shared lookupByBarcode — used by both the unscoped export (for test
-// assertions) and lookupByBarcodeScoped (which the component actually calls).
+// One impl behind one name. This const used to be wired under BOTH `lookupByBarcode` and
+// `lookupByBarcodeScoped` in the factory below, so that assertions written against either name
+// saw the same calls -- which is how four cases in this file ended up unable to fail (T21 round
+// 41): the component calls the scoped door (PosScreen.tsx:290), the assertions named the other
+// one, and the alias made that indistinguishable. The alias is gone; the assertions are repinned
+// to the scoped name and now also see the token argument it carries.
 const mockLookupByBarcode = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve(null)));
 
 vi.mock('@/api/products', () => ({
-  lookupByBarcode: mockLookupByBarcode,
   lookupByBarcodeScoped: vi.fn((_sessionToken: string, code: string) =>
     mockLookupByBarcode(code),
   ),
@@ -218,6 +221,13 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
     sessionToken: null,
     swapSessionToken: vi.fn(),
   }),
+  // f27338da6's terminal-identity read reaches this module through PaymentModal.tsx:289-290
+  // (workspaceScope?.typeKey === 'restaurant-pos'), and a local vi.mock factory REPLACES the
+  // whole module, so the safe default src/test-setup.ts:182 installs never reaches it. Mirrored
+  // from that default instead of returning null: typeKey is read off the object, and this is the
+  // retail terminal, so the identity branch stays reachable-and-false rather than relying on the
+  // optional chain to make an absent scope look false.
+  useWorkspaceScope: () => ({ storeId: 'default', instanceId: 'default', typeKey: 'default' }),
   WorkspaceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -295,7 +305,7 @@ describe('PosScreen – bundle scanning toast', () => {
     expect(screen.getByText('Item 2')).toBeInTheDocument();
   });
 
-  it('silently swallows when lookupByBarcode rejects (catch block)', async () => {
+  it('silently swallows when lookupByBarcodeScoped rejects (catch block)', async () => {
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
     await waitFor(() => {
@@ -303,18 +313,21 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // Make lookupByBarcode throw on the next call.
-    vi.mocked(productsApi.lookupByBarcode).mockRejectedValueOnce(
+    // Make lookupByBarcodeScoped throw on the next call.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockRejectedValueOnce(
       new Error('USB disconnect'),
     );
 
-    // Simulate a barcode scan. Since lookupByBarcode rejects, the
+    // Simulate a barcode scan. Since lookupByBarcodeScoped rejects, the
     // catch block fires and silently ignores the error.
     await act(async () => { mockedBarcode.triggerScan('ANY-CODE'); });
 
     // Wait for the error to propagate through the catch block.
     await waitFor(() => {
-      expect(vi.mocked(productsApi.lookupByBarcode)).toHaveBeenCalledWith('ANY-CODE');
+      expect(vi.mocked(productsApi.lookupByBarcodeScoped)).toHaveBeenCalledWith(
+        expect.any(String),
+        'ANY-CODE',
+      );
     }, FAST_WAIT);
 
     // No success or warning toast should appear.
@@ -325,7 +338,7 @@ describe('PosScreen – bundle scanning toast', () => {
     expect(screen.getByText(/Cart is empty/)).toBeInTheDocument();
   });
 
-  it('silently swallows when lookupByBarcode rejects with a ScannerError (typed error)', async () => {
+  it('silently swallows when lookupByBarcodeScoped rejects with a ScannerError (typed error)', async () => {
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
     await waitFor(() => {
@@ -333,8 +346,8 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // Make lookupByBarcode throw a ScannerError (scanner hardware failure).
-    vi.mocked(productsApi.lookupByBarcode).mockRejectedValueOnce(
+    // Make lookupByBarcodeScoped throw a ScannerError (scanner hardware failure).
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockRejectedValueOnce(
       new ScannerError(
         'Scanner disconnected — check USB connection',
         ScannerError.codes.DISCONNECTED,
@@ -347,7 +360,10 @@ describe('PosScreen – bundle scanning toast', () => {
 
     // Wait for the error to propagate through the catch block.
     await waitFor(() => {
-      expect(vi.mocked(productsApi.lookupByBarcode)).toHaveBeenCalledWith('ANY-CODE');
+      expect(vi.mocked(productsApi.lookupByBarcodeScoped)).toHaveBeenCalledWith(
+        expect.any(String),
+        'ANY-CODE',
+      );
     }, FAST_WAIT);
 
     // No success or warning toast should appear.
@@ -366,14 +382,14 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // lookupByBarcode returns null (as mocked by default), so the
+    // lookupByBarcodeScoped returns null (as mocked by default), so the
     // callback falls through to lookupBundleBySku. Make it reject.
     vi.mocked(bundlesApi.lookupBundleBySku).mockRejectedValueOnce(
       new Error('Backend unreachable'),
     );
 
     // Simulate scanning a bundle SKU. The rejection occurs after
-    // lookupByBarcode returns null, and is swallowed by the catch block.
+    // lookupByBarcodeScoped returns null, and is swallowed by the catch block.
     await act(async () => { mockedBarcode.triggerScan('BUNDLE-SKU-001'); });
 
     // Wait for the bundle lookup to be called (confirms we got past
@@ -398,7 +414,7 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // lookupByBarcode returns null (default), so the callback falls
+    // lookupByBarcodeScoped returns null (default), so the callback falls
     // through to lookupBundleBySku. Make it reject with a ScannerError.
     vi.mocked(bundlesApi.lookupBundleBySku).mockRejectedValueOnce(
       new ScannerError(
@@ -433,7 +449,7 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // lookupByBarcode returns null (default), lookupBundleBySku succeeds.
+    // lookupByBarcodeScoped returns null (default), lookupBundleBySku succeeds.
     // But make lookupProductBySku reject — this is used as the lookupItem
     // callback inside expandBundleItems, so the bundle expansion will fail.
     vi.mocked(productsApi.lookupProductBySkuScoped).mockRejectedValueOnce(
@@ -458,7 +474,7 @@ describe('PosScreen – bundle scanning toast', () => {
     expect(screen.getByText(/Cart is empty/)).toBeInTheDocument();
   });
 
-  it('silently swallows when expandBundleItems rejects with a ScannerError via lookupProductBySku (typed error)', async () => {
+  it('silently swallows when expandBundleItems rejects with a ScannerError via lookupProductBySkuScoped (typed error)', async () => {
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
     await waitFor(() => {
@@ -466,7 +482,7 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // lookupByBarcode returns null (default), lookupBundleBySku succeeds.
+    // lookupByBarcodeScoped returns null (default), lookupBundleBySku succeeds.
     // But make lookupProductBySku reject with a ScannerError — this is
     // used as the lookupItem callback inside expandBundleItems.
     vi.mocked(productsApi.lookupProductBySkuScoped).mockRejectedValueOnce(
@@ -494,7 +510,7 @@ describe('PosScreen – bundle scanning toast', () => {
     expect(screen.getByText(/Cart is empty/)).toBeInTheDocument();
   });
 
-  it('adds product directly when lookupByBarcode returns a DTO (no bundle path)', async () => {
+  it('adds product directly when lookupByBarcodeScoped returns a DTO (no bundle path)', async () => {
     await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
 
     await waitFor(() => {
@@ -502,8 +518,8 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // Make lookupByBarcode return a product DTO for this scan.
-    vi.mocked(productsApi.lookupByBarcode).mockResolvedValueOnce({
+    // Make lookupByBarcodeScoped return a product DTO for this scan.
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
       sku: 'LATTE',
       name: 'Caffè Latte',
       category: 'Beverages',
@@ -520,9 +536,12 @@ describe('PosScreen – bundle scanning toast', () => {
     // Simulate scanning a barcode that matches a product (not a bundle).
     await act(async () => { mockedBarcode.triggerScan('4901234567890'); });
 
-    // Wait for lookupByBarcode to be called with the scanned code.
+    // Wait for lookupByBarcodeScoped to be called with the scanned code.
     await waitFor(() => {
-      expect(vi.mocked(productsApi.lookupByBarcode)).toHaveBeenCalledWith('4901234567890');
+      expect(vi.mocked(productsApi.lookupByBarcodeScoped)).toHaveBeenCalledWith(
+        expect.any(String),
+        '4901234567890',
+      );
     }, FAST_WAIT);
 
     // The product name appears in both the product grid and the cart.
@@ -552,11 +571,11 @@ describe('PosScreen – bundle scanning toast', () => {
     }, FAST_WAIT);
     await screen.findByText('Close');
 
-    // lookupByBarcode returns a product DTO for the scanned code.
+    // lookupByBarcodeScoped returns a product DTO for the scanned code.
     // Note: we deliberately do NOT set mockResolvedValueOnce on
     // lookupBundleBySku — it should never be called because the
     // product path returns early before the bundle path is reached.
-    vi.mocked(productsApi.lookupByBarcode).mockResolvedValueOnce({
+    vi.mocked(productsApi.lookupByBarcodeScoped).mockResolvedValueOnce({
       sku: 'ESPRESSO',
       name: 'Espresso Shot',
       category: 'Beverages',
@@ -575,7 +594,10 @@ describe('PosScreen – bundle scanning toast', () => {
 
     // Wait for the product lookup to be called.
     await waitFor(() => {
-      expect(vi.mocked(productsApi.lookupByBarcode)).toHaveBeenCalledWith('4900000000000');
+      expect(vi.mocked(productsApi.lookupByBarcodeScoped)).toHaveBeenCalledWith(
+        expect.any(String),
+        '4900000000000',
+      );
     }, FAST_WAIT);
 
     // The product should appear in the cart (product path won).
@@ -603,7 +625,7 @@ describe('PosScreen – bundle scanning toast', () => {
     await screen.findByText('Close');
 
     // Scan an SKU the mock factory recognizes as an inactive bundle.
-    // lookupByBarcode returns null (default) → falls through to bundle
+    // lookupByBarcodeScoped returns null (default) → falls through to bundle
     // lookup → lookupBundleBySku returns a bundle with active=false.
     await act(async () => { mockedBarcode.triggerScan('INACTIVE-SKU'); });
 

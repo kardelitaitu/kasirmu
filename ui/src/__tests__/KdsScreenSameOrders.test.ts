@@ -3,7 +3,7 @@
 // Used to prevent unnecessary re-renders when the KDS queue is re-fetched.
 
 import { describe, it, expect } from 'vitest';
-import { sameOrders } from '@/features/kds/KdsScreen';
+import { sameOrders } from '@/features/kds/kdsOrdersDiff';
 import type { KdsOrder } from '@/api/kds';
 
 /** Minimal KdsOrder builder — only fields compared by sameOrders. */

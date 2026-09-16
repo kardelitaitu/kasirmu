@@ -149,6 +149,113 @@ fn fresh_install_and_upgrade_path_produce_identical_schema() {
     );
 }
 
+/// The checksum the runner stored for one migration.
+fn stored_checksum(conn: &rusqlite::Connection, id: &str) -> String {
+    conn.query_row(
+        "SELECT checksum FROM schema_migrations WHERE id = ?1",
+        [id],
+        |row| row.get(0),
+    )
+    .unwrap()
+}
+
+/// A comment-only edit to any registered migration must be detected as drift
+/// and then re-apply cleanly (DB-02).
+///
+/// Editing a migration's comments changes its checksum but not its executable
+/// SQL. The runner responds by re-applying the script — which, until the
+/// statement-level fallback landed, ran the whole script in one batch and so
+/// required every statement to be idempotent. SQLite cannot satisfy that for
+/// `ALTER TABLE … ADD COLUMN` (no `IF NOT EXISTS` form; 26 of the 58
+/// registered migrations use it), so a comment-only edit to any of those files
+/// panicked startup with `duplicate column name` even though the schema was
+/// already correct.
+///
+/// The test also asserts the drift was *detected*, because a sweep that
+/// silently skipped the drift path would pass without proving anything — a
+/// fresh database has no stored checksum, so the commented script is simply
+/// applied as new and the fallback is never reached.
+#[test]
+fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
+    // Migrations that cannot be re-applied at all, because they consume the
+    // state they transform: one converts a column and then drops the source
+    // column, one renames tables and columns, one rebuilds a table while
+    // copying a column out of the definition it replaces. Re-running them is
+    // impossible by construction, and the repo documents that class as
+    // requiring a backup-plus-forward-repair procedure rather than a re-apply
+    // (DB-03, see the forward-only contract in `migrations.rs`).
+    //
+    // Listed so the residual stays explicit and measured: if one of these
+    // starts passing, or a migration joins the list, this test fails and the
+    // list has to be revisited.
+    const NOT_REAPPLIABLE: &[&str] = &[
+        "20260831_loyalty_multiplier_fixedpoint.sql",
+        "20260906_rename_store_to_location.sql",
+        "20260913_memo_locations.sql",
+    ];
+
+    // Built once: every iteration must compare the same bytes against the
+    // checksum the prefix apply stored.
+    let commented: Vec<&'static str> = ALL
+        .iter()
+        .map(|mig| {
+            Box::leak(format!("{}\n-- cosmetic drift probe\n", mig.sql).into_boxed_str())
+                as &'static str
+        })
+        .collect();
+
+    let mut not_reappliable: Vec<String> = Vec::new();
+    for index in 0..ALL.len() {
+        let id = ALL[index].id;
+        // Applying the prefix and then editing its last entry reproduces the
+        // real sequence: the migration was applied, and its file was edited
+        // afterwards.
+        let prefix = &ALL[..=index];
+        let drifted: Vec<platform_core::database::Migration> = prefix
+            .iter()
+            .enumerate()
+            .map(|(position, mig)| platform_core::database::Migration {
+                id: mig.id,
+                // Only the last entry is edited; every earlier one keeps the
+                // SQL whose checksum the prefix apply stored, so it is not
+                // dragged into the drift path as well.
+                sql: if position == index {
+                    commented[position]
+                } else {
+                    mig.sql
+                },
+            })
+            .collect();
+
+        let mut conn = fresh();
+        platform_core::database::run(&mut conn, prefix)
+            .unwrap_or_else(|err| panic!("applying the prefix up to {id} failed: {err}"));
+        let before = stored_checksum(&conn, id);
+
+        match platform_core::database::run(&mut conn, &drifted) {
+            Ok(()) => assert_ne!(
+                before,
+                stored_checksum(&conn, id),
+                "the comment-only edit to {id} was not detected as drift — \
+                 the re-apply path was skipped, so this case proves nothing"
+            ),
+            Err(err) => {
+                assert!(
+                    NOT_REAPPLIABLE.contains(&id),
+                    "a comment-only edit to {id} failed the drift re-apply, and it is not a \
+                     known one-shot migration: {err}"
+                );
+                not_reappliable.push(id.to_string());
+            }
+        }
+    }
+
+    assert_eq!(
+        not_reappliable, NOT_REAPPLIABLE,
+        "the set of migrations that cannot survive a comment-only edit changed"
+    );
+}
+
 #[test]
 fn migrations_create_expected_tables() {
     let mut conn = fresh();

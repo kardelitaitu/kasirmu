@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { listProductsScoped, listCategories, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
+import { listProductsScoped, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { loadCatalog, getCatalog, invalidateCatalog } from '@/utils/catalog-cache';
 
 /**
@@ -12,7 +12,6 @@ import { loadCatalog, getCatalog, invalidateCatalog } from '@/utils/catalog-cach
 
 vi.mock('@/api/products', () => ({
   listProductsScoped: vi.fn(),
-  listCategories: vi.fn(),
   // The cache reads products through the scoped twin and categories through the ambient one, in
   // the same Promise.all. list_categories is registered by neither app shell's UI-facing set for
   // desktop, so on desktop loadCatalog threw every time it was called.
@@ -46,9 +45,9 @@ describe('catalog-cache (PERF-08)', () => {
     expect(listProductsScoped).toHaveBeenCalledTimes(1);
     // This asserted the AMBIENT call happened once -- the test was not merely tolerating the bug,
     // it was pinning it in place. Categories now come from the scoped twin, which is the only
-    // variant desktop-client registers for a session.
+    // variant desktop-client registers for a session. The ambient door is gone from the module
+    // (T21), so there is no longer a name to assert was NOT called.
     expect(listCategoriesScoped).toHaveBeenCalledTimes(1);
-    expect(listCategories).not.toHaveBeenCalled();
   });
 
   it('deduplicates concurrent in-flight loads (single IPC round trip)', async () => {
@@ -112,7 +111,6 @@ describe('catalog-cache (PERF-08)', () => {
     const snapshot = await loadCatalog('token-scoped-cats');
 
     expect(listCategoriesScoped).toHaveBeenCalledWith('token-scoped-cats');
-    expect(listCategories).not.toHaveBeenCalled();
     expect(snapshot.categories).toEqual(mockCategories);
   });
 });

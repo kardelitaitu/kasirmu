@@ -14,7 +14,7 @@ next: none | perf: N/A
 //!
 //! The StaffModule implements the [`Module`] trait and is registered
 //! with the kernel during application startup. The underlying backend
-//! (DB CRUD, Tauri commands) and frontend (React screens, API calls,
+//! (DB CRUD, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
 //! - Backend: `crates/oz-core/src/user.rs` + `crates/oz-core/src/db/staff.rs`

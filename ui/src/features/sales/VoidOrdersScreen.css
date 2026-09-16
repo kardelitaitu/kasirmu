@@ -238,7 +238,11 @@
 .void-orders-action-btn--void:hover {
   background: var(--color-danger-dim);
   border-color: var(--color-danger);
-  color: var(--color-danger);
+  /* --color-danger on --color-danger-dim is the same hex in every theme
+     (#FF6B68 dark / #FC3D39 light) — 1.00:1, the label vanished on hover.
+     --color-danger-fg is tokens.css's matched foreground for a danger fill
+     (used the same way at TableManagementScreen.css:248). */
+  color: var(--color-danger-fg);
 }
 
 /* ── Detail view ──────────────────────────────────────────────────── */
@@ -352,7 +356,7 @@
   margin: 0 0 var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-fg-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .void-orders-reason-group {

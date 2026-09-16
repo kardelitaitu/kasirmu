@@ -630,4 +630,259 @@ describe('WorkspaceContext', () => {
       expect(sent).toBe('ticket-second-user');
     });
   });
+
+  // The suite-wide default makes the refresh REJECT (the note at :209-213 explains why), so
+  // every hot-swap case in this file has always taken the fallback branch. The branch that
+  // ASSIGNS the refreshed ticket had no coverage at all -- and that is precisely the branch a
+  // tablet could not reach either, until `refresh_picker_ticket` was registered (683c9f2b9).
+  // One case per side of the `try`, so the next change to the fallback is a decision rather
+  // than an accident.
+  describe('swapSessionToken picker-ticket refresh', () => {
+    async function swapWithPriorSession() {
+      const { result } = renderWorkspaceHook();
+      await waitForLoaded(result);
+      act(() => {
+        result.current.workspace.setActiveWorkspace('restaurant-pos');
+      });
+      await waitFor(() => {
+        expect(result.current.workspace.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+      mocks.createSession.mockResolvedValue(makeSessionResult({ session_token: 'tok-swapped' }));
+      return result;
+    }
+
+    it('sends the refreshed ticket, not the login-time one, when the refresh succeeds', async () => {
+      const result = await swapWithPriorSession();
+      mocks.refreshPickerTicket.mockResolvedValue({ picker_ticket: 'ticket-refreshed' });
+
+      await act(async () => {
+        await result.current.workspace.swapSessionToken('user-2', 'role-manager');
+      });
+
+      // Refreshed against the token being replaced, not against the new identity: holding a
+      // valid session is what proves the caller may have a ticket re-minted (ADR #4).
+      expect(mocks.refreshPickerTicket).toHaveBeenCalledWith('tok-abc-123');
+      const call = mocks.createSession.mock.calls.at(-1);
+      const sent = (call?.[0] as { picker_ticket?: string } | undefined)?.picker_ticket;
+      expect(sent).toBe('ticket-refreshed');
+    });
+
+    it('keeps the login-time ticket and says so when the refresh fails', async () => {
+      const result = await swapWithPriorSession();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        await act(async () => {
+          await result.current.workspace.swapSessionToken('user-2', 'role-manager');
+        });
+
+        const call = mocks.createSession.mock.calls.at(-1);
+        const sent = (call?.[0] as { picker_ticket?: string } | undefined)?.picker_ticket;
+        expect(sent).toBe(DEFAULT_TICKET);
+        // The swap still proceeds. Whether a stale ticket should ABORT it is the question
+        // T15 deliberately leaves open, so no test here may freeze the answer either way --
+        // this one pins only that the fallback is what runs, and that it announces itself.
+        expect(result.current.workspace.sessionToken).toBe('tok-swapped');
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('picker-ticket refresh failed'),
+          expect.anything(),
+        );
+      } finally {
+        // afterEach only clearAllMocks(), which does not restore spies; leaking a silenced
+        // console.warn would mute the rest of this file's diagnostics.
+        warn.mockRestore();
+      }
+    });
+  });
+
+  // ── A failed server-side session teardown must be observable ───────────────
+  //
+  // Four sites in WorkspaceContext destroy the server-side session and swallow the
+  // rejection (`destroySession(token).catch(() => {})`). On a shared POS terminal the
+  // operator then sees a signed-out screen while the server session can still be live
+  // for the next person at the till. The change under test is ONLY the silence: each
+  // case asserts (a) the failure is REPORTED, in this file's message shape
+  // (`"WorkspaceContext: <what failed>", err`, the shape used for its four degraded
+  // reads -- "failed to list workspaces", "picker-ticket refresh failed", "failed to
+  // create session token", "boot store resolution failed") but at ERROR level -- a
+  // session that may still be live
+  // on the till the next operator stands at is a security event, not a degraded read,
+  // so it does not get to share a volume with "failed to list workspaces" -- and (b)
+  // the local token clear and the navigation that follows it are unchanged. Nothing
+  // here may require a retry, a UI state or a toast.
+  describe('failed server-side session teardown', () => {
+    const TEARDOWN = 'server-side session teardown failed';
+
+    /**
+     * The LEVEL is part of the contract, so the spy captures both: `console.error`
+     * must carry the teardown failure and `console.warn` must not. A text-only spy on
+     * whichever level the code happens to use passes either way -- that is the hole
+     * `expectReportedAtErrorLevel` closes. Both are restored in the test's `finally`:
+     * afterEach only clearAllMocks(), which does not unspy, and a leaked silenced
+     * console.error would mute the rest of this file.
+     */
+    function spyLevels() {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      return {
+        error,
+        warn,
+        restore: () => {
+          error.mockRestore();
+          warn.mockRestore();
+        },
+      };
+    }
+
+    function expectReportedAtErrorLevel(log: ReturnType<typeof spyLevels>) {
+      expect(log.error).toHaveBeenCalledWith(
+        expect.stringContaining(TEARDOWN),
+        expect.anything(),
+      );
+      expect(log.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining(TEARDOWN),
+        expect.anything(),
+      );
+    }
+
+    /** The auth session is mutable so a test can walk the provider through a logout. */
+    function renderWithMutableSession() {
+      const sessionRef: { current: LoginSessionDto | null } = {
+        current: DEFAULT_SESSION,
+      };
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        withFluent(
+          <MockAuthCtx.Provider
+            value={{
+              session: sessionRef.current,
+              pickerTicket: sessionRef.current ? DEFAULT_TICKET : null,
+            }}
+          >
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </MockAuthCtx.Provider>,
+        );
+      const hook = renderHook(() => useWorkspace(), { wrapper });
+      return { ...hook, sessionRef };
+    }
+
+    /** Renders the provider and mints a token for the restaurant instance. */
+    async function withLiveToken() {
+      const view = renderWithMutableSession();
+      await waitFor(() => {
+        expect(view.result.current.availableWorkspaces).toHaveLength(2);
+      }, FAST_WAIT);
+      act(() => {
+        view.result.current.setActiveWorkspace('restaurant-pos');
+      });
+      await waitFor(() => {
+        expect(view.result.current.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+      expect(mocks.destroySession).not.toHaveBeenCalled();
+      return view;
+    }
+
+    function rejectingTeardown() {
+      mocks.destroySession.mockRejectedValue(
+        new Error('destroy_session rejected (simulated)'),
+      );
+    }
+
+    // Site 1 of 4 (the brief's :266) -- the login/logout reset effect.
+    it('logout: reports a failed teardown and still clears the local token', async () => {
+      const log = spyLevels();
+      try {
+        const { result, rerender, sessionRef } = await withLiveToken();
+        rejectingTeardown();
+
+        sessionRef.current = null; // the operator signed out
+        await act(async () => {
+          rerender();
+        });
+        await flushAsync();
+
+        // Behaviour unchanged: the local token is cleared regardless of the IPC result.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBeNull();
+        // The only thing that changed: the failure is no longer silent -- and it is
+        // silent-or-error, never a warning sharing the degraded reads' volume.
+        expectReportedAtErrorLevel(log);
+      } finally {
+        log.restore();
+      }
+    });
+
+    // Site 2 of 4 (the brief's :325) -- switchStore.
+    it('switchStore: reports a failed teardown and still completes the switch', async () => {
+      const log = spyLevels();
+      try {
+        const { result } = await withLiveToken();
+        rejectingTeardown();
+
+        act(() => {
+          result.current.switchStore('store-2');
+        });
+        await flushAsync();
+
+        // Behaviour unchanged: local clear + navigation to the new store.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBeNull();
+        expect(result.current.resolvedStoreId).toBe('store-2');
+        expectReportedAtErrorLevel(log);
+      } finally {
+        log.restore();
+      }
+    });
+
+    // Site 3 of 4 (the brief's :384) -- swapSessionToken, the ADR #6 hot-swap on a
+    // shared touchscreen.
+    it('swapSessionToken: reports a failed teardown and still completes the swap', async () => {
+      const log = spyLevels();
+      try {
+        const { result } = await withLiveToken();
+        rejectingTeardown();
+        mocks.createSession.mockResolvedValue(
+          makeSessionResult({ session_token: 'tok-swapped' }),
+        );
+
+        await act(async () => {
+          await result.current.swapSessionToken('user-2', 'role-manager');
+        });
+
+        // Behaviour unchanged: the swap finishes on the new cashier's token.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBe('tok-swapped');
+        expectReportedAtErrorLevel(log);
+      } finally {
+        log.restore();
+      }
+    });
+
+    // Site 4 of 4 (the brief's :600) -- the token-creation effect re-entering with a
+    // previous token.
+    it('re-minting on a new workspace: reports a failed teardown of the previous token', async () => {
+      const log = spyLevels();
+      try {
+        const { result } = await withLiveToken();
+        rejectingTeardown();
+        mocks.createSession.mockResolvedValue(
+          makeSessionResult({ session_token: 'tok-xyz' }),
+        );
+
+        act(() => {
+          result.current.setActiveWorkspace('store-pos');
+        });
+        await waitFor(() => {
+          expect(result.current.sessionToken).toBe('tok-xyz');
+        }, FAST_WAIT);
+        await flushAsync();
+
+        // Behaviour unchanged: the old token is dropped and the new one minted.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBe('tok-xyz');
+        expectReportedAtErrorLevel(log);
+      } finally {
+        log.restore();
+      }
+    });
+  });
 });

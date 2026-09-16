@@ -16,6 +16,7 @@ import TabletAppShell from '@/frontend/shell/tablet/TabletAppShell';
 import { registerAllFeatures } from '@/features';
 import { installPerfProbe } from './utils/perf-metrics';
 import './frontend/themes/reset.css';
+import './frontend/themes/fonts.css';
 import './frontend/themes/tokens.css';
 import './frontend/themes/components.css';
 import './frontend/themes/responsive.css';

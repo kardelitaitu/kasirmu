@@ -1,6 +1,6 @@
 ---
 title: Offline-First Mode
-description: How OZ-POS keeps working with zero connectivity.
+description: How kasir.mu keeps working with zero connectivity.
 category: guides
 order: 1
 updated: "2026-08-16"

@@ -7,31 +7,39 @@ fn fresh_conn() -> Connection {
     migrations::fresh_db()
 }
 
-/// Run the same logic as `complete_setup` but with a plain
-/// `&Connection` so tests don't need a Tauri runtime.
+/// Run the production `complete_setup` statement list against a plain
+/// `&Connection`, so tests need no Tauri runtime.
 ///
-/// Each individual operation (`save_features`, `prune_stale_features`,
-/// `set`) handles its own transaction internally. The production
-/// `complete_setup` command wraps them in a single outer transaction
-/// for atomicity; tests verify the operations individually.
+/// This delegates to `write_setup` — the very function the `#[command]`
+/// calls inside its transaction — rather than re-listing the operations.
+/// A re-listed copy passes while the command drops a leg, which is exactly
+/// how the currency write stayed invisible here.
 fn run_complete_setup(
     conn: &Connection,
     preset: &str,
     features: &[&str],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut registry = FeatureRegistry::new();
-    for &key in features {
-        if let Some(feat) = features::feature_from_key(key) {
-            registry.enable(feat);
-        }
-    }
+    run_complete_setup_args(
+        conn,
+        // Fed through the shared struct rather than built field-by-field,
+        // so the currency leg carries the struct's own `#[serde(default)]`
+        // value and not a literal restated here.
+        &deserialise(serde_json::json!({ "preset": preset, "features": features })),
+    )
+}
 
-    let store = Store::new(conn);
-    store.save_features(&registry)?;
-    Settings::prune_stale_features(conn, &registry)?;
-    Settings::set(conn, oz_core::settings::keys::STORE_PRESET, preset)?;
-    Settings::set(conn, oz_core::settings::keys::SETUP_COMPLETE, "1")?;
-    Settings::set(conn, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
+/// Deserialise a wizard-shaped payload into the shared args type.
+fn deserialise(payload: serde_json::Value) -> CompleteSetupArgs {
+    serde_json::from_value(payload).expect("setup wizard payload must deserialize")
+}
+
+/// `run_complete_setup` for a caller that already holds the args — the
+/// deserialised wizard payload in the end-to-end case below.
+fn run_complete_setup_args(
+    conn: &Connection,
+    args: &CompleteSetupArgs,
+) -> Result<(), Box<dyn std::error::Error>> {
+    write_setup(conn, args)?;
     Ok(())
 }
 
@@ -412,11 +420,59 @@ fn complete_setup_args_deserialize() {
     assert_eq!(args.features[0], "cash-payment");
 }
 
+/// The exact shape `SetupWizard.tsx` builds and `TabletAppShell.tsx`
+/// forwards — all three keys, currency included — driven end to end.
+///
+/// This is the case that was missing: nothing in this file named
+/// `default_currency`, so the wizard currency could be (and was) dropped
+/// on tablet without a single red test. It reads a currency no fallback
+/// could produce, so it fails both if the shared struct loses the field and
+/// if `write_setup` stops writing the row.
+#[test]
+fn complete_setup_currency_survives_the_wizard_payload() {
+    let json = r#"{"preset":"simple-retail","features":["cash-payment","tax-engine"],"default_currency":"USD"}"#;
+    let args: CompleteSetupArgs = serde_json::from_str(json).unwrap();
+
+    // 1. The field survives deserialisation — the local copy had no such
+    // field, and serde ignores unknown keys rather than rejecting them.
+    assert_eq!(
+        args.default_currency, "USD",
+        "the currency the wizard collected was dropped by deserialisation"
+    );
+
+    // 2. It reaches the row the command writes.
+    let conn = fresh_conn();
+    run_complete_setup_args(&conn, &args).unwrap();
+    assert_eq!(
+        Settings::get_default_currency(&conn).unwrap().as_deref(),
+        Some("USD"),
+        "complete_setup did not persist the currency to `currency.default`"
+    );
+}
+
+/// An older client that sends no `default_currency` keeps working: the
+/// shared struct supplies its `#[serde(default)]` fallback and that is what
+/// lands in the row.
+#[test]
+fn complete_setup_currency_falls_back_when_key_absent() {
+    let args: CompleteSetupArgs =
+        serde_json::from_str(r#"{"preset":"simple-retail","features":["cash-payment"]}"#).unwrap();
+    assert_eq!(args.default_currency, "IDR");
+
+    let conn = fresh_conn();
+    run_complete_setup_args(&conn, &args).unwrap();
+    assert_eq!(
+        Settings::get_default_currency(&conn).unwrap().as_deref(),
+        Some("IDR")
+    );
+}
+
 #[test]
 fn complete_setup_args_debug() {
     let args = CompleteSetupArgs {
         preset: "restaurant".into(),
         features: vec!["cash-payment".into()],
+        default_currency: "IDR".into(),
     };
     let d = format!("{args:?}");
     assert!(d.contains("restaurant"));
@@ -473,4 +529,76 @@ fn enabled_features_result_serialize() {
     let json = serde_json::to_value(&result).unwrap();
     assert_eq!(json["features"][0], "barcode-scanning");
     assert_eq!(json["features"].as_array().unwrap().len(), 1);
+}
+
+// ── Outbound wire pins (the tablet no longer owns a second copy) ────────
+//
+// `72b28d025` is the lesson these exist for: a duplicated response DTO drifts
+// on the way OUT, where no argument-side test can see it. Two things are
+// pinned here, and only the second one is new. Shape-only pair tests can pass
+// while both sides serialise to nothing — that is the hole
+// `sync_settings_dto_wire_keys_match_bridge_twin` still has — so these name
+// the key AND the value.
+//
+//   1. TYPE IDENTITY, asserted by assignment: `let bridge:
+//      oz_bridge::setup::SetupStatus = status;` compiles only while the tablet
+//      path is a re-export. A future local re-declaration stops compiling
+//      instead of quietly becoming a second opinion on the same wire.
+//   2. THE KEY THE UI READS, WITH ITS VALUE: `ui/src/api/settings.ts:155`
+//      declares `SetupStatus { completed: boolean; preset: string | null }`
+//      and `:179` declares `EnabledFeaturesResult { features: string[] }`. The
+//      key set is asserted exactly, so a rename (`isCompleted`,
+//      `setupComplete`) fires even though both shells now share one type.
+
+/// Sorted top-level JSON keys a response serialises to.
+fn wire_keys<T: serde::Serialize>(value: &T) -> Vec<String> {
+    let json = serde_json::to_value(value).unwrap();
+    let mut keys: Vec<String> = json
+        .as_object()
+        .expect("response must serialise to a JSON object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
+#[test]
+fn setup_status_wire_is_the_shared_bridge_type_with_the_ui_keys() {
+    let status = SetupStatus {
+        completed: true,
+        preset: Some("simple-retail".into()),
+    };
+    // Type identity: fails to compile if the tablet re-declares the struct.
+    let bridge: oz_bridge::setup::SetupStatus = status;
+    assert_eq!(
+        wire_keys(&bridge),
+        ["completed", "preset"],
+        "the UI reads exactly these two keys (ui/src/api/settings.ts:155)"
+    );
+    let json = serde_json::to_value(&bridge).unwrap();
+    assert_eq!(json["completed"], true, "completed must carry a value");
+    assert_eq!(json["preset"], "simple-retail", "preset must carry a value");
+}
+
+#[test]
+fn enabled_features_result_wire_is_the_shared_bridge_type_with_the_ui_key() {
+    let result = EnabledFeaturesResult {
+        features: vec!["cash-payment".into(), "barcode-scanning".into()],
+    };
+    let bridge: oz_bridge::setup::EnabledFeaturesResult = result;
+    assert_eq!(
+        wire_keys(&bridge),
+        ["features"],
+        "the UI reads exactly this key (ui/src/api/settings.ts:179)"
+    );
+    let json = serde_json::to_value(&bridge).unwrap();
+    let features = json["features"].as_array().unwrap();
+    assert_eq!(
+        features.len(),
+        2,
+        "an empty array would let a shape-only pin pass"
+    );
+    assert_eq!(features[0], "cash-payment");
+    assert_eq!(features[1], "barcode-scanning");
 }

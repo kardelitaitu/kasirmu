@@ -4,9 +4,11 @@
  * Owns ONLY the structural shell that holds the cart surface:
  *   .pos-resize-handle          separator that drives cart width
  *   .pos-cart-panel             right-side flex container
- *   .pos-cart-header            title + lock button row
+ *   .pos-cart-header            title + shift status + action button row
  *   .pos-cart-title             "Current Sale" title
- *   .pos-cart-lock-btn          header lock/logout button
+ *   .pos-cart-lock-btn          header action button (retail workspace only:
+ *                               the restaurant cart has no action cluster —
+ *                               those controls live in the sidebar popover)
  *   .pos-cart-count             line count badge beside title
  *   .pos-cart-lines             scrollable list container
  *   .pos-cart-empty-msg + children
@@ -176,9 +178,9 @@
   padding: var(--space-0_5) var(--space-2);
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--color-warning-fg, #856404);
-  background: var(--color-warning-bg, #fff3cd);
-  border: 1px solid var(--color-warning-border, #ffc107);
+  color: var(--color-warning-fg);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   user-select: none;
@@ -189,7 +191,7 @@
 
 .pos-cart-deduction-badge:hover,
 .pos-cart-deduction-badge:focus-visible {
-  box-shadow: 0 0 0 2px var(--color-warning-border, #ffc107);
+  box-shadow: 0 0 0 2px var(--color-warning-border);
   outline: none;
 }
 
@@ -268,13 +270,19 @@
 }
 
 /* ── Empty cart state ────────────────────────────────── */
-/* Stacked column with decorative icon + headline + hint. */
+/* Stacked column with decorative icon + headline + hint. `min-height` fills the
+   lines area so the stack sits in the middle of the cart instead of piling up
+   under the header; `min-` rather than `height` so a long translation or a
+   short window can still scroll, and so the rule degrades to today's top-aligned
+   behaviour wherever the panel's height is content-driven. Retail's
+   `.retail-cart-empty` uses the same shape. */
 
 .pos-cart-empty-msg {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-height: 100%;
   gap: var(--space-2);
   padding: var(--space-12) var(--space-6);
   color: var(--color-fg-tertiary);
@@ -471,6 +479,58 @@
   }
   .pos-cart-table-input {
     transition: border-color var(--duration-150) var(--ease-out);
+  }
+
+  /* Cart entry animation: slides from right with overshoot jiggle */
+  .pos-cart-panel--entering {
+    animation: pos-cart-slide-in 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes pos-cart-slide-in {
+    0% {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    55% {
+      opacity: 1;
+      transform: translateX(-14px);
+    }
+    75% {
+      transform: translateX(6px);
+    }
+    88% {
+      transform: translateX(-2px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Cart exit animation: slides to right */
+  @keyframes pos-cart-slide-out {
+    0% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-6px);
+    }
+    100% {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+  }
+
+  .pos-cart-panel--exiting {
+    animation: pos-cart-slide-out 0.25s var(--ease-out) both;
+    pointer-events: none;
+  }
+
+  .pos-resize-handle--exiting {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-200) var(--ease-out);
   }
 }
 

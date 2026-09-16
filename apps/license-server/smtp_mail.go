@@ -143,7 +143,7 @@ const smtpSendTimeout = 15 * time.Second
 // once the DNS records (DKIM, DMARC) are in place. When OZ_SMTP_HOST is
 // set but OZ_SMTP_FROM is empty, this default is used and the boot-time
 // SMTP probe verifies the relay actually accepts it.
-const smtpDefaultFrom = "no-reply@ozpos.my.id"
+const smtpDefaultFrom = "no-reply@kasir.mu"
 
 // verifySMTPConfig is the boot-time sender-identity gate (called from
 // main before the server starts serving). It fails fast when email

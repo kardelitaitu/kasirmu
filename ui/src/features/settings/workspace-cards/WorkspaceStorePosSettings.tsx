@@ -22,7 +22,10 @@ import { hasChanges } from './helpers';
  */
 export function WorkspaceStorePosSettings({
   terminalId,
-  userId,
+  // `userId` is deliberately not destructured: the only thing that read it was the unscoped
+  // `set_hardware_settings` fallback in T11, which is gone with this shell's command. It stays on
+  // the props interface so the modal's `cardProps` spread and the card tests keep working -- the
+  // same choice `WorkspaceKdsSettings.tsx` and `WorkspaceInventorySettings.tsx` already made.
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
@@ -100,7 +103,7 @@ export function WorkspaceStorePosSettings({
 
       // Save terminal hardware to filesystem via IPC
       if (terminalId && hw.profile) {
-        tasks.push(hw.save(userId));
+        tasks.push(hw.save());
       }
 
       await Promise.all(tasks);
@@ -118,7 +121,7 @@ export function WorkspaceStorePosSettings({
     } finally {
       setSaving(false);
     }
-  }, [terminalId, hw, userId, showCurrency, showTax, paperWidth, showTableNumber, taxRoundingMode, footer, settings.receipt, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
+  }, [terminalId, hw, showCurrency, showTax, paperWidth, showTableNumber, taxRoundingMode, footer, settings.receipt, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   // ── Variant classes ──────────────────────────────────────────
 

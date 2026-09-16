@@ -24,17 +24,24 @@ describe('topology.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('can_save_topology', { sessionToken: 'tok' });
   });
 
-  it('loadTopology without branchId → load_topology (no args)', async () => {
+  it('loadTopology → load_topology with the session and no branch', async () => {
     mockInvoke.mockResolvedValue(null);
-    await loadTopology();
-    // branchId is undefined → loggedInvoke gets undefined as second arg
-    expect(mockInvoke).toHaveBeenCalledWith('load_topology', undefined);
+    await loadTopology('tok');
+    // R1 (2026-09-16): the read carries the session; branchId undefined is
+    // an ABSENT key on the wire, not the old whole-payload undefined.
+    expect(mockInvoke).toHaveBeenCalledWith('load_topology', {
+      sessionToken: 'tok',
+      branchId: undefined,
+    });
   });
 
-  it('loadTopology with branchId → load_topology with branchId', async () => {
+  it('loadTopology with branchId → load_topology with session and branchId', async () => {
     mockInvoke.mockResolvedValue(null);
-    await loadTopology('branch-1');
-    expect(mockInvoke).toHaveBeenCalledWith('load_topology', { branchId: 'branch-1' });
+    await loadTopology('tok', 'branch-1');
+    expect(mockInvoke).toHaveBeenCalledWith('load_topology', {
+      sessionToken: 'tok',
+      branchId: 'branch-1',
+    });
   });
 
   it('propagates backend errors', async () => {

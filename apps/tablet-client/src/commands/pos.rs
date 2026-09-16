@@ -47,12 +47,14 @@ use crate::state::AppState;
 // unwitnessed either way. The command bodies stay tablet-native (no
 // BridgeCtx yet — see the T2 seam notes in void.rs).
 pub use oz_bridge::pos::{
-    AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
-    CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
-    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs,
-    PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
-    PreviewPromotedTotalResult, PreviewPromotionDiscount, SerialNumberArg, SetCartDiscountArgs,
-    SetCartDiscountScopedArgs, StartSaleArgs, StartSaleResult,
+    AddLineArgs, AddLineResult, BILL_TYPE_OPEN_BILL, CartLineData, CompleteSaleArgs,
+    CompleteSaleResult, CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs,
+    DeductionLocationInfo, HoldCartArgs, HoldCartResult, OverrideLinePriceArgs,
+    OverrideLinePriceScopedArgs, PreviewLineArgs, PreviewPromotedTotalArgs,
+    PreviewPromotedTotalFromLinesArgs, PreviewPromotedTotalResult, PreviewPromotionDiscount,
+    PublishCourseFiredArgs, PublishCourseFiredItem, SerialNumberArg, SetCartDiscountArgs,
+    SetCartDiscountScopedArgs, SetLineCourseArgs, StartSaleArgs, StartSaleResult,
+    is_restaurant_pos_workspace,
 };
 
 /// The tax scope for a sale rung up at `location_id` right now.
@@ -82,40 +84,6 @@ fn tax_scope_now(store: &Store, location_id: &str) -> oz_core::TaxSaleScope {
 }
 
 // ── Discount ─────────────────────────────────────────────────────────
-
-/// Set or clear a cart-level percentage discount.
-///
-/// The discount is applied when the cart total is computed and when
-/// the sale is completed. Pass `percent = 0` to clear any existing
-/// discount.
-#[command]
-pub async fn set_cart_discount(
-    args: SetCartDiscountArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    if !(0..=100).contains(&args.percent) {
-        return Err(AppError::Invalid(format!(
-            "discount percent must be between 0 and 100, got {}",
-            args.percent
-        )));
-    }
-    // SAFETY: args.percent is validated 0..=100 above, so the unwrap is safe.
-    let percent = Percentage::new(args.percent as u8).unwrap();
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, oz_core::permissions::SALES_DISCOUNT)?;
-
-    let mut cart = store
-        .load_active_cart(&args.cart_id)?
-        .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-    cart.set_discount(percent, args.label);
-    store.save_active_cart(&cart, None)?;
-    drop(db);
-    tracing::info!(cart_id = %args.cart_id, percent = %args.percent, "cart discount set");
-    Ok(())
-}
 
 /// Set a cart discount within the session scope. ADR #7 / ADR-19.
 #[command]
@@ -154,34 +122,6 @@ pub async fn set_cart_discount_scoped(
 }
 
 // ── Start Sale ───────────────────────────────────────────────────────
-
-#[command]
-/// Start sale.
-pub async fn start_sale(
-    args: StartSaleArgs,
-    state: State<'_, AppState>,
-) -> Result<StartSaleResult, AppError> {
-    let currency_str = if args.currency.is_empty() {
-        "USD"
-    } else {
-        &args.currency
-    };
-    let currency: oz_core::Currency = currency_str
-        .parse()
-        .map_err(|_| AppError::Invalid(format!("invalid currency code: {currency_str}")))?;
-    let cart = Cart::new(currency);
-    let id = cart.id();
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    store.save_active_cart(&cart, None)?;
-    drop(db);
-
-    Ok(StartSaleResult {
-        cart_id: id,
-        deduction_location_id: None,
-    })
-}
 
 /// Start a new sale in the session scope. ADR #7 / ADR-19 §5.1.
 ///
@@ -238,17 +178,6 @@ pub async fn start_sale_scoped(
 
 // ── List Active Carts ────────────────────────────────────────────────
 
-/// Return all active cart IDs so the front-end can restore carts
-/// after a restart.
-#[command]
-pub async fn list_active_carts(state: State<'_, AppState>) -> Result<Vec<CartId>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let ids = store.list_active_carts()?;
-    drop(db);
-    Ok(ids)
-}
-
 /// List active carts in the session scope. ADR #7.
 #[command]
 pub async fn list_active_carts_scoped(
@@ -269,20 +198,6 @@ pub async fn list_active_carts_scoped(
 }
 
 // ── Get Active Cart ──────────────────────────────────────────────────
-
-/// Load and return the full cart state (lines, discount) by id.
-/// The front end uses this to restore a cart after restart or navigation.
-#[command]
-pub async fn get_active_cart(
-    cart_id: CartId,
-    state: State<'_, AppState>,
-) -> Result<Option<Cart>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let cart = store.load_active_cart(&cart_id)?;
-    drop(db);
-    Ok(cart)
-}
 
 /// Load a cart in the session scope. ADR #7.
 #[command]
@@ -306,7 +221,7 @@ pub async fn get_active_cart_scoped(
 
 // ── Add Line ─────────────────────────────────────────────────────────
 
-/// Resolve the unit price for an `add_line` request (FRONTEND-03).
+/// Resolve the unit price for an `add_line_scoped` request (FRONTEND-03).
 ///
 /// The line's own currency crosses the IPC boundary so a cross-currency
 /// line is rejected by `Cart::add_line` instead of being silently re-stamped
@@ -321,34 +236,6 @@ fn line_unit_price(args: &AddLineArgs, cart_currency: Currency) -> Result<Money,
     Ok(Money {
         minor_units: args.unit_price_minor,
         currency,
-    })
-}
-
-#[command]
-/// Add line.
-pub async fn add_line(
-    args: AddLineArgs,
-    state: State<'_, AppState>,
-) -> Result<AddLineResult, AppError> {
-    // Load the cart and add the line in a single DB transaction scope.
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let mut cart = store
-        .load_active_cart(&args.cart_id)?
-        .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-
-    let unit_price = line_unit_price(&args, cart.currency())?;
-    let line = CartLine::new(args.sku.clone(), args.qty, unit_price);
-    let line_id = line.id;
-    let line_total = line.total();
-    cart.add_line(line)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-    store.save_active_cart(&cart, None)?;
-    drop(db);
-
-    Ok(AddLineResult {
-        line_id,
-        line_total,
     })
 }
 
@@ -381,7 +268,7 @@ fn run_add_line_scoped(
 
     require_permission_for_user(&store, user_id, oz_core::permissions::SALES_PROCESS)?;
 
-    // ADR-19 §5.1: reject add_line when the cart has no deduction location lock.
+    // ADR-19 §5.1: reject add_line_scoped when the cart has no deduction location lock.
     store
         .ensure_cart_deduction_location_lock(&args.cart_id)
         .map_err(|_| {
@@ -410,48 +297,6 @@ fn run_add_line_scoped(
 }
 
 // ── Override Line Price ──────────────────────────────────────────────
-
-/// Override the unit price of a cart line, authorised by a manager PIN.
-#[command]
-pub async fn override_line_price(
-    args: OverrideLinePriceArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let mut cart = store
-        .load_active_cart(&args.cart_id)?
-        .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-
-    // Permission check: the user authorising the override must have SALES_OVERRIDE_PRICE.
-    require_permission_for_user(
-        &store,
-        &args.user_id,
-        oz_core::permissions::SALES_OVERRIDE_PRICE,
-    )?;
-
-    let currency = cart.currency();
-    let new_price = Money {
-        minor_units: args.new_price_minor,
-        currency,
-    };
-
-    // Find the line and set the override
-    let line = cart
-        .lines_mut()
-        .iter_mut()
-        .find(|l| l.id == args.line_id)
-        .ok_or_else(|| AppError::Invalid(format!("line not found: {}", args.line_id)))?;
-
-    line.set_overridden_price(new_price)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    store.save_active_cart(&cart, None)?;
-    drop(db);
-
-    tracing::info!(cart_id = %args.cart_id, line_id = %args.line_id, new_price_minor = args.new_price_minor, "line price overridden");
-    Ok(())
-}
 
 /// Override a line price within the session scope. ADR #7.
 #[command]
@@ -493,6 +338,56 @@ pub async fn override_line_price_scoped(
 
     tracing::info!(cart_id = %args.cart_id, line_id = %args.line_id, new_price_minor = args.new_price_minor, "line price overridden (scoped)");
     Ok(())
+}
+
+// ── Set Line Course ────────────────────────────────────────────────
+
+/// Assign (or clear) the restaurant course on an active cart line. ADR #7.
+///
+/// Delegated to `oz_bridge::pos::run_set_line_course_unchecked` so the
+/// cart mutation stays in one place; the `SALES_PROCESS` gate runs here,
+/// ahead of the bridge body (same order as the price-override command).
+#[command]
+pub async fn set_line_course_scoped(
+    session_token: String,
+    args: SetLineCourseArgs,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let session = state.resolve_session(&session_token)?;
+    let db = state.db.lock().await;
+    let store = Store::new(&db);
+    require_permission_for_user(
+        &store,
+        &session.user_id,
+        oz_core::permissions::SALES_PROCESS,
+    )?;
+    oz_bridge::pos::run_set_line_course_unchecked(
+        &db,
+        &args.cart_id,
+        &args.line_id,
+        args.course.as_deref(),
+    )
+    .map_err(Into::into)
+}
+
+// ── Publish Course Fired ───────────────────────────────────────────
+
+/// Publish one fired course for a completed sale. ADR #7.
+///
+/// Thin shell over `oz_bridge::pos::publish_course_fired_scoped`, which
+/// resolves the session, gates on `SALES_PROCESS`, and publishes
+/// `order.course_fired`. The tablet kernel carries the bus, so the publish
+/// lands there; the LAN forward remains desktop-only (no oz-lan dep here).
+#[command]
+pub async fn publish_course_fired_scoped(
+    session_token: String,
+    args: PublishCourseFiredArgs,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::pos::publish_course_fired_scoped(&ctx, &session_token, args)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Get Cart Deduction Location ───────────────────────────────────────
@@ -550,23 +445,6 @@ pub async fn get_cart_deduction_location_scoped(
 }
 
 // ── Override Deduction Location ───────────────────────────────────────
-
-/// Override the deduction location lock on an active cart.
-///
-/// **Deprecated for session-scoped auth (ADR #7):** Use
-/// `override_cart_deduction_location_scoped` which reads the user ID from
-/// the resolved session.
-///
-/// Requires `SALES_OVERRIDE_PRICE` permission (Bug #2 fix).
-#[command]
-pub async fn override_cart_deduction_location(
-    cart_id: CartId,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    run_override_cart_deduction_location(&db, &user_id, &cart_id)
-}
 
 /// Shared business logic: permission-check + override.
 /// Extracted so both the deprecated and scoped commands share the same
@@ -763,127 +641,6 @@ struct SaleSettlement {
     /// submission replayed an existing one, so the caller must publish
     /// nothing: the domain event already fired with the original sale.
     sale: Option<oz_core::Sale>,
-}
-
-#[command]
-/// Complete sale.
-pub async fn complete_sale(
-    args: CompleteSaleArgs,
-    state: State<'_, AppState>,
-) -> Result<CompleteSaleResult, AppError> {
-    // Load and remove the cart from the DB in one scope.
-    let cart = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-
-        require_permission_for_user(&store, &args.user_id, oz_core::permissions::SALES_PROCESS)?;
-
-        // §B read-only lock: a lapsed grace window rejects new sales.
-        let sub = oz_core::TenantSubscription::load(&db, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        sub.enforce_pos_writable()?;
-
-        let cart = store
-            .load_active_cart(&args.cart_id)?
-            .ok_or_else(|| AppError::Invalid(format!("cart not found: {}", args.cart_id)))?;
-        store.delete_active_cart(&args.cart_id)?;
-        cart
-    };
-
-    let line_count = cart.line_count();
-
-    let mut sale = oz_core::Sale::from_cart_with_user(&cart, Some(args.user_id))
-        .ok_or_else(|| AppError::Invalid("cart total overflowed i64".into()))?;
-    sale.payment_method = Some(args.payment_method);
-    sale.tendered_minor = args.tendered_minor;
-    sale.customer_id = args.customer_id.clone();
-    // CUR-02: record tender-currency metadata when multi-currency checkout
-    // was used. All three are None for single-currency sales.
-    sale.base_currency = args.base_currency.clone();
-    sale.base_total_minor = args.base_total_minor;
-    sale.tender_rate_millionths = args.tender_rate_millionths;
-    sale.tip_minor = args.tip_minor.unwrap_or(0);
-    sale.service_charge_minor = args.service_charge_minor.unwrap_or(0);
-
-    let sale_id = sale.id.clone();
-
-    // Scope the DB borrow so Store (which is !Send) is dropped before
-    // the next .await point when we lock the kernel for event publishing.
-    let updated = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        // Deliberately the UNSCOPED door. This is the legacy `complete_sale`
-        // with no session token — it writes `store_id: None` on the event below,
-        // so there is no location to resolve against and inventing one would be
-        // worse than admitting the gap: no location known, tenant-global rate.
-        // Every `*_scoped` command in this file passes a real scope.
-        store.compute_sale_tax(
-            &mut sale,
-            &[],
-            oz_core::Settings::get_tax_rounding_mode(&db)?,
-        )?;
-
-        // Match serial numbers from args to sale lines by SKU.
-        if let Some(ref serial_numbers) = args.serial_numbers {
-            for sn in serial_numbers {
-                if let Some(line) = sale.lines.iter_mut().find(|l| l.sku == sn.sku) {
-                    line.serial_number = Some(sn.serial.clone());
-                }
-            }
-        }
-
-        store.create_sale(&sale)?;
-        // Transition through Active before Completed — the state machine
-        // does not allow Pending → Completed directly.
-        store.update_sale_status(&sale_id, SaleStatus::Active)?;
-        store.update_sale_status(&sale_id, SaleStatus::Completed)?
-    };
-
-    let total = cart.total();
-    tracing::info!(%sale_id, ?total, line_count, "sale completed and persisted");
-
-    // Publish the SaleCompleted domain event so that subscribers
-    // (InventoryStockHandler, AuditLogHandler, etc.) fire their side
-    // effects. Customer spend/loyalty projections are NOT event-driven:
-    // they are written atomically inside the completion transaction
-    // (CRM-06/LOY-06) — the old CrmHistoryHandler (non-idempotent,
-    // currency-blind) was unsubscribed in platform/startup.
-    {
-        let line_items: Vec<SaleCompletedLine> = sale
-            .lines
-            .iter()
-            .map(|l| SaleCompletedLine {
-                sku: l.sku.clone(),
-                qty: l.qty,
-                unit_price_minor: l.unit_price.minor_units,
-                tax_minor: l.tax_amount.minor_units,
-                tax_rate_id: l.tax_rate_id.clone(),
-            })
-            .collect();
-
-        let event = SaleCompleted {
-            sale_id: sale_id.clone(),
-            store_id: None,
-            line_items,
-            total_minor: total.map(|m| m.minor_units).unwrap_or(0),
-            currency: String::from_utf8_lossy(&sale.currency.0).into_owned(),
-            customer_id: args.customer_id.clone(),
-        };
-
-        let kernel = state.kernel.lock().await;
-        let bus = kernel.event_bus();
-        if let Err(e) = bus.publish(&event) {
-            // Logged by the bus; do not fail the command.
-            tracing::warn!(%sale_id, error = %e, "event bus publish failed");
-        }
-    }
-
-    Ok(CompleteSaleResult {
-        sale_id: updated.id,
-        total,
-        line_count,
-    })
 }
 
 /// Preview the promotion-reduced payable for a cart without mutating it.
@@ -1632,30 +1389,12 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 
 // ── Hold Orders ──────────────────────────────────────────────────────
 
-/// Park the current sale as a held order.
-#[command]
-pub async fn hold_cart(
-    args: HoldCartArgs,
-    state: State<'_, AppState>,
-) -> Result<HoldCartResult, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let id = store.hold_cart(
-        &args.label,
-        &args.cart_data,
-        args.item_count,
-        args.total_minor,
-        &args.currency,
-        &args.bill_type,
-        args.customer_name.as_deref(),
-        args.deduction_location_id.as_deref(),
-    )?;
-    drop(db);
-    tracing::info!(held_cart_id = %id, label = %args.label, "cart held");
-    Ok(HoldCartResult { id })
-}
-
 /// Park the current sale as a held order (scoped).
+///
+/// `bill_type` is checked against the caller's workspace type rather than
+/// trusted: `open_bill` is a Restaurant POS concept, so any other terminal is
+/// refused fail-closed. Mirrors `oz_bridge::pos::hold_cart_scoped` — this shell
+/// forked the body, so the check has to exist on both sides of the fork.
 #[command]
 pub async fn hold_cart_scoped(
     session_token: String,
@@ -1670,6 +1409,13 @@ pub async fn hold_cart_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
+    if args.bill_type == BILL_TYPE_OPEN_BILL && !is_restaurant_pos_workspace(&session) {
+        return Err(AppError::PermissionDenied(format!(
+            "workspace '{}' may not create an open bill; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
+        )));
+    }
     let id = store.hold_cart(
         &args.label,
         &args.cart_data,
@@ -1683,18 +1429,6 @@ pub async fn hold_cart_scoped(
     drop(db);
     tracing::info!(held_cart_id = %id, label = %args.label, "cart held (scoped)");
     Ok(HoldCartResult { id })
-}
-
-/// List all held (parked) orders, most recent first.
-#[command]
-pub async fn list_held_carts(
-    state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let carts = store.list_held_carts()?;
-    drop(db);
-    Ok(carts)
 }
 
 /// List held carts in the session scope. ADR #7.
@@ -1716,19 +1450,14 @@ pub async fn list_held_carts_scoped(
     Ok(carts)
 }
 
-/// List open bills (bill_type = 'open_bill'), most recent first.
-#[command]
-pub async fn list_open_bills(
-    state: State<'_, AppState>,
-) -> Result<Vec<oz_core::db::HeldCartRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let carts = store.list_open_bills()?;
-    drop(db);
-    Ok(carts)
-}
-
 /// List open bills in the session scope. ADR #7.
+///
+/// Restaurant POS only — an open bill is that terminal's own concept, so a
+/// session whose `type_key` is not [`oz_core::workspace_type::RESTAURANT_POS`] is refused
+/// rather than served an empty list, which would read as "there are none"
+/// instead of "this is not your terminal". Mirrors
+/// `oz_bridge::pos::list_open_bills_scoped`; this shell forked the body, so the
+/// check has to exist on both sides of the fork.
 #[command]
 pub async fn list_open_bills_scoped(
     session_token: String,
@@ -1742,22 +1471,16 @@ pub async fn list_open_bills_scoped(
         &session.user_id,
         oz_core::permissions::SALES_PROCESS,
     )?;
+    if !is_restaurant_pos_workspace(&session) {
+        return Err(AppError::PermissionDenied(format!(
+            "workspace '{}' may not list open bills; only '{}' may",
+            session.type_key,
+            oz_core::workspace_type::RESTAURANT_POS
+        )));
+    }
     let carts = store.list_open_bills()?;
     drop(db);
     Ok(carts)
-}
-
-/// Resume a held cart by id.
-#[command]
-pub async fn get_held_cart(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<oz_core::db::HeldCartFull>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let cart = store.get_held_cart(&id)?;
-    drop(db);
-    Ok(cart)
 }
 
 /// Resume a held cart in the session scope. ADR #7.
@@ -1778,17 +1501,6 @@ pub async fn get_held_cart_scoped(
     let cart = store.get_held_cart(&id)?;
     drop(db);
     Ok(cart)
-}
-
-/// Delete a held cart by id.
-#[command]
-pub async fn delete_held_cart(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    store.delete_held_cart(&id)?;
-    drop(db);
-    tracing::info!(held_cart_id = %id, "held cart deleted");
-    Ok(())
 }
 
 /// Delete a held cart in the session scope. ADR #7.

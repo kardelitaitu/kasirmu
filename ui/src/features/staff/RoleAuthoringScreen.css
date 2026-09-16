@@ -2,47 +2,47 @@
 .role-authoring {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4, 1rem);
+  gap: var(--space-4);
 }
 
 .role-authoring-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-3, 0.75rem);
+  gap: var(--space-3);
 }
 
 .role-authoring-subtitle {
   margin: 0;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
 }
 
 .role-authoring-error {
-  margin: var(--space-3, 0.75rem) 0 0;
-  color: var(--color-danger, #b3261e);
+  margin: var(--space-3) 0 0;
+  color: var(--color-danger);
   font-size: var(--text-base);
 }
 
 .role-list {
-  margin: var(--space-4, 1rem) 0 0;
+  margin: var(--space-4) 0 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3, 0.75rem);
+  gap: var(--space-3);
 }
 
 .role-list-item {
-  padding: var(--space-3, 0.75rem);
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: var(--radius-md, 6px);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .role-list-main {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--space-2);
 }
 
 .role-list-name {
@@ -51,28 +51,28 @@
 
 .role-list-desc,
 .role-list-grants {
-  margin: var(--space-1, 0.25rem) 0 0;
-  color: var(--color-text-muted, #666);
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .role-list-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
-  margin-top: var(--space-2, 0.5rem);
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .role-in-use {
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .role-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1, 0.25rem);
-  margin-top: var(--space-3, 0.75rem);
+  gap: var(--space-1);
+  margin-top: var(--space-3);
 }
 
 .role-field-label {
@@ -81,24 +81,24 @@
 }
 
 .role-input {
-  padding: var(--space-2, 0.5rem);
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--color-bg-surface, #fff);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
   color: inherit;
 }
 
 .role-perm-picker {
-  margin: var(--space-4, 1rem) 0 0;
-  padding: var(--space-3, 0.75rem);
-  border: 1px solid var(--color-border, #ddd);
-  border-radius: var(--radius-md, 6px);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   max-height: 24rem;
   overflow-y: auto;
 }
 
 .role-perm-family {
-  margin-top: var(--space-3, 0.75rem);
+  margin-top: var(--space-3);
 }
 
 .role-perm-family-name {
@@ -107,14 +107,14 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
 }
 
 .role-perm-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-1, 0.25rem) 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
 }
 
 .role-perm-key {
@@ -123,15 +123,15 @@
 
 .role-perm-desc {
   flex: 1;
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .role-editor-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-2, 0.5rem);
-  margin-top: var(--space-4, 1rem);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
 }
 
 /* Holders: a disclosure inside each role row. Deliberately quieter than the
@@ -140,8 +140,8 @@
 .role-holders {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
-  margin-top: var(--space-1, 0.25rem);
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .role-holders-toggle {
@@ -150,7 +150,7 @@
   padding: 0;
   font: inherit;
   font-size: var(--text-sm);
-  color: var(--color-primary, #4f46e5);
+  color: var(--color-primary);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -163,21 +163,21 @@
 .role-holders-loading,
 .role-holders-none,
 .role-holders-more {
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .role-holders-panel {
-  margin-top: var(--space-2, 0.5rem);
-  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-  border-left: 2px solid var(--color-border, #e5e7eb);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--color-border);
   background: var(--color-surface-alt, #f9fafb);
 }
 
 .role-holders-error {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--color-danger, #b91c1c);
+  color: var(--color-danger);
 }
 
 .role-holders-list {
@@ -190,21 +190,21 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-2, 0.5rem);
-  padding: var(--space-1, 0.25rem) 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
 }
 
 .role-holder-name {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2, 0.5rem);
+  gap: var(--space-2);
   font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .role-holder-user,
 .role-holder-scope {
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: 400;
 }

@@ -571,6 +571,58 @@ describe('TaxConfigurationScreen rounding provenance (E1-8)', () => {
     await screen.findAllByText(/store preference/i);
     expect(screen.queryByText(/statutory/i)).not.toBeInTheDocument();
   });
+
+  // The case above covers a read that never answered. This one covers the case
+  // the screen's own comment at TaxConfigurationScreen.tsx:172-174 speaks of --
+  // "a failure leaves the previous map" -- where an EARLIER read did answer, and
+  // a later one failed. Both arms are needed: the harness mock hands back the
+  // SAME array object every call, so `rates` never changes identity and the
+  // rounding effect never re-runs. Returning a fresh copy models what a real IPC
+  // reply does, and the write below is what re-triggers the read in production.
+  it('a failed RE-read leaves the map it holds and records that the read failed', async () => {
+    let roundingDown = false;
+    const base = invokeMock.getMockImplementation();
+    invokeMock.mockImplementation((cmd: string, ...rest: unknown[]) => {
+      if (cmd === 'list_tax_rates_scoped') return Promise.resolve([...SAMPLE_TAX_RATES]);
+      if (cmd === 'list_tax_rate_rounding_modes_scoped' && roundingDown) {
+        return Promise.reject(new Error('rounding read down'));
+      }
+      return base(cmd, ...rest);
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      setRoundingModesMock({ 'tax-1': 'truncate', 'tax-2': null });
+      renderWithFluentSync(<ToastProvider><TaxConfigurationScreen /></ToastProvider>, taxFtl);
+      await waitForTable();
+      expect(screen.getByText('Rounding: truncate (statutory)')).toBeInTheDocument();
+
+      roundingDown = true;
+      await userEvent.click(screen.getByRole('button', { name: /add tax rate/i }));
+      const addDialog = screen.getByRole('dialog');
+      await userEvent.type(within(addDialog).getByLabelText('Tax Name'), 'Room Tax');
+      await userEvent.type(within(addDialog).getByLabelText('Rate (%)'), '500');
+      await userEvent.click(within(addDialog).getByRole('button', { name: /save/i }));
+      await waitFor(() => expect(
+        invokeMock.mock.calls.filter((c: unknown[]) => c[0] === 'list_tax_rate_rounding_modes_scoped').length,
+      ).toBeGreaterThanOrEqual(2));
+
+      // The read failed, so nothing may be written over the answered map:
+      // tax-1 keeps its directive, and only the genuinely-null tax-2 renders
+      // the preference. And the failure is recorded, not swallowed.
+      expect(screen.getByText('Rounding: truncate (statutory)')).toBeInTheDocument();
+      expect(screen.getAllByText(/store preference/i).length).toBe(1);
+      expect(errorSpy.mock.calls.some((c: unknown[]) => String(c[0]).includes('rounding'))).toBe(true);
+
+      // The write path is the stake: a wiped map seeds '' (the preference arm)
+      // into the editor, so saving any other field after a failed rounding
+      // read would silently flip the rate's rounding directive.
+      const salesTaxRow = screen.getAllByText('Sales Tax')[0]!.closest('tr')!;
+      await userEvent.click(within(salesTaxRow).getByRole('button', { name: /edit/i }));
+      expect(within(screen.getByRole('dialog')).getByLabelText(/rounding mode/i)).toHaveValue('truncate');
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
 
 describe('TaxConfigurationScreen rounding select (E1-6)', () => {

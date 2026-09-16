@@ -323,6 +323,37 @@ describe('StaffLoginScreen CSS integrity', () => {
     expect(ruleBody).toContain('outline: none');
   });
 
+  it('has no focus outline on the keypad keys — the PIN pad is ring-free by decision', () => {
+    const keyMatch = css.match(/\.staff-login-pad-key:focus-visible\s*\{([^}]*)\}/);
+    expect(keyMatch,
+      '.staff-login-pad-key:focus-visible must exist and suppress the outline: both PIN ' +
+      'screens are keypad-ring-free by decision, and without a scoped rule the bare ' +
+      ':focus-visible ring in themes/reset.css paints a blue box on every tabbable digit',
+    ).not.toBeNull();
+
+    const keyBody = keyMatch![1]!.trim();
+    expect(keyBody,
+      '.staff-login-pad-key:focus-visible rule body must not be empty',
+    ).not.toHaveLength(0);
+    expect(keyBody).toContain('outline: none');
+    expect(keyBody).not.toMatch(/outline:\s*2px/);
+  });
+
+  it('keeps a visible focus outline on the username text field (keypad-only boundary)', () => {
+    // The ring-free decision covers the PIN keypad only — container and keys. This
+    // is the assertion that keeps that scope from widening: a text field has no
+    // PIN-dot display and no :active press state to substitute, so suppressing its
+    // ring leaves a keyboard user with no way to see which field holds the caret.
+    const inputMatch = css.match(/\.staff-login-input:focus-visible\s*\{([^}]*)\}/);
+    expect(inputMatch,
+      '.staff-login-input:focus-visible rule must exist in StaffLoginScreen.css',
+    ).not.toBeNull();
+
+    const inputBody = inputMatch![1]!.trim();
+    expect(inputBody).toMatch(/outline:\s*2px\s+solid/);
+    expect(inputBody).not.toContain('outline: none');
+  });
+
   it('has no empty :focus-visible rules in the CSS file', () => {
     // Find ALL :focus-visible rules
     const focusRules = css.match(/[^,{}]*:focus-visible[^{]*\{[^}]*\}/g) || [];

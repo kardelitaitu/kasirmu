@@ -34,7 +34,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.0.37"
+version = "0.0.39"
 edition = "2024"
 rust-version = "1.88"   # axum/tower-http deps (time 0.3.47+) require ≥ 1.88
 license = "SEE LICENSE IN LICENSE"
@@ -62,6 +62,7 @@ oz-reporting = { path = "crates/oz-reporting" }
 oz-logging = { path = "crates/oz-logging" }
 oz-media = { path = "crates/oz-media" }
 oz-cli = { path = "crates/oz-cli" }
+qris-core = { path = "crates/qris-core" }
 foundation = { path = "foundation" }
 platform-core = { path = "platform/core" }
 platform-kernel = { path = "platform/kernel" }

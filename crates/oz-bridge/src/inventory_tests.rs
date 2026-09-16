@@ -17,7 +17,10 @@
 //! `require_inventory_permission` did.
 
 use super::*;
+
 use crate::testing::TestBridge;
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use oz_core::db::Store;
@@ -169,15 +172,22 @@ async fn owner_can_create_and_deactivate_locations() {
         "store-owner",
     );
 
-    let id = create_inventory_location(
+    let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
         "Backroom".into(),
         "warehouse".into(),
         "Secondary storage".into(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: the create is refused at the signature, so there is no id and
+    // the deactivation below has nothing to deactivate - it stays debug-only
+    // rather than being re-cut into a second assertion of the same cause.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, created, "free").await;
+        return;
+    }
+    let id = created.unwrap();
     assert!(!id.is_empty());
 
     let deactivated = deactivate_inventory_location(&bridge.ctx(), "owner-token", id).await;
@@ -268,15 +278,21 @@ async fn owner_can_update_location_name_and_type() {
         "store-owner",
     );
 
-    let id = create_inventory_location(
+    let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
         "Original".into(),
         "warehouse".into(),
         String::new(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: refused before any row is written, so the rename round-trip
+    // below (update -> list -> find) has no referent to follow.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, created, "free").await;
+        return;
+    }
+    let id = created.unwrap();
 
     update_inventory_location(
         &bridge.ctx(),
@@ -319,15 +335,24 @@ async fn cashier_cannot_update_location() {
         "role-owner",
         "store-owner",
     );
-    let id = create_inventory_location(
+    let created = create_inventory_location(
         &owner_bridge.ctx(),
         "owner-token",
         "Target".into(),
         "warehouse".into(),
         String::new(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: the OWNER SETUP is what the signature kills here, and without
+    // it there is no target row - so the cashier-denial claim below is left
+    // uncovered in the shipping profile rather than propped up on a refused
+    // id. Its sibling `cashier_can_list_locations_but_cannot_create_them`
+    // still exercises the PermissionDenied arm in both profiles.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&owner_bridge, created, "free").await;
+        return;
+    }
+    let id = created.unwrap();
 
     let result = update_inventory_location(
         &bridge.ctx(),
@@ -388,15 +413,21 @@ async fn owner_can_start_and_end_inventory_shift() {
     );
 
     // Create a location first.
-    let loc_id = create_inventory_location(
+    let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
         "Warehouse".into(),
         "warehouse".into(),
         String::new(),
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: no location id, so the whole shift lifecycle that hangs off it
+    // (start -> active -> end -> none) is debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, created, "free").await;
+        return;
+    }
+    let loc_id = created.unwrap();
 
     // Start shift.
     let shift = start_inventory_shift(&bridge.ctx(), "owner-token", loc_id, "Morning count".into())

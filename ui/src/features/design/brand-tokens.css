@@ -5,7 +5,7 @@
 :root {
   --brand-primary: hsl(210, 80%, 55%);
   --brand-accent:  hsl(160, 75%, 45%);
-  --brand-font-family: 'Inter, sans-serif';
+  --brand-font-family: Inter, sans-serif;
   --brand-app-name: 'OZ-POS';
   --brand-company: 'OZ POS Inc.';
 }

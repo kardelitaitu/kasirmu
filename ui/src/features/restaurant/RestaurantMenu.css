@@ -9,11 +9,19 @@
  * ============================================================ */
 
 .restaurant-menu {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
   padding: var(--space-3) var(--space-4);
   gap: var(--space-2);
+  transition: padding-left var(--duration-300) var(--ease-out);
+}
+
+.restaurant-menu--sidebar-open {
+  padding-left: calc(18rem + var(--space-4));
 }
 
 /* Disable text selection only on interactive chrome, not content. */
@@ -30,10 +38,19 @@
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
+  /* Sticky: the scroll container is the parent `.pos-products`, so the
+     header stays visible while the grid scrolls beneath it. The panel
+     background keeps scrolled cards from showing through. */
+  position: sticky;
+  top: 0;
+  z-index: var(--z-base);
+  background: var(--color-bg);
+  padding-block: var(--space-1);
+  margin-block: calc(var(--space-1) * -1);
 }
 
 .restaurant-header-left {
-  position: relative;
+  position: static;
 }
 
 .restaurant-hamburger-btn {
@@ -49,7 +66,12 @@
   color: var(--color-fg-secondary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
+  transition: background-color var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out), border-color var(--duration-150) var(--ease-out);
+}
+
+.restaurant-hamburger-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .restaurant-hamburger-btn:hover {
@@ -57,22 +79,94 @@
   color: var(--color-fg);
 }
 
+.restaurant-hamburger-btn--active,
+.restaurant-hamburger-btn[aria-expanded="true"] {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.restaurant-sidebar,
 .restaurant-hamburger-dropdown {
+  /* Pinned to the panel, not the viewport: the only positioned ancestor is
+     `.restaurant-menu`, and the panel must scroll WITH the menu chrome
+     (header + pills are sticky within the same box) rather than float over
+     the viewport. `max-height` keeps a tall panel inside the visible pane. */
   position: absolute;
-  top: calc(100% + 0.25rem);
+  top: 0;
   left: 0;
-  min-width: calc(var(--space-24) + var(--space-24) + var(--space-12));
-  max-width: min(calc(var(--space-24) + var(--space-24) + var(--space-12) + var(--space-12) + var(--space-8)), calc(100vw - var(--space-4)));
-  background: var(--color-bg-popover);
+  bottom: 0;
+  width: 18rem;
+  max-height: 100%;
+  box-sizing: border-box;
   opacity: 1;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  z-index: 120;
+  border: none;
+  border-right: 1px solid var(--color-border);
+  border-radius: 0;
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-dropdown);
   isolation: isolate;
   display: flex;
   flex-direction: column;
-  padding: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  overflow-y: auto;
+  gap: var(--space-1);
+}
+
+/* THM-08 (popoverSurfaceCompliance): the guard walks EVERY rule that names a
+ * floating selector, so a later override cannot pass while the shared rule
+ * above still carries a non-popover background. The background therefore left
+ * the shared geometry rule entirely: the sidebar is a docked panel and keeps
+ * --color-bg-surface; the hamburger dropdown floats over the menu and takes
+ * the same opaque popover token as ContextMenu.css, StoreSwitcher.css and
+ * LocationPicker.css. */
+.restaurant-sidebar {
+  background: var(--color-bg-surface);
+}
+
+.restaurant-hamburger-dropdown {
+  background: var(--color-bg-popover);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .restaurant-sidebar,
+  .restaurant-hamburger-dropdown {
+    animation: restaurant-sidebar-jiggle-in var(--duration-400) var(--ease-out) both;
+  }
+
+  @keyframes restaurant-sidebar-jiggle-in {
+    0% {
+      opacity: 0;
+      transform: translateX(-100%);
+    }
+    55% {
+      opacity: 1;
+      transform: translateX(12px);
+    }
+    75% {
+      transform: translateX(-5px);
+    }
+    88% {
+      transform: translateX(2px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .restaurant-hamburger-btn--active svg,
+  .restaurant-hamburger-btn[aria-expanded="true"] svg {
+    animation: restaurant-icon-jiggle var(--duration-400) var(--ease-out);
+  }
+
+  @keyframes restaurant-icon-jiggle {
+    0% { transform: scale(1); }
+    35% { transform: scale(0.85) rotate(-10deg); }
+    65% { transform: scale(1.15) rotate(6deg); }
+    85% { transform: scale(0.95) rotate(-2deg); }
+    100% { transform: scale(1) rotate(0); }
+  }
 }
 
 .restaurant-hamburger-item {
@@ -94,9 +188,21 @@
   background: var(--color-bg-hover);
 }
 
+.restaurant-hamburger-item:focus-visible,
+.restaurant-context-item:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
 .restaurant-hamburger-item--sort {
   padding-left: var(--space-7);
   position: relative;
+}
+
+/* Close row: same row treatment, no extra paint — the modifier exists so the
+   class the TSX renders always has a rule (screenExtraction). */
+.restaurant-hamburger-item--close {
+  font-weight: var(--font-weight-semibold);
 }
 
 .restaurant-hamburger-label {
@@ -120,6 +226,15 @@
   left: var(--space-2);
   color: var(--color-accent);
   font-weight: var(--font-weight-bold);
+}
+
+/* Override marker on the relocated deduction row. Same signal as the cart
+   badge's own marker (.pos-cart-deduction-override in CartPanel.css), restated
+   here because a class a screen renders must be defined in that screen's sheet
+   — the claim `screenExtraction.test.ts` polices. */
+.restaurant-hamburger-override {
+  color: var(--color-danger-fg);
+  font-weight: var(--font-weight-semibold);
 }
 
 .restaurant-back-btn {
@@ -150,8 +265,12 @@
 /* ── Search box ──────────────────────────────────── */
 .restaurant-search {
   display: flex;
-  flex: 1 1 calc(var(--space-24) + var(--space-24) + var(--space-24) + var(--space-8));
-  min-width: calc(var(--space-24) + var(--space-12) + var(--space-4));
+  /* Grow to fill the header but shrink below the basis: the later
+     `flex-shrink: 0` that used to win here is gone, so at narrow widths the
+     box yields instead of pushing the header into horizontal overflow. The
+     floor is just icon + clear control + a few characters of input. */
+  flex: 1 1 auto;
+  min-width: calc(var(--touch-target-min) * 2 + var(--space-8));
   max-width: none;
   min-height: var(--space-11);
   margin-left: auto;
@@ -161,13 +280,12 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-input);
-  flex-shrink: 0;
   transition: border-color var(--duration-150) var(--ease-out);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .restaurant-search:focus-within {
-    animation: search-pulse 0.6s var(--ease-in-out);
+    animation: search-pulse var(--duration-600) var(--ease-in-out);
   }
 
   @keyframes search-pulse {
@@ -215,8 +333,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   padding: 0;
   margin-right: var(--space-2);
   border: none;
@@ -233,6 +351,12 @@
   color: var(--color-fg);
 }
 
+.restaurant-search-clear:focus-visible,
+.restaurant-size-btn:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
 /* ── Category tabs ──────────────────────────────── */
 .restaurant-categories {
   display: flex;
@@ -243,6 +367,11 @@
   -webkit-overflow-scrolling: touch;
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-border);
+  /* Sticky under the header: same scroll container, stacked below it. */
+  position: sticky;
+  top: calc(var(--space-11) + var(--space-2));
+  z-index: var(--z-base);
+  background: var(--color-bg);
 }
 
 .restaurant-categories::-webkit-scrollbar {
@@ -299,7 +428,8 @@
 }
 
 .restaurant-category-pill:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--color-border-focus);
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
 }
 
 /* Icon SVG before the label */
@@ -312,21 +442,6 @@
 }
 
 .restaurant-category-pill--active .restaurant-pill-icon {
-  opacity: 1;
-}
-
-/* Colour dot between icon and label */
-.restaurant-pill-dot {
-  display: inline-block;
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 50%;
-  flex-shrink: 0;
-  opacity: 0.5;
-  transition: opacity var(--duration-150) var(--ease-out);
-}
-
-.restaurant-category-pill--active .restaurant-pill-dot {
   opacity: 1;
 }
 
@@ -370,7 +485,7 @@
   height: calc(var(--space-14) + var(--space-8) + var(--space-1) + var(--card-size, 0) * 14px + var(--font-size, 0) * 8px);
   transition:
     border-color var(--duration-150) var(--ease-out),
-    transform var(--duration-200) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--duration-200) var(--ease-out),
     box-shadow var(--duration-200) var(--ease-out),
     background-color var(--duration-150) var(--ease-out);
 }
@@ -391,17 +506,8 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .restaurant-card--enter {
-    animation: restaurant-card-in 350ms var(--ease-out) both;
-  }
-
   .restaurant-card--added {
-    animation: restaurant-card-added 450ms var(--ease-out);
-  }
-
-  @keyframes restaurant-card-in {
-    from { opacity: 0; transform: translateY(0.75rem); }
-    to { opacity: 1; transform: translateY(0); }
+    animation: restaurant-card-added var(--duration-500) var(--ease-out);
   }
 
   @keyframes restaurant-card-added {
@@ -478,11 +584,27 @@
   }
 }
 
-/* Pinned badge on menu cards */
-.restaurant-card-pin-badge {
+/* Pinned badge on menu cards. The positioning context is the WRAP, not the
+   card body: the badge renders inside a Tooltip whose wrapper is
+   position:relative, so absolute top/left resolve against the wrap's box.
+   The wrap is a zero-size anchor at the body's top-left padding corner, and
+   the badge is centred on it — the coordinates below are the badge's own
+   centring, not body-relative offsets. */
+.restaurant-card-pin-wrap {
   position: absolute;
   top: var(--space-2);
   left: var(--space-2);
+  width: 0;
+  height: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.restaurant-card-pin-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -494,6 +616,13 @@
   font-size: var(--text-xs);
   z-index: 2;
   pointer-events: none;
+}
+
+/* The inline Tooltip wrapper is shrink-to-fit content, but inside the
+   zero-size anchor it must not contribute a box of its own — the badge
+   above is the only painted box. */
+.restaurant-card-pin-wrap .tooltip-wrapper--inline {
+  display: contents;
 }
 
 /* Card body — name area to the left of the diagonal */
@@ -658,12 +787,19 @@
 
 /* ── Empty / loading state ───────────────────────── */
 .restaurant-empty {
+  /* Fill the pane below the sticky header + pills so the message centres in
+     the visible area instead of top-anchoring: the grid's align-content keeps
+     cards at the top, but an empty/error state has no cards to align. */
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
   padding: var(--space-16) var(--space-4);
   color: var(--color-fg-tertiary);
   text-align: center;
+  min-height: 12rem;
 }
 
 .restaurant-empty-text {
@@ -671,10 +807,34 @@
   font-weight: var(--font-weight-medium);
 }
 
+.restaurant-empty-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.restaurant-empty-retry:hover {
+  background: var(--color-bg-hover);
+}
+
+.restaurant-empty-retry:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
 /* ── Context menu ──────────────────────────────── */
 .restaurant-context-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-overlay);
   /* Opaque panel: --color-bg-surface is a 5% alpha tint in the glass theme,
      which makes menu text blend with the cards underneath (THM-08). The
      popover token is opaque in every theme. */
@@ -705,10 +865,8 @@
   background: var(--color-bg-elevated);
 }
 
-.restaurant-context-item:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--color-border-focus);
-  background: var(--color-bg-elevated);
-}
+/* (unified with .restaurant-hamburger-item:focus-visible above — the two live
+   in different sheet regions, so the shared rule sits with the hamburger.) */
 
 .restaurant-context-swatch:focus-visible {
   outline: 2px solid var(--color-border-focus);
@@ -799,8 +957,8 @@
 }
 
 .restaurant-size-btn {
-  width: 2rem;
-  height: 2rem;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
   display: flex;
   align-items: center;
   justify-content: center;

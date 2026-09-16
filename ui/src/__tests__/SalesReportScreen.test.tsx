@@ -1322,22 +1322,11 @@ describe('SalesReportScreen', () => {
     });
   });
 
-  // Unit test for the REP-06 generation counter logic
-  it('generation counter ignores stale responses (unit test)', async () => {
-    // This test verifies the core REP-06 logic: when multiple fetches are
-    // in flight, only the latest generation's response updates state.
-    // We test this by directly invoking the fetch logic with controlled promises.
-
-    // The component uses a ref (fetchGenerationRef) to track the current generation.
-    // Each fetchData call increments the counter and captures its generation.
-    // When a response resolves, it checks if its generation matches the current.
-    // If not, the response is discarded.
-
-    // Since fetchData is internal, we verify the behavior through the component's
-    // public API by triggering rapid fetches and checking only the latest applies.
-    // This is covered by the integration test above for sequential changes.
-    // The rapid concurrent change scenario requires the loading skeleton to not
-    // hide controls, which is a UX consideration tracked separately.
-    expect(true).toBe(true); // Placeholder - logic verified by code review
-  });
+  // REP-06 generation counter (fetchGenerationRef). The SEQUENTIAL case is
+  // already covered by the integration test above — rapid successive changes
+  // settle on the last one. The CONCURRENT case is still open: proving it needs
+  // the loading skeleton to keep the controls mounted so a second change can be
+  // fired mid-flight, which is a UX change tracked separately.
+  // Was `expect(true).toBe(true); // Placeholder - logic verified by code review`.
+  it.todo('generation counter ignores stale responses (concurrent fetches)');
 });

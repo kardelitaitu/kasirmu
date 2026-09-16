@@ -1,11 +1,22 @@
 # cargo-audit baseline — reviewed 2026-08-03 (AUDIT-27 CI-03/CI-10)
 #
-# This file is the REVIEWED BASELINE referenced by docs/ci-pipeline.md and
-# the audit/27-ci-pipeline.md required/advisory policy. Every ignore entry
+# This file is the REVIEWED BASELINE referenced by docs/operations/ci-pipeline.md
+# and the required/advisory policy its gate matrix states. Every ignore entry
 # below must carry an owner/review date, a severity, and a justification.
-# Do not add entries casually — the CI `audit` job is REQUIRED on main pushes
-# and `security-pr` is fail-closed, so an unignored high/critical finding
-# blocks the pipeline by design.
+# Do not add entries casually: nothing polices this file. `cargo audit` runs
+# in neither live workflow, not in scripts/check.sh, and not in pre-push
+# (`grep -rn 'cargo audit' .github/workflows/*.yml scripts/check.sh .githooks`
+# exits 1) — that is STILL true as of `dd95374f7`, which wired the OTHER tool:
+# the check.sh leg "supply chain advisories (advisory)" runs `cargo deny check`
+# against deny.toml, non-blocking, local-only, in no workflow. So
+# scripts/gates.json no longer files `audit` as retired (it is `advisory`,
+# runners: check.sh); `security-pr` stays retired, and docs/operations/
+# ci-pipeline.md now says so per row rather than "Runs nowhere" for both.
+# None of that reaches THIS file: the leg runs cargo-deny, which reads
+# deny.toml, not this baseline. The tool named in this file's first line is
+# installed on developer machines only, so an ignore entry here stays
+# unenforced and a new finding of this class stays invisible until someone
+# types the command.
 
 [advisories]
 # RUSTSEC-2023-0071 — Marvin Attack (rsa crate, medium 5.9)
@@ -15,12 +26,15 @@
 # key is used ONLY by the operator-side signing path
 # (crates/oz-core/src/export/cloud_destination.rs `sign_rsa256`, license
 # key generation) — verification is public-key only
-# (crates/oz-core/src/export/license_verification.rs). The Marvin attack is
+# (crates/oz-core/src/license_verification.rs). The Marvin attack is
 # a timing side-channel against a remote RSA decryption/signing oracle; our
 # private key never services network-originated oracle queries. Re-audit on
 # every major release and when `rsa` 0.10 (or a 0.9.x patch) ships.
 ignore = ["RUSTSEC-2023-0071"]
 
 # Informational warnings (unmaintained/unsound/yanked gtk-rs bindings,
-# spin, unic-ucd, etc.) stay visible but non-blocking by default; they are
-# reviewed as part of the weekly security.yml run.
+# spin, unic-ucd, etc.) stay visible but non-blocking by default. There is no
+# scheduled review of them either — the weekly `security.yml` that used to run
+# is retired (`security.yml.bak`), and `cargo audit` appears in neither live
+# workflow nor the pre-commit hook — so they are read when someone types the
+# command.

@@ -7,7 +7,63 @@
 //! same delegation the landed desktop shims perform.
 
 use super::*;
+
+use crate::testing::seeded_row_loads;
 use oz_core::session::SessionContext;
+use oz_core::subscription::TenantSubscription;
+use oz_core::workspace_type::RESTAURANT_POS;
+
+// -- The release leg for a PROPAGATING command (crate::testing, RULE at :204-208) --
+
+/// The settlement commands this file drives do NOT project a fail-closed
+/// entitlement when the seeded row will not verify: they carry
+/// `verify_signature()?` straight out as an error, exactly the way
+/// `terminals.rs:432` does. So the release leg has no tier, no state and no
+/// verdict to name - the settlement never happens, and every downstream
+/// assertion about a written sale row, a stamped idempotency key or a deducted
+/// stock quantity would describe a write this profile refuses to perform.
+///
+/// Existence is pinned FIRST: `seeded_row_loads() == false` collapses five
+/// causes (lost row, load Err, public-key failure, the intended base64 reject,
+/// a real RSA mismatch) and only one of them is this fixture.
+async fn assert_signature_denial(
+    bridge: &crate::testing::TestBridge,
+    settled: Result<CompleteSaleResult, BridgeError>,
+    stamped_tier: &str,
+) {
+    let ctx = bridge.ctx();
+    let db = ctx.lock_global().await;
+    let row = TenantSubscription::load(&db, "default")
+        .expect("the tenant_subscription read must succeed")
+        .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fork must never read a broken migration as a profile difference");
+    assert_eq!(
+        row.tier.tier_key(),
+        stamped_tier,
+        "the tier this fixture inherits must be on the row the release arm reads"
+    );
+    assert_eq!(
+        row.verify_signature().is_ok(),
+        seeded_row_loads(),
+        "the row this fixture settles against must be the row the fork predicate is about"
+    );
+    drop(db);
+    let err = match settled {
+        Err(err) => err,
+        Ok(_) => panic!(
+            "this leg runs only where the seeded row does not verify, so the settlement must have been refused"
+        ),
+    };
+    assert!(
+        matches!(
+            err,
+            BridgeError::Core {
+                sub_kind: oz_core::CoreErrorKind::InvalidSubscriptionSignature,
+                ..
+            }
+        ),
+        "the release refusal must be the propagated signature error, not a looser failure: {err:?}"
+    );
+}
 
 fn usd() -> Currency {
     "USD".parse().unwrap()
@@ -61,6 +117,7 @@ fn add_line_args_fields() {
         qty: 3,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     assert_eq!(args.qty, 3);
     assert_eq!(args.unit_price_minor, 350);
@@ -95,6 +152,7 @@ fn line_unit_price_uses_wire_currency_over_cart_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -109,6 +167,7 @@ fn line_unit_price_falls_back_to_cart_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -122,6 +181,7 @@ fn line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = line_unit_price(&args, usd()).unwrap_err();
     assert!(
@@ -151,6 +211,7 @@ fn shortfall_line_unit_price_uses_wire_currency_over_sale_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -164,6 +225,7 @@ fn shortfall_line_unit_price_falls_back_to_sale_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -176,6 +238,7 @@ fn shortfall_line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = shortfall_line_unit_price(&line_data, usd()).unwrap_err();
     assert!(
@@ -355,11 +418,12 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             qty: 3,
             unit_price_minor: 1000,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    complete_sale_scoped(
+    let completed = complete_sale_scoped(
         &bridge.ctx(),
         "stock-route-token",
         CompleteSaleScopedArgs {
@@ -382,8 +446,15 @@ async fn scoped_sale_deducts_from_topology_warehouse_not_pos_location() {
             tax_estimated: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: the settlement is refused, so the stock quantities below never
+    // change - asserting them here would be asserting that nothing happened,
+    // not that the route prefers the warehouse. The error arm is the truth.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, completed, "free").await;
+        return;
+    }
+    completed.unwrap();
 
     let store_conn = bridge.db_manager().open_store(store_id).unwrap();
     let db = store_conn.lock().unwrap();
@@ -505,12 +576,42 @@ fn seed_owner(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// The workspace `type_key` a fixture session carries when the test does not
+/// care which terminal it is.
+///
+/// Deliberately NOT [`RESTAURANT_POS`]: a session's `type_key` now
+/// decides whether the open-bill paths are reachable, so the default fixture
+/// must not silently hold the restaurant terminal's extra rights. Tests that
+/// need the restaurant terminal use [`scoped_bridge_typed`].
+const DEFAULT_TEST_TYPE_KEY: &str = "pos";
+
 fn scoped_bridge(
     conn: rusqlite::Connection,
     token: &str,
     user_id: &str,
     role_id: &str,
     store_id: &str,
+) -> crate::testing::TestBridge {
+    scoped_bridge_typed(
+        conn,
+        token,
+        user_id,
+        role_id,
+        store_id,
+        DEFAULT_TEST_TYPE_KEY,
+    )
+}
+
+/// As [`scoped_bridge`], but with an explicit workspace `type_key`, so a test can
+/// place the session on a named terminal and assert what that terminal may and
+/// may not do.
+fn scoped_bridge_typed(
+    conn: rusqlite::Connection,
+    token: &str,
+    user_id: &str,
+    role_id: &str,
+    store_id: &str,
+    type_key: &str,
 ) -> crate::testing::TestBridge {
     let bridge = crate::testing::TestBridge::new().with_conn(conn);
     bridge.sessions().write().unwrap().insert(
@@ -521,7 +622,7 @@ fn scoped_bridge(
             "terminal-1".into(),
             store_id.into(),
             "instance-1".into(),
-            "pos".into(),
+            type_key.into(),
             None,
             0,
         ),
@@ -631,14 +732,104 @@ async fn list_held_carts_empty_when_none() {
 
 // ── Owner open_bills ─────────────────────────────────────────────
 
+/// A hold request, so each terminal test states only the `bill_type` it is about.
+fn hold_args(bill_type: &str) -> HoldCartArgs {
+    HoldCartArgs {
+        label: "Table 5".into(),
+        cart_data: r#"{"lines":[]}"#.into(),
+        item_count: 1,
+        total_minor: 500,
+        currency: "USD".into(),
+        bill_type: bill_type.into(),
+        customer_name: None,
+        deduction_location_id: None,
+    }
+}
+
 #[tokio::test]
 async fn owner_can_list_open_bills_empty() {
     let conn = crate::testing::temp_conn();
     seed_owner(&conn);
-    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok",
+        "user-owner",
+        "role-owner",
+        "s1",
+        RESTAURANT_POS,
+    );
 
     let bills = list_open_bills_scoped(&bridge.ctx(), "tok").await.unwrap();
     assert!(bills.is_empty());
+}
+
+// ── Terminal identity: the open-bill paths are restaurant-only ───
+//
+// `bill_type` used to be written through exactly as the client sent it, which
+// let a store-pos session create an open bill — reachable in practice through
+// the shared `PaymentModal`, whose Open Bill tender was not workspace-gated.
+// The checks below pin the value against the session's workspace type instead.
+
+#[tokio::test]
+async fn restaurant_pos_can_create_and_read_an_open_bill() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(
+        conn,
+        "tok",
+        "user-owner",
+        "role-owner",
+        "s1",
+        RESTAURANT_POS,
+    );
+
+    hold_cart_scoped(&bridge.ctx(), "tok", hold_args(BILL_TYPE_OPEN_BILL))
+        .await
+        .expect("the restaurant terminal owns the open bill");
+
+    let bills = list_open_bills_scoped(&bridge.ctx(), "tok").await.unwrap();
+    assert_eq!(bills.len(), 1, "the open bill must read back");
+}
+
+#[tokio::test]
+async fn store_pos_cannot_create_open_bill() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(conn, "tok", "user-owner", "role-owner", "s1", "store-pos");
+
+    let err = hold_cart_scoped(&bridge.ctx(), "tok", hold_args(BILL_TYPE_OPEN_BILL))
+        .await
+        .expect_err("a store-pos session must not be able to create an open bill");
+    assert!(
+        matches!(err, BridgeError::PermissionDenied(_)),
+        "the refusal must be fail-closed, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn store_pos_can_still_hold_a_plain_cart() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(conn, "tok", "user-owner", "role-owner", "s1", "store-pos");
+
+    hold_cart_scoped(&bridge.ctx(), "tok", hold_args("hold"))
+        .await
+        .expect("the enforcement must not remove the plain hold from any terminal");
+}
+
+#[tokio::test]
+async fn store_pos_cannot_list_open_bills() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge_typed(conn, "tok", "user-owner", "role-owner", "s1", "store-pos");
+
+    let err = list_open_bills_scoped(&bridge.ctx(), "tok")
+        .await
+        .expect_err("a store-pos session must not be able to list open bills");
+    assert!(
+        matches!(err, BridgeError::PermissionDenied(_)),
+        "the refusal must be fail-closed, got {err:?}"
+    );
 }
 
 // ── Permission matrix: staff (has SALES_PROCESS) ─────────────────
@@ -840,13 +1031,21 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
 
     // Void it: the sale row flips to void, but the payment row keeps
     // `{att-x}:0` — a replayed key stays valid forever by design.
@@ -875,6 +1074,7 @@ async fn stale_attempt_id_on_a_different_cart_settles_a_new_sale() {
             qty: 1,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1005,13 +1205,21 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
     void_replay_sale(&bridge, &first.sale_id);
 
     let started2 = start_sale_scoped(
@@ -1032,6 +1240,7 @@ async fn replayed_attempt_answers_the_rekeyed_baskets_own_receipt() {
             qty: 1,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1084,13 +1293,21 @@ async fn voided_sale_does_not_satisfy_a_replay() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
     void_replay_sale(&bridge, &first.sale_id);
 
     let replayed = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
@@ -1124,6 +1341,7 @@ async fn settle_shortfall_resolution(
                 qty: 2,
                 unit_price_minor: 350,
                 unit_price_currency: None,
+                course: None,
             }],
             total_minor: 700,
             currency: "USD".into(),
@@ -1170,13 +1388,21 @@ async fn shortfall_retries_with_a_stable_attempt_settle_one_sale() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
     void_replay_sale(&bridge, &first.sale_id);
 
     let s1 = settle_shortfall_resolution(&bridge, "replay-tok", CartId::new(), Some("att-x")).await;
@@ -1212,13 +1438,21 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x"))
-        .await
-        .unwrap();
+    let first = settle_replay_cart(&bridge, "replay-tok", started1.cart_id, Some("att-x")).await;
+    // Release: the settlement is refused, so there is no sale row, no
+    // idempotency key and no replay to talk about - the error arm is the whole
+    // truth this profile can offer, and the replay-guard story below belongs to
+    // a sale that was never written.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, first, "free").await;
+        return;
+    }
+    let first = first.unwrap();
 
     // Same attempt id, DIFFERENT cart: settles, never refuses.
     let started2 = start_sale_scoped(
@@ -1239,6 +1473,7 @@ async fn attempt_id_reuse_across_carts_settles_each_basket_under_its_own_key() {
             qty: 1,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
@@ -1326,13 +1561,20 @@ async fn whitespace_only_attempt_id_is_unguarded_like_the_tablet() {
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         },
     )
     .await
     .unwrap();
-    let sale = settle_replay_cart(&bridge, "replay-tok", started.cart_id, Some("   "))
-        .await
-        .unwrap();
+    let sale = settle_replay_cart(&bridge, "replay-tok", started.cart_id, Some("   ")).await;
+    // Release: refused at the signature before the normalizer is ever asked
+    // whether a whitespace-only attempt id stamps NULL - that question needs a
+    // written payment row to be answerable.
+    if !seeded_row_loads() {
+        assert_signature_denial(&bridge, sale, "free").await;
+        return;
+    }
+    let sale = sale.unwrap();
     let store_conn = bridge
         .db_manager()
         .open_store("store-replay-guard")
@@ -1476,4 +1718,254 @@ fn complete_sale_scoped_args_accept_the_ui_wire() {
     assert_eq!(args.payment_method, "cash");
     assert_eq!(args.attempt_id.as_deref(), Some("att-1"));
     assert_eq!(args.tax_estimated, Some(false));
+}
+
+// ── Restaurant coursing: set_line_course_scoped ────────────────
+
+#[tokio::test]
+async fn set_line_course_assigns_and_clears_with_normalization() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let added = add_line_scoped(
+        &bridge.ctx(),
+        "tok",
+        AddLineArgs {
+            cart_id: started.cart_id,
+            sku: Sku::new("STEAK"),
+            qty: 1,
+            unit_price_minor: 1500,
+            unit_price_currency: None,
+            course: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("main".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course.as_deref(), Some("main"));
+    }
+
+    // Legacy "drinks" normalizes to "beverage" on the same path.
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("drinks".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course.as_deref(), Some("beverage"));
+    }
+
+    // Empty clears the assignment.
+    set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: added.line_id,
+            course: Some("".into()),
+        },
+    )
+    .await
+    .unwrap();
+    {
+        let ctx = bridge.ctx();
+        let conn = ctx.db_manager.open_store("s1").unwrap();
+        let db = conn.lock().unwrap();
+        let cart = Store::new(&db)
+            .load_active_cart(&started.cart_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(cart.lines()[0].course, None);
+    }
+}
+
+#[tokio::test]
+async fn set_line_course_rejects_unknown_cart_and_line() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let added = add_line_scoped(
+        &bridge.ctx(),
+        "tok",
+        AddLineArgs {
+            cart_id: started.cart_id,
+            sku: Sku::new("STEAK"),
+            qty: 1,
+            unit_price_minor: 1500,
+            unit_price_currency: None,
+            course: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let missing_cart = set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: CartId::new(),
+            line_id: added.line_id,
+            course: Some("main".into()),
+        },
+    )
+    .await;
+    assert!(matches!(missing_cart, Err(BridgeError::Invalid(_))));
+
+    let missing_line = set_line_course_scoped(
+        &bridge.ctx(),
+        "tok",
+        SetLineCourseArgs {
+            cart_id: started.cart_id,
+            line_id: LineId::new(),
+            course: Some("main".into()),
+        },
+    )
+    .await;
+    assert!(matches!(missing_line, Err(BridgeError::Invalid(_))));
+}
+
+#[tokio::test]
+async fn set_line_course_and_publish_course_fired_reject_invalid_token() {
+    let conn = crate::testing::temp_conn();
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let set = set_line_course_scoped(
+        &bridge.ctx(),
+        "bad-token",
+        SetLineCourseArgs {
+            cart_id: CartId::new(),
+            line_id: LineId::new(),
+            course: Some("main".into()),
+        },
+    )
+    .await;
+    assert!(matches!(set, Err(BridgeError::InvalidSession)));
+
+    let publish = publish_course_fired_scoped(
+        &bridge.ctx(),
+        "bad-token",
+        PublishCourseFiredArgs {
+            sale_id: "sale-1".into(),
+            course_id: "main".into(),
+            display_number: None,
+            items: vec![],
+        },
+    )
+    .await;
+    assert!(matches!(publish, Err(BridgeError::InvalidSession)));
+}
+
+#[tokio::test]
+async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let bridge = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    let missing = publish_course_fired_scoped(
+        &bridge.ctx(),
+        "tok",
+        PublishCourseFiredArgs {
+            sale_id: "no-such-sale".into(),
+            course_id: "main".into(),
+            display_number: None,
+            items: vec![],
+        },
+    )
+    .await;
+    assert!(matches!(missing, Err(BridgeError::Invalid(_))));
+
+    let started = start_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let sale_id = complete_sale_scoped(
+        &bridge.ctx(),
+        "tok",
+        CompleteSaleScopedArgs {
+            cart_id: started.cart_id,
+            payment_method: "cash".into(),
+            tendered_minor: Some(500),
+            customer_id: None,
+            payment_splits: None,
+            customer_name: None,
+            serial_numbers: None,
+            base_currency: None,
+            base_total_minor: None,
+            tender_rate_millionths: None,
+            tip_minor: None,
+            service_charge_minor: None,
+            promotion_ids: None,
+            attempt_id: None,
+            tax_estimated: None,
+        },
+    )
+    .await
+    .map(|r| r.sale_id);
+    // Release profile: the settlement may be refused (missing signature row)
+    // — the empty-course rejection below does not depend on it.
+    let empty_args = PublishCourseFiredArgs {
+        sale_id: sale_id.unwrap_or_else(|_| "no-such-sale".into()),
+        course_id: "  ".into(),
+        display_number: None,
+        items: vec![],
+    };
+    let empty = publish_course_fired_scoped(&bridge.ctx(), "tok", empty_args).await;
+    assert!(matches!(empty, Err(BridgeError::Invalid(_))));
 }

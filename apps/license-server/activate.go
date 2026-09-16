@@ -96,19 +96,19 @@ func sendAPIKeyRotationNoticeSMTP(to string) error {
 	password := os.Getenv("OZ_SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("OZ_SMTP_FROM"))
 	if from == "" {
-		from = "no-reply@ozpos.my.id"
+		from = "no-reply@kasir.mu"
 	}
 
-	subject := "Your OZ-POS license key was re-activated"
-	body := "Your OZ-POS license was just re-activated with your email and " +
+	subject := "Your kasir.mu license key was re-activated"
+	body := "Your kasir.mu license was just re-activated with your email and " +
 		"license key, which rotated your license management key.\n\n" +
 		"If this was you (for example a reinstall), no action is needed.\n" +
 		"If you did NOT re-activate just now, someone else may hold your " +
-		"license key: sign in at https://ozpos.my.id/en/login/ to review " +
+		"license key: sign in at https://kasir.mu/en/login/ to review " +
 		"your devices, revoke unknown machines, and contact support.\n"
 
 	var sb strings.Builder
-	sb.WriteString("From: OZ-POS <")
+	sb.WriteString("From: kasir.mu <")
 	sb.WriteString(from)
 	sb.WriteString(">\r\n")
 	sb.WriteString("To: ")

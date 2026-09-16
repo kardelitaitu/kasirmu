@@ -38,7 +38,7 @@
   margin: 0;
   font-size: var(--text-base);
   color: var(--color-fg-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .permission-denied-current {

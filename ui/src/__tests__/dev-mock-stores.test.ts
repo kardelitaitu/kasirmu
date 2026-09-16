@@ -311,3 +311,59 @@ describe('dev-mock apply_topology_diff revision-conflict parity', () => {
     });
   });
 });
+
+// T-1 (owner ruling 2026-09-16 "lets fix it"): the diagram envelope AND its
+// revision counter are per-branch in the real backend — `topology_setting_key`
+// derives one settings row per branch. The mock's history was already
+// branch-keyed while its live diagram was one global object, so an apply at
+// branch A answered branch B's load and one branch's counter could conflict
+// another branch's apply. These three cases pin exactly the properties the
+// global envelope made unobservable; they pass against the real command's
+// semantics, not the mock's convenience.
+describe('dev-mock topology envelope is branch-keyed (T-1 parity)', () => {
+  type Envelope = { revision: number; nodes: MockTopologyNodeRow[]; wires: MockTopologyWireRow[] };
+
+  const applyTo = (branchId: string, baseRevision: number, nodes: MockTopologyNodeRow[]) =>
+    invoke<{ revision: number }>('apply_topology_diff', {
+      args: {
+        sessionToken: 'test-session-token',
+        workspaceCreations: [],
+        workspaceUpdates: [],
+        workspaceArchives: [],
+        diagramNodes: nodes,
+        diagramWires: [],
+        baseRevision,
+        branchId,
+      },
+    });
+
+  it('a named branch with nothing saved answers null — the real command returns None', async () => {
+    await expect(invoke('load_topology', { args: { branchId: 't1-never-saved' } })).resolves.toBeNull();
+  });
+
+  it('an apply at one branch is invisible to another branch and to the legacy slot', async () => {
+    const legacy = await invoke<Envelope>('load_topology');
+    await applyTo('t1-branch-a', 0, legacy.nodes);
+    const a = await invoke<Envelope>('load_topology', { args: { branchId: 't1-branch-a' } });
+    expect(a.revision).toBe(1);
+    expect(a.nodes.map((n) => n.id)).toEqual(legacy.nodes.map((n) => n.id));
+    await expect(invoke('load_topology', { args: { branchId: 't1-branch-b' } })).resolves.toBeNull();
+    // The legacy envelope neither moved nor bumped.
+    const legacyAfter = await invoke<Envelope>('load_topology');
+    expect(legacyAfter.revision).toBe(legacy.revision);
+  });
+
+  it('counters are per branch: a stale base on branch A does not conflict a fresh apply to B', async () => {
+    const a = await invoke<Envelope>('load_topology', { args: { branchId: 't1-branch-a' } });
+    // B is at 0 (nothing applied there) — a base of 0 must SUCCEED even
+    // though A's counter already moved past it…
+    const freshB = await applyTo('t1-branch-b', 0, a.nodes);
+    expect(freshB.revision).toBe(1);
+    // …and A, now at 1, still rejects its own stale base. Same mock, same
+    // command, two independent gates — this is the T-1 property.
+    await expect(applyTo('t1-branch-a', 0, a.nodes)).rejects.toMatchObject({
+      kind: 'topologyValidation',
+      code: 'topology-revision-conflict',
+    });
+  });
+});

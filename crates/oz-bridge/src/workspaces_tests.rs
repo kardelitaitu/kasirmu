@@ -9,6 +9,9 @@
 use super::*;
 
 use crate::testing::TestBridge;
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
+
+// -- The release leg for these listings (crate::testing, RULE at :204-208) --
 
 // ── Token Rejection ─────────────────────────────────────────────────
 
@@ -226,9 +229,15 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
 
     // The session token binds the real role — a limited session listing
     // store-a must not see owner-level instances (same as the ticket path).
-    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "cashier-token", "store-a".into())
-        .await
-        .unwrap();
+    let listed =
+        list_workspaces_for_store_scoped(&tb.ctx(), "cashier-token", "store-a".into()).await;
+    // Release: the listing is refused at the signature before any scoping or
+    // tier filter runs, so the empty-list claim below has no list to make.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     assert!(
         rows.is_empty(),
         "cashier session must not enumerate store-a instances, got {rows:?}"
@@ -301,9 +310,14 @@ async fn scoped_assignment_filters_session_workspace_listing() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_scoped(&tb.ctx(), "owner-token")
-        .await
-        .unwrap();
+    let listed = list_workspaces_scoped(&tb.ctx(), "owner-token").await;
+    // Release: the assignment filter is never consulted - the row behind the
+    // tier and the allowed-types is unreadable, so the command fails first.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
         "in-scope workspace type must list, got {rows:?}"
@@ -338,9 +352,16 @@ async fn scoped_assignment_branch_dimension_denies_out_of_scope_store_for_sessio
     });
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let in_scope = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
-        .await
-        .unwrap();
+    let in_scope =
+        list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    // Release: BOTH legs are refused, in-scope store first - the branch
+    // dimension never gets to answer, so neither the "lists" nor the "denies"
+    // half of this case is reachable. Assert the refusal and stop.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, in_scope, "free").await;
+        return;
+    }
+    let in_scope = in_scope.unwrap();
     assert!(in_scope.iter().any(|d| d.instance_id == "ws-a-1"));
 
     let out_of_scope = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-b".into())
@@ -391,9 +412,13 @@ async fn scoped_assignment_workspace_dimension_filters_for_store_listing() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
-        .await
-        .unwrap();
+    let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    // Release: refused at the signature, so the filter below has no list.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),
         "in-scope workspace type must list, got {rows:?}"
@@ -419,9 +444,13 @@ async fn list_workspaces_for_store_scoped_filters_by_tier_entitlement() {
     }
     mint_session(&tb, "owner-token", "user-owner", "role-owner", "store-a");
 
-    let rows = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into())
-        .await
-        .unwrap();
+    let listed = list_workspaces_for_store_scoped(&tb.ctx(), "owner-token", "store-a".into()).await;
+    // Release: refused at the signature, so the filter below has no list.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, listed, "free").await;
+        return;
+    }
+    let rows = listed.unwrap();
     // store-pos (ws-a-1) is allowed by the Free tier → must be present.
     assert!(
         rows.iter().any(|d| d.type_key == "store-pos"),

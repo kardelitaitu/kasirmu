@@ -56,21 +56,6 @@ async fn resolve_report_scope(
 }
 
 #[tauri::command]
-/// Get menu engineering from the global database.
-///
-/// **Deprecated for multi-store (ADR #7):** Use `get_menu_engineering_scoped`.
-pub async fn get_menu_engineering(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-) -> Result<oz_reporting::menu_engineering::MenuEngineeringResult, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_menu_engineering(&ctx, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 /// Get menu engineering for the session's store.
 #[allow(clippy::too_many_arguments)]
 pub async fn get_menu_engineering_scoped(
@@ -102,19 +87,6 @@ pub async fn get_sale_line_margins_scoped(
 }
 
 #[tauri::command]
-/// Get daily revenue.
-pub async fn get_daily_revenue(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-) -> Result<Vec<DailyRevenueRow>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_daily_revenue(&ctx, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 /// Get daily revenue for the session's store.
 pub async fn get_daily_revenue_scoped(
     session_token: String,
@@ -124,19 +96,6 @@ pub async fn get_daily_revenue_scoped(
 ) -> Result<Vec<DailyRevenueRow>, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::reports::get_daily_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-/// Get weekly revenue.
-pub async fn get_weekly_revenue(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-) -> Result<Vec<WeeklyRevenueRow>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_weekly_revenue(&ctx, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }
@@ -156,19 +115,6 @@ pub async fn get_weekly_revenue_scoped(
 }
 
 #[tauri::command]
-/// Get monthly revenue.
-pub async fn get_monthly_revenue(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-) -> Result<Vec<MonthlyRevenueRow>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_monthly_revenue(&ctx, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 /// Get monthly revenue for the session's store.
 pub async fn get_monthly_revenue_scoped(
     session_token: String,
@@ -178,21 +124,6 @@ pub async fn get_monthly_revenue_scoped(
 ) -> Result<Vec<MonthlyRevenueRow>, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::reports::get_monthly_revenue_scoped(&ctx, &session_token, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-/// Get top products.
-pub async fn get_top_products(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-    limit: i64,
-    order_by: String,
-) -> Result<Vec<TopProductRow>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_top_products(&ctx, &start_date, &end_date, limit, &order_by)
         .await
         .map_err(Into::into)
 }
@@ -286,19 +217,6 @@ pub async fn get_category_forecast_scoped(
 }
 
 #[tauri::command]
-/// Get hourly heatmap.
-pub async fn get_hourly_heatmap(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-) -> Result<Vec<HourlyHeatmapRow>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_hourly_heatmap(&ctx, &start_date, &end_date)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 /// Get hourly heatmap for the session's store.
 pub async fn get_hourly_heatmap_scoped(
     session_token: String,
@@ -313,19 +231,6 @@ pub async fn get_hourly_heatmap_scoped(
 }
 
 #[tauri::command]
-/// Get low stock alerts.
-#[allow(deprecated)]
-pub async fn get_low_stock_alerts(
-    state: State<'_, AppState>,
-    threshold: i64,
-) -> Result<Vec<LowStockAlert>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_low_stock_alerts(&ctx, threshold)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
 /// Get low stock alerts for the session's default store location.
 pub async fn get_low_stock_alerts_scoped(
     session_token: String,
@@ -334,19 +239,6 @@ pub async fn get_low_stock_alerts_scoped(
 ) -> Result<Vec<LowStockAlert>, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::reports::get_low_stock_alerts_scoped(&ctx, &session_token, threshold)
-        .await
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-/// Get category breakdown.
-pub async fn get_category_breakdown(
-    state: State<'_, AppState>,
-    start_date: String,
-    end_date: String,
-) -> Result<Vec<CategoryBreakdownRow>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_category_breakdown(&ctx, &start_date, &end_date)
         .await
         .map_err(Into::into)
 }

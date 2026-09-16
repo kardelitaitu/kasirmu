@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeRole, roleAtLeast } from '@/utils/role';
+import type { RoleFloor } from '@/utils/role';
 
 describe('normalizeRole', () => {
   it('returns staff for null', () => {
@@ -139,5 +140,49 @@ describe('roleAtLeast', () => {
     expect(roleAtLeast('staff', 'auditor')).toBe(true);
     expect(roleAtLeast('staff', 'staff')).toBe(true);
     expect(roleAtLeast('staff', 'manager')).toBe(false);
+  });
+});
+
+describe('roleAtLeast — an unknown floor fails CLOSED (3a.2 ruling)', () => {
+  // Ruled 2026-09-16: an unknown floor on an admin-tool gate must DENY, not
+  // allow. The gate this pins used to be written inline in `WorkspaceHome.tsx`
+  // (`canAccessTool`) as `roleLevel >= (ROLE_HIERARCHY[minimumRole] ?? 0)`, so
+  // an unrecognised `minimumRole` demanded 0 and EVERY role cleared it — a
+  // fail-open. `roleAtLeast` demands `Number.MAX_SAFE_INTEGER` instead, and
+  // the Tools gate now routes through it, so pinning the default here pins
+  // that gate too.
+  //
+  // The unknown-floor branch is unreachable through the type today
+  // (`ToolRole` is 'owner' | 'admin' | 'manager', all present in the table),
+  // which is exactly why it needs a TEST rather than an inspection: it only
+  // starts to matter the day the catalogue gains a floor the table lacks.
+
+  it('denies every role when the floor is unrecognised', () => {
+    // A cast, because `RoleFloor` is a closed union: an unknown floor can only
+    // arrive the way it would in production — as data the type does not cover.
+    // `as unknown as` on purpose: no element of the literal array overlaps
+    // `RoleFloor`, so TS rightly refuses a direct cast. That refusal IS the
+    // point of the test — an unknown floor is not expressible in the type.
+    for (const floor of ['supervisor', 'role-supervisor', 'CASHIER', ''] as unknown as RoleFloor[]) {
+      expect(roleAtLeast('owner', floor)).toBe(false);
+      expect(roleAtLeast('admin', floor)).toBe(false);
+      expect(roleAtLeast('manager', floor)).toBe(false);
+      expect(roleAtLeast('staff', floor)).toBe(false);
+    }
+  });
+
+  it('lets no custom role clear a preset floor', () => {
+    // The custom-role consequence, pinned so 3a.2's real fix is measured
+    // against it: a CUSTOM role holding the gate permission still cannot pass
+    // a RANK gate, because it holds no rank in the table. That is the property
+    // the doctrine exists to protect, and the reason 3a.2 says to replace rank
+    // comparisons with permission checks. Until that replacement lands, the
+    // honest behaviour is to DENY — which is what fail-closed buys, and what
+    // the previous `?? 0` would have silently granted.
+    for (const role of ['store-lead', 'shift-supervisor', 'franchisee']) {
+      expect(roleAtLeast(role, 'auditor')).toBe(false);
+      expect(roleAtLeast(role, 'manager')).toBe(false);
+      expect(roleAtLeast(role, 'owner')).toBe(false);
+    }
   });
 });

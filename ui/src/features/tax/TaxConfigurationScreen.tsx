@@ -171,7 +171,11 @@ export default function TaxConfigurationScreen() {
   // E1-8: refresh the batch rounding read whenever the rate list changes.
   // Best-effort by contract — a failure leaves the previous map, whose
   // missing entries render the preference (the E1-5 null = preference
-  // semantics), never a fabricated directive.
+  // semantics), never a fabricated directive. Leaving it is the point: a
+  // directive an EARLIER read answered keeps rendering as that directive,
+  // because "this read failed" is not evidence that no directive exists. The
+  // map also feeds openEdit, so wiping it would seed the preference arm into
+  // a form whose Save writes a rounding change nobody asked for.
   useEffect(() => {
     if (rates.length === 0) {
       setRoundingModes({});
@@ -182,8 +186,12 @@ export default function TaxConfigurationScreen() {
       .then((modes) => {
         if (!cancelled) setRoundingModes(modes);
       })
-      .catch(() => {
-        if (!cancelled) setRoundingModes({});
+      .catch((err) => {
+        // The shape settle() uses in frontend/shell/AppShell.tsx:87-94: record
+        // the failure and WRITE NOTHING, so the map keeps what it already
+        // answered with. Nothing is written on this path either way, which is
+        // why the cancelled flag is not consulted here.
+        console.error('[tax-config] rounding-mode read failed — keeping the previous map:', err);
       });
     return () => {
       cancelled = true;

@@ -16,6 +16,41 @@ use oz_core::session::SessionContext;
 use crate::error::AppError;
 use crate::state::AppState;
 
+use std::sync::Arc;
+
+use oz_bridge::ctx::EventSink;
+use tauri::{AppHandle, Emitter};
+
+/// [`EventSink`] over the tablet shell's `AppHandle`.
+///
+/// [`BridgeCtx::emitter`](oz_bridge::ctx::BridgeCtx::emitter) is the
+/// tauri-free stand-in for `tauri::Emitter`, so building the sink is the
+/// shell's job: Wave D bridge bodies emit UI events through it instead of
+/// holding a handle, which keeps `oz-bridge` headless. Mirrors the desktop
+/// sink at `apps/desktop-client/src/commands/authz.rs`.
+///
+/// Built only from a live handle. A shell that holds one must hand out a
+/// sink rather than `None`, because `None` makes every emit a silent
+/// no-op — a lost UI event would still look like working behaviour.
+pub(crate) struct TauriEventSink {
+    handle: AppHandle,
+}
+
+impl EventSink for TauriEventSink {
+    fn emit(&self, event: &'static str, payload: serde_json::Value) {
+        // Same contract as the shell's `let _ = app.emit(..)`: a lost UI
+        // event is never a command failure.
+        let _ = self.handle.emit(event, payload);
+    }
+}
+
+/// Box a sink for the `AppHandle` a live tablet build runs under.
+pub(crate) fn event_sink(app: &AppHandle) -> Arc<dyn EventSink> {
+    Arc::new(TauriEventSink {
+        handle: app.clone(),
+    })
+}
+
 /// Map a gate denial to the client's `permissionDenied` wire shape.
 ///
 /// `Store::require_permission` returns `CoreError::PermissionDenied` for

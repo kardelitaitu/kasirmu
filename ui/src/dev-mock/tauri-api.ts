@@ -20,16 +20,9 @@
 // look wrong in dev. ui/package.json is bumped by scripts/bump-version.ps1
 // alongside Cargo.toml/tauri.conf.json, so importing it keeps mock and app in
 // lockstep.
-import {
-  MOCK_TOPOLOGY_KEY,
-  MOCK_WORKSPACES_KEY,
-  readSlice,
-  writeSlice,
-} from './core/mockDatabase';
-import {
-  MOCK_STORE,
-  MOCK_WORKSPACES_SEED,
-} from './core/mockSeedData';
+// MOCK_STORE fed the location list and the regional/receipt fallbacks; all
+// of that state now lives in handlers/locationState.ts and handlers/regional.ts
+// (Phase 5.1), which import it themselves — the router no longer names it.
 import {
   applyScopedAliases,
   convertFileSrc,
@@ -48,18 +41,24 @@ import { loyaltyHandlers } from './handlers/loyalty';
 import { kdsDisplayCounter, kdsHandlers, mockKdsOrders, mockKdsLineItems, saveMockKdsState } from './handlers/kds';
 import { analyticsHandlers } from './handlers/analytics';
 import { createLocationsHandlers } from './handlers/locations';
+import {
+  createLocationProfileHandlers,
+  getMockStores,
+  unwrapArgs,
+  updateMockLocation,
+} from './handlers/locationState';
+import { createRegionalHandlers } from './handlers/regional';
 import { mockHandlerPayload, systemHandlers } from './handlers/system';
 import { staffHandlers } from './handlers/staff';
-import {
-  type MockTopology,
-  type MockTopologyNode,
-  type MockTopologyWire,
-  mockTopologyRevisions,
-  recordMockTopologyRevision,
-  summarizeMockTopologyRevision,
-} from './handlers/topology-state';
+import { workspaceHandlers } from './handlers/workspaces';
+import { topologyHandlers } from './handlers/topology';
+import { brandHandlers, licenseHandlers, settingsHandlers, settingsWriteHandlers } from './handlers/settings';
+import { deviceBindingHandlers } from './handlers/terminals';
 import { floorplanHandlers } from './handlers/floorplan';
-import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
+import { crmHandlers } from './handlers/crm';
+import { bundlesHandlers } from './handlers/bundles';
+import { syncHandlers } from './handlers/sync';
+import { kdsDeviceHandlers } from './handlers/kds-devices';
 
 // The mock's public surface is the three names the app actually imports through
 // the vite alias on `@tauri-apps/api/core`. They are defined by the dispatcher
@@ -67,359 +66,19 @@ import { MOCK_CUSTOMERS, crmHandlers } from './handlers/crm';
 export { convertFileSrc, invoke, isTauri };
 
 
-/** Mutable store-profile list backing the mock — renames/creates persist
- *  for the session exactly like the real DB (dev preview parity). */
-let mockStores: Array<typeof MOCK_STORE> = [{ ...MOCK_STORE }];
-
-/** Unwrap the `{ args }` envelope the API wrappers send, tolerating a
- *  bare payload for direct calls. The real commands take a named `args`
- *  argument, so the envelope is the wire shape. */
-function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>(args: unknown): T {
-  const boxed = (args ?? {}) as { args?: T };
-  return boxed.args ?? ((args as T | undefined) ?? ({} as T));
-}
-
-/** List the mutable location-profile rows served by the dev mock. */
-function listMockLocations(): Array<typeof MOCK_STORE> {
-  return mockStores.map((location) => ({ ...location }));
-}
-
-/** Resolve one location profile using the mock's historical fallback behavior. */
-function getMockLocation(args: unknown): typeof MOCK_STORE {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  return mockStores.find((location) => location.id === id) ?? MOCK_STORE;
-}
-
-/** Resolve the primary location profile from the mutable mock list. */
-function getMockPrimaryLocation(): typeof MOCK_STORE {
-  return mockStores.find((location) => location.is_primary) ?? mockStores[0] ?? MOCK_STORE;
-}
-
-/** Create a location profile and persist it in the session-local mock list. */
-function createMockLocation(args: unknown): typeof MOCK_STORE {
-  const payload = unwrapArgs<Partial<typeof MOCK_STORE>>(args);
-  const created = {
-    ...MOCK_STORE,
-    ...payload,
-    id: (payload.id as string | undefined) ?? `store-${Date.now()}`,
-    is_primary: mockStores.length === 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  mockStores.push(created);
-  return { ...created };
-}
-
-/** Update a location profile and persist it in the session-local mock list. */
-function updateMockLocation(args: unknown): typeof MOCK_STORE {
-  const { id, ...rest } = unwrapArgs<Partial<typeof MOCK_STORE> & { id?: string }>(args);
-  // id-mismatch falls back to the first profile (mock laxness — the real
-  // backend returns an error for unknown ids).
-  const existing = mockStores.find((location) => location.id === id) ?? mockStores[0] ?? MOCK_STORE;
-  const updated = { ...existing, ...rest, id: existing.id, updated_at: new Date().toISOString() };
-  mockStores = mockStores.map((location) => (location.id === updated.id ? updated : location));
-  if (!mockStores.some((location) => location.id === updated.id)) mockStores.push(updated);
-  return { ...updated };
-}
-
-/**
- * Session-local KDS ticket prefixes, keyed by location id. The mock profile
- * type is deliberately not widened (ui/src/api still exposes no such field);
- * an absent entry means '' — the core's no-prefix sentinel.
- */
-const mockTicketPrefixes = new Map<string, string>();
-
-/** Normalize exactly as oz_core's ticket-prefix setter does: trim + upper. */
-function normalizeMockTicketPrefix(raw: string | undefined): string {
-  return (raw ?? '').trim().toUpperCase();
-}
-
-/** Read a location's mock ticket prefix; '' resolves to null, as core does. */
-function getMockLocationTicketPrefix(args: unknown): string | null {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  return normalizeMockTicketPrefix(mockTicketPrefixes.get(id ?? '')) || null;
-}
-
-/**
- * Set a location's mock ticket prefix and echo the normalized value back,
- * mirroring the real command so the UI sees post-normalization text, not
- * what was typed. Unknown ids throw — the real IPC returns NotFound.
- */
-function setMockLocationTicketPrefix(args: unknown): string | null {
-  const { id, prefix } = unwrapArgs<{ id?: string; prefix?: string }>(args);
-  const key = id ?? '';
-  if (!mockStores.some((location) => location.id === key)) {
-    throw new Error(`location ${key} not found`);
-  }
-  const normalized = normalizeMockTicketPrefix(prefix);
-  mockTicketPrefixes.set(key, normalized);
-  return normalized || null;
-}
-
-
-/** Make a location primary and persist the choice in the mock list. */
-function setMockPrimaryLocation(args: unknown): typeof MOCK_STORE {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  mockStores = mockStores.map((location) => ({ ...location, is_primary: location.id === id }));
-  return { ...getMockLocation({ id }) };
-}
-
-/** Delete a location profile from the session-local mock list. */
-function deleteMockLocation(args: unknown): null {
-  const { id } = unwrapArgs<{ id?: string }>(args);
-  mockStores = mockStores.filter((location) => location.id !== id);
-  return null;
-}
-
-/** Mutable Legal Entity list backing the dev mock — creates and updates
- *  persist for the session exactly like the real DB (dev preview parity). */
-// ═══════════════════════════════════════════════════════════════
-// REGIONAL CONFIGURATION (regional slice 2, saas-2 design)
-// ═══════════════════════════════════════════════════════════════
-// Read model mirroring oz_core::RegionalConfig, which the command returns
-// directly — snake_case fields, ConfigScope serde scope names ("location",
-// "legal_entity", "organization", "built_in"). ADR #48: timezone.value is
-// the STORED IANA name; offsets are derived at display/report time, never
-// here.
-
-/** One resolved regional axis as the dev mock serves it. */
-interface MockRegionalValue {
-  value: string;
-  scope: 'location' | 'legal_entity' | 'organization' | 'built_in';
-}
-
-/** The effective regional configuration as the dev mock serves it. */
-interface MockRegionalConfig {
-  location_id: string;
-  legal_entity_id: string | null;
-  country_code: string | null;
-  locale: MockRegionalValue;
-  timezone: MockRegionalValue;
-  currency: MockRegionalValue;
-}
-
-/** Written locale overrides per location id (slice 3 write model): the mock
- *  location rows predate the locale column, so writes land here instead of
- *  on the row. Blank = cleared (inherit). */
-const mockRegionalLocale = new Map<string, string>();
-
-/** The written market anchor (slice 3): the mock has no entity rows, so the
- *  entity-layer country_code is one module-level value. */
-let mockRegionalCountryCode: string | null = null;
-
-/** Resolve the regional config for a mock location: the location's own
- *  columns (plus slice-3 write overrides) first, then the built-in defaults
- *  — the same narrowest-first precedence the core resolver applies. The real
- *  backend also walks the legal-entity layer for its blank regional columns,
- *  which the mock cannot model: its LegalEntityDto (like the real one)
- *  carries no regional fields. */
-function getMockRegionalConfig(args: unknown): MockRegionalConfig {
-  const { locationId } = unwrapArgs<{ locationId?: string }>(args);
-  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
-  const axis = (value: string, fallback: string): MockRegionalValue =>
-    value.trim() !== '' ? { value, scope: 'location' } : { value: fallback, scope: 'built_in' };
-  const writtenLocale = mockRegionalLocale.get(location.id) ?? '';
-  return {
-    location_id: location.id,
-    // The migration seed links every location to this entity id; the mock
-    // has no entity rows to walk, so it is surfaced verbatim.
-    legal_entity_id: 'default:default-legal-entity',
-    country_code: mockRegionalCountryCode,
-    locale: axis(writtenLocale, 'en-US'),
-    timezone: axis(location.timezone, 'UTC'),
-    currency: axis(location.currency, 'USD'),
-  };
-}
-
-/** The slice-3 write: validate nothing here (the real backend validates in
- *  core; the mock's job is only to answer non-null), mutate the mock rows,
- *  and return the re-resolved config read-after-write. */
-function setMockRegionalConfig(args: unknown): MockRegionalConfig {
-  const { locationId, config } = unwrapArgs<{
-    locationId?: string;
-    config?: { locale?: string; timezone?: string; currency?: string; country_code?: string };
-  }>(args);
-  const location = mockStores.find((loc) => loc.id === locationId) ?? mockStores[0] ?? MOCK_STORE;
-  if (config?.locale !== undefined) mockRegionalLocale.set(location.id, config.locale);
-  if (config?.timezone !== undefined) {
-    updateMockLocation({ id: location.id, timezone: config.timezone });
-  }
-  if (config?.currency !== undefined) {
-    updateMockLocation({ id: location.id, currency: config.currency });
-  }
-  if (config?.country_code !== undefined) {
-    mockRegionalCountryCode = config.country_code.trim() !== '' ? config.country_code : null;
-  }
-  return getMockRegionalConfig(args);
-}
-
-
-
-// ── Receipt format (regional receipt-format axis) ───────────────────
-// One closed record per scope: content on the entity (statutory),
-// layout on workspace/terminal (presentational, terminal over
-// workspace over legacy). Session-local maps — the mock mirrors the
-// core `Store::effective_receipt_format` semantics loosely, enough
-// for the card's states.
-interface MockReceiptLayout {
-  paper_width_mm: number | null;
-  margin_top_mm: number | null;
-  margin_bottom_mm: number | null;
-  margin_left_mm: number | null;
-  margin_right_mm: number | null;
-  show_logo: boolean | null;
-  print_copies: number | null;
-  show_table_number: boolean | null;
-  footer_note: string | null;
-}
-interface MockReceiptContent {
-  requiredFields: string[];
-  footerText: string;
-  showTax: boolean;
-  showCurrency: boolean;
-  decimalSeparator: string;
-}
-const mockReceiptLayouts = new Map<string, MockReceiptLayout>();
-let mockReceiptContent: MockReceiptContent | null = null;
-
-/** The effective read: content is unset in the mock (entity-layer
- *  authoring is a management surface), layout resolves terminal →
- *  workspace → built-in defaults with the same provenance names. */
-function getMockReceiptFormat(args: unknown): {
-  content: MockReceiptContent | null;
-  content_source: string;
-  layout: {
-    paperWidthMm: number | null;
-    marginTopMm: number | null;
-    marginBottomMm: number | null;
-    marginLeftMm: number | null;
-    marginRightMm: number | null;
-    showLogo: boolean | null;
-    printCopies: number | null;
-    showTableNumber: boolean | null;
-    footerNote: string | null;
-  };
-  layout_source: string;
-} {
-  const { terminalId, workspaceId } = unwrapArgs<{
-    terminalId?: string;
-    workspaceId?: string;
-  }>(args);
-  const location =
-    mockStores.find((loc) => loc.id === workspaceId) ?? mockStores[0] ?? MOCK_STORE;
-  const terminalKey = terminalId ? `terminal:${terminalId}` : null;
-  const workspaceKey = `workspace:${workspaceId ?? location.id}`;
-  const terminal = terminalKey ? mockReceiptLayouts.get(terminalKey) : undefined;
-  const workspace = mockReceiptLayouts.get(workspaceKey);
-  const layer = terminal ?? workspace;
-  const source = terminal ? 'terminal' : workspace ? 'workspace' : 'unset';
-  const pick = <T,>(terminalValue: T | null | undefined, workspaceValue: T | null | undefined): T | null =>
-    terminal ? (terminalValue ?? null) : (workspaceValue ?? null);
-  return {
-    content: mockReceiptContent,
-    content_source: mockReceiptContent ? 'entity' : 'unset',
-    layout: {
-      paperWidthMm: layer ? pick(terminal?.paper_width_mm, workspace?.paper_width_mm) : null,
-      marginTopMm: pick(terminal?.margin_top_mm, workspace?.margin_top_mm),
-      marginBottomMm: pick(terminal?.margin_bottom_mm, workspace?.margin_bottom_mm),
-      marginLeftMm: pick(terminal?.margin_left_mm, workspace?.margin_left_mm),
-      marginRightMm: pick(terminal?.margin_right_mm, workspace?.margin_right_mm),
-      showLogo: pick(terminal?.show_logo, workspace?.show_logo),
-      printCopies: pick(terminal?.print_copies, workspace?.print_copies),
-      showTableNumber: pick(terminal?.show_table_number, workspace?.show_table_number),
-      footerNote: pick(terminal?.footer_note, workspace?.footer_note),
-    },
-    layout_source: source,
-  };
-}
-
-/** The card's write: replace the workspace-layer layout record (the card
- *  edits the whole record) and return the fresh effective read. */
-function setMockReceiptLayout(args: unknown): {
-  content: MockReceiptContent | null;
-  content_source: string;
-  layout: {
-    paperWidthMm: number | null;
-    marginTopMm: number | null;
-    marginBottomMm: number | null;
-    marginLeftMm: number | null;
-    marginRightMm: number | null;
-    showLogo: boolean | null;
-    printCopies: number | null;
-    showTableNumber: boolean | null;
-    footerNote: string | null;
-  };
-  layout_source: string;
-} {
-  const { workspaceId, layout } = unwrapArgs<{
-    workspaceId?: string;
-    layout?: {
-      paperWidthMm?: number | null;
-      marginTopMm?: number | null;
-      marginBottomMm?: number | null;
-      marginLeftMm?: number | null;
-      marginRightMm?: number | null;
-      showLogo?: boolean | null;
-      printCopies?: number | null;
-      showTableNumber?: boolean | null;
-      footerNote?: string | null;
-    };
-  }>(args);
-  const location =
-    mockStores.find((loc) => loc.id === workspaceId) ?? mockStores[0] ?? MOCK_STORE;
-  if (layout) {
-    mockReceiptLayouts.set(`workspace:${location.id}`, {
-      paper_width_mm: layout.paperWidthMm ?? null,
-      margin_top_mm: layout.marginTopMm ?? null,
-      margin_bottom_mm: layout.marginBottomMm ?? null,
-      margin_left_mm: layout.marginLeftMm ?? null,
-      margin_right_mm: layout.marginRightMm ?? null,
-      show_logo: layout.showLogo ?? null,
-      print_copies: layout.printCopies ?? null,
-      show_table_number: layout.showTableNumber ?? null,
-      footer_note: layout.footerNote ?? null,
-    });
-  }
-  return getMockReceiptFormat(args);
-}
-
-/** The statutory-content write (W2-C): replaces the one content record
- *  and returns the fresh effective read. The mock mirrors the core
- *  upsert semantics session-locally — exactly one content row per
- *  entity, so a second write replaces the first. */
-function setMockReceiptContent(args: unknown): ReturnType<typeof getMockReceiptFormat> {
-  const { content } = unwrapArgs<{
-    content?: {
-      requiredFields?: string[];
-      footerText?: string;
-      showTax?: boolean;
-      showCurrency?: boolean;
-      decimalSeparator?: string;
-    };
-  }>(args);
-  if (content) {
-    mockReceiptContent = {
-      requiredFields: content.requiredFields ?? [],
-      footerText: content.footerText ?? '',
-      showTax: content.showTax ?? true,
-      showCurrency: content.showCurrency ?? false,
-      decimalSeparator: content.decimalSeparator ?? 'dot',
-    };
-  }
-  return getMockReceiptFormat(args);
-}
+// The location-profile list, the ticket-prefix pair and the unwrapArgs
+// envelope helper lived here as module-private `let`s — that sharing is why
+// -4:190 called this block the real blocker and deferred the consolidation.
+// Phase 5.1 moved them verbatim to `handlers/locationState.ts`, and the
+// regional configuration pair plus the receipt-format trio that read the
+// list — together with their session-local override state — to
+// `handlers/regional.ts`. Both domains register below through their own
+// factories; nothing in this file touches that state except through the
+// injected deps.
 
 /** A memo as the dev mock serves it. Mirrors `ui/src/api/memos.ts` `Memo`
  *  (camelCase wire shape). */
 
-
-function loadMockWorkspaces(): typeof MOCK_WORKSPACES_SEED {
-  return readSlice(MOCK_WORKSPACES_KEY, () => MOCK_WORKSPACES_SEED);
-}
-function saveMockWorkspaces(): void {
-  writeSlice(MOCK_WORKSPACES_KEY, mockWorkspaces);
-}
-const mockWorkspaces: typeof MOCK_WORKSPACES_SEED = loadMockWorkspaces();
 
 // ── Mock KDS orders ──────────────────────────────────────────────
 // Use let + mutable array so complete_sale can push new orders for E2E tests.
@@ -496,436 +155,79 @@ function pushKdsOrderFromCart(lines: CartLine[], storeId: string) {
 // configuration (sort / card size / font size) revert on every reload.
 // Seed from localStorage so previews behave like a real store DB.
 
-// ── Topology diagram (stateful mock) ─────────────────────────────
-// The real backend persists the node/wire diagram as JSON under the
-// `oz-pos/topology` settings key. The mock previously returned hardcoded
-// positions (and used the wrong payload shape: `label` instead of `name`,
-// `from`/`to` instead of `from_node_id`/`to_node_id` — so wires never even
-// loaded in the preview) while discarding saves, which made node locations
-// revert on every reload. Seed from localStorage so previews round-trip
-// positions exactly like a real store DB.
-
-/** First-run canvas: matches the current preview's starting topology.
- *  Cards are 240px wide/tall, so positions sit on a spread grid (rows 80/320,
- *  columns 80/380) that never overlaps on load. Wires carry labels so the
- *  first-run canvas demonstrates the labeled-wire UX instead of empty pills. */
-const MOCK_TOPOLOGY_SEED: MockTopology = {
-  revision: 0,
-  resolved_issue_keys: [],
-  nodes: [
-    { id: 'store-1', type: 'store', name: 'TOKO TEST', subtitle: 'Primary Store', x: 80, y: 80 },
-    { id: 'ws-1', type: 'workspace', name: 'Store POS', subtitle: 'Point of Sale', x: 380, y: 80, metadata: { typeKey: 'store-pos', persisted: true } },
-    { id: 'ws-2', type: 'workspace', name: 'Restaurant', subtitle: 'Table service', x: 380, y: 320, metadata: { typeKey: 'restaurant-pos', persisted: true } },
-  ],
-  wires: [
-    { id: 'wire-1', from_node_id: 'store-1', from_port: 'right', to_node_id: 'ws-1', to_port: 'left', direction: 'one-way', label: 'Binds Store' },
-    { id: 'wire-2', from_node_id: 'store-1', from_port: 'right', to_node_id: 'ws-2', to_port: 'left', direction: 'one-way', label: 'Binds Store' },
-  ],
-};
-
-function loadMockTopology(): MockTopology {
-  return readSlice(MOCK_TOPOLOGY_KEY, () => MOCK_TOPOLOGY_SEED);
-}
-function saveMockTopology(topology: MockTopology): void {
-  writeSlice(MOCK_TOPOLOGY_KEY, topology);
-}
-const mockTopology: MockTopology = loadMockTopology();
-
-// ── Topology revision history (ADR #46) ───────────────────────
-//
-// The dev-mock mirrors the backend's append-only history so the version
-// browser is reachable without a running desktop client. It also mirrors
-// §4's DEFlation rule, not just the append — otherwise `restorable: false`
-// is unreachable in the browser and the "record only — snapshot pruned"
-// state the real sweep produces can never be exercised during development.
-
 const entryHandlers: Record<string, MockHandler> = {
 
   // ═══════════════════════════════════════════════════════════════
   // BOOT / SETUP
   // ═══════════════════════════════════════════════════════════════
 
-  'resolve_boot_store': () => ({
-    is_bound: true,
-    store_id: 'store-1',
-    instance_id: 'ws-1',
-  }),
-  'get_local_ip': () => '192.168.1.100',
+  // get_local_ip moved verbatim to handlers/system.ts (Phase 5.5).
 
-  'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
-  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
-  'get_device_id': () => 'mock-device-id-001',
-  'activate_license': () => true,
-  'renew_license': () => true,
+  ...licenseHandlers,
 
   // ═══════════════════════════════════════════════════════════════
-  // LOCATIONS / DEPRECATED STORE PROFILE ALIASES
-  // ═══════════════════════════════════════════════════════════════
-  // Location is the canonical site-unit term. The old command names stay
-  // available while clients migrate, but both families share the same
-  // stateful mock list so browser-mode behavior matches the real IPC surface.
-
-  'list_locations_scoped': listMockLocations,
-  'get_location_profile_scoped': getMockLocation,
-  'get_primary_location_scoped': getMockPrimaryLocation,
-  'create_location_profile_scoped': createMockLocation,
-  'update_location_profile_scoped': updateMockLocation,
-  'set_primary_location_scoped': setMockPrimaryLocation,
-  'delete_location_profile_scoped': deleteMockLocation,
-  'get_location_ticket_prefix_scoped': getMockLocationTicketPrefix,
-  'set_location_ticket_prefix_scoped': setMockLocationTicketPrefix,
-
-  // Legal Entity (Organization-level, Phase 1 §G). Registered here because
-  // scripts/verify-ipc-parity.py treats a missing dev-mock handler as a hard
-  // violation: invoke() would return null and the caller would silently render
-  // its failure path instead of erroring.
-
-  // Regional configuration read model (regional slice 2). Registered here
+  // LOCATIONS / REGIONAL CONFIG / RECEIPT FORMAT — Phase 5.1 conversion.
+  // The nine location/prefix commands (Location is the canonical site-unit
+  // term; the old store-profile names stay registered while clients
+  // migrate) now come from createLocationProfileHandlers(), and the
+  // regional pair plus the receipt-format trio from createRegionalHandlers()
+  // — both registered straight below the literal. They all stay registered
   // because scripts/verify-ipc-parity.py treats a missing dev-mock handler
   // as a hard violation: invoke() would return null and the caller would
-  // silently render its failure path instead of erroring.
-  'get_regional_config_scoped': getMockRegionalConfig,
-
-  // Regional configuration write path (regional slice 3) — same parity rule.
-  'set_regional_config_scoped': setMockRegionalConfig,
-
-  // Receipt format (regional receipt-format axis) — same parity rule.
-  'get_receipt_format_scoped': getMockReceiptFormat,
-  'set_receipt_layout_scoped': setMockReceiptLayout,
-  'set_receipt_content_scoped': setMockReceiptContent,
+  // silently render its failure path instead of erroring. (Legal Entity,
+  // Organization-level Phase 1 §G, lives in handlers/locations.ts.)
+  // ═══════════════════════════════════════════════════════════════
 
   // ═════════════════════════════════════════════════════════
   // WORKSPACES (ADR #4 / #7)
   // ═══════════════════════════════════════════════════════════════
-
-  'list_workspaces': () => mockWorkspaces,
-  'list_workspaces_scoped': () => mockWorkspaces,
-  'list_workspace_screens': () => [],
-  'list_workspace_screens_scoped': () => [],
-  'get_workspace_instance_scoped': (args) => {
-    const { instanceId } = args as { instanceId: string };
-    return mockWorkspaces.find(w => w.instance_id === instanceId) ?? mockWorkspaces[0];
-  },
-  'create_workspace_instance_scoped': (args) => {
-    const req = (args as { req: Record<string, unknown> }).req;
-    return { instance_id: `ws-${Date.now()}`, ...req };
-  },
-  // Renames mutate the stateful workspace list so a reload keeps the new
-  // name — same persistence contract as the real workspace_instances row.
-  'update_workspace_instance_scoped': (args) => {
-    const { instanceId, name } = (args ?? {}) as { instanceId?: string; name?: string };
-    const existing = mockWorkspaces.find((w) => w.instance_id === instanceId) ?? mockWorkspaces[0];
-    if (existing && name !== undefined) existing.name = name;
-    return existing ?? null;
-  },
-  'delete_workspace_instance_scoped': () => null,
-  'archive_workspace_instance_scoped': () => null,
-  'set_default_instance_scoped': () => null,
-  'list_all_workspaces_scoped': () => [
-    { key: 'store-pos', name: 'Store POS', description: 'Point of Sale', icon: 'shopping-cart' },
-    { key: 'restaurant-pos', name: 'Restaurant POS', description: 'Table service', icon: 'restaurant' },
-    { key: 'kds', name: 'Kitchen Display', description: 'Order display', icon: 'utensils' },
-    { key: 'warehouse', name: 'Warehouse', description: 'Product and stock management', icon: 'package' },
-    { key: 'admin', name: 'Admin', description: 'Settings & management', icon: 'settings' },
-  ],
-  'get_device_binding': () => ({ bounded: true, boundStoreId: 'store-1', boundInstanceId: 'ws-1', signatureValid: true }),
-  'get_device_binding_scoped': () => ({ bounded: true, boundStoreId: 'store-1', boundInstanceId: 'ws-1', signatureValid: true }),
-  'set_device_binding': () => null,
-  'set_device_binding_scoped': () => null,
-  'clear_device_binding': () => null,
-  'clear_device_binding_scoped': () => null,
+  // The six device-binding entries moved verbatim to handlers/terminals.ts
+  // (Phase 5.1 conversion); that file's header records why this banner was
+  // never their home — handlers/workspaces.ts:17-19 declined them as a
+  // separate (terminals) command family. Registered below.
 
   // ═══════════════════════════════════════════════════════════════
   // SETTINGS
   // ═══════════════════════════════════════════════════════════════
 
-  'get_store_settings': () => ({
-    name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
-  }),
-  'get_store_settings_scoped': () => ({
-    name: 'TOKO TEST', address: 'Jl. Contoh No. 123', taxId: 'TAX-001', currency: 'IDR', branch: 'Cabang A', logo: '',
-  }),
-  'set_store_settings': () => null,
-  'set_store_settings_scoped': () => null,
-
-  'get_receipt_settings': () => ({
-    showCurrency: true, decimalSeparator: 'dot', showTax: true, footer: 'Terima kasih',
-    paperWidth: 'standard', showTableNumber: false,
-    marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
-  }),
-  'get_receipt_settings_scoped': () => ({
-    showCurrency: true, decimalSeparator: 'dot', showTax: true, footer: 'Terima kasih',
-    paperWidth: 'standard', showTableNumber: false,
-    marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0,
-  }),
-  'set_receipt_settings': () => null,
-
-  'can_save_topology': () => true,
-  'load_topology': () => ({
-    revision: mockTopology.revision ?? 0,
-    resolved_issue_keys: [...(mockTopology.resolved_issue_keys ?? [])],
-    nodes: mockTopology.nodes.map((n) => ({ ...n })),
-    wires: mockTopology.wires.map((w) => ({ ...w })),
-  }),
-  // The editor's Apply button saves through this command. Mirror the real
-  // backend's atomic diff: apply instance creates/updates/archives AND
-  // persist the diagram (node positions included) so reloads keep both the
-  // node layout and the workspace instances.
-  'apply_topology_diff': (args) => {
-    const { workspaceCreations, workspaceUpdates, workspaceArchives, diagramNodes, diagramWires, resolvedIssueKeys, baseRevision, branchId, changeNote } = (args as {
-      workspaceCreations?: Array<{ id: string; type_key: string; store_id: string; name: string; description?: string; colour?: string }>;
-      workspaceUpdates?: Array<{ id: string; name: string }>;
-      workspaceArchives?: string[];
-      diagramNodes?: MockTopologyNode[];
-      diagramWires?: MockTopologyWire[];
-      resolvedIssueKeys?: string[];
-      baseRevision?: number;
-      branchId?: string;
-      changeNote?: string;
-    }) ?? {};
-    // Mirror the backend's optimistic-concurrency gate (topology.rs, round
-    // 133): a stale baseRevision can NEVER retry successfully, so reject
-    // with the typed conflict the editor's recovery path detects (round
-    // 137). Skipped when the field is absent — the real command requires
-    // base_revision, so only callers that send it opt into the guard.
-    const currentRevision = mockTopology.revision ?? 0;
-    if (baseRevision !== undefined && baseRevision !== currentRevision) {
-      throw {
-        kind: 'topologyValidation',
-        code: 'topology-revision-conflict',
-        nodeId: null,
-        wireId: null,
-        portId: null,
-        message: `topology revision conflict: expected ${baseRevision}, current ${currentRevision}`,
-      };
-    }
-    for (const c of workspaceCreations ?? []) {
-      mockWorkspaces.push({
-        instance_id: c.id,
-        type_key: c.type_key,
-        store_id: c.store_id,
-        store_name: 'TOKO TEST',
-        name: c.name,
-        description: c.description ?? '',
-        icon: 'shopping-cart',
-        layout_mode: 'default',
-        colour: c.colour ?? '#10b981',
-        is_default: false,
-      });
-    }
-    for (const u of workspaceUpdates ?? []) {
-      const inst = mockWorkspaces.find((w) => w.instance_id === u.id);
-      if (inst) inst.name = u.name;
-    }
-    for (const id of workspaceArchives ?? []) {
-      const idx = mockWorkspaces.findIndex((w) => w.instance_id === id);
-      if (idx >= 0) mockWorkspaces.splice(idx, 1);
-    }
-    if (workspaceCreations?.length || workspaceUpdates?.length || workspaceArchives?.length) {
-      saveMockWorkspaces();
-    }
-    if (diagramNodes) mockTopology.nodes = diagramNodes.map((n) => ({ ...n }));
-    if (diagramWires) mockTopology.wires = diagramWires.map((w) => ({ ...w }));
-    if (resolvedIssueKeys) mockTopology.resolved_issue_keys = [...resolvedIssueKeys];
-    mockTopology.revision = (mockTopology.revision ?? 0) + 1;
-    saveMockTopology(mockTopology);
-    // ADR #46 §3: in the real backend this row is written INSIDE the same
-    // transaction as the envelope, so a rejected Apply leaves no history. The
-    // conflict throw above already mirrors that — control never reaches here
-    // on a rejected Apply.
-    recordMockTopologyRevision({
-      branchId: branchId ?? '',
-      revision: mockTopology.revision,
-      changeNote: changeNote ?? '',
-      publishedAt: new Date().toISOString(),
-      publishedBy: 'dev-mock',
-      pinned: false,
-      nodeCount: mockTopology.nodes.length,
-      wireCount: mockTopology.wires.length,
-      workspaceCreations: workspaceCreations?.length ?? 0,
-      workspaceUpdates: workspaceUpdates?.length ?? 0,
-      workspaceArchives: workspaceArchives?.length ?? 0,
-      contractSchemaVersion: 2,
-      diagram: JSON.parse(JSON.stringify(mockTopology)) as MockTopology,
-    });
-    return { revision: mockTopology.revision };
-  },
-
-  // ADR #46 §1/§8: metadata only, newest first — the diagram is fetched per
-  // revision by `load_topology_revision`, mirroring the real payload bound.
-  'list_topology_revisions': (args) => {
-    const { limit, branchId } = (args as { limit?: number; branchId?: string }) ?? {};
-    const budget = Math.min(Math.max(limit ?? 50, 1), 200);
-    return mockTopologyRevisions
-      .filter((r) => r.branchId === (branchId ?? ''))
-      .slice()
-      .sort((a, b) => b.revision - a.revision)
-      .slice(0, budget)
-      .map(summarizeMockTopologyRevision);
-  },
-
-  // `deflated` and `not-found` stay distinct (ADR #46 §4): a pruned deploy
-  // still happened.
-  'load_topology_revision': (args) => {
-    const { revision, branchId } = (args as { revision?: number; branchId?: string }) ?? {};
-    const row = mockTopologyRevisions.find(
-      (r) => r.revision === revision && r.branchId === (branchId ?? ''),
-    );
-    if (!row) {
-      return { status: 'not-found', revision: revision ?? 0, changeNote: '', publishedAt: '', publishedBy: '' };
-    }
-    if (row.diagram === undefined) {
-      return {
-        status: 'deflated',
-        revision: row.revision,
-        changeNote: row.changeNote,
-        publishedAt: row.publishedAt,
-        publishedBy: row.publishedBy,
-      };
-    }
-    return {
-      status: 'restorable',
-      revision: row.revision,
-      changeNote: row.changeNote,
-      publishedAt: row.publishedAt,
-      publishedBy: row.publishedBy,
-      contractSchemaVersion: row.contractSchemaVersion,
-      diagram: row.diagram,
-    };
-  },
-
-  'set_receipt_settings_scoped': () => null,
-  'get_setting': () => '',
-  'set_setting_scoped': () => null,
-
-  'get_hardware_settings': () => ({
-    printerConnection: 'usb', printerDevicePath: '', printerPaperSize: '80mm',
-    scannerDeviceId: '', scannerInputMode: 'usb',
-  }),
-  'set_hardware_settings': () => null,
-  'set_hardware_settings_scoped': () => null,
-
-  'get_credit_settings': () => ({ enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 }),
-  'set_credit_settings': () => null,
-  'set_credit_settings_scoped': () => null,
+  ...settingsHandlers,
 
   // ═══════════════════════════════════════════════════════════════
   // BRANDING
   // ═══════════════════════════════════════════════════════════════
+  // (the two static brand-settings entries moved verbatim to
+  //  handlers/settings.ts as brandHandlers — Phase 5.1 conversion;
+  //  registered below)
 
-  'get_brand_settings': () => ({
-    primary_colour: '#147EFB',
-    logo_path: null,
-    store_name: 'OZ-POS Demo',
-    colour_hover: null,
-  }),
-  'get_brand_settings_scoped': () => ({
-    primary_colour: '#147EFB',
-    logo_path: null,
-    store_name: 'OZ-POS Demo',
-    colour_hover: null,
-  }),
-
-  'print_sales_receipt': () => ({ printed: true }),
-  'print_sales_receipt_scoped': () => ({ printed: true }),
+  // print_sales_receipt (+ _scoped) moved verbatim to handlers/sync.ts (Phase 5.5),
+  // next to its sibling print_receipt in the receipt-hardware family.
 
   // ═══════════════════════════════════════════════════════════════
   // KDS DEVICE MANAGEMENT
   // ═══════════════════════════════════════════════════════════════
 
-  'list_kds_devices_scoped': () => [] as unknown[],
-  'register_kds_device_scoped': (args: unknown) => {
-    const input = (args as { input?: Record<string, unknown> })?.input ?? {};
-    return {
-      id: `kds-device-mock-${Date.now()}`,
-      name: input['name'] ?? 'Mock KDS Device',
-      restaurant_pos_id: input['restaurant_pos_id'] ?? 'resto-1',
-      station_ids: input['station_ids'] ?? [],
-      is_active: true,
-      last_seen_at: new Date().toISOString(),
-      connection_status: 'connected',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-  },
-  'get_kds_device_scoped': () => null,
-  'update_kds_device_status_scoped': () => {},
-  'deactivate_kds_device_scoped': () => {},
-  'get_low_stock_alerts': () => [
-    { product_id: 'RAM-D4-16GB-KF', sku: 'RAM-D4-16GB-KF', name: 'Kingston Fury Beast 16GB DDR4 3200', current_qty: 3, threshold: 10, currency: 'IDR', price_minor: 450000, cost_minor: 390000 },
-    { product_id: 'MB-B650-ROG', sku: 'MB-B650-ROG', name: 'ASUS ROG Strix B650-A Gaming WiFi', current_qty: 5, threshold: 10, currency: 'IDR', price_minor: 2850000, cost_minor: 2500000 },
-    { product_id: 'SSD-NV2-1TB', sku: 'SSD-NV2-1TB', name: 'Kingston NV2 1TB NVMe SSD', current_qty: 4, threshold: 8, currency: 'IDR', price_minor: 950000, cost_minor: 820000 },
-    { product_id: 'PSU-RM750', sku: 'PSU-RM750', name: 'Corsair RM750e 80+ Gold PSU', current_qty: 6, threshold: 10, currency: 'IDR', price_minor: 1850000, cost_minor: 1650000 },
-    { product_id: 'GPU-RTX4070', sku: 'GPU-RTX4070', name: 'MSI RTX 4070 Ventus 2X', current_qty: 2, threshold: 5, currency: 'IDR', price_minor: 8900000, cost_minor: 8100000 },
-    { product_id: 'CPU-7800X3D', sku: 'CPU-7800X3D', name: 'AMD Ryzen 7 7800X3D', current_qty: 8, threshold: 10, currency: 'IDR', price_minor: 5400000, cost_minor: 4900000 },
-  ],
+  // (the five KDS device-management handlers moved verbatim to ./handlers/kds-devices.ts
+  //  — Phase 5.4; registered below. Kept out of handlers/kds.ts (order workflow), see that file.)
+  // get_low_stock_alerts moved verbatim to handlers/inventory.ts (Phase 5.5) —
+  // its natural home (stock-vs-threshold, beside the transfer/adjust commands).
 
   // ═══════════════════════════════════════════════════════════════
   // BUNDLES
   // ═══════════════════════════════════════════════════════════════
 
-  'list_bundles': () => [
-    {
-      bundle: {
-        id: 'bundle-1', bundle_sku: 'BNDL-PC-1', name: 'PC Starter Bundle',
-        description: 'CPU + RAM + SSD combo', bundle_price_minor: 11500000, currency: 'IDR',
-        active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      },
-      items: [
-        { id: 'bundle-item-1', bundle_id: 'bundle-1', sku: 'CPU-R5-7600', qty: 1, unit_price_minor: 3150000 },
-        { id: 'bundle-item-2', bundle_id: 'bundle-1', sku: 'RAM-D5-32GB-CR', qty: 1, unit_price_minor: 1850000 },
-      ],
-    },
-  ],
-  'list_bundles_scoped': () => [
-    {
-      bundle: {
-        id: 'bundle-1', bundle_sku: 'BNDL-PC-1', name: 'PC Starter Bundle',
-        description: 'CPU + RAM + SSD combo', bundle_price_minor: 11500000, currency: 'IDR',
-        active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      },
-      items: [
-        { id: 'bundle-item-1', bundle_id: 'bundle-1', sku: 'CPU-R5-7600', qty: 1, unit_price_minor: 3150000 },
-        { id: 'bundle-item-2', bundle_id: 'bundle-1', sku: 'RAM-D5-32GB-CR', qty: 1, unit_price_minor: 1850000 },
-      ],
-    },
-  ],
-  'get_bundle': () => null,
-  'get_bundle_scoped': () => null,
-  'create_bundle': () => null,
-  'create_bundle_scoped': () => null,
-  'update_bundle': () => null,
-  'update_bundle_scoped': () => null,
-  'delete_bundle': () => null,
-  'delete_bundle_scoped': () => null,
-  'lookup_bundle_by_sku': () => null,
-  'lookup_bundle_by_sku_scoped': () => null,
+  // (the twelve bundle handlers moved verbatim to ./handlers/bundles.ts — Phase 5.2;
+  //  registered right below, so the registry position these keys held is unchanged)
 
   // ═══════════════════════════════════════════════════════════════
   // HARDWARE
   // ═══════════════════════════════════════════════════════════════
 
-  'open_cash_drawer': () => ({ opened: true }),
-  'print_receipt': () => ({ printedLines: 3 }),
-  'retry_offline_sync': () => ({ syncedCount: 0, failedCount: 0, totalCount: 0 }),
-
-  'get_sync_settings': () => ({ serverUrl: null, hasApiKey: false, enabled: false }),
-  'get_sync_settings_scoped': () => ({ serverUrl: null, hasApiKey: false, enabled: false }),
-  'update_sync_settings': () => null,
-  'sync_run': () => ({ synced: 0, failed: 0, error: null }),
-
-  'pending_sync_count': () => 0,
-  'sync_pull': (args: unknown) => {
-    // SYNC-03: reject without explicit destructive consent, mirroring the
-    // backend command contract so dev-mode behaviour matches production.
-    const a = (args ?? {}) as { confirmDestructive?: boolean };
-    if (!a.confirmDestructive) {
-      throw new Error('confirmDestructive must be true to proceed with sync pull');
-    }
-    return { productsPulled: 0, taxRatesPulled: 0, usersPulled: 0, error: null };
-  },
-  'test_sync_connection': () => ({ ok: true, status: 'connected', latencyMs: 12 }),
-  'request_sync_token': () => ({ ok: true, token: 'mock-jwt-token', status: 'issued', expiresAt: new Date(Date.now() + 86400000).toISOString() }),
+  // (the sync / cash-drawer / receipt hardware stubs moved verbatim to
+  //  ./handlers/sync.ts — Phase 5.3; registered right below. `get_local_ip` and
+  //  `get_low_stock_alerts`, previously deferred here, now have their proper
+  //  homes: system.ts and inventory.ts respectively (Phase 5.5), and
+  //  print_sales_receipt joined print_receipt in sync.ts — so this literal is
+  //  now just the two imported spreads below.)
 };
 
 // Merge this file's handlers into the registry the dispatcher routes through.
@@ -933,6 +235,38 @@ const entryHandlers: Record<string, MockHandler> = {
 // `handlers/*`; until they land, the literal remains the registry's main
 // source, and everything below patches it in place.
 registerHandlers(entryHandlers);
+// Phase 5.1 conversions, registered in the slots their keys held inside the
+// literal: the nine location/prefix commands of handlers/locationState.ts,
+// and the regional pair + receipt-format trio of handlers/regional.ts —
+// the latter receives the relocated state as deps (the catalog/sales/
+// payment/locations factory precedent) rather than importing the list.
+registerHandlers(createLocationProfileHandlers());
+registerHandlers(createRegionalHandlers({ unwrapArgs, getMockStores, updateMockLocation }));
+// The two stateless Phase 5.1 moves: the terminals family and branding,
+// registered as their own named maps for the same slot their entries held.
+registerHandlers(deviceBindingHandlers);
+registerHandlers(brandHandlers);
+// Bundles (Phase 5.2) moved verbatim to `handlers/bundles.ts`; registered here so
+// the twelve keys keep the registry position they held inside the entry literal.
+registerHandlers(bundlesHandlers);
+// Sync / cash-drawer / receipt hardware stubs (Phase 5.3) moved verbatim to
+// `handlers/sync.ts`; registered here so the eleven keys keep their registry position.
+registerHandlers(syncHandlers);
+// KDS device-management keys (Phase 5.4) moved verbatim to `handlers/kds-devices.ts`.
+registerHandlers(kdsDeviceHandlers);
+// Topology handlers (the diagram read, the editor's atomic diff apply, and the
+// ADR #46 revision reads) live in `handlers/topology.ts`, which owns the
+// `mockTopology` diagram slice and mutates the `mockWorkspaces` list that
+// `handlers/workspaces.ts` exports. Registered straight after the literal, in
+// the slot these five keys occupied inside it, so the registry order is
+// unchanged for every other domain that follows.
+registerHandlers(topologyHandlers);
+// Workspace handlers (boot resolution, instances, screens, the type picker and
+// the multi-store listing) live in `handlers/workspaces.ts`, which also owns
+// the `mockWorkspaces` list the topology diff in `handlers/topology.ts`
+// mutates. Registered straight after the literal so these keys keep the
+// registry position they had as entries inside it.
+registerHandlers(workspaceHandlers);
 // Catalog handlers (products, variants, categories, currency, tax) live in
 // `handlers/catalog.ts` and are merged here. Registered before the scoped-alias
 // pass below, and before the in-place `handlers[...] = …` patches that follow,
@@ -965,145 +299,52 @@ registerHandlers(crmHandlers);
 // fails on the specific command rather than crashing a screen at runtime.
 
 // Scoped commands without an unscoped twin get minimal direct stubs.
-handlers['search_customers_scoped'] = (args) => {
-  const { query } = (args ?? {}) as { query?: string };
-  const q = (query ?? '').toLowerCase();
-  const items = MOCK_CUSTOMERS.filter(
-    (c) => !q || c.name.toLowerCase().includes(q),
-  );
-  return { items, total: items.length };
-};
-handlers['get_customer_history_scoped'] = (args) => {
-  const { customerId } = (args ?? {}) as { customerId?: string };
-  const customer =
-    MOCK_CUSTOMERS.find((c) => c.id === customerId) ?? MOCK_CUSTOMERS[0]!;
-  return { customer, loyalty: null, sales: [], sales_total: 0 };
-};
-handlers['list_in_transit_transfers_scoped'] = () => [];
-// Sync conflict review. The mock has no cloud to ask, so it reports "nothing
-// flagged" — the screen must render its empty state rather than crash. The
-// resolve stub returns false, the honest answer for a row that does not exist:
-// callers treat it as "already resolved elsewhere", which is exactly what an
-// empty mock is.
-handlers['list_sync_conflicts_scoped'] = () => [];
-handlers['resolve_sync_conflict_scoped'] = () => false;
+// search_customers_scoped + get_customer_history_scoped moved verbatim to
+// handlers/crm.ts (Phase 5.5) — single-defined, use only crm.ts's own
+// MOCK_CUSTOMERS export, so the move is a pure copy.
+// ═══════════════════════════════════════════════════════════════
+// DOCUMENTED RESIDUE — kept here on purpose (Phase 5.5).
+// This work order permits "a single documented entryHandlers residue," but
+// only with a per-stub note explaining why the command has no other home.
+// Only the two stubs below genuinely lack a single domain home; everything with
+// a home was moved to it (crm.ts / sync.ts / analytics.ts / workspaces.ts /
+// inventory.ts / system.ts). list_in_transit_transfers_scoped originally sat in
+// this residue block, but inventory.ts owns the stock-transfer commands, so it
+// moved there (Phase 5.5) — correcting an earlier mis-classification here.
+// ═══════════════════════════════════════════════════════════════
+// Sync-conflict review pair (list_sync_conflicts_scoped,
+// resolve_sync_conflict_scoped) moved verbatim to handlers/sync.ts (Phase 5.5).
 // HPP exposure: no historical sale lines exist in the mock, so the margin
 // report is empty (the UI hides the Cost/Margin columns when it is).
+// No other home: a cost/margin read that spans sales × inventory × analytics;
+// none of those domain modules "owns" an HPP exposure report, so it stays as
+// documented residue rather than being forced under one and mis-signalling
+// its scope.
 handlers['get_sale_line_margins_scoped'] = () => [];
-// Analytics dashboard cards — scoped commands with no unscoped twin.
-// Plausible fixed shapes so the analytics grid renders in browser mode
-// instead of resolving null and crashing card layouts.
-handlers['get_customer_split_scoped'] = () => ({ new_count: 84, returning_count: 47 });
-handlers['get_payment_method_breakdown_scoped'] = () => [
-  { payment_method: 'qris', total_minor: 98000000, sale_count: 142 },
-  { payment_method: 'cash', total_minor: 74000000, sale_count: 118 },
-  { payment_method: 'card', total_minor: 61000000, sale_count: 89 },
-  { payment_method: 'ewallet', total_minor: 39000000, sale_count: 57 },
-];
-handlers['get_discounts_summary_scoped'] = () => ({
-  sale_count: 406,
-  discounted_sale_count: 96,
-  share_percent: 6.4,
-  codes: [
-    { label: 'WELCOME10', redeemed_count: 41 },
-    { label: 'PROMO8.8', redeemed_count: 28 },
-    { label: 'LOYALTY15', redeemed_count: 17 },
-    { label: 'FREESHIP', redeemed_count: 10 },
-  ],
-});
-handlers['get_voided_sales_summary_scoped'] = () => ({ void_count: 23, void_total_minor: 5400000 });
-handlers['get_basket_size_scoped'] = () => ({ sale_count: 406, avg_line_count: 3.2 });
-// Per-day basket size for the trend card — a week of plausible averages.
-handlers['get_basket_size_trend_scoped'] = () => {
-  const days: { date: string; sale_count: number; avg_line_count: number }[] = [];
-  const avgs = [3.1, 3.4, 2.9, 3.6, 3.2, 3.8, 3.3];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push({
-      date: d.toISOString().slice(0, 10),
-      sale_count: 55 + ((i * 13) % 20),
-      avg_line_count: avgs[i]!,
-    });
-  }
-  return days;
-};
-handlers['get_inventory_turnover_scoped'] = () => ({ units_sold: 1280, stock_on_hand: 340, sku_count: 486, range_days: 30 });
-handlers['get_inventory_trend_scoped'] = () => {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  return days.map((date, i) => ({ date, units_sold: 30 + ((i * 17) % 40) }));
-};
-// Restaurant table turnover: 7 days of completed table-bound orders.
-// ~18–31 turns/day → average turn 46–80 minutes (plausible service pace).
-handlers['get_table_turnover_scoped'] = () => {
-  const days: { date: string; table_orders: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push({ date: d.toISOString().slice(0, 10), table_orders: 18 + ((i * 7) % 14) });
-  }
-  return days;
-};
-// Restaurant hourly table activity: twin-peak service shape (lunch ≈ 12:00,
-// dinner ≈ 19:00) across the service day — feeds the occupancy curve.
-handlers['get_hourly_occupancy_scoped'] = () => {
-  const shape = [0, 0, 0, 0, 0, 0, 4, 9, 18, 30, 42, 55, 62, 48, 34, 30, 38, 52, 64, 70, 58, 36, 18, 6];
-  return shape.map((count, hour) => ({ hour, table_orders: count }));
-};
-handlers['get_voided_items_scoped'] = () => [
-  { name: 'Caffè Latte', qty: 6 },
-  { name: 'Iced Coffee', qty: 5 },
-  { name: 'Avocado Toast', qty: 4 },
-  { name: 'Smoothie', qty: 3 },
-];
+// Analytics dashboard cards (11 scoped-only stubs) moved verbatim to
+// handlers/analytics.ts (Phase 5.5). Confirmed single-defined (git grep) and
+// self-contained before the move, so folding them into analyticsHandlers is a
+// pure copy — no override to flip, and applyScopedAliases mirrors none of them.
 // ── Remaining uncovered commands (14 total) ───────────────────────
 // Staff profile
 
 // KDS order item updates (non-scoped)
 // Settings writes (non-scoped + scoped)
-handlers['set_setting'] = () => true;
-handlers['set_settings'] = () => true;
-handlers['set_settings_scoped'] = () => true;
-
-// PG sync
-handlers['get_sync_plan'] = () => ({ pushed: 0, pulled: 0, conflicts: 0 });
-handlers['get_pg_sync_settings'] = () => ({
-  enabled: false, host: '', port: '5432', dbname: '', user: '',
-});
-handlers['update_pg_sync_settings'] = () => true;
-handlers['pg_sync_status'] = () => ({
-  running: false, last_error: null, last_sync_at: null,
-});
-handlers['pg_sync_start'] = () => true;
-handlers['pg_sync_stop'] = () => true;
+registerHandlers(settingsWriteHandlers);
 
 // Analytics daily staff breakdown
 
-// Workspace store listing (multi-store picker)
-handlers['list_workspaces_for_store_scoped'] = () => [];
+// §J quota remediation pair (suspend_surplus_workspace_instances_scoped,
+// recover_workspace_instances_scoped) moved verbatim — with its full rationale
+// comment — to handlers/workspaces.ts (Phase 5.5); () => 0 each, single-defined.
 
-// §J quota remediation. Both commands return Result<u32> — a COUNT of affected
-// instances, not a row set. suspend_surplus_workspace_instances_scoped used to
-// answer `[]` here because it had been parked in the picker group above and
-// copied its neighbour's shape, so the mock contradicted the contract by type.
-// A wired-up button would have rendered a blank count in browser preview while
-// behaving correctly in the shell, which is the worst direction for a mock to
-// be wrong in: it hides the real path and invents a phantom.
-//
-// Both answer 0 rather than an invented number. `MOCK_WORKSPACES_SEED` carries no
-// `status` column (so no instance is representable as `quota_suspended`) and the
-// mock holds no signed tier payload, so "surplus" is genuinely undefined here —
-// 0 is the only honest answer, and it is the correct answer for the seed data.
-// The count is therefore not stateful: nothing here can ever become suspended.
-handlers['suspend_surplus_workspace_instances_scoped'] = () => 0;
-handlers['recover_workspace_instances_scoped'] = () => 0;
-
-// Warehouse products at a specific location
+// Warehouse products at a specific location.
+// No other home (and why it stays): this reads MOCK_PRODUCTS (a catalog symbol
+// the router already imports) filtered to a location — a cross-domain seed join.
+// Moving it into inventory.ts would force that module to import catalog just for
+// this one stub, an edge it does not otherwise need; leaving it here as
+// documented residue avoids coupling a domain module for a single browser-mode
+// preview helper.
 handlers['list_warehouse_products_at_location'] = (args) => {
   const { locationId: _locationId } = (args ?? {}) as { locationId?: string };
   // Return mock products with stock at the given location

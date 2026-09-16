@@ -42,6 +42,13 @@ export type TopologyEditorLoadLifecycleDeps = {
   workspaceInstances: WorkspaceInstanceSeed[] | undefined;
   branchLocations: BranchLocationSeed[] | undefined;
   branchId: string | undefined;
+  /** R1 (todo-topology-editor.md §5): the read is sessioned like the
+   *  template reads — a null/undefined token is not skipped but SENT (as
+   *  the empty string the editor's absent session degrades to), and the
+   *  backend answers InvalidSession, which this effect already surfaces
+   *  through its load-failure path. Pre-session canvases were the asymmetry
+   *  the ruling ended, not a case to preserve. */
+  sessionToken: string | null | undefined;
   reloadKey: number;
   /** Editor-owned skip guard, set before onSave and cleared by the reload paths. */
   skipNextLoadRef: MutableRefObject<boolean>;
@@ -82,6 +89,7 @@ export function useTopologyEditorLoadLifecycle(deps: TopologyEditorLoadLifecycle
     workspaceInstances,
     branchLocations,
     branchId,
+    sessionToken,
     reloadKey,
     skipNextLoadRef,
     migrationDismissedRef,
@@ -165,7 +173,7 @@ export function useTopologyEditorLoadLifecycle(deps: TopologyEditorLoadLifecycle
       return;
     }
     let cancelled = false;
-    loadTopology(branchId)
+    loadTopology(sessionToken ?? '', branchId)
       .then((data) => {
         if (cancelled) return;
         onLoadSuccess?.();
@@ -306,5 +314,5 @@ export function useTopologyEditorLoadLifecycle(deps: TopologyEditorLoadLifecycle
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceInstances, branchLocations, branchId, reloadKey]);
+  }, [workspaceInstances, branchLocations, branchId, sessionToken, reloadKey]);
 }

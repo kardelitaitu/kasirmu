@@ -33,17 +33,17 @@ export interface RestaurantContextMenuState {
   fromKeyboard: boolean;
 }
 
-const COLOR_PALETTE = [
-  '#10b981',
-  '#ef4444',
-  '#f97316',
-  '#eab308',
-  '#22c55e',
-  '#06b6d4',
-  '#3b82f6',
-  '#8b5cf6',
-  '#d946ef',
-  '#ec4899',
+const COLOR_PALETTE: { hex: string; nameId: string; fallback: string }[] = [
+  { hex: '#10b981', nameId: 'restaurant-color-emerald', fallback: 'Emerald' },
+  { hex: '#ef4444', nameId: 'restaurant-color-red', fallback: 'Red' },
+  { hex: '#f97316', nameId: 'restaurant-color-orange', fallback: 'Orange' },
+  { hex: '#eab308', nameId: 'restaurant-color-amber', fallback: 'Amber' },
+  { hex: '#22c55e', nameId: 'restaurant-color-green', fallback: 'Green' },
+  { hex: '#06b6d4', nameId: 'restaurant-color-cyan', fallback: 'Cyan' },
+  { hex: '#3b82f6', nameId: 'restaurant-color-blue', fallback: 'Blue' },
+  { hex: '#8b5cf6', nameId: 'restaurant-color-violet', fallback: 'Violet' },
+  { hex: '#d946ef', nameId: 'restaurant-color-fuchsia', fallback: 'Fuchsia' },
+  { hex: '#ec4899', nameId: 'restaurant-color-pink', fallback: 'Pink' },
 ];
 
 export interface MenuItemContextMenuProps {
@@ -65,13 +65,16 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
     menuRef.current?.querySelector<HTMLElement>('button[role="menuitem"]')?.focus();
   }, [menu]);
 
-  // A11Y-06: ArrowUp / ArrowDown roving focus between menuitems (wraps).
-  // When no menuitem currently has focus (idx === -1), ArrowDown lands on the
-  // first item and ArrowUp wraps to the last — robust for any item count.
+  // A11Y-06: ArrowUp / ArrowDown roving focus across every control in the
+  // menu — menuitems AND swatches. The swatches are plain buttons in a group
+  // (not menuitems), so the old `button[role="menuitem"]` query stranded
+  // arrow users above the palette; Tab still reaches everything.
   const handleContextMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     const items = Array.from(
-      e.currentTarget.querySelectorAll<HTMLElement>('button[role="menuitem"]'),
+      e.currentTarget.querySelectorAll<HTMLElement>(
+        'button[role="menuitem"], .restaurant-context-colors button',
+      ),
     );
     if (items.length === 0) return;
     const idx = items.indexOf(document.activeElement as HTMLElement);
@@ -126,11 +129,11 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
     onClose();
   }, [menu.sku, setUnavailable, onClose]);
 
-  const setColor = useCallback((color: string) => {
+  const setColor = useCallback((hex: string) => {
     const sku = menu.sku;
     setColors((prev) => {
-      if (color === prev[sku]) return prev;
-      return { ...prev, [sku]: color };
+      if (hex === prev[sku]) return prev;
+      return { ...prev, [sku]: hex };
     });
     onClose();
   }, [menu.sku, setColors, onClose]);
@@ -154,10 +157,16 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
       ref={menuRef}
       className="restaurant-context-menu"
       style={{
-        left: Math.max(4, Math.min(menu.x, viewportWidth - 180)),
-        top: Math.max(4, Math.min(menu.y, viewportHeight - 280)),
+        // Measured clamp: read the rendered panel (min-width 8.75rem ≈ 140px
+        // plus padding/border) instead of assuming a fixed 180×280 box. The
+        // old magic numbers let a real menu run off the bottom when opened
+        // low on the screen; offsetWidth/Height reflect the palette as built
+        // (including the wrapped rows and the clear swatch when present).
+        left: Math.max(4, Math.min(menu.x, viewportWidth - (menuRef.current?.offsetWidth ?? 180) - 4)),
+        top: Math.max(4, Math.min(menu.y, viewportHeight - (menuRef.current?.offsetHeight ?? 280) - 4)),
       }}
       role="menu"
+      aria-label={l10n.getString('restaurant-context-menu-aria', undefined, 'Menu item actions')}
       tabIndex={-1}
       onKeyDown={handleContextMenuKeyDown}
     >
@@ -188,14 +197,15 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
       <div className="restaurant-context-divider" role="separator" />
       <span className="restaurant-context-label"><Localized id="restaurant-context-color-label"><span>Colorize Add</span></Localized></span>
       <div className="restaurant-context-colors" role="group" aria-label={l10n.getString('restaurant-context-color-label')}>
-        {COLOR_PALETTE.map((c) => (
+        {COLOR_PALETTE.map(({ hex, nameId, fallback }) => (
           <button
-            key={c}
+            key={hex}
             type="button"
-            className={`restaurant-context-swatch${menu.currentColor === c ? ' restaurant-context-swatch--active' : ''}`}
-            style={{ background: c }}
-            onClick={() => setColor(c)}
-            aria-label={l10n.getString('restaurant-color-swatch-aria', { color: c }, c)}
+            className={`restaurant-context-swatch${menu.currentColor === hex ? ' restaurant-context-swatch--active' : ''}`}
+            style={{ background: hex }}
+            onClick={() => setColor(hex)}
+            aria-label={l10n.getString('restaurant-color-swatch-aria', { color: l10n.getString(nameId, undefined, fallback) }, fallback)}
+            aria-pressed={menu.currentColor === hex}
           />
         ))}
         {menu.currentColor && (

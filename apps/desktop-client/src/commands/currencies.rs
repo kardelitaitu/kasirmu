@@ -1,7 +1,13 @@
-//! Currency-lookup command for the front-end.
+//! Currency lookups and the default-currency setting for the front-end.
 //!
-//! R2 Phase 3: `list_currencies` migrated to use [`modules_currency::repository::CurrencyRepository`]
-//! directly. `CurrencyDto` now comes from [`modules_currency::commands`].
+//! R2 Phase 3 moved these reads onto [`modules_currency::repository::CurrencyRepository`]
+//! directly, and `CurrencyDto` now comes from [`modules_currency::commands`].
+//!
+//! What the shell registers is `currency_info`, `get_default_currency`,
+//! `set_default_currency` and the session-scoped pair for each. The unscoped
+//! `list_currencies` this paragraph used to name was retired on 2026-09-16 (T19): it was
+//! registered in neither shell, unnamed by UI code and uncalled by any Rust here, so the
+//! only reader left with that name is the dev-mock alias that seeds `list_currencies_scoped`.
 //!
 //! Wave A / S4: the bodies now live in the headless `oz_bridge::currency`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter list
@@ -30,15 +36,6 @@ pub use oz_bridge::currency::{CurrencyInfo, SetDefaultCurrencyArgs};
 /// Currency info.
 pub async fn currency_info(code: String) -> Result<CurrencyInfo, AppError> {
     oz_bridge::currency::currency_info(&code).map_err(Into::into)
-}
-
-#[tauri::command]
-/// List currencies.
-pub async fn list_currencies(state: State<'_, AppState>) -> Result<Vec<CurrencyDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::currency::list_currencies(&ctx)
-        .await
-        .map_err(Into::into)
 }
 
 #[tauri::command]

@@ -310,6 +310,18 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 
 ---
 
+## Second parity gap (appended 09-16-26)
+
+*Appended 09-16-26, from a read-only pass at tip `486bb8807`. Nothing above this line is changed by this section; it corrects one number in it. The bullet above says **one** consumer lacks the duplicate-id arm; re-measured, the tree has **two**.*
+
+- **The count, re-derived rather than reasoned about.** `grep -rn 'is_duplicate_id_rejection' --include='*.rs' apps crates modules platform foundation` returns exactly **two** call sites: `crates/oz-core/src/sync_client.rs:310` (consumer 1, the immediate `apply_sync_outcomes` path) and `platform/sync/src/daemon.rs:208` (the SQLite daemon). Both route a duplicate-id replay to **synced**, which is the intended idempotent-replay behaviour. **Every other consumer of `Rejected` falls through to failure.**
+- **The second one, and why the bullet above did not see it.** `platform/sync/src/pg_daemon.rs:333` **and** `platform/sync/src/lib.rs:561` both route `Rejected { reason }` to `mark_offline_failed` with no prefix check, because `SyncQueue::mark_failed` (`platform/sync/src/queue.rs:268`-`:270`) is a bare delegate to `store.mark_offline_failed`. A duplicate-id replay on either path is therefore marked **terminally failed** — push-side failed items are not requeued, so a crash-then-repush strands an item the server had already accepted. `lib.rs` is the one that was missed, and the reason is a census artefact rather than an oversight of principle: `SyncEngine::run_sync_cycle` is **public API with no in-repo production caller** — it is invoked only from `platform/sync/src/lib_tests.rs` and `platform/sync/tests/integration_test.rs`, while `platform/sync/src/lib.rs:18`-`:29` advertises `SyncEngine` in the crate doc. A consumer census that counts call sites under `apps/` cannot see it. **Its blast radius is an embedder, which is exactly what a second shell would be**, so it belongs in this section rather than being dismissed as dead code.
+- **Status: reported, not fixed, and no code was changed to measure any of it.** The repair for both is the predicate the other two already share — `oz_core::sync_client::is_duplicate_id_rejection(reason)` applied before the `mark_offline_failed` fallthrough — and it is not done here for two stated reasons: `pg_daemon`'s arm sits inside `run_once`'s `spawn_blocking` closure behind a live `PgTransport`, so pinning a fix would need a PostgreSQL connection; and `lib.rs`'s push loop is a **public API surface**, so changing its semantics is a decision rather than a repair.
+- **How this connects to the idempotency key.** The `duplicate id:` reason is not a coincidence of wording — it is the **client-minted row id doing its job**, minted at `crates/oz-core/src/offline.rs:129` inside `OfflineQueueItem::new` and deduped server-side by `ON CONFLICT (id) DO NOTHING`. So this section and the offline-queue identity question are **one mechanism seen from two ends**: the key is what makes the replay idempotent, and the reason string is what a consumer must recognise to treat it as success. A consumer that routes the reason to `failed` has effectively opted out of the guarantee the key provides.
+- **Pinning state, so the gap is not mistaken for a regression.** `platform/sync/src/sync_client_divergence_tests.rs:425`-`:437` documents the `pg_daemon` half and its doc comment names the same single consumer; the suite pins **consumer 1's** side only, and the `pg_daemon` half stays a code-reading claim there by design. The second half is now a code-reading claim too, for the same reason.
+
+---
+
 > Activation and Ownership appended 09-09-26.
 
 > last audited 08-08-26 by docs-auditor

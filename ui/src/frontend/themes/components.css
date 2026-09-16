@@ -120,6 +120,13 @@
 .btn--icon-only.btn--lg {
   padding: var(--space-3);
 }
+/* Icon-only carries .btn too, so the base ring at :34 already reaches it; restated here on
+   purpose, exactly as .btn--unstyled:focus-visible does at :145, so the modifier
+   names its own focus treatment instead of relying on a co-occurring class. */
+.btn--icon-only:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
 
 /* Unstyled escape hatch — keeps base reset, focus ring, and disabled behaviour,
    but drops variant/size styling so consumers can apply custom CSS. */
@@ -178,6 +185,13 @@
   color: var(--color-success-fg) !important;
   border-color: var(--color-success) !important;
   pointer-events: none;
+}
+
+/* Success state is reachable by keyboard — pointer-events: none stops hit-testing,
+   not focusability — so it carries the same ring as every other .btn variant. */
+.btn--success-state:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
 .btn__check {
@@ -440,6 +454,11 @@
   .kds-expo-ticket-slot--ready::after,
   .kds-expo-modal::after,
   .kds-routing-confirm::after,
+  /* The restaurant slide-out sidebar (20450716b) and the POS course
+     dropdown, both named by this guard's coverage case. Each is already
+     positioned in its own feature sheet, so the ::after anchors on it. */
+  .restaurant-sidebar::after,
+  .pos-cart-course-dropdown::after,
   :global(.dark) .panel::after {
     content: '';
   position: absolute;
@@ -582,6 +601,8 @@
   .kds-expo-ticket-slot--ready::after,
   .kds-expo-modal::after,
   .kds-routing-confirm::after,
+  .restaurant-sidebar::after,
+  .pos-cart-course-dropdown::after,
   :global(.dark) .panel::after { display: none; }
 }
 
@@ -711,6 +732,8 @@
 .kds-expo-ticket-slot--ready::after,
 .kds-expo-modal::after,
 .kds-routing-confirm::after,
+.restaurant-sidebar::after,
+.pos-cart-course-dropdown::after,
 :global(.dark) .panel::after { display: none; }
 }
 

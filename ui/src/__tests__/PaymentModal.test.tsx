@@ -8,6 +8,7 @@ import salesFtl from '@/locales/sales.ftl?raw';
 import salesIdFtl from '@/locales/sales.id.ftl?raw';
 import PaymentModal from '@/features/sales/PaymentModal';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 import type { Money, CartLine, Sku, LineId } from '@/types/domain';
 import type * as CurrencyApi from '@/api/currency';
@@ -19,6 +20,25 @@ async function renderWithFluent(ui: React.ReactElement) {
 
 async function renderWithFluentId(ui: React.ReactElement) {
   const wrapped = withFluentLocale('id', <ToastProvider>{ui}</ToastProvider>, salesIdFtl);
+  await renderInAct(wrapped);
+}
+
+/**
+ * Render on the Restaurant POS terminal.
+ *
+ * The Open Bill tender is gated on the workspace type — the modal is shared by
+ * both POS terminals, but an open bill is the restaurant terminal's own concept
+ * and `hold_cart_scoped` refuses it from anywhere else — so a test that expects
+ * to see or choose that tender has to say which terminal it is on. The global
+ * harness returns a generic `typeKey` ('default'), which hides it.
+ */
+async function renderWithFluentAsRestaurantPos(ui: React.ReactElement) {
+  vi.mocked(useWorkspaceScope).mockReturnValue({
+    storeId: 'store-1',
+    instanceId: 'instance-1',
+    typeKey: 'restaurant-pos',
+  });
+  const wrapped = withFluent(<ToastProvider>{ui}</ToastProvider>, salesFtl);
   await renderInAct(wrapped);
 }
 
@@ -547,7 +567,7 @@ describe('PaymentModal — rendering & fast interaction', () => {
   // ── Open Bill ──
 
   it('shows customer name input for open bill', async () => {
-    await renderWithFluent(
+    await renderWithFluentAsRestaurantPos(
       <PaymentModal
         open
         lineItems={[lineItem()]}
@@ -566,7 +586,7 @@ describe('PaymentModal — rendering & fast interaction', () => {
   });
 
   it('disables Open Bill complete when customer name is empty', async () => {
-    await renderWithFluent(
+    await renderWithFluentAsRestaurantPos(
       <PaymentModal
         open
         lineItems={[lineItem()]}
@@ -659,7 +679,15 @@ describe('PaymentModal — rendering & fast interaction', () => {
       />,
     );
 
-    const presetBtn = screen.getByText(/USD 10\.000/);
+    // The button label is display money, so it now comes from `formatMoney` like every
+    // other amount in this modal. Asserted by property rather than by a pasted string:
+    // a symbol prefix (not the ISO code) and the two decimal digits a cents currency
+    // actually has. Both separators are `[.,]` so this survives a locale switch --
+    // `id` renders "$ 10.000,00", `en` renders "$ 10,000.00" -- where a literal would
+    // fail the day the resolved locale changes, which is how the old assertion went
+    // stale: `/USD 10\.000/` pinned the float-era hybrid of an American code, id-ID
+    // grouping and no decimals on a 2-decimal currency.
+    const presetBtn = screen.getByText(/^\$ 10[.,]000[.,]00$/);
     await userEvent.click(presetBtn);
 
     const tenderInput = screen.getByLabelText(/amount tendered/i) as unknown as HTMLInputElement;

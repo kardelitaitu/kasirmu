@@ -1,1 +1,3 @@
+> **SUPERSEDED 2026-09-14 by `todo-refactor-kds-agents-merged.md`, which carries every open box from this file plus the re-measured gate (`<= 700`, not `< 350`) and the three fence collisions this file could not see. Kept in place, not deleted and NOT renamed `done-`: the work it plans is unfinished, and a `done-` prefix on a superseded plan would be a false claim, not a tidy root.**
+
 we do this after global-saas (now split into `todo-global-saas-1/2/3.md`) and tools are built and done

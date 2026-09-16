@@ -16,16 +16,18 @@ import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible } from '@/platform/ui/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import PermissionDenied from '@/components/PermissionDenied';
+import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import type { WizardState } from '@/features/setup/SetupWizard';
-import type { WorkspaceType } from '@/features/settings/WorkspaceSettingsModal';
+import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { getLicenseStatus } from '@/api/license';
 import { hasUsers } from '@/api/staff';
 import LicenseActivationScreen from '@/features/auth/LicenseActivationScreen';
 import CreatePinScreen from '@/features/auth/CreatePinScreen';
 import SessionLockScreen from '@/features/auth/SessionLockScreen';
 import MemoBanner from '@/features/memo/MemoBanner';
+import { Badge, type BadgeVariant } from '@/components/Badge';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 // These screens are only reachable after login, so each is code-split
@@ -66,27 +68,63 @@ function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
 }
 
 /**
+ * The four licence verdicts the boot gate can hold. `unknown` is deliberately
+ * NOT folded into `inactive`: one means "the licence said no", the other means
+ * "the licence was never asked". Collapsing the two is what let a transient IPC
+ * throw impersonate a decision.
+ */
+export type LicenseBootState = 'active' | 'grace' | 'inactive' | 'unknown';
+
+/** One settled boot read: `ok: false` records UNKNOWN — never a borrowed fact. */
+type BootRead<T> = { ok: true; value: T } | { ok: false };
+
+/**
+ * Await `read` and tag it as answered-or-unknown. Every boot IPC gets its OWN
+ * `settle`, so a throw from one call cannot forge another call's answer — the
+ * behaviour this replaces was one try/catch around a Promise.all whose catch
+ * wrote BOTH licence-active and setup-complete.
+ */
+async function settle<T>(label: string, read: Promise<T>): Promise<BootRead<T>> {
+  try {
+    return { ok: true, value: await read };
+  } catch (err) {
+    console.error(`[boot] ${label} read failed — recording unknown:`, err);
+    return { ok: false };
+  }
+}
+
+/**
  * Application shell — handles setup wizard flow, auth gates,
  * and renders the main AppLayout with registry-based page routing.
  */
 export default function AppShell() {
   const { l10n } = useLocalization();
   const [loading, setLoading] = useState(true);
-  const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
-  const [hasActiveLicense, setHasActiveLicense] = useState(false);
+  // ── Boot gate: AVAILABILITY is a different fact from the LICENCE VERDICT ──
+  // `bootAllowed` answers "may this install reach the rest of the app";
+  // `licenseState` answers "what did the licence actually say". Keeping them
+  // apart is the whole fix: a pass bought by a completed-setup read can no
+  // longer be reported as "the licence is valid", and a call that never
+  // answered can no longer be reported as either.
+  const [bootAllowed, setBootAllowed] = useState(false);
+  const [licenseState, setLicenseState] = useState<LicenseBootState>('unknown');
+  const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
+  // null = UNKNOWN. `false` is the value that opens CreatePinScreen, so an
+  // unanswered has_users must stay null and fall through to staff login.
   const [hasAnyUsers, setHasAnyUsers] = useState<boolean | null>(null);
+  const [setupKnownComplete, setSetupKnownComplete] = useState(false);
   const [licenseError, setLicenseError] = useState<string | null>(null);
   const [currentRoute, setCurrentRoute] = useState<AppRoute>('products');
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
-  const { activeWorkspace, sessionToken, terminalId } = useWorkspace();
+  const { activeWorkspace, sessionToken, terminalId, sessionError, retrySessionToken } = useWorkspace();
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { isKdsKiosk } = useTerminalProfile(sessionToken ?? undefined);
   const { addToast } = useToast();
   // Stable ref so the mount effect below can call addToast without
   // listing it as a dependency (which would cause the effect to re-run
   // whenever the toast context re-creates its callback reference, resetting
-  // hasActiveLicense back to false mid-flow).
+  // bootAllowed back to false mid-flow).
   const addToastRef = useRef(addToast);
   addToastRef.current = addToast;
 
@@ -101,7 +139,9 @@ export default function AppShell() {
     }
   });
 
-  // DevToolbar "Lock" button fires app:lock to test the lock screen
+  // `app:lock` is how a screen asks for a session lock without owning the lock
+  // state: the restaurant sidebar's "Lock Terminal" fires it, and DevToolbar's
+  // "Lock" button fires it to exercise this screen.
   useEffect(() => {
     const handler = () => { if (session) setIsLocked(true); };
     window.addEventListener('app:lock', handler);
@@ -112,20 +152,38 @@ export default function AppShell() {
     setIsLocked(false);
   }, []);
 
-  // On mount, check license status and whether setup was already completed.
-  // addToastRef (not addToast) is used so this effect runs exactly once and
-  // cannot be re-triggered by a reference change in the toast context.
+  // On mount, ask the backend three questions — and record honestly whether
+  // each one ANSWERED. addToastRef (not addToast) is used so this effect runs
+  // exactly once and cannot be re-triggered by a reference change in the toast
+  // context.
   //
   // Decision logic:
-  //   • Fresh install (setup NOT done): the license gate applies. No active
-  //     license → ActivationFlow (activate license + create owner account).
-  //   • Existing install (setup DONE, user data present): always let the user
-  //     through. License issues (expired, grace period, invalid) surface as a
-  //     non-blocking warning toast — never as a forced re-activation screen.
-  //     Forcing re-activation on an existing install would attempt to create a
-  //     second owner account (which the backend rejects) and is confusing.
-  //   • Dev mode (import.meta.env.DEV): skip the Rust license check entirely
-  //     and always report active. Saves the rebuild-Rust step during UI work.
+  //   • Fresh install (setup not completed, no accounts): the licence gate
+  //     applies. A licence that is not active and not in grace → ActivationFlow
+  //     (activate licence + create owner account).
+  //   • Existing install (setup read SUCCEEDED and said completed): always let
+  //     the user through — the historical "never nag a paying install into a
+  //     second owner account the backend rejects" pass. The verdict then
+  //     surfaces as a non-blocking badge + toast, never as a forced re-activation.
+  //   • A call that threw is recorded as UNKNOWN. It never writes true into the
+  //     licence or the setup flag; unknown blocks only when nothing else proves
+  //     the install is not fresh.
+  //   • Dev mode (import.meta.env.DEV): the dev-only bypass below, untouched.
+  //
+  // Why the throw paths are the shape they are (measured, so this is not
+  // re-litigated later): the realistic ways the boot IPC throws are (a) a global
+  // SQLite that cannot read the settings table at all (corrupt / locked /
+  // pre-migration) — which rejects BOTH reads and has_users too, (b) a UI bundle
+  // newer than the binary (command unregistered), (c) any non-Tauri context. A
+  // MISSING settings key is not one of them (Settings::get returns Ok(None) →
+  // status 'missing', the gate holds), nor is a contended global lock
+  // (crates/oz-bridge/src/ctx.rs:378-381 is infallible — the splash hangs
+  // instead), and the error-shaped licence verdicts (ClockTampered,
+  // InvalidSignature, Expired-past-grace, Missing) all arrive as
+  // Ok(is_active:false), so a fresh install stays gated against them. The trust
+  // decision itself lives in the bridge (crates/oz-bridge/src/auth.rs:611-621 is
+  // the only pre-activation gate and the IPC is callable from any surface); this
+  // effect decides only what the shell renders.
   useEffect(() => {
     // ── Dev-mode bypass ────────────────────────────────────────
     // In Vite dev mode, the Rust backend may not have been rebuilt
@@ -133,67 +191,92 @@ export default function AppShell() {
     // status and an annoying toast on every F5. Skip the IPC call
     // entirely and assume the license is valid.
     if (import.meta.env.DEV) {
-      setHasCompletedSetup(true);
-      setHasActiveLicense(true);
+      // Out of scope for the boot-gate fix: dev-only, no IPC at all, so these
+      // writes are a stated dev decision, not a forged read. Renamed only.
+      setSetupKnownComplete(true);
+      setBootAllowed(true);
+      setLicenseState('active');
       setLoading(false);
       // PERF-06: time-to-shell marker — app shell became interactive.
       recordMark('oz:shell-ready');
       // Check if any users exist so we can show CreatePinScreen
-      // for first-run bootstrapping even in dev mode.
-      hasUsers().then((result) => setHasAnyUsers(result.has_users)).catch(() => {});
+      // for first-run bootstrapping even in dev mode. This read goes through the
+      // SAME `settle` as its production siblings, because an empty catch is not a
+      // degraded-state surface: on a shell whose command list is shorter than
+      // desktop's the call rejects, and `.catch(() => {})` recorded that failure
+      // nowhere — not a log, not a toast, not a badge. A read that can never
+      // answer then looked exactly like a read still in flight, and "which of the
+      // two is it" was unanswerable from outside. `settle` writes the failure to
+      // the console under its own `[boot] has_users` label and returns
+      // `{ ok: false }`, which leaves `hasAnyUsers` at null — the explicit
+      // UNKNOWN that the badge below renders — so an unavailable capability is
+      // never reported as the positive assertion "this store has no users", the
+      // value that would open CreatePinScreen.
+      settle('has_users', hasUsers()).then((res) => {
+        if (res.ok) setHasAnyUsers(res.value.has_users);
+      });
       return;
     }
 
     let cancelled = false;
     (async () => {
+      // No shared catch: each read settles on its own, so one failure cannot
+      // forge the other two's answers. An unexpected throw out of the block
+      // below now leaves bootAllowed=false (fail-closed) and still clears the
+      // splash in `finally`.
       try {
-        const [licenseStatus, status] = await Promise.all([
-          getLicenseStatus(),
-          getSetupStatus(),
+        const [licenseRes, setupRes, usersRes] = await Promise.all([
+          settle('get_license_status', getLicenseStatus()),
+          settle('get_setup_status', getSetupStatus()),
+          settle('has_users', hasUsers()),
         ]);
+        if (cancelled) return;
 
-        if (!cancelled) {
-          setHasCompletedSetup(status.completed);
+        // ── has_users: unknown is not "no users" ─────────────────────
+        // A rejection leaves null. `false` is the value that opens
+        // CreatePinScreen, so writing it from a failed call would hand out
+        // first-run owner bootstrap on an answer the call could not produce.
+        // null falls through to StaffLoginScreen (see the !session branch).
+        if (usersRes.ok) setHasAnyUsers(usersRes.value.has_users);
 
-          // Check if any users exist — needed to decide between
-          // CreatePinScreen (first-run) and StaffLoginScreen.
-          try {
-            const usersResult = await hasUsers();
-            if (!cancelled) setHasAnyUsers(usersResult.has_users);
-          } catch {
-            if (!cancelled) setHasAnyUsers(false);
-          }
+        // ── setup: true ONLY from a read that answered `completed` ────
+        const setupCompleted = setupRes.ok && setupRes.value.completed;
+        if (setupCompleted) setSetupKnownComplete(true);
 
-          if (status.completed) {
-            // ── Existing install ───────────────────────────────────────
-            // Always let the user through to the login screen; surface
-            // license issues as toasts so they can renew from Settings.
-            setHasActiveLicense(true);
-            if (licenseStatus.status === 'gracePeriod') {
-              addToastRef.current({ type: 'warning', message: licenseStatus.message ?? 'License is in grace period.' });
-            } else if (!licenseStatus.isActive) {
-              addToastRef.current({ type: 'warning', message: licenseStatus.message ?? 'License is inactive. Please renew from Settings.' });
-            }
-          } else {
-            // ── Fresh install ──────────────────────────────────────────
-            // Respect the license gate; show ActivationFlow if not active.
-            setHasActiveLicense(licenseStatus.isActive);
-            if (licenseStatus.status === 'gracePeriod') {
-              addToastRef.current({ type: 'warning', message: licenseStatus.message ?? 'License is in grace period.' });
-            } else if (!licenseStatus.isActive && licenseStatus.status !== 'missing') {
-              setLicenseError(licenseStatus.message);
-            }
-          }
+        // ── the licence verdict (the truth claim) ────────────────────
+        let state: LicenseBootState = 'unknown';
+        if (licenseRes.ok) {
+          const s = licenseRes.value;
+          if (s.status === 'gracePeriod') state = 'grace';
+          else if (s.isActive) state = 'active';
+          else state = 'inactive';
+          setLicenseMessage(s.message);
         }
-      } catch (err) {
-        if (!cancelled) {
-          // On any startup error, let the user through rather than blocking
-          // them with the activation screen. Existing data should not be
-          // gated behind a license check that failed for a transient reason.
-          setHasActiveLicense(true);
-          setHasCompletedSetup(true);
-          console.error('License verification failed:', err);
+        setLicenseState(state);
+
+        // ── availability (the decision) — real evidence only ─────────
+        //   (a) the licence itself said usable, or
+        //   (b) the setup read SUCCEEDED and said completed — the historical
+        //       pass, kept exactly so no existing install newly loses access,
+        //   (c) accounts exist — the same conclusion, from a call that worked,
+        //       for an install whose settings read is the one that failed.
+        // Nothing else can set it, and no branch derives it from a throw.
+        const licenceUsable =
+          licenseRes.ok && (licenseRes.value.isActive || licenseRes.value.status === 'gracePeriod');
+        const installExisting = usersRes.ok && usersRes.value.has_users;
+        setBootAllowed(licenceUsable || setupCompleted || installExisting);
+
+        // ── surface the verdict (toasts; the badge is in the render below) ──
+        if (state === 'grace' && licenseRes.ok) {
+          addToastRef.current({ type: 'warning', message: licenseRes.value.message ?? 'License is in grace period.' });
+        } else if (!licenseRes.ok) {
           addToastRef.current({ type: 'error', message: 'Could not verify license status. Check your connection.' });
+        } else if (state === 'inactive') {
+          if (setupCompleted || installExisting) {
+            addToastRef.current({ type: 'warning', message: licenseRes.value.message ?? 'License is inactive. Please renew from Settings.' });
+          } else if (licenseRes.value.status !== 'missing') {
+            setLicenseError(licenseRes.value.message);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -204,7 +287,7 @@ export default function AppShell() {
       }
     })();
     return () => { cancelled = true; };
-   
+
   }, []); // run once on mount — addToastRef keeps the callback current
 
   // Navigate to workspace-appropriate route on selection.
@@ -284,12 +367,12 @@ export default function AppShell() {
       ),
       default_currency: state.default_currency,
     });
-    setHasCompletedSetup(true);
+    setSetupKnownComplete(true);
   }, []);
 
   const handleSkip = useCallback(() => {
     dismissSetupWizard().catch(console.error);
-    setHasCompletedSetup(true);
+    setSetupKnownComplete(true);
   }, []);
 
   /**
@@ -299,8 +382,11 @@ export default function AppShell() {
    */
   const handleActivationComplete = useCallback(() => {
     dismissSetupWizard().catch(console.error);
-    setHasCompletedSetup(true);
-    setHasActiveLicense(true);
+    // Real evidence this time: the activation flow only calls back after
+    // activateLicense succeeded, so the licence flag is earned, not assumed.
+    setSetupKnownComplete(true);
+    setBootAllowed(true);
+    setLicenseState('active');
   }, []);
 
   // ── 4b: F10 opens the WorkspaceSettingsModal across all workspace screens ─
@@ -320,14 +406,9 @@ export default function AppShell() {
     return () => document.removeEventListener('keydown', handler);
   }, [activeWorkspace]);
 
-  // Map active workspace to the modal's WorkspaceType.
-  const WORKSPACE_TO_TYPE: Record<string, WorkspaceType> = {
-    'restaurant-pos': 'restaurant-pos',
-    'store-pos': 'store-pos',
-    kds: 'kds',
-    warehouse: 'warehouse',
-  };
-  const workspaceType: WorkspaceType | null = activeWorkspace ? (WORKSPACE_TO_TYPE[activeWorkspace] ?? null) : null;
+  // Map active workspace to the modal's WorkspaceType. Null for keys with no
+  // card (admin, inventory, unknown) — the modal is then not rendered at all.
+  const workspaceType: WorkspaceType | null = toWorkspaceType(activeWorkspace);
 
   // Shared settings modal extracted once to avoid duplicating JSX across 6+ branches.
   const settingsModal = settingsModalOpen && workspaceType ? (
@@ -340,6 +421,33 @@ export default function AppShell() {
       />
     </LazyBoundary>
   ) : null;
+
+  // ── Persistent, NON-blocking boot verdict badges ─────────────────
+  // The gate above decides availability; these state what is true, so an
+  // install let through on a completed-setup answer while its licence is
+  // inactive/unknown — or one whose has_users never answered — shows that
+  // fact instead of hiding it in a one-shot toast.
+  const bootBadges = (
+    <>
+      {/* Durable session-token failure surface: the toast raised at the
+          moment of failure expires, and an operator left with no session
+          token then sees nothing explaining it. Read as `sessionError ?`,
+          not as a guaranteed field: it is optional on the context type,
+          so absent must mean no banner rather than a crash. */}
+      {sessionError ? (
+        <ErrorState
+          title={requiredLocalized(l10n, 'workspace-session-token-error')}
+          message={sessionError}
+          {...(retrySessionToken ? { onRetry: retrySessionToken } : {})}
+        />
+      ) : null}
+      <BootStatusBadges
+        licenseState={licenseState}
+        licenseMessage={licenseMessage}
+        usersUnknown={hasAnyUsers === null && !session}
+      />
+    </>
+  );
 
   // ── F11 toggles fullscreen across all workpaces ───────────────
   // KEY-01: the retail POS (store-pos) assigns F11 to Quick Return, so the
@@ -398,7 +506,7 @@ export default function AppShell() {
     return <AppBootSplash />;
   }
 
-  if (!hasActiveLicense) {
+  if (!bootAllowed) {
     return (
       <ActivationFlow
         initialError={licenseError}
@@ -415,27 +523,36 @@ export default function AppShell() {
     // DB is truly empty.
     if (hasAnyUsers === false) {
       return (
-        <CreatePinScreen
-          onCreated={() => {
-            setHasAnyUsers(true);
-            // After bootstrap, the user is auto-logged-in by
-            // CreatePinScreen via swapSession — no further action needed.
-          }}
-        />
+        <>
+          {bootBadges}
+          <CreatePinScreen
+            onCreated={() => {
+              setHasAnyUsers(true);
+              // After bootstrap, the user is auto-logged-in by
+              // CreatePinScreen via swapSession — no further action needed.
+            }}
+          />
+        </>
       );
     }
     return (
-      <LazyBoundary>
-        <StaffLoginScreen />
-      </LazyBoundary>
+      <>
+        {bootBadges}
+        <LazyBoundary>
+          <StaffLoginScreen />
+        </LazyBoundary>
+      </>
     );
   }
 
-  if (!hasCompletedSetup) {
+  if (!setupKnownComplete) {
     return (
-      <LazyBoundary>
-        <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setHasCompletedSetup(true)} />
-      </LazyBoundary>
+      <>
+        {bootBadges}
+        <LazyBoundary>
+          <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setSetupKnownComplete(true)} />
+        </LazyBoundary>
+      </>
     );
   }
 
@@ -444,6 +561,7 @@ export default function AppShell() {
     return (
       <>
         <MemoBanner kds />
+        {bootBadges}
         <div className="workspace-fullscreen">
           <div className="kds-workspace">
             <LazyBoundary>
@@ -460,6 +578,7 @@ export default function AppShell() {
     return (
       <div className="workspace-home-wrapper">
         <MemoBanner />
+        {bootBadges}
         <LazyBoundary>
           <WorkspaceHome />
         </LazyBoundary>
@@ -479,6 +598,7 @@ export default function AppShell() {
       return (
         <>
           <MemoBanner kds />
+          {bootBadges}
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -504,6 +624,7 @@ export default function AppShell() {
     return (
       <>
         <MemoBanner />
+        {bootBadges}
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <PosScreen onNavigate={handleNavigate} />
@@ -521,6 +642,7 @@ export default function AppShell() {
       return (
         <>
           <MemoBanner kds />
+          {bootBadges}
           <div className="workspace-fullscreen">
             <div className="kds-workspace">
               <div className="kds-workspace-header">
@@ -546,6 +668,7 @@ export default function AppShell() {
     return (
       <>
         <MemoBanner />
+        {bootBadges}
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <RetailPosScreen onNavigate={handleNavigate} />
@@ -561,6 +684,7 @@ export default function AppShell() {
     return (
       <>
         <MemoBanner kds />
+        {bootBadges}
         <div className="workspace-fullscreen">
           <LazyBoundary>
             <KdsScreen />
@@ -589,6 +713,7 @@ export default function AppShell() {
     return PageComponent ? (
       <>
         {!isCustomerKiosk && <MemoBanner />}
+        {bootBadges}
         <LazyBoundary>
           <PageComponent />
         </LazyBoundary>
@@ -598,6 +723,7 @@ export default function AppShell() {
 
   return (
     <>
+      {bootBadges}
       <AppLayout
         route={currentRoute}
         onNavigate={handleNavigate}
@@ -647,4 +773,46 @@ function ActivationFlow({
   }
 
   return <CreatePinScreen onCreated={onComplete} />;
+}
+
+/**
+ * Non-blocking badges that state the boot verdicts the gate had to decide
+ * around: an unknown/inactive licence and an unanswered has_users. They are
+ * the visible half of the rule "an unknown answer is not a false fact" — the
+ * shell keeps working (compat: an existing install must not lose access) but
+ * never claims the licence is fine.
+ */
+function BootStatusBadges({
+  licenseState,
+  licenseMessage,
+  usersUnknown,
+}: {
+  licenseState: LicenseBootState;
+  licenseMessage: string | null;
+  usersUnknown: boolean;
+}) {
+  const { l10n } = useLocalization();
+  const badges: { key: string; text: string; variant: BadgeVariant }[] = [];
+  if (licenseState === 'unknown') {
+    badges.push({ key: 'license-unknown', text: requiredLocalized(l10n, 'settings-license-load-failed'), variant: 'warning' });
+  } else if (licenseState === 'inactive') {
+    badges.push({
+      key: 'license-inactive',
+      text: licenseMessage ?? requiredLocalized(l10n, 'settings-license-live-inactive'),
+      variant: 'danger',
+    });
+  }
+  if (usersUnknown) {
+    badges.push({ key: 'users-unknown', text: requiredLocalized(l10n, 'staff-error-load'), variant: 'warning' });
+  }
+  if (badges.length === 0) return null;
+  return (
+    <div className="boot-status-badges" data-testid="boot-status-badges" role="status">
+      {badges.map((b) => (
+        <Badge key={b.key} variant={b.variant} size="sm" data-testid={`boot-badge-${b.key}`}>
+          {b.text}
+        </Badge>
+      ))}
+    </div>
+  );
 }

@@ -90,7 +90,7 @@ func TestExchangeConsume_TurnsCodeIntoSession(t *testing.T) {
 
 	// Consume it (browser-origin, so the limiter is checked but not hit).
 	rec = doJSONBrowser(mux, http.MethodPost, "/api/v1/web/exchange-consume",
-		"https://ozpos.my.id", "", `{"code":"`+minted.Code+`"}`)
+		"https://kasir.mu", "", `{"code":"`+minted.Code+`"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -124,13 +124,13 @@ func TestExchangeConsume_SingleUse(t *testing.T) {
 
 	// First consume succeeds.
 	rec1 := doJSONBrowser(mux, http.MethodPost, "/api/v1/web/exchange-consume",
-		"https://ozpos.my.id", "", `{"code":"`+minted.Code+`"}`)
+		"https://kasir.mu", "", `{"code":"`+minted.Code+`"}`)
 	if rec1.Code != http.StatusOK {
 		t.Fatalf("expected 200 on first consume, got %d", rec1.Code)
 	}
 	// Replaying the same code must fail — the code was deleted on read.
 	rec2 := doJSONBrowser(mux, http.MethodPost, "/api/v1/web/exchange-consume",
-		"https://ozpos.my.id", "", `{"code":"`+minted.Code+`"}`)
+		"https://kasir.mu", "", `{"code":"`+minted.Code+`"}`)
 	if rec2.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 on replay, got %d", rec2.Code)
 	}
@@ -160,7 +160,7 @@ func TestExchangeConsume_RateLimitsBrowserOrigin(t *testing.T) {
 	for i := 0; i < exchangeConsumeMax+1; i++ {
 		code := mint()
 		rec := doJSONBrowser(mux, http.MethodPost, "/api/v1/web/exchange-consume",
-			"https://ozpos.my.id", "", `{"code":"`+code+`"}`)
+			"https://kasir.mu", "", `{"code":"`+code+`"}`)
 		lastCode = rec.Code
 	}
 	if lastCode != http.StatusTooManyRequests {

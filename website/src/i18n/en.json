@@ -33,25 +33,25 @@
     "menu": "Menu",
     "theme": "Toggle theme",
     "language": "Language",
-    "homeAria": "OZ-POS home",
+    "homeAria": "kasir.mu home",
     "mainNav": "Main navigation"
   },
   "pageDesc": {
     "features": "Offline-first point of sale: sales, shifts, and stock that keep working with zero connectivity.",
     "pricing": "Five plans — Free forever, Plus, Pro, Premium, and Enterprise. Yearly = 2 months free.",
-    "download": "Download OZ-POS for Windows. macOS, Linux, Android, and iOS are coming soon.",
-    "support": "Get help with OZ-POS — email support and answers to the most common questions.",
-    "login": "Sign in to your OZ-POS account with just your email.",
-    "account": "Your OZ-POS license, subscription, and billing information.",
-    "privacy": "How OZ-POS collects, uses, and protects your data.",
-    "terms": "The terms that govern your use of OZ-POS.",
-    "signup": "Create your OZ-POS account — set a password and verify your email."
+    "download": "Download kasir.mu for Windows. macOS, Linux, Android, and iOS are coming soon.",
+    "support": "Get help with kasir.mu — email support and answers to the most common questions.",
+    "login": "Sign in to your kasir.mu account with just your email.",
+    "account": "Your kasir.mu license, subscription, and billing information.",
+    "privacy": "How kasir.mu collects, uses, and protects your data.",
+    "terms": "The terms that govern your use of kasir.mu.",
+    "signup": "Create your kasir.mu account — set a password and verify your email."
   },
   "support": {
     "title": "Support",
     "subtitle": "We're here to help — reach out any time.",
     "emailLabel": "Email us",
-    "email": "support@ozpos.my.id",
+    "email": "support@kasir.mu",
     "name": "Name",
     "namePlaceholder": "Your name",
     "message": "Message",
@@ -64,11 +64,11 @@
     "faqTitle": "Frequently asked questions",
     "faq": [
       {
-        "q": "How do I start using OZ-POS for free?",
-        "a": "Download OZ-POS and launch it — the free plan starts immediately, no signup required."
+        "q": "How do I start using kasir.mu for free?",
+        "a": "Download kasir.mu and launch it — the free plan starts immediately, no signup required."
       },
       {
-        "q": "Does OZ-POS work without internet?",
+        "q": "Does kasir.mu work without internet?",
         "a": "Yes. Every feature works offline and syncs to the cloud when the connection returns."
       },
       {
@@ -77,7 +77,7 @@
       },
       {
         "q": "Where can I report a bug?",
-        "a": "Email us at support@ozpos.my.id with your version number and a description of what happened."
+        "a": "Email us at support@kasir.mu with your version number and a description of what happened."
       }
     ]
   },
@@ -95,7 +95,7 @@
       "cards": [
         {
           "title": "Get Started",
-          "description": "Setup, your first sale, licensing, and everyday guides for running OZ-POS.",
+          "description": "Setup, your first sale, licensing, and everyday guides for running kasir.mu.",
           "cta": "Open guide"
         },
         {
@@ -105,7 +105,7 @@
         },
         {
           "title": "Rust API",
-          "description": "cargo doc reference for the OZ-POS backend crates.",
+          "description": "cargo doc reference for the kasir.mu backend crates.",
           "cta": "Browse API"
         },
         {
@@ -179,9 +179,9 @@
         "description": "Tamper-evident audit trail for every cash drawer event, line void, manager override, and shift reconciliation."
       }
     ],
-    "comparisonTitle": "OZ-POS vs Conventional Cloud POS",
-    "comparisonSubtitle": "See why true offline-first architecture and transparent all-inclusive features set OZ-POS apart.",
-    "comparisonOzPos": "OZ-POS",
+    "comparisonTitle": "kasir.mu vs Conventional Cloud POS",
+    "comparisonSubtitle": "See why true offline-first architecture and transparent all-inclusive features set kasir.mu apart.",
+    "comparisonOzPos": "kasir.mu",
     "comparisonOthers": "Other POS",
     "comparisonHeaderFeature": "Features & Capabilities",
     "comparisonRows": [
@@ -237,7 +237,7 @@
   "ctaBanner": {
     "title": "Start free today",
     "subtitle": "No credit card required. Download and sell.",
-    "cta": "Download OZ-POS"
+    "cta": "Download kasir.mu"
   },
   "pricingPage": {
     "title": "Pricing",
@@ -256,10 +256,10 @@
     }
   },
   "download": {
-    "title": "Download OZ-POS",
-    "subtitle": "Version 0.0.37 — free forever, no signup required.",
+    "title": "Download kasir.mu",
+    "subtitle": "Version 0.0.39 — free forever, no signup required.",
     "version": "Current version",
-    "versionValue": "0.0.37",
+    "versionValue": "0.0.39",
     "platformsTitle": "Choose your platform",
     "requirementsTitle": "System requirements",
     "requirements": [
@@ -332,7 +332,7 @@
     "logout": "Sign out",
     "notConfigured": "The license API is not configured on this deployment.",
     "noSubscription": "You don't have an active subscription yet. Choose a plan to get started.",
-    "checkoutUnavailable": "Online checkout isn't available yet — contact sales@ozpos.my.id to subscribe.",
+    "checkoutUnavailable": "Online checkout isn't available yet — contact sales@kasir.mu to subscribe.",
     "subscribe": "Subscribe",
     "subscription": "Subscription",
     "starts": "Starts",
@@ -376,12 +376,12 @@
     "terminalUnlimited": "Unlimited terminals",
     "terminalCount": "1 terminal included",
     "terminalCountLive": "{count} terminals",
-    "unbindHint": "To migrate to new hardware, enter your license key into the new OZ-POS terminal app.",
+    "unbindHint": "To migrate to new hardware, enter your license key into the new kasir.mu terminal app.",
     "revokeDevice": "Revoke",
     "billingInvoices": "Billing & Receipts",
     "billingInvoicesHint": "View transaction receipts and tax invoice history for your account.",
     "viewReceipts": "Access Billing Portal & Receipts",
-    "invoiceNote": "Need a formal corporate tax invoice? Contact sales@ozpos.my.id with your company NPWP/VAT details.",
+    "invoiceNote": "Need a formal corporate tax invoice? Contact sales@kasir.mu with your company NPWP/VAT details.",
     "invoiceSubject": "Invoice Request - {email}"
   },
   "footer": {
@@ -418,7 +418,7 @@
   "checkout": {
     "signInToSubscribe": "Subscribe",
     "error": "Couldn't start the checkout. Please try again.",
-    "unavailable": "This plan isn't available to purchase online yet — contact sales@ozpos.my.id to subscribe."
+    "unavailable": "This plan isn't available to purchase online yet — contact sales@kasir.mu to subscribe."
   },
   "password": {
     "meterLabel": "Password strength",
@@ -456,10 +456,10 @@
     "regionHint": "Affects pricing and payment method"
   },
   "vertical": {
-    "positioning": "OZ-POS is the QRIS-native POS with offline-first reliability — priced for the Indonesian market.",
-    "whyTitle": "Why OZ-POS for your business?",
+    "positioning": "kasir.mu is the QRIS-native POS with offline-first reliability — priced for the Indonesian market.",
+    "whyTitle": "Why kasir.mu for your business?",
     "otherTitle": "Built for your kind of business",
-    "otherSubtitle": "OZ-POS adapts to how you sell — pick your industry.",
+    "otherSubtitle": "kasir.mu adapts to how you sell — pick your industry.",
     "ctaSecondary": "Download free",
     "bundleCta": "Plus + KDS — Restaurant Starter bundle",
     "kafe": {
@@ -617,7 +617,7 @@
   },
   "enterpriseTrial": {
     "title": "Enterprise Self-Serve Trial",
-    "metaDesc": "Start a 30-day Enterprise trial of OZ-POS with your approval code.",
+    "metaDesc": "Start a 30-day Enterprise trial of kasir.mu with your approval code.",
     "subtitle": "Enter your approval code to start a 30-day Enterprise trial with unlimited stores, staff, and all workspace types.",
     "codeLabel": "Approval Code",
     "codePlaceholder": "ENT-XXXXXXXX",
@@ -625,10 +625,10 @@
     "emailPlaceholder": "you@company.com",
     "submitButton": "Request Enterprise Trial",
     "successTitle": "Your Enterprise Trial Key is Ready!",
-    "successMessage": "Copy the key below and paste it into the OZ-POS app when prompted to activate. Your trial includes unlimited stores, staff, and all workspace types for 30 days.",
+    "successMessage": "Copy the key below and paste it into the kasir.mu app when prompted to activate. Your trial includes unlimited stores, staff, and all workspace types for 30 days.",
     "yourKeyLabel": "Your License Key",
     "copyButton": "Copy",
-    "nextSteps": "Next: Open OZ-POS, paste this key along with your email, and start using Enterprise features immediately.",
-    "downloadButton": "Download OZ-POS"
+    "nextSteps": "Next: Open kasir.mu, paste this key along with your email, and start using Enterprise features immediately.",
+    "downloadButton": "Download kasir.mu"
   }
 }

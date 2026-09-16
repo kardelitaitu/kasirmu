@@ -106,6 +106,8 @@ beforeEach(() => {
     categories: ['Makanan', 'Minuman'],
     categoryMeta: [],
     loading: false,
+    error: null,
+    reload: vi.fn(),
   });
 });
 
@@ -128,7 +130,7 @@ describe('RestaurantMenu', () => {
   });
 
   it('shows empty state', () => {
-    mockUseProducts.mockReturnValue({ products: [], categories: [], categoryMeta: [], loading: false });
+    mockUseProducts.mockReturnValue({ products: [], categories: [], categoryMeta: [], loading: false, error: null, reload: vi.fn() });
     renderMenu();
     // Real bundle value (products.ftl) now that the bundle is loaded.
     expect(screen.getByText('Menu is empty')).toBeTruthy();
@@ -280,6 +282,33 @@ describe('RestaurantMenu', () => {
     expect(screen.getByText('All')).toBeTruthy();
     expect(screen.getByText('Makanan')).toBeTruthy();
     expect(screen.getByText('Minuman')).toBeTruthy();
+  });
+
+  it('moves between category tabs with arrows and roves the Tab stop', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const all = screen.getByRole('tab', { name: 'All' });
+    const makanan = screen.getByRole('tab', { name: 'Makanan' });
+    const minuman = screen.getByRole('tab', { name: 'Minuman' });
+    // Active tab holds the single Tab stop.
+    expect(all).toHaveAttribute('tabindex', '0');
+    expect(makanan).toHaveAttribute('tabindex', '-1');
+
+    all.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(makanan);
+    // Arrows move focus only — manual activation, so no refilter yet.
+    expect(screen.getByText('Es Teh')).toBeTruthy();
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(minuman);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(all);
+    // Enter activates the focused tab.
+    makanan.focus();
+    await user.keyboard('{ArrowRight}');
+    await user.keyboard('{Enter}');
+    expect(screen.queryByText('Nasi Goreng')).toBeNull();
+    expect(screen.getByText('Es Teh')).toBeTruthy();
   });
 
   it('derives category pills from restaurant products only', () => {
@@ -502,6 +531,55 @@ describe('RestaurantMenu', () => {
     });
   });
 
+  it('calls the fullscreen and theme handlers from the hamburger rows', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const hamburger = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+
+    await user.click(hamburger);
+    await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+
+    await user.click(screen.getByText('Toggle Fullscreen'));
+    expect(mockToggleFullscreen).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText('Manual')).toBeNull());
+
+    await user.click(hamburger);
+    await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+    // The theme row shows the OPPOSITE mode ("Light Mode" while dark). The
+    // mocked theme is 'light', so the row reads 'Dark Mode' here.
+    const themeBtn = Array.from(
+      document.querySelectorAll('.restaurant-hamburger-dropdown .restaurant-hamburger-item'),
+    ).find((b) => /Mode/i.test(b.textContent ?? '')) as HTMLButtonElement;
+    await user.click(themeBtn);
+    expect(mockToggleTheme).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires app:lock from the Lock Terminal row instead of logging out', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const hamburger = document.querySelector('.restaurant-hamburger-btn') as HTMLButtonElement;
+    const lockFired: Event[] = [];
+    const onLock = (e: Event) => lockFired.push(e);
+    window.addEventListener('app:lock', onLock);
+
+    try {
+      await user.click(hamburger);
+      await waitFor(() => expect(screen.getByText('Manual')).toBeTruthy());
+      await user.click(screen.getByText('Lock Terminal'));
+      expect(lockFired).toHaveLength(1);
+      expect(mockLogout).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('app:lock', onLock);
+    }
+  });
+
+  it('returns to the workspace picker from the back button', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Back to workspaces' }));
+    expect(mockGoToWorkspacePicker).toHaveBeenCalledTimes(1);
+  });
+
   it('closes the hamburger menu with Escape and restores focus to its trigger', async () => {
     renderMenu();
     const user = userEvent.setup();
@@ -655,13 +733,40 @@ describe('RestaurantMenu', () => {
   });
 
   it('shows empty state when no products match filter', () => {
-    mockUseProducts.mockReturnValue({ products: [], categories: ['Makanan'], categoryMeta: [], loading: false });
+    mockUseProducts.mockReturnValue({ products: [], categories: ['Makanan'], categoryMeta: [], loading: false, error: null, reload: vi.fn() });
     renderMenu();
     expect(screen.getByText('Menu is empty')).toBeTruthy();
   });
 
-  it('hides out-of-stock products when marked unavailable via context menu', async () => {
+  it('shows the no-match state with a clear-search recovery when a filter empties the grid', async () => {
     renderMenu();
+    const user = userEvent.setup();
+    const searchbox = screen.getByRole('searchbox', { name: 'Search menu items' });
+    await user.type(searchbox, 'zzz-no-such-item');
+    await waitFor(() => expect(screen.getByText('No items match your search')).toBeTruthy());
+    // The search box's own × ("Clear search input") and the grid recovery
+    // ("Clear search") share a substring; scope to the empty-state panel.
+    const empty = screen.getByText('No items match your search').closest('.restaurant-empty')!;
+    const gridClear = empty.querySelector('.restaurant-empty-retry') as HTMLButtonElement;
+    await user.click(gridClear);
+    await waitFor(() => expect(screen.queryByText('No items match your search')).toBeNull());
+    expect(screen.getByText('Nasi Goreng')).toBeTruthy();
+  });
+
+  it('shows the fetch error with a retry action instead of an empty catalog', async () => {
+    const reload = vi.fn();
+    mockUseProducts.mockReturnValue({ products: [], categories: [], categoryMeta: [], loading: false, error: 'IPC unavailable', reload });
+    renderMenu();
+    expect(screen.getByText('IPC unavailable')).toBeTruthy();
+    expect(screen.queryByText('Menu is empty')).toBeNull();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a product unavailable via the context menu and blocks adding it', async () => {
+    renderMenu();
+    const user = userEvent.setup();
     const card = screen.getByText('Nasi Goreng').closest('button')!;
 
     await act(async () => {
@@ -671,6 +776,16 @@ describe('RestaurantMenu', () => {
     await waitFor(() => {
       expect(screen.getByText('Mark unavailable')).toBeTruthy();
     });
+    await user.click(screen.getByText('Mark unavailable'));
+
+    // The menu closes and the card reads as blocked: aria-disabled plus the
+    // Unavailable badge (the card stays visible — it is not hidden).
+    await waitFor(() => {
+      expect(screen.queryByText('Mark unavailable')).toBeNull();
+    });
+    const blocked = screen.getByRole('button', { name: /Nasi Goreng.*Unavailable/i });
+    expect(blocked).toHaveAttribute('aria-disabled', 'true');
+    expect(blocked.textContent).toContain('Unavailable');
   });
 
   // ── A11Y-06: context menu keyboard operability (WAI-ARIA menu pattern) ──
@@ -721,6 +836,25 @@ describe('RestaurantMenu', () => {
     // ArrowUp wraps back to the first.
     await user.keyboard('{ArrowUp}');
     expect(document.activeElement?.textContent).toContain('Pin to top');
+  });
+
+  it('roves ArrowDown from the last menuitem into the colour swatches', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const card = screen.getByText('Nasi Goreng').closest('button')!;
+
+    card.focus();
+    await user.keyboard('{Shift>}{F10}{/Shift}');
+    await waitFor(() => {
+      expect(screen.getByText('Pin to top')).toBeTruthy();
+    });
+
+    // First menuitem focused on open; ArrowDown walks the menuitems, then
+    // reaches the first swatch instead of stranding above the palette.
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement?.textContent).toContain('Mark unavailable');
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement?.classList.contains('restaurant-context-swatch')).toBe(true);
   });
 
   it('closes the context menu via Escape and restores focus to the card', async () => {
@@ -826,7 +960,7 @@ describe('RestaurantMenu', () => {
     const card = screen.getByText('Nasi Goreng').closest('button')!;
 
     fireEvent.contextMenu(card, { clientX: 100, clientY: 200 });
-    await userEvent.click(screen.getByRole('button', { name: 'Color #ef4444' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Color Red' }));
 
     expect(card.style.getPropertyValue('--btn-color')).toBe('#ef4444');
     expect(localStorage.getItem('restaurant-user-1-colors')).toBe(JSON.stringify({ 'NASI-GORENG': '#ef4444' }));

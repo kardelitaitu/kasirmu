@@ -35,7 +35,8 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
          path ahead of the LCP resources. -->
     <script is:inline src="/__oz/runtime-config.js" defer></script>
     <!-- Inter + JetBrains Mono are self-hosted (fontsource, bundled into
-         global.css) — no third-party font origin, no blocking font CSS. -->
+         global.css as the 'Inter Variable' / 'JetBrains Mono Variable'
+         families) — no third-party font origin, no blocking font CSS. -->
 <!-- Apply the stored theme before first paint and on SPA swaps. -->
     <script is:inline>
       (() => {
@@ -59,7 +60,7 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
       <link rel="alternate" hreflang={code} href={getAbsoluteLocaleUrl(code, path)} />
     ))}
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="OZ-POS" />
+    <meta property="og:site_name" content="kasir.mu" />
     <meta property="og:locale" content={locale} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={desc} />
@@ -73,7 +74,7 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
     <script type="application/ld+json" is:inline set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
-      "name": "OZ-POS",
+      "name": "kasir.mu",
       "applicationCategory": "BusinessApplication",
       "operatingSystem": "Windows, Linux, macOS, Android",
       "offers": {

@@ -152,16 +152,25 @@ export function usePosState() {
   }, [setLines]);
 
   /**
-   * Assign a course to a line item. Only applicable in restaurant mode.
-   * If the line already has the same course, this is a no-op.
+   * Assign a course to a line item, or clear it. Only applicable in
+   * restaurant mode. If the line already has the same course, this is a no-op.
+   *
+   * Clearing is expressed as an empty `courseId` (the course chip's "None"
+   * option) and must drop `coursingStatus` as well: a status left at 'hold'
+   * on a line with no course keeps the "Fire All" button alive and inflates
+   * its count, and a later re-assignment to a real course would then read as
+   * already-synced.
    */
   const assignCourse = useCallback((lineId: LineId, courseId: CourseId) => {
+    const clearing = courseId === '';
     setLines((prev) =>
-      prev.map((line) =>
-        line.id === lineId && line.courseId !== courseId
-          ? { ...line, courseId, coursingStatus: 'hold' as const }
-          : line,
-      ),
+      prev.map((line) => {
+        if (line.id !== lineId || line.courseId === courseId) return line;
+        const { courseId: _droppedCourse, coursingStatus: _droppedStatus, ...rest } = line;
+        return clearing
+          ? rest
+          : { ...rest, courseId, coursingStatus: 'hold' as const };
+      }),
     );
   }, []);
 

@@ -110,4 +110,23 @@ export const inventoryHandlers: Record<string, MockHandler> = {
   'send_stock_transfer_scoped': () => null,
   'receive_stock_transfer_scoped': () => null,
   'cancel_stock_transfer_scoped': () => null,
+  // In-transit transfers — a stock-transfer read, so it lives with the transfer
+  // commands above (not residue). Moved verbatim from `tauri-api.ts`
+  // (Phase 5.5); single-defined (git grep). `() => []` matches the sibling
+  // transfer stubs — the mock models no in-transit rows, so the list is empty.
+  'list_in_transit_transfers_scoped': () => [],
+
+  // Low-stock alerts — moved verbatim from `tauri-api.ts`'s entryHandlers
+  // literal (Phase 5.5): a pure self-contained fixture array, single-defined
+  // (git grep; the only other match was a prose note in sync.ts), so folding it
+  // into this inventory map is a pure copy. Its natural home: it reports product
+  // stock-vs-threshold, the same surface as the transfer/adjust commands above.
+  'get_low_stock_alerts': () => [
+    { product_id: 'RAM-D4-16GB-KF', sku: 'RAM-D4-16GB-KF', name: 'Kingston Fury Beast 16GB DDR4 3200', current_qty: 3, threshold: 10, currency: 'IDR', price_minor: 450000, cost_minor: 390000 },
+    { product_id: 'MB-B650-ROG', sku: 'MB-B650-ROG', name: 'ASUS ROG Strix B650-A Gaming WiFi', current_qty: 5, threshold: 10, currency: 'IDR', price_minor: 2850000, cost_minor: 2500000 },
+    { product_id: 'SSD-NV2-1TB', sku: 'SSD-NV2-1TB', name: 'Kingston NV2 1TB NVMe SSD', current_qty: 4, threshold: 8, currency: 'IDR', price_minor: 950000, cost_minor: 820000 },
+    { product_id: 'PSU-RM750', sku: 'PSU-RM750', name: 'Corsair RM750e 80+ Gold PSU', current_qty: 6, threshold: 10, currency: 'IDR', price_minor: 1850000, cost_minor: 1650000 },
+    { product_id: 'GPU-RTX4070', sku: 'GPU-RTX4070', name: 'MSI RTX 4070 Ventus 2X', current_qty: 2, threshold: 5, currency: 'IDR', price_minor: 8900000, cost_minor: 8100000 },
+    { product_id: 'CPU-7800X3D', sku: 'CPU-7800X3D', name: 'AMD Ryzen 7 7800X3D', current_qty: 8, threshold: 10, currency: 'IDR', price_minor: 5400000, cost_minor: 4900000 },
+  ],
 };

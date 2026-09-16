@@ -247,15 +247,52 @@ describe('DataManagement — Backup', () => {
     expect(screen.queryByText('Backing up…')).not.toBeInTheDocument();
   });
 
-  it('handles getBackupStatus failure gracefully', async () => {
-    mockGetBackupStatus.mockRejectedValue(new Error('Network error'));
-    mockGetBackupStatusScoped.mockRejectedValue(new Error('Network error'));
+  // ── Three states, two of them honest ───────────────────────────
+  // "Never" is a compliance claim: it asserts that no snapshot exists. A read that
+  // FAILED cannot support it, and the toast that used to say so expires after a few
+  // seconds while the null does not. Pinned in BOTH directions, because a fix that
+  // rendered "unknown" on every path would only replace one false claim with another.
+  it('does not render "never" when the backup-status read FAILS', async () => {
+    mockGetBackupStatus.mockRejectedValue(new Error('IPC unavailable'));
+    mockGetBackupStatusScoped.mockRejectedValue(new Error('IPC unavailable'));
+    render(<DataManagementScreen />);
+    await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
+    await clickTab('Backup');
+    await waitFor(() => {
+      expect(screen.getByText('data-mgmt-toast-backup-status-fail')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('data-mgmt-backup-never')).not.toBeInTheDocument();
+  });
+
+  it('still renders "never" when the read ANSWERS that no backup exists', async () => {
+    // The beforeEach default already resolves { lastBackup: null } -- an answered-empty
+    // read, which is a real state and must keep looking exactly the way it does today.
     render(<DataManagementScreen />);
     await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
     await clickTab('Backup');
     await waitFor(() => {
       expect(screen.getByText('data-mgmt-backup-never')).toBeInTheDocument();
     });
+    expect(screen.queryByText('data-mgmt-toast-backup-status-fail')).not.toBeInTheDocument();
+  });
+
+  it('handles getBackupStatus failure gracefully', async () => {
+    // The body used to end with expect(getByText('data-mgmt-backup-never')) -- the suite PINNED
+    // the collapse: a failed read had to render the same compliance claim as an answered-empty
+    // one. Graceful now means both halves: the toast still fires, and the panel declines to
+    // claim 'never'.
+    mockGetBackupStatus.mockRejectedValue(new Error('Network error'));
+    mockGetBackupStatusScoped.mockRejectedValue(new Error('Network error'));
+    render(<DataManagementScreen />);
+    await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
+    await clickTab('Backup');
+    await waitFor(() => {
+      expect(mockAddToast).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'data-mgmt-toast-backup-status-fail', type: 'error' }),
+      );
+    });
+    expect(screen.getByText('data-mgmt-toast-backup-status-fail')).toBeInTheDocument();
+    expect(screen.queryByText('data-mgmt-backup-never')).not.toBeInTheDocument();
   });
 });
 

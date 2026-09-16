@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Single source of truth for CI/local-runner gate names and status (AUDIT-27 CI-08). scripts/verify-ci-docs-drift.py enforces that docs/ci-pipeline.md, .github/workflows/*.yml, scripts/check.sh, and scripts/check-ui.mjs all agree with this file. Adding a gate here is the ONLY way to add a gate; renaming/removing one here (plus its runner/CI declarations) is the only way to remove it.",
+  "description": "Single source of truth for CI/local-runner gate names and status (AUDIT-27 CI-08). scripts/verify-ci-docs-drift.py enforces that docs/operations/ci-pipeline.md, .github/workflows/*.yml, scripts/check.sh, and scripts/check-ui.mjs all agree with this file. Adding a gate here is the ONLY way to add a gate; renaming/removing one here (plus its runner/CI declarations) is the only way to remove it.",
   "gates": [
     {
       "id": "ui-lint",
@@ -88,7 +88,7 @@
       "label": "Clippy",
       "status": "required",
       "runners": { "check.sh": ["clippy"] },
-      "_note": "Local-only / manual. Skipped in CI, verified locally in check.sh / pre-push."
+      "_note": "Runs locally only, and not everywhere locally: its two runners are scripts/check.sh (step \"clippy workspace\") and scripts/release.sh. No live workflow runs it -- clippy occurs 0 times in both dev-ci.yml and release.yml -- so a green CI says nothing about clippy. It is also NOT run before a push: .githooks/pre-push invokes scripts/run-pre-push.py, which carries no clippy task at any tier. status=\"required\" is the policy this project holds, not a claim that a gate enforces it."
     },
     {
       "id": "rust-tests",
@@ -97,6 +97,13 @@
       "runners": { "check.sh": ["test workspace", "test doctests"] },
       "_note": "Was ci.yml#rust-test-fast. dev-ci.yml runs `cargo nextest run --workspace --all-features` with NO excludes, so it covers this more broadly than check.sh, whose own nextest step excludes oz-pos-app. nextest does not run doctests, so that part remains check.sh-only.",
       "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
+    },
+    {
+      "id": "release-bridge-tests",
+      "label": "Release-profile bridge tests",
+      "status": "required",
+      "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p oz-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
+      "ci": { "workflow": "dev-ci.yml", "job": "release-bridge-test" }
     },
     {
       "id": "architecture-boundaries",
@@ -282,8 +289,9 @@
       "id": "bundle-budget",
       "label": "Bundle budget",
       "status": "required",
-      "runners": { "check:all": ["bundle budget"] },
-      "_note": "Local-only. check-ui.mjs:139 runs `npm run bundle:check` (gzip budgets on the production build, PERF-02). No live CI job builds the UI for size -- dev-ci.yml#ui-test typechecks, lints and tests but never runs `npm run build`. Reachable only via `cd ui && npm run check:all`."
+      "runners": { "check:all": ["bundle budget", "bundle budget (tablet)"] },
+      "_note": "gzip budgets on BOTH artifacts built from one `ui/` tree. Enforced by the job named in this row's `ci` block: `dev-ci.yml#ui-test` declares `Bundle budget (desktop)` and `Bundle budget (tablet)`, which are the first CI steps to compile `ui/` at all -- each `bundle:check` script builds before it measures. The same two gates are declared locally in scripts/check-ui.mjs (`npm run check:all`), cited by gate name rather than line number, because this row once cited `check-ui.mjs:139` and it had rotted to :157. The woff2 line is `BUDGET_WOFF2_KB`, default 400 KB against a measured 296 KB -- 74 % of a ceiling set against today's payload, so the realistic way to fail it is a second family or a wider subset. PERF-02; the tablet leg closes notes.md item 38.",
+      "ci": { "workflow": "dev-ci.yml", "job": "ui-test" }
     },
     {
       "id": "e2e",
@@ -329,7 +337,7 @@
       "id": "security-pr",
       "label": "Security PR baseline",
       "status": "retired",
-      "_note": "cargo audit and cargo deny appear in neither dev-ci.yml nor check.sh. Was ci.yml#security-pr."
+      "_note": "Retained as retired: this row names the ci.yml#security-pr JOB, and no live workflow runs either tool — `grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` still exits 1. What DID move is the local half of the old sentence: 'cargo audit and cargo deny appear in neither dev-ci.yml nor check.sh' was true when written and became false the moment scripts/check.sh grew the non-blocking 'supply chain advisories (advisory)' leg, which runs cargo-deny (gates.json -> audit, status advisory). cargo-audit still appears in neither file. Was ci.yml#security-pr."
     },
     {
       "id": "lighthouse",
@@ -345,9 +353,10 @@
     },
     {
       "id": "audit",
-      "label": "Dependency audit",
-      "status": "retired",
-      "_note": "Dependency audit ran in ci.yml#audit only. `npm ci --no-audit` in check.sh explicitly SUPPRESSES it. Was required-on-push."
+      "label": "Dependency audit (cargo-deny, advisory)",
+      "status": "advisory",
+      "runners": { "check.sh": ["supply chain advisories"] },
+      "_note": "RE-FILED, not restored: the runner named here is the local scripts/check.sh leg 'supply chain advisories (advisory)', which runs 'cargo deny check' against deny.toml and NEVER fails the run. Deliberately NO 'ci' block — no live workflow runs it (`grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1), so naming a job here would be a claim this checker is entitled to catch. Two of its outcomes are SKIPs — cargo-deny not installed, and the advisory database unreachable — and its fourth outcome is a non-blocking WARN, so a green check.sh is NOT proof the supply chain was checked; neither is a green PR, since .githooks/pre-push runs scripts/run-pre-push.py and never calls check.sh. Rust only: `npm ci --no-audit` in check.sh deliberately SUPPRESSES the npm side, and cargo-audit itself still runs nowhere — this row covers cargo-deny. Was 'retired / Dependency audit', ci.yml#audit only, and required-on-push before that."
     },
     {
       "id": "fuzz",
@@ -448,7 +457,7 @@
       "id": "release-readiness",
       "label": "Release readiness",
       "status": "required",
-      "_note": "Runs scripts/check-updater-compat.mjs, which builds a Rust harness pinned to the minisign-verify version the real Tauri updater client uses and proves that signatures from generate-latest-json.mjs VERIFY, that a tampered installer is REJECTED, and that the pubkey committed in tauri.conf.json parses. Before this it ran ONLY inside release.yml.bak, i.e. nowhere at all -- so the signing chain could have rotted silently alongside the retired workflow and the first symptom would be customers unable to auto-update. Path-gated on the release toolchain and the updater pubkey because the harness needs a cold cargo build. No `runners` key: that field names LOCAL entry points, and this one needs a cargo build, so it is CI-only.",
+      "_note": "Runs scripts/check-updater-compat.mjs, which builds a Rust harness pinned to the minisign-verify version the real Tauri updater client uses and proves that signatures from generate-latest-json.mjs VERIFY, that a tampered installer is REJECTED, and that the pubkey committed in tauri.conf.json parses. Before this it ran ONLY inside release.yml.bak, i.e. nowhere at all -- so the signing chain could have rotted silently alongside the retired workflow and the first symptom would be customers unable to auto-update. Path-gated on the release toolchain and the updater pubkey because the harness needs a cold cargo build. No `runners` key: that field names LOCAL entry points, and this one needs a cargo build, so it is CI-only. DEPLOY COUPLING IS A DECISION, NOT AN OVERSIGHT (2026-09-14): `northflank-deploy` deliberately omits this gate from its `needs` -- that deploy POSTs the commit sha to Northflank, which builds Dockerfile.unified, a BACKEND container consuming no installer, no latest.json and no updater pubkey, while release.yml gates this chain where it binds (release-validate runs the same scripts/check-updater-compat.mjs, release-build needs release-validate, release-publish needs release-build). Adding the edge here would bind 100% of deploys to a check unrelated to the artifact shipped, because the changes router forces release=true on every non-PR event while the release router paths held 140 of 7,841 commits over the last 90 days (1.79%), and because its own failure surface (an unstable rust-toolchain pin, node 24, a cold cargo build under the workflow-wide RUSTFLAGS) can stop a deploy it cannot affect; narrowing the route instead is a no-op on the deploy path. Read `status` as POLICY, not as a deploy graph: required-by-policy and not-a-deploy-prerequisite are both true at once, so the missing `needs` edge is this note, not a bug to file. Residual risk, stated: `main` is unprotected, so a red run of this gate is still mergeable.",
       "ci": { "workflow": "dev-ci.yml", "job": "release-readiness" }
     },
     {

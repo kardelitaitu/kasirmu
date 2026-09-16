@@ -18,12 +18,11 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 import {
-  openCashDrawer,
-  printReceipt,
+  openCashDrawerScoped,
   printSalesReceiptScoped,
-  listScanners,
-  startScanner,
-  stopScanner,
+  listScannersScoped,
+  startScannerScoped,
+  stopScannerScoped,
   listDisplaysScoped,
   displayShowScoped,
   displayClearScoped,
@@ -36,25 +35,38 @@ describe('hardware.ts IPC contract', () => {
 
   // ── Cash Drawer ───────────────────────────────────────────
 
-  it('openCashDrawer → open_cash_drawer with default empty args', async () => {
+  // `OpenCashDrawerArgs` on the Rust side has no `#[serde(rename_all)]`, so the
+  // wire key is `device_id`. The field is `#[serde(default)] Option<String>`,
+  // so the camelCase key would NOT error — it would silently open the
+  // "default" drawer. Pin input-camelCase → invoke-snake_case (tax.ts shape).
+  //
+  // These two cases used to sit on the unscoped `openCashDrawer` as well. That wrapper was
+  // deleted on 2026-09-16 (T22) because no screen, hook or client facade imported it, and the
+  // command it invoked is registered in neither shell -- so it could not have caught a real
+  // regression. The pin itself stays, and it is the same code path: both wrappers call the
+  // module-private `cashDrawerWireArgs`, so mapping and omission are still graded where they
+  // are actually shipped.
+  it('openCashDrawerScoped with deviceId → open_cash_drawer_scoped with args.device_id', async () => {
     mockInvoke.mockResolvedValue({ opened: true });
-    await openCashDrawer();
-    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: {} });
+    await openCashDrawerScoped('tok', { deviceId: 'drawer-1' });
+    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+      sessionToken: 'tok',
+      args: {
+        device_id: 'drawer-1',
+      },
+    });
   });
 
-  it('openCashDrawer with deviceId → open_cash_drawer with args.deviceId', async () => {
+  it('openCashDrawerScoped with no deviceId omits device_id (Rust defaults to "default")', async () => {
     mockInvoke.mockResolvedValue({ opened: true });
-    await openCashDrawer({ deviceId: 'drawer-1' });
-    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: { deviceId: 'drawer-1' } });
+    await openCashDrawerScoped('tok', {});
+    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+      sessionToken: 'tok',
+      args: {},
+    });
   });
 
   // ── Receipt Printing ──────────────────────────────────────
-
-  it('printReceipt → print_receipt with body', async () => {
-    mockInvoke.mockResolvedValue({ printedLines: 5 });
-    await printReceipt({ body: 'Hello World' });
-    expect(mockInvoke).toHaveBeenCalledWith('print_receipt', { args: { body: 'Hello World' } });
-  });
 
   it('printSalesReceiptScoped → print_sales_receipt_scoped with sessionToken', async () => {
     mockInvoke.mockResolvedValue({ printed: true });
@@ -64,22 +76,28 @@ describe('hardware.ts IPC contract', () => {
 
   // ── Barcode Scanner ───────────────────────────────────────
 
-  it('listScanners → list_scanners (no args)', async () => {
+  // These three cases used to pin `list_scanners` / `start_scanner` / `stop_scanner` -- commands
+  // registered in NEITHER shell (T21). They are the only wire-shape coverage this surface has, so
+  // deleting the unscoped wrappers without moving them would have left the registered doors with
+  // no test at all while an unregistered one kept three. `start_scanner`'s camelCase `scannerId`
+  // key is the load-bearing half: Tauri converts the command's OUTER name and nothing else, so a
+  // payload that says `scanner_id` is silently None on the Rust side (T23's `deviceId` lesson).
+  it('listScannersScoped → list_scanners_scoped with sessionToken', async () => {
     mockInvoke.mockResolvedValue([]);
-    await listScanners();
-    expect(mockInvoke).toHaveBeenCalledWith('list_scanners', undefined);
+    await listScannersScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('list_scanners_scoped', { sessionToken: 'tok' });
   });
 
-  it('startScanner → start_scanner with scannerId', async () => {
+  it('startScannerScoped → start_scanner_scoped with sessionToken + scannerId', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await startScanner('scanner-1');
-    expect(mockInvoke).toHaveBeenCalledWith('start_scanner', { scannerId: 'scanner-1' });
+    await startScannerScoped('tok', 'scanner-1');
+    expect(mockInvoke).toHaveBeenCalledWith('start_scanner_scoped', { sessionToken: 'tok', scannerId: 'scanner-1' });
   });
 
-  it('stopScanner → stop_scanner (no args)', async () => {
+  it('stopScannerScoped → stop_scanner_scoped with sessionToken', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await stopScanner();
-    expect(mockInvoke).toHaveBeenCalledWith('stop_scanner', undefined);
+    await stopScannerScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('stop_scanner_scoped', { sessionToken: 'tok' });
   });
 
   // ── Customer Display (scoped — ADR #7) ──────────────────────
@@ -90,10 +108,20 @@ describe('hardware.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('list_displays_scoped', { sessionToken: 'tok' });
   });
 
-  it('displayShowScoped → display_show_scoped with sessionToken + args', async () => {
+  // `DisplayShowArgs` on the Rust side has no `#[serde(rename_all)]` either,
+  // so the wire key is `display_id` — a required `String`, i.e. a hard
+  // missing-field error on both shells. Pin input-camelCase → invoke-snake_case.
+  it('displayShowScoped → display_show_scoped with args.display_id', async () => {
     mockInvoke.mockResolvedValue(undefined);
     await displayShowScoped('tok', { displayId: 'd1', line1: 'Total', line2: '$10.00' });
-    expect(mockInvoke).toHaveBeenCalledWith('display_show_scoped', { sessionToken: 'tok', args: { displayId: 'd1', line1: 'Total', line2: '$10.00' } });
+    expect(mockInvoke).toHaveBeenCalledWith('display_show_scoped', {
+      sessionToken: 'tok',
+      args: {
+        display_id: 'd1',
+        line1: 'Total',
+        line2: '$10.00',
+      },
+    });
   });
 
   it('displayClearScoped → display_clear_scoped with sessionToken + displayId', async () => {
@@ -122,6 +150,6 @@ describe('hardware.ts IPC contract', () => {
 
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('device not found'));
-    await expect(listScanners()).rejects.toThrow('device not found');
+    await expect(listScannersScoped('tok')).rejects.toThrow('device not found');
   });
 });

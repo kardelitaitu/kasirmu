@@ -149,14 +149,15 @@ pub struct ReceiptSettingsDto {
     pub margin_left: i64,
     /// Right margin (mm).
     pub margin_right: i64,
-    /// Tax rounding mode: "half_up" or "truncate". Default "half_up".
-    #[serde(default = "default_tax_rounding_mode")]
-    pub tax_rounding_mode: String,
-}
-
-/// Default for ReceiptSettingsDto::tax_rounding_mode when the field is absent.
-pub fn default_tax_rounding_mode() -> String {
-    "half_up".to_string()
+    /// Tax rounding mode: "half_up" or "truncate".
+    ///
+    /// `None` means the caller did not speak to this key, and the stored value
+    /// must be left alone. It is deliberately **not** defaulted: the restaurant
+    /// POS settings card sends ten of these eleven keys and omits this one,
+    /// so a serde default here silently rewrote a merchant's `truncate` back to
+    /// `half_up` on every save from that card. The read path always answers
+    /// `Some`.
+    pub tax_rounding_mode: Option<String>,
 }
 
 /// Store name, address, tax ID, currency, branch, and logo - shown on printed receipts.
@@ -190,7 +191,29 @@ pub struct CreditSettingsDto {
 }
 
 /// A credit sale for the reminders list.
+///
+/// Wire contract (fixed 2026-09-15, Phase 3.3 T4): camelCase. This struct
+/// carried no `rename_all` from the Wave E extraction until tonight, so it
+/// emitted `sale_id` / `customer_name` / `total_minor` / `created_at` /
+/// `settled_at` / `cashier_name` while its only consumer — the retail credit
+/// list — reads the camelCase names its interface declares
+/// (`ui/src/api/settings.ts:74`; read at the retail credit modals and filtered
+/// in the retail POS screen). Every field but `currency` was
+/// therefore `undefined` against a real backend: em-dash customer, NaN amount,
+/// "Invalid Date", a Settle button that sent `sale_id: undefined`, and — the
+/// part that raised no error anywhere — a `!c.settledAt` filter that passed
+/// every row, so a settled tab stayed on the unpaid list. Nothing caught it
+/// because `ui/src/dev-mock/handlers/payment.ts:231-232` answers both
+/// `list_credit_sales` variants with `[]`, and no test in the repo serialized
+/// this type before the two that landed with the repair
+/// (`settings_tests.rs::credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads`
+/// and the tablet's
+/// `settings_tests.rs::wire_pin_credit_sale_carries_every_key_the_renderer_declares`).
+/// Outbound is the direction that crosses the boundary, so camelCase is the
+/// only form accepted; there was no inbound snake_case caller to keep an alias
+/// for.
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreditSaleDto {
     /// ID of the associated sale.
     pub sale_id: String,
@@ -383,9 +406,11 @@ pub fn run_get_receipt_settings(
         margin_bottom: Settings::get_receipt_margin_bottom(conn)?,
         margin_left: Settings::get_receipt_margin_left(conn)?,
         margin_right: Settings::get_receipt_margin_right(conn)?,
-        tax_rounding_mode: Settings::get_tax_rounding_mode(conn)?
-            .wire_name()
-            .to_string(),
+        tax_rounding_mode: Some(
+            Settings::get_tax_rounding_mode(conn)?
+                .wire_name()
+                .to_string(),
+        ),
     })
 }
 
@@ -1004,7 +1029,13 @@ pub fn run_set_receipt_settings(
     Settings::set_receipt_margin_bottom(&tx, args.margin_bottom)?;
     Settings::set_receipt_margin_left(&tx, args.margin_left)?;
     Settings::set_receipt_margin_right(&tx, args.margin_right)?;
-    Settings::set_tax_rounding_mode_str(&tx, &args.tax_rounding_mode)?;
+    // Absent means "leave the stored value alone" — see
+    // `ReceiptSettingsDto::tax_rounding_mode`. A value that IS present still
+    // goes through the validating setter, so an unknown mode is refused rather
+    // than written.
+    if let Some(mode) = &args.tax_rounding_mode {
+        Settings::set_tax_rounding_mode_str(&tx, mode)?;
+    }
 
     tx.commit()?;
 

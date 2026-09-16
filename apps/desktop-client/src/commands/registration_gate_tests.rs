@@ -3,10 +3,11 @@
 //! # What this is
 //!
 //! A ratchet over the CLASS, not the instances. The tauri::generate_handler! macro in
-//! ../lib.rs is the whole renderer-reachable surface of this shell: 453 registered
-//! names as measured 13-09-26, two more than the 451 this floor was last written
-//! against, because `fb9ef9042ad` registered `qris_auto::qris_auto_charge_scoped` and
-//! `qris_auto::qris_auto_status_scoped`. Every registered name is parsed out of this crate's own
+//! ../lib.rs is the whole renderer-reachable surface of this shell: 455 registered
+//! names as measured 16-09-26, two more than the 453 this floor was last written
+//! against, because `b07e8c3ac` registered `pos::set_line_course_scoped` and
+//! `pos::publish_course_fired_scoped`, both arriving already gated through `oz_bridge::pos`.
+//! Every registered name is parsed out of this crate's own
 //! source at test time and placed in exactly one of three states:
 //!
 //! 1. gated — the wrapper resolves a session AND a permission is named on the path the
@@ -75,11 +76,11 @@ use std::path::{Path, PathBuf};
 #[path = "registration_gate_debt.generated.rs"]
 mod debt;
 
-/// The registered surface of this shell, measured from `../lib.rs` as 453 names on
-/// 13-09-26. This is an EQUALITY and the leg below checks it against the tree, so a
+/// The registered surface of this shell, measured from `../lib.rs` as 455 names on
+/// 16-09-26 (453 on 13-09-26). This is an EQUALITY and the leg below checks it against the tree, so a
 /// moved include_str path cannot pass by finding nothing and a registered name cannot
 /// pass by being gated. Raising this number records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 453;
+const REGISTERED_FLOOR: usize = 455;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
@@ -689,15 +690,56 @@ fn drift_pin_debt_ceilings_only_shrink() {
         .filter(|(_, st)| *st == State::NoSessionResolution)
         .count();
     let assume = ungated - no_session;
+    // Name the movers. This leg used to print two counts and no identity, which meant a crossing
+    // could only be diagnosed by reimplementing the sweep somewhere else -- and the first attempt
+    // at that (a Python mirror, 2026-09-16) reported 17 where this leg reported 27, because its
+    // author wrote `pub async fn` where commands may be synchronous, then a non-recursive
+    // `glob` where the sweep walks subdirectories. Two bugs, one right name, and no way to know
+    // which of the three numbers to trust. The label-vs-state diff below is the same question the
+    // ledger can answer about itself, answered in the language that already owns the predicate.
+    let label_of = |n: &str| {
+        debt::DEBT_LEDGER
+            .iter()
+            .find(|(k, _)| *k == n)
+            .map(|(_, v)| *v)
+    };
+    let want = "resolves_session_names_no_permission";
+    let (mut homeless, mut migrated) = (Vec::new(), Vec::new());
+    for (name, st) in &s.ungated {
+        if *st != State::ResolvesSessionNamesNoPermission {
+            continue;
+        }
+        match label_of(name) {
+            None => homeless.push(name.clone()),
+            Some(old) if old != want => migrated.push(format!("{name} (ledger says {old})")),
+            Some(_) => {}
+        }
+    }
     assert!(
         no_session <= debt::NO_SESSION_RESOLUTION
             && assume <= debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
         "a per-state ceiling was crossed: measured {no_session} no_session_resolution \
          (ceiling {}) and {assume} resolves_session_names_no_permission (ceiling {}). The \
          second class is authenticate-then-assume and is the largest here; it moved \
-         without a decision.",
+         without a decision. Migrants into that class: {}. Names in it with no ledger row \
+         at all: {}. A migrant means a command whose measured state changed under a row \
+         that still describes the old one -- usually a session parameter that arrived \
+         without a permission check, which is a class-1 door becoming a class-2 door and \
+         empties one ceiling while filling the other. Either gate it, or move its ledger \
+         row to the true class AND raise that ceiling deliberately, naming the decision in \
+         docs/records/JOURNAL.md.",
         debt::NO_SESSION_RESOLUTION,
         debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
+        if migrated.is_empty() {
+            "none".to_string()
+        } else {
+            migrated.join(", ")
+        },
+        if homeless.is_empty() {
+            "none".to_string()
+        } else {
+            homeless.join(", ")
+        },
     );
 }
 
@@ -2053,5 +2095,73 @@ fn pin_the_offender_predicate_refuses_a_path_outside_the_sweep_root() {
     assert!(
         !computed_name_is_an_offender("ui/src/__tests__/api-customers-contract.test.ts", false),
         "test scaffolding inside the root is still scaffolded, not offending"
+    );
+}
+
+/// Phase 3.2 closed on a recorded decision — Option A — that keeps the
+/// `tauri::generate_handler!` table in `lib.rs`, because this ratchet, the parity
+/// checker and the scoped-coverage gate all parse that macro verbatim. What that
+/// ruling did NOT come with was a gate for the other half of "thin shell": that
+/// the file names handlers and never defines one. The claim held at close by
+/// inspection alone, and `todo-refactor-oz-pos-app-agents-3.md`'s
+/// "Headline metric restated" section measured in passing that no tool in the
+/// repo checks it — which is how a shell quietly becomes the thing the
+/// relocation campaign spent five waves emptying.
+///
+/// Both assertions are anchored to the start of a line, deliberately: the
+/// unanchored pattern matches three prose occurrences in `lib.rs`'s own module
+/// doc (`:10`, `:15`, `:25`), and a lint whose first output is "the
+/// documentation is a defect" gets an `#[allow]` within a week and then checks
+/// nothing.
+#[test]
+fn drift_pin_the_shell_router_registers_commands_and_defines_none() {
+    let defined: Vec<&str> = LIB_RS
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| line.starts_with("#[tauri::command]") || line.starts_with("#[command]"))
+        .collect();
+    assert!(
+        defined.is_empty(),
+        "apps/desktop-client/src/lib.rs defines {} command(s) of its own: {defined:?} — after Wave E every handler body lives in oz-bridge and the shell only lists paths; a command defined here is invisible to the parity checker's handler-list parse and to the bridge tests alike",
+        defined.len()
+    );
+
+    // The file's remaining executable content is the builder. One function is
+    // the measured truth at this HEAD; a second one is the shape a slow
+    // re-thickening takes, so the assertion names what it found rather than
+    // counting.
+    let fns: Vec<String> = LIB_RS
+        .lines()
+        .filter(|line| {
+            let t = line.trim_start();
+            t.starts_with("fn ")
+                || t.starts_with("pub fn ")
+                || t.starts_with("async fn ")
+                || t.starts_with("pub async fn ")
+                || t.starts_with("pub(crate) fn ")
+        })
+        .map(|line| line.trim()[..line.trim().find('(').unwrap_or(line.trim().len())].to_string())
+        .collect();
+    assert_eq!(
+        fns,
+        vec!["pub fn run".to_string()],
+        "lib.rs is a router: its only function must be the Tauri builder `run`, found {fns:?}"
+    );
+
+    // Positive control, so the empty count above is a measurement and not a
+    // filter that matches nothing anywhere: the same anchored scan over the
+    // shell's own command directory finds a large population. The floor sits
+    // with headroom below the 23 sites measured at 2026-09-15, so a command
+    // module losing a few handlers does not fire this, while a predicate that
+    // stopped matching — an attribute spelled on one line differently, the
+    // `use tauri::command` alias dropped — does.
+    let defined_elsewhere: usize = include_str!("../commands/settings.rs")
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| line.starts_with("#[tauri::command]") || line.starts_with("#[command]"))
+        .count();
+    assert!(
+        defined_elsewhere > 10,
+        "the positive control found only {defined_elsewhere} command definitions in commands/settings.rs, so this test's filter has stopped matching anything and its verdict about lib.rs proves nothing"
     );
 }

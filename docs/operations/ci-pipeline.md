@@ -14,7 +14,7 @@
 > below it went unlisted. **The Workflow column is what tells you where a row
 > actually runs.**
 
-> ✅ **What is live.** `dev-ci.yml` is the only workflow GitHub executes. Every
+> ✅ **What is live.** GitHub executes TWO workflows, not one (repro: `ls .github/workflows/*.yml`, measured 2026-09-14; both carry a 🟢 **LIVE** row in the Workflow inventory below): `release.yml` on `v*` tags, and `dev-ci.yml` on `pull_request` + `push` to main + `workflow_dispatch`. Retired here is the claim that `dev-ci.yml` was the only workflow GitHub executes — this page's own live `release.yml` row contradicts it. For `dev-ci.yml`, Every
 > one of its jobs now has a row here, and `verify-ci-docs-drift.py` enforces that
 > — it compares the docs against every job in every live workflow and reports any
 > it cannot find. That check used to compare only against a file named `ci.yml`,
@@ -36,7 +36,7 @@
 |--------|--------------|----------|-------|
 | `cargo-check` | ✅ Required | dev-ci.yml | step `cargo fmt --all -- --check` (was job `rust-fmt`) |
 | `static-gates` | ✅ Required | dev-ci.yml | `gofmt -l` + `go vet` + `go test -short` on license-server. gates.json names `dev-ci.yml/static-gates`; the row said `ci.yml` until 08-09-26, which made live coverage look historical |
-| `static-gates` | ✅ Required | dev-ci.yml | `sh apps/unified/test-healthcheck.sh` (dev-ci.yml:475) |
+| `static-gates` | ✅ Required | dev-ci.yml | `sh apps/unified/test-healthcheck.sh` (dev-ci.yml:471-472) |
 | `static-gates` | ✅ Required | dev-ci.yml | Step "Panic inventory (ADR #33)". **No gates.json record** |
 | `changes` | ✅ Required | dev-ci.yml | Path-based change detection for PR filtering. `changes` is the FIRST job in dev-ci.yml's own job list — the `ci.yml` attribution was never ambiguous, just stale |
 | `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-no-hardcoded-money-format.py`, step "No hardcoded money formatting". **No gates.json record** — see the blind-spot note below |
@@ -53,21 +53,22 @@
 | `ci-docs-drift` | ✅ Required | dev-ci.yml | step `bash scripts/test-ci-routing.sh` — the router decides whether every other job runs, so this one blocks |
 | `website` | ✅ Required | dev-ci.yml | `cd website && npm ci && npm run check && npm test && npm run build` |
 | `cargo-nextest` | ✅ Required | dev-ci.yml | `cargo nextest run --workspace --all-features` — **no `--exclude`**, so this is broader than check.sh's equivalent, which drops `oz-pos-app` |
+| `release-bridge-test` | ✅ Required (push to `main` only) | dev-ci.yml | `cargo nextest run -p oz-bridge --release`. The release profile is where `BOOTSTRAP_FREE` stops verifying, so every command doing `sub.verify_signature()?` fails closed there — that produced 76 reds no gate could see. Landable only because release went green at `2dc500382`. Deliberately **not** on PRs (a release compile is much colder) and **not** scheduled (this workflow costs ~75 runner-minutes per run). No `check.sh` runner for the same reason. Flag trap: `-P release` is the *nextest* profile and would silently re-run the debug build; `-r`/`--release` is the cargo one. **Reachability, measured 2026-09-16 from this checkout:** the job needs `changes` (`dev-ci.yml:273`) and gates on `github.event_name == 'push' && needs.changes.outputs.rust == 'true'` (`:274`), while the router forces every route true for any non-PR event (`:78-80`) — so its only possible run is a push to `main`, and a PR can never satisfy it. In the same reading the local `origin/main` ref is `ec2edf258` (last commit 2026-09-14), `git rev-list --count origin/main..HEAD` prints **1,207 at `af4af8a91`** (the same command read 1,206 at `d678ee2be` two minutes earlier on this busy branch, so quote the command, never this number), and that ref carries neither this job nor its `gates.json` row: `git show origin/main:.github/workflows/dev-ci.yml` counted for `release-bridge-test` is 0, and `git show origin/main:scripts/gates.json` counted for `release-bridge-tests` is 0. That is a **local ref reading, not a server one** — no fetch was run, so the two numbers and both zeros describe what this checkout holds under `refs/remotes/origin/`, and if GitHub's `main` has moved past `ec2edf258` they are stale; re-run those four commands rather than trusting this sentence. What a reader takes from the row: `required` here licenses the release profile for commits already on `main` — it blocks no PR merge, and it has had no opportunity to run against any work on this branch |
 | `static-gates` | ✅ Required | dev-ci.yml | eight checks that previously had no CI runner at all: architecture boundaries, no-hardcoded-money-format, windows-config, skill-drift, unified-healthcheck, panic inventory, release workflow validation (+ `--self-test`), and Go fmt/vet/test. Each verified green locally before being wired in. |
 | `release-readiness` | ✅ Required | dev-ci.yml | `node scripts/check-release-version.mjs --self-test` then `node scripts/check-updater-compat.mjs` — proves the updater signing chain emits signatures the real Tauri client verifier accepts. Path-gated on `changes.outputs.release`; the harness needs a cold cargo build. |
 | `release-validate` | ✅ Required | release.yml | tag push only: `check-release-version.mjs <tag>` (tag ↔ version ↔ changelog), its `--self-test`, and the updater compat check. |
 | `release-build` | ✅ Required | release.yml | matrix `desktop-linux` / `desktop-windows` / `desktop-macos`: nextest, `cargo tauri build`, bundle-existence gate, Windows asInvoker manifest check, optional SignPath/Authenticode with a loud unsigned fallback. |
 | `release-publish` | ✅ Required | release.yml | signed `latest.json`+`beta.json`, signature verification against the committed pubkey, SHA-256 inventory, draft release, provenance attestation, then publish. Hard-fails without `UPDATER_PRIVATE_KEY`. |
-| `northflank-deploy` | ✅ Required | dev-ci.yml | Backend deploy to Northflank; `needs: [changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates]` (`dev-ci.yml:656`) — seven of ten jobs, so it excludes **two**: `ci-docs-drift` (deliberate, advisory) and `release-readiness` (**no comment accounts for it**, so the deploy is *not* gated on the updater signing chain — recorded at `docs/plans/0.0.36-backlog.md:3690`). **Effectively `workflow_dispatch` only**: its `if:` also tests `github.event_name == 'push'`, but `dev-ci.yml` triggers on `pull_request` and `workflow_dispatch` alone, so that half is dead code and no push ever reaches it. The workflow's own comment records this. |
+| `northflank-deploy` | ✅ Required | dev-ci.yml | Backend deploy to Northflank; `needs: [changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates]` (`dev-ci.yml:657`) — seven of ten jobs, so it excludes **two**, and **both exclusions are decisions, now written into the workflow comment at `dev-ci.yml:658-691`** (they were unexplained until 2026-09-14, when `AGENTS.md` and this row said “no comment accounts for it” and the comment above them called `ci-docs-drift` advisory). `release-readiness`: this deploy POSTs `$GITHUB_SHA` to Northflank, which builds `Dockerfile.unified` — a **backend** container that consumes no installer, no `latest.json` and no updater pubkey — so the desktop signing chain is gated where it binds instead: `release.yml` runs the same `scripts/check-updater-compat.mjs` in `release-validate`, `release-build` `needs` `release-validate`, `release-publish` `needs` `release-build`. Wiring it into the deploy too would bind 100% of deploys to it regardless of desktop churn (the router forces `release=true` on every non-PR event; the release router paths held 140 of 7,841 commits in the last 90 days = 1.79%), on a failure surface unrelated to what it protects (unstable `rust-toolchain` pin, node 24, a cold cargo build under workflow-wide `RUSTFLAGS=-D warnings`); narrowing the route instead is a no-op on this path. **Residual risk, recorded honestly: `main` is unprotected, so a red signing-chain check is still mergeable** — the gate holds on the tag path, not on the merge. Opened as a question at `docs/plans/0.0.36-backlog.md`; the question is now closed as a decision. **A push to `main` does reach it** (2026-09-14): the `if:` at `dev-ci.yml:695` matches `github.event_name == 'push'` on `refs/heads/main` *and* on `refs/heads/0.0.*`, and `dev-ci.yml:6-7` declares the `push` trigger — what used to be asserted here, "effectively `workflow_dispatch` only … no push ever reaches it", was made false by `e3aff7b56` the same morning; the deploy still requires `NORTHFLANK_API_TOKEN` (`dev-ci.yml:693-694`). **Tightened 2026-09-15 at `dev-ci.yml:695`:** the `if:` now reads `(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'`, so `refs/heads/0.0.*` reaches the deploy by **neither** route. This also corrects the superseded reading above, which named the wrong arm: a `0.0.*` **push** runs nothing (`on.push.branches` lists only `main`) — the arm that was live and undeclared was a **`workflow_dispatch` off a `0.0.*` branch**, because `workflow_dispatch` at `dev-ci.yml:8` carries no branch filter. `ci-docs-drift` is **blocking in CI**, not advisory: its `drift` step ends on `[ "$status" = "PASS" ]` (`dev-ci.yml:407`), and the job's last step is `AGENTS.md mirror truthfulness` (`:426-429`); the job carries no `continue-on-error` (`:336` is inside the `i18n` job) — omitting it from `needs` is a deploy-topology choice, recorded as one in `dev-ci.yml:658-691` (the comment that used to call it advisory was fixed on 2026-09-14) |
 | `lighthouse` | ❌ Runs nowhere | ci.yml | Lighthouse a11y audit. gates.json: **retired** |
 | `docker` | ❌ Runs nowhere | ci.yml | No Trivy or docker-build step exists in either live workflow (verified by grep), and the gate has no gates.json record at all |
 | `coverage` | ❌ Runs nowhere | ci.yml | Coverage report. gates.json: **retired**. `scripts/coverage.sh` exists; nothing invokes it in CI |
-| `audit` | ❌ Runs nowhere | ci.yml | `cargo audit` + `npm audit`. gates.json: **retired**; the runner lived in `security.yml`, which was renamed to `security.yml.bak` by `23c963303` on 2026-09-02 (cargo-audit job at `security.yml.bak:19-34`, cargo-deny at `:36-50`) — so the file did exist live before that rename, contrary to what this row claimed until 09-09-26. This is the row AGENTS.md means by "security suites are not enforced" |
-| `security-pr` | ❌ Runs nowhere | ci.yml | gates.json marks this **retired** with no CI runner. The row claimed ✅ Required until 08-09-26 |
+| `audit` | ⚠️ Advisory, **local check.sh only** | ci.yml | **Status re-filed at `dd95374f7`, the first commit in this repo's history to RUN either tool anywhere.** `cargo deny check` is now the `supply chain advisories (advisory)` leg of `scripts/check.sh` — non-blocking (PASS / SKIP / WARN, never a failed run), Rust-only, local-only. Still `cargo audit` runs nowhere, and neither tool runs in a live workflow: `grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1, so the runner that once lived in `security.yml` (renamed to `security.yml.bak` by `23c963303` on 2026-09-02, cargo-audit job at `security.yml.bak:19-34`, cargo-deny at `:36-50`) has no CI successor and the row's `ci.yml` column stays history. gates.json: **advisory** (was retired), runners `check.sh` only, deliberately no `ci` block. Read the green as: advisories were *looked at* if cargo-deny is installed and the advisory DB answered — the leg SKIPs when either is missing. `npm audit` remains suppressed by `npm ci --no-audit` |
+| `security-pr` | ❌ Runs nowhere **as a job** | ci.yml | gates.json marks this **retired** with no CI runner, and that is still exactly right: no live workflow runs it. What moved under this row at `dd95374f7` is the *tool*, not the job — `cargo deny` now runs as the non-blocking `supply chain advisories (advisory)` leg of `scripts/check.sh` (see the `audit` row), which is why the row cannot simply say "cargo deny appears nowhere" the way it used to. The row claimed ✅ Required until 08-09-26 |
 | `fuzz` | ❌ Runs nowhere | ci.yml | Fuzz targets exist under `fuzz/`; gates.json marks the runner **retired**, so nothing executes them |
 | `flaky-quarantine` | ❌ Runs nowhere | ci.yml | gates.json: **retired**, no runner. `scripts/verify-flaky-quarantine.py` exists and passes, but no live workflow and not `check.sh` invoke it |
 | `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-windows-config.py`, step "Windows config drift" |
-| `static-gates` | ✅ Required | dev-ci.yml | `bash .agents/skills/skill-drift-guard/scripts/detect.sh --report` (dev-ci.yml:472-473), no `continue-on-error`, so it blocks. **No gates.json record** |
+| `static-gates` | ✅ Required | dev-ci.yml | `bash .agents/skills/skill-drift-guard/scripts/detect.sh --report` (dev-ci.yml:469-470), no `continue-on-error`, so it blocks. **No gates.json record** |
 | `e2e-docker-image` | ❌ Runs nowhere | ci.yml | GHCR push of the E2E image. With it gone, `npm run e2e` builds images locally on first use |
 > ⚠️ **The history exemption is a blind spot, and ten rows were living in it.**
 > `verify-ci-docs-drift.py` treats any row naming a `.bak`-only workflow as
@@ -104,7 +105,7 @@
 | i18n lint | `i18n` | Required | `check.sh` (i18n lint), `check:all` (i18n lint) |
 | FTL dedupe | `i18n` | Required | `check.sh` (ftl dedupe), `check:all` (ftl dedupe) |
 | Rust fmt | `cargo-check` (dev-ci.yml step) | Required | `check.sh` (cargo fmt) |
-| Clippy | `cargo-check` (dev-ci.yml step) | Required | `check.sh` (clippy) |
+| Clippy | — (no CI job) | Required (local policy, CI-unrun) | `check.sh` (clippy workspace, scripts/check.sh:44), `scripts/release.sh` (:61-62). **Not** a `cargo-check` step: that job has exactly two steps, `cargo fmt --all -- --check` (dev-ci.yml:194-195) then `cargo check --workspace --all-targets --all-features` (196-197), and `grep -c clippy .github/workflows/dev-ci.yml .github/workflows/release.yml` = 0 and 0 (2026-09-14; the only clippy under `.github/workflows/` is in the inert `ci.yml.bak`). gates.json files it as status `required` with runners check.sh and **no** `ci` block — required-but-CI-unrun, deliberately not `retired`, which the checker reserves for a gate that enforces nothing (scripts/verify-ci-docs-drift.py:104-110) |
 | Rust tests | `cargo-nextest` | Required | `check.sh` (test workspace, test doctests) |
 | Go (license-server) | `static-gates` | Required | `check.sh` (go fmt, go vet, go test (short)) |
 | Website unit tests | `check` (website.yml) | Required | `check.sh` (website test) |
@@ -133,7 +134,7 @@
 | Security PR baseline | `security-pr` | Required | — |
 | Lighthouse a11y | `lighthouse` | Advisory | — |
 | Coverage | `coverage` | Advisory | — |
-| Dependency audit | `audit` | Required on push | — |
+| Dependency audit | — (no CI job; `check.sh` leg) | Advisory (local, non-blocking) | `check.sh` (supply chain advisories) |
 | Fuzz | `fuzz` | Advisory | — |
 | Flaky quarantine registry | `flaky-quarantine` | Required | — |
 | E2E Docker image | `e2e-docker-image` | Required | — |
@@ -160,12 +161,12 @@
 
 | Workflow | Status | Trigger | Purpose |
 |----------|--------|---------|---------|
-| `dev-ci.yml` | 🟢 **LIVE** | PR to main, dispatch | Per-PR validation. Jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy`. **No build or artifact step** — it validates the release toolchain but does not produce release assets; that is `release.yml`. |
+| `dev-ci.yml` | 🟢 **LIVE** | `pull_request` to main, **`push` to main** (added by `e3aff7b56`), `workflow_dispatch` — `sed -n '3,8p' .github/workflows/dev-ci.yml`, 2026-09-14 | Validation on PRs **and** on pushes to `main`; such a push also satisfies `northflank-deploy`'s `if:` (`dev-ci.yml:695`), so a push to `main` deploys — the deploy itself is conditional on `NORTHFLANK_API_TOKEN` being configured (`dev-ci.yml:693-694`). Jobs: `changes`, `website`, `cargo-check`, `cargo-nextest`, `release-bridge-test` (push to `main` only), `ui-test`, `i18n`, `ci-docs-drift`, `static-gates`, `release-readiness`, `northflank-deploy` — **eleven**. **No build or artifact step** — it validates the release toolchain but does not produce release assets; that is `release.yml`. |
 | `release.yml` | 🟢 **LIVE** (restored, desktop-only) | tag push (v*) | Builds the three Tauri desktop installers, generates the signed `latest.json`/`beta.json` updater manifests, checksums, attests provenance, and publishes a GitHub Release. Restored in 0.0.36 after `23c96330` renamed it to `.bak` with no replacement. **Docker matrix targets were dropped** — backend images are built by Northflank via `dev-ci.yml#northflank-deploy`. Mobile remains retired (`android.yml`, `ios.yml`). |
 | `release.yml.bak` | 🟠 **stale twin of a LIVE workflow** | (inert — GitHub never reads `.bak`) | The pre-retirement release pipeline, 512 lines vs the live 470. Retired by `23c963303` (09-02) and left behind when `release.yml` was restored on 09-04, so the directory now holds two tracked release workflows that differ by 42 lines. See the note below. |
 | `ci.yml` | 🔴 retired `.bak` | push/PR to main | Primary CI pipeline (lint, test, build, scan) |
 | `nightly.yml` | 🔴 retired `.bak` | schedule (daily) + dispatch | Nightly Rust/doc/UI/E2E + flaky detection |
-| `security.yml` | 🔴 retired `.bak` | schedule (weekly) + dispatch | Cargo audit/deny + container scan |
+| `security.yml` | 🔴 retired `.bak` | schedule (weekly) + dispatch | Cargo audit/deny + container scan — as a WORKFLOW still retired, and neither live workflow replaced it (`grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1). Its cargo-deny half has had a LOCAL successor since `dd95374f7`: the non-blocking `supply chain advisories (advisory)` leg in `scripts/check.sh`. Its cargo-audit and container-scan halves run nowhere |
 | `android.yml` | 🔴 retired `.bak` | push/PR to main | Android build |
 | `ios.yml` | 🔴 retired `.bak` | push/PR to main | iOS build |
 | `e2e-pr.yml` | 🔴 retired `.bak` | PR to main | E2E on PRs |
@@ -253,6 +254,7 @@ Comprehensive pre-push gate mirroring CI. Runs:
 20. Healthcheck script test
 21. CI docs drift
 22. Optional: Docker build (`--docker-dry-run`)
+23. `cargo deny check` — supply-chain advisories, **advisory**: prints PASS / SKIP / WARN and never fails the matrix (added `dd95374f7`; Rust only, no workflow, not in pre-push)
 
 ### `scripts/check-ui.mjs` (Node, cross-platform)
 
@@ -313,4 +315,16 @@ flip the status, and delete the `_note`.
 *Generated and maintained by the OZ-POS team. Last verified by `verify-ci-docs-drift.py`.*
 
 > last audited 09-09-26 by docs-auditor
+>
+> **Dated pointer correction (2026-09-14).** The 2026-09-08 stamp above cites the
+> `northflank-deploy` `needs:` list at `dev-ci.yml:656`; that line is `runs-on:
+> ubuntu-latest` today and the list reads at `dev-ci.yml:657` (`sed -n '654,657p'
+> .github/workflows/dev-ci.yml`). The stamp stands verbatim per this file's convention.
+> Three LIVE pointers were repointed in the same pass, each re-read off the workflow: the
+> skill-drift-guard step `:472-473` -> `:469-470`, the unified-healthcheck step `:475` ->
+> `:471-472`, and the deploy `if:` `:668` -> `:695` (that one moved because `040435d11`
+> added 27 comment lines inside that job). Verified still correct and therefore NOT
+> touched: `:657` `needs:`, `:658-691` the exclusions comment, `:695` the `if:`, `:6-7` the
+> push trigger, `:693-694` the `NORTHFLANK_API_TOKEN` comment, `:407` the drift step's
+> `[ "$status" = "PASS" ]`, `:336` inside `i18n`, and `:194-197` in `cargo-check`.
 

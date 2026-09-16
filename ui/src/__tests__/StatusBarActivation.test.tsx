@@ -4,6 +4,7 @@ import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import staffFtl from '@/locales/staff.ftl?raw';
 import StatusBar from '@/components/StatusBar';
+import { resetVersionStatus } from '@/hooks/useVersionStatus';
 
 // ── Mock Tauri IPC (getVersion + updater check) ───────────────────
 vi.mock('@tauri-apps/api/app', () => ({
@@ -63,6 +64,10 @@ function renderBar() {
 
 describe('StatusBar (activation screen unified status area)', () => {
   beforeEach(() => {
+    // useVersionStatus now caches one probe per app session (module
+    // singleton), so a case that settled 'latest' would otherwise hand its
+    // answer — and its in-flight probe — to the next case.
+    resetVersionStatus();
     mockAddToast.mockClear();
     mockUpdaterCheck.mockReset();
     mockUpdaterCheck.mockResolvedValue(null); // no update available

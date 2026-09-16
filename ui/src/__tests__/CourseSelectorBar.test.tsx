@@ -130,11 +130,11 @@ describe('CourseSelectorBar', () => {
       held('main'),
       held('main'),
       makeLine({ courseId: 'dessert', coursingStatus: 'fired' }),
-      makeLine({ courseId: 'drinks' }),
+      makeLine({ courseId: 'beverage' }),
     ]);
 
     expect(screen.queryByTestId('fire-course-dessert')).toBeNull();
-    expect(screen.queryByTestId('fire-course-drinks')).toBeNull();
+    expect(screen.queryByTestId('fire-course-beverage')).toBeNull();
     expect(
       container.querySelectorAll('[data-testid^="fire-course-"]'),
     ).toHaveLength(1);

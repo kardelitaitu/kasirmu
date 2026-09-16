@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto('https://ozpos.my.id/en/', { waitUntil: 'networkidle' });
+  await page.goto('https://kasir.mu/en/', { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
 
   // Park the mouse dead-center on the mockup for the whole test.

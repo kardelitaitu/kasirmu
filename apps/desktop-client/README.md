@@ -2,6 +2,8 @@
 
 # `apps/desktop-client/` — OZ-POS desktop shell
 
+> **Count note 2026-09-14 · DSH · comment-only pass ·** the 08-09-26 figures above are left exactly as written because they are dated point-in-time records; current values are appended next to them, not substituted. Measured this pass against this checkout: **453 distinct registered command paths** in `src/lib.rs:845-1340` (`python scripts/verify-ipc-parity.py` → 458 UI command strings / 453 registered / 27 unregistered, EXIT 0; an independent `sed -n '/tauri::generate_handler!\[/,/^        \])/p' src/lib.rs | grep -cE '^[[:space:]]*commands::'` returns the same 453), so the `lib.rs` line grew from 426 (08-09-26) to 453 — the same drift that page's own history predicts. **7 command modules that exist on disk were named in no listing** (`fiscal.rs`, `local_payment.rs`, `qris_auto.rs`, `receipt_format.rs`, `regional.rs`, `registration_gate_debt.generated.rs`, and the `topology/` submodule dir), each added to the tree from its own `//!` header; **5 `src/` production modules were likewise unlisted** (`email_scheduler.rs`, `image_push.rs`, `lan_server.rs`, `local_api.rs`, `sync_bootstrap.rs` — `ls src/*.rs`), plus `gen/` and `tests/` at the crate root. **0 dead entries removed**: every path the old listing named still resolves (`comm` of the listing against `ls src/commands/*.rs` returns only `store_profiles.rs`, which is prose inside a comment, not a listing row). `Key state` corrected where the source disagrees: `AppState.db` is `Arc<Mutex<Connection>>` not `Mutex<Connection>`, `registry` is `Arc<DriverRegistry>`, and this shell no longer calls `app.emit("barcode:scanned")` itself — `oz-bridge` owns that emit; `platform_startup::hardware::register_hardware` → `oz_hal::apply_config` (`platform/startup/src/hardware.rs:163`) was checked and is still accurate. **Not verified, therefore unchanged:** `cargo tauri build` output paths, the `icons/` regeneration claim, `tauri.conf.json` contents, and every per-command description in the tree comments (descriptions were spot-checked only for the seven new rows, from each file's own module doc). **Out of fence, reported not fixed:** `docs/guides/api-reference.md:18` still asserts "454 distinct commands … 429 in [desktop]" against today's measured 453 desktop / 322 tablet, and `apps/desktop-client` is only one of the two pages it claims to reconcile.
+
 Tauri v2 binary that hosts the React front-end, wires `oz-core` + `oz-hal` behind typed IPC commands, and produces installable bundles.
 
 ## Layout
@@ -10,16 +12,23 @@ Tauri v2 binary that hosts the React front-end, wires `oz-core` + `oz-hal` behin
 apps/desktop-client/
 ├── Cargo.toml              # oz-pos-app crate
 ├── tauri.conf.json         # Tauri v2 config (window, updater, capabilities)
-├── build.rs                # tauri_build::build()
+├── build.rs                # tauri_build::build() (build.rs:8, verified 2026-09-14)
+├── gen/schemas/            # tauri-generated ACL/capability/schema JSON — generated, never hand-edited
+├── tests/                  # 6 integration test files (capability_parity, gate_audit, kernel_lifecycle, window_state_multi_monitor, window_visibility, wiring_audit)
 ├── capabilities/
 │   └── default.json        # ACL for the main window
 ├── icons/                  # Full platform icon set (generated via cargo tauri icon)
 └── src/
     ├── main.rs             # Binary entry; calls lib::run()
-    ├── lib.rs              # Builder, invoke_handler!, run() — 426 commands registered as measured 08-09-26 (see docs/guides/api-reference.md for the authoritative list)
+    ├── lib.rs              # Builder, invoke_handler! (src/lib.rs:845-1340), run() — 426 commands registered as measured 08-09-26; 453 distinct registered command paths as measured 2026-09-14 by `python scripts/verify-ipc-parity.py` (458 UI command strings / 453 registered / 27 unregistered, EXIT 0) — re-measure, this number moves with every commit that touches the handler list (see docs/guides/api-reference.md for the per-command list)
     ├── error.rs            # AppError (typed, non_exhaustive)
-    ├── state.rs            # AppState (DB, driver registry, scanner cancel channel)
-    └── commands/           # 58 production modules (114 .rs files incl. tests), grouped by domain
+    ├── email_scheduler.rs  # background report-email scheduler
+    ├── image_push.rs       # image_push_queue drainer → cloud batch endpoint
+    ├── lan_server.rs       # LAN event forwarding for multi-terminal stores
+    ├── local_api.rs        # loopback REST server (daemon-residue module)
+    ├── sync_bootstrap.rs   # sync daemon wiring at startup
+    ├── state.rs            # AppState (DB, driver registry, scanner cancel channel; 23 `pub` fields as measured 2026-09-14 by `grep -c '^    pub [a-z_]*:' src/state.rs` — run from `apps/desktop-client/`; a looser `grep -c "^    pub "` reads 34 because it also catches `pub(crate)` and `pub fn` lines, so use the exact pattern)
+    └── commands/           # 58 production modules (114 .rs files incl. tests) as measured 08-09-26; 64 non-test .rs files here (63 domain modules + mod.rs) and 79 .rs in this dir including the topology/ submodules and 10 *_tests.rs, as measured 2026-09-14 by `find apps/desktop-client/src/commands -maxdepth 1 -name '*.rs' ! -name '*_tests.rs' | wc -l` and `find apps/desktop-client/src/commands -name '*.rs' | wc -l` — the tree below names each domain module once
         ├── analytics.rs    # analytics queries
         ├── audit.rs        # list_audit_log
         ├── auth.rs         # staff_login
@@ -35,6 +44,7 @@ apps/desktop-client/
         ├── email.rs        # report email scheduling
         ├── exchange_rates.rs # CRUD for exchange rates
         ├── features.rs     # list_all_features, set_feature
+        ├── fiscal.rs       # fiscal scheme + statutory numbering (regional slice 5)
         ├── gift_cards.rs   # gift card management
         ├── hardware.rs     # cash drawer, receipt printing, scanner lifecycle
         ├── health.rs       # ping, version
@@ -47,6 +57,7 @@ apps/desktop-client/
         ├── legal_entities.rs # Organization/Tenant legal-entity management
         ├── license.rs      # license status/activation
         ├── local_api.rs      # loopback local API server: enable, status, token mint
+        ├── local_payment.rs  # local payment-method rails, entity → location (regional slice 6)
         ├── locations.rs        # location-profile CRUD (what store_profiles.rs became)
         ├── loyalty.rs      # loyalty program
         ├── memo.rs           # memo lifecycle (author, ack, active-for-terminal)
@@ -61,7 +72,11 @@ apps/desktop-client/
         ├── products_images.rs # product/menu image ingest (spec 0046b)
         ├── promotions.rs   # promotion management
         ├── purchasing.rs   # purchase orders
+        ├── qris_auto.rs    # QRIS Auto dynamic-charge IPC (thin shim over oz_bridge::qris_auto)
+        ├── receipt_format.rs # regional receipt-format axis (EffectiveReceiptFormat)
         ├── refunds.rs      # refund/void processing
+        ├── regional.rs     # regional configuration (saas-2 slices 2–3)
+        ├── registration_gate_debt.generated.rs # GENERATED — registration-gate sweep ledger, never hand-edit
         ├── reports.rs      # report generation
         ├── scale.rs        # weight scale integration
         ├── security.rs     # security/encryption commands
@@ -75,7 +90,12 @@ apps/desktop-client/
         ├── tables.rs       # restaurant table management
         ├── tax.rs          # CRUD for tax rates
         ├── terminals.rs    # terminal management
-        ├── topology.rs     # workspace topology
+        ├── topology.rs     # workspace topology (its submodules live in topology/)
+        │   ├── commands.rs     # topology IPC command bodies
+        │   ├── model.rs        # topology model types
+        │   ├── persistence.rs  # topology read/write against the store
+        │   ├── revisions.rs    # revision history
+        │   └── semantics.rs    # resolution rules shared by the commands
         ├── void.rs         # void transactions
         └── workspaces.rs   # workspace management
 ```
@@ -108,8 +128,8 @@ cargo tauri dev               # Terminal 2: Tauri dev shell
 
 ## Key state
 
-- `AppState` holds a `Mutex<Connection>` for SQLite, a `DriverRegistry` for HAL devices, and a `Mutex<Option<oneshot::Sender<()>>>` for scanner cancellation. At startup the client calls `platform_startup::hardware::register_hardware`, which maps the saved `TerminalProfile` → `HardwareConfig` and applies it to the registry (`apply_config`) so the operator's configured printers/displays/drawers are usable at runtime.
-- Scanner background tasks emit `barcode:scanned` events via `app.emit()`.
+- `AppState` holds an `Arc<Mutex<Connection>>` for SQLite (shared with the background sync daemon), an `Arc<DriverRegistry>` for HAL devices, and a `Mutex<Option<oneshot::Sender<()>>>` for scanner cancellation — field types read from the `pub struct AppState` body (`src/state.rs:75`, closing brace at `:211`) on 2026-09-14. At startup the client calls `platform_startup::hardware::register_hardware`, which maps the saved `TerminalProfile` → `HardwareConfig` and applies it to the registry (`apply_config`) so the operator's configured printers/displays/drawers are usable at runtime.
+- Scanner background tasks broadcast `barcode:scanned` / `barcode:error` to the UI. As measured 2026-09-14 the emit happens in the bridge, not in this shell: `crates/oz-bridge/src/hardware.rs:577` and `:582` call `sink.emit(...)` on the injected `EventSink` (`apps/desktop-client/src/commands/hardware.rs:9` says so in its module doc); `app.emit("barcode:scanned", …)` survives as a direct call only in `apps/tablet-client/src/commands/hardware.rs:352` and `:629`.
 - The `app` handle is `Option<AppHandle>` — always unwrap via `if let Some(ref app)`.
 
 > last audited 08-09-26 by docs-auditor

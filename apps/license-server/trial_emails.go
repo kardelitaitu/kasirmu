@@ -31,97 +31,97 @@ var trialMilestones = []trialEmailMilestone{
 	{
 		DayOffset: 7,
 		Segment:   "plus",
-		SubjectEN: "Your first week with OZ-POS — here's what happened",
-		SubjectID: "Minggu pertama Anda dengan OZ-POS — ini yang terjadi",
+		SubjectEN: "Your first week with kasir.mu — here's what happened",
+		SubjectID: "Minggu pertama Anda dengan kasir.mu — ini yang terjadi",
 		BodyEN: "Hi there,\n\n" +
-			"You've been using OZ-POS for a week now. Here's a quick summary of your activity:\n\n" +
+			"You've been using kasir.mu for a week now. Here's a quick summary of your activity:\n\n" +
 			"• Total sales: %s\n" +
 			"• Revenue: %s\n\n" +
 			"You're on a 14-day Plus trial, which includes the Daily Sales Dashboard, QRIS payments, and cloud sync.\n\n" +
-			"Keep using OZ-POS — your trial continues for %d more days.\n\n" +
-			"Questions? Reply to this email or visit https://ozpos.my.id/support\n\n" +
-			"— The OZ-POS Team",
+			"Keep using kasir.mu — your trial continues for %d more days.\n\n" +
+			"Questions? Reply to this email or visit https://kasir.mu/support\n\n" +
+			"— The kasir.mu Team",
 		BodyID: "Halo,\n\n" +
-			"Anda sudah menggunakan OZ-POS selama seminggu. Berikut ringkasan aktivitas Anda:\n\n" +
+			"Anda sudah menggunakan kasir.mu selama seminggu. Berikut ringkasan aktivitas Anda:\n\n" +
 			"• Total penjualan: %s\n" +
 			"• Pendapatan: %s\n\n" +
 			"Anda berada di percobaan Plus 14 hari, yang mencakup Dasbor Penjualan Harian, pembayaran QRIS, dan sinkronisasi cloud.\n\n" +
-			"Terus gunakan OZ-POS — percobaan Anda berlanjut selama %d hari lagi.\n\n" +
-			"Pertanyaan? Balas email ini atau kunjungi https://ozpos.my.id/support\n\n" +
-			"— Tim OZ-POS",
+			"Terus gunakan kasir.mu — percobaan Anda berlanjut selama %d hari lagi.\n\n" +
+			"Pertanyaan? Balas email ini atau kunjungi https://kasir.mu/support\n\n" +
+			"— Tim kasir.mu",
 	},
 	{
 		DayOffset: 14,
 		Segment:   "plus",
-		SubjectEN: "Your OZ-POS Plus trial ends tomorrow",
-		SubjectID: "Percobaan OZ-POS Plus Anda berakhir besok",
+		SubjectEN: "Your kasir.mu Plus trial ends tomorrow",
+		SubjectID: "Percobaan kasir.mu Plus Anda berakhir besok",
 		BodyEN: "Hi there,\n\n" +
-			"Your 14-day OZ-POS Plus trial ends tomorrow. After that:\n\n" +
+			"Your 14-day kasir.mu Plus trial ends tomorrow. After that:\n\n" +
 			"• The Daily Sales Dashboard will be locked\n" +
 			"• QRIS payments will be disabled\n" +
 			"• Cloud sync will stop\n" +
 			"• Your sales history will be limited to 30 days\n\n" +
 			"To keep all these features, upgrade to Plus now:\n" +
-			"https://ozpos.my.id/pricing\n\n" +
+			"https://kasir.mu/pricing\n\n" +
 			"Upgrade ke Plus untuk tetap melihat riwayat penjualan Anda.\n\n" +
-			"— The OZ-POS Team",
+			"— The kasir.mu Team",
 		BodyID: "Halo,\n\n" +
-			"Percobaan OZ-POS Plus 14 hari Anda berakhir besok. Setelah itu:\n\n" +
+			"Percobaan kasir.mu Plus 14 hari Anda berakhir besok. Setelah itu:\n\n" +
 			"• Dasbor Penjualan Harian akan dikunci\n" +
 			"• Pembayaran QRIS akan dinonaktifkan\n" +
 			"• Sinkronisasi cloud akan berhenti\n" +
 			"• Riwayat penjualan Anda dibatasi 30 hari\n\n" +
 			"Untuk mempertahankan semua fitur ini, upgrade ke Plus sekarang:\n" +
-			"https://ozpos.my.id/pricing\n\n" +
+			"https://kasir.mu/pricing\n\n" +
 			"Upgrade ke Plus untuk tetap melihat riwayat penjualan Anda.\n\n" +
-			"— Tim OZ-POS",
+			"— Tim kasir.mu",
 	},
 	// ── Pro trial (restaurant / cafe vertical) ───────────────────
 	{
 		DayOffset: 7,
 		Segment:   "pro",
-		SubjectEN: "Your kitchen display this week — OZ-POS Pro trial",
-		SubjectID: "Tampilan dapur Anda minggu ini — percobaan OZ-POS Pro",
+		SubjectEN: "Your kitchen display this week — kasir.mu Pro trial",
+		SubjectID: "Tampilan dapur Anda minggu ini — percobaan kasir.mu Pro",
 		BodyEN: "Hi there,\n\n" +
-			"You've been using OZ-POS Pro with KDS (Kitchen Display System) for a week. Here's your summary:\n\n" +
+			"You've been using kasir.mu Pro with KDS (Kitchen Display System) for a week. Here's your summary:\n\n" +
 			"• Total sales: %s\n" +
 			"• Revenue: %s\n\n" +
 			"Your Pro trial includes KDS, analytics, and multi-terminal support.\n\n" +
 			"You have %d days left in your trial.\n\n" +
-			"Questions? Reply to this email or visit https://ozpos.my.id/support\n\n" +
-			"— The OZ-POS Team",
+			"Questions? Reply to this email or visit https://kasir.mu/support\n\n" +
+			"— The kasir.mu Team",
 		BodyID: "Halo,\n\n" +
-			"Anda sudah menggunakan OZ-POS Pro dengan KDS (Tampilan Dapur) selama seminggu. Berikut ringkasannya:\n\n" +
+			"Anda sudah menggunakan kasir.mu Pro dengan KDS (Tampilan Dapur) selama seminggu. Berikut ringkasannya:\n\n" +
 			"• Total penjualan: %s\n" +
 			"• Pendapatan: %s\n\n" +
 			"Percobaan Pro Anda mencakup KDS, analytics, dan dukungan multi-terminal.\n\n" +
 			"Anda memiliki %d hari lagi dalam percobaan.\n\n" +
-			"Pertanyaan? Balas email ini atau kunjungi https://ozpos.my.id/support\n\n" +
-			"— Tim OZ-POS",
+			"Pertanyaan? Balas email ini atau kunjungi https://kasir.mu/support\n\n" +
+			"— Tim kasir.mu",
 	},
 	{
 		DayOffset: 14,
 		Segment:   "pro",
-		SubjectEN: "Your OZ-POS Pro trial ends tomorrow",
-		SubjectID: "Percobaan OZ-POS Pro Anda berakhir besok",
+		SubjectEN: "Your kasir.mu Pro trial ends tomorrow",
+		SubjectID: "Percobaan kasir.mu Pro Anda berakhir besok",
 		BodyEN: "Hi there,\n\n" +
-			"Your 14-day OZ-POS Pro trial ends tomorrow. After that:\n\n" +
+			"Your 14-day kasir.mu Pro trial ends tomorrow. After that:\n\n" +
 			"• KDS (Kitchen Display System) will be deactivated\n" +
 			"• Analytics and reports will be locked\n" +
 			"• Multi-terminal support will be limited to 1 register\n\n" +
 			"To keep these features, upgrade to Pro now:\n" +
-			"https://ozpos.my.id/pricing#pro\n\n" +
+			"https://kasir.mu/pricing#pro\n\n" +
 			"KDS akan dinonaktifkan. Upgrade ke Pro untuk melanjutkan.\n\n" +
-			"— The OZ-POS Team",
+			"— The kasir.mu Team",
 		BodyID: "Halo,\n\n" +
-			"Percobaan OZ-POS Pro 14 hari Anda berakhir besok. Setelah itu:\n\n" +
+			"Percobaan kasir.mu Pro 14 hari Anda berakhir besok. Setelah itu:\n\n" +
 			"• KDS (Tampilan Dapur) akan dinonaktifkan\n" +
 			"• Analytics dan laporan akan dikunci\n" +
 			"• Dukungan multi-terminal dibatasi 1 register\n\n" +
 			"Untuk mempertahankan fitur ini, upgrade ke Pro sekarang:\n" +
-			"https://ozpos.my.id/pricing#pro\n\n" +
+			"https://kasir.mu/pricing#pro\n\n" +
 			"KDS akan dinonaktifkan. Upgrade ke Pro untuk melanjutkan.\n\n" +
-			"— Tim OZ-POS",
+			"— Tim kasir.mu",
 	},
 }
 
@@ -337,7 +337,7 @@ func sendTrialEmail(to, subject, body string) error {
 	password := os.Getenv("OZ_SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("OZ_SMTP_FROM"))
 	if from == "" {
-		from = "no-reply@ozpos.my.id"
+		from = "no-reply@kasir.mu"
 	}
 
 	msg := buildTrialEmail(from, to, subject, body)
@@ -347,7 +347,7 @@ func sendTrialEmail(to, subject, body string) error {
 // buildTrialEmail renders an RFC 5322 message with the given subject and body.
 func buildTrialEmail(from, to, subject, body string) []byte {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "From: OZ-POS <%s>\r\n", from)
+	fmt.Fprintf(&sb, "From: kasir.mu <%s>\r\n", from)
 	fmt.Fprintf(&sb, "To: %s\r\n", to)
 	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")
@@ -409,38 +409,38 @@ var winBackMilestones = []struct {
 	{
 		DayOffset: 7,
 		LogKey:    "winback_7d",
-		SubjectEN: "We miss you at OZ-POS — here's 20%% off for 3 months",
-		SubjectID: "Kami merindukan Anda di OZ-POS — diskon 20%% untuk 3 bulan",
+		SubjectEN: "We miss you at kasir.mu — here's 20%% off for 3 months",
+		SubjectID: "Kami merindukan Anda di kasir.mu — diskon 20%% untuk 3 bulan",
 		BodyEN: "Hi there,\n\n" +
-			"We noticed your OZ-POS subscription has ended. We'd love to have you back!\n\n" +
+			"We noticed your kasir.mu subscription has ended. We'd love to have you back!\n\n" +
 			"As a welcome-back offer, here's 20%% off for the next 3 months:\n" +
-			"https://ozpos.my.id/pricing?offer=winback20\n\n" +
+			"https://kasir.mu/pricing?offer=winback20\n\n" +
 			"Your data is still safe — upgrade now and pick up right where you left off.\n\n" +
-			"— The OZ-POS Team",
+			"— The kasir.mu Team",
 		BodyID: "Halo,\n\n" +
-			"Kami perhatikan langganan OZ-POS Anda sudah berakhir. Kami ingin Anda kembali!\n\n" +
+			"Kami perhatikan langganan kasir.mu Anda sudah berakhir. Kami ingin Anda kembali!\n\n" +
 			"Sebagai penawaran kembali, berikut diskon 20%% untuk 3 bulan ke depan:\n" +
-			"https://ozpos.my.id/pricing?offer=winback20\n\n" +
+			"https://kasir.mu/pricing?offer=winback20\n\n" +
 			"Data Anda masih aman — upgrade sekarang dan lanjutkan dari mana Anda berhenti.\n\n" +
-			"— Tim OZ-POS",
+			"— Tim kasir.mu",
 	},
 	{
 		DayOffset: 30,
 		LogKey:    "winback_30d",
-		SubjectEN: "Last chance: 30%% off OZ-POS — your data expires soon",
-		SubjectID: "Kesempatan terakhir: diskon 30%% OZ-POS — data Anda segera expired",
+		SubjectEN: "Last chance: 30%% off kasir.mu — your data expires soon",
+		SubjectID: "Kesempatan terakhir: diskon 30%% kasir.mu — data Anda segera expired",
 		BodyEN: "Hi there,\n\n" +
-			"It's been a month since your OZ-POS subscription ended. This is our final offer.\n\n" +
+			"It's been a month since your kasir.mu subscription ended. This is our final offer.\n\n" +
 			"Upgrade now with 30%% off for 3 months:\n" +
-			"https://ozpos.my.id/pricing?offer=winback30\n\n" +
+			"https://kasir.mu/pricing?offer=winback30\n\n" +
 			"After this, your data will be permanently deleted per our retention policy.\n\n" +
-			"— The OZ-POS Team",
+			"— The kasir.mu Team",
 		BodyID: "Halo,\n\n" +
-			"Sudah sebulan sejak langganan OZ-POS Anda berakhir. Ini penawaran terakhir kami.\n\n" +
+			"Sudah sebulan sejak langganan kasir.mu Anda berakhir. Ini penawaran terakhir kami.\n\n" +
 			"Upgrade sekarang dengan diskon 30%% untuk 3 bulan:\n" +
-			"https://ozpos.my.id/pricing?offer=winback30\n\n" +
+			"https://kasir.mu/pricing?offer=winback30\n\n" +
 			"Setelah ini, data Anda akan dihapus permanen sesuai kebijakan retensi kami.\n\n" +
-			"— Tim OZ-POS",
+			"— Tim kasir.mu",
 	},
 }
 

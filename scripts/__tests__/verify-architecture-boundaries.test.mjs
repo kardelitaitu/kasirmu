@@ -263,10 +263,200 @@ describe('verify-architecture-boundaries.py', () => {
     assert.equal(json.tracked_transitional[0].path, 'ui/src/hooks/useKnown.ts');
   });
 
+  it('accepts a toolkit-free oz-bridge and ignores the crate own purity comments', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\nserde = "1"\n',
+        'crates/oz-bridge/src/lib.rs': '// depends on no tauri, gtk or webkit type\npub struct Ctx;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 0, result.output);
+  });
+
+  it('reports a UI toolkit dependency or reference inside oz-bridge', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-bridge/Cargo.toml': '[package]\nname = "oz-bridge"\n\n[dependencies]\ntauri = "2"\n',
+        'crates/oz-bridge/src/lib.rs': '// no tauri here\nuse tauri::Manager;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /bridge-toolkit-purity/);
+    assert.match(result.output, /Cargo\.toml:5/);
+    assert.match(result.output, /lib\.rs:2/);
+  });
+
+  it('reports renderer vocabulary in an application-layer doc comment', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/lib.rs': '/// Rendered by `Row.tsx` and styled in `row.css`.\npub struct Row;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-framework-vocabulary/);
+    assert.match(result.output, /\.tsx/);
+    assert.match(result.output, /lib\.rs:1/);
+  });
+
+  it('ignores the same vocabulary inside a string literal', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/exts.rs': 'pub const EXTS: [&str; 2] = [".tsx", ".css"];\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 0, result.output);
+    assert.doesNotMatch(result.output, /ui-framework-vocabulary/);
+  });
+
+  it('does not let a lone lifetime apostrophe swallow the comments after it', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/lifetime.rs': "pub fn name() -> &'static str { NAME }\n/// Cited as `Row.tsx`.\npub struct Row;\n",
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-framework-vocabulary/);
+    assert.match(result.output, /lifetime\.rs:2/);
+  });
+
+  it('scans block comments, including the text after a nested close', () => {
+    const dir = fixture({
+      uiFiles: {
+        'crates/oz-core/src/block.rs': '/* outer /* inner */ still outer: `Row.tsx` */\npub struct Row;\n',
+      },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /ui-framework-vocabulary/);
+    assert.match(result.output, /block\.rs:1/);
+  });
+
   it('report-only returns zero for blocking findings', () => {
     const dir = fixture({ uiFiles: { 'ui/src/hooks/useBad.ts': "await invoke('bad');" } });
     const result = run(dir, ['--report-only']);
     assert.equal(result.code, 0, result.output);
     assert.match(result.output, /new\/expired blocking/);
+  });
+
+  // Root-independence, 2026-09-15. The live defect: a finding keyed off a
+  // SIBLING checkout (<base>/0.0.35/oz-pos, the multi-root layout) had its "../"
+  // prefix destroyed by lstrip("./"), so it printed as a repo-relative path, all
+  // eight live suppressions read stale, and --strict exited 1 with nothing in the
+  // repo changed. Entry paths and finding paths now share one normalizer.
+  function baselineFor(dir, entries) {
+    writeFileSync(join(dir, 'scripts', 'architecture-boundaries-baseline.json'), JSON.stringify({ entries }, null, 2));
+    return dir;
+  }
+  const CORE_CRM = {
+    packages: [
+      { name: 'oz-core', dependencies: [{ name: 'modules-crm', path: 'crates/modules-crm' }] },
+      { name: 'modules-crm', manifest: 'crates/modules-crm/Cargo.toml' },
+    ],
+  };
+
+  it('tracks a suppression recorded under a different spelling of the same root', () => {
+    const dir = fixture(CORE_CRM);
+    // Same file, spelled through a redundant ".." and as an absolute path.
+    baselineFor(dir, [baselineEntry('core-upward-dependency', join(dir, 'crates', '..', 'crates', 'oz-core', 'Cargo.toml'), 'modules-crm')]);
+    const result = run(dir, ['--strict', '--json']);
+    assert.equal(result.code, 0, result.output);
+    const json = JSON.parse(result.output);
+    assert.equal(json.summary.tracked, 1, result.output);
+    assert.equal(json.summary.stale, 0, 'a differently-spelled root must not orphan a live suppression');
+    assert.equal(json.summary.blocking, 0, result.output);
+    assert.equal(json.tracked_transitional[0].path, 'crates/oz-core/Cargo.toml');
+  });
+
+  it('tracks a ./-prefixed suppression against an absolute finding', () => {
+    const dir = fixture(CORE_CRM);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', './crates/oz-core/Cargo.toml', 'modules-crm')]);
+    const result = run(dir, ['--strict', '--json']);
+    assert.equal(result.code, 0, result.output);
+    assert.equal(JSON.parse(result.output).summary.tracked, 1, result.output);
+  });
+
+  // Fallback-cache guard, 2026-09-15: the tracked
+  // scripts/architecture-cargo-metadata.json carried workspace_root from a
+  // sibling checkout, so ANY transient cargo failure made the gate score this
+  // tree against another worktree and call eight live suppressions stale.
+  function runWithoutMetadataFile(dir, args = []) {
+    try {
+      const stdout = execFileSync(
+        process.platform === 'win32' ? 'python' : 'python3',
+        ['scripts/verify-architecture-boundaries.py', ...args],
+        { cwd: dir, encoding: 'utf8', stdio: 'pipe', timeout: 60_000 },
+      );
+      return { code: 0, output: stdout };
+    } catch (error) {
+      return { code: error.status ?? 1, output: `${error.stdout ?? ''}${error.stderr ?? ''}` };
+    }
+  }
+
+  it('refuses to substitute the cached cargo graph when cargo metadata fails', () => {
+    const dir = fixture({ packages: [{ name: 'oz-core' }] });
+    // A manifest cargo cannot read, plus a cache that names ANOTHER root.
+    writeFileSync(join(dir, 'Cargo.toml'), '[package]\nname = \"broken this is not valid toml\n');
+    writeFileSync(
+      join(dir, 'scripts', 'architecture-cargo-metadata.json'),
+      JSON.stringify({ workspace_root: join(dir, '..', 'some-other-checkout'), packages: [], version: 1 }, null, 2),
+    );
+    const result = runWithoutMetadataFile(dir, ['--strict']);
+    assert.equal(result.code, 2, 'must fail closed, never score a borrowed graph: ' + result.output);
+    // Names the cargo error AND the supported way in; no root arithmetic,
+    // because the implicit route that needed it is gone (same root would also
+    // refuse - the cache is never opened at all).
+    assert.match(result.output, /cargo metadata failed/, result.output);
+    assert.match(result.output, /does not substitute a cached one/, result.output);
+    assert.match(result.output, /--metadata-file/, 'must name the supported way in: ' + result.output);
+    assert.doesNotMatch(result.output, /stale baseline entry/, 'it must not report stale entries it never verified');
+    assert.doesNotMatch(result.output, /0 tracked transitional/, result.output);
+  });
+
+
+  it("refuses a graph whose declared workspace_root is not the tree it scores", () => {
+    // The hole two passes walked past: the tracked architecture-cargo-metadata.json
+    // names a NESTED sibling checkout, so relative_path() rendered its findings as
+    // plausible repo-relative paths with no "../" in them and the escape check never
+    // fired. Equality on resolved roots is the only comparison that sees it, and
+    // containment must NOT be accepted here -- release checkouts live inside this
+    // root by design. The second half proves the honest case still passes: a fixture
+    // that declares its own mkdtemp directory is exactly what --metadata-file is for.
+    const foreign = fixture({ packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
+    const sibling = join(foreign, '..', '0.0.35', 'oz-pos');
+    writeFileSync(join(foreign, 'scripts', 'metadata.json'), JSON.stringify({ workspace_root: sibling, packages: [] }, null, 2));
+    const refused = run(foreign, ['--strict']);
+    assert.equal(refused.code, 2, 'a sibling-checkout graph must be refused outright: ' + refused.output);
+    assert.match(refused.output, /workspace_root/, refused.output);
+    assert.match(refused.output, /cannot score this one/, 'the message must say why: ' + refused.output);
+    assert.doesNotMatch(refused.output, /stale baseline entry/, 'it must not report findings it never verified: ' + refused.output);
+    const own = fixture({ packages: [{ name: 'oz-core', dependencies: [{ name: 'modules-crm', kind: 'normal' }] }] });
+    const ownMeta = JSON.parse(readFileSync(join(own, 'scripts', 'metadata.json'), 'utf8'));
+    ownMeta.workspace_root = own;
+    writeFileSync(join(own, 'scripts', 'metadata.json'), JSON.stringify(ownMeta, null, 2));
+    const accepted = run(own, ['--strict']);
+    assert.equal(accepted.code, 0, 'a fixture-rooted graph must be scored, not refused: ' + accepted.output);
+    assert.match(accepted.output, /tracked transitional finding\(s\)/, 'the refusal must not replace the normal report: ' + accepted.output);
+    assert.doesNotMatch(accepted.output, /refusing to score/, 'equal roots are not a conflict: ' + accepted.output);
+  });
+
+  it('does NOT let an escaped ../ entry silence a repo-relative finding', () => {
+    // Before the repair this entry normalized to 'crates/oz-core/Cargo.toml' and
+    // matched the finding, so a suppression naming a file OUTSIDE the repo
+    // silenced a violation INSIDE it. Equality on normalized paths refuses it,
+    // and the entry stays visible as stale rather than vanishing.
+    const dir = fixture(CORE_CRM);
+    baselineFor(dir, [baselineEntry('core-upward-dependency', '../crates/oz-core/Cargo.toml', 'modules-crm')]);
+    const result = run(dir, ['--strict', '--json']);
+    assert.equal(result.code, 1, 'an unmatched finding must still block: ' + result.output);
+    const json = JSON.parse(result.output);
+    assert.equal(json.summary.blocking, 1, result.output);
+    assert.equal(json.summary.tracked, 0, 'the escaped entry must not be reported as matching');
+    assert.equal(json.new_blocking[0].path, 'crates/oz-core/Cargo.toml');
+    assert.equal(json.summary.stale, 1, 'the foreign entry is reported stale, not silently useful');
   });
 });

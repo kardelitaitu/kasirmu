@@ -6,13 +6,10 @@ vi.mock('@/utils/logged-invoke', () => ({
 }));
 
 import {
-  createProduct,
   createProductScoped,
-  updateProduct,
   updateProductScoped,
-  deleteProduct,
   deleteProductScoped,
-  lookupByBarcode,
+  lookupByBarcodeScoped,
   recordProductSearchScoped,
 } from '@/api/products';
 
@@ -23,21 +20,6 @@ describe('products.ts API contract', () => {
     vi.clearAllMocks();
   });
 
-  it('createProduct calls correct command', async () => {
-    const args = {
-      userId: 'u1',
-      sku: 'SKU-001',
-      name: 'Test Product',
-      priceMinor: 10000,
-      currency: 'IDR',
-      initialStock: 10,
-      taxRateIds: ['t1'],
-    };
-    mockInvoke.mockResolvedValue({ sku: 'SKU-001' });
-    const result = await createProduct(args);
-    expect(mockInvoke).toHaveBeenCalledWith('create_product', { args });
-    expect(result.sku).toBe('SKU-001');
-  });
 
   it('createProductScoped calls correct command', async () => {
     const args = {
@@ -57,12 +39,6 @@ describe('products.ts API contract', () => {
     });
   });
 
-  it('updateProduct calls correct command', async () => {
-    const args = { userId: 'u1', sku: 'SKU-001', name: 'Updated', priceMinor: 15000, currency: 'IDR', taxRateIds: ['t1'] };
-    mockInvoke.mockResolvedValue({ sku: 'SKU-001' });
-    await updateProduct(args);
-    expect(mockInvoke).toHaveBeenCalledWith('update_product', { args });
-  });
 
   it('updateProductScoped calls correct command', async () => {
     const args = { sku: 'SKU-001', name: 'Updated', priceMinor: 15000, currency: 'IDR', taxRateIds: [] };
@@ -74,11 +50,6 @@ describe('products.ts API contract', () => {
     });
   });
 
-  it('deleteProduct calls correct command', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    await deleteProduct({ userId: 'u1', sku: 'SKU-001' });
-    expect(mockInvoke).toHaveBeenCalledWith('delete_product', { args: { userId: 'u1', sku: 'SKU-001' } });
-  });
 
   it('deleteProductScoped calls correct command', async () => {
     mockInvoke.mockResolvedValue(undefined);
@@ -89,10 +60,17 @@ describe('products.ts API contract', () => {
     });
   });
 
-  it('lookupByBarcode calls correct command', async () => {
+  // Moved rather than dropped, and this was the ONLY wire-shape pin on barcode lookup: the suite
+  // had no `lookupByBarcodeScoped` case at all, so the command both shells register went unwired
+  // in tests while the one no shell registers had one. The `barcode` key name is the point --
+  // Tauri converts the command's outer name and nothing inside the payload.
+  it('lookupByBarcodeScoped calls correct command', async () => {
     mockInvoke.mockResolvedValue(null);
-    await lookupByBarcode('123456');
-    expect(mockInvoke).toHaveBeenCalledWith('lookup_by_barcode', { barcode: '123456' });
+    await lookupByBarcodeScoped(TOKEN, '123456');
+    expect(mockInvoke).toHaveBeenCalledWith('lookup_by_barcode_scoped', {
+      sessionToken: TOKEN,
+      barcode: '123456',
+    });
   });
 
   it('recordProductSearchScoped calls correct command', async () => {
@@ -107,9 +85,8 @@ describe('products.ts API contract', () => {
   it('propagates errors', async () => {
     mockInvoke.mockRejectedValue(new Error('sku duplicate'));
     await expect(
-      createProduct({
-        userId: 'u1',
-        sku: 'DUP',
+      createProductScoped(TOKEN, {
+                sku: 'DUP',
         name: 'Dup',
         priceMinor: 0,
         currency: 'IDR',
@@ -121,9 +98,8 @@ describe('products.ts API contract', () => {
 
   it('passes return type through', async () => {
     mockInvoke.mockResolvedValue({ sku: 'SKU-NEW' });
-    const result = await createProduct({
-      userId: 'u1',
-      sku: 'SKU-NEW',
+    const result = await createProductScoped(TOKEN, {
+            sku: 'SKU-NEW',
       name: 'Product',
       priceMinor: 10000,
       currency: 'IDR',

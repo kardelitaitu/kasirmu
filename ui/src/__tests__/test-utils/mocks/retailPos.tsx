@@ -51,19 +51,12 @@ export const retailCategories = [
 /** Full `@/api/products` module mock with the retail fixtures baked in. */
 export function createRetailProductsApiMock() {
   return {
-    listProducts: vi.fn(() => Promise.resolve(retailProducts)),
     listProductsScoped: vi.fn((_token: string) => Promise.resolve(retailProducts)),
-    listCategories: vi.fn(() => Promise.resolve(retailCategories)),
     listCategoriesScoped: vi.fn((_token: string) => Promise.resolve(retailCategories)),
-    lookupProductBySku: vi.fn(() => Promise.resolve(null)),
     lookupProductBySkuScoped: vi.fn((_token: string, _sku: string) => Promise.resolve(null)),
-    lookupByBarcode: vi.fn(() => Promise.resolve(null)),
     lookupByBarcodeScoped: vi.fn((_token: string, _code: string) => Promise.resolve(null)),
-    createProduct: vi.fn(),
     createProductScoped: vi.fn(),
-    updateProduct: vi.fn(),
     updateProductScoped: vi.fn(),
-    deleteProduct: vi.fn(),
     deleteProductScoped: vi.fn(),
     adjustStock: vi.fn(),
     adjustStockScoped: vi.fn(),
@@ -75,9 +68,7 @@ export function createRetailProductsApiMock() {
     createCategory: vi.fn(),
     updateCategory: vi.fn(),
     deleteCategory: vi.fn(),
-    getProductTrackSerial: vi.fn(() => Promise.resolve(false)),
     getProductTrackSerialScoped: vi.fn(() => Promise.resolve(false)),
-    getProductTrackSerialBatch: vi.fn((_skus: string[]) => Promise.resolve([])),
     // ADR #37 D3: fire-and-forget popularity search signal (non-blocking).
     recordProductSearchScoped: vi.fn(() => Promise.resolve(undefined)),
   };

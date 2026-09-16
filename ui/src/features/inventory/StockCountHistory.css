@@ -11,16 +11,8 @@
   margin: 0;
 }
 
-.sc-badge {
-  display: inline-block;
-  padding: var(--space-0_5) var(--space-2);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.sc-diff-neg { color: var(--color-danger, #dc2626); }
-.sc-diff-pos { color: var(--color-success, #16a34a); }
+.sc-diff-neg { color: var(--color-danger); }
+.sc-diff-pos { color: var(--color-success); }
 
 .sc-hist-header {
   margin-bottom: var(--space-5);

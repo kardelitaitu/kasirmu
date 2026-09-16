@@ -6,17 +6,14 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import {
-  startScanner,
-  stopScanner,
   startScannerScoped,
   stopScannerScoped,
   onBarcodeScanned,
   onBarcodeError,
-  listScanners,
   listScannersScoped,
   type BarcodeScannedPayload,
 } from '@/api/hardware';
-import { lookupByBarcode, lookupByBarcodeScoped } from '@/api/products';
+import { lookupByBarcodeScoped } from '@/api/products';
 
 export interface UseWarehouseScannerOptions {
   /** Session token for scoped API calls. */
@@ -54,28 +51,37 @@ export function useWarehouseScanner({
   useEffect(() => {
     let cancelled = false;
 
+    // T21 (b2), same disposition and for the same reason as sales/useBarcodeScanner.ts, which this
+    // file's header calls a self-contained copy of: no session means no screen, so the unscoped
+    // half was unreachable in a build and answered only by the mock.
+    if (!sessionToken) return;
+
     (async () => {
       const scannerId = preferredId ?? (await autoDetectScanner(sessionToken));
       if (!scannerId || cancelled) return;
-      const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id) : startScanner;
-      await start(scannerId);
+      await startScannerScoped(sessionToken, scannerId);
       startedRef.current = true;
     })();
 
     return () => {
       cancelled = true;
       if (startedRef.current) {
-        const stop = sessionToken ? () => stopScannerScoped(sessionToken) : stopScanner;
-        stop().catch(() => {});
+        stopScannerScoped(sessionToken).catch(() => {});
         startedRef.current = false;
       }
     };
   }, [preferredId, sessionToken]);
 
   const handleScan = useCallback(async (payload: BarcodeScannedPayload) => {
+    // T21 (b2), same reason as the sales twin: no shell registers `lookup_by_barcode`, and
+    // screens that scan already resolve the store through a session token (AppShell.tsx:518,
+    // tablet/TabletAppShell.tsx:194). Not-found without a token matches the existing `catch`.
+    if (!sessionToken) {
+      onProductNotFoundRef.current?.(payload.code);
+      return;
+    }
     try {
-      const lookup = sessionToken ? (code: string) => lookupByBarcodeScoped(sessionToken, code) : lookupByBarcode;
-      const product = await lookup(payload.code);
+      const product = await lookupByBarcodeScoped(sessionToken, payload.code);
       if (product) {
         onProductFoundRef.current(payload);
       } else {
@@ -106,10 +112,9 @@ export function useWarehouseScanner({
   }, [handleScan, handleError]);
 }
 
-async function autoDetectScanner(sessionToken?: string): Promise<string | null> {
+async function autoDetectScanner(sessionToken: string): Promise<string | null> {
   try {
-    const fetchScanners = sessionToken ? () => listScannersScoped(sessionToken) : listScanners;
-    const scanners = await fetchScanners();
+    const scanners = await listScannersScoped(sessionToken);
     return scanners[0]?.id ?? null;
   } catch {
     return null;

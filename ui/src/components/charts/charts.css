@@ -47,13 +47,13 @@
 }
 
 .comparison-delta--positive {
-  color: var(--color-success, #10b981);
+  color: var(--color-success);
 }
 
 .comparison-delta--negative {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-danger);
 }
 
 .comparison-delta--neutral {
-  color: var(--color-fg-tertiary, #9ca3af);
+  color: var(--color-fg-tertiary);
 }

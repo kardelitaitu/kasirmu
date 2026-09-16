@@ -4,6 +4,104 @@
 
 use super::*;
 
+/// Create an isolated throwaway database and return its `(url, name)`.
+///
+/// Both PG tests here used to point `connect_postgres` at the **shared base**
+/// database, and `connect_postgres` applies the whole `PG_INIT` on every connect
+/// (`schema.rs:41`-`:44`). `PG_INIT` carries `AccessExclusiveLock` DDL, so two
+/// parallel test binaries applying it to one database deadlock each other — which
+/// is not a new discovery: this repo already names it at
+/// `sync_store_tests.rs:9`-`:11` ("isolated database to avoid AccessExclusiveLock
+/// deadlocks from concurrent PG_INIT DDL on the shared base DB") and works around
+/// it at `db_tests.rs:377`-`:380`, where the admin connection deliberately passes
+/// `apply_schema = false` because "concurrent catalog DDL across parallel PG test
+/// binaries is a flake source". This mirrors that established fix; the migration
+/// bin is simply the one place it never reached.
+///
+/// Caller must release the database with [`drop_throwaway_pg_db`].
+async fn throwaway_pg_db() -> Option<(String, String)> {
+    use std::str::FromStr;
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let config = tokio_postgres::Config::from_str(&url).ok()?;
+    let admin_mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let admin_pool = deadpool_postgres::Pool::builder(admin_mgr)
+        .max_size(2)
+        .build()
+        .ok()?;
+    let admin = admin_pool.get().await.ok()?;
+
+    // Reclaim databases left behind by a crashed run of either test.
+    let stale: Vec<String> = admin
+        .query(
+            "SELECT datname FROM pg_database WHERE datname LIKE 'oz_migrate_test_%'",
+            &[],
+        )
+        .await
+        .ok()?
+        .iter()
+        .map(|r| r.get::<_, String>(0))
+        .collect();
+    for d in &stale {
+        let _ = admin
+            .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
+            .await;
+    }
+
+    // `.simple()` (hex, no hyphens) for the reason recorded at
+    // `sync_store_tests.rs:42`-`:44`: the name is interpolated as an unquoted
+    // identifier, and UUID `Display` hyphens turn `CREATE DATABASE` into a syntax
+    // error that "silently skipped every sync-store PG test". Same trap here.
+    let db_name = format!(
+        "oz_migrate_test_{}_{}",
+        std::process::id(),
+        uuid::Uuid::now_v7().simple()
+    );
+    admin
+        .execute(&format!("CREATE DATABASE {db_name}"), &[])
+        .await
+        .ok()?;
+    drop(admin);
+    drop(admin_pool);
+
+    // Swap the path segment, preserving any query string (e.g. `?sslmode=`).
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (url.as_str(), None),
+    };
+    let (head, _old_db) = base.rsplit_once('/')?;
+    let db_url = match query {
+        Some(q) => format!("{head}/{db_name}?{q}"),
+        None => format!("{head}/{db_name}"),
+    };
+    Some((db_url, db_name))
+}
+
+/// Drop a database created by [`throwaway_pg_db`]. Best-effort: a leaked
+/// database is a disk problem, not a wrong test result, and the next run's
+/// stale sweep in [`throwaway_pg_db`] reclaims it.
+async fn drop_throwaway_pg_db(db_name: &str) {
+    use std::str::FromStr;
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let Ok(config) = tokio_postgres::Config::from_str(&url) else {
+        return;
+    };
+    let admin_mgr = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
+    let Ok(admin_pool) = deadpool_postgres::Pool::builder(admin_mgr)
+        .max_size(1)
+        .build()
+    else {
+        return;
+    };
+    let Ok(client) = admin_pool.get().await else {
+        return;
+    };
+    let _ = client
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+        .await;
+}
+
 fn sqlite_with_data() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("oz-pos.db");
@@ -94,12 +192,18 @@ fn topo_sort_orders_fk_children_after_parents() {
 /// row counts + checksums. Skips when Postgres is unreachable.
 #[tokio::test]
 async fn pg_integration_migrate_and_verify() {
-    let url = std::env::var("OZ_TEST_PG_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
-    let pool = match connect_postgres(&url).await {
+    let (db_url, db_name) = match throwaway_pg_db().await {
+        Some(v) => v,
+        None => {
+            eprintln!("PG migration integration test skipped: cannot create throwaway DB");
+            return;
+        }
+    };
+    let pool = match connect_postgres(&db_url).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG migration integration test skipped: {e}");
+            drop_throwaway_pg_db(&db_name).await;
             return;
         }
     };
@@ -153,8 +257,15 @@ async fn pg_integration_migrate_and_verify() {
     }
 
     // Direct call: connect + copy (bypasses env parsing). The built-in
-    // whole-table verification is not asserted — parallel test binaries
-    // share this DB — so the definitive check below is namespaced.
+    // whole-table verification is still not asserted, and the namespaced check
+    // below still does the work — but the reason changed. This comment used to
+    // read "parallel test binaries share this DB", which was true and is now
+    // false: the database belongs to this run alone. So discarding
+    // `_copied`/`_tables`/`_failures` is a standing choice rather than a
+    // constraint, and `copy_and_verify` can now be asserted on the whole table
+    // without another test's rows corrupting the comparison. Left as-is here on
+    // purpose — strengthening an assertion is a separate change from fixing the
+    // database it runs against, and the two should not share a commit.
     let conn = Connection::open(&path2).unwrap();
     let (_copied, _tables, _failures) = copy_and_verify(
         &pool,
@@ -219,6 +330,13 @@ async fn pg_integration_migrate_and_verify() {
         )
         .await
         .unwrap();
+    // Release the database. The DELETE blocks here and at the top of this test
+    // existed only because the base database outlived the run; they are kept
+    // because deleting them would widen this change past the connection itself,
+    // and because they cost nothing.
+    drop(client);
+    drop(pool);
+    drop_throwaway_pg_db(&db_name).await;
 }
 
 /// Volume test: migrate a SQLite DB seeded with the **real** schema
@@ -228,12 +346,18 @@ async fn pg_integration_migrate_and_verify() {
 /// actually see. Skips when Postgres is unreachable.
 #[tokio::test]
 async fn pg_integration_migrate_large_db() {
-    let url = std::env::var("OZ_TEST_PG_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
-    let pool = match connect_postgres(&url).await {
+    let (db_url, db_name) = match throwaway_pg_db().await {
+        Some(v) => v,
+        None => {
+            eprintln!("PG migration volume test skipped: cannot create throwaway DB");
+            return;
+        }
+    };
+    let pool = match connect_postgres(&db_url).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG migration volume test skipped: {e}");
+            drop_throwaway_pg_db(&db_name).await;
             return;
         }
     };
@@ -438,4 +562,10 @@ async fn pg_integration_migrate_large_db() {
         )
         .await
         .unwrap();
+    // See the matching note in `pg_integration_migrate_and_verify`: the row
+    // DELETEs are retained for a minimal diff, and the isolation now comes from
+    // dropping the database the whole test wrote into.
+    drop(client);
+    drop(pool);
+    drop_throwaway_pg_db(&db_name).await;
 }

@@ -23,12 +23,15 @@ FROM rust:1.88-slim@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca43
 
 # Install build dependencies needed by some native crates (rusqlite
 # bundles its own libsqlite3, but some transitive deps might need
-# pkg-config / libc-dev).
+# pkg-config / libc-dev). serialport (via oz-hal) needs libudev.pc at
+# compile time through libudev-sys — without libudev-dev the builder
+# dies at libudev-sys's build script (measured 2026-09-16).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         pkg-config \
         libc-dev \
         libssl-dev \
+        libudev-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -138,9 +141,9 @@ RUN mkdir -p crates/oz-core/src crates/oz-api/src crates/oz-logging/src \
     && echo "// dummy" > modules/purchasing/src/lib.rs \
     && echo "// dummy" > apps/cloud-server/src/main.rs \
     && echo "// dummy" > apps/desktop-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-app"\nversion = "0.0.37"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
+    && printf '[package]\nname = "oz-pos-app"\nversion = "0.0.39"\nedition = "2024"\n' > apps/desktop-client/Cargo.toml \
     && echo "// dummy" > apps/tablet-client/src/main.rs \
-    && printf '[package]\nname = "oz-pos-tablet"\nversion = "0.0.37"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
+    && printf '[package]\nname = "oz-pos-tablet"\nversion = "0.0.39"\nedition = "2024"\n' > apps/tablet-client/Cargo.toml \
     && (cargo build --package oz-cloud-server --release > /tmp/prime.log 2>&1 \
         || { echo "WARN: dependency cache-priming build did not complete (best-effort; see /tmp/prime.log)"; }) \
     && true
@@ -164,10 +167,14 @@ RUN cargo build --package oz-cloud-server --release
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS runtime
 
 # Install CA certificates for outbound HTTPS and gosu for dropping privileges.
+# libudev1 is the runtime half of the builder's libudev-dev: the cloud
+# binary links libudev.so via serialport/oz-hal, and bookworm-slim does
+# not ship it.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         libc6 \
+        libudev1 \
         gosu \
         wget \
     && rm -rf /var/lib/apt/lists/*

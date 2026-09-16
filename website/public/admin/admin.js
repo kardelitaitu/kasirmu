@@ -1,4 +1,4 @@
-    const API = (window.__OZ_CONFIG__ && window.__OZ_CONFIG__.licenseApiUrl) || 'https://license.ozpos.my.id';
+    const API = (window.__OZ_CONFIG__ && window.__OZ_CONFIG__.licenseApiUrl) || 'https://license.kasir.mu';
     let currentTab = 'dashboard';
     // Health-tab auto-refresh interval handles; cleared when the health
     // tab is left so tab switches never leave orphan timers firing.
@@ -1122,7 +1122,7 @@
         }
 
         const upGuard = createSeqGuard();
-        // The three ozpos.my.id-zone hosts cannot be probed from inside
+        // The three kasir.mu-zone hosts cannot be probed from inside
         // the Worker (same-zone subrequests bypass Workers routes and 522
         // against a nonexistent origin), so they are probed from the
         // browser instead — no-cors fetch, opaque but honest reachability
@@ -1144,8 +1144,8 @@
             const res = await fetchWithTimeout(undefined, '/__oz/uptime');
             const body = await res.json();
             const browserChecks = await Promise.all([
-              probeBrowser('website (ozpos.my.id)', 'https://ozpos.my.id/'),
-              probeBrowser('dashboard', 'https://dashboard.ozpos.my.id/'),
+              probeBrowser('website (kasir.mu)', 'https://kasir.mu/'),
+              probeBrowser('dashboard', 'https://dashboard.kasir.mu/'),
               probeBrowser('admin', '/', true),
             ]);
             if (!upGuard.isCurrent(seq)) { return; }

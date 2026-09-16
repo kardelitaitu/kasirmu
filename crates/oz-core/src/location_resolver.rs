@@ -31,6 +31,7 @@ use std::time::Instant;
 use crate::error::CoreError;
 use crate::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use crate::sale_deduction::LocationStock;
+use crate::workspace_type::{STORE_POS, WAREHOUSE};
 use tracing;
 
 // ── In-memory cache with 30s TTL ────────────────────────────────────
@@ -186,7 +187,7 @@ pub fn get_workspace_locations(
     }
 
     match type_key {
-        "store-pos" => {
+        STORE_POS => {
             // Multi-binding via workspace_inventory_locations.
             if multi_rows.is_empty() {
                 // No explicit bindings — return canonical default.
@@ -206,7 +207,7 @@ pub fn get_workspace_locations(
             }
             enrich_bindings(conn, &multi_rows)
         }
-        "warehouse" => {
+        WAREHOUSE => {
             if has_bound {
                 // Single-binding via bound_location_id.
                 let loc_id = bound_location_id.unwrap_or_else(|| {

@@ -31,7 +31,7 @@ use crate::error::CoreError;
 /// the old standalone `oz-pos-license-service` was folded into it.
 /// Override via the `OZ_LICENSE_SERVER_URL` environment variable
 /// in production, or use `http://localhost:8090` for local testing.
-pub const LICENSE_SERVER_URL: &str = "https://license.ozpos.my.id";
+pub const LICENSE_SERVER_URL: &str = "https://license.kasir.mu";
 
 /// The RSA-2048 public key in PEM format, embedded at build time.
 ///
@@ -385,9 +385,15 @@ pub struct SignedSubscriptionPayload {
 /// # Returns
 /// `Ok(())` if the signature is valid, or `Err(CoreError::InvalidSubscriptionSignature)`.
 pub fn verify_license_signature(payload: &str, signature_base64: &str) -> Result<(), CoreError> {
-    // BOOTSTRAP_FREE is a sentinel for single-store deployments without
-    // a license server (seeded by migration 061). It is ONLY accepted in
-    // debug/dev builds; release builds require a real RSA signature.
+    // BOOTSTRAP_FREE is a sentinel for single-store deployments without a license server. It is seeded by
+    // the INITIAL SCHEMA, not by a later migration: crates/oz-core/migrations/20260813_init.sql:1514, whose
+    // generated PostgreSQL twin repeats it at 20260813_init.pg.sql:2101 — edit the .sql and re-run
+    // python3 scripts/generate-pg-migration.py; never hand-edit the .pg.sql. (The "(from migration 061)"
+    // note above the seed, and the older copy of this comment, cite a pre-squash number: no file numbered 061
+    // exists in crates/oz-core/migrations.) It is ONLY accepted in debug/dev builds; the release profile
+    // requires a real RSA signature, so there the same value falls through to the base64 decode below and is
+    // rejected as an invalid symbol 95 at offset 9 — the '_' of BOOTSTRAP_FREE — surfacing as
+    // CoreError::InvalidSubscriptionSignature.
     #[cfg(debug_assertions)]
     if signature_base64 == "BOOTSTRAP_FREE" {
         return Ok(());

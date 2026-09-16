@@ -199,10 +199,10 @@ func seedTrialTenantAndSub(t *testing.T, app *tests.TestApp, email, tier string,
 }
 
 func TestBuildTrialEmail(t *testing.T) {
-	msg := buildTrialEmail("no-reply@ozpos.my.id", "user@example.com", "Test Subject", "Hello body")
+	msg := buildTrialEmail("no-reply@kasir.mu", "user@example.com", "Test Subject", "Hello body")
 	s := string(msg)
 
-	if !strings.Contains(s, "From: OZ-POS <no-reply@ozpos.my.id>") {
+	if !strings.Contains(s, "From: kasir.mu <no-reply@kasir.mu>") {
 		t.Error("missing From header")
 	}
 	if !strings.Contains(s, "To: user@example.com") {

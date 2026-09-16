@@ -381,7 +381,7 @@ func constantTimeHashEq(a, b string) bool {
 // ── CORS allowlist ───────────────────────────────────────────────────
 
 // webAllowedOrigins returns the comma-separated OZ_WEB_ALLOWED_ORIGINS
-// allowlist, defaulting to the current ozpos.my.id domain and the local
+// allowlist, defaulting to the current kasir.mu domain and the local
 // dev origin. Additionally, OZ_CORS_ORIGINS (extra comma-separated
 // origins, used by the Rust cloud server) is merged in so operators only
 // need to set one env var for both services. Requests without an Origin
@@ -393,9 +393,9 @@ func webAllowedOrigins() []string {
 	var out []string
 	if v == "" {
 		out = []string{
-			"https://ozpos.my.id",
-			"https://dashboard.ozpos.my.id",
-			"https://admin.ozpos.my.id",
+			"https://kasir.mu",
+			"https://dashboard.kasir.mu",
+			"https://admin.kasir.mu",
 			"http://localhost:4321",
 		}
 	} else {
@@ -450,7 +450,7 @@ var sendOTPEmail = sendOTPEmailSMTP
 //	OZ_SMTP_PORT     (default 587)
 //	OZ_SMTP_USER     (optional; some relays send unauthenticated)
 //	OZ_SMTP_PASSWORD (optional)
-//	OZ_SMTP_FROM     (default "no-reply@ozpos.my.id")
+//	OZ_SMTP_FROM     (default "no-reply@kasir.mu")
 //
 // Config is read per call so tests can t.Setenv and ops can fix a relay
 // with a redeploy. Env values are never echoed in responses or logs.
@@ -467,7 +467,7 @@ func sendOTPEmailSMTP(to, code string) error {
 	password := os.Getenv("OZ_SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("OZ_SMTP_FROM"))
 	if from == "" {
-		from = "no-reply@ozpos.my.id"
+		from = "no-reply@kasir.mu"
 	}
 
 	msg := buildOtpEmail(from, to, code)
@@ -478,14 +478,14 @@ func sendOTPEmailSMTP(to, code string) error {
 // The code is only ever sent over the wire to the tenant's inbox — it is
 // not stored in plaintext anywhere on the server.
 func buildOtpEmail(from, to, code string) []byte {
-	subject := "Your OZ-POS verification code"
+	subject := "Your kasir.mu verification code"
 	body := fmt.Sprintf(
-		"Your OZ-POS verification code is: %s\n\n"+
+		"Your kasir.mu verification code is: %s\n\n"+
 			"It expires in %d minutes. If you didn't request this code, you can safely ignore this email.\n",
 		code, int(webOtpTTL.Minutes()))
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "From: OZ-POS <%s>\r\n", from)
+	fmt.Fprintf(&sb, "From: kasir.mu <%s>\r\n", from)
 	fmt.Fprintf(&sb, "To: %s\r\n", to)
 	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")

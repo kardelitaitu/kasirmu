@@ -1,14 +1,14 @@
 ---
-title: Selamat Datang di OZ-POS
-description: Apa itu OZ-POS dan bagaimana dokumentasi ini disusun.
+title: Selamat Datang di kasir.mu
+description: Apa itu kasir.mu dan bagaimana dokumentasi ini disusun.
 category: gettingStarted
 order: 1
 updated: "2026-08-30"
 ---
 
-## Apa itu OZ-POS?
+## Apa itu kasir.mu?
 
-OZ-POS adalah platform kasir (POS) offline-first untuk kafe, restoran, dan
+kasir.mu adalah platform kasir (POS) offline-first untuk kafe, restoran, dan
 ritel. Semua fitur tetap berjalan tanpa koneksi internet — transaksi, shift,
 stok, dan pengaturan ditulis ke database lokal lebih dulu, lalu tersinkron ke
 cloud begitu koneksi kembali.
@@ -44,7 +44,7 @@ perjalanan, dan langsung mendukung bahasa Inggris dan Bahasa Indonesia.
 
 ## Perangkat keras & perangkat
 
-OZ-POS bekerja dengan perangkat keras yang sudah ada di kasir: pemindai
+kasir.mu bekerja dengan perangkat keras yang sudah ada di kasir: pemindai
 barcode, printer struk, laci kas, layar pelanggan, dan pembaca NFC. Perangkat
 dikelola sebagai terminal — daftarkan, ikat ke toko dan ruang kerja, lalu
 sesuaikan fitur per perangkat. Lihat [Terminal](../terminals/) dan
@@ -52,14 +52,14 @@ sesuaikan fitur per perangkat. Lihat [Terminal](../terminals/) dan
 
 ## Paket & harga
 
-OZ-POS **gratis selamanya** untuk memulai — satu toko, satu register, satu
+kasir.mu **gratis selamanya** untuk memulai — satu toko, satu register, satu
 gudang, dan riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih
 banyak toko, register, dan gudang, plus pembayaran QRIS, sinkron cloud, dan
 otomasi. Lihat [Lisensi & Paket](../licensing/).
 
 ## Mulai dari sini
 
-1. [Pasang OZ-POS](../installation/) di Windows — paket gratis dimulai saat
+1. [Pasang kasir.mu](../installation/) di Windows — paket gratis dimulai saat
    peluncuran pertama, tanpa perlu akun. Platform lain segera hadir.
 2. Selesaikan wizard pengaturan — nama usaha dan mata uang bawaan.
 3. [Transaksi pertama Anda](../first-sale/) — bahkan tanpa internet.

@@ -25,7 +25,7 @@ fn get_receipt_settings_returns_defaults() {
     assert_eq!(result.margin_bottom, 0);
     assert_eq!(result.margin_left, 0);
     assert_eq!(result.margin_right, 0);
-    assert_eq!(result.tax_rounding_mode, "half_up");
+    assert_eq!(result.tax_rounding_mode, Some("half_up".to_string()));
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn set_receipt_settings_persists() {
         margin_bottom: 5,
         margin_left: 1,
         margin_right: 2,
-        tax_rounding_mode: "truncate".into(),
+        tax_rounding_mode: Some("truncate".into()),
     };
 
     run_set_receipt_settings(&conn, &dto).unwrap();
@@ -58,7 +58,7 @@ fn set_receipt_settings_persists() {
     assert_eq!(result.margin_bottom, 5);
     assert_eq!(result.margin_left, 1);
     assert_eq!(result.margin_right, 2);
-    assert_eq!(result.tax_rounding_mode, "truncate");
+    assert_eq!(result.tax_rounding_mode, Some("truncate".to_string()));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 0,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -132,7 +132,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 2,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -209,7 +209,7 @@ fn receipt_settings_dto_debug() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 2,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let d = format!("{dto:?}");
     assert!(d.contains("comma"));
@@ -229,7 +229,7 @@ fn receipt_settings_dto_serialize() {
         margin_bottom: 0,
         margin_left: 0,
         margin_right: 0,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert!(!json["showCurrency"].as_bool().unwrap());
@@ -351,7 +351,7 @@ fn receipt_settings_dto_serde_roundtrip() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 1,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let json = serde_json::to_value(&dto).unwrap();
     let back: ReceiptSettingsDto = serde_json::from_value(json).unwrap();
@@ -1470,8 +1470,22 @@ fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
             "pub async fn get_setting_scoped(",
         ] {
             let body = read_door_body(src, signature);
+            // ADR #49 moved the tablet's body into the bridge, so a shell door
+            // may now name the SHARED door instead of the local
+            // `run_get_setting`. That is still a reachable path to the refusal,
+            // and the extra hop is itself pinned: this same loop sweeps
+            // BRIDGE_SETTINGS_RS, whose `get_setting` body must still contain
+            // `run_get_setting`. Accepting the shared door therefore does not
+            // shorten the chain — it adds a link that is checked right here.
+            //
+            // The trailing `(` is load-bearing: without it the `_scoped`
+            // spelling would satisfy the unscoped case, because
+            // `oz_bridge::settings::get_setting_scoped(` contains
+            // `oz_bridge::settings::get_setting` as a prefix.
+            let reaches_the_refusal = body.contains("run_get_setting")
+                || body.contains("oz_bridge::settings::get_setting(");
             assert!(
-                body.contains("run_get_setting"),
+                reaches_the_refusal,
                 "{label}: `{signature}` no longer reaches the refused door —                  it either reads the table itself or the door was renamed. Body: {body}"
             );
             assert!(
@@ -1480,4 +1494,673 @@ fn decision_pin_both_read_doors_on_both_shells_reach_the_refused_function() {
             );
         }
     }
+}
+
+// ── Phase 3.3 T4: the settings wire pins ────────────────────────────
+//
+// Everything above this line either builds a Rust value and asserts on the
+// JSON that value produces, or hand-writes JSON transcribed from that same
+// output. Neither shape can see the bug class T3 found in
+// `LocalPaymentRailArgs`: a DTO and its only caller may disagree about key
+// casing, and every self-referential test still passes, because the fixture
+// was copied from the wrong side of the boundary. The card reports "saved"
+// and the value never lands.
+//
+// These pins are written from the renderer instead. Every expected key list
+// below is transcribed field-for-field from `ui/src/api/settings.ts` (and
+// `ui/src/api/gateway.ts` for the status entry), so a Rust field renamed
+// without the UI following — in either direction, camelCase or snake_case —
+// reads red here instead of shipping.
+//
+#[test]
+fn wire_pin_credit_sale_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:74 — CreditSaleDto. The renderer reads it as
+    // camelCase in three places: features/retail/RetailModals.tsx:375-389
+    // (`c.saleId` as the row key and again for Settle, `c.customerName`,
+    // `c.totalMinor`, `c.createdAt`) and features/retail/RetailPosScreen.tsx:1274
+    // and :1286 (`!c.settledAt`, `c.saleId !== saleId`).
+    //
+    // The struct carried no `rename_all` in ANY of its three definitions
+    // (oz-bridge, the desktop re-export of it, and this shell's own copy), so it
+    // emitted snake_case and every one of those reads was `undefined`: the list
+    // showed an em-dash for the customer, NaN for the amount and "Invalid Date"
+    // for the date; Settle sent `sale_id: undefined`; and the quiet one — the
+    // `!c.settledAt` filter passed EVERY row, so a settled tab stayed on the
+    // unpaid list forever. Invisible because
+    // `ui/src/dev-mock/handlers/payment.ts:231-232` answers both
+    // `list_credit_sales` variants with `[]`, and because nothing in the repo
+    // had serialized this type in a test before this one.
+    let dto = CreditSaleDto {
+        sale_id: "s-1".into(),
+        customer_name: "Bagus".into(),
+        total_minor: 25_000,
+        currency: "IDR".into(),
+        created_at: "2026-09-15T00:00:00Z".into(),
+        settled_at: None,
+        cashier_name: "Rina".into(),
+    };
+    let mut want = [
+        "saleId",
+        "customerName",
+        "totalMinor",
+        "currency",
+        "createdAt",
+        "settledAt",
+        "cashierName",
+    ];
+    want.sort_unstable();
+    assert_eq!(
+        wire_keys(&dto),
+        want.iter().map(|k| k.to_string()).collect::<Vec<String>>(),
+        "CreditSaleDto must serialize the keys the retail credit list reads"
+    );
+    // Names alone are not the contract: a renamed field whose value was mapped
+    // to the wrong source would pass the key set above and still render the
+    // wrong amount, so two values are read out by key.
+    let json = serde_json::to_value(&dto).unwrap();
+    assert_eq!(json["totalMinor"], 25_000);
+    assert_eq!(json["saleId"], "s-1");
+    assert!(
+        json["settledAt"].is_null(),
+        "an open tab must emit `settledAt: null` rather than omit the key, so the renderer can tell an open tab from an absent field"
+    );
+}
+
+/// Sorted key set of a value as the wire carries it.
+fn wire_keys<T: Serialize>(value: &T) -> Vec<String> {
+    let json = serde_json::to_value(value).expect("a settings DTO must serialize");
+    let mut keys: Vec<String> = json
+        .as_object()
+        .expect("the wire shape of a settings DTO is an object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    keys
+}
+
+/// Parse `payload` the way the command layer will, then send it back out, and
+/// require every key the renderer wrote to still be there. Absence is the
+/// silent-loss shape: serde ignores an unknown field unless the struct says
+/// `deny_unknown_fields`, so the write returns `Ok(())` with the value gone.
+fn assert_wire_matches<T>(payload: &str, expected: &[&str], label: &str)
+where
+    T: Serialize + serde::de::DeserializeOwned,
+{
+    let sent: serde_json::Map<String, serde_json::Value> = serde_json::from_str(payload)
+        .unwrap_or_else(|e| panic!("{label}: pin is not valid JSON: {e}"));
+    let parsed: T = serde_json::from_str(payload)
+        .unwrap_or_else(|e| panic!("{label}: the DTO rejects the payload the renderer sends: {e}"));
+    let mut keys = wire_keys(&parsed);
+    let mut want: Vec<&str> = expected.to_vec();
+    want.sort_unstable();
+    keys.sort();
+    let want: Vec<String> = want.iter().map(|k| (*k).to_string()).collect();
+    assert_eq!(
+        keys, want,
+        "{label}: the wire key set does not match the renderer's declared interface"
+    );
+    let dropped: Vec<&String> = sent.keys().filter(|k| !keys.contains(k)).collect();
+    assert!(
+        dropped.is_empty(),
+        "{label}: accepted and silently dropped {} renderer key(s): {dropped:?}",
+        dropped.len()
+    );
+}
+
+#[test]
+fn wire_pin_receipt_settings_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:9 — ReceiptSettingsDto (11 keys, taxRoundingMode optional).
+    const PAYLOAD: &str = r#"{
+        "showCurrency": true, "decimalSeparator": "comma", "showTax": false,
+        "footer": "Terima kasih", "paperWidth": "narrow", "showTableNumber": true,
+        "marginTop": 5, "marginBottom": 4, "marginLeft": 3, "marginRight": 2,
+        "taxRoundingMode": "truncate"
+    }"#;
+    assert_wire_matches::<ReceiptSettingsDto>(
+        PAYLOAD,
+        &[
+            "showCurrency",
+            "decimalSeparator",
+            "showTax",
+            "footer",
+            "paperWidth",
+            "showTableNumber",
+            "marginTop",
+            "marginBottom",
+            "marginLeft",
+            "marginRight",
+            "taxRoundingMode",
+        ],
+        "ReceiptSettingsDto",
+    );
+    let parsed: ReceiptSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
+    // Two values from opposite ends of the object: a mis-ordered rename would
+    // land one of these on the wrong field rather than dropping it.
+    assert!(parsed.show_currency);
+    assert_eq!(parsed.tax_rounding_mode, Some("truncate".to_string()));
+    assert_eq!(parsed.margin_right, 2);
+}
+
+#[test]
+fn wire_pin_store_settings_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:35 — StoreSettingsDto (logo optional on the TS side,
+    // required here, which is why the pin sends it).
+    const PAYLOAD: &str = r#"{
+        "name": "Kopi Kita", "address": "Jl. Melati 12", "taxId": "NP-0001",
+        "currency": "IDR", "branch": "Bandung", "logo": "abc123"
+    }"#;
+    assert_wire_matches::<StoreSettingsDto>(
+        PAYLOAD,
+        &["name", "address", "taxId", "currency", "branch", "logo"],
+        "StoreSettingsDto",
+    );
+    let parsed: StoreSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(parsed.tax_id, "NP-0001");
+    assert_eq!(parsed.branch, "Bandung");
+}
+
+#[test]
+fn wire_pin_credit_settings_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:67 — CreditSettingsDto.
+    const PAYLOAD: &str =
+        r#"{"enabled": true, "reminderIntervalHours": 24, "maxLimitMinor": 500000}"#;
+    assert_wire_matches::<CreditSettingsDto>(
+        PAYLOAD,
+        &["enabled", "reminderIntervalHours", "maxLimitMinor"],
+        "CreditSettingsDto",
+    );
+    let parsed: CreditSettingsDto = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(parsed.reminder_interval_hours, 24);
+    assert_eq!(parsed.max_limit_minor, 500000);
+}
+
+#[test]
+fn wire_pin_user_pref_entry_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:190 — UserPrefEntry. Single-word fields, so this
+    // pin is cheap insurance against a future rename_all on the struct.
+    const PAYLOAD: &str = r#"{"key": "cardsize", "value": "large"}"#;
+    assert_wire_matches::<UserPrefEntry>(PAYLOAD, &["key", "value"], "UserPrefEntry");
+    let parsed: UserPrefEntry = serde_json::from_str(PAYLOAD).unwrap();
+    assert_eq!(parsed.key, "cardsize");
+}
+
+#[test]
+fn wire_pin_deployment_info_carries_every_key_the_renderer_declares() {
+    // ui/src/api/settings.ts:55 — DeploymentInfo. Response-only (`Serialize`
+    // alone), so there is no inbound payload to pin and a drift here is a blank
+    // "About" row rather than a lost write. The assertion is on what goes out.
+    let keys = wire_keys(&DeploymentInfo {
+        app_version: "0.0.39".into(),
+    });
+    assert_eq!(
+        keys,
+        ["appVersion"],
+        "DeploymentInfo must emit exactly the one key the renderer reads"
+    );
+}
+
+#[test]
+fn wire_pin_gateway_status_entry_carries_every_key_the_renderer_declares() {
+    // ui/src/api/gateway.ts — the array `gateway_status` resolves to. Response
+    // only, and the whole point of UI-1 is that these three fields are ALL the
+    // renderer ever sees about a credential, so the emitted key set is part of
+    // the security boundary rather than a convenience: a fourth key would put a
+    // value on the wire that the deny-list was written to keep off it.
+    let keys = wire_keys(&GatewayStatusEntry {
+        name: "Midtrans".into(),
+        configured: true,
+        online: false,
+    });
+    let mut want = ["configured", "name", "online"];
+    want.sort_unstable();
+    assert_eq!(
+        keys,
+        want.iter().map(|k| k.to_string()).collect::<Vec<String>>(),
+        "GatewayStatusEntry must emit exactly name/configured/online — any extra key is a credential leak"
+    );
+}
+
+// ── Phase 3.3 T4-4: the batch settings write ────────────────────────
+//
+// `set_settings_scoped` is registered on this shell because three workspace
+// settings cards call it —
+// `ui/src/features/settings/workspace-cards/WorkspaceRestaurantPosSettings.tsx:114`,
+// `WorkspaceKdsSettings.tsx:136`, `WorkspaceInventorySettings.tsx:97` — and the
+// tablet mounts the same `WorkspaceSettingsModal` the desktop shell does
+// (`TabletAppShell.tsx:71-91`, `:125`). Before it existed those three cards
+// could not save on a tablet at all, and the name sat in
+// `scripts/ipc-parity-allowlist.json` as the record of that gap.
+
+/// Seed a user whose role carries every permission, into the GLOBAL identity
+/// database — the one `require_permission_for_session` reads.
+fn seed_owner_user(conn: &rusqlite::Connection) {
+    let store = Store::new(conn);
+    store.seed_default_roles().unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+}
+
+/// An app whose store databases live in a temp dir, with a session for
+/// `user-owner` in `store-a`.
+fn owner_app(state: AppState) -> tauri::App<tauri::test::MockRuntime> {
+    state.session_store.write().unwrap().insert(
+        "owner-token".into(),
+        SessionContext::new(
+            "user-owner".into(),
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+fn store_state(conn: rusqlite::Connection) -> AppState {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager =
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), oz_core::migrations::ALL);
+    state
+}
+
+fn batch(entries: &[(&str, &str)]) -> HashMap<String, String> {
+    entries
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// Both halves that are easy to get wrong, pinned together: every entry lands
+/// on the SESSION's store database, and the sync items are enqueued on that
+/// same store queue.
+///
+/// The queue half is the one worth the ink. The desktop twin enqueues on the
+/// global connection because the desktop daemon watches the global queue; this
+/// shell's daemon drains the store queue, and `sync.rs:437-447` records that
+/// writing these marks to the global connection instead stranded the store rows
+/// as `pending` forever. So mirroring the bridge here would have produced a
+/// silently unsynced settings save — the failure this assertion exists to
+/// catch.
+#[tokio::test]
+async fn set_settings_scoped_writes_every_entry_and_queues_on_the_session_store() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    let app = owner_app(store_state(conn));
+
+    set_settings_scoped(
+        "owner-token".into(),
+        batch(&[
+            ("restaurant.course_firing", "true"),
+            ("kds.auto_accept", "1"),
+        ]),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let state = app.state::<AppState>();
+    let session = state
+        .resolve_session("owner-token")
+        .expect("the session resolves");
+    assert_eq!(session.store_id, "store-a");
+
+    // The store guard is scoped so it is dropped before the `state.db` await
+    // below — a std MutexGuard held across an await is `await_holding_lock`.
+    {
+        let conn_arc = state
+            .db_manager
+            .open_store(&session.store_id)
+            .expect("the session's store db opens");
+        let db = conn_arc.lock().unwrap();
+
+        // Every entry landed, on the session's store and not anywhere else.
+        assert_eq!(
+            run_get_setting(&db, "restaurant.course_firing")
+                .unwrap()
+                .as_deref(),
+            Some("true"),
+        );
+        assert_eq!(
+            run_get_setting(&db, "kds.auto_accept").unwrap().as_deref(),
+            Some("1"),
+        );
+
+        // …and both were offered to the network from the STORE queue.
+        let pending = Store::new(&db).list_pending_offline().unwrap();
+        let mut queued: Vec<String> = pending
+            .iter()
+            .filter(|i| i.action == "settings.update")
+            .filter_map(|i| {
+                serde_json::from_str::<serde_json::Value>(&i.payload)
+                    .ok()?
+                    .get("key")?
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+        queued.sort();
+        assert_eq!(
+            queued,
+            vec![
+                "kds.auto_accept".to_string(),
+                "restaurant.course_firing".to_string()
+            ],
+            "both entries must be offered to the network from the store queue the \
+             tablet's daemon drains (sync_run_scoped), not the global one",
+        );
+    }
+
+    // The complement, so "the store queue has them" cannot be satisfied by
+    // writing to BOTH: the global queue must be untouched. Mirroring the
+    // bridge's `ctx.db` enqueue here is exactly what this half catches.
+    let global = state.db.lock().await;
+    let global_settings_items = Store::new(&global)
+        .list_pending_offline()
+        .unwrap()
+        .into_iter()
+        .filter(|i| i.action == "settings.update")
+        .count();
+    assert_eq!(
+        global_settings_items, 0,
+        "the settings sync items must not be enqueued on the global connection: \
+         the tablet's daemon drains the store queue, so a global item is never sent",
+    );
+}
+
+/// The gate this command replaced was forgeable: the old signature took a
+/// caller-supplied `user_id`. `require_permission_for_session` derives the user
+/// from the session and is scope-aware (ADR #35 D5), so a session whose role
+/// lacks `settings:edit` is now refused with a typed denial.
+#[tokio::test]
+async fn set_settings_scoped_denies_a_session_without_settings_edit() {
+    let conn = migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-lite', 'Lite', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite', 'lite', 'hash', 'Lite User', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let state = store_state(conn);
+    state.session_store.write().unwrap().insert(
+        "lite-token".into(),
+        SessionContext::new(
+            "user-lite".into(),
+            "role-lite".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = set_settings_scoped(
+        "lite-token".into(),
+        batch(&[("restaurant.course_firing", "true")]),
+        app.state(),
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(AppError::PermissionDenied(_))),
+        "a session without settings:edit must be denied, got {result:?}",
+    );
+}
+
+// ── T10 · the six scoped reads that resolved a session and ignored it ─────
+//
+// `get_receipt_settings_scoped`, `get_store_settings_scoped`,
+// `get_credit_settings_scoped`, `get_hardware_settings_scoped`,
+// `get_setting_scoped` and `list_credit_sales_scoped` each did
+// `let (_session, …) = state.resolve_scope(&session_token)?` — the underscore is
+// the finding — and went to the database. Every one of their
+// `oz_bridge::settings` twins gates: five on `settings:read`, and
+// `list_credit_sales_scoped` on `sales:view` (`crates/oz-bridge/src/settings.rs:779`,
+// under an "F-017" comment that even records the exception: "This one keeps
+// sales:view, not settings:read — verbatim from the shell"). All six were already
+// on this shell's debt ledger as `resolves_session_names_no_permission`, which is
+// another way of noting that the ledger describes the hole and nothing closed it.
+//
+// These cases pin the SPLIT, not a blanket block, because a blanket block would be
+// wrong: `role-staff` holds `sales:view` and no `settings:*` key at all
+// (`platform/core/src/rbac_presets.rs:136-159`), so a cashier listing the store's
+// credit sales is authorized behavior while reading receipt formatting is not. The
+// session below therefore uses a hand-made role carrying exactly `["sales:view"]`
+// — so what decides each outcome is the grant, provable from the role row, rather
+// than a role name this file happens to like.
+
+/// An app with one session whose role holds exactly `sales:view` — enough for the
+/// credit-sale list, not enough for any of the five settings reads. The store
+/// databases live in the temp dir `store_state` creates, matching this file's
+/// existing tests.
+fn one_grant_app() -> tauri::App<tauri::test::MockRuntime> {
+    let conn = migrations::fresh_db();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-view-only', 'View Only', 'holds sales:view and nothing else',
+                 '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-view-only', 'viewonly', 'hash', 'View Only', 'role-view-only', 1,
+                 '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let state = store_state(conn);
+    state.session_store.write().unwrap().insert(
+        "view-only-token".into(),
+        SessionContext::new(
+            "user-view-only".into(),
+            "role-view-only".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap()
+}
+
+/// The five settings reads the bridge gates on `settings:read`.
+#[tokio::test]
+async fn scoped_settings_reads_deny_a_session_without_settings_read() {
+    let app = one_grant_app();
+
+    for (label, result) in [
+        (
+            "get_receipt_settings_scoped",
+            matches!(
+                get_receipt_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_store_settings_scoped",
+            matches!(
+                get_store_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_credit_settings_scoped",
+            matches!(
+                get_credit_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_hardware_settings_scoped",
+            matches!(
+                get_hardware_settings_scoped("view-only-token".into(), app.state()).await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+        (
+            "get_setting_scoped",
+            matches!(
+                get_setting_scoped("view-only-token".into(), "store.name".into(), app.state())
+                    .await,
+                Err(AppError::PermissionDenied(_))
+            ),
+        ),
+    ] {
+        assert!(
+            result,
+            "{label} must refuse a session holding only sales:view"
+        );
+    }
+}
+
+/// The sixth is the exception the bridge documents, and it must stay open: this
+/// session holds `sales:view`, so the credit-sale list has to reach its body.
+/// Without this case, tightening the five into a block on everything settings-ish
+/// would still pass the file above.
+#[tokio::test]
+async fn scoped_credit_sale_list_stays_open_to_a_session_with_sales_view() {
+    let app = one_grant_app();
+
+    let result = list_credit_sales_scoped("view-only-token".into(), app.state()).await;
+    assert!(
+        !matches!(result, Err(AppError::PermissionDenied(_))),
+        "list_credit_sales_scoped gates on sales:view, which this session holds; \
+         got {:?}",
+        result
+    );
+    assert!(
+        result.is_ok(),
+        "an empty store should answer with an empty list"
+    );
+    assert_eq!(result.unwrap().len(), 0);
+}
+
+/// All six reach their bodies for a session that holds everything. Same shape as
+/// the denial cases, and the pair is what makes either one meaningful: the denial
+/// cannot be vacuous because the owner gets through, and the owner case cannot be
+/// vacuous because the restricted session is refused.
+#[tokio::test]
+async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
+    let conn = migrations::fresh_db();
+    seed_owner_user(&conn);
+    let app = owner_app(store_state(conn));
+
+    assert!(
+        get_receipt_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(
+        get_store_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(
+        get_credit_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(
+        get_hardware_settings_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+    assert!(!matches!(
+        get_setting_scoped("owner-token".into(), "store.name".into(), app.state()).await,
+        Err(AppError::PermissionDenied(_))
+    ));
+    assert!(
+        list_credit_sales_scoped("owner-token".into(), app.state())
+            .await
+            .is_ok()
+    );
+}
+
+// ── T11: the updater's pre-login settings write cannot land ──────────────
+//
+// `ui/src/frontend/shell/UpdateBanner.tsx:211` calls
+// `setSetting(key, value, 'system_updater')`. `system_updater` occurs exactly
+// once in this repository — at that call site: `git grep -rn system_updater --
+// crates apps ui/src` returns the one line. There is no such user row, no seed,
+// no migration, no constant.
+//
+// And the command is not decorative about its `user_id`.
+// `oz_bridge::settings::set_setting` runs
+// `ctx.require_permission_for_user(&store, user_id, SETTINGS_EDIT)?` at
+// `crates/oz-bridge/src/settings.rs:1259`, which reaches
+// `Store::require_permission` → `assignment_for_user(user_id)?`
+// (`crates/oz-core/src/db/staff.rs:220`) — so an id that resolves to no user is
+// an error before `run_set_setting` is ever called.
+//
+// So what this case pins is not "the gate works" but "the feature does not". The
+// banner's own comment at `:204-207` says the unscoped command is used
+// *deliberately*, because the scoped variant needs a session token that does not
+// exist pre-login, and the surrounding `try { … } catch { }` at `:212-214`
+// discards whatever comes back with the note that persistence is "best-effort".
+// Every updater preference the banner writes is therefore refused by a permission
+// check against an identity nobody seeded, silently, on both shells — and no
+// existing test could tell, because the renderer never looks at the result and
+// the UI-side contract test asserts the payload, not the outcome.
+//
+// The read-back goes through `get_setting`, the same layer the write targets, so
+// this does not encode any assumption about table or column names.
+
+#[tokio::test]
+async fn set_setting_refuses_the_hard_coded_updater_actor_and_writes_nothing() {
+    let conn = migrations::fresh_db();
+    {
+        Store::new(&conn).seed_default_roles().unwrap();
+    }
+    let state = store_state(conn);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = set_setting(
+        "updater.dismissed_version".into(),
+        "0.0.39".into(),
+        "system_updater".into(),
+        app.state(),
+    )
+    .await;
+    assert!(
+        result.is_err(),
+        "a hard-coded actor that names no user must not be able to write settings; got {result:?}",
+    );
+
+    let read_back = get_setting("updater.dismissed_version".into(), app.state())
+        .await
+        .expect("get_setting must answer on a fresh store");
+    assert!(
+        read_back.is_none(),
+        "the write was reported refused yet landed in settings: {read_back:?}"
+    );
 }

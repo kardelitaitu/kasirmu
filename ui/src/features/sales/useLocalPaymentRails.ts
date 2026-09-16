@@ -37,6 +37,48 @@ export function railOffered(rails: LocalPaymentRail[] | null, railCode: string):
   return rail ? rail.is_enabled : false;
 }
 
+/** A tender tab the checkout offers, in the order the modal lists them. */
+export type TenderMethod = 'cash' | 'card' | 'qris' | 'credit';
+
+/**
+ * The tab list and the rail that gates each entry — `null` means no rail
+ * gates it. Derived from what PaymentModal rendered before this lived here
+ * (a literal `['cash','card','qris','credit']` filtered on `qrisOffered`),
+ * so replacing that literal with `visibleMethods()` changes nothing:
+ *
+ *  · `cash` is universal — no rail models it.
+ *  · `card` is universal TOO. The `edc` rail gates the *pay-on-terminal
+ *    button inside* the card panel (`terminalOffered` on CardTenderPanel),
+ *    never the card tab; a site with no terminal still takes a card by
+ *    hand. Folding `edcOffered` in here would be a behaviour change.
+ *  · `qris` is the one rail-gated tab, and `railOffered` is the gate —
+ *    including its fail-open rule for a null or empty list.
+ *  · `credit` carries NO gate. Whether it is a tender tab or a facility
+ *    orthogonal to tender (todo-payment.md :887) is a parked owner
+ *    question; until it is answered, the derivation renders exactly what
+ *    renders today, which is: always.
+ *
+ * Subscription caps are deliberately absent too: `caps.supportsQris` gates
+ * what the QRIS panel lets you DO, not whether the tab is listed.
+ */
+const TENDER_RAILS: ReadonlyArray<{ method: TenderMethod; railCode: string | null }> = [
+  { method: 'cash', railCode: null },
+  { method: 'card', railCode: null },
+  { method: 'qris', railCode: 'qris' },
+  { method: 'credit', railCode: null },
+];
+
+/**
+ * The tender tabs to offer for `rails`, in operator order. Same list the
+ * modal hardcoded, now named: an entry survives unless a non-empty rail
+ * list answers that its `railCode` is withheld.
+ */
+export function visibleMethods(rails: LocalPaymentRail[] | null): TenderMethod[] {
+  return TENDER_RAILS.filter(
+    ({ railCode }) => railCode === null || railOffered(rails, railCode),
+  ).map(({ method }) => method);
+}
+
 /**
  * The merchant static-QR payload for manual QRIS, or null when no
  * non-empty string is configured. Parse/serialize semantics live with

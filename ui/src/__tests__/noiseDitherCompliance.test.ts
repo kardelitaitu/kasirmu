@@ -25,7 +25,8 @@ const COMPONENTS_CSS = resolve(UI_SRC, 'frontend/themes/components.css');
 // When a new shadow-using component is added, its CSS class selector
 // must be added to the ::after list in components.css AND to this set.
 //
-// Current count: 124 selectors (4 added for the 0.0.37 KDS expo / routing
+// Current count: 126 selectors (2 added for the restaurant sidebar and the POS
+// course dropdown, both named by the coverage case; 4 added for the 0.0.37 KDS expo / routing
 // surfaces, on top of the org selector / org switcher trio; then -1 when
 // .kds-settings-popover retired with the unreachable KdsSettingsPanel in
 // todo-kds-agents-6). The original
@@ -185,6 +186,11 @@ const KNOWN_NOISE_SELECTORS = [
   '.kds-expo-ticket-slot--ready',
   '.kds-expo-modal',
   '.kds-routing-confirm',
+  // Elevated surfaces named by the coverage case: the restaurant
+  // slide-out sidebar (20450716b) and the POS course dropdown. Both are wired
+  // to ::after in components.css (main list + both @media parity blocks).
+  '.restaurant-sidebar',
+  '.pos-cart-course-dropdown',
 ];
 
 /** CSS selectors that are exempt from noise-dither even though they use --shadow-* */
@@ -252,7 +258,11 @@ function findCssFiles(dir: string): string[] {
         results.push(fullPath);
       }
     }
-  } catch { /* skip */ }
+  } catch (err) {
+    // Counted, still skipped: an unlistable directory must not be able to shrink
+    // the walk without saying so. The path recorded is the one attempted.
+    dirsUnreadable.push(dir.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '') + ' -- ' + String(err).slice(0, 60));
+  }
   return results;
 }
 
@@ -323,8 +333,237 @@ let contrastBlock: string;
 let reducedBlock: string;
 let allCssFiles: string[];
 let uncoveredSurfaces: { file: string; selector: string }[];
+/*
+ * Population counters for the shadow walk, added because the verdict had no
+ * denominator next to it. `0 uncovered` reads as a claim about elevation in this
+ * UI; the walk only ever examined the tokenised minority, and nothing printed how
+ * small that was. Same lesson popupBackgroundCompliance is still carrying: a file
+ * count is not a population, and files.length > 0 cannot catch a walker that
+ * grades one rule of six thousand.
+ */
+let rulesExamined = 0;      // every non-@ rule in every sheet the walk opened
+let shadowRules = 0;        // ...of those, the ones whose body names box-shadow
+let shadowRulesGraded = 0;  // ...and also names a --shadow-* token: the gate's reach
+let shadowRulesSkipped = 0; // hardcoded shadow, no token: the counted skip
+let sheetsRefused = 0;      // basenames the walk declines to open at all
+// -- The doors a shadowed selector leaves the waiver filter through, counted apart
+// (2026-09-15). The filter carried no denominator of its own: "0 uncovered" reads as
+// a claim about elevation, and every one of these four doors can produce that number
+// while grading nothing. Same lesson the counters above carry.
+let waiverCoveredByList = 0;   // exact match on KNOWN_NOISE_SELECTORS
+let waiverPrefix = 0;          // match on EXEMPT_SELECTOR_PREFIXES
+let waiverPseudoState = 0;     // selector names a state pseudo-class
+let waiverAttribute = 0;       // selector starts with an open bracket
+let surfacesSurvivingWaivers: { file: string; selector: string }[] = [];
+// Membership, not just counts: a matcher can widen without changing a single count
+// (measured 2026-09-15 -- replacing the exact-or-boundary test with the raw
+// startsWith this file shipped before moved NOTHING on this tree, because the names
+// it would newly swallow do not exist yet). A baseline of WHO each door excused is the
+// only witness that survives a matcher edit, so each door records its own list.
+const waivedByPrefixNames: string[] = [];
+const waivedByPseudoNames: string[] = [];
+const waivedByAttributeNames: string[] = [];
+let unparseableSheets: string[] = [];  // sheets it tried and could not read
+// -- The doors a sheet can leave the walk through, counted apart (2026-09-15). --
+// A sheet the PARSE throws on was already recorded in `unparseableSheets` and is
+// asserted empty below, so that door has a counter. Two doors had none:
+//   (a) `findCssFiles` swallowed a failed `readdirSync` with a bare
+//       catch-skip, so a directory that cannot be LISTED removes every sheet
+//       under it from the population -- the walk gets smaller, not red;
+//   (b) nothing related sheets FOUND to sheets PARSED, so (a) had no floor.
+// These three are the accounting. The relations between them are tautologies about
+// control flow, kept so the print is auditable; the weight is on the magnitude
+// floor on `sheetsOpened` and on the two emptiness checks naming each escape.
+let sheetsOpened = 0;                 // non-refused sheets handed to readFileSync
+const sheetsParsed: string[] = [];    // ...and what came out of the parse intact
+const dirsUnreadable: string[] = [];  // directories the LISTING itself threw on
+
 
 /* ── Tests ────────────────────────────────────────────────────── */
+
+/*
+ * The shadow walk runs at MODULE scope, not in beforeAll, for one reason: its
+ * numbers are printed in a case title, and a title is evaluated while the file is
+ * still being collected -- before any hook runs. A title that reads `0 graded of 0
+ * box-shadow rules` is worse than no title, because it looks like a floor that
+ * passed. Measured that way the first time: 9 passed, all four counters zero.
+ */
+function walkShadowPopulation(): void {
+  // Find all shadow-using selectors across CSS files
+  uncoveredSurfaces = [];
+  allCssFiles = [];
+  rulesExamined = 0; shadowRules = 0; shadowRulesGraded = 0; shadowRulesSkipped = 0;
+  sheetsRefused = 0; unparseableSheets = [];
+  sheetsOpened = 0; sheetsParsed.length = 0; dirsUnreadable.length = 0;
+
+  for (const dir of ['features', 'frontend', 'components']) {
+    const files = findCssFiles(dir);
+    allCssFiles.push(...files);
+
+    for (const file of files) {
+      const basename = file.split(/[/\\]/).pop() || '';
+      if (basename === 'tokens.css' || basename === 'components.css') { sheetsRefused++; continue; }
+
+      sheetsOpened++;
+      try {
+        let content = readFileSync(file, 'utf-8');
+        // Remove CSS comments to prevent false positives
+        content = content.replace(/\/\*[\s\S]*?\*\//g, '');
+
+        // Split into individual rule blocks by finding top-level `}` boundaries
+        // Each rule block is: selectors { properties }
+        const rules: string[] = [];
+        let depth = 0;
+        let current = '';
+        for (const ch of content) {
+          if (ch === '{') depth++;
+          else if (ch === '}') {
+            depth--;
+            if (depth === 0) {
+              current += '}';
+              rules.push(current);
+              current = '';
+              continue;
+            }
+          }
+          current += ch;
+        }
+
+        for (const rule of rules) {
+          const braceIdx = rule.indexOf('{');
+          if (braceIdx < 0) continue;
+
+          const rawSelectors = rule.slice(0, braceIdx).trim();
+          const body = rule.slice(braceIdx + 1, -1).trim();
+
+          // Skip @-rules (keyframes, media, font-face, etc)
+          if (rawSelectors.startsWith('@')) continue;
+          rulesExamined++;
+          if (!body.includes('box-shadow')) continue;
+          shadowRules++;
+          if (!body.includes('--shadow-')) { shadowRulesSkipped++; continue; }
+          shadowRulesGraded++;
+
+          // Split by comma to get individual selectors, then clean
+          for (const part of rawSelectors.split(',')) {
+            const sel = part.trim();
+            if (!sel || sel.includes('::')) continue; // Skip pseudo-elements
+
+            const relPath = file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '');
+            uncoveredSurfaces.push({ file: relPath, selector: sel });
+          }
+        }
+        sheetsParsed.push(file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, ''));
+      } catch (err) {
+        unparseableSheets.push(file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '') + ' -- ' + String(err).slice(0, 60));
+      }
+    }
+  }
+
+}
+/*
+ * BOUNDARY CONVENTION -- AND A DOCUMENTED FORK WITH THE SISTER FILE, dated 2026-09-15.
+ * This file and ui/src/__tests__/focusVisibleCompliance.test.ts (cc7111fa8) both cite
+ * scripts/verify-ftl-orphans.py:237 -- n == p or n.startswith(p + a hyphen) -- and
+ * reach OPPOSITE answers, because that rule was written for Fluent KEY names, where a
+ * hyphen is not a modifier boundary: the prefix topology-shortcuts legitimately
+ * continues into topology-shortcuts-help. In CSS the same character means the opposite
+ * -- .btn and .btn-primary are two variants, and BEM writes .toast__title for a CHILD.
+ * One citation therefore cannot settle a CSS question, so the family rule has to be
+ * stated on its own terms: A WAIVER MUST NAME THE ELEMENT IT WAIVES. Attaching a state,
+ * an attribute or a combinator to a class still names that class; appending characters
+ * to its name does not. That puts the boundary set at the attach points, and it puts
+ * this file on the sister's side of the fork:
+ *   a hyphen and an underscore are NOT boundaries -- .btn must not waive .btn-primary
+ *   -- and prefixes that genuinely continue that way are listed AS STEMS (.card--
+ *   padding-, .toast__, .input-, .payment-), which the endsWith branch still honours;
+ *   combinators, ., #, : and [ ARE boundaries, so .btn:focus, .btn .x,
+ *   .status-indicator.online and .btn[aria-pressed] stay waived by a .btn entry.
+ * Measured blast radius of narrowing the set from the four characters this line first
+ * shipped with (_ - . :) to the set below: 0 of the 4 selectors the prefix door waives
+ * depends on a hyphen or an underscore, so on this tree the change costs nothing and
+ * the fork is the only thing at stake. Neither file should keep citing the python rule
+ * as the tie-breaker; if the owner reconciles the pair, this is the shape to reconcile
+ * toward, and focusVisibleCompliance is already there.
+ */
+const SELECTOR_BOUNDARY_CHARS = ' >+~:.#,';
+function isExemptSelector(sel: string): boolean {
+  return EXEMPT_SELECTOR_PREFIXES.some((prefix) => {
+    if (sel === prefix) return true;
+    if (!sel.startsWith(prefix)) return false;
+    if (prefix.endsWith('-') || prefix.endsWith('_')) return true;
+    const first = sel.slice(prefix.length).charAt(0);
+    return first !== '' && SELECTOR_BOUNDARY_CHARS.includes(first);
+  });
+}
+
+/**
+ * Applies the four waivers ONCE, at module scope, for the same reason the shadow walk
+ * runs there (see the note above): the denominator is printed in a case TITLE, and a
+ * title is evaluated while the file is still being collected -- before any hook or
+ * test body runs. Counting inside the case would print four zeros as if they passed.
+ */
+/*
+ * ESCAPE OF RECORD, dated 2026-09-15 -- a finding, not a fix. The waiver list below
+ * is deliberately UNCHANGED by this comment.
+ *
+ * The prefix door waives a selector because of its NAME and never asks whether that
+ * element carries a shadow of its own. Measured on the run that shipped with the
+ * exact-or-boundary matcher: 118 shadowed selectors reach the filter and 4 leave
+ * through the prefix door -- '.kds-slider-knob', '.memo-banner-close',
+ * '.memo-expanded-close' and one sibling -- and the census that counts them also
+ * finds them declaring their own box-shadow rather than inheriting one. So a sheet
+ * may put a real --shadow-* token on an exempt NAME and this gate will not look.
+ *
+ * A briefing sized the same escape far larger (48 badge/modal/panel selectors naming
+ * --shadow-*, 43 declaring box-shadow, 35 both, 47 of 48 descendants). Those counts
+ * are ATTRIBUTED, not reproduced: this walk refuses tokens.css and components.css by
+ * basename (sheetsRefused = 2) and a same-scope census found 0 DESCENDANT selectors
+ * among the exempt-matched. If the 48 is real, it is living in the two sheets this
+ * gate never opens -- which is the second finding, and both are checkable from the
+ * denominator print below rather than from this paragraph.
+ *
+ * The inverted incentive this file already records against itself stays open and is
+ * untouched here: 312 of 434 box-shadow rules are skipped for HARDCODING a shadow
+ * instead of tokenising one, so a sheet escapes by doing the wrong thing, and the
+ * exempt-with-real-shadow selectors sit on top of that.
+ *
+ * Two candidate remedies, named and NOT chosen -- each one changes what the gate
+ * demands of a stylesheet, which is an owner decision:
+ *   (1) grade through the name: drop from EXEMPT_SELECTOR_PREFIXES any entry whose
+ *       element declares its own --shadow-* token, and give those surfaces the dither
+ *       they were waived out of;
+ *   (2) keep the waiver and make it earned: require the small-area certificate the
+ *       note next to '.kds-slider-knob' already argues (banding needs a large, soft
+ *       gradient to be visible) per entry, so exemption follows geometry, not prefix.
+ */
+function applySelectorWaivers(): void {
+  waiverCoveredByList = 0; waiverPrefix = 0; waiverPseudoState = 0; waiverAttribute = 0;
+  surfacesSurvivingWaivers = [];
+  waivedByPrefixNames.length = 0; waivedByPseudoNames.length = 0; waivedByAttributeNames.length = 0;
+  for (const surface of uncoveredSurfaces) {
+    const sel = surface.selector;
+    if (KNOWN_NOISE_SELECTORS.includes(sel)) { waiverCoveredByList++; continue; }
+    if (isExemptSelector(sel)) { waiverPrefix++; waivedByPrefixNames.push(sel); continue; }
+    // NOTE, deliberately NOT tightened in this commit: this test reads the WHOLE
+    // selector, so '.a:hover .b' waives a state class that belongs to a different
+    // element. Restricting it to the tail compound is measured to move exactly one
+    // selector out of the waiver -- '.kds-slider-track:hover .kds-slider-knob'
+    // (features/kds/KdsScreen.css) -- and that surface needs an entry in the
+    // noise-dither block of ui/src/frontend/themes/components.css plus
+    // KNOWN_NOISE_SELECTORS to pass once it is graded. A stylesheet is outside this
+    // file's fence, so the door stays open here and its population is printed below.
+    if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) { waiverPseudoState++; waivedByPseudoNames.push(sel); continue; }
+    // Attribute selectors (state variants) -- inherit from the base class. Kept, with
+    // its count printed: measured 2026-09-15 ZERO selectors reach this door, so the
+    // waiver is real insurance and not a live leak -- and a printed zero is the only
+    // form in which an empty silent class can be seen growing.
+    if (sel.startsWith('[')) { waiverAttribute++; waivedByAttributeNames.push(sel); continue; }
+    surfacesSurvivingWaivers.push(surface);
+  }
+}
+walkShadowPopulation();
+applySelectorWaivers();
 
 describe('Noise-dither overlay coverage (P11-5)', () => {
   beforeAll(() => {
@@ -338,66 +577,6 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
     contrastBlock = extractMediaBlock(componentsCss, 'prefers-contrast', 'high');
     reducedBlock = extractMediaBlock(componentsCss, 'prefers-reduced-motion', 'reduce');
 
-    // Find all shadow-using selectors across CSS files
-    uncoveredSurfaces = [];
-    allCssFiles = [];
-
-    for (const dir of ['features', 'frontend', 'components']) {
-      const files = findCssFiles(dir);
-      allCssFiles.push(...files);
-
-      for (const file of files) {
-        const basename = file.split(/[/\\]/).pop() || '';
-        if (basename === 'tokens.css' || basename === 'components.css') continue;
-
-        try {
-          let content = readFileSync(file, 'utf-8');
-          // Remove CSS comments to prevent false positives
-          content = content.replace(/\/\*[\s\S]*?\*\//g, '');
-
-          // Split into individual rule blocks by finding top-level `}` boundaries
-          // Each rule block is: selectors { properties }
-          const rules: string[] = [];
-          let depth = 0;
-          let current = '';
-          for (const ch of content) {
-            if (ch === '{') depth++;
-            else if (ch === '}') {
-              depth--;
-              if (depth === 0) {
-                current += '}';
-                rules.push(current);
-                current = '';
-                continue;
-              }
-            }
-            current += ch;
-          }
-
-          for (const rule of rules) {
-            const braceIdx = rule.indexOf('{');
-            if (braceIdx < 0) continue;
-
-            const rawSelectors = rule.slice(0, braceIdx).trim();
-            const body = rule.slice(braceIdx + 1, -1).trim();
-
-            // Skip @-rules (keyframes, media, font-face, etc)
-            if (rawSelectors.startsWith('@')) continue;
-            if (!body.includes('--shadow-')) continue;
-            if (!body.includes('box-shadow')) continue;
-
-            // Split by comma to get individual selectors, then clean
-            for (const part of rawSelectors.split(',')) {
-              const sel = part.trim();
-              if (!sel || sel.includes('::')) continue; // Skip pseudo-elements
-
-              const relPath = file.replace(/\\/g, '/').replace(/^.*?ui\/src\//, '');
-              uncoveredSurfaces.push({ file: relPath, selector: sel });
-            }
-          }
-        } catch { /* skip unparseable files */ }
-      }
-    }
   });
 
   // ── Baseline verification ──────────────────────────────────
@@ -454,20 +633,9 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
   // ── Shadow-using selector coverage ─────────────────────────
 
   it('every elevated surface (uses --shadow-*) is covered by noise-dither', () => {
-    const uncovered = uncoveredSurfaces.filter(({ selector: sel }) => {
-      // Check if covered by KNOWN_NOISE_SELECTORS
-      if (KNOWN_NOISE_SELECTORS.includes(sel)) return false;
-      // Check if covered by exact match on the set
-      // Check if exempt
-      for (const prefix of EXEMPT_SELECTOR_PREFIXES) {
-        if (sel.startsWith(prefix)) return false;
-      }
-      // Hover/focus/active/disabled pseudo-classes — inherit from parent
-      if (/:hover|:focus|:active|:disabled|:visited/.test(sel)) return false;
-      // Attribute selectors (state variants) — inherit from base class
-      if (sel.startsWith('[')) return false;
-      return true;
-    });
+    // The four waivers are applied once, at module scope, so their counts can be
+    // printed in the denominator case below. This is that same surviving set.
+    const uncovered = surfacesSurvivingWaivers;
 
     const msg = uncovered.length > 0
       ? `Found ${uncovered.length} elevated surface(s) without noise-dither:\n\n`
@@ -485,6 +653,91 @@ describe('Noise-dither overlay coverage (P11-5)', () => {
   });
 
   // ── Sanity checks ─────────────────────────────────────────
+
+  it(`the shadow walk reports its own denominator: ${shadowRulesGraded} rules graded of ${shadowRules} box-shadow rules, ${rulesExamined} rules examined, ${unparseableSheets.length} unparseable sheets; shadowed selectors: ${uncoveredSurfaces.length} reached the waiver filter, ${surfacesSurvivingWaivers.length} graded after waiving ${waiverCoveredByList} on the known list + ${waiverPrefix} on an exempt prefix + ${waiverPseudoState} on a state pseudo-class + ${waiverAttribute} on an attribute selector; prefix door waived exactly [${[...waivedByPrefixNames].sort().join(', ')}]`, () => {
+    // The floor this suite was missing. `allCssFiles.length > 0` can be true while
+    // the walk grades nothing; a relation cannot, because every rule the loop saw
+    // has to land in exactly one bucket.
+    expect(shadowRules, 'no rule in the walked tree names box-shadow -- the walker is dead').toBeGreaterThan(0);
+    expect(shadowRulesGraded + shadowRulesSkipped, 'the box-shadow population does not partition: graded ' + shadowRulesGraded + ' + skipped ' + shadowRulesSkipped + ' != ' + shadowRules).toBe(shadowRules);
+    expect(shadowRules, 'the box-shadow population exceeds the rules examined').toBeLessThanOrEqual(rulesExamined);
+    expect(rulesExamined, 'not one rule was examined across ' + allCssFiles.length + ' sheets -- the splitter is dead').toBeGreaterThanOrEqual(1000);
+    expect(unparseableSheets, 'a sheet the walk could not read is a silent blackout, not a pass:\n  ' + unparseableSheets.join('\n  ')).toEqual([]);
+    // The prefix door had NO ceiling, which is worse than an unfailable one: a bound
+    // of 100 over a population of 4 can never disagree, and an absent bound cannot be
+    // disagreed with at all. This one can. Measured on the shipped exact-or-boundary
+    // run: 4 selectors leave through the prefix door. Ceiling set at 8 -- twice the
+    // measured population, 4 of headroom -- so a real over-waiving growth fires while
+    // one new exempt family does not. If this goes red the answer is not to raise the
+    // number: it is to name what the extra prefix is swallowing (see ESCAPE OF RECORD).
+    expect(waiverPrefix, 'the exempt-prefix door waived ' + waiverPrefix + ' of 118 selectors; measured 4 with 4 of headroom above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(8);
+    // -- The doors ASSERTED, not merely printed (2026-09-15). The headline these lines
+    // replace is ugly and true: 118 shadowed selectors reached the filter and 0
+    // survived it, so the case above named "every elevated surface has noise-dither"
+    // was a claim about an empty set, and nothing in either compliance file asserted
+    // anything about what its waivers SWALLOW. Measured on this run: known list 93,
+    // exempt prefix 4, state pseudo-class 21, attribute 0, graded 0.
+    // Population floor first: a filter that receives 118 selectors and grades 0 is
+    // only honest while 118 is the real population, so the population itself is floored
+    // (measured 118, floor 100, 18 of headroom) -- a narrowed walk now reads red.
+    expect(uncoveredSurfaces.length, 'the waiver filter received ' + uncoveredSurfaces.length + ' shadowed selectors; measured 118 with 18 of headroom, so a breach means the walk or a waiver list changed the population behind this verdict').toBeGreaterThanOrEqual(100);
+    // Per-door bounds, each measured from the shipped run with its headroom named, and
+    // each saying the same thing in its failure -- A BREACH MEANS A WAIVER GOT WIDER,
+    // NOT THAT THE TREE GOT QUIETER -- because that is the only reading that makes a
+    // ceiling on a waiver meaningful: the quietest possible tree still shows 93 and 21
+    // here, so anything above the ceiling was swallowed, not discovered.
+    //
+    // NOT a duplicate of the membership baseline below it, and deliberately aimed at a
+    // different edit. This file's own mutation found the split: reverting a MATCHER to
+    // the raw startsWith left every counter identical, so a count cannot witness a
+    // widened matcher and only the named SET catches that; an edited LIST (one more
+    // exempt family, one more surface added to KNOWN_NOISE_SELECTORS to dodge a grade)
+    // changes no matcher at all and is exactly what these ceilings are the tripwire
+    // for. Membership guards the mechanism, size guards the appetite.
+    //
+    // Known-list door: 93 of 118 selectors, the biggest door in the file and the one
+    // that can grow silently -- a lane that adds a surface to KNOWN_NOISE_SELECTORS
+    // without giving it a dither is over-waiving by definition. Floor 85 (8 below
+    // measured), ceiling 100 (7 above, tightened from the 12 this first shipped with
+    // because a 13 % allowance on a 93-selector door is not a tripwire).
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118 selectors; measured 93 with 8 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(85);
+    expect(waiverCoveredByList, 'the known-list door waived ' + waiverCoveredByList + ' of 118 selectors; measured 93 with 8 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(100);
+    // State pseudo-class door: 21 of 118, floor 15 (6 below) and ceiling 28 (7 above).
+    // A RISE is the :520 door crediting a state that belongs to a different element.
+    // A FALL THROUGH THE FLOOR IS PRE-NAMED ON PURPOSE, because the sister lane is
+    // right now teaching its own gate to credit the rightmost compound; if the same
+    // reading ever lands here the door does not collapse to 0 (measured: restricting it
+    // to the tail moves exactly 1 of these 21, to 20), but if it ever did, this floor
+    // firing would be the bound doing its job in the other direction -- the answer then
+    // is to re-baseline the pair with the tail restriction that caused it, never to
+    // lower the floor to make a real narrowing pass.
+    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + ' of 118 selectors; measured 21 with 6 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeGreaterThanOrEqual(15);
+    expect(waiverPseudoState, 'the state pseudo-class door waived ' + waiverPseudoState + ' of 118 selectors; measured 21 with 6 of headroom below the floor and 7 above the ceiling -- a breach means a waiver got wider, not that the tree got quieter').toBeLessThanOrEqual(28);
+    // The attribute door is empty today (0 of 118), so the whole budget IS headroom:
+    // 4 is a deliberate low ceiling on an unused door, not a measurement with margin.
+    expect(waiverAttribute, 'the attribute door waived ' + waiverAttribute + ' selectors and measured 0 on 2026-09-15 -- any use of a door with no population has to be looked at').toBeLessThanOrEqual(4);
+    // The witness a count cannot be. Proven in /tmp the same day: reverting the
+    // exact-or-boundary matcher to the raw startsWith this file shipped with moved NO
+    // counter at all (prefix stayed 4, pseudo 21, attribute 0, graded 0), because the
+    // longer names a widened door would swallow do not exist in the tree yet. A
+    // widened matcher does move THIS list the moment one appears, so the names each
+    // door excused are baselined here, in sorted order, exactly as the title prints
+    // them. Adding an exempt family legitimately means editing this list and saying
+    // which element it waives -- which is the point of naming it.
+    expect([...waivedByPrefixNames].sort(), 'the exempt-prefix door excuses a different SET than measured on 2026-09-15 (counts alone cannot catch a widened matcher -- see this comment)').toEqual([
+      '.kds-slider-knob', '.memo-banner-close', '.memo-expanded-close', '.payment-customer-search-modal',
+    ]);
+    expect(sheetsRefused, 'the walk refuses ' + sheetsRefused + ' sheet(s) by basename -- if that number moved, the exclusion at the top of the loop changed scope').toBe(2);
+  });
+
+  it(`walk accounting: ${sheetsOpened} sheets opened, ${sheetsParsed.length} parsed, ${unparseableSheets.length} abandoned at the parse, ${dirsUnreadable.length} directories unlistable, ${allCssFiles.length} found`, () => {
+    // Door (a): a directory that cannot be listed takes its whole subtree with it.
+    expect(dirsUnreadable, 'a directory readdirSync refused, so nothing under it was ever counted: ' + dirsUnreadable.join(' | ')).toEqual([]);
+    // Door (b): every sheet the walk opened has to be accounted for by name.
+    expect(sheetsParsed.length + unparseableSheets.length, 'opened ' + sheetsOpened + ' but parsed ' + sheetsParsed.length + ' + abandoned ' + unparseableSheets.length).toBe(sheetsOpened);
+    expect(sheetsOpened + sheetsRefused, 'found ' + allCssFiles.length + ' but opened ' + sheetsOpened + ' + refused ' + sheetsRefused).toBe(allCssFiles.length);
+    expect(sheetsOpened, 'the walk opened ' + sheetsOpened + ' sheets; measured at 134 on this tree (136 found, 2 refused by basename), so 130 leaves 4 of headroom and a subtree that vanishes reads red here').toBeGreaterThanOrEqual(130);
+  });
 
   it('scanned at least 10 CSS files for shadow-using selectors', () => {
     expect(allCssFiles.length).toBeGreaterThanOrEqual(10);

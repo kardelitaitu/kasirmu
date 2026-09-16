@@ -161,6 +161,75 @@ export function classifyRetry(err: AppError | unknown): RetryClass {
   }
 }
 
+// ── A call that cannot be made ──────────────────────────────────────────────
+
+/**
+ * The shapes the IPC boundary produces when the COMMAND it was handed does
+ * not exist on this shell — Tauri rejects with
+ * `Error invoking remote method 'x': Error: command x not found`, the
+ * dev-mock and the contract tests use the shorter `command x not found` or
+ * `not registered`, and the parity scripts print `is not registered in that
+ * shell`. Every alternative NAMES the command or its handler, and that is
+ * the discriminator: a domain miss arriving inside the very same wrapper
+ * (`Error invoking 'get_product': product not found`, `tax rate 7 not found`)
+ * is an ANSWER to a call that ran, not a capability this build lacks, and must
+ * never be folded into this class.
+ */
+const UNASKABLE_COMMAND_RE = new RegExp(
+  [
+    '\\bcommand\\b[\\s\\S]{0,80}?\\b(?:not found|not registered|is not registered)\\b',
+    '\\b(?:no such command|unknown command)\\b',
+    '\\bno handler registered\\b',
+    '\\bhandler\\b[\\s\\S]{0,60}?\\b(?:not found|not registered)\\b',
+  ].join('|'),
+  'i',
+);
+
+/** A thrown value's own text, for the three shapes an IPC rejection takes. */
+function rejectionText(err: unknown): string {
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === 'string') return m;
+  }
+  return '';
+}
+
+/**
+ * Did this failure mean the call could not even be sent?
+ *
+ * "The server did not answer" and "this build has no such command" both
+ * arrive as a rejected promise, and the difference between them is the whole
+ * fact an indicator exists to report: one is an outage worth re-asking, the
+ * other is a permanent property of the binary, so re-asking it on a timer
+ * produces load and no information. The verdict is deliberately NOT
+ * re-derived here — `classifyRetry` above already marks a message naming
+ * `not found` non-retryable, precisely because re-issuing the same call
+ * cannot change the answer. This asks that verdict first and only then
+ * checks that it is being carried by command-registry wording, so the two
+ * rules cannot drift apart. Consequences worth naming: a genuine transport
+ * throw (`econnrefused`, `timed out`) is retryable and stays a real outage,
+ * and a typed business error never enters this class.
+ *
+ * THE KNOWN LIMIT, measured rather than assumed: `classifyRetry` searches the
+ * message by SUBSTRING, so a command whose own NAME carries a transport word —
+ * `test_auth_connection` contains `connection` — is judged retryable whenever
+ * the message adds no terminal word, and this predicate then refuses it. A
+ * bare `No handler registered for 'test_auth_connection'` is exactly that
+ * shape and stays a red, retried outage. Every form the boundary ACTUALLY
+ * prints for a missing command (`Error invoking remote method 'x': Error:
+ * command x not found`, and the parity scripts' `is not registered in that
+ * shell` phrasing aside) names `not found`, which the terminal branch reads
+ * first, so the tablet case is caught. The bias is deliberate and one-way: a
+ * false UNKNOWN would silence a real outage, while a false RED only preserves
+ * the behaviour the shell has today.
+ */
+export function isUnaskableCommandError(err: unknown): boolean {
+  if (classifyRetry(err) !== 'non-retryable') return false;
+  return UNASKABLE_COMMAND_RE.test(rejectionText(err));
+}
+
 // ── User-safe copy ─────────────────────────────────────────────────
 
 /**

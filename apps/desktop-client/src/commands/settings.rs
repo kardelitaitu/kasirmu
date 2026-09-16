@@ -27,17 +27,6 @@ pub use oz_bridge::settings::{
 
 // ── Get receipt settings ──────────────────────────────────
 
-#[tauri::command]
-/// Get receipt settings.
-pub async fn get_receipt_settings(
-    state: State<'_, AppState>,
-) -> Result<ReceiptSettingsDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_receipt_settings(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
 /// Get receipt settings resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn get_receipt_settings_scoped(
@@ -67,15 +56,6 @@ pub async fn set_receipt_settings_scoped(
 
 // ── Get store settings ────────────────────────────────────────
 
-#[tauri::command]
-/// Get store settings.
-pub async fn get_store_settings(state: State<'_, AppState>) -> Result<StoreSettingsDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_store_settings(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
 /// Get store settings resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn get_store_settings_scoped(
@@ -104,17 +84,6 @@ pub async fn set_store_settings_scoped(
 }
 
 // ── Credit settings ─────────────────────────────────────────────
-
-#[tauri::command]
-/// Get credit settings.
-pub async fn get_credit_settings(
-    state: State<'_, AppState>,
-) -> Result<CreditSettingsDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::settings::get_credit_settings(&ctx)
-        .await
-        .map_err(Into::into)
-}
 
 /// Set credit settings resolved from a session token. ADR #7.
 #[tauri::command]
@@ -321,7 +290,7 @@ pub async fn set_settings_scoped(
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
 
-/// Scoped variant of `get_credit_settings` (ADR #7).
+/// Get credit settings resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn get_credit_settings_scoped(
     session_token: String,

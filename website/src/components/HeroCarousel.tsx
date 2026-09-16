@@ -74,7 +74,7 @@ export default function HeroCarousel({ labels, descriptions, comingSoon }: Props
         ref={stageRef}
         role="group"
         aria-roledescription="carousel"
-        aria-label="OZ-POS app screenshots"
+        aria-label="kasir.mu app screenshots"
         className="relative w-full max-w-[1280px] overflow-hidden rounded-2xl shadow-2xl shadow-black/30"
         style={{ aspectRatio: '1280 / 720' }}
       >
@@ -89,7 +89,7 @@ export default function HeroCarousel({ labels, descriptions, comingSoon }: Props
                 className="h-full w-full shrink-0"
                 aria-hidden={!isActive}
               >
-                <SlideWindow title={`OZ-POS — ${labels[id]}`} content={slideContent(id, labels[id], descriptions[id], comingSoon)} />
+                <SlideWindow title={`kasir.mu — ${labels[id]}`} content={slideContent(id, labels[id], descriptions[id], comingSoon)} />
               </div>
             );
           })}

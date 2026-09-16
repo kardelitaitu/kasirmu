@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getHardwareSettings,
   getHardwareSettingsScoped,
-  setHardwareSettings,
   setHardwareSettingsScoped,
   type HardwareSettingsDto,
 } from '@/api/settings';
@@ -203,7 +202,9 @@ export interface UseTerminalHardwareResult {
  * stored in the filesystem via Tauri IPC (terminal_profiles/{id}.json).
  *
  * Full terminal profile (printer, scanner, scale, localPrefs) is
- * persisted via getHardwareSettings / setHardwareSettings IPC.
+ * persisted via the scoped IPC pair getHardwareSettingsScoped /
+ * setHardwareSettingsScoped (T11 retired the unscoped setter, whose only extra
+ * argument was a renderer-named actor).
  *
  * @param terminalId - Unique terminal identifier
  * @param storeId - Optional store identifier for the profile
@@ -320,22 +321,29 @@ export function useTerminalHardware(
 
   // ── Save to IPC ─────────────────────────────────────────────
 
-  const save = useCallback(async (userId?: string) => {
+  const save = useCallback(async () => {
     if (!profile || !terminalId) return;
 
     setIsLoading(true);
     setError(null);
 
+    if (!sessionToken) {
+      // No session, no door. `set_hardware_settings` used to be called here with a
+      // renderer-supplied `userId`, which is the identity the permission check then asks about,
+      // and the command was never registered on desktop at all -- so this branch was either a
+      // forgeable write (tablet) or a guaranteed failure (desktop). Both are gone; see T11/T10.
+      // The cards that host this hook are reached from the logged-in settings modal, so this is
+      // not a path a user is expected to hit -- but it is reported, not swallowed, because the
+      // alternative is a save that looks like it happened.
+      setError('Failed to save hardware profile');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // ADR #7 conditional scoping. On desktop this is not merely the permission-checked path:
-      // set_hardware_settings is not registered there at all (only set_hardware_settings_scoped,
-      // settings.rs:650 / lib.rs:704), so the unscoped call rejected on every save. The scoped
-      // setter derives the user from the session, so `userId` is only meaningful on the fallback.
-      if (sessionToken) {
-        await setHardwareSettingsScoped(sessionToken, toHardwareSettingsDto(profile));
-      } else {
-        await setHardwareSettings(toHardwareSettingsDto(profile), userId ?? '');
-      }
+      // ADR #7's scoped arm is now the only arm: the setter derives the user from the session, so
+      // no caller-named identity reaches `require_permission_for_user`.
+      await setHardwareSettingsScoped(sessionToken, toHardwareSettingsDto(profile));
       setIsLoading(false);
     } catch (err) {
       const msg = plainErrorMessage(err, 'Failed to save hardware profile');

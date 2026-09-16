@@ -7,3 +7,9 @@ coverage
 .eslintcache
 *.local
 .DS_Store
+
+# Output of ui/e2e/font-visual-audit.mjs. Deliberately NOT under dist/: Vite empties
+# outDir on every build, and a sentinel planted in ui/dist/font-audit was deleted by
+# `npm run build` on 2026-09-16, which destroyed the before/after pair the plan's
+# visual review box waits on. Beside dist, ignored, and survives a rebuild.
+font-audit/

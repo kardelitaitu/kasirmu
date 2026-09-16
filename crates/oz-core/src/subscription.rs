@@ -17,6 +17,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
+use crate::workspace_type::{ADMIN, INVENTORY, RESTAURANT_POS, STORE_POS, WAREHOUSE};
 
 /// Maximum clock skew tolerance before detecting tampering (30 seconds).
 ///
@@ -331,15 +332,18 @@ impl SubscriptionTier {
     }
 
     /// Check whether this tier allows the given workspace type.
+    ///
+    /// `type_key` is a workspace vertical ([`crate::workspace_type`]), not a
+    /// terminal profile — the two are different axes.
     pub fn allows_workspace_type(&self, type_key: &str) -> bool {
         match self {
             Self::Free | Self::OneTime => {
-                matches!(type_key, "store-pos" | "restaurant-pos" | "admin")
+                matches!(type_key, STORE_POS | RESTAURANT_POS | ADMIN)
             }
             // Plus unlocks inventory/warehouse but NOT kds (§3 Workspace Types).
             Self::Plus => matches!(
                 type_key,
-                "store-pos" | "restaurant-pos" | "admin" | "warehouse" | "inventory"
+                STORE_POS | RESTAURANT_POS | ADMIN | WAREHOUSE | INVENTORY
             ),
             // Pro and above unlock every workspace type, including KDS.
             Self::Pro | Self::Premium | Self::Enterprise => true,

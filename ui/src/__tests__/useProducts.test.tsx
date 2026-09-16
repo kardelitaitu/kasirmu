@@ -11,15 +11,19 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/api/products', () => ({
-  listProducts: (...args: unknown[]) => mocks.listProducts(...args),
   listProductsScoped: (...args: unknown[]) => mocks.listProducts(...args),
-  listCategories: (...args: unknown[]) => mocks.listCategories(...args),
   listCategoriesScoped: (...args: unknown[]) => mocks.listCategories(...args),
 }));
 
 vi.mock('@fluent/react', () => ({
   useLocalization: vi.fn(() => ({ l10n: { getString: mocks.getString } })),
 }));
+
+/**
+ * T21: the hook's reads are scoped-only now, and a null token is answered with an error rather
+ * than a call to a door neither shell registers. Every loading case therefore needs a token.
+ */
+const TOKEN = 'tok';
 
 function makeProductDto(overrides: Partial<ProductDto> = {}): ProductDto {
   return {
@@ -65,7 +69,7 @@ describe('useProducts', () => {
 
       let result!: ReturnType<typeof renderHook<ReturnType<typeof useProducts>, unknown>>['result'];
       act(() => {
-        const hook = renderHook(() => useProducts());
+        const hook = renderHook(() => useProducts(TOKEN));
         result = hook.result;
       });
 
@@ -74,7 +78,7 @@ describe('useProducts', () => {
     });
 
     it('sets loading=false after fetch completes', async () => {
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => expect(result.current.loading).toBe(false));
     });
@@ -82,7 +86,7 @@ describe('useProducts', () => {
 
   describe('successful fetch', () => {
     it('returns products from the API', async () => {
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.products).toHaveLength(1);
@@ -91,7 +95,7 @@ describe('useProducts', () => {
     });
 
     it('maps ProductDto fields to Product correctly', async () => {
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         const p = result.current.products[0]!;
@@ -107,7 +111,7 @@ describe('useProducts', () => {
       mocks.listProducts.mockResolvedValue([makeProductDto({ category: null })]);
       mocks.getString.mockReturnValue('Other');
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.products[0]!.category).toBe('Other');
@@ -118,7 +122,7 @@ describe('useProducts', () => {
       const cat = makeCategoryDto({ id: 'cat-food', name: 'Food', colour: '#f97316' });
       mocks.listCategories.mockResolvedValue([cat]);
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.categoryMeta).toHaveLength(1);
@@ -134,7 +138,7 @@ describe('useProducts', () => {
         makeProductDto({ sku: 'TEA', category: 'Hot Drinks' }),
       ]);
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.categories).toEqual(['Food', 'Hot Drinks', 'Snacks']);
@@ -142,7 +146,7 @@ describe('useProducts', () => {
     });
 
     it('sets usingFallback=false when API returns data', async () => {
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.usingFallback).toBe(false);
@@ -154,7 +158,7 @@ describe('useProducts', () => {
     it('falls back to sample products when listProducts throws', async () => {
       mocks.listProducts.mockRejectedValue(new Error('IPC unavailable'));
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.usingFallback).toBe(true);
@@ -168,7 +172,7 @@ describe('useProducts', () => {
       // never the raw backend message.
       mocks.getString.mockReturnValue('Failed to load products');
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.error).toBe('Failed to load products');
@@ -179,7 +183,7 @@ describe('useProducts', () => {
     it('falls back to sample products when API returns empty list', async () => {
       mocks.listProducts.mockResolvedValue([]);
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.usingFallback).toBe(true);
@@ -199,7 +203,7 @@ describe('useProducts', () => {
       vi.stubEnv('VITE_DEMO_MODE', undefined);
       mocks.listProducts.mockRejectedValue(new Error('IPC unavailable'));
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.usingFallback).toBe(false);
@@ -213,7 +217,7 @@ describe('useProducts', () => {
       vi.stubEnv('VITE_DEMO_MODE', undefined);
       mocks.listProducts.mockResolvedValue([]);
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.usingFallback).toBe(false);
@@ -228,7 +232,7 @@ describe('useProducts', () => {
       mocks.listProducts.mockRejectedValueOnce(new Error('IPC unavailable'));
       mocks.listProducts.mockResolvedValueOnce([makeProductDto()]);
 
-      const { result } = renderHook(() => useProducts());
+      const { result } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => {
         expect(result.current.products).toEqual([]);
@@ -244,6 +248,21 @@ describe('useProducts', () => {
     });
   });
 
+  describe('no session token (T21)', () => {
+    it('answers an error instead of calling a door neither shell registers', async () => {
+      const { result } = renderHook(() => useProducts());
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Neither read is attempted: the old code issued a doomed IPC round trip to the unregistered
+      // unscoped names and let the catch turn the rejection into this same error. The refusal is
+      // now deliberate and local to the hook.
+      expect(mocks.listProducts).not.toHaveBeenCalled();
+      expect(mocks.listCategories).not.toHaveBeenCalled();
+      expect(result.current.error).not.toBeNull();
+    });
+  });
+
   describe('cleanup', () => {
     it('does not set state after unmount', () => {
       let resolve!: (v: unknown) => void;
@@ -252,7 +271,7 @@ describe('useProducts', () => {
       let result!: ReturnType<typeof renderHook<ReturnType<typeof useProducts>, unknown>>['result'];
       let unmount!: () => void;
       act(() => {
-        const hook = renderHook(() => useProducts());
+        const hook = renderHook(() => useProducts(TOKEN));
         result = hook.result;
         unmount = hook.unmount;
       });
@@ -266,7 +285,7 @@ describe('useProducts', () => {
 
   describe('stability', () => {
     it('does not refetch when l10n changes after initial load', async () => {
-      const { result, rerender } = renderHook(() => useProducts());
+      const { result, rerender } = renderHook(() => useProducts(TOKEN));
 
       await waitFor(() => expect(result.current.loading).toBe(false));
       expect(mocks.listProducts).toHaveBeenCalledTimes(1);

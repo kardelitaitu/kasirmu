@@ -20,7 +20,10 @@ use crate::settings;
 use crate::shifts;
 use crate::sync;
 use crate::testing::{TestBridge, temp_conn};
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
+/// The release leg for a session-minting command in this file.
+//-- The release leg for these session-mints lives in crate::testing (RULE at assert_refused_by_the_seeded_row) --
 use oz_core::db::Store;
 use oz_core::session::SessionContext;
 
@@ -220,7 +223,7 @@ async fn refresh_picker_ticket_end_to_end() {
     let ctx = tb.ctx();
 
     // Step 1: Create session via picker ticket (simulates login → workspace pick)
-    let login_result = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -233,8 +236,15 @@ async fn refresh_picker_ticket_end_to_end() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login_result = settled.unwrap();
 
     // Step 2: Refresh the picker ticket (bridge-side: sync, no `.await`)
     let refresh = refresh_picker_ticket(&ctx, &login_result.session_token).unwrap();
@@ -286,7 +296,7 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
     let ctx = tb.ctx();
 
     // Operator session (owner holds operator:impersonate via the `*` preset).
-    let login = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -299,8 +309,15 @@ async fn impersonate_user_scoped_creates_target_scoped_session() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let result = impersonate_user_scoped(&ctx, &login.session_token, "user-target").await;
     assert!(result.is_ok(), "in-scope impersonation must succeed");
@@ -333,7 +350,7 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
     let tb = test_bridge(conn);
     let ctx = tb.ctx();
 
-    let login = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -346,8 +363,15 @@ async fn impersonate_user_scoped_revoked_by_destroy_session() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let imp = impersonate_user_scoped(&ctx, &login.session_token, "user-target")
         .await
@@ -376,7 +400,7 @@ async fn impersonate_user_scoped_enforces_ttl() {
     let tb = test_bridge(conn);
     let ctx = tb.ctx();
 
-    let login = create_session(
+    let settled = create_session(
         &ctx,
         &CreateSessionArgs {
             user_id: "user-owner".into(),
@@ -389,8 +413,15 @@ async fn impersonate_user_scoped_enforces_ttl() {
             org_id: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: create_session propagates the seeded row's failed signature check
+    // (auth.rs:617, the gate the fourteen next door went through), so nothing
+    // downstream of this mint is reachable - the legs below stay debug-only.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, settled, "free").await;
+        return;
+    }
+    let login = settled.unwrap();
 
     let imp = impersonate_user_scoped(&ctx, &login.session_token, "user-target")
         .await

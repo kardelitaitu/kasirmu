@@ -8,7 +8,7 @@ updated: "2026-08-17"
 
 ## Paket
 
-OZ-POS memiliki lima paket: `free`, `plus`, `pro`, `premium`, dan
+kasir.mu memiliki lima paket: `free`, `plus`, `pro`, `premium`, dan
 `enterprise`. Apa yang dibuka setiap paket — toko, register, gudang,
 pembayaran QRIS, sinkron cloud, dan skrip — ditampilkan di
 [halaman harga](../../pricing/).

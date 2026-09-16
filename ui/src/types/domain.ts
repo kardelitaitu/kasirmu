@@ -32,8 +32,26 @@ export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
  */
 export const DEFAULT_HIGH_STOCK_THRESHOLD = 10;
 
-/** Course identifier for restaurant order coursing. */
-export type CourseId = 'appetizer' | 'main' | 'dessert' | 'drinks';
+/** Course identifier for restaurant order coursing — the canonical KDS
+ * vocabulary (`appetizer | main | side | dessert | beverage`), shared with
+ * the KDS sort, the picker, and the backend `course` column. The legacy POS
+ * value `drinks` normalizes to `beverage` at every boundary.
+ *
+ * The empty string is the CLEAR sentinel, not a course: the chip's "None"
+ * option and the panel's `onAssignCourse` pass `''` to unassign a line. It is
+ * part of the type because three call sites were already writing
+ * `'' as CourseId` to defeat it, and a cast is a worse place for a contract
+ * than the type is. */
+export type CourseId = 'appetizer' | 'main' | 'side' | 'dessert' | 'beverage' | '';
+/** Legacy POS course value, kept only for normalizing persisted data. */
+export type LegacyCourseId = CourseId | 'drinks';
+
+/** Normalize a possibly-legacy course id to the canonical vocabulary. */
+export function normalizeCourseId(course: string | null | undefined): CourseId | null {
+  if (!course) return null;
+  if (course === 'drinks') return 'beverage';
+  return course as CourseId;
+}
 
 /** Coursing status — items on hold wait to be fired to the kitchen. */
 export type CoursingStatus = 'hold' | 'fired';
@@ -42,8 +60,9 @@ export type CoursingStatus = 'hold' | 'fired';
 export const COURSES: { id: CourseId; label: string; emoji: string }[] = [
   { id: 'appetizer', label: 'Appetizer', emoji: '🥗' },
   { id: 'main', label: 'Main Course', emoji: '🍽️' },
+  { id: 'side', label: 'Side', emoji: '🍟' },
   { id: 'dessert', label: 'Dessert', emoji: '🍰' },
-  { id: 'drinks', label: 'Drinks', emoji: '🥤' },
+  { id: 'beverage', label: 'Beverage', emoji: '🥤' },
 ];
 
 /** A modifier selection for a cart line. Mirrors the backend KdsModifier type. */
@@ -55,14 +74,16 @@ export interface ModifierSelection {
   priceMinor: number;
 }
 
-/** Label for a given course ID. */
-export function courseLabel(courseId: CourseId): string {
-  return COURSES.find((c) => c.id === courseId)?.label ?? courseId;
+/** Label for a given course ID (legacy `drinks` resolves to Beverage). */
+export function courseLabel(courseId: CourseId | LegacyCourseId): string {
+  const normalized = normalizeCourseId(courseId);
+  return COURSES.find((c) => c.id === normalized)?.label ?? courseId;
 }
 
-/** Emoji for a given course ID. */
-export function courseEmoji(courseId: CourseId): string {
-  return COURSES.find((c) => c.id === courseId)?.emoji ?? '🍽️';
+/** Emoji for a given course ID (legacy `drinks` resolves to the beverage emoji). */
+export function courseEmoji(courseId: CourseId | LegacyCourseId): string {
+  const normalized = normalizeCourseId(courseId);
+  return COURSES.find((c) => c.id === normalized)?.emoji ?? '🍽️';
 }
 
 /** A single line in a shopping cart. */

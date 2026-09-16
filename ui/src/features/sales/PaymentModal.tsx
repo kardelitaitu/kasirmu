@@ -2,32 +2,22 @@ import { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'r
 import { useToast } from '@/frontend/shared/Toast';
 import { LocaleContext } from '@/i18n/LocaleContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { openUpgradePricing } from '@/utils/upgrade';
+import { useWorkspaceScope } from '@/contexts/WorkspaceContext';
 import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
-import { createKdsOrderFromSaleScoped } from '@/api/kds';
+import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
-import { formatMoney, minorUnitExponent, parseMinorUnits, type Money, type CartLine } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
-import {
-  listCurrenciesScoped,
-  listLatestExchangeRatesScoped,
-  getDefaultCurrencyScoped,
-  getLatestExchangeRateScoped,
-  exchangeRateToDecimal,
-  convertMinorUnits,
-  reciprocalMillionths,
-  type CurrencyDto,
-  type ExchangeRateDto,
-} from '@/api/currency';
+// W5-a: only the reciprocal helper is still read here (tenderSnapshot); the
+// currency/rate loaders and the fixed-point converter moved to useMultiCurrency.
+import { reciprocalMillionths } from '@/api/currency';
 import { listCustomersScoped, type CustomerDto } from '@/api/customers';
 import { getLoyaltyAccount, redeemLoyaltyPoints, getPointsValue, type LoyaltyAccountWithDetails } from '@/api/loyalty';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
-import { qrisAutoChargeScoped, qrisAutoStatusScoped } from '@/api/qris-auto';
-import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
-import { railOffered, staticQrisPayload, useLocalPaymentRails } from './useLocalPaymentRails';
+import { railOffered, staticQrisPayload, useLocalPaymentRails, visibleMethods } from './useLocalPaymentRails';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -35,56 +25,59 @@ import { animDuration } from '@/utils/animation';
 import StockShortfallDialog from '@/features/sales/StockShortfallDialog';
 import ReceiptPreview from '@/features/sales/ReceiptPreview';
 import type { PrintSalesReceiptArgs } from '@/api/sales';
+import { useAutoQr } from './payment/useAutoQr';
+import { useGatewayQr } from './payment/useGatewayQr';
+import { useEdcTenderPhase } from './payment/useEdcTenderPhase';
+import { useMultiCurrency } from './payment/useMultiCurrency';
+import { useTenderMath } from './payment/useTenderMath';
+import { useSplitTenderState } from './payment/useSplitTenderState';
+import QrisTenderPanel from './payment/QrisTenderPanel';
+import CashTenderPanel from './payment/CashTenderPanel';
+import CardTenderPanel from './payment/CardTenderPanel';
+import SplitTenderRows from './payment/SplitTenderRows';
+import LoyaltyTenderPanel from './payment/LoyaltyTenderPanel';
+import PaymentModalCustomerBadge from './components/PaymentModalCustomerBadge';
+import { distributeEvenly } from './payment/splitDistribution';
+import { buildCompletedSaleReceipt } from './payment/completedSale';
+import type { PaymentModalProps } from './payment/types';
 import { classifyRetry, plainErrorMessage } from '@/utils/app-error';
 import './PaymentModal.css';
 
 type PaymentMethod = 'cash' | 'card' | 'qris' | 'other' | 'open_bill' | 'credit';
 
-interface SplitRow {
-  id: number;
-  method: PaymentMethod;
-  otherLabel: string;
-  amountMinor: string;
-}
+/**
+ * The Fluent message that carries each tender's visible name. TOTAL over
+ * `PaymentMethod` on purpose: this lookup was a nested ternary in the method
+ * strip whose ELSE-BRANCH was `payment-method-credit`, so a 5th `TENDER_RAILS`
+ * row (say `ewallet`) compiled clean, left every `input[name=payment-method]`
+ * value assertion green, and put a tab LABELED Credit in front of the cashier
+ * that tendered an e-wallet (Correctness review of 994c0e364, then
+ * PaymentModal.tsx:1516 -- the one place the derivation was not self-checking).
+ * A Record keyed by the union cannot stay silent about a new member: widen the
+ * union, or widen `TenderMethod`/`TENDER_RAILS` under it, and `tsc` fails at
+ * THIS declaration instead of at the register.
+ *
+ * Every entry names the key that renders TODAY -- none is new, none renamed.
+ * `other` and `open_bill` are mapped because they are `PaymentMethod`s too, not
+ * because they are strip tabs: `other` shows its name through the
+ * `payment-other-placeholder` attributes and `open_bill` is fixed markup after
+ * the strip. Do not fold either into `visibleMethods()`, and do not add a
+ * member to the union without adding its id here.
+ */
+const PAYMENT_METHOD_MESSAGE_IDS: Record<PaymentMethod, string> = {
+  cash: 'payment-method-cash',
+  card: 'payment-method-card',
+  qris: 'payment-method-qris',
+  other: 'payment-other-placeholder',
+  open_bill: 'payment-open-bill',
+  credit: 'payment-method-credit',
+};
 
-export interface PaymentModalProps {
-  open: boolean;
-  lineItems: CartLine[];
-  total: Money;
-  discountPercent?: number;
-  discountLabel?: string;
-  userId: string;
-  /** ADR #7 session token for scoped commands (deduction-aware cart lifecycle). */
-  sessionToken?: string;
-  tableNumber?: string;
-  selectedCustomer?: CustomerDto | null;
-  onCustomerChange?: (customer: CustomerDto | null) => void;
-  onComplete: () => void;
-  onClose: () => void;
-  /** Serial numbers captured per SKU for track_serial products. */
-  serialNumbers?: Record<string, string>;
-  /** Custom quick tender preset amounts (in minor units). Defaults to standard Rp denominations. */
-  tenderPresets?: number[];
-  /** Tip amount in minor units collected at checkout (default 0). Persisted on the sale. */
-  tipMinor?: number;
-  /** Service-charge amount in minor units collected at checkout (default 0). Persisted on the sale. */
-  serviceChargeMinor?: number;
-  /**
-   * PROMO-3: promotion ids selected in the picker. The backend engine
-   * applies them against the post-tax sale at checkout; this modal previews
-   * the reduced total so the displayed amount and the payment splits cover
-   * exactly what the checkout call will validate against.
-   */
-  promotionIds?: string[];
-  /**
-   * F2-6: the caller's claim that the displayed tax was an ESTIMATE —
-   * the cart-tax cache was stale/unknown at checkout (D64 b). Threaded
-   * into the complete_sale_scoped payload; core verifies by computing
-   * the tax itself and stamps the claim + computed tax onto the sale.
-   * Absent/false is the zero-change default: no stamp requested.
-   */
-  taxEstimated?: boolean;
-}
+// PaymentModalProps moved to ./payment/types (slice S1 of the contract-first
+// extraction campaign: one shared module for the frozen top-level contract plus the
+// narrowed sub-component types the later slices add). Re-exported here so a future
+// `import type { PaymentModalProps } from '.../PaymentModal'` still resolves.
+export type { PaymentModalProps };
 
 /** Payment processing modal — method selection (cash, card, QRIS, open bill, credit), split tender, customer/loyalty, multi-currency, and change calculation. */
 export default function PaymentModal({
@@ -121,6 +114,10 @@ export default function PaymentModal({
   // surface for "does this location offer QRIS" (the master doc's
   // payment:* keys were never implemented). Fail-open until loaded.
   const { rails: paymentRails } = useLocalPaymentRails(sessionToken);
+  // visibleMethods() owns which tabs the tender list offers; the two reads
+  // below are the gates that live OUTSIDE that list -- qrisOffered also kicks
+  // the selection back to cash when a reload withholds QRIS, and edcOffered
+  // gates only the pay-on-terminal button inside the card panel.
   const qrisOffered = railOffered(paymentRails, 'qris');
   const edcOffered = railOffered(paymentRails, 'edc');
   // Manual QRIS shows the merchant's real static QR when the rail
@@ -171,9 +168,12 @@ export default function PaymentModal({
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-  const [customerSearchResults, setCustomerSearchResults] = useState<CustomerDto[]>([]);
+  // The roster exactly as the last list read returned it. The rows the overlay
+  // renders are DERIVED from this plus customerSearchQuery (see the memo below):
+  // there is deliberately no second stored list, because a stored list is a value
+  // a filter can be skipped over without anything noticing. S5 pins that pair.
+  const [customerRoster, setCustomerRoster] = useState<CustomerDto[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
-  const allCustomersRef = useRef<CustomerDto[]>([]);
   const [leaving, setLeaving] = useState(false);
   const leaveCb = useRef<(() => void) | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -242,8 +242,6 @@ export default function PaymentModal({
     setLeaving(false);
   }, [leaving]);
 
-  const [showQr, setShowQr] = useState(false);
-  const [qrReference, setQrReference] = useState('');
   // P7-1: Swipe right on payment modal → go back to cart
   const paymentSwipe = useSwipe({
     onSwipeRight: () => {
@@ -259,20 +257,44 @@ export default function PaymentModal({
 
   const [paymentError, setPaymentError] = useState<{ message: string; retryable: boolean } | null>(null);
 
-  const [splitMode, setSplitMode] = useState(false);
-  const [splits, setSplits] = useState<SplitRow[]>([
-    { id: 1, method: 'cash', otherLabel: '', amountMinor: '' },
-    { id: 2, method: 'card', otherLabel: '', amountMinor: '' },
-  ]);
-  const nextSplitId = useRef(3);
+  // W5-c: the split-mode flag, the rows, the id counter behind + Add Split and
+  // the three row callbacks moved verbatim to ./payment/useSplitTenderState -
+  // zero parameters, and the same hook order (two useState then one useRef in
+  // the same slots). The open-reset below still re-seeds the rows through
+  // setSplits; autoSplitEvenly stayed HERE because its inputs
+  // (effectiveTotalInCartCurrency, cartCurrency) are returned by the two hooks
+  // called below, one of which consumes these very rows as an input.
+  const {
+    splitMode,
+    setSplitMode,
+    splits,
+    setSplits,
+    addSplit,
+    removeSplit,
+    updateSplit,
+  } = useSplitTenderState();
 
   const { isEnabled } = useFeatures();
   const multiCurrency = isEnabled(FEATURES.MULTI_CURRENCY);
+  // This modal is shared by both POS terminals, but an open bill is a Restaurant
+  // POS concept: `list_open_bills_scoped` — its only reader — is reachable from
+  // the restaurant terminal alone, and `hold_cart_scoped` now refuses
+  // `bill_type: 'open_bill'` from any other workspace. Offering the tender to a
+  // store-pos cashier would therefore produce a call the backend rejects, so the
+  // method is gated here too rather than left to fail at checkout.
+  //
+  // Read through `useWorkspaceScope` (nullable, not `useWorkspace`) so a modal
+  // rendered outside a provider hides the method instead of throwing — the same
+  // fail-closed direction the backend takes.
+  const workspaceScope = useWorkspaceScope();
+  const isRestaurantPos = workspaceScope?.typeKey === 'restaurant-pos';
+  // One read of the entitlement, shared by the FETCH and the render below: an
+  // unlicensed tenant must not spend a getLoyaltyAccount round-trip on a panel it
+  // can never show. A named boolean rather than the call inline in the effect, so
+  // the dep array holds a value (isEnabled's identity in this file is not
+  // something an effect should depend on).
+  const loyaltyLicensed = isEnabled(FEATURES.LOYALTY_PROGRAM);
 
-  const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
-  const [exchangeRates, setExchangeRates] = useState<ExchangeRateDto[]>([]);
-  const [selectedCurrency, setSelectedCurrency] = useState(total.currency);
-  const [baseCurrency, setBaseCurrency] = useState(total.currency);
 
   // A rail that loads (or reloads) to disabled while QRIS is the chosen
   // tab must not strand the cashier on a hidden surface (agents-5 R1).
@@ -280,83 +302,40 @@ export default function PaymentModal({
     if (!qrisOffered && method === 'qris') setMethod('cash');
   }, [qrisOffered, method]);
 
+  // The Open Bill tender is restaurant-only (see `isRestaurantPos` above), so a
+  // method chosen while the modal was on a restaurant terminal — or chosen on a
+  // modal mounted outside a restaurant scope — must not survive as a tender the
+  // cashier can no longer see: Complete would submit a bill the backend now
+  // refuses. Same recovery shape as the QRIS reset above.
   useEffect(() => {
-    if (open && multiCurrency) {
-      const loads: [
-        Promise<CurrencyDto[]>,
-        Promise<ExchangeRateDto[]>,
-        Promise<string | null>,
-      ] = [
-        listCurrenciesScoped(sessionToken!),
-        // CUR-11: the picker needs the CURRENT rate per pair, not the
-        // whole history — bounded query, no first-match ambiguity.
-        listLatestExchangeRatesScoped(sessionToken!),
-        getDefaultCurrencyScoped(sessionToken!),
-      ];
-      Promise.all(loads)
-        .then(([currs, rates, base]) => {
-          setCurrencies(currs);
-          setExchangeRates(rates);
-          if (base) setBaseCurrency(base);
-        })
-        .catch(() => addToast({ message: l10nRef.current.getString('payment-toast-currency-failed'), type: 'error' }));
-    }
-  }, [open, multiCurrency, sessionToken, addToast]); // l10n via ref — stable dep chain
+    if (!isRestaurantPos && method === 'open_bill') setMethod('cash');
+  }, [isRestaurantPos, method]);
 
-  const exchangeRateInfo = useMemo(() => {
-    if (selectedCurrency === total.currency) return null;
-    const rate = exchangeRates.find(
-      (r) => r.from_currency === total.currency && r.to_currency === selectedCurrency,
-    );
-    if (rate) {
-      return { ...rate, rate: exchangeRateToDecimal(rate), inverted: false };
-    }
-    const inverse = exchangeRates.find(
-      (r) => r.from_currency === selectedCurrency && r.to_currency === total.currency,
-    );
-    if (inverse) {
-      return {
-        ...inverse,
-        rate: 1 / exchangeRateToDecimal(inverse),
-        from_currency: total.currency,
-        to_currency: selectedCurrency,
-        // MONEY-01: the conversion must know the stored rate is the
-        // reciprocal — `rate` here is float display math only.
-        inverted: true,
-      };
-    }
-    return null;
-  }, [selectedCurrency, total.currency, exchangeRates]);
-
-  // CUR-04: when a session store is active, ask the backend for the latest
-  // rate effective today (or before) instead of relying on `find()` over the
-  // full history list — the list is not ordered by effective date, so a
-  // stale rate could be chosen. Falls back to the in-memory list only when
-  // there is no session (single-store legacy path).
-  const [latestRate, setLatestRate] = useState<ExchangeRateDto | null>(null);
-  useEffect(() => {
-    setLatestRate(null);
-    if (!open || !multiCurrency || !sessionToken || selectedCurrency === total.currency) {
-      return;
-    }
-    getLatestExchangeRateScoped(sessionToken, {
-      fromCurrency: total.currency,
-      toCurrency: selectedCurrency,
-    })
-      .then((r) => setLatestRate(r))
-      .catch(() => setLatestRate(null));
-  }, [open, multiCurrency, sessionToken, selectedCurrency, total.currency]);
-
-  const effectiveRateInfo = useMemo(() => {
-    if (!sessionToken || !latestRate) return exchangeRateInfo;
-    return {
-      ...latestRate,
-      rate: exchangeRateToDecimal(latestRate),
-      // The backend query is pair-specific (base→charge), so a hit is
-      // always the direct direction.
-      inverted: false,
-    };
-  }, [sessionToken, latestRate, exchangeRateInfo]);
+  // ── Multi-currency (FEATURES.MULTI_CURRENCY) ───────────────────────
+  // Charge-currency state, the rate reads, the converter and cartCurrency
+  // moved verbatim to ./payment/useMultiCurrency (slice W5-a). It receives
+  // six values and writes none of the shell atoms; the totals that convert
+  // through it stay here because their other inputs (loyalty, promo preview,
+  // the displayed cart, the tendered string) are not currency data.
+  // cartCurrency / convertToChargeCurrency were declared far below, at :508
+  // and :529 — nothing above this call read them, so their first read is
+  // still the promoted/unpromoted total memos further down.
+  const {
+    currencies,
+    selectedCurrency,
+    setSelectedCurrency,
+    baseCurrency,
+    cartCurrency,
+    effectiveRateInfo,
+    convertToChargeCurrency,
+  } = useMultiCurrency({
+    open,
+    multiCurrency,
+    sessionToken,
+    totalCurrency: total.currency,
+    addToast,
+    l10nRef,
+  });
 
   useEffect(() => {
     if (open) {
@@ -377,7 +356,7 @@ export default function PaymentModal({
       setReceiptArgs(null);
       setSelectedCurrency(total.currency);
       setCustomerSearchQuery('');
-      setCustomerSearchResults([]);
+      setCustomerRoster([]); // the derived rows are empty with it — no second list to clear
       setSplits([
         { id: 1, method: 'cash', otherLabel: '', amountMinor: '' },
         { id: 2, method: 'card', otherLabel: '', amountMinor: '' },
@@ -392,6 +371,13 @@ export default function PaymentModal({
     // onCustomerChange is intentionally omitted: it is routed through
     // notifyCustomerChangeRef, so depending on it here would re-run this
     // reset (and wipe the tendered amount) on every parent re-render.
+    // setShowQr / setQrReference / setSelectedCurrency stay off this list: the
+    // array is evaluated during render and the hook calls that create them are
+    // BELOW this effect, so listing them is a use-before-declaration error — and
+    // a no-op anyway, since a useState dispatcher never changes identity. The
+    // reset still fires only on open / charge-currency / controlled-customer
+    // changes (W3-c + W5-a).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, total.currency, selectedCustomerProp]);
 
   useEffect(() => {
@@ -399,42 +385,81 @@ export default function PaymentModal({
     if (!sessionToken) {
       // Customer data is store-scoped. Never fall back to the legacy global
       // command when this modal is rendered outside an authenticated scope.
-      allCustomersRef.current = [];
-      setCustomerSearchResults([]);
+      setCustomerRoster([]);
       setLoadingCustomers(false);
       return;
     }
     setLoadingCustomers(true);
     listCustomersScoped(sessionToken)
+      // Writes the ROSTER only. The list the overlay shows is derived from it
+      // below, so this can no longer publish an unfiltered result over a filter
+      // that is still in the input.
       .then((customers) => {
-        allCustomersRef.current = customers;
-        setCustomerSearchResults(customers);
+        setCustomerRoster(customers);
       })
-      .catch(() => { addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-customers-failed'), type: 'error' }); setCustomerSearchResults([]); })
+      .catch(() => { addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-customers-failed'), type: 'error' }); setCustomerRoster([]); })
       .finally(() => setLoadingCustomers(false));
   }, [showCustomerSearch, sessionToken, addToast]); // l10n via ref — stable dep chain
 
-  useEffect(() => {
-    if (!showCustomerSearch) return;
-    const customers = allCustomersRef.current;
+  // The rows the overlay renders are a DERIVED value, not a second stored list.
+  // The predicate below is the old filter effect's, unchanged, now over the roster
+  // state and the query as its two real inputs. As an effect writing
+  // customerSearchResults it could not be trusted to re-run: on a close and
+  // re-open the fetch resolves the roster again while neither of the effect's two
+  // deps (showCustomerSearch, customerSearchQuery) has changed, so the input kept
+  // the surviving filter and the list showed everybody. Deriving makes that pair
+  // unrepresentable — rows are always f(roster, query).
+  const customerSearchResults = useMemo(() => {
+    const customers = customerRoster;
     const q = customerSearchQuery.trim().toLowerCase();
     if (!q) {
-      setCustomerSearchResults(customers);
-    } else {
-      setCustomerSearchResults(
-        customers.filter(
-          (c) =>
-            c.name.toLowerCase().includes(q) ||
-            (c.phone && c.phone.includes(q)) ||
-            (c.email && c.email.toLowerCase().includes(q)),
-        ),
-      );
+      return customers;
     }
-  }, [showCustomerSearch, customerSearchQuery]);
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)),
+    );
+  }, [customerRoster, customerSearchQuery]);
 
-  const totalMinor = useMemo(() => BigInt(total.minor_units), [total.minor_units]);
+  // W5-b: the ten-memo tender/split derivation cluster moved verbatim to
+  // ./payment/useTenderMath - nine plain-data inputs, no dep array changed.
+  // tenderSnapshot and canComplete stayed here on purpose (3 and 4 exclusive inputs).
+  const {
+    totalMinor,
+    effectiveTotalMoney,
+    unpromotedTotalInCartCurrency,
+    effectiveTotalInCartCurrency,
+    lineItemsInCartCurrency,
+    tenderedMinorInCartCurrency,
+    sufficient,
+    change,
+    splitTotals,
+    splitComplete,
+  } = useTenderMath({
+    total,
+    lineItems,
+    promoPreview,
+    loyaltyDiscount,
+    cartCurrency,
+    convertToChargeCurrency,
+    tendered,
+    method,
+    splits,
+  });
 
   useEffect(() => {
+    // Entitlement first, and the same three resets the no-customer branch below
+    // performs: with the feature off there is no account, and a stale account
+    // left in state would carry redeemPoints / loyaltyDiscount with it - a
+    // discount that moves Total Due while nothing on screen can cancel it.
+    if (!loyaltyLicensed) {
+      setLoyaltyAccount(null);
+      setRedeemPoints(false);
+      setLoyaltyDiscount(0n);
+      return;
+    }
     if (selectedCustomer) {
       if (!sessionToken) {
         setLoyaltyAccount(null);
@@ -454,7 +479,7 @@ export default function PaymentModal({
       setRedeemPoints(false);
       setLoyaltyDiscount(0n);
     }
-  }, [selectedCustomer, sessionToken, addToast]); // l10n via ref — stable dep chain
+  }, [selectedCustomer, sessionToken, addToast, loyaltyLicensed]); // l10n via ref — stable dep chain
 
   useEffect(() => {
     if (loyaltyAccount?.account && loyaltyAccount.account.points > 0) {
@@ -487,88 +512,6 @@ export default function PaymentModal({
       .catch(() => { /* points value calc is best-effort */ });
     return () => { cancelled = true; };
   }, [pointsToRedeem, redeemPoints, totalMinor, sessionToken]);
-
-  const effectiveTotal = useMemo(() => {
-    // PROMO-3: when promotions are selected the base is the engine-exact
-    // previewed total (post-tax, post-cart-discount, promotions applied);
-    // otherwise the cart total prop. Loyalty discount subtracts on top in
-    // both cases.
-    const base = promoPreview ? BigInt(promoPreview.totalMinor) : totalMinor;
-    const discount = loyaltyDiscount;
-    return base - discount >= 0n ? base - discount : 0n;
-  }, [promoPreview, totalMinor, loyaltyDiscount]);
-
-  const effectiveTotalMoney = useMemo<Money>(() => ({
-    minor_units: Number(effectiveTotal),
-    currency: total.currency,
-  }), [effectiveTotal, total.currency]);
-
-  const tenderedMinor = useMemo(() => {
-    // MONEY-02: exact decimal parse (parseFloat mis-rounded "1.005").
-    const parsed = parseMinorUnits(tendered, minorUnitExponent(total.currency));
-    if (parsed === null || parsed < 0) return 0n;
-    return BigInt(parsed);
-  }, [tendered, total.currency]);
-
-  // Convert base currency amount to selected charge currency using exchange rate
-  const convertToChargeCurrency = useCallback(
-    (minorUnits: number | bigint): number => {
-      if (selectedCurrency === total.currency || !effectiveRateInfo) {
-        return typeof minorUnits === 'bigint' ? Number(minorUnits) : minorUnits;
-      }
-      // MONEY-01: exact fixed-point conversion. The old float chain
-      // (divide to major, multiply by a binary-float rate, scale back)
-      // mis-rounded every product landing on the .5 minor boundary
-      // (0.03 USD @ 149.5 → 448 instead of 449).
-      return convertMinorUnits({
-        baseMinor: typeof minorUnits === 'bigint' ? Number(minorUnits) : minorUnits,
-        baseExponent: minorUnitExponent(total.currency),
-        rateMillionths: effectiveRateInfo.rate_millionths,
-        chargeExponent: minorUnitExponent(selectedCurrency),
-        inverse: effectiveRateInfo.inverted,
-      });
-    },
-    [selectedCurrency, total.currency, effectiveRateInfo],
-  );
-
-  // Get the currency to use for the cart (charge currency if multi-currency, else base)
-  const cartCurrency = multiCurrency && selectedCurrency !== total.currency ? selectedCurrency : total.currency;
-
-  // PROMO-3: the charge total when promotions are selected — the engine
-  // preview result (already in cart currency) minus the loyalty discount
-  // converted into cart currency. Null when no preview (no promotions).
-  const promotedChargeTotal = useMemo(() => {
-    if (!promoPreview) return null;
-    const loyaltyInCart = cartCurrency === total.currency
-      ? Number(loyaltyDiscount)
-      : convertToChargeCurrency(loyaltyDiscount);
-    return Math.max(0, promoPreview.totalMinor - loyaltyInCart);
-  }, [promoPreview, loyaltyDiscount, cartCurrency, total.currency, convertToChargeCurrency]);
-
-  // Get the effective total in the cart currency — WITHOUT promotions.
-  // The StockShortfallDialog retry needs this unpromoted base: the backend
-  // shortfall command re-applies the promotions itself, so passing the
-  // promoted total here would discount twice.
-  const unpromotedTotalInCartCurrency = useMemo(() => {
-    if (cartCurrency === total.currency) return Number(effectiveTotal);
-    return convertToChargeCurrency(effectiveTotal);
-  }, [effectiveTotal, cartCurrency, total.currency, convertToChargeCurrency]);
-
-  // The charge total the cashier sees and pays: engine-promoted when a
-  // preview is active, the loyalty-adjusted cart total otherwise.
-  const effectiveTotalInCartCurrency = promotedChargeTotal ?? unpromotedTotalInCartCurrency;
-
-  // Convert line item unit prices to cart currency
-  const lineItemsInCartCurrency = useMemo(() => {
-    if (cartCurrency === total.currency) return lineItems;
-    return lineItems.map((line) => ({
-      ...line,
-      unit_price: {
-        minor_units: convertToChargeCurrency(line.unit_price.minor_units),
-        currency: cartCurrency,
-      },
-    }));
-  }, [lineItems, cartCurrency, total.currency, convertToChargeCurrency]);
 
   // PROMO-3: keep the engine preview in sync with the displayed cart.
   // The backend cart doesn't exist yet (it is materialized at the confirm
@@ -609,15 +552,6 @@ export default function PaymentModal({
     };
   }, [open, sessionToken, promotionIds, lineItemsInCartCurrency, discountPercent]);
 
-  // Convert tendered amount to cart currency
-  const tenderedMinorInCartCurrency = useMemo(() => {
-    if (cartCurrency === total.currency) return Number(tenderedMinor);
-    // MONEY-02: exact decimal parse at the charge currency's exponent.
-    const parsed = parseMinorUnits(tendered, minorUnitExponent(cartCurrency));
-    if (parsed === null || parsed < 0) return 0;
-    return parsed;
-  }, [tendered, cartCurrency, tenderedMinor, total.currency]);
-
   // CUR-02: snapshot of what the customer actually paid — tip/service are
   // always sent; base-currency fields appear only when the charge
   // currency differs from the sale's base currency. Shared by the QRIS
@@ -643,47 +577,40 @@ export default function PaymentModal({
     [tipMinor, serviceChargeMinor, cartCurrency, total.currency, total.minor_units, effectiveRateInfo],
   );
 
-  const { sufficient, change } = useMemo(() => {
-    if (method !== 'cash') return { sufficient: true, change: null };
-    if (tenderedMinorInCartCurrency < effectiveTotalInCartCurrency) return { sufficient: false, change: null };
-    const diff = tenderedMinorInCartCurrency - effectiveTotalInCartCurrency;
-    return {
-      sufficient: true,
-      change: { minor_units: diff, currency: cartCurrency } as Money,
-    };
-  }, [method, tenderedMinorInCartCurrency, effectiveTotalInCartCurrency, cartCurrency]);
-
-  // Parse split amounts using cart currency exponent
-  const parseSplitMinor = useCallback((val: string): bigint => {
-    // MONEY-02: exact decimal parse (parseFloat mis-rounded "1.005").
-    const parsed = parseMinorUnits(val, minorUnitExponent(cartCurrency));
-    if (parsed === null || parsed < 0) return 0n;
-    return BigInt(parsed);
-  }, [cartCurrency]);
-
-  const splitTotals = useMemo(() => {
-    let splitSum = 0n;
-    for (const s of splits) {
-      splitSum += parseSplitMinor(s.amountMinor);
-    }
-    return { splitSum, remaining: BigInt(effectiveTotalInCartCurrency) - splitSum };
-  }, [splits, parseSplitMinor, effectiveTotalInCartCurrency]);
-
-  const splitComplete = useMemo(() => {
-    if (splitTotals.remaining !== 0n) return false;
-    // Zero-amount sale: empty splits are acceptable
-    if (effectiveTotalInCartCurrency === 0) return true;
-    return splits.every((s) => {
-      if (s.method === 'other' && !s.otherLabel.trim()) return false;
-      return parseSplitMinor(s.amountMinor) > 0n;
-    });
-  }, [splits, splitTotals, parseSplitMinor, effectiveTotalInCartCurrency]);
-
-  const handleQrPay = useCallback(() => {
-    const ref = `QR-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    setQrReference(ref);
-    setShowQr(true);
-  }, []);
+  // Restaurant coursing: publish one `order.course_fired` per course the
+  // waiter fired, after the KDS fan-out created the tickets. Grouped from
+  // the local lines' `coursingStatus` (the backend cart is materialized at
+  // checkout, so there is no pre-checkout fire to publish). Best-effort:
+  // the sale is already committed — a publish failure warns, never fails
+  // the checkout. `displayNumber` comes from the fan-out ticket; when no
+  // ticket exists for the sale it stays null.
+  const publishFiredCourses = useCallback(
+    async (saleId: string, orders: { display_number: number | null }[]) => {
+      const fired = lineItems.filter((l) => l.coursingStatus === 'fired' && l.courseId);
+      if (fired.length === 0 || !sessionToken) return;
+      const byCourse = new Map<string, typeof fired>();
+      for (const line of fired) {
+        const list = byCourse.get(line.courseId!);
+        if (list) list.push(line);
+        else byCourse.set(line.courseId!, [line]);
+      }
+      const displayNumber = orders.length > 0 ? (orders[0]?.display_number ?? null) : null;
+      for (const [courseId, courseLines] of byCourse) {
+        try {
+          await publishCourseFiredScoped(sessionToken, {
+            saleId,
+            courseId,
+            displayNumber,
+            items: courseLines.map((l) => ({ sku: l.sku, qty: l.qty, name: l.name ?? l.sku })),
+          });
+        } catch (fireErr) {
+          console.error('publishCourseFired failed', fireErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+        }
+      }
+    },
+    [lineItems, sessionToken, addToast, l10nRef],
+  );
 
   // Shared gateway-tender front half (manual QRIS, Auto QRIS, EDC card):
   // cart -> discount -> lines -> complete. The caller's split metadata
@@ -712,6 +639,9 @@ export default function PaymentModal({
           // backend can reject a mismatch instead of silently re-stamping
           // it to the cart currency.
           unitPriceCurrency: line.unit_price.currency,
+          // Restaurant coursing: carry the assignment so `sale_lines.course`
+          // reaches the KDS fan-out. Normalized backend-side.
+          ...(line.courseId ? { course: line.courseId } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -782,34 +712,15 @@ export default function PaymentModal({
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
-        const qrisReceiptData: PrintSalesReceiptArgs = {
-          date: new Date().toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-          }),
-          receiptNumber: `SALE-${saleResult.saleId}`,
-          items: lineItemsInCartCurrency.map((line, i) => {
-            const computedLine = completedSale?.lines?.[i];
-            const tax = computedLine?.tax_amount
-              ? { minorUnits: computedLine.tax_amount.minor_units, currency: computedLine.tax_amount.currency }
-              : null;
-            return {
-              name: line.name ?? line.sku,
-              quantity: line.qty,
-              unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
-              totalPrice: {
-                minorUnits: line.unit_price.minor_units * line.qty,
-                currency: line.unit_price.currency,
-              },
-              ...(tax ? { taxAmount: tax } : {}),
-            };
-          }),
-          subtotal: completedSale
-            ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
-            : { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
-          ...(completedSale && completedSale.taxTotal && completedSale.taxTotal.minor_units > 0
-            ? { tax: { minorUnits: completedSale.taxTotal.minor_units, currency: cartCurrency } }
-            : {}),
-          total: { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
+        setReceiptArgs(buildCompletedSaleReceipt({
+          saleId: saleResult.saleId,
+          saleTotal: saleResult.total,
+          completedSale,
+          cartLines: lineItemsInCartCurrency,
+          cartCurrency,
+          fallbackTotalMinor: effectiveTotalInCartCurrency,
+          // The one field this site and the direct-checkout site below really
+          // do differ: a gateway sale is a single QRIS tender with no change.
           payments: [
             {
               method: 'QRIS',
@@ -817,15 +728,15 @@ export default function PaymentModal({
               change: null,
             },
           ],
-          ...(tableNumber ? { tableNumber } : {}),
-        };
-        setReceiptArgs(qrisReceiptData);
+          tableNumber,
+        }));
       } catch {
         // Sale fetch may fail in edge cases — non-blocking.
       }
 
       try {
-        await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // KDS may not be configured — but a swallowed failure here meant a
         // paid sale silently produced NO kitchen ticket (retried zoned
@@ -872,171 +783,59 @@ export default function PaymentModal({
       setDone(true);
     },
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
-     loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency],
+     loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
+     publishFiredCourses],
   );
 
-  const handleQrConfirmed = useCallback(async () => {
-    setShowQr(false);
-    setProcessing(true);
-    try {
-      const saleResult = await buildGatewaySale({
-        method: 'QRIS',
-        gatewayReference: qrReference,
-        gatewayStatus: 'completed',
-        gatewayResponse: 'QRIS payment confirmed',
-      });
-      await settleGatewaySale(saleResult, true);
-    } catch (err) {
-      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
-      const classified = classifyError(err);
-      setPaymentError(classified);
-    } finally {
-      setProcessing(false);
-    }
-  }, [buildGatewaySale, settleGatewaySale, qrReference, classifyError, addToast]);
+  // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
+  // State + both ends of the dialog moved verbatim to ./payment/useGatewayQr
+  // (slice W3-c), called from where handleQrConfirmed was — BELOW the shared
+  // gateway front/tail halves it receives, since those stay defined once here
+  // for all three gateway tenders (see ./payment/useGatewayQr for why).
+  // showQr/qrReference moved down with the handlers; their dispatchers come
+  // back up so the open-reset effect and the dialog's onClose keep their text.
+  const {
+    showQr,
+    qrReference,
+    handleQrPay,
+    handleQrConfirmed,
+    setShowQr,
+    setQrReference,
+  } = useGatewayQr({
+    buildGatewaySale,
+    settleGatewaySale,
+    classifyError,
+    setProcessing,
+    setPaymentError,
+    addToast,
+  });
 
   // ── QRIS Auto (dynamic Midtrans charge, agents-3) ────────────────
-  // The sale completes as PENDING before the charge exists, the QR is
-  // rendered from the gateway payload, and settlement is observed by the
-  // display's real poll (cloud ledger via the webhook). The tail is the
-  // same settleGatewaySale the manual flow uses — finalize's idempotent
-  // `WHERE status = 'pending'` means the queued finalize_sale racing in
-  // over sync and this UI call cannot double-apply or double-award.
-  const [autoQr, setAutoQr] = useState<{
-    orderId: string;
-    qrString: string;
-    expiresIn: number;
-    saleResult: Awaited<ReturnType<typeof completeSaleScoped>>;
-  } | null>(null);
-  const autoIssueSeq = useRef(0);
-
-  const issueAutoQr = useCallback(
-    async (saleResult: Awaited<ReturnType<typeof completeSaleScoped>>) => {
-      // First issue of this checkout attempt re-uses the attempt id itself
-      // as the idempotency key (PAY-2: a retry after a lost response
-      // returns the SAME live QR, not a second charge); every deliberate
-      // re-issue after expiry bumps a suffix — a new Midtrans order on the
-      // same local sale.
-      const base = attemptIdRef.current ?? `qr-${Date.now()}`;
-      const idempotencyKey =
-        autoIssueSeq.current === 0 ? base : `${base}-${autoIssueSeq.current}`;
-      return qrisAutoChargeScoped(sessionToken!, {
-        saleId: saleResult.saleId,
-        amountMinor: Number(effectiveTotalInCartCurrency),
-        idempotencyKey,
-      });
-    },
-    [sessionToken, effectiveTotalInCartCurrency],
-  );
-
-  const handleDynamicQrPay = useCallback(async () => {
-    setProcessing(true);
-    let createdSaleId: string | null = null;
-    try {
-      const saleResult = await buildGatewaySale({
-        method: 'QRIS',
-        gatewayReference: `qr-auto:${attemptIdRef.current ?? 'no-attempt'}`,
-        gatewayStatus: 'pending',
-        gatewayResponse: 'QRIS Auto — awaiting settlement webhook',
-      });
-      createdSaleId = saleResult.saleId;
-      autoIssueSeq.current = 0;
-      const charge = await issueAutoQr(saleResult);
-      if (!charge.qrString) {
-        throw new Error(requiredLocalized(l10nRef.current, 'payment-qris-auto-no-payload'));
-      }
-      setAutoQr({
-        orderId: charge.orderId,
-        qrString: charge.qrString,
-        expiresIn: charge.expiresInSecs,
-        saleResult,
-      });
-    } catch (err) {
-      // Nothing was captured at the gateway (build or charge failed) — the
-      // pending sale must not linger.
-      if (createdSaleId) {
-        try {
-          await voidPendingSale(sessionToken!, createdSaleId);
-        } catch (voidErr) {
-          addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' });
-        }
-      }
-      addToast({
-        message: requiredLocalized(l10nRef.current, 'payment-qris-auto-charge-failed', {
-          reason: plainErrorMessage(err),
-        }),
-        type: 'error',
-      });
-    } finally {
-      setProcessing(false);
-    }
-  }, [sessionToken, buildGatewaySale, issueAutoQr, addToast]);
-
-  const handleAutoReissue = useCallback(async () => {
-    if (!autoQr || !sessionToken) return;
-    try {
-      autoIssueSeq.current += 1;
-      const charge = await issueAutoQr(autoQr.saleResult);
-      if (!charge.qrString) {
-        throw new Error(requiredLocalized(l10nRef.current, 'payment-qris-auto-no-payload'));
-      }
-      setAutoQr({
-        orderId: charge.orderId,
-        qrString: charge.qrString,
-        expiresIn: charge.expiresInSecs,
-        saleResult: autoQr.saleResult,
-      });
-    } catch (err) {
-      // The expired QR stays on screen with its actions — the money story
-      // is unchanged, and the cashier can retry or cancel deliberately.
-      addToast({
-        message: requiredLocalized(l10nRef.current, 'payment-qris-auto-charge-failed', {
-          reason: plainErrorMessage(err),
-        }),
-        type: 'error',
-      });
-    }
-  }, [autoQr, sessionToken, issueAutoQr, addToast]);
-
-  const handleAutoCancel = useCallback(() => {
-    if (!autoQr || !sessionToken) return;
-    const { saleResult } = autoQr;
-    setAutoQr(null);
-    voidPendingSale(sessionToken, saleResult.saleId)
-      .then(() =>
-        addToast({
-          message: requiredLocalized(l10nRef.current, 'payment-qris-auto-cancelled'),
-          type: 'info',
-        }),
-      )
-      .catch((voidErr) =>
-        addToast({ message: `Void also failed: ${voidErr instanceof Error ? voidErr.message : String(voidErr)}`, type: 'error' }),
-      );
-  }, [autoQr, sessionToken, addToast]);
-
-  const handleAutoConfirmed = useCallback(async () => {    if (!autoQr) return;
-    const { saleResult } = autoQr;
-    setAutoQr(null);
-    setProcessing(true);
-    try {
-      // voidOnFinalizeFailure = false: the gateway has the customer's
-      // money; a local finalize fault keeps the sale pending for the
-      // queued finalize_sale instead of voiding a PAID sale.
-      await settleGatewaySale(saleResult, false);
-    } catch (err) {
-      addToast({ message: `QR payment failed: ${plainErrorMessage(err)}`, type: 'error' });
-      const classified = classifyError(err);
-      setPaymentError(classified);
-    } finally {
-      setProcessing(false);
-    }
-  }, [autoQr, settleGatewaySale, classifyError, addToast]);
-
-  const handleAutoPoll = useCallback(async () => {
-    if (!autoQr || !sessionToken) return false;
-    const s = await qrisAutoStatusScoped(sessionToken, autoQr.orderId);
-    return s.settled;
-  }, [autoQr, sessionToken]);
+  // State + handlers moved verbatim to ./payment/useAutoQr (slice W3-a). The
+  // shell keeps the shared atoms this phase reads — processing, paymentError,
+  // the attempt id, the localized bundle ref, the gateway front/tail halves
+  // and the charge total — and passes them down, so this slice stays
+  // independently revertible. The JSX below and the tender-button
+  // `autoQr !== null` guards are untouched.
+  const {
+    autoQr,
+    handleDynamicQrPay,
+    handleAutoReissue,
+    handleAutoCancel,
+    handleAutoConfirmed,
+    handleAutoPoll,
+  } = useAutoQr({
+    sessionToken,
+    effectiveTotalInCartCurrency,
+    attemptIdRef,
+    l10nRef,
+    buildGatewaySale,
+    settleGatewaySale,
+    classifyError,
+    setProcessing,
+    setPaymentError,
+    addToast,
+  });
 
   // ── EDC card-present (agents-3 3.2) ────────────────────────────────
   // Capture-first, the mirror of QRIS-Auto's pending-first: the terminal
@@ -1045,119 +844,48 @@ export default function PaymentModal({
   // pending sale to void. The inverse risk (captured, then the app dies
   // before complete_sale) is the accepted one — it reconciles through the
   // terminal's own journal, and the pre-flight + decline paths never touch
-  // the ledger at all. Preflight is `edc_terminal_status_scoped`: the
-  // never-shipped `test_edc_connection_scoped` (agents-2 residual) is
-  // decided INTO this call — same session enforcement, same answer. On the
-  // tablet (no edc commands registered) the pre-flight simply rejects and
-  // the flow falls back to manual card — desktop-only expressed as
-  // degradation, not platform-sniffing.
-  const [edc, setEdc] = useState<{
-    phase: 'preflight' | 'waiting' | 'declined';
-    reason?: string | undefined;
-  } | null>(null);
-
-  const handleTerminalPay = useCallback(async () => {
-    setProcessing(true);
-    try {
-      setEdc({ phase: 'preflight' });
-      const status = await edcTerminalStatusScoped(sessionToken!);
-      if (status.status !== 'ready') {
-        setEdc(null);
-        addToast({
-          message: requiredLocalized(l10nRef.current, 'payment-edc-not-ready', {
-            status: status.status,
-          }),
-          type: 'error',
-        });
-        return;
-      }
-      // The card-present wait is the terminal's, not ours: no client-side
-      // cancel (a tap can land any moment — cancelling the promise would
-      // abandon captured money), no invented progress. The overlay says
-      // tap/insert/swipe and waits.
-      setEdc({ phase: 'waiting' });
-      const result = await edcSale(
-        sessionToken!,
-        Number(effectiveTotalInCartCurrency),
-        cartCurrency,
-      );
-      if (!result.success) {
-        setEdc({ phase: 'declined', reason: result.message });
-        return;
-      }
-      const saleResult = await buildGatewaySale({
-        method: 'CARD',
-        gatewayReference: result.transactionId ?? '',
-        gatewayStatus: 'captured',
-        gatewayResponse: JSON.stringify({
-          auth_code: result.authCode,
-          card_scheme: result.cardScheme,
-          card_last4: result.cardLast4,
-          message: result.message,
-        }),
-      });
-      // voidOnFinalizeFailure = false: the terminal holds captured money;
-      // a local finalize fault keeps the sale pending for reconciliation,
-      // it must not void a PAID sale.
-      await settleGatewaySale(saleResult, false);
-      setEdc(null);
-    } catch (err) {
-      // Back to tender selection with the reason (the capture, if any, is
-      // the terminal's record; nothing local was created yet at this
-      // point except a possibly-built sale — settleGatewaySale throws only
-      // after its own surfacing, and its pending-on-failure branch applies).
-      setEdc(null);
-      addToast({
-        message: requiredLocalized(l10nRef.current, 'payment-edc-failed', {
-          reason: plainErrorMessage(err),
-        }),
-        type: 'error',
-      });
-    } finally {
-      setProcessing(false);
-    }
-  }, [sessionToken, effectiveTotalInCartCurrency, cartCurrency, buildGatewaySale, settleGatewaySale, addToast]);
-
-  const handleTerminalDismiss = useCallback(() => setEdc(null), []);
-
-  const addSplit = useCallback(() => {
-    setSplits((prev) => [
-      ...prev,
-      { id: nextSplitId.current++, method: 'cash', otherLabel: '', amountMinor: '' },
-    ]);
-  }, []);
-
-  const removeSplit = useCallback((id: number) => {
-    setSplits((prev) => {
-      if (prev.length <= 1) return prev;
-      return prev.filter((s) => s.id !== id);
-    });
-  }, []);
-
-  const updateSplit = useCallback((id: number, patch: Partial<SplitRow>) => {
-    setSplits((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }, []);
+  // the ledger at all.
+  // B1: the edc phase atom, its preflight/waiting/declined writer and the
+  // dismiss handler moved verbatim to ./payment/useEdcTenderPhase - the seam is
+  // acyclic because every writer and every reader of this atom sits BELOW both
+  // money hooks, so no value has to cross the boundary that held autoSplitEvenly
+  // in place. The overlay JSX and the terminalPending read still consume `edc`
+  // from here, and the gateway front/tail stay shell-owned and are passed down
+  // exactly as useGatewayQr and useAutoQr receive them.
+  const { edc, handleTerminalPay, handleTerminalDismiss } = useEdcTenderPhase({
+    sessionToken,
+    effectiveTotalInCartCurrency,
+    cartCurrency,
+    buildGatewaySale,
+    settleGatewaySale,
+    l10nRef,
+    addToast,
+    setProcessing,
+  });
 
   const autoSplitEvenly = useCallback(() => {
-    const count = splits.length;
-    if (count === 0) return;
-    const exp = minorUnitExponent(cartCurrency);
-    // Integer floor division in minor units: every row gets baseMinor, and the
-    // exact remainder lands on the last row — avoids float `toFixed` rounding
-    // that used to over-split non-divisible totals (e.g. 4,450,001 by 2 became
-    // 2,225,001 + 2,225,002 = 4,450,003).
-    const baseMinor = Math.floor(effectiveTotalInCartCurrency / count);
-    const remainderMinor = effectiveTotalInCartCurrency % count;
-    const fmt = (minor: number) => (minor / 10 ** exp).toFixed(exp);
-    setSplits((prev) =>
-      prev.map((s, i) => ({
-        ...s,
-        amountMinor: i === prev.length - 1
-          ? fmt(baseMinor + remainderMinor)
-          : fmt(baseMinor),
-      })),
+    // W5-d: the arithmetic itself moved verbatim to ./payment/splitDistribution -
+    // same Math.floor base, same exact remainder on the LAST row only, same
+    // exponent-explicit digit placement, and the same count === 0 outcome (no row
+    // is written). What is left here is the two reads the boundary forces into the
+    // shell (the total the money hook returns, the currency the multi-currency
+    // hook returns, the row count the split hook owns) and the write.
+    const literals = distributeEvenly(
+      effectiveTotalInCartCurrency,
+      splits.length,
+      minorUnitExponent(cartCurrency),
     );
-  }, [splits.length, effectiveTotalInCartCurrency, cartCurrency]);
+    // PATCH, never rebuild: method and otherLabel survive the rewrite, so an
+    // `other` row labelled "voucher" keeps both after Split Evenly.
+    setSplits((prev) =>
+      prev.map((s, i) => ({ ...s, amountMinor: literals[i] ?? s.amountMinor })),
+    );
+  // setSplits is now an import from ./payment/useSplitTenderState rather than a
+  // useState dispatcher declared in this file, so the rule can no longer prove it
+  // stable and asks for it. It is stable - it IS the dispatcher, returned through
+  // the hook - so listing it cannot re-fire this callback on any render; the value
+  // and the identity of the array are unchanged in behaviour.
+  }, [splits.length, effectiveTotalInCartCurrency, cartCurrency, setSplits]);
 
   const canComplete = useMemo(() => {
     if (splitMode) return splitComplete;
@@ -1181,6 +909,10 @@ export default function PaymentModal({
             name: l.name,
             qty: l.qty,
             unit_price: l.unit_price,
+            // Restaurant coursing: an open bill resumes through the same
+            // checkout push, so the assignment must survive the hold.
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -1218,6 +950,9 @@ export default function PaymentModal({
           // backend can reject a mismatch instead of silently re-stamping
           // it to the cart currency.
           unitPriceCurrency: line.unit_price.currency,
+          // Restaurant coursing: carry the assignment so `sale_lines.course`
+          // reaches the KDS fan-out. Normalized backend-side.
+          ...(line.courseId ? { course: line.courseId } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -1298,34 +1033,15 @@ export default function PaymentModal({
           ? await getSaleScoped(sessionToken, saleResult.saleId)
           : await getSale(saleResult.saleId);
 
-        const receiptData: PrintSalesReceiptArgs = {
-          date: new Date().toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-          }),
-          receiptNumber: `SALE-${saleResult.saleId}`,
-          items: lineItemsInCartCurrency.map((line, i) => {
-            const computedLine = completedSale?.lines?.[i];
-            const tax = computedLine?.tax_amount
-              ? { minorUnits: computedLine.tax_amount.minor_units, currency: computedLine.tax_amount.currency }
-              : null;
-            return {
-              name: line.name ?? line.sku,
-              quantity: line.qty,
-              unitPrice: { minorUnits: line.unit_price.minor_units, currency: line.unit_price.currency },
-              totalPrice: {
-                minorUnits: line.unit_price.minor_units * line.qty,
-                currency: line.unit_price.currency,
-              },
-              ...(tax ? { taxAmount: tax } : {}),
-            };
-          }),
-          subtotal: completedSale
-            ? { minorUnits: completedSale.subtotal.minor_units, currency: cartCurrency }
-            : { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
-          ...(completedSale && completedSale.taxTotal && completedSale.taxTotal.minor_units > 0
-            ? { tax: { minorUnits: completedSale.taxTotal.minor_units, currency: cartCurrency } }
-            : {}),
-          total: { minorUnits: saleResult.total?.minor_units ?? effectiveTotalInCartCurrency, currency: cartCurrency },
+        const receiptData = buildCompletedSaleReceipt({
+          saleId: saleResult.saleId,
+          saleTotal: saleResult.total,
+          completedSale,
+          cartLines: lineItemsInCartCurrency,
+          cartCurrency,
+          fallbackTotalMinor: effectiveTotalInCartCurrency,
+          // Differs from the gateway site on purpose: split mode prints one row
+          // per tender, and a single cash tender prints with its real change.
           payments: paymentSplits
             ? paymentSplits.map((ps) => ({
                 method: ps.method,
@@ -1341,8 +1057,8 @@ export default function PaymentModal({
                     : null,
                 },
               ],
-          ...(tableNumber ? { tableNumber } : {}),
-        };
+          tableNumber,
+        });
         // Store receipt data for preview (user chooses to print or skip)
         setReceiptArgs(receiptData);
       } catch {
@@ -1350,7 +1066,8 @@ export default function PaymentModal({
       }
 
       try {
-        await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // See the QR path: a failed kitchen ticket must not stay silent.
         console.error('createKdsOrderFromSale failed', kdsErr);
@@ -1392,7 +1109,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses]);
 
   useEffect(() => {
     if (!done) return;
@@ -1551,6 +1268,9 @@ export default function PaymentModal({
             // FRONTEND-03 follow-up: carry the line's own currency so the
             // backend can enforce it on reconstruction.
             unitPriceCurrency: l.unit_price.currency,
+            // Restaurant coursing: the retry rebuilds the sale from these
+            // lines, so carry the assignment or the retried sale loses it.
+            ...(l.courseId ? { course: l.courseId } : {}),
           }))}
           // PROMO-3: the retry total must be the UNPROMOTED one — the
           // backend shortfall command re-applies the promotions itself
@@ -1842,9 +1562,7 @@ export default function PaymentModal({
                     <legend className="payment-section-title">Payment Method</legend>
                   </Localized>
                   <div className="payment-method-options">
-                    {(['cash', 'card', 'qris', 'credit'] as const)
-                      .filter((m) => qrisOffered || m !== 'qris')
-                      .map((m) => (
+                    {visibleMethods(paymentRails).map((m) => (
                       <label key={m} className="payment-method-label" data-testid="quick-pay-button">
                         <input
                           type="radio"
@@ -1854,7 +1572,7 @@ export default function PaymentModal({
                           onChange={() => setMethod(m)}
                         />
                         <span className="payment-method-name">
-                          {m === 'cash' ? l10n.getString('payment-method-cash') : m === 'card' ? l10n.getString('payment-method-card') : m === 'qris' ? l10n.getString('payment-method-qris') : requiredLocalized(l10n, 'payment-method-credit')}
+                          {requiredLocalized(l10n, PAYMENT_METHOD_MESSAGE_IDS[m])}
                         </span>
                       </label>
                     ))}
@@ -1866,10 +1584,16 @@ export default function PaymentModal({
                         checked={method === 'other'}
                         onChange={() => setMethod('other')}
                       />
+                      {/* .payment-method-name on the text input below is not decoration:
+                          the checked-tender rule (PaymentModal.css:184) is an ADJACENT-SIBLING
+                          selector, so that input - the radio's next sibling, and the element
+                          the cashier actually reads for this row - is the only one the rule
+                          can treat. Without the class, Other was the one selected tender
+                          whose name kept neither the accent nor the semibold. */}
                         <Localized id="payment-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
                         <input
                           type="text"
-                          className="payment-other-input"
+                          className="payment-other-input payment-method-name"
                           value={otherLabel}
                           onChange={(e) => {
                             setMethod('other');
@@ -1879,22 +1603,24 @@ export default function PaymentModal({
                         />
                         </Localized>
                     </div>
-                    <>
-                      {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
-                      <label className="payment-method-label" htmlFor="payment-method-open-bill">
-                        <input
-                          id="payment-method-open-bill"
-                          type="radio"
-                          name="payment-method"
-                          value="open_bill"
-                          checked={method === 'open_bill'}
-                          onChange={() => setMethod('open_bill')}
-                        />
-                        <span className="payment-method-name">
-                          <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
-                        </span>
-                      </label>
-                    </>
+                    {isRestaurantPos && (
+                      <>
+                        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control */}
+                        <label className="payment-method-label" htmlFor="payment-method-open-bill">
+                          <input
+                            id="payment-method-open-bill"
+                            type="radio"
+                            name="payment-method"
+                            value="open_bill"
+                            checked={method === 'open_bill'}
+                            onChange={() => setMethod('open_bill')}
+                          />
+                          <span className="payment-method-name">
+                            <Localized id="payment-open-bill"><span>Open Bill</span></Localized>
+                          </span>
+                        </label>
+                      </>
+                    )}
                   </div>
                 </fieldset>
 
@@ -1923,379 +1649,78 @@ export default function PaymentModal({
                 )}
 
                 {method === 'cash' && (
-                  <div className="payment-cash-section">
-                    <div className="payment-tendered-label">
-                      <Localized id="payment-amount-tendered">
-                        <span>Amount Tendered</span>
-                      </Localized>
-                        <Localized id="payment-tendered-input" attrs={{ 'aria-label': true, placeholder: true }}>
-                        <input
-                          type="text"
-                          className="payment-tendered-input"
-                          inputMode="decimal"
-                          value={tendered}
-                          onChange={(e) => setTendered(e.target.value)}
-                        />
-                        </Localized>
-                    </div>
-
-                    <div className="payment-quick-cash">
-                      {(tenderPresets ?? [5000, 10000, 20000, 50000, 100000]).map((amount) => {
-                        // Presets are major-unit denominations (Rp 5.000 / $5).
-                        // Use the currency's minor-unit exponent so the quick
-                        // buttons stay consistent with tenderedMinor's parse.
-                        const exp = minorUnitExponent(total.currency);
-                        const totalMajor = Number(total.minor_units) / 10 ** exp;
-                        const quickVal = Math.ceil(totalMajor / amount) * amount;
-                        return (
-                          <button
-                            key={amount}
-                            type="button"
-                            className="payment-quick-btn"
-                            aria-label={l10n.getString('payment-quick-tender-aria', { amount: quickVal.toFixed(exp) }, 'Tender')}
-                            onClick={() => setTendered(quickVal.toFixed(exp))}
-                          >
-                            {total.currency} {quickVal.toLocaleString('id-ID')}
-                          </button>
-                        );
-                      })}
-                      <Localized id="payment-tender-exact-aria" attrs={{ 'aria-label': true }}>
-                      <button
-                        type="button"
-                        className="payment-quick-btn"
-                        onClick={() => {
-                          const exp = minorUnitExponent(total.currency);
-                          setTendered((Number(total.minor_units) / 10 ** exp).toFixed(exp));
-                        }}
-                      >
-                        <Localized id="payment-tender-exact">
-                          <span>Exact</span>
-                        </Localized>
-                      </button>
-                      </Localized>
-                    </div>
-
-                    {tendered.length > 0 && (
-                      <div className="payment-change-preview">
-                        <Localized id="payment-change">
-                          <span className="payment-change-label">Change</span>
-                        </Localized>
-                        <span
-                          className={`payment-change-amount ${!sufficient ? 'payment-change-insufficient' : ''}`}
-                        >
-                          {sufficient && change
-                            ? formatMoney(change)
-                            : l10n.getString('payment-insufficient')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  <CashTenderPanel
+                    tendered={tendered}
+                    onTenderedChange={setTendered}
+                    total={total}
+                    tenderPresets={tenderPresets}
+                    sufficient={sufficient}
+                    change={change}
+                    locale={locale}
+                  />
                 )}
 
-                {method === 'card' && !splitMode && edcOffered && (
-                  <div className="payment-edc-section">
-                    <Localized id="payment-edc-description">
-                      <p className="payment-edc-description">
-                        Charge the total on the connected card terminal — tap, insert or swipe.
-                      </p>
-                    </Localized>
-                    <button
-                      type="button"
-                      className="payment-edc-btn"
-                      aria-label={l10n.getString('payment-edc-pay')}
-                      onClick={handleTerminalPay}
-                      disabled={processing || edc !== null || autoQr !== null}
-                    >
-                      <Localized id="payment-edc-pay">
-                        <span>Pay on card terminal</span>
-                      </Localized>
-                    </button>
-                  </div>
+                {method === 'card' && !splitMode && (
+                  <CardTenderPanel
+                    terminalOffered={edcOffered}
+                    processing={processing}
+                    terminalPending={edc !== null}
+                    autoQrPending={autoQr !== null}
+                    onTerminalPay={handleTerminalPay}
+                  />
                 )}
 
-                {method === 'qris' &&
-                  (caps && !caps.supportsQris ? (
-                    // C2.2: QRIS setup gate (Free→Plus trigger) — show the
-                    // upgrade prompt instead of the QR generation UI.
-                    <div className="payment-qris-upgrade" role="note">
-                      <p>{l10n.getString('payment-qris-upgrade-required')}</p>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => openUpgradePricing(locale, 'plus')}
-                      >
-                        {l10n.getString('payment-qris-upgrade-cta')}
-                      </Button>
-                    </div>
-                  ) : (
-                  <div className="payment-qris-section">
-                    <Localized id="payment-qris-description">
-                      <p className="payment-qris-description">
-                        Generate a QRIS QR code for the customer to scan with their payment app.
-                      </p>
-                    </Localized>
-                    <button
-                      type="button"
-                      className="payment-qris-btn"
-                      aria-label={l10n.getString('payment-qris-pay')}
-                      onClick={handleQrPay}
-                      disabled={processing || autoQr !== null}
-                    >
-                      <Localized id="payment-qris-pay">
-                        <span>Pay with QR</span>
-                      </Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className="payment-qris-btn payment-qris-btn--dynamic"
-                      aria-label={l10n.getString('payment-qris-dynamic-pay')}
-                      onClick={handleDynamicQrPay}
-                      disabled={processing || autoQr !== null}
-                    >
-                      <Localized id="payment-qris-dynamic-pay">
-                        <span>Pay with dynamic QR</span>
-                      </Localized>
-                    </button>
-                  </div>
-                  ))}
+                {method === 'qris' && (
+                  <QrisTenderPanel
+                    qrisAllowed={!caps || caps.supportsQris}
+                    locale={locale}
+                    processing={processing}
+                    autoQrPending={autoQr !== null}
+                    onQrPay={handleQrPay}
+                    onDynamicQrPay={handleDynamicQrPay}
+                  />
+                )}
               </>
             )}
 
-            {splitMode && (
-              <div className="payment-split-section">
-                <div className="payment-split-header">
-                  <Localized id="payment-split-title">
-                    <span className="payment-section-title">Split Payments</span>
-                  </Localized>
-                  <div className="payment-split-actions">
-                    <button
-                      type="button"
-                      className="payment-split-btn"
-                      aria-label={l10n.getString('payment-split-evenly')}
-                      onClick={autoSplitEvenly}
-                    >
-                      <Localized id="payment-split-evenly">
-                        <span>Split Evenly</span>
-                      </Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className="payment-split-btn"
-                      aria-label={l10n.getString('payment-split-add')}
-                      onClick={addSplit}
-                    >
-                      <Localized id="payment-split-add">
-                        <span>+ Add Split</span>
-                      </Localized>
-                    </button>
-                  </div>
-                </div>
+            <SplitTenderRows
+              splitMode={splitMode}
+              splits={splits}
+              currency={total.currency}
+              remainingMinor={splitTotals.remaining}
+              onSplitModeChange={setSplitMode}
+              onAddSplit={addSplit}
+              onRemoveSplit={removeSplit}
+              onUpdateSplit={updateSplit}
+              onAutoSplitEvenly={autoSplitEvenly}
+            />
 
-                <div className="payment-split-rows">
-                  {splits.map((s) => (
-                    <div key={s.id} className="payment-split-row">
-                      <div className="payment-split-method-group">
-                        {(['cash', 'card'] as const).map((m) => (
-                          <label key={m} className="payment-split-radio-label">
-                            <input
-                              type="radio"
-                              name={`split-method-${s.id}`}
-                              value={m}
-                              checked={s.method === m}
-                              onChange={() => updateSplit(s.id, { method: m, otherLabel: '' })}
-                            />
-                            <span>{m === 'cash' ? l10n.getString('payment-split-method-cash') : l10n.getString('payment-split-method-card')}</span>
-                          </label>
-                        ))}
-                        <div className="payment-split-radio-label">
-                          <input
-                            type="radio"
-                            name={`split-method-${s.id}`}
-                            value="other"
-                            checked={s.method === 'other'}
-                            onChange={() => updateSplit(s.id, { method: 'other' })}
-                          />
-                            <Localized id="payment-split-other-placeholder" attrs={{ 'aria-label': true, placeholder: true }}>
-                            <input
-                              type="text"
-                              className="payment-split-other-input"
-                              value={s.otherLabel}
-                              onChange={(e) => updateSplit(s.id, { otherLabel: e.target.value })}
-                              disabled={s.method !== 'other'}
-                            />
-                            </Localized>
-                        </div>
-                      </div>
-                      <div className="payment-split-amount-group">
-                        <span className="payment-split-currency">{total.currency}</span>
-                          <Localized id="payment-split-amount-placeholder" attrs={{ placeholder: true, 'aria-label': true }}>
-                            <input
-                              type="text"
-                              className="payment-split-amount-input"
-                              inputMode="decimal"
-                              value={s.amountMinor}
-                              onChange={(e) => updateSplit(s.id, { amountMinor: e.target.value })}
-                            />
-                          </Localized>
-                      </div>
-                      <button
-                        type="button"
-                        className="payment-split-remove"
-                        aria-label={l10n.getString('payment-split-remove-aria')}
-                        onClick={() => removeSplit(s.id)}
-                        disabled={splits.length <= 1}
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  ))}
-                </div>
+            <PaymentModalCustomerBadge
+              customer={selectedCustomer}
+              onOpenSearch={() => setShowCustomerSearch(true)}
+              onRemove={() => notifyCustomerChange(null)}
+            />
 
-                <div className="payment-split-remaining">
-                  <Localized id="payment-split-remaining">
-                    <span className="payment-split-remaining-label">Remaining</span>
-                  </Localized>
-                  <span
-                    className={`payment-split-remaining-amount ${
-                      splitTotals.remaining !== 0n ? 'payment-split-remaining-positive' : ''
-                    }`}
-                  >
-                    {formatMoney({
-                      minor_units: Number(splitTotals.remaining),
-                      currency: total.currency,
-                    } as Money)}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="payment-split-toggle">
-              <label className="payment-split-toggle-label" htmlFor="payment-split-toggle-cb">
-                <input
-                  id="payment-split-toggle-cb"
-                  type="checkbox"
-                  checked={splitMode}
-                  onChange={(e) => setSplitMode(e.target.checked)}
-                />
-                {l10n.getString('payment-split-toggle')}
-              </label>
-            </div>
-
-            <div className="payment-customer-section">
-              {selectedCustomer ? (
-                <div className="payment-customer-badge">
-                  <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
-                    <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
-                  </svg>
-                  <span className="payment-customer-name">{selectedCustomer.name}</span>
-                  <Localized id="payment-customer-change">
-                    <button
-                      type="button"
-                      className="payment-customer-change"
-                      onClick={() => setShowCustomerSearch(true)}
-                    >
-                      <span>Change</span>
-                    </button>
-                  </Localized>
-                  <button
-                    type="button"
-                    className="payment-customer-remove"
-                    onClick={() => notifyCustomerChange(null)}
-                    aria-label={l10n.getString('payment-customer-remove-aria', null, 'Remove customer')}
-                  >
-                    &times;
-                  </button>
-                </div>
-              ) : (
-                <Localized id="payment-customer-select">
-                  <button
-                    type="button"
-                    className="payment-customer-select-btn"
-                    onClick={() => setShowCustomerSearch(true)}
-                  >
-                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
-                      <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 1114 0H3z" />
-                    </svg>
-                    <span>Select Customer</span>
-                  </button>
-                </Localized>
-              )}
-            </div>
-
-            {isEnabled(FEATURES.LOYALTY_PROGRAM) && loyaltyAccount && (
-              <div className="payment-loyalty-section">
-                <div className="payment-loyalty-balance">
-                  <span className="payment-loyalty-label">
-                    {requiredLocalized(l10n, 'payment-loyalty-points-label')}: {loyaltyAccount.account.points}
-                  </span>
-                  <span className="payment-loyalty-value">
-                    {pointsWorthMinor !== null
-                      ? `(${formatMoney({ minor_units: pointsWorthMinor, currency: total.currency } as Money)})`
-                      : '…'}
-                  </span>
-                </div>
-                {loyaltyAccount.account.points > 0 && !redeemPoints && (
-                  <Localized id="payment-loyalty-use-points">
-                    <button
-                      type="button"
-                      className="payment-loyalty-redeem-btn"
-                      onClick={() => {
-                        setRedeemPoints(true);
-                        setPointsToRedeem(loyaltyAccount.account.points);
-                      }}
-                    >
-                      <span>Use Points</span>
-                    </button>
-                  </Localized>
-                )}
-                {redeemPoints && (
-                  <div className="payment-loyalty-active">
-                    <div className="payment-loyalty-input-row">
-                      <Localized id="payment-loyalty-points-label"><span className="payment-loyalty-input-label">Points</span></Localized>
-                      <input
-                        type="number"
-                        className="payment-loyalty-input"
-                        value={pointsToRedeem}
-                        onChange={(e) => {
-                          // Whole number only — ignore fractional in-progress input
-                          // instead of silently truncating it via parseInt.
-                          const v = Number(e.target.value);
-                          if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                            setPointsToRedeem(e.target.value === '' ? 0 : v);
-                          }
-                        }}
-                        min={0}
-                        max={loyaltyAccount.account.points}
-                        aria-label={l10n.getString('payment-loyalty-points-aria')}
-                      />
-                      <span className="payment-loyalty-input-hint">
-                        / {loyaltyAccount.account.points}
-                      </span>
-                    </div>
-                    <span className="payment-loyalty-discount-label">
-                      <Localized id="payment-loyalty-discount-label" vars={{ amount: formatMoney({
-                        minor_units: Number(loyaltyDiscount),
-                        currency: total.currency,
-                      } as Money) }}>
-                        <span>{'Discount: -{ $amount }'}</span>
-                      </Localized>
-                    </span>
-                    <Localized id="payment-cancel">
-                      <button
-                        type="button"
-                        className="payment-loyalty-cancel-btn"
-                        onClick={() => {
-                          setRedeemPoints(false);
-                          setPointsToRedeem(0);
-                          setLoyaltyDiscount(0n);
-                        }}
-                      >
-                        <span>Cancel</span>
-                      </button>
-                    </Localized>
-                  </div>
-                )}
-              </div>
+            {loyaltyLicensed && loyaltyAccount && (
+              <LoyaltyTenderPanel
+                loyaltyOffered={loyaltyLicensed && !!loyaltyAccount}
+                points={loyaltyAccount.account.points}
+                pointsWorthMinor={pointsWorthMinor}
+                currency={total.currency}
+                redeemPoints={redeemPoints}
+                pointsToRedeem={pointsToRedeem}
+                loyaltyDiscount={loyaltyDiscount}
+                onRedeemStart={() => {
+                  setRedeemPoints(true);
+                  setPointsToRedeem(loyaltyAccount.account.points);
+                }}
+                onPointsChange={setPointsToRedeem}
+                onRedeemCancel={() => {
+                  setRedeemPoints(false);
+                  setPointsToRedeem(0);
+                  setLoyaltyDiscount(0n);
+                }}
+              />
             )}
 
             {paymentError && (

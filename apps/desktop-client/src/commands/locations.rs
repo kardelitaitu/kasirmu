@@ -20,17 +20,6 @@ use crate::state::AppState;
 
 pub use oz_bridge::locations::{CreateLocationArgs, LocationProfileDto, UpdateLocationArgs};
 
-/// Get the primary location profile.
-#[tauri::command]
-pub async fn get_primary_location(
-    state: State<'_, AppState>,
-) -> Result<Option<LocationProfileDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::locations::get_primary_location(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
 /// List location profiles for the session's tenant (ADR #7).
 #[tauri::command]
 pub async fn list_locations_scoped(

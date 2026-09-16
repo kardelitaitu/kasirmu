@@ -36,14 +36,14 @@ fn export_refuses_an_empty_password() {
     // everything needed to derive the key.
     //
     // Scope, checked rather than assumed: the desktop UI DOES guard this
-    // (DataManagementScreen.tsx:280 requires >= 8 chars, plus a confirm
+    // (the data-management screen requires >= 8 chars, plus a confirm
     // field), so an operator clicking through Export cannot produce such
     // a file. What is missing is the same rule one layer down:
     // `oz-cli export-ozpkg --password ""` passes clap (the arg is
     // required to be PRESENT, not non-empty) and reaches export_ozpkg
     // unchanged, and any future caller inherits the trap. A
-    // crypto-critical precondition enforced only in a React component is
-    // enforced in the wrong place.
+    // crypto-critical precondition enforced only in one screen's validation
+    // is enforced in the wrong place.
     // `.expect_err(..)` rather than `expect_err(..)`: on failure the
     // latter dumps the whole exported Vec<u8> into the log, which is both
     // unreadable and a plaintext header (salt, nonce, store name) sitting

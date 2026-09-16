@@ -141,7 +141,7 @@ pub fn image_dir_from_env() -> std::path::PathBuf {
 /// listed so the unified cloud server's `/api/health` answers the activation
 /// screen's direct webview fetch on every OS.
 pub const DEFAULT_CORS_ORIGINS: [&str; 4] = [
-    "https://ozpos.my.id",
+    "https://kasir.mu",
     "http://localhost:4321",
     "tauri://localhost",
     "http://tauri.localhost",

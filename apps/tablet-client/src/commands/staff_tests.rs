@@ -1,4 +1,7 @@
 use super::*;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::commands::picker_ticket;
 
 // ── StaffMemberDto ──────────────────────────────────────────────────
 
@@ -81,58 +84,6 @@ fn role_dto_serialize() {
     // them from the resolver predicate rather than derive them from rows.
     assert_eq!(json["holder_count"], 0);
     assert_eq!(json["grant_count"], 0);
-}
-
-// ── CreateStaffArgs ─────────────────────────────────────────────────
-
-#[test]
-fn create_staff_args_deserialize() {
-    let json = r##"{"username":"jdoe","pin":"1234","display_name":"John Doe","role_id":"r1","caller_user_id":"admin1"}"##;
-    let args: CreateStaffArgs = serde_json::from_str(json).unwrap();
-    assert_eq!(args.username, "jdoe");
-    assert_eq!(args.pin, "1234");
-    assert_eq!(args.display_name, "John Doe");
-    assert_eq!(args.role_id, "r1");
-    assert_eq!(args.caller_user_id, "admin1");
-}
-
-#[test]
-fn create_staff_args_debug() {
-    let args = CreateStaffArgs {
-        username: "u".into(),
-        pin: "0000".into(),
-        display_name: "D".into(),
-        role_id: "r".into(),
-        caller_user_id: "c".into(),
-    };
-    let d = format!("{args:?}");
-    assert!(d.contains("u"));
-    assert!(d.contains("r"));
-}
-
-// ── UpdateStaffArgs ─────────────────────────────────────────────────
-
-#[test]
-fn update_staff_args_deserialize() {
-    let json = r##"{"id":"u1","username":"jdoe2","display_name":"John D","role_id":"r2","is_active":false,"caller_user_id":"admin1"}"##;
-    let args: UpdateStaffArgs = serde_json::from_str(json).unwrap();
-    assert_eq!(args.id, "u1");
-    assert!(!args.is_active);
-    assert_eq!(args.caller_user_id, "admin1");
-}
-
-#[test]
-fn update_staff_args_debug() {
-    let args = UpdateStaffArgs {
-        id: "x".into(),
-        username: "y".into(),
-        display_name: "z".into(),
-        role_id: "r".into(),
-        is_active: true,
-        caller_user_id: "c".into(),
-    };
-    let d = format!("{args:?}");
-    assert!(d.contains("z"));
 }
 
 // ── BootstrapOwnerArgs / BootstrapOwnerResult ────────────────────────

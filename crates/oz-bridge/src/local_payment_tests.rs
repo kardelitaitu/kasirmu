@@ -194,7 +194,7 @@ async fn denies_staff_without_settings_edit() {
 fn rail_args_accept_the_snake_case_wire_the_ui_sends() {
     // The regression this closes (2026-09-13): the DTO carried
     // `rename_all = "camelCase"` from slice 6, but the only caller —
-    // LocalPaymentSettingsCard.tsx handleSave — has always sent
+    // the local-payment settings card's save handler — has always sent
     // snake_case (`rail_code`, `is_enabled`, verified back to c549f7e5ab).
     // Tauri does not case-fold, so the real save path failed with
     // `missing field 'railCode'` on every submission, on desktop AND

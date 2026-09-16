@@ -38,6 +38,18 @@ const ADDITIONAL_TSX_FILES = [
   'components/CartFooterTotals.tsx',
   'components/CartActionBar.tsx',
   'components/CartPanel.tsx',
+  // The three SHIFT modals (close-shift confirm, close-shift summary,
+  // open-shift), moved out of PosScreen.tsx in the same byte-for-byte way.
+  // Their classes live on in PosScreen.css, so without this entry the
+  // reachability check below would read all 25 pos-close-shift-* rules as
+  // dead the moment the markup left the screen file.
+  'components/ShiftModals.tsx',
+  // The last two inline modals (open-bill name input, open-bills list), moved
+  // the same way. Their pos-hold-* / pos-held-list-* / pos-held-item-* rules
+  // stay in PosScreen.css, and this file is the only .tsx that still names
+  // them, so the entry is what keeps all 21 reachable now that the markup has
+  // left the screen file.
+  'components/OpenBillModals.tsx',
 ];
 
 /**
@@ -113,16 +125,37 @@ describe('PosScreen CSS class integrity', () => {
 
   const CARTS_DYNAMIC_PREFIXES: string[] = ['pos-cart-line-wrap--'];
 
+  // Exact-or-boundary, the convention scripts/verify-ftl-orphans.py:237 encodes
+  // (n == p or n.startswith(p + '-')). A prefix that already ends in a delimiter
+  // -- every entry in this ledger -- has no character left to demand, so its
+  // boundary IS the prefix; anything shorter or longer without one is not covered.
+  function cartsPrefixCovers(name: string, p: string): boolean {
+    if (name === p) return true;
+    if (name.startsWith(p + '-')) return true;
+    return p.endsWith('-') && name.startsWith(p) && name.length > p.length;
+  }
+
   it('every className defined in CSS is reachable from PosScreen.tsx (no dead classes)', () => {
     const dead: string[] = [];
+    // The waiver used to be mute: a name excused here vanished from a census whose
+    // entire job is to name things. This is the sibling file's credit census
+    // (screenExtraction :1767-1771) lifted to carts -- WHAT was credited, TO WHICH
+    // prefix, BY NAME -- so an unexplained longer sibling prints instead of
+    // disappearing. The waiver list itself is unchanged: nothing was added to it.
+    const credited: Array<[string, string]> = [];
     for (const [cls] of fileIndex) {
-      if (
-        !used.has(cls) &&
-        !CARTS_DYNAMIC_PREFIXES.some((p) => cls.startsWith(p))
-      ) {
-        dead.push(cls);
+      if (used.has(cls)) continue;
+      const by = CARTS_DYNAMIC_PREFIXES.find((p) => cartsPrefixCovers(cls, p));
+      if (by) {
+        credited.push([cls, by]);
+        continue;
       }
+      dead.push(cls);
     }
+    console.log(
+      `carts dead-class census: ${fileIndex.size} defined name(s), ${credited.length} credited away by a CARTS_DYNAMIC_PREFIXES entry, ${dead.length} dead`,
+    );
+    for (const [cls, by] of credited.sort()) console.log(`  credited: ${cls} -> prefix ${by}`);
     // Soft assertion — logs a warning rather than hard-failing,
     // because some classes may be shared with other components.
     if (dead.length > 0) {
@@ -132,5 +165,43 @@ describe('PosScreen CSS class integrity', () => {
       );
       expect.soft(dead, `Dead classes: ${dead.join(', ')}`).toEqual([]);
     }
+  });
+});
+
+// ── Empty-cart geometry ───────────────────────────────────────────
+//
+// The one cart fact every other suite in this file cannot see: a rule's
+// DECLARATIONS. Class integrity proves `.pos-cart-empty-msg` has a rule; the
+// five sheet walkers prove it uses tokens. Neither notices if the declaration
+// that centres the empty state is dropped, because no jsdom test lays out CSS
+// and no linter reads a stylesheet. This is the pin, off the base rule only —
+// the reduced-motion block re-declares the same selector further down to add an
+// animation, and first-match is the base rule.
+
+describe('Empty cart is centered in the lines area', () => {
+  const cartCss = fs.readFileSync(path.join(SALES_DIR, 'CartPanel.css'), 'utf8');
+
+  function baseRule(selector: string): string {
+    const match = new RegExp(`\\.${selector}\\s*\{([^}]*)\}`).exec(cartCss);
+    const body = match?.[1];
+    // Throws before the caller can read an empty body as "the rule has no
+    // declarations", which would turn a missing rule into a false green.
+    expect(body, `no base rule for .${selector} in CartPanel.css`).toBeDefined();
+    return body ?? '';
+  }
+
+  it('the empty state fills the growable area it is centered in', () => {
+    const lines = baseRule('pos-cart-lines');
+    const empty = baseRule('pos-cart-empty-msg');
+
+    // The area has to be the one that grows, or "fill it" means nothing.
+    expect(lines).toMatch(/flex:\s*1/);
+    // And the stack has to be told to fill it: `justify-content: center` alone
+    // only centres inside a box the height of its own content, which is how the
+    // empty state ended up parked under the header instead of mid-panel.
+    expect(empty).toMatch(/min-height:\s*100%/);
+    expect(empty).toMatch(/flex-direction:\s*column/);
+    expect(empty).toMatch(/justify-content:\s*center/);
+    expect(empty).toMatch(/align-items:\s*center/);
   });
 });

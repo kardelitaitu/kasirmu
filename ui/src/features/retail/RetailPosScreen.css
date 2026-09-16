@@ -52,6 +52,17 @@
   letter-spacing: 0.5px;
 }
 
+/* The branch suffix (RetailHeader.tsx:86) is the quietest of the three header
+   lines and it carries its own · separator, so it takes a tertiary
+   foreground rather than the .retail-header-address opacity trick (:55-58, this
+   sheet), which would fade the separator with it. Both declarations copied from
+   .retail-cart-line-sku in THIS sheet (:790-793) - the same secondary-text pair,
+   no new value, no new token. */
+.retail-header-branch {
+  font-size: var(--text-xs);
+  color: var(--color-fg-tertiary);
+}
+
 .retail-header-address {
   font-size: var(--text-xs);
   opacity: 0.8;
@@ -455,7 +466,7 @@
   border-bottom: 1px solid var(--color-border-subtle);
   vertical-align: middle;
   height: 2.25rem;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-product-row {
@@ -493,14 +504,14 @@
   color: var(--color-fg-secondary);
   white-space: nowrap;
   width: 140px;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-name {
   font-weight: var(--font-weight-semibold);
   font-size: var(--text-base);
   color: var(--color-fg-primary);
-  line-height: 1.25;
+  line-height: var(--leading-tight);
   text-align: left !important;
 }
 
@@ -520,7 +531,7 @@
   width: 100%;
   height: 2.25rem;
   min-height: 0;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-name .retail-product-btn:hover:not(:disabled) {
@@ -530,7 +541,7 @@
 .retail-col-stock {
   width: 100px;
   text-align: center;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-price {
@@ -541,13 +552,13 @@
   color: var(--color-accent);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-action {
   width: 90px;
   text-align: center;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-action-group {
@@ -594,6 +605,40 @@
 .retail-table-edit-btn:hover {
   background: var(--color-border-strong);
   color: var(--color-accent);
+}
+
+/* The weigh action is the THIRD button in the same tile-overlay row -
+   .retail-table-add-btn, then .retail-table-edit-btn, then this one
+   (RetailProductGrid.tsx:351-360, gated by scaleEnabled, holding one glyph). It is
+   the same object as its neighbour, so it gets that neighbour's rule WHOLE: all 12
+   declarations copied verbatim from .retail-table-edit-btn (this sheet :588-603) plus
+   both of its :hover declarations (:605-608). Nothing is invented - every value is a
+   copy, no hex, no rgba, and no font-size (the glyph inherits, so nothing on a
+   price-bearing surface is retuned). Colour tokens confirmed in all three theme
+   blocks of tokens.css: --color-border-hover :82/:393/:537, --color-border-strong
+   :84/:395/:539, --color-fg-primary and --color-accent 3x each; --radius-sm and the
+   --duration-150/--ease-out timing pair are :root-only tokens, one value for every
+   theme by design. */
+.retail-product-weigh-btn {
+  padding: 0;                                   /* from :589 */
+  width: 1.75rem;                               /* from :590 */
+  height: 1.5rem;                               /* from :591 */
+  display: inline-flex;                         /* from :592 */
+  align-items: center;                          /* from :593 */
+  justify-content: center;                      /* from :594 */
+  background: var(--color-border-hover);        /* from :595 */
+  color: var(--color-fg-primary);               /* from :596 */
+  border: 1px solid var(--color-border-strong); /* from :597 */
+  border-radius: var(--radius-sm);              /* from :598 */
+  cursor: pointer;                              /* from :599 */
+  transition:                                   /* from :600-602 */
+    background-color var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
+}
+
+.retail-product-weigh-btn:hover {
+  background: var(--color-border-strong);       /* from :606 */
+  color: var(--color-accent);                   /* from :607 */
 }
 
 .retail-table-add-btn:hover:not(:disabled) {
@@ -883,6 +928,19 @@
   justify-content: space-between;
   font-size: var(--text-sm);
   padding: var(--space-0_5) 0;
+}
+
+/* Caution strip on the tax-estimate row (RetailCartPanel.tsx:386). It is ALSO a
+   .retail-total-row (:881-886, this sheet), which already supplies display,
+   justify-content, font-size and padding - so only the colour pair is added
+   here, background + foreground from one family, the pattern copied from
+   .retail-load-error (:1446-1454, this sheet: --color-danger-bg + --color-danger).
+   Both tokens exist in all three theme blocks of tokens.css (:121-122 :root,
+   :430-431 light, :569-570 dark). Placed before --grand, matching document
+   order (the banner renders above the grand total). */
+.retail-tax-estimate-banner {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .retail-total-row--grand {
@@ -1464,6 +1522,45 @@
   flex: 1;
 }
 
+/* Retry inside the caution banner (RetailCartPanel.tsx:388) does the same job as
+   .retail-load-error-retry - re-run a failed computation from a status strip - so it
+   takes that rule whole: 11 declarations from :1491-1503, both :hover declarations
+   from :1505-1507, both :focus-visible declarations from :1509-1512. Ten of the
+   fifteen are verbatim copies. Four are the SAME declarations re-pointed from the
+   danger family to the warning family, because the banner this button sits in is a
+   CAUTION strip (taxSeverity is any non-'ok' value - warn/unknown, never 'error',
+   per RetailCartPanel.tsx:96 and :385) and its own background came from
+   --color-warning-bg; a filled red button on an amber field would read as two
+   severities at once. The pairing rule (border + background from one token, text
+   from that family's -fg) is itself copied from :1496-1498. --color-warning is
+   tokens.css :121/:430/:569 and --color-warning-fg :124/:433/:572, i.e. both present
+   in all three theme blocks; --radius-sm, --space-0_5, --space-2, --text-xs,
+   --font-weight-bold, --duration-150 and --ease-out are :root-only by design.
+   font-size stays var(--text-xs) as in the twin and lands on the button's word
+   label only (a <Localized id="retry"> child) - never on the estimate amount. */
+.retail-tax-estimate-retry {
+  padding: var(--space-0_5) var(--space-2);     /* from :1492 */
+  font-size: var(--text-xs);                    /* from :1493 */
+  font-weight: var(--font-weight-bold);         /* from :1494 */
+  font-family: inherit;                         /* from :1495 */
+  border: 1px solid var(--color-warning);       /* shape from :1496, family -> warning */
+  background: var(--color-warning);             /* shape from :1497, family -> warning */
+  color: var(--color-warning-fg);               /* shape from :1498, family -> warning */
+  border-radius: var(--radius-sm);              /* from :1499 */
+  cursor: pointer;                              /* from :1500 */
+  white-space: nowrap;                          /* from :1501 */
+  transition: filter var(--duration-150) var(--ease-out); /* from :1502 */
+}
+
+.retail-tax-estimate-retry:hover {
+  filter: brightness(1.15);                     /* from :1506 */
+}
+
+.retail-tax-estimate-retry:focus-visible {
+  outline: 2px solid var(--color-warning);      /* shape from :1510, family -> warning */
+  outline-offset: 2px;                          /* from :1511 */
+}
+
 .retail-load-error-retry {
   padding: var(--space-0_5) var(--space-2);
   font-size: var(--text-xs);
@@ -2020,7 +2117,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-0_25);
+  gap: var(--space-0_5);
   text-align: center;
 }
 
@@ -3013,7 +3110,7 @@
   color: var(--color-fg-secondary);
   white-space: nowrap;
   width: 120px;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-category {
@@ -3021,7 +3118,7 @@
   color: var(--color-fg-secondary);
   white-space: nowrap;
   width: 130px;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-brand {
@@ -3029,7 +3126,7 @@
   color: var(--color-fg-secondary);
   white-space: nowrap;
   width: 110px;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-rack {
@@ -3038,7 +3135,7 @@
   color: var(--color-fg-secondary);
   white-space: nowrap;
   width: 90px;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 .retail-col-notes {
@@ -3048,7 +3145,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
 }
 
 /* ── ADR #37: popularity sort chip ─────────────────────────────── */
@@ -3281,6 +3378,51 @@
   /* ProductThumb renders a fixed-size tile; nothing extra needed here. */
 }
 
+/* Both rules are a MOVE, not a design: every declaration below was the inline style
+   object on the element that names it, at RetailProductGrid.tsx:398 (the name) and
+   :399 (the price), in the virtualised ProductTileCell. Until now the two class names
+   were defined in zero stylesheets (grep -rn 'retail-tile-name|retail-tile-price'
+   --include=*.css over ui/src -> 0 hits) and the markup styled itself; the inline styles
+   also meant the cascade beat any sheet rule, so the sheet half of this commit alone
+   would have changed nothing. The parent button's own inline block at :395 - gap 4,
+   padding 8, width/height, border, background - is deliberately untouched and out of
+   this box, which is why no gap or margin appears here.
+
+   Values: fontSize and color were already token references in the markup and port as-is
+   (--text-xs is tokens.css:153, 0.625rem; --color-fg-secondary is tokens.css:70/:381/
+   :525, so it resolves in :root, light AND dark). The bare 600 became
+   var(--font-weight-semibold) - tokens.css:167 defines that step as exactly 600, so it
+   is the same weight, and the token is :root-only by design, one value per theme, like
+   every step on the weight ladder (normal 400, medium 500, semibold 600, bold 700 at
+   :165-168). The bare 1.2 stayed 1.2 and the token it refuses is named: --leading-tight
+   is 1.25 (tokens.css:170), not 1.2, so taking it would widen every line box of a
+   two-line product name by 4% and move where the clamp cuts the name on the busiest
+   surface in the app. That is a render change, and this commit is not allowed to make
+   one. The literal is also not unprecedented: 11 declarations of exactly
+   'line-height: 1.2' already sit in feature sheets. No hex, no rgba, no new step. */
+.retail-tile-name {
+  font-size: var(--text-xs);                                /* RetailProductGrid.tsx:398 */
+  font-weight: var(--font-weight-semibold);                 /* RetailProductGrid.tsx:398 (600) */
+  line-height: 1.2;                                         /* RetailProductGrid.tsx:398 */
+  overflow: hidden;                                         /* RetailProductGrid.tsx:398 */
+  text-overflow: ellipsis;                                  /* RetailProductGrid.tsx:398 */
+  display: -webkit-box;                                     /* RetailProductGrid.tsx:398 */
+  -webkit-line-clamp: 2;                                    /* RetailProductGrid.tsx:398 */
+  -webkit-box-orient: vertical;                             /* RetailProductGrid.tsx:398 */
+}
+
+/* Two declarations, both from RetailProductGrid.tsx:399. This is the one judgement in
+   the commit that a reviewer should look at: the price renders an AMOUNT and the rule for
+   this box was that an amount does not get a font-size from me. It already had one, in
+   the markup, from the author who put it there - deleting it is not a neutral act either,
+   because the element would then inherit the tile's size and the price would visibly grow.
+   So it moves unchanged rather than being removed or re-sized. If the owner decides a
+   price must not carry its own size, the declaration to delete is the next line. */
+.retail-tile-price {
+  font-size: var(--text-xs);                                /* RetailProductGrid.tsx:399 */
+  color: var(--color-fg-secondary);                         /* RetailProductGrid.tsx:399 */
+}
+
 /* ── Product image editor (spec 0046b §3.2–3.3) ─────────────────── */
 .retail-edit-images {
   border: 1px solid var(--color-border-subtle);
@@ -3293,7 +3435,7 @@
 }
 
 .retail-edit-image-error {
-  color: var(--color-danger, #c0392b);
+  color: var(--color-danger);
   font-size: var(--text-xs);
 }
 
@@ -3341,11 +3483,11 @@
 }
 
 .retail-edit-image-btn--danger {
-  color: var(--color-danger, #c0392b);
+  color: var(--color-danger);
 }
 
 .retail-edit-image-btn--danger:hover:not(:disabled) {
-  border-color: var(--color-danger, #c0392b);
+  border-color: var(--color-danger);
 }
 
 .retail-edit-image-alternatives {
@@ -3375,4 +3517,109 @@
 .retail-edit-image-menu-note {
   font-size: var(--text-xs);
   color: var(--color-fg-tertiary);
+}
+
+/* ── Customer search panel (RetailModals.tsx:545-583) ──────────────────
+ * Nine class names the customer-search markup has always carried and that
+ * no sheet in ui/src defined -- verified by walking extractUsedClassNames
+ * over features/retail/*.tsx against extractClassSelectors over every .css
+ * under ui/src (41 names came back undefined tree-wide; these are the 11 in
+ * this family). Insertions only: nothing above this line was touched, and
+ * every rule lands at end-of-file so each base sits BEFORE its own modifier
+ * (--selected after .retail-customer-search-item), which is the same
+ * source-ordered-variant argument used at :1204-1207 for the --exiting
+ * blocks. Token vocabulary is copied, not invented: modal bg/border/fg from
+ * .retail-customer-modal (:1167-1173), --text-sm / font-family: inherit from
+ * .retail-search-input (:227-235), --color-fg-secondary from its ::placeholder
+ * (:238), --font-weight-semibold from .retail-*-modal label (:1290), --text-xs
+ * + a tertiary/secondary fg from .retail-edit-image-menu-note above, and the
+ * selected tint is the .retail-view-toggle-btn--active recipe (:3263) with the
+ * modal surface in place of --color-bg-elevated. No amount, quantity or tender
+ * node is touched: this panel renders customer names and phone numbers only,
+ * and nothing here changes font-size or alignment on any total. */
+.retail-customer-search-input {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--color-pos-modal-border);
+  border-radius: var(--radius-md);
+  background: var(--color-pos-modal-bg);
+  color: var(--color-pos-modal-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.retail-customer-search-input::placeholder {
+  color: var(--color-fg-secondary);
+}
+
+.retail-customer-search-list {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.retail-customer-search-loading,
+.retail-customer-search-empty {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+}
+
+.retail-customer-search-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-pos-modal-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Written after its base so the modifier wins on equal specificity. */
+.retail-customer-search-item--selected {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-pos-modal-bg));
+}
+
+.retail-customer-search-item-name {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-pos-modal-fg);
+}
+
+.retail-customer-search-item-detail {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+}
+
+.retail-customer-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.retail-customer-clear-btn,
+.retail-customer-close-btn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-pos-modal-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-pos-modal-fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* Focus ring copied from .retail-tile:focus-visible (:3271-3274). */
+.retail-customer-clear-btn:focus-visible,
+.retail-customer-close-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

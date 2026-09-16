@@ -6,7 +6,16 @@ import { requiredLocalized } from '@/frontend/shared';
 import { getKdsOrderLinesScoped, type KdsOrder, type KdsLineItem } from '@/api/kds';
 import { createCooldownWrapper } from '@/features/kds/hooks/useActionCooldown';
 import { contrastText } from '@/features/kds/kdsCardColors';
-import { ModifierBadge } from '@/features/kds/components/ModifierBadge';
+import { KdsTicketLineItem, itemDone } from '@/features/kds/components/KdsTicketLineItem';
+import { KdsTimerBadge } from '@/features/kds/components/KdsTimerBadge';
+
+// `itemDone` and `fmtDuration` relocated into KdsTicketLineItem with the JSX
+// that consumes them (Agent-2 plan, Phase 2.1, 2026-09-16). Re-exported here
+// so every shipped importer — KdsTicketCardItemDone.test.ts,
+// KdsTicketCardFmtDuration.test.ts, the card itself — keeps resolving the
+// names from this path; the definitions have exactly one home.
+export { fmtDuration } from '@/features/kds/components/KdsTicketLineItem';
+export { itemDone };
 import { canAdvanceKdsStatus } from '@/features/kds/kdsStatus';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 
@@ -53,16 +62,6 @@ const TAKEAWAY_ICON = (
     <path d="M16 10a4 4 0 0 1-8 0" />
   </svg>
 );
-
-/** Format duration in seconds as a human-readable string (e.g. "3m 12s", "1h 5m"). */
-export function fmtDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const min = Math.floor(seconds / 60);
-  const sec = seconds % 60;
-  if (min < 60) return sec ? `${min}m ${sec}s` : `${min}m`;
-  const h = Math.floor(min / 60);
-  return `${h}h ${min % 60}m`;
-}
 
 /** Course display order — items without a course map to "other" at the end. */
 const COURSE_ORDER = ['appetizer', 'main', 'side', 'dessert', 'beverage'] as const;
@@ -129,18 +128,6 @@ export function groupByCourse(items: KdsLineItem[]): { course: string | null; it
     ordered.push({ course, items: courseItems });
   }
   return ordered;
-}
-
-/**
- * An item is "done" when it has been served (or cancelled — off the board).
- *
- * Takes the structural minimum rather than a full KdsLineItem: the body reads exactly one
- * field, and the wider `Pick<...>` accepts every KdsLineItem unchanged while letting callers
- * (and tests) pass a fixture without inventing unrelated fields. This is a widening, not a
- * behaviour change -- both production call sites pass real items.
- */
-export function itemDone(item: Pick<KdsLineItem, 'item_status'>): boolean {
-  return item.item_status === 'served' || item.item_status === 'cancelled';
 }
 
 /** Next-action label key for the footer advance button, or null when terminal. */
@@ -357,12 +344,7 @@ export const KdsTicketCard = memo(function KdsTicketCard({
         </span>
         <span className="kds-card-header-right">
           <span className="kds-card-header-meta">
-            <span className={`kds-ticket-time kds-ticket-time--${level}`}>{display}</span>
-            {urgent && (
-              <span className="kds-ticket-urgent-badge">
-                <Localized id="kds-urgent-badge">URGENT</Localized>
-              </span>
-            )}
+            <KdsTimerBadge level={level} urgent={urgent} display={display} />
             <span className={`status status--${order.status}`}>
               {requiredLocalized(l10n, `kds-${order.status}`)}
             </span>
@@ -398,52 +380,15 @@ export const KdsTicketCard = memo(function KdsTicketCard({
                         </svg>
                       </span>
                     </button>
-                    {!catCollapsed && group.items.map((item) => {
-                      const done = itemDone(item);
-                      const canAdvanceItem = !done;
-                      return (
-                        <div className="kds-item" key={item.id}>
-                          <button
-                            className={`kds-item-row${done ? ' done' : ''}${canAdvanceItem ? ' kds-ticket-item-row--actionable' : ''}`}
-                            onClick={(e) => {
-                              if (canAdvanceItem && onAdvanceItem) {
-                                e.stopPropagation();
-                                createCooldownWrapper(() => onAdvanceItem(item), 200)();
-                              }
-                            }}
-                            onKeyDown={canAdvanceItem ? (e) => {
-                              // role="button" handles Enter natively via onClick.
-                              if (e.key === 'Enter') e.stopPropagation();
-                            } : undefined}
-                            aria-label={canAdvanceItem ? `${item.display_name} — ${requiredLocalized(l10n, `kds-item-status-${item.item_status}`)}` : undefined}
-                            data-testid={`kds-order-card-${order.display_number ?? order.id}-item-${item.id}`}
-                          >
-                            <span className="kds-item-row-inner">
-                              <span className="kds-item-left">
-                                <span className="kds-item-qty">{item.qty}×</span>
-                                <span className="kds-item-name">{item.display_name}</span>
-                              </span>
-                              <span className={`kds-ticket-item-status-dot kds-ticket-item-status-dot--${item.item_status}`} aria-hidden="true" />
-                              <span className="kds-ticket-item-status-label">
-                                {requiredLocalized(l10n, `kds-item-status-${item.item_status}`)}
-                              </span>
-                              {done && item.served_at && (
-                                <span className="kds-item-done-time" aria-hidden="true">
-                                  {fmtDuration(Math.floor((new Date(item.served_at).getTime() - new Date(order.received_at).getTime()) / 1000))}
-                                </span>
-                              )}
-                            </span>
-                            {item.modifiers.length > 0 && (
-                              <span className="kds-ticket-modifiers">
-                                {item.modifiers.map((mod, mi) => (
-                                  <ModifierBadge key={mi} modifier={mod} />
-                                ))}
-                              </span>
-                            )}
-                          </button>
-                        </div>
-                      );
-                    })}
+                    {!catCollapsed && group.items.map((item) => (
+                      <KdsTicketLineItem
+                        key={item.id}
+                        item={item}
+                        testIdBase={order.display_number ?? order.id}
+                        receivedAt={order.received_at}
+                        onAdvanceItem={onAdvanceItem}
+                      />
+                    ))}
                   </div>
                 );
               })

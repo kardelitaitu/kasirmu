@@ -36,7 +36,7 @@ pub mod sku;
 pub mod validation;
 
 pub use barcode::Barcode;
-pub use cart::{Cart, CartError, CartId, CartLine};
+pub use cart::{Cart, CartError, CartId, CartLine, normalize_course};
 pub use constants::{
     BASIS_POINTS_DENOMINATOR, DEFAULT_CURRENCY_CODE, MAX_DISCOUNT_PERCENT, MAX_NAME_LENGTH,
     MAX_SKU_LENGTH, PIN_MIN_LENGTH,

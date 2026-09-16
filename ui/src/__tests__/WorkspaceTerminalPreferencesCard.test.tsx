@@ -184,7 +184,10 @@ describe('TerminalPreferencesCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => {
-      expect(mocks.hw.save).toHaveBeenCalledWith('user-001');
+      // Asserted with NO arguments on purpose: `toHaveBeenCalledWith()` fails if the card hands
+      // anything to the save path, which is the point of T11 -- the renderer stopped naming the
+      // actor a permission check asks about. `toHaveBeenCalled()` would have passed either way.
+      expect(mocks.hw.save).toHaveBeenCalledWith();
       expect(onSaved).toHaveBeenCalled();
     });
   });

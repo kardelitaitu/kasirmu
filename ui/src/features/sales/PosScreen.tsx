@@ -1,10 +1,3 @@
-/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
-// The rule above flags the two overlays that keep a keydown handler
-// while being non-interactive by ARIA defaults: the close-shift and
-// open-shift confirmation dialogs (`<div role="dialog" onKeyDown>`).
-// Both are valid ARIA — the rule only catches the non-interactive
-// defaults. The cart panel that used to need this moved to its own
-// component, components/CartPanel.tsx, under its own directive.
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { useToast } from '@/frontend/shared/Toast';
 import { requiredLocalized } from '@/frontend/shared';
@@ -13,26 +6,28 @@ import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
 import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import RestaurantMenu from '@/features/restaurant/RestaurantMenu';
+import type { RestaurantSidebarActions } from '@/features/restaurant/components/MenuPreferencesMenu';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useFeatures } from '@/hooks/useFeatures';
+import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
 
-import WorkspaceSettingsModal from '@/features/settings/WorkspaceSettingsModal';
 import { formatMoney, type LineId, type Product, type Sku } from '@/types/domain';
 import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
 } from '@/api/sales';
-import { getReceiptSettingsScoped } from '@/api/settings';
+import { getReceiptSettingsScoped, getSettingScoped } from '@/api/settings';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
 import { lookupBundleBySku } from '@/api/bundles';
 import { expandBundleItems } from './bundleExpansion';
-import { CartTaxWatcher, IDLE_TAX_STATE } from './components/CartTaxWatcher';
+import { CartTaxWatcher, createIdleTaxState } from '@/features/pos/components/CartTaxWatcher';
 import { CartPanel } from './components/CartPanel';
-import { clampCartWidth, CART_WIDTH_DEFAULT } from './utils/cartCalculations';
+import type { CartPanelProps } from './components/CartPanel';
+import { CloseShiftConfirm, ShiftSummary, OpenShiftModal } from './components/ShiftModals';
+import { OpenBillInput, OpenBillsPanel } from './components/OpenBillModals';
 import type { BarcodeScannedPayload } from '@/api/hardware';
 import { usePosState } from './usePosState';
 import { useBarcodeScanner } from './useBarcodeScanner';
@@ -40,6 +35,8 @@ import { useCustomerDisplay } from './useCustomerDisplay';
 import { usePosShifts } from './hooks/usePosShifts';
 import { usePosHeldCarts } from './hooks/usePosHeldCarts';
 import { usePosCartActions } from './hooks/usePosCartActions';
+import { useCartKeyboardNav } from './hooks/useCartKeyboardNav';
+import { useCartResize } from './hooks/useCartResize';
 import PaymentModal from './PaymentModal';
 import PriceOverrideModal from './PriceOverrideModal';
 import PromotionsModal from './PromotionsModal';
@@ -62,7 +59,11 @@ import './CartPanelCourseBar.css';
  * desktop client. Rendered as a full-screen overlay above PosScreen;
  * the `onBack` callback returns to the main sales screen.
  */
-// SettingsSubScreen removed in Phase 6 (ADR #22) — replaced by WorkspaceSettingsModal.
+// SettingsSubScreen removed in Phase 6 (ADR #22) — superseded by the
+// WorkspaceSettingsModal that AppShell opens globally on F10 (AppShell.tsx),
+// which derives its card from the active workspace. This screen deliberately
+// does not host its own copy: a local instance would have to hardcode the
+// workspace type and would shadow the global shortcut.
 
 /**
  * POS sales screen — product lookup on the left, cart panel on the right.
@@ -100,6 +101,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     updateLinePrice,
     fireCourse,
     fireAllCourses,
+    assignCourse,
     setDiscount,
     setTipPercent,
     setServiceCharge,
@@ -168,7 +170,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
   const [showStockInquiry, setShowStockInquiry] = useState(false);
-  const [showWorkspaceSettings, setShowWorkspaceSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
@@ -176,21 +177,19 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
+  // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
+  // per-line course chip. Defaults to the workspace check alone until the
+  // setting loads, so a slow settings read never hides coursing that the
+  // workspace implies; an explicit "false" hides it.
+  const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
+  const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
 
-  // ── Cart panel resize state ─────────────────────────────────────────────
-  // Viewport-aware so the panel can grow on wide screens (up to half
-  // the viewport, capped at 1200 px) but stays ≥ 320 px for legibility.
-  const [cartWidth, setCartWidth] = useState(() => {
-    const saved = localStorage.getItem('pos-cart-width');
-    const parsed = saved ? parseInt(saved, 10) : NaN;
-    const initial =
-      Number.isFinite(parsed) && parsed > 0 ? parsed : CART_WIDTH_DEFAULT;
-    const viewportWidth =
-      typeof window !== 'undefined' ? window.innerWidth : CART_WIDTH_DEFAULT * 2;
-    return clampCartWidth(initial, viewportWidth);
-  });
-  const isResizing = useRef(false);
-  const posScreenRef = useRef<HTMLDivElement>(null);
+  // ── Cart panel resize ──────────────────────────────────
+  // Width state, the isResizing latch, both window listeners and the drag
+  // handle live in hooks/useCartResize. posScreenRef comes back from it because
+  // the drag maths is that ref's only reader - the shell still binds it to the
+  // root div below, and cartPanelRef stays here as a pure CartPanel prop.
+  const { cartWidth, startResize, posScreenRef } = useCartResize();
   // ── Cart-line DOM refs for keyboard navigation ─────────────────────────
   // Each registered DOM node is the `<div class="pos-cart-line">` element.
   // The handler reads/writes focus so ↑/↓/+/-/Del/Enter work without
@@ -205,53 +204,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     },
     [],
   );
-
-  const startResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, []);
-
-  useEffect(() => {
-    const stopResize = () => {
-      if (!isResizing.current) return;
-      isResizing.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current || !posScreenRef.current) return;
-      const rect = posScreenRef.current.getBoundingClientRect();
-      const clamped = clampCartWidth(rect.right - e.clientX, window.innerWidth);
-      setCartWidth(clamped);
-      // Persist the clamped value so the next launch on this
-      // display picks up the most recent *applied* width.
-      localStorage.setItem('pos-cart-width', String(clamped));
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', stopResize);
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', stopResize);
-      stopResize();
-    };
-  }, []);
-
-  // Re-clamp the cart width whenever the window is resized —
-  // important when the cashier drags the window to a different
-  // monitor, or a docked laptop reconnects to its 4K display.
-  useEffect(() => {
-    const onResize = () => {
-      setCartWidth((w) => {
-        const clamped = clampCartWidth(w, window.innerWidth);
-        localStorage.setItem('pos-cart-width', String(clamped));
-        return clamped;
-      });
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const {
     activeShift,
@@ -450,7 +402,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   // gate (D64 b): a stale estimate is displayed but never added to the
   // amount due. Zero on an empty cart is a genuinely computed zero.
   const [taxRetryNonce, setTaxRetryNonce] = useState(0);
-  const [taxState, setTaxState] = useState<CartTaxCacheState>(IDLE_TAX_STATE);
+  // Seeded through the factory, passed as React's lazy initializer so this
+  // mount builds its OWN idle object (one per mount, none per re-render).
+  // The module-level IDLE_TAX_STATE would be the same reference here as in
+  // RetailPosScreen, so one non-copying updater would corrupt both screens.
+  const [taxState, setTaxState] = useState<CartTaxCacheState>(createIdleTaxState);
   const taxLines: CartLineTaxInput[] = lines.map((l) => ({
     sku: String(l.sku),
     qty: l.qty,
@@ -514,92 +470,18 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     logout();
   }, [lines, discountPercent, discountLabel, appliedPromotions, tipPercent, serviceChargeEnabled, serviceChargePercent, logout]);
 
-  // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ────────
-  // The cart panel handles keys when its focus, or any descendant
-  // cart line's focus, is active. Inputs, textareas, and content-
-  // editable elements are excluded so text-entry UX is preserved.
-  const focusLineByIndex = useCallback((idx: number) => {
-    if (lines.length === 0) return;
-    const clamped = Math.max(0, Math.min(lines.length - 1, idx));
-    cartLineRefs.current.get(lines[clamped]!.id)?.focus();
-  }, [lines]);
-
-  const handleCartPanelKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLElement>) => {
-      const tgt = e.target as HTMLElement;
-      if (
-        tgt instanceof HTMLInputElement ||
-        tgt instanceof HTMLTextAreaElement ||
-        tgt.isContentEditable
-      ) {
-        return;
-      }
-      // Resolve which cart line emitted the key (allow bubble from a
-      // child button inside the line — the line has data-line-id).
-      const lineEl = tgt.closest('[data-line-id]') as HTMLElement | null;
-      const focusedLineId = lineEl?.dataset['lineId'] as LineId | undefined;
-      const focusedIdx = focusedLineId
-        ? lines.findIndex((l) => l.id === focusedLineId)
-        : -1;
-
-      switch (e.key) {
-        case 'ArrowDown':
-          if (lines.length === 0) return;
-          e.preventDefault();
-          focusLineByIndex(focusedIdx < 0 ? 0 : focusedIdx + 1);
-          return;
-        case 'ArrowUp':
-          if (lines.length === 0) return;
-          e.preventDefault();
-          focusLineByIndex(focusedIdx < 0 ? lines.length - 1 : focusedIdx - 1);
-          return;
-        case '+':
-        case '=':
-          if (focusedLineId == null) return;
-          {
-            const l = lines.find((x) => x.id === focusedLineId);
-            if (!l) return;
-            e.preventDefault();
-            handleIncreaseQty(l);
-          }
-          return;
-        case '-':
-        case '_':
-          if (focusedLineId == null) return;
-          {
-            const l = lines.find((x) => x.id === focusedLineId);
-            if (!l) return;
-            e.preventDefault();
-            handleDecreaseQty(l);
-          }
-          return;
-        case 'Delete':
-        case 'Backspace':
-          if (focusedLineId == null) return;
-          {
-            const l = lines.find((x) => x.id === focusedLineId);
-            if (!l) return;
-            e.preventDefault();
-            handleRemoveLine(l);
-          }
-          return;
-        case 'Enter':
-          if (!total) return;
-          e.preventDefault();
-          handlePay();
-          return;
-      }
-    },
-    [
-      lines,
-      total,
-      handlePay,
-      handleIncreaseQty,
-      handleDecreaseQty,
-      handleRemoveLine,
-      focusLineByIndex,
-    ],
-  );
+  // ── Keyboard navigation (↑ / ↓ / + / − / Del / Enter) ─────────
+  // Behaviour lives in useCartKeyboardNav; the cart-line ref Map and its
+  // setter stay here because CartPanel is registered from this screen.
+  const { handleCartPanelKeyDown } = useCartKeyboardNav({
+    cartLineRefs,
+    lines,
+    total,
+    handlePay,
+    handleIncreaseQty,
+    handleDecreaseQty,
+    handleRemoveLine,
+  });
 
   // ── Load receipt settings on mount ────────────────────────────
   useEffect(() => {
@@ -607,6 +489,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .then((s) => setShowTableNumberSetting(s.showTableNumber))
       .catch(() => addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' }));
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
+
+  // ── Load restaurant course-firing flag on mount ─────────────────
+  // Best-effort display gate only: a failed read leaves the workspace
+  // check as the gate (null), so coursing never disappears on a
+  // settings-fetch failure.
+  useEffect(() => {
+    getSettingScoped(sessionToken || null, 'restaurant.course_firing')
+      .then((raw) => setCourseFiringEnabled(raw === 'true'))
+      .catch(() => setCourseFiringEnabled(null));
+  }, [sessionToken]);
 
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
@@ -693,97 +585,98 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── CartPanel call-site groups ───────────────────────────────
+  // CartPanelProps is a SHARED 77-field contract - features/retail imports it and
+  // RetailCartPanel.test.tsx asserts it - so the TYPE DOES NOT CHANGE and CartPanel
+  // still receives the same 77 individual props. Only this call site is regrouped: the
+  // objects below are local to PosScreen, live for one render, and are never handed to
+  // a component as a prop. cartPanelProps carries the CartPanelProps annotation, so a
+  // dropped, renamed or misspelled field is a typecheck error here instead of a silent
+  // undefined at render, and a future 78th required prop breaks this screen rather than
+  // going unnoticed. Pure construction: no value, handler or prop name changed.
+  const panelChrome = {
+    startResize, cartPanelRef, cartWidth, handleCartPanelKeyDown, cartSwipe, activeWorkspace,
+  };
+  const shiftRow = {
+    shiftLoading, activeShift, shiftNow, handleCloseShiftClick, handleOpenShiftClick,
+    shiftErrorExit, closeShiftError,
+  };
+  const deductionBinding = {
+    deductionLocationName, handleDeductionBadgeClick, deductionOverridden,
+    deductionLocationIdRef, setDeductionLocationName, setDeductionOverridden,
+  };
+  const hubNav = {
+    isEnabled, setShowTables, setShowSalesHistory, setShowStockInquiry,
+    onNavigate, handleOpenSettings, handleLock,
+  };
+  const tableNumberRow = { showTableNumberSetting, tableNumber, setTableNumber };
+  const cartLineRows = {
+    lines, fireCourse, fireAllCourses, assignCourse, setCartLineRef,
+    handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
+    isManager, setOverrideTarget, ensureCart,
+    animatedUndoStack, handleUndoRemove, handleDismissUndo,
+    courseFiringEnabled,
+  };
+  const discountEditor = {
+    discountPercent, discountLabel, discountAmount, showOptions, setShowOptions,
+    showDiscountInput, setShowDiscountInput, setShowPromotions,
+    appliedPromotions, setAppliedPromotions, discountInput, setDiscountInput,
+    discountName, setDiscountName, handleApplyDiscount, handleClearDiscount,
+  };
+  const totalsRow = {
+    subtotal, tipPercent, setTipPercent, tipAmount,
+    serviceChargeEnabled, serviceChargePercent, serviceChargeAmount, setServiceCharge,
+    cartTax, taxEstimated, taxState, retryTaxEstimate,
+  };
+  const checkoutRow = {
+    handlePay, addToast, setShowOpenBillInput, setCartId, resetCart,
+    setShowOpenBills, openBills,
+  };
+  const cartPanelProps: CartPanelProps = {
+    ...panelChrome, ...shiftRow, ...deductionBinding, ...hubNav, ...tableNumberRow,
+    ...cartLineRows, ...discountEditor, ...totalsRow, ...checkoutRow,
+  };
+  // The cart header's buttons, handed to the restaurant sidebar popover instead
+  // (CartPanel renders no action cluster, no shift buttons and no deduction
+  // badge in that workspace). Same handlers, one extra home for them — the
+  // header's old lock button is NOT here, because the popover's "Lock Terminal"
+  // row replaced it: that one locks the session instead of logging the cashier
+  // out. Field names are `on*` because the popover owns no state.
+  const restaurantCartActions: RestaurantSidebarActions = {
+    shiftLoading,
+    hasActiveShift: activeShift !== null,
+    onOpenShift: handleOpenShiftClick,
+    onCloseShift: handleCloseShiftClick,
+    deductionLocationName,
+    deductionOverridden,
+    onOverrideDeduction: handleDeductionBadgeClick,
+    showTables: isEnabled(FEATURES.TABLE_MANAGEMENT),
+    onOpenTables: () => setShowTables(true),
+    onOpenHistory: () => setShowSalesHistory(true),
+    onOpenKitchenDisplay: () => onNavigate?.('kds'),
+  };
+
   return (
     <>
     <div className="pos-screen" ref={posScreenRef}>
       {/* ── Left: Product lookup ─────────────────── */}
       <div className="pos-products">
         {activeWorkspace === 'restaurant-pos' ? (
-          <RestaurantMenu onAddProduct={handleAddProduct} />
+          <RestaurantMenu
+            onAddProduct={handleAddProduct}
+            sidebarOpen={restaurantSidebarOpen}
+            onSidebarOpenChange={setRestaurantSidebarOpen}
+            cartActions={restaurantCartActions}
+          />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />
         )}
       </div>
 
-      {/* ── Resize handle ───────────────────────── */}
+      {/* ── Resize handle & Cart panel ─────────────── */}
       <CartPanel
-        startResize={startResize}
-        cartPanelRef={cartPanelRef}
-        cartWidth={cartWidth}
-        handleCartPanelKeyDown={handleCartPanelKeyDown}
-        cartSwipe={cartSwipe}
-        activeWorkspace={activeWorkspace}
-        lines={lines}
-        deductionLocationName={deductionLocationName}
-        handleDeductionBadgeClick={handleDeductionBadgeClick}
-        deductionOverridden={deductionOverridden}
-        shiftLoading={shiftLoading}
-        activeShift={activeShift}
-        shiftNow={shiftNow}
-        handleCloseShiftClick={handleCloseShiftClick}
-        handleOpenShiftClick={handleOpenShiftClick}
-        isEnabled={isEnabled}
-        setShowTables={setShowTables}
-        setShowSalesHistory={setShowSalesHistory}
-        setShowStockInquiry={setShowStockInquiry}
-        onNavigate={onNavigate}
-        handleOpenSettings={handleOpenSettings}
-        handleLock={handleLock}
-        showTableNumberSetting={showTableNumberSetting}
-        tableNumber={tableNumber}
-        setTableNumber={setTableNumber}
-        shiftErrorExit={shiftErrorExit}
-        closeShiftError={closeShiftError}
-        fireCourse={fireCourse}
-        fireAllCourses={fireAllCourses}
-        handleRemoveLine={handleRemoveLine}
-        handleDecreaseQty={handleDecreaseQty}
-        handleIncreaseQty={handleIncreaseQty}
-        setCartLineRef={setCartLineRef}
-        isManager={isManager}
-        setOverrideTarget={setOverrideTarget}
-        ensureCart={ensureCart}
-        animatedUndoStack={animatedUndoStack}
-        handleUndoRemove={handleUndoRemove}
-        handleDismissUndo={handleDismissUndo}
-        subtotal={subtotal}
-        discountPercent={discountPercent}
-        discountLabel={discountLabel}
-        discountAmount={discountAmount}
-        showOptions={showOptions}
-        setShowOptions={setShowOptions}
-        showDiscountInput={showDiscountInput}
-        setShowDiscountInput={setShowDiscountInput}
-        setShowPromotions={setShowPromotions}
-        appliedPromotions={appliedPromotions}
-        setAppliedPromotions={setAppliedPromotions}
-        discountInput={discountInput}
-        setDiscountInput={setDiscountInput}
-        discountName={discountName}
-        setDiscountName={setDiscountName}
-        handleApplyDiscount={handleApplyDiscount}
-        handleClearDiscount={handleClearDiscount}
-        tipPercent={tipPercent}
-        setTipPercent={setTipPercent}
-        tipAmount={tipAmount}
-        serviceChargeEnabled={serviceChargeEnabled}
-        serviceChargePercent={serviceChargePercent}
-        serviceChargeAmount={serviceChargeAmount}
-        setServiceCharge={setServiceCharge}
-        cartTax={cartTax}
-        taxEstimated={taxEstimated}
-        taxState={taxState}
-        retryTaxEstimate={retryTaxEstimate}
-        handlePay={handlePay}
-        addToast={addToast}
-        setShowOpenBillInput={setShowOpenBillInput}
-        setCartId={setCartId}
-        deductionLocationIdRef={deductionLocationIdRef}
-        setDeductionLocationName={setDeductionLocationName}
-        setDeductionOverridden={setDeductionOverridden}
-        resetCart={resetCart}
-        setShowOpenBills={setShowOpenBills}
-        openBills={openBills}
+        {...cartPanelProps}
+        hidden={activeWorkspace === 'restaurant-pos' && restaurantSidebarOpen}
       />
 
       {/* ── F2-3: cart-tax watcher (retry bumps the key) ─ */}
@@ -838,391 +731,48 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         onClose={() => setShowPromotions(false)}
       />
 
-      {/* ── Open Bill Input modal ────────────────────── */}
-      {openBillInputExit.shouldRender && (          <div
-            className={`pos-hold-overlay${openBillInputExit.exiting ? ' pos-hold-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-open-bill-overlay-aria')}
-          >
-            <div className={`pos-hold-modal${openBillInputExit.exiting ? ' pos-hold-modal--exiting' : ''}`}>
-            <h3 className="pos-hold-title">{l10n.getString('pos-open-bill-title')}</h3>
-            <p className="pos-hold-desc">
-              {l10n.getString('pos-open-bill-desc')}
-            </p>
-            <input
-              type="text"
-              className="pos-hold-input"
-              placeholder={l10n.getString('pos-open-bill-placeholder')}
-              value={openBillName}
-              onChange={(e) => setOpenBillName(e.target.value)}
-              aria-label={l10n.getString('pos-open-bill-name-aria')}
-            />
-            <div className="pos-hold-actions">
-              <button
-                type="button"
-                className="pos-hold-cancel-btn"
-                onClick={() => {
-                  openBillInputExit.requestClose();
-                  setOpenBillName('');
-                }}
-                disabled={openingBill}
-              >
-                {requiredLocalized(l10n, 'pos-hold-cancel')}
-              </button>
-              <button
-                type="button"
-                className="pos-hold-confirm-btn"
-                onClick={handleOpenBill}
-                disabled={openingBill}
-              >
-                <span>{l10n.getString(openingBill ? 'pos-open-bill-saving' : 'pos-open-bill-save')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* -- Open Bill Input modal / Open Bills panel (components/OpenBillModals) -- */}
+      <OpenBillInput
+        openBillInputExit={openBillInputExit}
+        openBillName={openBillName}
+        setOpenBillName={setOpenBillName}
+        openingBill={openingBill}
+        handleOpenBill={handleOpenBill}
+      />
 
-      {/* ── Open Bills panel ────────────────────────── */}
-      {openBillsExit.shouldRender && (          <div className={`pos-hold-overlay${openBillsExit.exiting ? ' pos-hold-overlay--exiting' : ''}`} role="dialog" aria-modal="true" aria-label={l10n.getString('pos-open-bills-overlay-aria')}>
-          <div className={`pos-held-list-modal${openBillsExit.exiting ? ' pos-held-list-modal--exiting' : ''}`}>
-            <div className="pos-held-list-header">
-              <h3>{l10n.getString('pos-open-bills-title')}</h3>
-              <button
-                type="button"
-                className="pos-held-list-close"
-                onClick={() => openBillsExit.requestClose()}
-                aria-label={l10n.getString('pos-open-bills-close-aria')}
-              >
-                &times;
-              </button>
-            </div>
-            <div className="pos-held-list-body">
-              {openBills.length === 0 ? (
-                <p className="pos-held-list-empty">{l10n.getString('pos-open-bills-empty')}</p>
-              ) : (
-                openBills.map((ob) => (
-                  <div key={ob.id} className="pos-held-item">
-                    <div className="pos-held-item-info">
-                      <span className="pos-held-item-label">
-                        {ob.customer_name || ob.label}
-                      </span>
-                      <span className="pos-held-item-meta">
-                        {ob.item_count} item{ob.item_count !== 1 ? 's' : ''} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="pos-held-item-resume"
-                      onClick={() => handleResumeOpenBill(ob.id)}
-                      aria-label={`${l10n.getString('pos-open-bills-resume')} ${ob.customer_name || ob.label}`}
-                    >
-                      {l10n.getString('pos-open-bills-resume')}
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <OpenBillsPanel
+        openBillsExit={openBillsExit}
+        openBills={openBills}
+        handleResumeOpenBill={handleResumeOpenBill}
+      />
 
-      {/* ── Close Shift Confirmation Modal ───────── */}
-      {closeShiftExit.shouldRender && activeShift ? (          <div
-            className={`pos-close-shift-overlay${closeShiftExit.exiting ? ' pos-close-shift-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-close-shift-overlay-aria')}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                closeShiftExit.requestClose();
-                setCloseShiftError(null);
-              }
-              if (e.key === 'Enter') handleConfirmCloseShift();
-            }}
-          >
-            <div className={`pos-close-shift-modal${closeShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
-              <Localized id="pos-close-shift-title">
-              <h3 className="pos-close-shift-title">Close Shift</h3>
-            </Localized>
+      {/* -- Shift modals (Close Shift confirm / summary / Open Shift) -- */}
+      <CloseShiftConfirm
+        closeShiftExit={closeShiftExit}
+        activeShift={activeShift}
+        closeShiftError={closeShiftError}
+        setCloseShiftError={setCloseShiftError}
+        closingBalance={closingBalance}
+        setClosingBalance={setClosingBalance}
+        shiftNotes={shiftNotes}
+        setShiftNotes={setShiftNotes}
+        closingShift={closingShift}
+        setShowCloseShift={setShowCloseShift}
+        handleConfirmCloseShift={handleConfirmCloseShift}
+      />
 
-            {closeShiftError && (
-              <div className="pos-close-shift-error">
-                {closeShiftError}
-              </div>
-            )}
+      <ShiftSummary
+        shiftSummaryExit={shiftSummaryExit}
+        closedShiftSummary={closedShiftSummary}
+      />
 
-            <div className="pos-close-shift-info">
-              <div className="pos-close-shift-info-row">
-                <Localized id="pos-close-shift-opened">
-                  <span>Opened</span>
-                </Localized>
-                <span>{new Date(activeShift.openedAt).toLocaleString()}</span>
-              </div>
-              <div className="pos-close-shift-info-row">
-                <Localized id="pos-close-shift-opening-balance">
-                  <span>Opening balance</span>
-                </Localized>
-                <span>{formatMoney({ minor_units: activeShift.openingBalanceMinor, currency: 'USD' })}</span>
-              </div>
-            </div>
-
-            <div className="pos-close-shift-field">
-              <Localized id="pos-close-shift-counted-label">
-                <label htmlFor="closing-balance" className="pos-close-shift-label">
-                  Counted cash in drawer
-                </label>
-              </Localized>
-              <Localized id="pos-close-shift-counted-placeholder" attrs={{ placeholder: true }}>
-                <input
-                  id="closing-balance"
-                  type="number"
-                  className="pos-close-shift-input"
-                  min="0"
-                  placeholder="e.g. 15000 for $150.00"
-                  value={closingBalance}
-                  onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setClosingBalance(e.target.value);
-                    }
-                  }}
-                  aria-label={l10n.getString('pos-close-shift-balance-aria')}
-                />
-              </Localized>
-            </div>
-
-            <div className="pos-close-shift-field">
-              <Localized id="pos-close-shift-notes-label">
-                <label htmlFor="shift-notes" className="pos-close-shift-label">
-                  Notes (optional)
-                </label>
-              </Localized>
-              <Localized id="pos-close-shift-notes-placeholder" attrs={{ placeholder: true }}>
-                <textarea
-                  id="shift-notes"
-                  className="pos-close-shift-textarea"
-                  rows={3}
-                  placeholder="Any notes about this shift…"
-                  value={shiftNotes}
-                  onChange={(e) => setShiftNotes(e.target.value)}
-                  aria-label={l10n.getString('pos-close-shift-notes-aria')}
-                />
-              </Localized>
-            </div>
-
-            <div className="pos-close-shift-actions">
-              <Localized id="cancel">
-                <button
-                  type="button"
-                  className="pos-close-shift-cancel-btn"
-                  onClick={() => {
-                    setShowCloseShift(false);
-                    setCloseShiftError(null);
-                  }}
-                  disabled={closingShift}
-                >
-                  Cancel
-                </button>
-              </Localized>
-              { }
-              <button
-                type="button"
-                className="pos-close-shift-confirm-btn"
-                onClick={handleConfirmCloseShift}
-                disabled={
-                  closingShift ||
-                  !closingBalance ||
-                  !Number.isInteger(Number(closingBalance)) ||
-                  Number(closingBalance) < 0
-                }
-              >
-                <Localized id={closingShift ? 'pos-close-shift-closing' : 'pos-close-shift-confirm'}>
-                  <span>{closingShift ? 'Closing…' : 'Close Shift'}</span>
-                </Localized>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Close Shift Success Summary ────────────── */}
-      {shiftSummaryExit.shouldRender && closedShiftSummary ? (          <div
-            className={`pos-close-shift-overlay${shiftSummaryExit.exiting ? ' pos-close-shift-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-close-shift-summary-aria')}
-          >
-            <div className={`pos-close-shift-modal pos-close-shift-summary${shiftSummaryExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
-            <Localized id="pos-shift-closed-title">
-              <h3 className="pos-close-shift-title">
-                Shift Closed
-              </h3>
-            </Localized>
-
-            <div className="pos-close-shift-summary-grid">
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-total-sales">
-                  <span className="pos-close-shift-summary-label">Total Sales</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalSalesMinor, currency: 'USD' })}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-cash-sales">
-                  <span className="pos-close-shift-summary-label">Cash Sales</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalCashMinor, currency: 'USD' })}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-card-sales">
-                  <span className="pos-close-shift-summary-label">Card Sales</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalCardMinor, currency: 'USD' })}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-expected-cash">
-                  <span className="pos-close-shift-summary-label">Expected Cash</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {closedShiftSummary.expectedCashMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.expectedCashMinor, currency: 'USD' })
-                    : '—'}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-counted">
-                  <span className="pos-close-shift-summary-label">Counted</span>
-                </Localized>
-                <span className="pos-close-shift-summary-value">
-                  {closedShiftSummary.closingBalanceMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.closingBalanceMinor, currency: 'USD' })
-                    : '—'}
-                </span>
-              </div>
-              <div className="pos-close-shift-summary-item">
-                <Localized id="pos-shift-difference">
-                  <span className="pos-close-shift-summary-label">Difference</span>
-                </Localized>
-                <span
-                  className={`pos-close-shift-summary-value ${
-                    closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor < 0
-                      ? 'pos-close-shift-diff--negative'
-                      : closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor > 0
-                        ? 'pos-close-shift-diff--positive'
-                        : ''
-                  }`}
-                >
-                  {closedShiftSummary.cashDifferenceMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.cashDifferenceMinor, currency: 'USD' })
-                    : '—'}
-                  {closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor !== 0 && (
-                    <span className="pos-close-shift-diff-tag">
-                      <Localized id={closedShiftSummary.cashDifferenceMinor > 0 ? 'pos-shift-over' : 'pos-shift-short'}>
-                        <span>{closedShiftSummary.cashDifferenceMinor > 0 ? 'Over' : 'Short'}</span>
-                      </Localized>
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            {closedShiftSummary.notes && (
-              <div className="pos-close-shift-notes-display">
-                <Localized id="pos-shift-notes">
-                  <span className="pos-close-shift-summary-label">Notes</span>
-                </Localized>
-                <p>{closedShiftSummary.notes}</p>
-              </div>
-            )}            <Localized id="pos-shift-summary-done">
-              <button
-                type="button"
-                className="pos-close-shift-dismiss-btn"
-                onClick={() => shiftSummaryExit.requestClose()}
-              >
-                Done
-              </button>
-            </Localized>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Open Shift Modal ───────────────────────── */}
-      {openShiftExit.shouldRender && (          <div
-            className={`pos-close-shift-overlay${openShiftExit.exiting ? ' pos-close-shift-overlay--exiting' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={l10n.getString('pos-open-shift-overlay-aria')}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') openShiftExit.requestClose();
-              if (e.key === 'Enter') handleConfirmOpenShift();
-            }}
-          >
-            <div className={`pos-close-shift-modal${openShiftExit.exiting ? ' pos-close-shift-modal--exiting' : ''}`}>
-              <Localized id="pos-open-shift-title">
-              <h3 className="pos-close-shift-title">Open Shift</h3>
-            </Localized>
-
-            <div className="pos-close-shift-field">
-              <Localized id="pos-open-shift-balance-label">
-                <label htmlFor="opening-balance" className="pos-close-shift-label">
-                  Opening balance
-                </label>
-              </Localized>
-              <Localized id="pos-open-shift-balance-placeholder" attrs={{ placeholder: true }}>
-                <input
-                  id="opening-balance"
-                  type="number"
-                  className="pos-close-shift-input"
-                  min="0"
-                  placeholder="e.g. 500 for $5.00"
-                  value={openingBalance}
-                  onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setOpeningBalance(e.target.value);
-                    }
-                  }}
-                  aria-label={l10n.getString('pos-open-shift-balance-aria')}
-                />
-              </Localized>
-            </div>
-
-            <div className="pos-close-shift-actions">
-              <Localized id="cancel">
-                <button
-                  type="button"
-                className="pos-close-shift-cancel-btn"
-                onClick={() => openShiftExit.requestClose()}
-                  disabled={openingShift}
-                >
-                  Cancel
-                </button>
-              </Localized>
-              { }
-              <button
-                type="button"
-                className="pos-close-shift-confirm-btn"
-                onClick={handleConfirmOpenShift}
-                disabled={openingShift}
-              >
-                <Localized id={openingShift ? 'pos-open-shift-opening' : 'pos-open-shift-title'}>
-                  <span>{openingShift ? 'Opening…' : 'Open Shift'}</span>
-                </Localized>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <OpenShiftModal
+        openShiftExit={openShiftExit}
+        openingBalance={openingBalance}
+        setOpeningBalance={setOpeningBalance}
+        openingShift={openingShift}
+        handleConfirmOpenShift={handleConfirmOpenShift}
+      />
 
       {/* ── FastPIN Overlay (ADR-19 §17: badge click → manager override) ── */}
       <FastPINOverlay
@@ -1231,16 +781,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         onVerified={handleDeductionPinVerified}
       />
     </div>
-
-    {/* ── Workspace Settings Modal (ADR #22 Phase 5) ── */}
-    {showWorkspaceSettings && (
-      <WorkspaceSettingsModal
-        open={showWorkspaceSettings}
-        onClose={() => setShowWorkspaceSettings(false)}
-        workspaceType="restaurant-pos"
-        presentation="slideover"
-      />
-    )}
   </>
   );
 }

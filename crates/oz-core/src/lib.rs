@@ -160,6 +160,8 @@ pub mod topology;
 pub mod user;
 /// Per-user display preferences (card size, font size, etc.).
 pub mod user_preferences;
+/// Workspace type keys — the vertical a workspace instance is licensed for.
+pub mod workspace_type;
 
 /// Generate a new time-ordered UUIDv7 primary key.
 ///

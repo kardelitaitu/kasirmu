@@ -852,3 +852,48 @@ fn cart_serialization_roundtrip_with_lines_and_discount() {
     assert_eq!(back.total().unwrap().minor_units, 712);
     assert_eq!(back.discount_percentage().get(), 5);
 }
+
+#[test]
+fn normalize_course_maps_legacy_drinks_to_beverage() {
+    assert_eq!(normalize_course(None), None);
+    assert_eq!(normalize_course(Some("")), None);
+    assert_eq!(normalize_course(Some("   ")), None);
+    assert_eq!(
+        normalize_course(Some("drinks")),
+        Some("beverage".to_owned())
+    );
+    assert_eq!(normalize_course(Some("main")), Some("main".to_owned()));
+}
+
+#[test]
+fn set_course_assigns_and_clears_with_normalization() {
+    let mut line = CartLine::new(
+        Sku::new("STEAK"),
+        1,
+        Money {
+            minor_units: 1500,
+            currency: usd(),
+        },
+    );
+    assert_eq!(line.course, None);
+    line.set_course(Some("main"));
+    assert_eq!(line.course.as_deref(), Some("main"));
+    line.set_course(Some("drinks"));
+    assert_eq!(line.course.as_deref(), Some("beverage"));
+    line.set_course(Some(""));
+    assert_eq!(line.course, None);
+    line.set_course(None);
+    assert_eq!(line.course, None);
+}
+
+#[test]
+fn cart_line_deserializes_without_course_for_legacy_carts() {
+    // Carts persisted before the course field existed must still load:
+    // `course` is #[serde(default)] and reads as None.
+    let line: CartLine = serde_json::from_str(
+        r#"{"id":"11111111-1111-1111-1111-111111111111","sku":"COFFEE","qty":2,"unit_price":{"minor_units":350,"currency":"USD"},"overridden_price":null}"#,
+    )
+    .unwrap();
+    assert_eq!(line.course, None);
+    assert_eq!(line.sku.as_str(), "COFFEE");
+}

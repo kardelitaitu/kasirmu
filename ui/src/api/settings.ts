@@ -134,11 +134,14 @@ export const getHardwareSettings = (): Promise<HardwareSettingsDto> =>
 export const getHardwareSettingsScoped = (sessionToken: string): Promise<HardwareSettingsDto> =>
   loggedInvoke<HardwareSettingsDto>('get_hardware_settings_scoped', { sessionToken });
 
-/** Update the hardware settings. */
-export const setHardwareSettings = (args: HardwareSettingsDto, userId: string): Promise<void> =>
-  loggedInvoke<void>('set_hardware_settings', { args, userId });
-
-/** Set hardware settings (scoped — ADR #7). */
+/**
+ * Update the hardware settings (scoped — ADR #7).
+ *
+ * The unscoped `set_hardware_settings` wrapper that used to sit beside this is retired with T11:
+ * it took `userId` from the renderer, which is exactly the actor the permission check asks about,
+ * and desktop never registered the command at all -- so the fallback arm was a forgeable write on
+ * one shell and a guaranteed rejection on the other. `useTerminalHardware.save()` now has one arm.
+ */
 export const setHardwareSettingsScoped = (sessionToken: string, args: HardwareSettingsDto): Promise<void> =>
   loggedInvoke<void>('set_hardware_settings_scoped', { sessionToken, args });
 

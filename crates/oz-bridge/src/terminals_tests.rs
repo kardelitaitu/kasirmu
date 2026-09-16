@@ -19,6 +19,7 @@
 
 use super::*;
 use crate::testing::{TestBridge, temp_conn};
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 use oz_core::session::SessionContext;
 use rusqlite::Connection;
@@ -295,6 +296,14 @@ async fn owner_can_register_terminal() {
         },
     )
     .await;
+    // Release: the refusal is not a failure of the owner permission this
+    // fixture is about - it is the signature gate one step earlier - so the
+    // is_ok assert below is a debug-leg fact, asserted as such rather than
+    // widened into a claim that both arms are the same answer.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, result, "free").await;
+        return;
+    }
     assert!(result.is_ok(), "owner should register a terminal");
     let registered = result.unwrap();
     assert!(!registered.id.is_empty());
@@ -317,8 +326,15 @@ async fn owner_can_get_terminal_by_id() {
             metadata: None,
         },
     )
-    .await
-    .unwrap();
+    .await;
+    // Release: no terminal was ever registered, so the fetch below has no id
+    // to look up and the get-by-id half of this case stays debug-only rather
+    // than being re-cut into a second assertion of the same refusal.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&tb, registered, "free").await;
+        return;
+    }
+    let registered = registered.unwrap();
 
     let fetched = get_terminal_scoped(&ctx, "tok", registered.id.clone()).await;
     assert!(fetched.is_ok());

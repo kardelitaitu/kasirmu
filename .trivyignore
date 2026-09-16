@@ -1,13 +1,24 @@
 # ── Trivy ignorefile — documented vulnerability exceptions ────────────
 #
-# The CI container scans (`.github/workflows/ci.yml`, `security.yml`,
-# `release.yml`) run Trivy with `--exit-code 1` for CRITICAL and HIGH
-# severities. Any finding listed here is a *reviewed and accepted*
-# exception and must include a justification.
+# NOTHING READS THIS FILE TODAY. Three workflows did run Trivy blocking on
+# CRITICAL/HIGH (`exit-code: 1`) and passed this file as `trivyignores:` —
+# `ci.yml`, `security.yml` and the docker half of `release.yml`. All three
+# are retired: `grep -rln trivy .github/workflows/` returns only `*.bak`
+# plus one comment line in the live `release.yml` (`:18`) whose purpose is
+# to record that its Trivy scans were DROPPED, and `dev-ci.yml` has no
+# scan step. Trivy is also not installed here (`command -v trivy` → empty;
+# it is deliberately not installed as part of this audit).
+#
+# So the exceptions below currently guard nothing; they are kept live so a
+# restored scanner starts from the reviewed set instead of a cold one. Any
+# finding listed here is a *reviewed and accepted* exception and must
+# include a justification.
 #
 # Format: <VULNERABILITY-ID> <optional comment>
 #
-# To refresh the accepted set:
+# To refresh the accepted set (manual only — no runner does this, and the
+# local re-scan below is the ONLY reader of this file until a scan is put
+# back into a live workflow):
 #   1. Re-scan the image locally:
 #        docker build -f Dockerfile.server -t oz-pos-cloud:scan .
 #        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
@@ -16,20 +27,43 @@
 #      (e.g. "no fix available", "not exploitable in this runtime").
 #   3. Open a PR so the exception is reviewable before it lands on main.
 #
-# ── Reviewed baseline (2026-08-03) ─────────────────────────────────
+# ── Reviewed baseline: 15 accepted 2026-08-03, 17 listed today ───
 #
-# The cloud runtime (`debian:bookworm-slim` 12.15) carries 15 Debian OS
+# COUNT, RECONCILED 2026-09-16 FROM THE FILE HISTORY, NOT FROM A RE-SCAN.
+# `grep -cE "^CVE-" .trivyignore` reads 17; the sentence below said 15. The
+# split is dated rather than guessed: `git log --follow -p -- .trivyignore`,
+# counting only `^[+-]CVE-` lines per commit, attributes every entry.
+# `9f8b77392` (2026-08-03) created the file with this header and NO entries;
+# `20b7ec3da` (2026-08-03) added 15 entries AND this "carries 15" sentence in
+# the same commit; `d14bd3085` (2026-08-21, "add Trivy CVE exceptions + cache
+# Playwright browsers to avoid 403") appended exactly 2 and touched no
+# comment — CVE-2026-53613 (bsdutils/libblkid1/libmount1/libsmartcols1) and
+# CVE-2026-14456 (libssl3 / openssl). No CVE line has ever been removed
+# (`^-CVE-` matches 0 times over the whole follow history), so 15 + 2 = 17
+# closes exactly. The 15 was a true count of the 2026-08-03 scan, never a
+# statement about this file. NOTHING was added or dropped here to make the
+# two agree — only this paragraph moved.
+#
+# The cloud runtime (`debian:bookworm-slim` 12.15) carried those 15 Debian
 # package CVEs with NO fix available in the bookworm repos at scan time
 # (Trivy status `affected`/`fix_deferred`; `apt-get upgrade` verified to
 # not clear them — a derived image with `apt-get upgrade` still reports
 # the same set). They are all in runtime OS packages (perl-base,
 # ncurses, mount/bsdutils, gzip, libacl1, zlib) that the Rust binary does
-# not exercise, and the app layer itself scans clean (0 findings).
+# not exercise, and the app layer itself scans clean (0 findings). Both the
+# `apt-get upgrade` check and that clean-app-layer result are attributed to
+# the 2026-08-03 scan, and this package enumeration is the enumeration of
+# those 15 — it does NOT cover libssl3, which entered only with the
+# 2026-08-21 pair. Re-running either verification requires the docker scan
+# above; until someone runs it, treat 17 as "15 reviewed + 2 unreviewed
+# against a base-image refresh", not as one reviewed set.
 #
-# These are accepted as the reviewed baseline so the CI scan can be
-# BLOCKING for any NEW CRITICAL/HIGH finding. Re-review this list during
-# the next base-image refresh (see DOCKER-02) — once Debian backports a
-# fix, remove the entry and rebuild.
+# They were accepted as the reviewed baseline so the CI scan could be
+# BLOCKING for any NEW CRITICAL/HIGH finding. That blocking scan does not
+# run (see the header), so as of 2026-09-16 a NEW CRITICAL/HIGH in the
+# cloud image is caught by nothing: this list buys readiness, not
+# protection. Re-review it during the next base-image refresh (see
+# DOCKER-02) — once Debian backports a fix, remove the entry and rebuild.
 CVE-2023-45853 # zlib1g — no bookworm fix at scan time
 CVE-2025-69720 # ncurses-base/bin, libtinfo6 — fix_deferred
 CVE-2026-13221 # perl-base — no bookworm fix at scan time

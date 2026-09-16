@@ -248,6 +248,46 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 - **BR-S7** — **[PBD]** `resolve_report_scope` authorises against the **global** identity db
   (`crates/oz-bridge/src/reports.rs:65`, `:67-69`) and then opens
   `session.store_id`'s store db (`:71-73`) with no re-check of the binding between them.
+- **BR-S8** — **[PBD]** `get_customer_scoped` is the one customer door that fails on gate
+  **kind** rather than gate order, and it is why the door is *not* delegated (ADR #49 §4:
+  *"Gates that are not scope-aware stay not scope-aware; an extraction is not the place to
+  widen a gate."*). The tablet gates with the **non-scope-aware**
+  `require_customer_permission` (`apps/tablet-client/src/commands/customers.rs:91` →
+  `require_permission_for_user` on the global identity db, `:279-286`), where
+  `crates/oz-bridge/src/customers.rs:428` uses the scope-aware
+  `ctx.require_session_permission`. The bridge's doc block (`:410-414`) asserts the shell
+  used the scope-aware form — true of the **desktop** (`apps/desktop-client/src/
+  commands/customers.rs:193-195` already delegates), false of the tablet. A third
+  two-shell fork for the same owner ruling as `history`'s five export doors and
+  `settings`' six scoped setters.
+- **BR-S9** — **[PBD]** the two receipt-format **setters** are a two-shell gate fork, which is why they
+  are *not* delegated. The tablet runs **one** gate, the scope-aware
+  `require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT)`
+  (`apps/tablet-client/src/commands/receipt_format.rs:41`, `:99`); the bridge twins run the **same** gate
+  and then a **second**, ADR #47 hierarchical-resource gate —
+  `ctx.require_permission_for_session_resource(session, SETTINGS_EDIT, ScopeType::Location, …)` at
+  `crates/oz-bridge/src/receipt_format.rs:65-69` (the workspace id) and `:150-154` (the primary location
+  id, resolved by the bridge-only helper `primary_location_id`, `:120`). Delegating would therefore
+  **add** a gate the tablet has never enforced, which §4 forbids as plainly as removing one. The
+  tablet's own module doc (`receipt_format.rs:1-4`) already records why: *"the location-resource scoping
+  the desktop layers on top (ADR #47) has no tablet helper yet"*. `get_receipt_format_scoped` carries
+  only the shared gate and **is** delegated. Same owner question as BR-S8 and BR-X4: which shell's gate
+  set is authoritative.
+- **BR-S10** — **[PBD]** `update_staff_scoped` is not delegated because the two shells disagree on the
+  security-audit `debug_upgrade` flag — a divergence in **what gets audited**, not in a gate, so it is
+  not covered by the BR-S8/BR-X4/BR-S9 ruling. `Store::record_security_event(event, debug_upgrade)`
+  (`crates/oz-core/src/db/audit_security.rs:382-392`) drops the write for a CONFIRMED Free tier
+  (`ent.loaded && ent.tier.audit_retention_days().is_none()`), and `debug_upgrade` decides whether the
+  desktop's dev Free→Premium promotion applies first. The tablet wrapper passes **`false`**
+  (`apps/tablet-client/src/commands/auth.rs:81`); the bridge wrapper passes **`true`**
+  (`crates/oz-bridge/src/auth.rs:160`) — the desktop's behaviour. The core doc states the intent at
+  `audit_security.rs:370-374`: *"tablet passes `false` so it never mirrors the desktop divergence"*.
+  Delegating would therefore begin writing security events for Free-tier staff updates on the tablet in
+  debug builds. Pinned by `confirmed_free_records_nothing_even_in_a_debug_build`
+  (`apps/tablet-client/src/commands/staff_security_events_tests.rs:179-194`), which went red during the
+  port and is how this was found. `create_staff_scoped` carries the same fork but not the exposure:
+  `enforce_staff_quota` precedes the recorder and Free caps staff at one account, so a Free tenant
+  cannot reach that `record_security_event` call.
 
 ### Correctness / robustness
 
@@ -311,6 +351,21 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   still promises that store name / currency / features "may be exposed here in the future",
   while the generic key-value (`:274` `set_setting`), hardware (`:178`, `:351`) and batch
   (`:311` `set_settings_scoped`) commands are already exposed in that same file.
+- **BR-X4** — **[PBD]** and as a **two-shell fork** in `customers`, which is why five of its
+  seven doors are *not* delegated. The tablet opens the store db **before** the permission
+  gate (`resolve_scope` → `require_customer_permission`) at
+  `apps/tablet-client/src/commands/customers.rs:115-116` (`create`), `:141-142` (`update`),
+  `:167-168` (`delete`), `:194-195` (`search`) and `:226-227` (`history`); the bridge twins
+  gate first and open afterwards (`crates/oz-bridge/src/customers.rs:458-460`, `:488-490`,
+  `:516-518`, `:545-547`, `:579-581`). The bridge is **not** consistent about this — it
+  preserves the open-before-gate order in `gift_cards` (`:49-51`), `loyalty` (`:87-89`) and
+  `purchasing` (`:500-502`) — so this is the desktop body the module was ported from, not a
+  crate rule. It matters because `open_store` is not free: on a cache miss it creates the
+  directory, creates the database file and runs migrations
+  (`platform/core/src/database/manager.rs:73-103`). So against an unopenable store an
+  unauthorized caller gets `Internal("opening store db: …")` on the tablet and
+  `PermissionDenied` on the desktop. **Owner ruling needed** — one answer settles this,
+  BR-S8, `history`'s five export doors and `settings`' six scoped setters.
 
 ### Doc / test debt
 
@@ -1453,6 +1508,152 @@ worthless when the code means something different on the other side. It also rep
 being asked, that `--staged-only` with no paths prints `0 missing key(s)` and exits 0, and did NOT
 change it, because that behaviour is documented in the file's own EXIT CODES and relied on by
 `.githooks/pre-commit` for delete-only commits, a contract decision rather than a fence edit.
+
+### New verified finding (2026-09-16, 10:10) — the Tools grid and the page it links to give opposite answers for a manager, and the two plan docs disagree about which one is right
+
+**Found while attempting `todo-open-debt-program.md` box 3a.2 ("Replace the rank comparisons with
+permission checks"). The box cannot be executed as written, and the reason is not missing work — it
+is two documents that state opposite policies about the same gate.**
+
+**The disagreement, live today on presets.** The `analytics` route carries two gates that do not
+agree:
+
+| Where | Gate | Read at |
+|---|---|---|
+| Home Tools card | `minimumRole: 'admin'` (a **rank**) | `ui/src/features/workspaces/tools.tsx:180` |
+| The route itself | `requiredRole: 'manager'` + `requiredPermission: 'analytics:view'` | `ui/src/features/analytics/register.tsx:12` |
+
+The route's permission arm is **authoritative**, not advisory — `passesGate`
+(`ui/src/platform/ui/page-registry/index.ts:139`) returns `hasGrantedPermission(permissions, …)` and
+never consults `requiredRole` whenever the session carries granted keys. And the `role-manager` preset
+**does** hold that key: `permissions::ANALYTICS_VIEW` is the 36th entry of its list
+(`platform/core/src/rbac_presets.rs:84`, inside the block opening at `:49`).
+
+So a manager session is **shown Analytics in the nav and hidden Analytics in the Tools grid, at the
+same time, on the same route** — `getEnabledPages` admits the page, `roleAtLeast(roleName,
+'admin')` refuses the card. This is not a custom-role edge case; it is the default preset.
+
+**Why it was not simply fixed here.** The two plan documents prescribe opposite resolutions, and
+choosing between them changes who can see an admin surface:
+
+- `todo-tools.md:730-732` states the current shape as **deliberate**: *"the home `minimumRole` is
+  never LOOSER than the route's `requiredRole` (**home-stricter is the documented policy choice**;
+  Settings stays `manager` + authoritative `settings:read` at the route until the §H scope pass)."*
+  Under that policy the grid is a stricter front-door filter and the nav is the authoritative gate —
+  the two surfaces are *supposed* to differ, and the defect is only that nothing says so at either
+  site.
+- `todo-open-debt-program.md` box 3a.2 asks for the rank comparisons to be **replaced** by permission
+  checks, one gate at a time, each pinned by *"a custom role holding the gate permission passing the
+  same way a preset would"*.
+
+Those cannot both hold for `analytics`. The preset that holds `analytics:view` — `manager` — is
+exactly the role the home gate excludes, so 3a.2's required test is unsatisfiable without
+contradicting `todo-tools.md:730`. Either the documented home-stricter policy is retired, or the Tools
+grid keeps its rank and 3a.2 shrinks to the gates that have no route twin.
+
+**Decision required (owner).** Which is authoritative for the home grid — the documented front-door
+policy, or the permission vocabulary? The three sub-questions that follow, none of which a lane should
+answer:
+
+1. If the permission wins, the Analytics card becomes visible to every manager. Is that intended?
+2. If the rank wins, `todo-tools.md:730` should be cited *at* `tools.tsx:180`, because the current
+   file documents only `minimumRole` and `minimumTier` and a reader cannot tell the two gates are
+   meant to differ.
+3. Does the same split exist on any other tool? Only a per-tool census answers it, and that census has
+   not been run — see below.
+
+**CENSUS RUN 2026-09-16, 10:25 — the population is bounded: 6 of 17, and the widener is the
+auditor.** The paragraph that stood here said the population was unmeasured. It has since been
+measured, so it is corrected in place rather than left to rot. All **17** catalogue entries were
+compared against the **45** registered pages, with preset grants resolved from the registry rather
+than from prose:
+
+| Result | Count | Tools |
+|---|---|---|
+| Home gate agrees with the route | 9 | `locations` `terminals` `memo` `promotions` `tax-config` `exchange-rates` `offline-queue` `features` `data-management` |
+| Invariant **violated** (`todo-tools.md:730`) | **0** | — |
+| Would **widen** if gated on the permission | **6** | `staff` `shifts` `analytics` `reports` `audit` `settings` |
+| No registered page — deep link into the Settings hub | 2 | `settings/topology`, `settings/sync` |
+
+**The documented invariant holds.** Zero tools carry a home `minimumRole` looser than their route's
+`requiredRole`, so `todo-tools.md:730` is accurate as written and no card is a plain bug.
+
+**What the 6 would admit — and this is the whole decision.** In five of the six the role that gains
+the card is the **auditor**, because the auditor preset genuinely holds read keys the home gate never
+consults. Verified at `platform/core/src/rbac_presets.rs:262-272`: `STAFF_READ`, `SETTINGS_READ`,
+`REPORTS_VIEW`, `AUDIT_VIEW`, `SHIFTS_VIEW_ANY`. A permission-gated grid would therefore hand a
+**read-only** role the Staff, Shifts, Reports, Audit Log and Settings cards. The sixth is `analytics`,
+where the gainer is `manager`.
+
+That generalises the `analytics` table above. The route gate already admits these roles today — their
+nav already shows the pages — so the question is not *whether the auditor should see the audit log*
+(it does) but whether the home grid should mirror the nav or stay the stricter front door.
+
+**Census instrument** (read-only; parses the four files; nothing above is carried from another
+document): `%TEMP%/tool-gate-census.py`, run at HEAD `845ecf0f4`. It is a scratch instrument, not a
+gate — nothing in CI calls it, and it was deliberately **not** added to `scripts/`.
+
+**Re-derive, verbatim — no number above rests on another document:**
+
+```bash
+sed -n '180p' ui/src/features/workspaces/tools.tsx
+sed -n '12p' ui/src/features/analytics/register.tsx
+sed -n '84p' platform/core/src/rbac_presets.rs
+sed -n '139p' ui/src/platform/ui/page-registry/index.ts
+sed -n '730,732p' todo-tools.md
+```
+
+**Nothing in the tree was changed to measure this** — every line above was read, not written, and the
+three files it names were clean in `git status --porcelain` at the time of reading.
+
+### New verified finding (2026-09-16, 11:24) — the tablet's manual sync retry pushes to the server and then writes the outcomes to the wrong database
+
+`retry_offline_sync_scoped` (`apps/tablet-client/src/commands/offline.rs`) is a three-phase command: read
+the pending queue, push it over HTTP with no lock held, then write the outcomes back. **Phase 1 and Phase
+3 do not use the same database.**
+
+| phase | tablet shell | bridge twin (`crates/oz-bridge/src/offline.rs:317-380`) |
+|---|---|---|
+| 1 — read pending | `state.resolve_scope(&session_token)` → **store** db | `ctx.resolve_scope(session_token)` → store db |
+| 3 — write outcomes | `state.db.lock().await` → **global identity** db | `ctx.resolve_scope(...)` again → store db |
+
+`AppState.db` is the global identity database, not the store. `AppState::new` opens
+`<app_data_dir>/oz-pos.db` (`apps/tablet-client/src/state.rs:153-170`), and `BridgeCtx.db` is
+`&AppState.db` — the very field `BridgeCtx::lock_global` documents as *"Lock the global identity DB (the
+authz path)"* (`crates/oz-bridge/src/ctx.rs:374`). The store is a separate file,
+`<data_dir>/store-<store_id>.sqlite` (`platform/core/src/database/manager.rs:167`), reached through
+`resolve_scope` → `StoreDatabaseManager::open_store`. Two different files, and the comment on
+`AppState.db` (`state.rs:51`, "SQLite connection for the local store") is what makes this easy to
+misread.
+
+**Why it is a defect and not merely a fork.** `apply_sync_outcomes` calls `store.mark_offline_synced`
+per accepted item (`crates/oz-core/src/sync_client.rs:307`), and that method returns
+`CoreError::NotFound` when its `UPDATE offline_queue … WHERE id = ?1` affects zero rows
+(`crates/oz-core/src/db/offline.rs:421-433`). Run against `oz-pos.db`, where no such queue row exists,
+the update affects zero rows, the `?` propagates, and the command returns an error — **after Phase 2 has
+already transmitted the batch**. The store's rows therefore stay `pending`, so every subsequent retry
+re-sends the same items to the server.
+
+**Reachability.** `ui/src/features/offline/OfflineQueueScreen.tsx:216` calls `retryOfflineSyncScoped`,
+which invokes this command; it is registered on both shells (`apps/tablet-client/src/lib.rs:699`,
+`apps/desktop-client/src/lib.rs:1246`). The bridge twin, by contrast, has no desktop caller
+(`.agents/review-backlog-codebase-review.md:114` — *"no desktop UI calls retryOfflineSync"*), so the
+tablet is the shell where the wrong-database write actually runs.
+
+**Not fixed here.** ADR #49 §4 preserves pre-existing defects inside an extraction and reports them; the
+door is refused on the storage-source ground, so the body stays tablet-native and carries an
+`ADR #49 NOT APPLIED` block naming this finding.
+
+**Re-derive, verbatim:**
+
+```bash
+grep -n "state.db.lock().await" apps/tablet-client/src/commands/offline.rs
+sed -n '153,170p' apps/tablet-client/src/state.rs
+sed -n '374p' crates/oz-bridge/src/ctx.rs
+sed -n '166,168p' platform/core/src/database/manager.rs
+sed -n '421,433p' crates/oz-core/src/db/offline.rs
+sed -n '216p' ui/src/features/offline/OfflineQueueScreen.tsx
+```
 
 ## How to close these
 

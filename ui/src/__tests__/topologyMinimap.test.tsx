@@ -461,8 +461,11 @@ describe('TopologyMinimap', () => {
 
       unmount();
 
-      // Should not throw - cleanup runs
-      expect(true).toBe(true);
+      // "Should not throw" is implied by reaching this line — unmount() itself
+      // would have thrown if a cleanup handler had. The real contract is that
+      // the minimap is gone from the document, so the listeners it registered
+      // have nothing left to act on.
+      expect(screen.queryByRole('button')).toBeNull();
     });
   });
 

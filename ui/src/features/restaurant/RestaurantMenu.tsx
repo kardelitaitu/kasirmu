@@ -9,7 +9,7 @@ import { getUserPreferencesScoped, setUserPreferencesScoped } from '@/api/settin
 import { MenuCategoryTabBar } from './components/MenuCategoryTabBar';
 import { MenuItemGrid } from './components/MenuItemGrid';
 import { MenuItemContextMenu, type RestaurantContextMenuState } from './components/MenuItemContextMenu';
-import { MenuPreferencesMenu } from './components/MenuPreferencesMenu';
+import { MenuPreferencesMenu, type RestaurantSidebarActions } from './components/MenuPreferencesMenu';
 import { MenuSearchBar } from './components/MenuSearchBar';
 import './RestaurantMenu.css';
 
@@ -18,6 +18,17 @@ import './RestaurantMenu.css';
 export interface RestaurantMenuProps {
   /** Called when the user clicks "Add" on a product. */
   onAddProduct?: (product: Product) => void;
+  /** Controlled sidebar open state (synced with PosScreen to hide cart). */
+  sidebarOpen?: boolean;
+  /** Callback when sidebar open state changes. */
+  onSidebarOpenChange?: (open: boolean) => void;
+  /**
+   * The cart header's terminal actions, relocated into the sidebar popover
+   * (shift, deduction override, tables, history, KDS). PosScreen owns the
+   * state and the modals; this screen only renders the rows. Absent = no
+   * group, which is what every test render and non-POS host gets.
+   */
+  cartActions?: RestaurantSidebarActions;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -27,6 +38,29 @@ type Category = string;
 function key(uid: string, name: string) {
   return `restaurant-${uid}-${name}`;
 }
+
+// ── Menu state storage: two tiers ───────────────────────────────────
+//
+// Tier 1 — backend, with localStorage as the offline fallback:
+//   `sort`, `cardsize`, `fontsize`, `font-smoothing`.
+//   Written by `persistMenuPreference` → `setUserPreferencesScoped`,
+//   rehydrated from `getUserPreferencesScoped` on mount (see the effect
+//   below). These follow the user to another terminal.
+//
+// Tier 2 — localStorage only:
+//   `pinned`, `colors`, `unavailable`, `pop`.
+//   Namespaced per user through `key()` above but never sent to the server,
+//   so they do NOT follow the user across terminals. `pinned` and `colors`
+//   are personal curation and read as defensibly terminal-local.
+//   `unavailable` is the odd one out: it is an operational flag (86 an
+//   item), so a waiter marking an item unavailable on one terminal does not
+//   propagate to the others, which looks more like a gap than a choice.
+//
+// This split is recorded in code but is NOT backed by an ADR or product
+// decision — treat it as unresolved rather than settled. If `unavailable`
+// (or the rest of Tier 2) should be shared, promote it to Tier 1; note the
+// preference store is generic string KV (api/settings.ts:198-202), so a set
+// or map needs serialising first. Raised by .agents/resto-pos-ui-review.md §F5.
 
 // Sort options in menu order. Exported, and SortMode derived from it rather
 // than written out separately, so the two cannot drift: the hamburger renders
@@ -107,14 +141,29 @@ function sortPinnedFirst(items: Product[], pinned: Set<string>): Product[] {
  * and a responsive product grid. Right-click any item to pin it to
  * the top of the grid.
  */
-export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
+export default function RestaurantMenu({
+  onAddProduct,
+  sidebarOpen: controlledSidebarOpen,
+  onSidebarOpenChange,
+  cartActions,
+}: RestaurantMenuProps) {
   const { l10n } = useLocalization();
-  const { products, categoryMeta, loading } = useProducts();
+  const { sessionToken } = useWorkspace();
+  const { products, categoryMeta, loading, error, reload } = useProducts(sessionToken ?? undefined);
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { session } = useAuth();
-  const { sessionToken } = useWorkspace();
   const userId = session?.user_id ?? 'default';
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [internalMenuOpen, setInternalMenuOpen] = useState(false);
+  const isControlled = controlledSidebarOpen !== undefined;
+  const menuOpen = isControlled ? controlledSidebarOpen : internalMenuOpen;
+  const setMenuOpen = useCallback((action: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof action === 'function' ? action(menuOpen) : action;
+    if (isControlled) {
+      onSidebarOpenChange?.(nextVal);
+    } else {
+      setInternalMenuOpen(nextVal);
+    }
+  }, [isControlled, menuOpen, onSidebarOpenChange]);
   const contextMenuOpenRef = useRef(false);
   // The dropdown element ref is owned here (not in MenuPreferencesMenu)
   // because the global app-search gate — which moved into MenuSearchBar with
@@ -369,10 +418,14 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
   }, [effectiveCategory, restaurantProducts, searchQuery, pinned, sortMode, popularityCounts]);
 
   return (
-    <div className="restaurant-menu" style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}>
+    <div
+      className={`restaurant-menu ${menuOpen ? 'restaurant-menu--sidebar-open' : ''}`}
+      style={{ '--card-size': cardSize, '--font-size': fontSize } as React.CSSProperties}
+    >
       {/* ── Header row: hamburger + back + search ── */}
       <div className="restaurant-header">
         <MenuPreferencesMenu
+          {...(cartActions ? { cartActions } : {})}
           open={menuOpen}
           onOpenChange={setMenuOpen}
           dropdownRef={hamburgerDropdownRef}
@@ -414,7 +467,11 @@ export default function RestaurantMenu({ onAddProduct }: RestaurantMenuProps) {
       {/* ── Product grid ───────────────────────────── */}
       <MenuItemGrid
         loading={loading}
+        error={error}
+        onRetry={reload}
         items={filtered}
+        hasActiveFilter={effectiveCategory !== 'All' || searchQuery.trim().length > 0}
+        onClearFilter={() => { setSearchQuery(''); setActiveCategory('All'); }}
         pinned={pinned}
         unavailable={unavailable}
         colors={colors}

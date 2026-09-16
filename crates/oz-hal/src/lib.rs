@@ -20,10 +20,11 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 //! with ESC/POS formatting and KDS chits, cash drawers (standalone serial
 //! and printer-kick), serial customer pole displays, and weight scales.
 //!
-//! Card-payment terminals are mid-migration: the [`EdcTerminal`] trait is
-//! defined here, but its drivers still live in
-//! `crates/oz-payment/src/drivers/edc/` and are not yet registered through
-//! [`registry::DriverRegistry`]. NFC readers are not implemented at all.
+//! Card-payment terminals: the [`EdcTerminal`] trait is defined here and its
+//! drivers live in `crates/oz-hal/src/drivers/edc/` (`wired`, `wireless`, plus
+//! the Ingenico/PAX/Verifone codecs under `drivers/edc/protocol/`), registered
+//! through [`registry::DriverRegistry`] by the setup wizard. NFC readers are not
+//! implemented at all.
 //!
 //! Every trait has a programmable mock in [`drivers::mock`]. Tests use
 //! the mocks; production code uses real drivers registered through

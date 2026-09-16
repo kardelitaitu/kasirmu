@@ -55,7 +55,7 @@ staff-login-license-inactive = Lisensi tidak aktif
 statusbar-conflict-count = { $count } konflik sinkronisasi terselesaikan
 # SYNC-12: StatusBar visible labels + ARIA (localized at the render boundary)
 statusbar-app-status-aria = Status aplikasi
-statusbar-version = v0.0.37
+statusbar-version = v0.0.39
 statusbar-sync-name = Sinkronisasi
 statusbar-gateway-name = Stripe
 statusbar-license = Lisensi Proprietary
@@ -74,8 +74,6 @@ statusbar-version-update-msg = Pembaruan tersedia
 # Kontrak kesehatan layanan (saas-3): pill pembayaran + konektivitas perangkat
 statusbar-payment-label = Pembayaran
 statusbar-devices-label = Perangkat
-# Mengklik pill layanan langsung memeriksa ulang; petunjuk itu muncul saat hover.
-statusbar-retry-hint = Klik untuk mencoba lagi
 statusbar-retry-queued = Mencoba ulang { $name }…
 statusbar-payment-gateway-msg = { $name } · { $count } gateway aktif
 statusbar-payment-unconfigured-msg = { $name } · Tidak ada gateway terkonfigurasi
@@ -395,6 +393,9 @@ workspace-card-no-access-aria = { $name } — tidak tersedia untuk peran Anda
 workspace-card-no-access-badge = Tidak tersedia
 workspace-home-error-title = Galat Koneksi
 workspace-home-error-desc = Tidak dapat memuat ruang kerja. Periksa koneksi Anda dan coba lagi.
+# DITAMPILKAN saat create_session ditolak: ruang kerja terdaftar, tetapi token sesi
+# tidak dapat dibuat, jadi perintah yang memerlukan token tidak dapat berjalan.
+workspace-session-token-error = Tidak dapat memulai sesi untuk ruang kerja ini. Periksa detail dan coba lagi.
 workspace-home-retry = Coba Lagi
 workspace-home-retry-btn = Muat Ulang
 workspace-card-pin-aria = Sematkan { $name } ke atas

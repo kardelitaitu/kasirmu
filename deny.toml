@@ -1,17 +1,47 @@
 # cargo-deny configuration — mirrors the reviewed baseline in .cargo/audit.toml.
 #
-# Policy (see audit/27-ci-pipeline.md + docs/ci-pipeline.md security section):
+# Policy (see docs/operations/ci-pipeline.md — the two paths named here
+# until 2026-09-16, `audit/27-ci-pipeline.md` and `docs/ci-pipeline.md`,
+# exist neither at the root nor under docs/; the page moved to operations/).
 #   • License check: fail-closed. Only the permissive licenses below are
 #     allowed; anything new must be added deliberately.
 #   • Advisories: all vulnerability advisories fail (cargo-deny 0.19 has no
 #     severity threshold). Unmaintained/unsound/yanked are gated at the
 #     `workspace` level so a transitive-only finding stays visible but does
-#     not block CI — matching the "informational warnings stay visible but
-#     non-blocking" stance documented in .cargo/audit.toml.
+#     not fail the check — matching the "informational warnings stay visible
+#     but non-blocking" stance documented in .cargo/audit.toml.
+#   • ENFORCEMENT, re-measured 2026-09-16 at dd95374f7. A runner now exists:
+#     scripts/check.sh carries a leg labelled "supply chain advisories
+#     (advisory)" that invokes `cargo deny check`, so this file is no longer
+#     unread by anything. That leg is NON-BLOCKING by design — it prints
+#     PASS / SKIP / WARN and never fails the run — and it is still in NO live
+#     workflow and NOT in pre-push:
+#     `grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml
+#     .github/workflows/release.yml` exits 1, and .githooks/pre-push calls
+#     scripts/run-pre-push.py, which never calls check.sh. So every statement
+#     below about what "fails CI" still describes only what this config WOULD
+#     do if a WORKFLOW invoked it. In scripts/gates.json the `audit` row is
+#     now `status: "advisory"` with that leg as its only runner (it was
+#     `retired` when the paragraph this one replaces was written).
+#     The other half of that replaced paragraph was stale in its number, not
+#     only in its runner: it asserted "as measured 2026-09-16, `cargo deny
+#     check advisories` exits 1 locally on RUSTSEC-2026-0285 (rustls
+#     0.23.41)". Cargo.lock no longer holds rustls 0.23.41 — `8a9954d7c
+#     chore(deps): bump rustls to 0.23.45 to clear RUSTSEC-2026-0285`, and
+#     `grep -A1 'name = "rustls"' Cargo.lock` prints 0.23.45 — so re-measured
+#     at dd95374f7 `cargo deny check advisories` exits 0 and prints
+#     `advisories ok`. Read the exit code off the command, not off this file.
 #   • The workspace's own crates are proprietary (LICENSE, `SEE LICENSE IN
 #     LICENSE` is not SPDX-parseable) — clarified per crate below.
 #
-# Refresh procedure (DOCKER-02-style, deliberate):
+# Refresh procedure (DOCKER-02-style, deliberate — and still MANUAL in every
+# way that decides an outcome: no live workflow, no pre-commit hook step and no
+# pre-push step invokes cargo-deny (`grep -rnE 'cargo deny'
+# .github/workflows/*.yml scripts/run-pre-push.py .githooks` exits 1). The one
+# automatic reader is the non-blocking scripts/check.sh leg named above, which
+# SURFACES a finding and stops nothing — it SKIPs where cargo-deny is not
+# installed and SKIPs where the advisory database is unreachable, so its own
+# green is not proof this file was evaluated. Nothing below happens by itself:
 #   After adding a dependency, run `cargo deny check licenses` and add any
 #   new license to `allow` ONLY after reviewing it. Run `cargo deny check
 #   advisories` and move an advisory to `ignore` only with a justification
@@ -43,190 +73,213 @@ allow = [
 # `license = "SEE LICENSE IN LICENSE"` which is not SPDX-parseable). Clarify
 # each against the root LICENSE so they are treated as the project's own
 # code. If a LICENSE hash ever changes, cargo-deny prints the expected value
-# — update deliberately.
+# — but only to whoever runs the check, and nothing runs it (see the Refresh
+# procedure above). That gap has already cost one full cycle: the root LICENSE
+# text changed at `4fae8bba2` (2026-09-14), 13 days after this file was last
+# edited (`86aa825f9`, 2026-09-01), and all 35 clarify hashes sat stale and
+# warning-ing in silence until `f25347c63` (2026-09-16) re-pinned them. Re-run
+# `cargo deny check licenses` after ANY edit to the root LICENSE.
 [[licenses.clarify]]
 name = "foundation"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-api"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
+name = "oz-bridge"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-cli"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-cloud-server"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-core"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-crypto"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-hal"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
+name = "oz-lan"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
+name = "oz-local-api"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-logging"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-lua"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-media"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-notification"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-payment"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-plugin"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-pos-app"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-pos-tablet"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-reporting"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-security"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-core"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-kernel"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-startup"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-sync"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-crm"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-currency"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-giftcards"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-inventory"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-kitchen"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-loyalty"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-promotions"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-purchasing"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-reporting"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-sales"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-settings"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-staff"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-tax"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-terminal"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 
 [advisories]
 # Keep yanked crates visible but non-blocking (default is already warn).
 yanked = "warn"
 # Only fail on unmaintained/unsound crates that a workspace crate depends on
 # DIRECTLY; transitive-only findings stay visible as warnings. This mirrors
-# the .cargo/audit.toml stance that these are informational, reviewed in the
-# weekly security.yml run.
+# the .cargo/audit.toml stance that these are informational. They used to
+# be reviewed on a schedule: `.github/workflows/security.yml` is retired
+# (`security.yml.bak`, whose inert copy carries cron `0 6 * * 1`), so as of
+# 2026-09-16 no schedule reviews them — and with no cargo-deny runner, no
+# thing reports them either.
 unmaintained = "workspace"
 unsound = "workspace"
 # RUSTSEC-2023-0071 — Marvin Attack (rsa 0.9.x, medium 5.9). Mirrors the

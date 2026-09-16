@@ -7,6 +7,14 @@
  * accepts the close — so the protection was inert in the desktop app and only
  * worked in the browser dev preview. The supported seam is
  * `getCurrentWindow().onCloseRequested()` + `event.preventDefault()`.
+ *
+ * FIRST TO FAIL PER SEEDED MUTATION (measured, 11 cases): useUnsavedChangesGuard/9
+ * ALONE (1 failed / 10 passed) — the `.then` guard at
+ * useUnsavedChangesGuard.ts:81-82 replaced by an unconditional `unlisten = fn`,
+ * i.e. the late-settle cancel path deleted. /9 IS THE ONLY ASSERTION OF THAT
+ * BRANCH here, and it claims nothing about the two other sites of the same
+ * guard shape: ui/src/features/kds/useKdsRealtime.ts:95 (pinned by that file's
+ * own late/2) and ui/src/features/kds/ExpoScreen.tsx:195 (uncovered).
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
@@ -157,6 +165,43 @@ describe('useUnsavedChangesGuard', () => {
     await act(async () => {}); // onCloseRequested resolves asynchronously
     unmount();
     expect(m.unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  // ── the late-settle branch: registration resolves after the mount is gone ──
+  it('calls the returned unlisten itself when onCloseRequested settles after unmount', async () => {
+    // useUnsavedChangesGuard.ts:81 `if (cancelled) fn();` — the same guard shape
+    // pinned in useKdsRealtime.test.ts (late/2), reached the same way. Every
+    // other case in this file either never unmounts or awaits settle BEFORE
+    // unmounting (the case just above), so the mocked onCloseRequested's
+    // already-resolved promise (:29) takes the else at :82 and it is the
+    // CLEANUP at :87 that unlistens. :81 never runs in any of them.
+    //
+    // Here unmount is called with no await after the mount, so no microtask
+    // boundary is crossed: the cleanup executes while `unlisten` is still
+    // undefined — :87 is a no-op — and :86 has already set cancelled = true.
+    // Once the flush lets the .then run, :81 is the ONLY code left that can
+    // release the handler. Drop it and the close handler leaks: a SettingsPage
+    // unmount while the window API is still answering would leave an
+    // intercepting handler behind on a component that no longer exists.
+    const { unmount } = renderHook(() => useUnsavedChangesGuard(true));
+
+    // Registration itself happens inside the effect; it is the RESOLUTION that
+    // is late. One handler, one call — the leak is about release, not stacking.
+    expect(m.onCloseRequested).toHaveBeenCalledTimes(1);
+    expect(m.handlers).toHaveLength(1);
+
+    unmount();
+
+    // Not released yet, because there was nothing to release with.
+    expect(m.unlisten).toHaveBeenCalledTimes(0);
+
+    // Same flush idiom as the case above — real timers, microtasks only.
+    await act(async () => {});
+
+    // The guard ran, exactly once: adds === removes at this seam.
+    expect(m.unlisten).toHaveBeenCalledTimes(1);
+    expect(m.onCloseRequested).toHaveBeenCalledTimes(1);
+    expect(m.handlers).toHaveLength(1);
   });
 
   // The browser path is still needed: the dev preview at :1420 and any

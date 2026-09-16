@@ -8,14 +8,10 @@
 //! tablet authenticates with `resolve_session` rather than `resolve_scope`
 //! for commands that touch no database row.
 
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, command};
-use tokio::sync::oneshot;
 
 use oz_core::{Currency, Money, Settings};
-use oz_hal::BarcodeScanner;
 use oz_hal::DisplayContent;
 use oz_hal::drivers::receipt;
 use oz_hal::transport::usb::{UsbDeviceInfo, probe_all};
@@ -25,37 +21,19 @@ use crate::state::AppState;
 
 // ── Cash drawer ─────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-/// Opencashdrawerargs.
-pub struct OpenCashDrawerArgs {
-    /// Optional device id; defaults to "default" which is the mock drawer
-    /// registered at startup.
-    #[serde(default)]
-    pub device_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-/// Opencashdrawerresult.
-pub struct OpenCashDrawerResult {
-    /// Opened.
-    pub opened: bool,
-}
-
-#[command]
-/// Open cash drawer.
-pub async fn open_cash_drawer(
-    args: OpenCashDrawerArgs,
-    state: State<'_, AppState>,
-) -> Result<OpenCashDrawerResult, AppError> {
-    let id = args.device_id.as_deref().unwrap_or("default");
-    let drawer = state
-        .registry
-        .cash_drawer(id)
-        .await
-        .ok_or_else(|| AppError::Invalid(format!("no cash drawer registered as '{id}'")))?;
-    drawer.open().await?;
-    Ok(OpenCashDrawerResult { opened: true })
-}
+// ADR #49: re-exported from the bridge rather than redefined, because
+// `open_cash_drawer_scoped` now delegates and the bridge's signature names its
+// own two types. Both sides declare the same fields with no `rename_all`, so
+// the wire shape is unchanged: `device_id: Option<String>` in, `opened: bool`
+// out.
+//
+// One asymmetry is real and is recorded rather than assumed harmless: this
+// shell's `OpenCashDrawerArgs` carried `#[serde(default)]` on `device_id` and
+// the bridge's does not. If that attribute was load-bearing, a caller that
+// omits `device_id` entirely would have deserialised before and error now.
+// `hardware_tests.rs::open_cash_drawer_args_default_device` deserialises `{}`
+// and asserts `None`, so it is the pin: it passes today and must still pass.
+pub use oz_bridge::hardware::{OpenCashDrawerArgs, OpenCashDrawerResult};
 
 // ── Raw text receipt (legacy) ───────────────────────────
 
@@ -73,27 +51,6 @@ pub struct PrintReceiptArgs {
 pub struct PrintReceiptResult {
     /// Printed Lines.
     pub printed_lines: usize,
-}
-
-#[command]
-/// Print receipt.
-pub async fn print_receipt(
-    args: PrintReceiptArgs,
-    state: State<'_, AppState>,
-) -> Result<PrintReceiptResult, AppError> {
-    let printer = state
-        .registry
-        .printer("default")
-        .await
-        .ok_or_else(|| AppError::Invalid("no receipt printer registered".into()))?;
-    let lines: Vec<&str> = args.body.lines().collect();
-    let n = lines.len();
-    printer.print_receipt(&args.body).await?;
-    // Emit a completion event so the front-end can show a toast.
-    if let Some(ref app) = state.app {
-        let _ = app.emit("receipt:printed", serde_json::json!({ "lines": n }));
-    }
-    Ok(PrintReceiptResult { printed_lines: n })
 }
 
 // ── Structured sales receipt ────────────────────────────
@@ -180,101 +137,6 @@ pub struct PrintSalesReceiptResult {
     pub printed: bool,
 }
 
-#[command]
-/// Print sales receipt.
-pub async fn print_sales_receipt(
-    args: PrintSalesReceiptArgs,
-    state: State<'_, AppState>,
-) -> Result<PrintSalesReceiptResult, AppError> {
-    let printer = state
-        .registry
-        .printer("default")
-        .await
-        .ok_or_else(|| AppError::Invalid("no receipt printer registered".into()))?;
-
-    // Load store info + display settings from the DB.
-    let conn = state.db.lock().await;
-    let store_name = Settings::get_store_name(&conn)?.unwrap_or_else(|| "OZ-POS Store".into());
-    let store_address = Settings::get_store_address(&conn)?.unwrap_or_default();
-    let store_tax_id = Settings::get_store_tax_id(&conn)?;
-    let decimals = Settings::get_receipt_decimal_separator(&conn)?;
-    let decimal_separator = match decimals.as_str() {
-        "comma" => receipt::DecimalSeparator::Comma,
-        "none" => receipt::DecimalSeparator::None,
-        _ => receipt::DecimalSeparator::Dot,
-    };
-    let paper_width = match Settings::get_receipt_paper_width(&conn)?.as_str() {
-        "narrow" => receipt::PaperWidth::Narrow,
-        _ => receipt::PaperWidth::Standard,
-    };
-    let config = receipt::ReceiptConfig {
-        paper_width,
-        show_currency: Settings::get_receipt_show_currency(&conn)?,
-        decimal_separator,
-        show_tax: Settings::get_receipt_show_tax(&conn)?,
-        footer: {
-            let f = Settings::get_receipt_footer(&conn)?;
-            if f.is_empty() { None } else { Some(f) }
-        },
-        show_table_number: Settings::get_receipt_show_table_number(&conn)?,
-        barcode_enabled: false,
-        payment_link_template: None,
-    };
-    drop(conn); // release lock before printing
-
-    let receipt = receipt::SalesReceipt {
-        store: receipt::StoreInfo {
-            name: store_name,
-            address: store_address,
-            tax_id: store_tax_id,
-        },
-        date: args.date,
-        receipt_number: args.receipt_number,
-        table_number: args.table_number,
-        items: args
-            .items
-            .into_iter()
-            .map(|i| {
-                Ok::<_, AppError>(receipt::LineItem {
-                    name: i.name,
-                    quantity: i.quantity,
-                    unit_price: i.unit_price.to_money()?,
-                    total_price: i.total_price.to_money()?,
-                    tax_amount: i.tax_amount.map(|t| t.to_money()).transpose()?,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-        subtotal: args.subtotal.to_money()?,
-        tax: args.tax.map(|t| t.to_money()).transpose()?,
-        total: args.total.to_money()?,
-        payments: args
-            .payments
-            .into_iter()
-            .map(|p| {
-                Ok::<_, AppError>(receipt::PaymentInfo {
-                    method: p.method,
-                    amount: p.amount.to_money()?,
-                    change: p.change.map(|c| c.to_money()).transpose()?,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    };
-
-    let data = receipt::format_sales_receipt(&receipt, &config);
-    let line_count = receipt.items.len() + 6;
-
-    printer.print_raw(&data).await?;
-
-    if let Some(ref app) = state.app {
-        let _ = app.emit(
-            "receipt:printed",
-            serde_json::json!({ "lines": line_count }),
-        );
-    }
-
-    Ok(PrintSalesReceiptResult { printed: true })
-}
-
 // ── Barcode scanner ──────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -284,105 +146,25 @@ pub struct ScannerInfo {
     pub id: String,
 }
 
-/// List all registered barcode scanners.
-#[command]
-pub async fn list_scanners(state: State<'_, AppState>) -> Result<Vec<ScannerInfo>, AppError> {
-    let ids = state.registry.scanner_ids().await;
-    Ok(ids.into_iter().map(|id| ScannerInfo { id }).collect())
-}
-
-/// Start a background polling task for the named scanner.
+/// Open cash drawer resolved from a session token. ADR #7.
 ///
-/// Every decoded barcode is emitted as a `barcode:scanned` event
-/// with shape `{ code: String, symbology: String }`. Calling
-/// `start_scanner` while a scanner is already running stops the
-/// previous one first.
-#[command]
-pub async fn start_scanner(scanner_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    // Stop any existing scanner first.
-    {
-        let mut cancel = state.scanner_cancel.lock().await;
-        if let Some(sender) = cancel.take() {
-            let _ = sender.send(());
-        }
-    }
-
-    let driver: Arc<dyn BarcodeScanner> = state
-        .registry
-        .scanner(&scanner_id)
-        .await
-        .ok_or_else(|| AppError::Invalid(format!("no scanner registered as '{scanner_id}'")))?;
-
-    let app = state
-        .app
-        .clone()
-        .ok_or_else(|| AppError::Internal("AppHandle unavailable".into()))?;
-
-    let (tx, mut rx) = oneshot::channel::<()>();
-
-    tokio::spawn(async move {
-        // Attempt to connect (idempotent – a second connect is a no-op).
-        let mut scanner = match driver.connect().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
-                let _ = app.emit(
-                    "barcode:error",
-                    serde_json::json!({ "error": e.to_string() }),
-                );
-                return;
-            }
-        };
-
-        tracing::info!(scanner = %scanner_id, "barcode scanner started");
-
-        loop {
-            tokio::select! {
-                _ = &mut rx => {
-                    tracing::info!(scanner = %scanner_id, "barcode scanner stopped");
-                    break;
-                }
-                result = scanner.poll(300) => {
-                    match result {
-                        Ok(Some(barcode)) => {
-                            let payload = serde_json::json!({
-                                "code": barcode.code,
-                                "symbology": format!("{:?}", barcode.symbology),
-                            });
-                            let _ = app.emit("barcode:scanned", payload);
-                        }
-                        Ok(None) => {
-                            // Timeout — loop again.
-                        }
-                        Err(e) => {
-                            tracing::warn!(scanner = %scanner_id, error = %e, "scanner poll error");
-                            let _ = app.emit("barcode:error", serde_json::json!({ "error": e.to_string() }));
-                            // Keep trying after a brief backoff.
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Store the cancel-sender so a subsequent start_scanner or stop_scanner can shut it down.
-    state.scanner_cancel.lock().await.replace(tx);
-
-    Ok(())
-}
-
-/// Stop the active barcode scanner background task (if any).
-#[command]
-pub async fn stop_scanner(state: State<'_, AppState>) -> Result<(), AppError> {
-    let mut cancel = state.scanner_cancel.lock().await;
-    if let Some(sender) = cancel.take() {
-        let _ = sender.send(());
-    }
-    Ok(())
-}
-
-/// Session-scoped variant of `open_cash_drawer`.
+/// ADR #49: the body is the bridge's. This door earned its delegation in two
+/// steps, and the order matters. **First the gate:** this shell resolved the
+/// session and discarded it as `_session`, so the drawer opened for any
+/// authenticated caller, while the twin gates with `permissions::PAYMENTS_CASH`
+/// under the same `F-017` finding. That was closed here *before* delegating,
+/// because §4 forbids widening **or narrowing** a gate inside an extraction —
+/// delegating an ungated door would have flipped the ledger's reading of it.
+/// With the gate at parity the rest is an identity: same `resolve_session`
+/// first, same `"no cash drawer registered as '{id}'"` text, same
+/// `drawer.open()`.
+///
+/// One delta, reported rather than hidden: the bridge calls
+/// `ctx.resolve_scope(session_token)?` after the gate and discards the result,
+/// so it also requires the session's *store* DB to resolve. This shell opened
+/// nothing. That is the desktop's behaviour, so it is parity — but it means a
+/// cash-drawer command now depends on the store DB being openable, which it
+/// never did before. The same delta was accepted for `start_scanner_scoped`.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn open_cash_drawer_scoped(
@@ -390,18 +172,22 @@ pub async fn open_cash_drawer_scoped(
     args: OpenCashDrawerArgs,
     state: State<'_, AppState>,
 ) -> Result<OpenCashDrawerResult, AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    let id = args.device_id.as_deref().unwrap_or("default");
-    let drawer = state
-        .registry
-        .cash_drawer(id)
+    let ctx = state.bridge_ctx();
+    oz_bridge::hardware::open_cash_drawer_scoped(&ctx, args, &session_token)
         .await
-        .ok_or_else(|| AppError::Invalid(format!("no cash drawer registered as '{id}'")))?;
-    drawer.open().await?;
-    Ok(OpenCashDrawerResult { opened: true })
+        .map_err(Into::into)
 }
 
-/// Session-scoped variant of `print_receipt`.
+/// Print receipt resolved from a session token. ADR #7.
+///
+/// ADR #49 — NOT delegated. The bridge's twin (`crates/oz-bridge/src/hardware.rs:443`)
+/// is this body plus one block: it calls `printer.get_status()`, rejects the print with
+/// `"Printer is not ready: check paper supply and cover"` when `status.has_fault()`
+/// (`:454-459`), and warns on low paper (`:460-462`). This shell has neither, so
+/// delegating would add a refusal path to a command that currently prints — a check that
+/// can start refusing what it accepted before, which §4 forbids inside an extraction.
+/// Same shape as the `set_brand_logo_path` refusal in `branding.rs`. Whether the tablet
+/// should gain the fault check is an owner call, not a port.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn print_receipt_scoped(
@@ -425,7 +211,18 @@ pub async fn print_receipt_scoped(
     Ok(PrintReceiptResult { printed_lines: n })
 }
 
-/// Session-scoped variant of `print_sales_receipt`.
+/// Print sales receipt resolved from a session token. ADR #7.
+///
+/// ADR #49 — NOT delegated, on the same ground as `print_receipt_scoped`: the bridge's
+/// `run_print_receipt_inner` (`crates/oz-bridge/src/hardware.rs:309`) is this body plus
+/// the `get_status()` / `has_fault()` rejection at `:321-333`. Everything after that
+/// block matches — same `format_sales_receipt`, same `line_count = receipt.items.len()
+/// + 6`, same `print_raw` — so the added refusal is the only obstacle.
+///
+/// A second, smaller delta is worth an owner's eye rather than a port: this body
+/// resolves the printer *before* the session (`:350-354`), so a missing printer is
+/// reported ahead of an invalid token, whereas the bridge resolves the store first. That
+/// ordering lets an unauthenticated caller distinguish printer states.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn print_sales_receipt_scoped(
@@ -548,7 +345,7 @@ fn prefer_first(mut scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<ScannerI
     scanners
 }
 
-/// Session-scoped variant of `list_scanners`.
+/// List all registered barcode scanners resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_scanners_scoped(
@@ -567,7 +364,29 @@ pub async fn list_scanners_scoped(
     ))
 }
 
-/// Session-scoped variant of `start_scanner`.
+/// Start a background polling task for the named scanner resolved from a session token. ADR #7.
+///
+/// ADR #49: the body is the bridge's. This was a byte-identical second copy of
+/// `oz_bridge::hardware::start_scanner_scoped` — same cancel-then-take, same
+/// `"no scanner registered as '{}'"` text, same `AppHandle unavailable` error
+/// for the headless case, same `poll(300)`, same 500 ms backoff, and the same
+/// four log strings and two `barcode:*` payloads. The only deltas are the ones
+/// the delegation exists to remove: the emit moves from a held `AppHandle` to
+/// `ctx.emitter` (the same `TauriEventSink` this shell installs), and the
+/// error type converts through the `From<BridgeError> for AppError` seam.
+///
+/// One delta is real and is reported rather than hidden: the bridge resolves
+/// with `ctx.resolve_scope(..)`, which opens the session's store DB, where this
+/// body used `resolve_session` and opened nothing. That is the desktop's
+/// behaviour (the desktop has delegated this door all along), so it is parity
+/// rather than a regression — but it does add a store open to every scanner
+/// start, and the scanner state it writes (`scanner_cancel`) is the same
+/// `Arc<Mutex<..>>` this shell hands to the bridge and that `stop_scanner_scoped`
+/// below locks, because
+/// `bridge_ctx()` binds `scanner_cancel: &self.scanner_cancel`. The unscoped
+/// `stop_scanner` that also read this field was retired in T21 (b2): it was registered
+/// in neither shell, so no client could reach it to read anything. The field and its
+/// binding are unchanged.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn start_scanner_scoped(
@@ -575,82 +394,13 @@ pub async fn start_scanner_scoped(
     scanner_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let _session = state.resolve_session(&session_token)?;
-    // Stop any existing scanner first.
-    {
-        let mut cancel = state.scanner_cancel.lock().await;
-        if let Some(sender) = cancel.take() {
-            let _ = sender.send(());
-        }
-    }
-
-    let driver: Arc<dyn BarcodeScanner> = state
-        .registry
-        .scanner(&scanner_id)
+    let ctx = state.bridge_ctx();
+    oz_bridge::hardware::start_scanner_scoped(&ctx, &scanner_id, &session_token)
         .await
-        .ok_or_else(|| AppError::Invalid(format!("no scanner registered as '{scanner_id}'")))?;
-
-    let app = state
-        .app
-        .clone()
-        .ok_or_else(|| AppError::Internal("AppHandle unavailable".into()))?;
-
-    let (tx, mut rx) = oneshot::channel::<()>();
-
-    tokio::spawn(async move {
-        // Attempt to connect (idempotent – a second connect is a no-op).
-        let mut scanner = match driver.connect().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
-                let _ = app.emit(
-                    "barcode:error",
-                    serde_json::json!({ "error": e.to_string() }),
-                );
-                return;
-            }
-        };
-
-        tracing::info!(scanner = %scanner_id, "barcode scanner started");
-
-        loop {
-            tokio::select! {
-                _ = &mut rx => {
-                    tracing::info!(scanner = %scanner_id, "barcode scanner stopped");
-                    break;
-                }
-                result = scanner.poll(300) => {
-                    match result {
-                        Ok(Some(barcode)) => {
-                            let payload = serde_json::json!({
-                                "code": barcode.code,
-                                "symbology": format!("{:?}", barcode.symbology),
-                            });
-                            let _ = app.emit("barcode:scanned", payload);
-                        }
-                        Ok(None) => {
-                            // Timeout — loop again.
-                        }
-                        Err(e) => {
-                            tracing::warn!(scanner = %scanner_id, error = %e, "scanner poll error");
-                            let _ = app.emit("barcode:error", serde_json::json!({ "error": e.to_string() }));
-                            // Keep trying after a brief backoff.
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Store the cancel-sender so a subsequent start_scanner or stop_scanner can shut it down.
-    state.scanner_cancel.lock().await.replace(tx);
-
-    Ok(())
+        .map_err(Into::into)
 }
 
-/// Session-scoped variant of `stop_scanner`.
-/// Session-scoped variant of `stop_scanner`.
+/// Stop the active barcode scanner background task (if any) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn stop_scanner_scoped(

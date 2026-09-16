@@ -161,12 +161,21 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
       const shift = await openShiftScoped(sessionToken, safeBalance);
       setActiveShift(shift);
       openShiftExit.requestClose();
-    } catch {
-      // Handled silently — shift open failure is rare.
+    } catch (err) {
+      // A refused open is NOT rare and was silently swallowed: the backend
+      // rejects a second open shift for the signed-in user
+      // (crates/oz-core/src/db/shifts.rs:64-75), so before this line the click
+      // simply did nothing visible — no toast, no error, modal left standing.
+      // Same surfacing idiom the close path uses two callbacks above
+      // (setCloseShiftError + l10nErrorMessage), whose inline banner is
+      // role="alert" in CartPanel and renders while no close modal is open —
+      // so it shows on top of the open-shift modal, which deliberately STAYS
+      // open so the cashier can correct the balance and retry.
+      setCloseShiftError(l10nErrorMessage(err, l10nRef.current, 'retail-toast-failed-open-shift'));
     } finally {
       setOpeningShift(false);
     }
-  }, [openingBalance, openShiftExit, sessionToken]);
+  }, [openingBalance, openShiftExit, sessionToken, l10nRef, setCloseShiftError]);
 
   return {
     activeShift,

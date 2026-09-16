@@ -6,7 +6,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     ASSETS: {
       fetch: vi.fn(async () => new Response('static asset')),
     },
-    LICENSE_API_URL: 'https://license.test.ozpos.my.id',
+    LICENSE_API_URL: 'https://license.test.kasir.mu',
     CONTACT_WEBHOOK_URL: 'https://discord.com/api/webhooks/mock',
   };
 
@@ -15,7 +15,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('serves runtime-config.js with no-store headers', async () => {
-    const req = new Request('https://ozpos.my.id/__oz/runtime-config.js');
+    const req = new Request('https://kasir.mu/__oz/runtime-config.js');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(200);
@@ -23,12 +23,12 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
 
     const text = await res.text();
-    expect(text).toContain('https://license.test.ozpos.my.id');
+    expect(text).toContain('https://license.test.kasir.mu');
     expect(text).toContain('/api/contact');
   });
 
   it('handles CORS OPTIONS preflight for /api/contact', async () => {
-    const req = new Request('https://ozpos.my.id/api/contact', { method: 'OPTIONS' });
+    const req = new Request('https://kasir.mu/api/contact', { method: 'OPTIONS' });
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(200);
@@ -37,7 +37,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('returns 405 Method Not Allowed for GET /api/contact', async () => {
-    const req = new Request('https://ozpos.my.id/api/contact', { method: 'GET' });
+    const req = new Request('https://kasir.mu/api/contact', { method: 'GET' });
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(405);
@@ -46,7 +46,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('returns 400 when required contact fields are missing', async () => {
-    const req = new Request('https://ozpos.my.id/api/contact', {
+    const req = new Request('https://kasir.mu/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Alice' }),
@@ -64,13 +64,13 @@ describe('Cloudflare Worker — worker.ts', () => {
       status: 200,
     });
 
-    const req = new Request('https://ozpos.my.id/api/contact', {
+    const req = new Request('https://kasir.mu/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Bob',
         email: 'bob@example.com',
-        message: 'Hello OZ-POS team!',
+        message: 'Hello kasir.mu team!',
       }),
     });
 
@@ -85,7 +85,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('delegates unmatched paths to static ASSETS', async () => {
-    const req = new Request('https://ozpos.my.id/en/docs');
+    const req = new Request('https://kasir.mu/en/docs');
     const res = await worker.fetch(req, mockEnv);
 
     expect(mockEnv.ASSETS.fetch).toHaveBeenCalledWith(req);
@@ -95,42 +95,42 @@ describe('Cloudflare Worker — worker.ts', () => {
 
   // ── Auth gate (ADR #42) ─────────────────────────────────────────
 
-  it('redirects dashboard.ozpos.my.id / to ozpos.my.id/en/account/', async () => {
-    const req = new Request('https://dashboard.ozpos.my.id/');
+  it('redirects dashboard.kasir.mu / to kasir.mu/en/account/', async () => {
+    const req = new Request('https://dashboard.kasir.mu/');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://ozpos.my.id/en/account/');
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/account/');
   });
 
-  it('redirects dashboard.ozpos.my.id/login to ozpos.my.id/en/login', async () => {
-    const req = new Request('https://dashboard.ozpos.my.id/login');
+  it('redirects dashboard.kasir.mu/login to kasir.mu/en/login', async () => {
+    const req = new Request('https://dashboard.kasir.mu/login');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://ozpos.my.id/en/login');
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/login');
   });
 
-  it('redirects dashboard.ozpos.my.id/account to ozpos.my.id/en/account/', async () => {
-    const req = new Request('https://dashboard.ozpos.my.id/account');
+  it('redirects dashboard.kasir.mu/account to kasir.mu/en/account/', async () => {
+    const req = new Request('https://dashboard.kasir.mu/account');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://ozpos.my.id/en/account/');
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/account/');
   });
 
-  it('redirects dashboard.ozpos.my.id even with a valid cookie', async () => {
-    const req = new Request('https://dashboard.ozpos.my.id/', {
+  it('redirects dashboard.kasir.mu even with a valid cookie', async () => {
+    const req = new Request('https://dashboard.kasir.mu/', {
       headers: { Cookie: 'oz_session=valid.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://ozpos.my.id/en/account/');
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/account/');
   });
 
   it('serves dedicated admin login page when no cookie', async () => {
-    const req = new Request('https://admin.ozpos.my.id/');
+    const req = new Request('https://admin.kasir.mu/');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(200);
@@ -138,7 +138,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('clears the httpOnly cookie on /__oz/logout and redirects to login', async () => {
-    const req = new Request('https://admin.ozpos.my.id/__oz/logout', {
+    const req = new Request('https://admin.kasir.mu/__oz/logout', {
       headers: { Cookie: 'oz_session=stale.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);
@@ -146,7 +146,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.status).toBe(302);
     // Logout redirects to the admin subdomain itself (login page served via
     // the Worker proxy), not the marketing host.
-    expect(res.headers.get('Location')).toBe('https://admin.ozpos.my.id/');
+    expect(res.headers.get('Location')).toBe('https://admin.kasir.mu/');
     const setCookie = res.headers.get('Set-Cookie');
     expect(setCookie).toContain('oz_session=;');
     expect(setCookie).toContain('Max-Age=0');
@@ -154,7 +154,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('serves placeholder admin page when cookie is present', async () => {
-    const req = new Request('https://admin.ozpos.my.id/', {
+    const req = new Request('https://admin.kasir.mu/', {
       headers: { Cookie: 'oz_session=valid.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);
@@ -164,7 +164,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('returns 401 from /__oz/session when no cookie', async () => {
-    const req = new Request('https://admin.ozpos.my.id/__oz/session');
+    const req = new Request('https://admin.kasir.mu/__oz/session');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(401);
@@ -173,7 +173,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('returns token from /__oz/session when cookie present', async () => {
-    const req = new Request('https://admin.ozpos.my.id/__oz/session', {
+    const req = new Request('https://admin.kasir.mu/__oz/session', {
       headers: { Cookie: 'oz_session=my.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);
@@ -193,7 +193,7 @@ describe('Cloudflare Worker — worker.ts', () => {
       json: async () => ({ token: 'exchanged.jwt.token' }),
     });
 
-    const req = new Request('https://admin.ozpos.my.id/settings?code=shortlived&theme=dark');
+    const req = new Request('https://admin.kasir.mu/settings?code=shortlived&theme=dark');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
@@ -215,7 +215,7 @@ describe('Cloudflare Worker — worker.ts', () => {
       json: async () => ({ error: 'invalid code' }),
     });
 
-    const req = new Request('https://admin.ozpos.my.id/settings?code=stale');
+    const req = new Request('https://admin.kasir.mu/settings?code=stale');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
@@ -223,14 +223,14 @@ describe('Cloudflare Worker — worker.ts', () => {
     // B24 correction: the old assertion pinned the redirect to the
     // MARKETING host — but its login form is broken there (see next test).
     // The failure must stay on the admin host: the no-session gate serves
-    // the login page on admin.ozpos.my.id where the /api/v1/ proxy lives.
-    expect(location).not.toContain('https://ozpos.my.id');
+    // the login page on admin.kasir.mu where the /api/v1/ proxy lives.
+    expect(location).not.toContain('https://kasir.mu');
     expect(location).toBe('/settings');
   });
 
   it('B24: exchange failure must not bounce to the proxy-less marketing host', async () => {
-    // https://ozpos.my.id/admin/login loads, but login.js computes
-    // API='' for any *.ozpos.my.id host and POSTs relative /api/v1/... —
+    // https://kasir.mu/admin/login loads, but login.js computes
+    // API='' for any *.kasir.mu host and POSTs relative /api/v1/... —
     // the proxy is gated to DASHBOARD_HOSTS, so on the marketing host
     // those calls 404 and the form cannot submit. A user whose code
     // expired was stranded on a dead login page.
@@ -240,7 +240,7 @@ describe('Cloudflare Worker — worker.ts', () => {
       json: async () => ({ error: 'invalid code' }),
     });
 
-    const req = new Request('https://admin.ozpos.my.id/reports?code=expired');
+    const req = new Request('https://admin.kasir.mu/reports?code=expired');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
@@ -263,7 +263,7 @@ describe('Cloudflare Worker — worker.ts', () => {
       json: async () => ({ token: 't.jwt' }),
     });
 
-    const req = new Request('https://admin.ozpos.my.id//evil.com/?code=valid');
+    const req = new Request('https://admin.kasir.mu//evil.com/?code=valid');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
@@ -273,7 +273,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   // ── R1: account-portal httpOnly cookie on the marketing host ────────
 
   it('R1: serves /__oz/session on the marketing host from the cookie', async () => {
-    const req = new Request('https://ozpos.my.id/__oz/session', {
+    const req = new Request('https://kasir.mu/__oz/session', {
       headers: { Cookie: 'oz_session=cookie.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);
@@ -285,7 +285,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('R1: returns 401 from /__oz/session on the marketing host without a cookie', async () => {
-    const req = new Request('https://ozpos.my.id/__oz/session');
+    const req = new Request('https://kasir.mu/__oz/session');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(401);
@@ -294,13 +294,13 @@ describe('Cloudflare Worker — worker.ts', () => {
   });
 
   it('R1: /__oz/logout clears the cookie and redirects to marketing login', async () => {
-    const req = new Request('https://ozpos.my.id/__oz/logout', {
+    const req = new Request('https://kasir.mu/__oz/logout', {
       headers: { Cookie: 'oz_session=stale.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://ozpos.my.id/en/login');
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/login');
     const setCookie = res.headers.get('Set-Cookie');
     expect(setCookie).toContain('oz_session=;');
     expect(setCookie).toContain('Max-Age=0');
@@ -316,7 +316,7 @@ describe('Cloudflare Worker — worker.ts', () => {
 
     // A 48-hex one-time code (exchange codes are 48 hex chars).
     const code = 'a'.repeat(48);
-    const req = new Request(`https://ozpos.my.id/en/account?code=${code}&theme=dark`);
+    const req = new Request(`https://kasir.mu/en/account?code=${code}&theme=dark`);
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
@@ -328,7 +328,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(setCookie).toContain('Secure');
     // The exchange must hit the license server, not the static assets.
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://license.test.ozpos.my.id/api/v1/web/exchange-consume',
+      'https://license.test.kasir.mu/api/v1/web/exchange-consume',
       expect.objectContaining({ method: 'POST' })
     );
   });
@@ -338,7 +338,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     // be treated as an exchange code — the page loads normally.
     global.fetch = vi.fn();
 
-    const req = new Request('https://ozpos.my.id/en/support?code=abc123');
+    const req = new Request('https://kasir.mu/en/support?code=abc123');
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(200);
@@ -354,11 +354,11 @@ describe('Cloudflare Worker — worker.ts', () => {
     });
 
     const code = 'b'.repeat(48);
-    const req = new Request(`https://ozpos.my.id/en/account?code=${code}`);
+    const req = new Request(`https://kasir.mu/en/account?code=${code}`);
     const res = await worker.fetch(req, mockEnv);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://ozpos.my.id/en/login');
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/login');
   });
 
   // ── R3: strict CSP without script-src 'unsafe-inline' ───────────────
@@ -366,7 +366,7 @@ describe('Cloudflare Worker — worker.ts', () => {
   it('R3: auth-gated admin pages carry a strict CSP with no inline scripts', async () => {
     // The admin SPA loads every script from an external file, so the CSP
     // must block inline script injection (no 'unsafe-inline' in script-src).
-    const req = new Request('https://admin.ozpos.my.id/', {
+    const req = new Request('https://admin.kasir.mu/', {
       headers: { Cookie: 'oz_session=valid.jwt.token' },
     });
     const res = await worker.fetch(req, mockEnv);

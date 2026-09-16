@@ -112,6 +112,30 @@ pub struct CloudServerConfig {
     /// steers the charge endpoint.
     pub midtrans_sandbox: bool,
 
+    /// Optional QRIS acquirer (`MIDTRANS_QRIS_ACQUIRER`), forwarded verbatim to
+    /// Midtrans as `qris.acquirer` on every charge this server raises —
+    /// verbatim after `parse_qris_acquirer` strips surrounding whitespace,
+    /// and with no case folding.
+    ///
+    /// **Unset (the default) sends no acquirer at all**, so the QR stays generic
+    /// and any QRIS-compliant wallet can scan it — what every deployment does
+    /// today. A blank or whitespace-only value is normalised to `None`, so a
+    /// stray `=""` in a compose file cannot pin every QR to one e-wallet.
+    ///
+    /// SCOPE HONESTY: this is a **process-wide deployment knob, read once at
+    /// startup** — not the per-terminal / per-merchant override
+    /// `todo-payment.md` rules for merchants with a co-branded activation.
+    /// There is no settings-table field, no admin route, no UI control and no
+    /// cashier path to it; changing it means setting the env var and restarting
+    /// the server. One entry in the whole platform may therefore pin **every**
+    /// tenant's QR to one wallet, so it must stay unset in shared multi-tenant
+    /// deployments until the per-tenant half is designed and ruled. Startup
+    /// now warns (never refuses — refusing would break a legitimate
+    /// single-tenant production deployment) when `OZ_PRODUCTION=1` is set
+    /// alongside a value, and again when the value is outside the names
+    /// Midtrans documents, which is a typo-check rather than a gate.
+    pub midtrans_qris_acquirer: Option<String>,
+
     /// JWT signing secret for `POST /api/v1/tokens`.
     /// Falls back to a hard-coded dev secret when unset.
     pub api_secret: Option<String>,
@@ -135,6 +159,10 @@ impl CloudServerConfig {
     ///   for absent host variables).
     /// * `OZ_PRODUCTION=1` requires `OZ_API_SECRET` and `OZ_ADMIN_KEY` to be
     ///   set (no dev-secret fallback / open token mint).
+    ///
+    /// `MIDTRANS_QRIS_ACQUIRER` is never refused: `warn_qris_acquirer_pitfalls`
+    /// can raise two startup warnings about it, both diagnostics and neither a
+    /// gate.
     ///
     /// # Errors
     ///
@@ -186,6 +214,15 @@ impl CloudServerConfig {
 
         validate_production(production, api_secret.as_deref(), admin_key.as_deref())?;
 
+        // Read the acquirer *after* the production flag exists locally, so the
+        // same value that reaches the wire is the value the warnings below are
+        // about. Hard ordering rule: warnings never `return Err` — refusing
+        // here would break a legitimate single-tenant production deployment,
+        // which is not this file's call.
+        let midtrans_qris_acquirer =
+            parse_qris_acquirer(std::env::var("MIDTRANS_QRIS_ACQUIRER").ok());
+        warn_qris_acquirer_pitfalls(production, midtrans_qris_acquirer.as_deref());
+
         Ok(Self {
             db_path,
             database_url,
@@ -205,6 +242,7 @@ impl CloudServerConfig {
                 .ok()
                 .filter(|k| !k.is_empty()),
             midtrans_sandbox: env_bool("MIDTRANS_SANDBOX"),
+            midtrans_qris_acquirer,
             production,
             api_secret,
             redis_url: std::env::var("OZ_REDIS_URL").ok().filter(|s| !s.is_empty()),
@@ -220,6 +258,91 @@ fn env_bool(name: &str) -> bool {
     std::env::var(name)
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "on" | "ON"))
         .unwrap_or(false)
+}
+
+/// Normalise the raw `MIDTRANS_QRIS_ACQUIRER` value into an acquirer override.
+///
+/// Unset, empty and whitespace-only all map to `None`, which is the ruled
+/// default: the charge omits `qris.acquirer` and Midtrans issues a generic
+/// QRIS code. Surrounding whitespace is stripped, and the value left over is
+/// passed through unchanged — an inner space, mixed case and any name this
+/// server has never heard of all survive as written, because the gateway and
+/// not this server owns the vocabulary. So trimming is applied, and case
+/// folding is not.
+///
+/// Trimming is load-bearing, not cosmetic: a CRLF `.env`, an `env_file`, or a
+/// trailing space in a compose `environment:` entry used to produce
+/// `Some("gopay\r")`, which went on the wire byte-for-byte, was rejected by
+/// Midtrans, and turned every QRIS charge on that deployment into a 502 —
+/// while a whitespace-only value already read as `None`, so the blank guard
+/// alone never told anyone the value was broken.
+///
+/// Split out from `from_env` so the semantics are unit-testable without
+/// mutating process env.
+fn parse_qris_acquirer(raw: Option<String>) -> Option<String> {
+    raw.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty())
+}
+
+/// The acquirer names Midtrans documents for `qris.acquirer`
+/// (`todo-payment.md`: `gopay`, `shopeepay`, `dana`, `linkaja`).
+///
+/// This is a **diagnostic aid, not a validation gate** — see
+/// `warn_qris_acquirer_pitfalls`. Which acquirer a merchant may name is
+/// governed by their Midtrans activation, so the set can be wrong in both
+/// directions and neither case is this server's to decide.
+const KNOWN_QRIS_ACQUIRERS: [&str; 4] = ["gopay", "shopeepay", "dana", "linkaja"];
+
+/// Non-blocking startup warnings for a configured `MIDTRANS_QRIS_ACQUIRER`.
+///
+/// The field's own docs say it must stay unset in shared multi-tenant
+/// deployments, and until now nothing checked — so this reports the two ways
+/// the knob goes wrong, in the order a reader needs them:
+///
+/// 1. **The pin.** `production && acquirer.is_some()`: the value is one
+///    process-wide env var read once at startup, so it pins **every** tenant's
+///    QR to one wallet, not the operator's own. Warned, never refused — a
+///    single-tenant production deployment setting it is a legitimate choice
+///    this file may not veto.
+/// 2. **The typo.** A value outside `KNOWN_QRIS_ACQUIRERS` is an all-tenant
+///    outage discovered at the first charge, and the charset/length of the
+///    value is otherwise unbounded and unchecked. This one exists because the
+///    honest verdict is that the value is *not* an injection risk: it is
+///    forwarded as a JSON string scalar through serde (`qris.rs` ->
+///    `post_json` -> reqwest `.json()`), never into a URL, header or SQL, and
+///    the only party who can set it already holds `MIDTRANS_SERVER_KEY` — so
+///    there is no privilege gradient, only an outage nobody notices until a
+///    customer scans a QR.
+///
+/// Takes the parsed value (not the raw env) so both warnings describe exactly
+/// what goes on the wire. Split out of `from_env` for the same reason
+/// `parse_qris_acquirer` is: testable without mutating process env.
+fn warn_qris_acquirer_pitfalls(production: bool, acquirer: Option<&str>) {
+    let Some(acquirer) = acquirer else {
+        return; // generic QRIS code — the ruled default, nothing to say
+    };
+
+    if production {
+        tracing::warn!(
+            acquirer = %acquirer,
+            "MIDTRANS_QRIS_ACQUIRER is set while OZ_PRODUCTION=1. It is a \
+             process-wide knob read once at startup, so it pins EVERY tenant's \
+             QR to this one wallet — unset it in shared multi-tenant \
+             deployments. Warned, not refused: a single-tenant production \
+             deployment may want it."
+        );
+    }
+
+    if !KNOWN_QRIS_ACQUIRERS.contains(&acquirer) {
+        tracing::warn!(
+            acquirer = %acquirer,
+            known = ?KNOWN_QRIS_ACQUIRERS,
+            "MIDTRANS_QRIS_ACQUIRER is outside the known acquirer set. This \
+             list is a diagnostic aid, NOT a validation gate: the value is \
+             still forwarded verbatim, and which acquirer a merchant may name \
+             is governed by their Midtrans activation. A wrong name here is an \
+             all-tenant QRIS outage discovered at the first charge."
+        );
+    }
 }
 
 /// Parse a positive integer environment variable.

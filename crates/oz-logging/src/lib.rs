@@ -71,14 +71,41 @@ pub fn retained_file_log_guards() -> usize {
         .unwrap_or(0)
 }
 
+/// Decide the filter from a `RUST_LOG` value, keeping "not set" and
+/// "unparseable" apart.
+///
+/// `EnvFilter::try_from_default_env()` returns `Err` for BOTH cases, so the
+/// one-liner it replaces printed `RUST_LOG parse failed` at every developer who
+/// had never set `RUST_LOG` at all -- which is the documented default path
+/// ("falls back to `info` if unset"). A report that sends someone hunting a bad
+/// value they never wrote is a misreport, not a diagnostic. The fallback level
+/// is the same either way, so this returns the message instead of printing it,
+/// and the four init paths share one implementation.
+fn filter_for(raw: Option<&str>) -> (EnvFilter, Option<String>) {
+    let Some(raw) = raw.filter(|value| !value.trim().is_empty()) else {
+        // Unset, or set to whitespace: the documented default, silently applied.
+        return (EnvFilter::new("info"), None);
+    };
+    match EnvFilter::try_new(raw) {
+        Ok(filter) => (filter, None),
+        Err(e) => (
+            EnvFilter::new("info"),
+            Some(format!(
+                "[oz-logging] RUST_LOG={raw:?} could not be parsed ({e}); falling back to info"
+            )),
+        ),
+    }
+}
+
 /// Non-panicking variant of [`init`].
 ///
 /// Returns `Err` (instead of panicking) if the global subscriber has
 /// already been set. All other behaviour is identical to [`init`].
 pub fn try_init() -> Result<(), LoggingError> {
-    let filter = EnvFilter::try_from_default_env()
-        .inspect_err(|_| eprintln!("[oz-logging] RUST_LOG parse failed, falling back to info"))
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let (filter, filter_warning) = filter_for(std::env::var("RUST_LOG").ok().as_deref());
+    if let Some(warning) = filter_warning {
+        eprintln!("{warning}");
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -93,9 +120,10 @@ pub fn try_init() -> Result<(), LoggingError> {
 /// Returns `Err` (instead of panicking) if the global subscriber has
 /// already been set. All other behaviour is identical to [`init_json`].
 pub fn try_init_json() -> Result<(), LoggingError> {
-    let filter = EnvFilter::try_from_default_env()
-        .inspect_err(|_| eprintln!("[oz-logging] RUST_LOG parse failed, falling back to info"))
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let (filter, filter_warning) = filter_for(std::env::var("RUST_LOG").ok().as_deref());
+    if let Some(warning) = filter_warning {
+        eprintln!("{warning}");
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -199,9 +227,10 @@ pub fn try_init_with_file(
     file_prefix: &str,
     retention_days: u32,
 ) -> Result<(), LoggingError> {
-    let filter = EnvFilter::try_from_default_env()
-        .inspect_err(|_| eprintln!("[oz-logging] RUST_LOG parse failed, falling back to info"))
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let (filter, filter_warning) = filter_for(std::env::var("RUST_LOG").ok().as_deref());
+    if let Some(warning) = filter_warning {
+        eprintln!("{warning}");
+    }
 
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);
@@ -253,9 +282,10 @@ pub fn try_init_json_with_file(
     file_prefix: &str,
     retention_days: u32,
 ) -> Result<(), LoggingError> {
-    let filter = EnvFilter::try_from_default_env()
-        .inspect_err(|_| eprintln!("[oz-logging] RUST_LOG parse failed, falling back to info"))
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let (filter, filter_warning) = filter_for(std::env::var("RUST_LOG").ok().as_deref());
+    if let Some(warning) = filter_warning {
+        eprintln!("{warning}");
+    }
 
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);

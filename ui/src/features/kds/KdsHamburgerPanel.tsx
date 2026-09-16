@@ -5,6 +5,7 @@ import { useOptionalHardwareAccel } from '@/contexts/HardwareAccelContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSwipe } from '@/hooks/useSwipe';
 import type { DisplayDensity, KdsSettings } from '@/features/kds/kdsSettingsModel';
+import { RED_MAX_MIN, YELLOW_MAX_MIN } from '@/features/kds/kdsThresholdMinutes';
 import { useKdsCardColors } from '@/features/kds/KdsCardColorsContext';
 import { KdsRoutingRulesSection } from '@/features/kds/components/KdsRoutingRulesEditor';
 import { requiredLocalized } from '@/frontend/shared';
@@ -485,7 +486,7 @@ export function KdsHamburgerPanel({
                   </div>
                   <KdsSlider
                     min={3}
-                    max={30}
+                    max={YELLOW_MAX_MIN}
                     value={settings.yellowThresholdMin}
                     onChange={onChangeYellowThreshold}
                     onDragValue={(v) => setDragYellow(v || null)}
@@ -503,7 +504,7 @@ export function KdsHamburgerPanel({
                   </div>
                   <KdsSlider
                     min={4}
-                    max={60}
+                    max={RED_MAX_MIN}
                     value={settings.redThresholdMin}
                     onChange={onChangeRedThreshold}
                     onDragValue={(v) => setDragRed(v || null)}

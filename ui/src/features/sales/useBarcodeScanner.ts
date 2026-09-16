@@ -1,16 +1,13 @@
 import { useEffect, useRef, useCallback } from 'react';
 import {
-  startScanner,
-  stopScanner,
   startScannerScoped,
   stopScannerScoped,
   onBarcodeScanned,
   onBarcodeError,
-  listScanners,
   listScannersScoped,
   type BarcodeScannedPayload,
 } from '@/api/hardware';
-import { lookupByBarcode, lookupByBarcodeScoped } from '@/api/products';
+import { lookupByBarcodeScoped } from '@/api/products';
 
 export interface UseBarcodeScannerOptions {
   /** Session token for scoped API calls. */
@@ -54,22 +51,28 @@ export function useBarcodeScanner({
   useEffect(() => {
     let cancelled = false;
 
+    // T21 (b2): the no-session arm is deleted, not repaired. `list_scanners`, `start_scanner` and
+    // `stop_scanner` are registered in neither shell's generate_handler, so the `: plainWrapper`
+    // half of each ternary could only return "command not found" -- and a real build could not
+    // reach it anyway, because both shells return <StaffLoginScreen/> before any screen holding
+    // this hook mounts (ui/src/frontend/shell/AppShell.tsx:518, tablet/TabletAppShell.tsx:194).
+    // The dev-mock answered those names, so every browser preview and every Vitest run passed.
+    if (!sessionToken) return;
+
     (async () => {
       // Auto-detect scanner if no id was given.
       const scannerId = preferredId ?? (await autoDetectScanner(sessionToken));
 
       if (!scannerId || cancelled) return;
 
-      const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id) : startScanner;
-      await start(scannerId);
+      await startScannerScoped(sessionToken, scannerId);
       startedRef.current = true;
     })();
 
     return () => {
       cancelled = true;
       if (startedRef.current) {
-        const stop = sessionToken ? () => stopScannerScoped(sessionToken) : stopScanner;
-        stop().catch(() => {
+        stopScannerScoped(sessionToken).catch(() => {
           // Cleanup on unmount — scanner may already be stopped.
         });
         startedRef.current = false;
@@ -79,9 +82,18 @@ export function useBarcodeScanner({
 
   const handleScan = useCallback(
     async (payload: BarcodeScannedPayload) => {
+      // T21 (b2): `lookup_by_barcode` is registered in neither shell -- the tablet has an
+      // unregistered body and the desktop has no body at all -- so the fallback half could only
+      // answer "command not found". PosScreen.tsx:290 and RetailPosScreen.tsx:842 already call the
+      // scoped twin directly; this hook was the last production caller of the unscoped one.
+      // A scan with no session has no store to look up against, so it reports not-found, which is
+      // the same outcome the `catch` below already gave for a failed lookup.
+      if (!sessionToken) {
+        onProductNotFoundRef.current?.(payload.code);
+        return;
+      }
       try {
-        const lookup = sessionToken ? (code: string) => lookupByBarcodeScoped(sessionToken, code) : lookupByBarcode;
-      const product = await lookup(payload.code);
+        const product = await lookupByBarcodeScoped(sessionToken, payload.code);
         if (product) {
           onProductFoundRef.current(payload);
         } else {
@@ -120,10 +132,9 @@ export function useBarcodeScanner({
   }, [handleScan, handleError]);
 }
 
-async function autoDetectScanner(sessionToken?: string): Promise<string | null> {
+async function autoDetectScanner(sessionToken: string): Promise<string | null> {
   try {
-    const fetchScanners = sessionToken ? () => listScannersScoped(sessionToken) : listScanners;
-    const scanners = await fetchScanners();
+    const scanners = await listScannersScoped(sessionToken);
     return scanners[0]?.id ?? null;
   } catch {
     return null;

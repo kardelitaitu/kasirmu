@@ -21,6 +21,7 @@
 use super::*;
 
 use crate::testing::TestBridge;
+use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 // ── Desktop-shaped adapters (relocation scaffolding) ─────────────────
 #[allow(dead_code)]
@@ -135,6 +136,46 @@ async fn audit_rows(bridge: &TestBridge) -> Vec<(String, String, String, String,
     .collect()
 }
 
+/// An app whose `lite-token` session resolves to a `staff:view`-only user on
+/// the given tier.
+///
+/// The refusal this produces is a PERMISSION one, and the choice is load
+/// bearing: see the comment on `a_rejected_create_records_no_security_event`.
+/// `create_staff_scoped` gates on `staff:create` at `staff.rs:1073` and only
+/// reaches `sub.verify_signature()` at `:1080`, so a permission refusal is the
+/// one kind of refusal on that path that is live in BOTH profiles.
+fn lite_app(tier_key: &str) -> TestBridge {
+    let conn = seeded_conn(tier_key);
+    conn.execute(
+        r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-lite', 'Lite', 'Limited', '["sales:view"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-lite', 'lite', 'hash', 'Lite', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+
+    let bridge = TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
+        "lite-token".into(),
+        oz_core::session::SessionContext::new(
+            "user-lite".into(),
+            "role-lite".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    bridge
+}
+
 fn create_args(username: &str) -> CreateStaffScopedArgs {
     CreateStaffScopedArgs {
         username: username.into(),
@@ -152,9 +193,16 @@ async fn create_staff_scoped_records_a_security_event() {
     // installs persistence — the trail must name who did it and who appeared.
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
-    create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx)
-        .await
-        .unwrap();
+    let settled = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
+    // Release: staff.rs:1080 refuses the create at the seeded row signature before the
+    // recorder is ever reached, so there is NO event to read - asserting a row count
+    // here would be false evidence. Actor-vs-subject, the action name and the PIN
+    // redaction below are all debug-profile claims about the WRITE side.
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, settled, "premium").await;
+        return;
+    }
+    settled.unwrap();
 
     let rows = audit_rows(&bridge).await;
     assert_eq!(rows.len(), 1, "one create event, got {rows:?}");
@@ -184,14 +232,84 @@ async fn create_staff_scoped_records_a_security_event() {
 
 #[tokio::test]
 async fn a_rejected_create_records_no_security_event() {
-    // The recorder runs only after the account exists, so a create refused
-    // by validation or a duplicate username leaves no phantom row.
+    // The recorder runs only after the account exists, so a create refused by
+    // a gate leaves no phantom row.
+    //
+    // THE REFUSAL UNDER TEST IS A PERMISSION ONE, and that is the fix. It used
+    // to be a duplicate username; that case is now
+    // `a_duplicate_username_create_records_no_security_event`, forked, because
+    // it cannot be made honest in the release profile. `create_staff_scoped`
+    // gates on `staff:create` at staff.rs:1073 and only reaches
+    // `sub.verify_signature()` at :1080 — a duplicate-username setup needs the
+    // FIRST create to succeed, and in release that create dies at :1080 on the
+    // BOOTSTRAP_FREE sentinel. No fixture in this crate can mint a verifying
+    // signature (testing.rs:103-148 — the licence private key is not in this
+    // checkout), so no seeded row lets it through: `before` was 0, the
+    // duplicate was then refused at :1080 too, and `0 == 0` held for a reason
+    // with nothing to do with the recorder. A permission refusal is UPSTREAM
+    // of :1080 and therefore live in both profiles, so this case keeps
+    // exercising its subject in release instead of going vacuously green.
+    let bridge = lite_app("premium");
+    let ctx = bridge.ctx();
+
+    let denied = create_staff_scoped("lite-token".into(), create_args("jdoe"), &ctx).await;
+    assert!(
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
+        "the refusal must be the staff:create gate at staff.rs:1073, upstream of the \
+         subscription read — any other error means this case no longer tests what it says: \
+         {denied:?}"
+    );
+    // The refusal was real and not merely a passport stamp: no account exists.
+    let created = {
+        let db = ctx.lock_global().await;
+        db.query_row::<i64, _, _>(
+            "SELECT COUNT(*) FROM users WHERE username = 'jdoe'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(
+        created, 0,
+        "the refused create must not have written a user row"
+    );
+    assert!(
+        audit_rows(&bridge).await.is_empty(),
+        "a refused create must not add an event: {:?}",
+        audit_rows(&bridge).await
+    );
+}
+
+#[tokio::test]
+async fn a_duplicate_username_create_records_no_security_event() {
+    // The duplicate-specific half of the claim above: a create refused for a
+    // DUPLICATE USERNAME writes no audit row.
+    //
+    // Split out because this half IS profile-bound, and the fork says so
+    // instead of hiding it. The setup create must SUCCEED for a duplicate to
+    // exist, and `create_staff_scoped` only reaches the duplicate check past
+    // `sub.verify_signature()` (staff.rs:1080), which the release profile
+    // refuses — see testing.rs:103-148 on why no fixture can satisfy it. So in
+    // release there is no `jdoe` and no reachable duplicate check: the release
+    // leg asserts the REFUSAL (with the row's existence pinned by
+    // `assert_refused_by_the_seeded_row`) and stops. The recorder-silence
+    // claim this case is really about is carried in both profiles by
+    // `a_rejected_create_records_no_security_event`, which refuses upstream of
+    // the subscription read.
     let bridge = owner_app("premium");
     let ctx = bridge.ctx();
-    create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx)
-        .await
-        .unwrap();
+    let first = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
+    if !seeded_row_loads() {
+        assert_refused_by_the_seeded_row(&bridge, first, "premium").await;
+        return;
+    }
+    first.expect("the setup create must land for a duplicate to be possible");
+
     let before = audit_rows(&bridge).await.len();
+    assert_eq!(
+        before, 1,
+        "the setup create wrote its own event, so the comparison below is not 0 == 0"
+    );
 
     let dup = create_staff_scoped("owner-token".into(), create_args("jdoe"), &ctx).await;
     assert!(dup.is_err(), "duplicate username must be refused");
@@ -292,34 +410,7 @@ async fn update_staff_scoped_records_two_events_when_the_pin_rotates() {
 async fn a_denied_update_records_no_security_event() {
     // The permission check runs before any write, so a refused edit leaves the
     // trail untouched.
-    let conn = seeded_conn("premium");
-    conn.execute(
-        r#"INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
-         VALUES ('role-lite', 'Lite', 'Limited', '["sales:view"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')"#,
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
-         VALUES ('user-lite', 'lite', 'hash', 'Lite', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
-        [],
-    )
-    .unwrap();
-
-    let bridge = TestBridge::new().with_conn(conn);
-    bridge.sessions().write().unwrap().insert(
-        "lite-token".into(),
-        oz_core::session::SessionContext::new(
-            "user-lite".into(),
-            "role-lite".into(),
-            "terminal-1".into(),
-            "default".into(),
-            "instance-1".into(),
-            "pos".into(),
-            None,
-            0,
-        ),
-    );
+    let bridge = lite_app("premium");
     let ctx = bridge.ctx();
     let denied = update_staff_scoped(
         "lite-token".into(),

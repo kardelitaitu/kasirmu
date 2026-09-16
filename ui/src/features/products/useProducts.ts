@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useLocalization } from '@fluent/react';
-import { listProducts, listCategories, listProductsScoped, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
+import { listProductsScoped, listCategoriesScoped, type ProductDto, type CategoryDto } from '@/api/products';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { isDemoMode } from '@/utils/demo-mode';
 import { type Product, type Sku } from '@/types/domain';
@@ -127,11 +127,40 @@ export function useProducts(sessionToken?: string): UseProductsResult {
   useEffect(() => {
     let cancelled = false;
 
+    // Shared by both unavailable paths below: a catalog that could not be read is sample data in
+    // a demo build and an empty catalog in a real one, which is what the `catch` already did.
+    const applyUnavailableCatalog = () => {
+      if (isDemoMode()) {
+        setProducts(SAMPLE_PRODUCTS);
+        setCategoryMeta(SAMPLE_CATEGORY_META);
+        setUsingFallback(true);
+      } else {
+        setProducts([]);
+        setUsingFallback(false);
+      }
+    };
+
     (async () => {
       try {
-        const fetchProducts = sessionToken ? () => listProductsScoped(sessionToken) : listProducts;
-        const fetchCategories = sessionToken ? () => listCategoriesScoped(sessionToken) : listCategories;
-        const [dtos, cats] = await Promise.all([fetchProducts(), fetchCategories()]);
+        // T21 (b1): there is no unscoped door to fall back to. `list_products` and
+        // `list_categories` are registered in NEITHER shell -- the tablet carries unregistered
+        // bodies (commands/products.rs, commands/categories.rs) and the desktop has no bodies at
+        // all, which is the production bug `utils/catalog-cache.ts` already records for this exact
+        // pair: "because desktop-client registers no list_categories command the whole cache
+        // rejected on desktop". A mounted screen CAN have a null token here -- `session` comes
+        // from useAuth (AppShell.tsx:119) while `sessionToken` comes from useWorkspace (:120), two
+        // different contexts -- so the honest treatment is a message, not a silent skip. Calling
+        // the unregistered names produced a rejection that the `catch` below turned into this same
+        // error plus this same catalog; now it happens without a doomed IPC round trip.
+        if (!sessionToken) {
+          setError(l10nRef.current.getString('product-lookup-error-load'));
+          applyUnavailableCatalog();
+          return;
+        }
+        const [dtos, cats] = await Promise.all([
+          listProductsScoped(sessionToken),
+          listCategoriesScoped(sessionToken),
+        ]);
         if (cancelled) return;
         setCategoryMeta(cats);
         if (dtos.length > 0) {
@@ -152,14 +181,7 @@ export function useProducts(sessionToken?: string): UseProductsResult {
         // IPC unavailable — fall back to sample data only in dev/demo.
         if (cancelled) return;
         setError(l10nErrorMessage(err, l10nRef.current, 'product-lookup-error-load'));
-        if (isDemoMode()) {
-          setProducts(SAMPLE_PRODUCTS);
-          setCategoryMeta(SAMPLE_CATEGORY_META);
-          setUsingFallback(true);
-        } else {
-          setProducts([]);
-          setUsingFallback(false);
-        }
+        applyUnavailableCatalog();
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -170,9 +192,10 @@ export function useProducts(sessionToken?: string): UseProductsResult {
     return () => {
       cancelled = true;
     };
-    // sessionToken is read at :132 and :133 to choose the scoped list calls. This is an effect,
-    // not a callback, so the consequence differs from the stale-closure cases: the closure is
-    // fresh whenever the effect RUNS, but nothing here re-runs it when the token changes. After
+    // sessionToken is read in the effect body for both list calls. This is an effect, not a
+    // callback, so the consequence differs from the stale-closure cases: the closure is fresh
+    // whenever the effect RUNS, but nothing re-ran it when the token changed until it was added
+    // to the dependency array below. After
     // a store switch the catalogue kept showing the previous store's products until someone
     // called reload() explicitly -- and six production screens consume this hook
     // (ProductLookupScreen, ProductManagementScreen, RestaurantMenu, WarehouseConsole,

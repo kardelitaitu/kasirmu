@@ -94,7 +94,7 @@ pub fn is_valid_iso3166_alpha2(code: &str) -> bool {
 /// Validate and canonicalise one regional axis value at the write boundary.
 ///
 /// This is the single place the design's "validate at the core boundary, not
-/// in React" rule lives: blank means *inherit* and stays blank, everything
+/// in the renderer" rule lives: blank means *inherit* and stays blank, everything
 /// else must be valid before it may reach a column.
 ///
 /// - `locale`: shape-valid BCP-47 ([`is_valid_bcp47_locale`]).

@@ -223,6 +223,7 @@ fn add_line_scoped_rejects_user_without_sales_process() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let result = run_add_line_scoped(&conn, "user-no-sales", &args);
 
@@ -253,6 +254,7 @@ fn add_line_scoped_allows_user_with_sales_process() {
         qty: 2,
         unit_price_minor: 450,
         unit_price_currency: None,
+        course: None,
     };
     let result = run_add_line_scoped(&conn, "user-cashier", &args);
 
@@ -275,6 +277,7 @@ fn line_unit_price_uses_wire_currency_over_cart_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -289,6 +292,7 @@ fn line_unit_price_falls_back_to_cart_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = line_unit_price(&args, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -302,6 +306,7 @@ fn line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = line_unit_price(&args, usd()).unwrap_err();
     assert!(
@@ -331,6 +336,7 @@ fn shortfall_line_unit_price_uses_wire_currency_over_sale_currency() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, "EUR".parse::<Currency>().unwrap());
@@ -344,6 +350,7 @@ fn shortfall_line_unit_price_falls_back_to_sale_currency_when_absent() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: None,
+        course: None,
     };
     let money = shortfall_line_unit_price(&line_data, usd()).unwrap();
     assert_eq!(money.currency, usd());
@@ -356,6 +363,7 @@ fn shortfall_line_unit_price_rejects_invalid_currency() {
         qty: 1,
         unit_price_minor: 350,
         unit_price_currency: Some("NOPE!".into()),
+        course: None,
     };
     let err = shortfall_line_unit_price(&line_data, usd()).unwrap_err();
     assert!(
@@ -381,6 +389,7 @@ fn add_line_scoped_rejects_cross_currency_line() {
         qty: 1,
         unit_price_minor: 500,
         unit_price_currency: Some("EUR".into()),
+        course: None,
     };
     let result = run_add_line_scoped(&conn, "user-cashier", &args);
 
@@ -831,6 +840,7 @@ fn shortfall_args(sku: &str, attempt: Option<&str>) -> CompleteSaleWithResolvedS
             qty: 2,
             unit_price_minor: 350,
             unit_price_currency: None,
+            course: None,
         }],
         total_minor: 700,
         currency: "USD".into(),

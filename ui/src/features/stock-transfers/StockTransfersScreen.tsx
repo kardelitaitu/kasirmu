@@ -19,7 +19,7 @@ import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
-import type { RequiredLocalizedL10n } from '@/frontend/shared';
+import { requiredLocalized, type RequiredLocalizedL10n } from '@/frontend/shared';
 import { l10nErrorMessage } from '@/utils/app-error';
 import './StockTransfersScreen.css';
 
@@ -36,6 +36,25 @@ function statusLabel(status: string): string {
  */
 function localizedStatusLabel(l10n: RequiredLocalizedL10n, status: string): string {
   return l10n.getString(`stock-transfers-status-${status}`) ?? statusLabel(status);
+}
+
+/**
+ * One settled read. `ok: false` records that the call NEVER ANSWERED — which
+ * is a different fact from "answered, and the answer was an empty list". The
+ * shape is the sanctioned boot idiom (frontend/shell/AppShell.tsx:87-94), and
+ * the part that matters is what the caller does with `ok: false`: NOTHING, so
+ * the picker keeps its UNKNOWN state instead of being overwritten with a
+ * plausible empty catalogue.
+ */
+type Read<T> = { ok: true; value: T } | { ok: false };
+
+async function settle<T>(label: string, read: Promise<T>): Promise<Read<T>> {
+  try {
+    return { ok: true, value: await read };
+  } catch (err) {
+    console.error(`[stock-transfers] ${label} read failed — recording unknown:`, err);
+    return { ok: false };
+  }
 }
 
 function formatDate(iso: string | null, locale: string): string {
@@ -97,22 +116,28 @@ export default function StockTransfersScreen() {
   // Cancel state
   const [cancelling, setCancelling] = useState<string | null>(null);
 
-  // Products & terminals for dropdowns
-  const [products, setProducts] = useState<ProductDto[]>([]);
-  const [terminals, setTerminals] = useState<TerminalDto[]>([]);
+  // Products & terminals for dropdowns. `null` = UNKNOWN (the read never
+  // answered), `[]` = the read answered and this store really has none.
+  // Collapsing the two is what let an unreachable catalogue impersonate an
+  // empty one: the SKU picker came up blank, nothing matched, and the only
+  // message on screen was "add at least one line item".
+  const [products, setProducts] = useState<ProductDto[] | null>(null);
+  const [terminals, setTerminals] = useState<TerminalDto[] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [data, prodData, termData] = await Promise.all([
+      const [data, prodRead, termRead] = await Promise.all([
         listStockTransfers(sessionToken),
-        listProductsScoped(sessionToken).catch(() => []),
-        listTerminalsScoped(sessionToken).catch(() => []),
+        settle('listProductsScoped', listProductsScoped(sessionToken)),
+        settle('listTerminalsScoped', listTerminalsScoped(sessionToken)),
       ]);
       setTransfers(data);
-      setProducts(prodData);
-      setTerminals(termData);
+      // Only an ANSWER is written. A throw writes nothing, so the dropdowns
+      // stay UNKNOWN and the notices below can say so out loud.
+      if (prodRead.ok) setProducts(prodRead.value);
+      if (termRead.ok) setTerminals(termRead.value);
     } catch {
       setError(l10n.getString('stock-transfers-error-load'));
     } finally {
@@ -212,7 +237,7 @@ export default function StockTransfersScreen() {
   const updateLineEntry = useCallback((index: number, field: keyof LineFormEntry, value: string) => {
     const updated = [...createLines];
     if (field === 'sku') {
-      const match = products.find((p) => p.sku === value);
+      const match = products?.find((p) => p.sku === value);
       updated[index] = { ...updated[index], sku: value, productName: match?.name ?? value } as LineFormEntry;
     } else {
       updated[index] = { ...updated[index], [field]: value } as LineFormEntry;
@@ -613,17 +638,23 @@ export default function StockTransfersScreen() {
                   <Localized id="stock-transfers-source-terminal"><span className="stock-transfers-label">Source Terminal (optional)</span></Localized>
                   <select id="st-source-terminal" className="stock-transfers-input" value={createSourceTerminalId} onChange={(e) => setCreateSourceTerminalId(e.target.value)}>
                     <option value="">—</option>
-                    {terminals.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    {(terminals ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </label>
                 <label className="stock-transfers-field" htmlFor="st-dest-terminal">
                   <Localized id="stock-transfers-destination-terminal"><span className="stock-transfers-label">Destination Terminal (optional)</span></Localized>
                   <select id="st-dest-terminal" className="stock-transfers-input" value={createDestTerminalId} onChange={(e) => setCreateDestTerminalId(e.target.value)}>
                     <option value="">—</option>
-                    {terminals.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    {(terminals ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </label>
               </div>
+              {terminals === null && !loading && (
+                // NOT an empty terminal list — a terminal list nobody read.
+                <div className="stock-transfers-error" role="alert">
+                  {requiredLocalized(l10n, 'terminal-error-load')}
+                </div>
+              )}
               <div className="stock-transfers-field">
                 <Localized id="stock-transfers-notes"><span className="stock-transfers-label">Notes</span></Localized>
                 <textarea id="st-notes" className="stock-transfers-input stock-transfers-textarea" value={createNotes} onChange={(e) => setCreateNotes(e.target.value)} rows={2} aria-label={l10n.getString('stock-transfers-notes')} />
@@ -669,8 +700,15 @@ export default function StockTransfersScreen() {
                   </div>
                 ))}
                 <datalist id="product-skus">
-                  {products.map((p) => <option key={p.sku} value={p.sku} />)}
+                  {(products ?? []).map((p) => <option key={p.sku} value={p.sku} />)}
                 </datalist>
+                {products === null && !loading && (
+                  // The SKU box looks the same whether this store has no
+                  // products or the catalogue was unreachable. Say which.
+                  <div className="stock-transfers-error" role="alert">
+                    {requiredLocalized(l10n, 'retail-load-error-unavailable')}
+                  </div>
+                )}
               </div>
 
               {createError && <div className="stock-transfers-error" role="alert">{createError}</div>}

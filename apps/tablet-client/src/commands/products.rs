@@ -107,15 +107,6 @@ pub async fn list_products(state: State<'_, AppState>) -> Result<Vec<ProductDto>
     run_list_products(&db)
 }
 
-/// Fetch warehouse-tracked products only (excludes services).
-#[command]
-pub async fn list_warehouse_products(
-    state: State<'_, AppState>,
-) -> Result<Vec<ProductDto>, AppError> {
-    let db = state.db.lock().await;
-    run_list_warehouse_products(&db)
-}
-
 /// Business logic for listing products (extracted for testing).
 fn run_list_products(conn: &rusqlite::Connection) -> Result<Vec<ProductDto>, AppError> {
     let store = Store::new(conn);
@@ -177,23 +168,6 @@ fn map_products_to_dtos(
 
 // ── Lookup by barcode ────────────────────────────────────────────────
 
-/// Look up a single product by barcode.
-///
-/// Returns the product DTO or `null` when no match is found.
-/// Returns validation error for empty barcodes.
-#[command]
-pub async fn lookup_by_barcode(
-    barcode: String,
-    state: State<'_, AppState>,
-) -> Result<Option<ProductDto>, AppError> {
-    validate_not_empty("barcode", &barcode).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let db = state.db.lock().await;
-    let _store = Store::new(&db);
-    let result = run_lookup_by_barcode(&db, &barcode);
-    drop(db);
-    result
-}
-
 /// Business logic for barcode lookup (extracted for testing).
 fn run_lookup_by_barcode(
     conn: &rusqlite::Connection,
@@ -202,22 +176,6 @@ fn run_lookup_by_barcode(
     let store = Store::new(conn);
     let pwd = store.lookup_product_with_details_by_barcode(barcode)?;
     map_pwd_to_dto(&store, pwd)
-}
-
-/// Look up a single product by SKU.
-///
-/// Returns the product DTO or `null` when no match is found.
-#[command]
-pub async fn lookup_product_by_sku(
-    sku: String,
-    state: State<'_, AppState>,
-) -> Result<Option<ProductDto>, AppError> {
-    validate_not_empty("sku", &sku).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let db = state.db.lock().await;
-    let _store = Store::new(&db);
-    let result = run_lookup_product_by_sku(&db, &sku);
-    drop(db);
-    result
 }
 
 /// Business logic for SKU lookup (extracted for testing).
@@ -277,101 +235,6 @@ fn map_pwd_to_dto(
 
 // ── Create product ──────────────────────────────────────────────────
 
-#[command]
-/// Create product.
-pub async fn create_product(
-    args: CreateProductArgs,
-    state: State<'_, AppState>,
-) -> Result<CreateProductResult, AppError> {
-    // Quota: the tier's product/menu cap (subscription-tiers.md §Numeric
-    // Limits) is enforced before creation. This legacy pre-session command
-    // runs against the global database, so both the tier and the product
-    // count come from that single connection.
-    let sub = {
-        let global_db = state.db.lock().await;
-        oz_core::TenantSubscription::validate_clock_rollback(&global_db)?;
-        let sub = oz_core::TenantSubscription::load(&global_db, "default")?
-            .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-        sub.verify_signature()?;
-        sub
-    };
-    // Scope the DB borrow so Store (which is !Send) is dropped before
-    // the next .await point when we lock the kernel for event publishing.
-    {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-
-        require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_CREATE)?;
-        // ADR #36 D7: setting a cost (HPP) requires the manager-only
-        // products:edit_cost permission — staff can create products without
-        // ever touching cost.
-        if args.cost_minor != 0 {
-            require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_EDIT_COST)?;
-        }
-        store.enforce_product_quota(
-            &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
-        )?;
-
-        let currency: oz_core::Currency = args
-            .currency
-            .parse()
-            .map_err(|_| AppError::Invalid(format!("invalid currency '{}'", args.currency)))?;
-
-        let price = Money {
-            minor_units: args.price_minor,
-            currency,
-        };
-
-        store.create_product_with_attributes(
-            &args.sku,
-            &args.name,
-            price,
-            args.category_id.as_deref(),
-            args.barcode.as_deref(),
-            args.initial_stock,
-            Some(&args.product_type),
-            &oz_core::db::CreateProductAttributes {
-                cost_minor: args.cost_minor,
-                brand: args.brand.clone(),
-                rack_location: args.rack_location.clone(),
-                notes: args.notes.clone(),
-                unit: args.unit.clone(),
-                is_active: args.is_active,
-                default_supplier_id: args.default_supplier_id.clone(),
-            },
-        )?;
-
-        store.set_product_tax_rates(&args.sku, &args.tax_rate_ids)?;
-    } // db and store dropped here before .await
-
-    // Publish the ProductCreated domain event so that subscribers
-    // (AuditLogHandler, etc.) fire their side effects.
-    {
-        let event = ProductCreated {
-            sku: args.sku.clone(),
-            name: args.name.clone(),
-            price_minor: args.price_minor,
-            currency: args.currency.clone(),
-            category_id: args.category_id.clone(),
-            barcode: args
-                .barcode
-                .as_ref()
-                .and_then(|s| foundation::Barcode::new(s).ok()),
-            initial_stock: args.initial_stock,
-        };
-
-        let kernel = state.kernel.lock().await;
-        let bus = kernel.event_bus();
-        if let Err(e) = bus.publish(&event) {
-            // Logged by the bus; do not fail the command.
-            tracing::warn!(sku = %args.sku, error = %e, "event bus publish failed");
-        }
-    }
-
-    tracing::info!(sku = %args.sku, name = %args.name, "product created");
-    Ok(CreateProductResult { sku: args.sku })
-}
-
 // ── Update product ──────────────────────────────────────────────────
 
 /// Map the PATCH-style attribute fields onto the core update struct.
@@ -389,78 +252,6 @@ fn to_update_attributes(args: &UpdateProductArgs) -> oz_core::db::UpdateProductA
         is_active: args.is_active,
         default_supplier_id: args.default_supplier_id.clone(),
     }
-}
-
-#[command]
-/// Update product.
-pub async fn update_product(
-    args: UpdateProductArgs,
-    state: State<'_, AppState>,
-) -> Result<UpdateProductResult, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-
-    require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_UPDATE)?;
-    // ADR #36 D7: changing a product's cost (HPP) requires the manager-only
-    // products:edit_cost permission. A PATCH that does not touch cost
-    // (cost_minor absent) stays open to PRODUCTS_UPDATE holders.
-    if args.cost_minor.is_some() {
-        require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_EDIT_COST)?;
-    }
-
-    let currency: oz_core::Currency = args
-        .currency
-        .parse()
-        .map_err(|_| AppError::Invalid(format!("invalid currency '{}'", args.currency)))?;
-
-    let price = Money {
-        minor_units: args.price_minor,
-        currency,
-    };
-
-    store.update_product(
-        &args.sku,
-        &args.name,
-        price,
-        args.category_id.as_deref(),
-        args.barcode.as_deref(),
-        args.product_type.as_deref(),
-        None,
-    )?;
-
-    store.set_product_tax_rates(&args.sku, &args.tax_rate_ids)?;
-
-    store.update_product_attributes(&args.sku, &to_update_attributes(&args))?;
-
-    Ok(UpdateProductResult { sku: args.sku })
-}
-
-/// Check whether a product tracks serial numbers.
-#[command]
-pub async fn get_product_track_serial(
-    sku: String,
-    state: State<'_, AppState>,
-) -> Result<bool, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let product = store.get_product(&sku)?;
-    drop(db);
-    Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
-}
-
-/// Check serial-tracking flags for many SKUs in one round trip
-/// (PERF-03: replaces the N+1 `get_product_track_serial` loop).
-/// Unknown SKUs resolve to `track_serial: false`; order is preserved.
-#[command]
-pub async fn get_product_track_serial_batch(
-    skus: Vec<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<SerialTrackRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = run_get_product_track_serial_batch(&store, &skus);
-    drop(db);
-    Ok(rows)
 }
 
 /// Business logic for the batch serial-tracking lookup (extracted for testing).
@@ -486,41 +277,7 @@ fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec
 
 // ── Popularity search signal (ADR #37) ──────────────────────────────
 
-/// Record an acted-upon product search for the popularity index.
-///
-/// ADR #37 D2: only searches that end in an add-to-cart count. Fire
-/// and forget — failures are logged, never surfaced.
-#[command]
-pub async fn record_product_search(
-    sku: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    match store.record_product_search(&sku) {
-        Ok(()) => {}
-        Err(e) => {
-            tracing::warn!(sku = %sku, error = %e, "product search signal not recorded");
-        }
-    }
-    drop(db);
-    Ok(())
-}
-
 // ── Delete product ──────────────────────────────────────────────────
-
-#[command]
-/// Delete product.
-pub async fn delete_product(
-    args: DeleteProductArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &args.user_id, permissions::PRODUCTS_DELETE)?;
-    store.delete_product(&args.sku)?;
-    Ok(())
-}
 
 /// Session-scoped variant of `adjust_stock`.
 #[allow(clippy::needless_borrow, dropping_references)]
@@ -590,7 +347,7 @@ pub async fn list_products_scoped(
     run_list_products(&db)
 }
 
-/// Session-scoped variant of `list_warehouse_products`.
+/// Fetch warehouse-tracked products only (excludes services) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_warehouse_products_scoped(
@@ -605,7 +362,7 @@ pub async fn list_warehouse_products_scoped(
     run_list_warehouse_products(&db)
 }
 
-/// Session-scoped variant of `lookup_by_barcode`.
+/// Look up a single product by barcode resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn lookup_by_barcode_scoped(
@@ -625,7 +382,7 @@ pub async fn lookup_by_barcode_scoped(
     result
 }
 
-/// Session-scoped variant of `lookup_product_by_sku`.
+/// Look up a single product by SKU resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn lookup_product_by_sku_scoped(
@@ -645,7 +402,7 @@ pub async fn lookup_product_by_sku_scoped(
     result
 }
 
-/// Session-scoped variant of `create_product`.
+/// Create product resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_product_scoped(
@@ -745,7 +502,7 @@ pub async fn create_product_scoped(
     Ok(CreateProductResult { sku: args.sku })
 }
 
-/// Session-scoped variant of `update_product`.
+/// Update product resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_product_scoped(
@@ -795,7 +552,7 @@ pub async fn update_product_scoped(
     Ok(UpdateProductResult { sku: args.sku })
 }
 
-/// Session-scoped variant of `get_product_track_serial`.
+/// Check whether a product tracks serial numbers resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_product_track_serial_scoped(
@@ -814,7 +571,7 @@ pub async fn get_product_track_serial_scoped(
     Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
 }
 
-/// Session-scoped variant of `get_product_track_serial_batch`.
+/// Check serial-tracking flags for many SKUs in one round trip resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_product_track_serial_batch_scoped(
@@ -833,7 +590,7 @@ pub async fn get_product_track_serial_batch_scoped(
     Ok(rows)
 }
 
-/// Session-scoped variant of `record_product_search`.
+/// Record an acted-upon product search for the popularity index resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn record_product_search_scoped(
@@ -857,7 +614,7 @@ pub async fn record_product_search_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `delete_product`.
+/// Delete product resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn delete_product_scoped(

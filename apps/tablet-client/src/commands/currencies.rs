@@ -1,7 +1,12 @@
-//! Currency-lookup command for the front-end.
+//! Currency lookups and the default-currency setting for the front-end.
 //!
-//! R2 Phase 3: `list_currencies` migrated to use [`modules_currency::repository::CurrencyRepository`]
-//! directly. `CurrencyDto` now comes from [`modules_currency::commands`].
+//! R2 Phase 3 moved these reads onto [`modules_currency::repository::CurrencyRepository`]
+//! directly, and `CurrencyDto` now comes from [`modules_currency::commands`].
+//!
+//! What the front-end can invoke here is `currency_info`, `list_currencies_scoped`,
+//! `get_default_currency`, `set_default_currency` and their scoped pair. The unscoped
+//! `list_currencies` that this paragraph used to name was retired on 2026-09-16 (T19):
+//! registered in neither shell, unnamed by UI code, uncalled by any Rust in this crate.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -34,14 +39,6 @@ pub async fn currency_info(code: String) -> Result<CurrencyInfo, AppError> {
         code: String::from_utf8_lossy(&currency.0).into_owned(),
         exponent: currency.minor_unit_exponent(),
     })
-}
-
-#[command]
-/// List currencies.
-pub async fn list_currencies(state: State<'_, AppState>) -> Result<Vec<CurrencyDto>, AppError> {
-    let db = state.db.lock().await;
-    let repo = CurrencyRepository::new(&db);
-    Ok(repo.list_currencies()?)
 }
 
 #[command]

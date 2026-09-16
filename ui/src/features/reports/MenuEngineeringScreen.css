@@ -296,7 +296,7 @@
 }
 
 /* ── Responsive ─────────────────────────────────────────── */
-@media (max-width: var(--bp-tablet, 1023px)) {
+@media (max-width: var(--bp-tablet)) {
   .menu-eng-kpis {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -316,7 +316,7 @@
   }
 }
 
-@media (max-width: var(--bp-mobile, 480px)) {
+@media (max-width: var(--bp-mobile)) {
   .menu-eng-kpis {
     grid-template-columns: 1fr;
   }

@@ -20,7 +20,7 @@ next: Migrate DB CRUD + Tauri commands into this module | perf: N/A — no hot p
 //!
 //! The CrmModule implements the [`Module`] trait and is registered
 //! with the kernel during application startup. The underlying backend
-//! (DB CRUD, Tauri commands) and frontend (React screens, API calls,
+//! (DB CRUD, Tauri commands) and frontend (screens, API calls,
 //! Fluent locale) still live in their original locations:
 //!
 //! - Backend: `crates/oz-core/src/db/customers.rs` + `apps/desktop-client/src/commands/customers.rs`

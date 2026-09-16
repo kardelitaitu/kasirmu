@@ -71,17 +71,6 @@ fn validate_customer_fields(
 
 // ── List customers ──────────────────────────────────────────────────
 
-#[tauri::command]
-/// List customers.
-///
-/// **Deprecated for multi-store (ADR #7):** Use `list_customers_scoped`.
-pub async fn list_customers(state: State<'_, AppState>) -> Result<Vec<CustomerDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::customers::list_global(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
 /// List customers for the store resolved from a session token. ADR #7.
 ///
 /// CRM-02: gated on `customers:view` like every other customer read — the
@@ -101,68 +90,11 @@ pub async fn list_customers_scoped(
 
 // ── Get single customer ─────────────────────────────────────────────
 
-#[tauri::command]
-/// Get customer.
-pub async fn get_customer(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<CustomerDto>, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::customers::get_global(&ctx, &id)
-        .await
-        .map_err(Into::into)
-}
-
 // ── Create customer ─────────────────────────────────────────────────
-
-#[tauri::command]
-/// Create customer.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`create_customer_scoped`] so the session selects the store and user.
-pub async fn create_customer(
-    args: CreateCustomerArgs,
-    state: State<'_, AppState>,
-) -> Result<CustomerDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::customers::create_global(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
 
 // ── Update customer ─────────────────────────────────────────────────
 
-#[tauri::command]
-/// Update customer.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`update_customer_scoped`] so the session selects the store and user.
-pub async fn update_customer(
-    args: UpdateCustomerArgs,
-    state: State<'_, AppState>,
-) -> Result<CustomerDto, AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::customers::update_global(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
-
 // ── Delete customer ─────────────────────────────────────────────────
-
-#[tauri::command]
-/// Delete customer.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`delete_customer_scoped`] so the session selects the store and user.
-pub async fn delete_customer(
-    args: DeleteCustomerArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    oz_bridge::customers::delete_global(&ctx, &args)
-        .await
-        .map_err(Into::into)
-}
 
 // ── Store-scoped mutations (ADR #7) ─────────────────────────────────
 
@@ -251,7 +183,7 @@ pub async fn get_customer_history_scoped(
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
 
-/// Scoped variant of `get_customer` (ADR #7).
+/// Get customer resolved from a session token. ADR #7.
 #[tauri::command]
 pub async fn get_customer_scoped(
     id: String,

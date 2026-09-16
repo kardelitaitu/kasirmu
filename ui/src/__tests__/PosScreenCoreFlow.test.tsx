@@ -45,7 +45,6 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
 const mockLookupByBarcode = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve(null)));
 
 vi.mock('@/api/products', () => ({
-  lookupByBarcode: mockLookupByBarcode,
   lookupByBarcodeScoped: vi.fn((_sessionToken: string, code: string) =>
     mockLookupByBarcode(code),
   ),
@@ -1462,6 +1461,44 @@ describe('PosScreen — Core Sale Flow (TDD)', () => {
   });
 
   // ── Deduction Badge / FastPIN Tests ──────────────────────────────────
+
+  // A refused open-shift used to be swallowed: `catch { // Handled silently }`
+  // in usePosShifts. The backend DOES refuse a second open shift
+  // (crates/oz-core/src/db/shifts.rs:64-75), so this banner is the only signal
+  // an operator ever gets that the click did anything.
+  it('reports a refused shift open instead of failing silently', async () => {
+    vi.mocked(shiftsApi.getActiveShiftScoped).mockResolvedValueOnce(null);
+    vi.mocked(settingsApi.getReceiptSettingsScoped).mockResolvedValueOnce(receiptSettingsFixture);
+    vi.mocked(shiftsApi.openShiftScoped).mockRejectedValueOnce(new Error('user already has an open shift'));
+
+    await renderWithProviders(
+      <PosScreen />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+      testCoreFtl,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('No active shift')).toBeInTheDocument();
+    });
+    const shiftBar = document.querySelector('.pos-cart-header-shift')!;
+    const openShiftBtn = shiftBar.querySelector('.pos-shift-open-btn') as HTMLButtonElement;
+    await userEvent.click(openShiftBtn);
+    const balanceInput = await screen.findByLabelText(/opening balance/i);
+    await userEvent.type(balanceInput, '50000');
+
+    const dialog = screen.getByRole('dialog', { name: /open/i });
+    await userEvent.click(within(dialog).getByRole('button', { name: /open/i }));
+
+    await waitFor(() => {
+      const banner = document.querySelector('.pos-shift-error');
+      expect(banner).not.toBeNull();
+      expect(banner?.textContent).toContain('Failed to open shift');
+    });
+    expect(screen.getByRole('dialog', { name: /open/i })).toBeInTheDocument();
+  });
 
   // ADR-19 §17: deduction badge → FastPIN overlay for manager override.
   // This flow requires ensureCart() which is only called from the price-override

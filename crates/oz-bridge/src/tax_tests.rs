@@ -660,3 +660,49 @@ fn rounding_mode_wire_is_the_core_serde_snake_case() {
         serde_json::json!({ "r-none": null }),
     );
 }
+
+#[test]
+fn tax_rate_dependency_counts_wire_is_the_key_the_delete_guard_reads() {
+    // The whole point of these counts is the delete confirmations on the tax
+    // configuration screen, and the load-bearing read is that screen's own
+    // `disabled={(pendingDeleteCounts?.sale_lines ?? 0) > 0}` guard.
+    // The key it names is declared at `ui/src/api/tax.ts:114` as `sale_lines`,
+    // but this type carried `#[serde(rename_all = "camelCase")]`, so the wire
+    // said `saleLines` and the guard read `undefined`. `undefined > 0` is
+    // `false`, so a rate referenced by historical sale lines was offered for
+    // deletion with no warning and a live Confirm button.
+    //
+    // Nothing caught it because the failure is one-directional and quiet:
+    // `products` and `categories` are single words, so they are spelled the
+    // same in either convention and only the third key moved; the dev-mock
+    // (`ui/src/dev-mock/handlers/catalog.ts:391`) answers `sale_lines`, so the
+    // screen looked right in mock mode; and the backend refuses the delete
+    // anyway (`crates/oz-core/src/db/tax/rates.rs:359`), so no data was ever
+    // lost — the loss was the warning. And `saleLines` appears ZERO times in
+    // the repository, i.e. no consumer on the emitted side existed to break.
+    //
+    // Pinned against the renderer's declaration rather than against this file's
+    // own derives, which is the mistake that let it ship.
+    let dto = TaxRateDependencyCountsDto {
+        products: 1,
+        categories: 2,
+        sale_lines: 3,
+    };
+    let value = serde_json::to_value(&dto).unwrap();
+    let keys = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
+    assert_eq!(
+        keys, "categories,products,sale_lines",
+        "the dependency-counts wire drifted from ui/src/api/tax.ts:114"
+    );
+    assert_eq!(value["sale_lines"], serde_json::json!(3));
+    assert!(
+        value.get("saleLines").is_none(),
+        "the camelCase alias nobody reads must not be emitted"
+    );
+}

@@ -1,0 +1,24 @@
+/* The sc-badge family: the base once, plus the four state modifiers.
+ *
+ * Three screens paint this pair -- StockCountsScreen.tsx:142 (via the
+ * statusBadge builder at :56), StockCountDetail.tsx:243 and
+ * StockCountHistory.tsx:161. The base used to be copied byte-identically into
+ * all three sheets and the four modifiers lived ONLY in the list sheet, so the
+ * detail and the history screen styled their badge states only because
+ * StockCountsFlow.tsx statically imports the list screen -- an accident of the
+ * module graph, not a citation. The base is here ONCE and the modifiers are
+ * here with it; each of the three screen sheets cites this file as its ledger
+ * parentCss, so all five rules sit inside every entry that paints them.
+ */
+.sc-badge {
+  display: inline-block;
+  padding: var(--space-0_5) var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.sc-badge--draft { background: var(--color-bg-surface); color: var(--color-fg); border: 1px solid var(--color-border); }
+.sc-badge--in_progress { background: var(--color-accent-dim); color: var(--color-fg); }
+.sc-badge--completed { background: var(--color-success-bg); color: var(--color-fg); }
+.sc-badge--cancelled { background: var(--color-danger-bg); color: var(--color-fg); }

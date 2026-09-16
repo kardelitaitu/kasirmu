@@ -20,7 +20,8 @@ import {
 import { createSession, destroySession, refreshPickerTicket, switchOrganization as switchOrganizationApi } from "@/api/staff";
 import { getDeviceId } from "@/api/system";
 import { useAuth } from "@/contexts/AuthContext";
-import { requiredLocalized } from "@/frontend/shared";
+import { requiredLocalized, useToast } from "@/frontend/shared";
+import { errorDetail } from "@/utils/app-error";
 import { useLocalization } from "@fluent/react";
 
 
@@ -71,6 +72,24 @@ export interface WorkspaceContextValue {
   resolvedStoreId: string;
   /** ADR #4 / ADR #7: opaque session token for scoped command authorization. */
   sessionToken: string | null;
+  /**
+   * Localized copy of the LAST failed create_session attempt, or null while no
+   * attempt has failed since the last success. A rejected createSession used to
+   * be a console.warn only, which left sessionToken null with nothing on screen
+   * to explain why (clock rollback, denied workspace type, expired subscription,
+   * invalid signature) while every token-taking command downstream failed or
+   * no-opped. AppShell's `bootBadges` element renders this with `retrySessionToken`;
+   * the toast is the immediate surface and this is the durable one.
+   * Optional so existing test mocks need not override it; the real provider
+   * always sets it.
+   */
+  sessionError?: string | null;
+  /**
+   * Re-invoke the create_session attempt that failed, for the instance it was
+   * attempted with. No-op when no attempt has been made. Optional for the same
+   * reason as `sessionError`.
+   */
+  retrySessionToken?: () => void;
   /** ADR #22: device/terminal ID for hardware-scoped settings. */
   terminalId: string;
   /**
@@ -129,6 +148,54 @@ const DEFAULT_STORE_ID = "default";
  */
 const PICKER_TICKET_NOOP = (_ticket: string) => {};
 
+/**
+ * Toast queue accessor that tolerates a missing `<ToastProvider>` ancestor.
+ *
+ * In production the provider sits above this one (see `contexts/AppProviders.tsx`,
+ * nesting order 7. ToastProvider -> 8. WorkspaceProvider), so the queue is always
+ * available here. Test harnesses that render `WorkspaceProvider` standalone do not
+ * mount it, and `useToast()` throws when its context is absent - which would turn
+ * an unrelated assertion into a mount failure. `useToast` throws *after* its own
+ * `useContext` call, so wrapping it cannot reorder hooks.
+ */
+function useToastIfAvailable(): ReturnType<typeof useToast> | null {
+  try {
+    return useToast();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A rejected `destroy_session` is the one logout failure nobody could see.
+ *
+ * Every site below still clears the LOCAL token right afterwards -- the operator's
+ * screen goes to the picker either way -- so when the server-side teardown fails the
+ * UI says "logged out" while that session can still be live on the server. On a
+ * shared POS terminal the next person at the till inherits it.
+ *
+ * Nothing else is safe to do from here: a retry would re-destroy a token this client
+ * has already let go of, and a UI state would have to answer a question this lane has
+ * not decided (does a half-teardown block navigation?). So the requirement is only
+ * that the failure is OBSERVABLE.
+ *
+ * Same MESSAGE shape as every other diagnostic in this file --
+ * `"WorkspaceContext: <what failed>", err`, the form used by the four degraded reads
+ * ("failed to list workspaces", "picker-ticket refresh failed", "failed to create
+ * session token", "boot store resolution failed") -- with `where` naming which
+ * teardown broke, but one LEVEL LOUDER: those four
+ * warn because a read came back short and the app still knows its own state. This one
+ * means the client believes it is signed out while the server session may not be, which
+ * on a shared till becomes the next operator's problem -- so it goes to
+ * `console.error` and does not share a volume with "failed to list workspaces".
+ */
+function reportTeardownFailure(where: string, err: unknown): void {
+  console.error(
+    `WorkspaceContext: server-side session teardown failed (${where}) -- the local token was cleared but the server session may still be live`,
+    err,
+  );
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session, pickerTicket, updatePickerTicket } = useAuth();
   // Localized copy for the error state. WorkspaceProvider mounts inside
@@ -164,6 +231,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const sessionTokenRef = useRef(sessionToken);
   sessionTokenRef.current = sessionToken;
+
+  // Bumped by `retrySessionToken` to re-fire the token-creation effect.
+  const [tokenAttemptNonce, setTokenAttemptNonce] = useState(0);
+  // Operator-visible failure state for the create_session attempt, plus the
+  // instance the last attempt was made for (what `retrySessionToken` re-plays).
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const sessionAttemptRef = useRef<WorkspaceDto | null>(null);
+  // l10n and the toast queue are read through refs so the callbacks below stay
+  // dependency-light: switching locale must not re-fire the token effect and
+  // re-mint a live session.
+  const l10nRef = useRef(l10n);
+  l10nRef.current = l10n;
+  const toast = useToastIfAvailable();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   // SaaS-3 L194: display-only label of the Organization (legal entity) the
   // active session is scoped to. Never used as an auth input.
@@ -211,7 +293,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveInstance(null);
     const token = sessionTokenRef.current;
     if (token) {
-      destroySession(token).catch(() => {});
+      destroySession(token).catch((err) =>
+        reportTeardownFailure("login/logout reset", err),
+      );
       setSessionToken(null);
     }
   }, [session]);
@@ -270,7 +354,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     (storeId: string) => {
       const token = sessionTokenRef.current;
       if (token) {
-        destroySession(token).catch(() => {});
+        destroySession(token).catch((err) =>
+          reportTeardownFailure("switchStore", err),
+        );
         setSessionToken(null);
       }
       setActiveWorkspace(null);
@@ -311,11 +397,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             const refreshed = await refreshPickerTicket(prev);
             ticket = refreshed.picker_ticket;
             updatePickerTicketFn(ticket);
-          } catch {
-            // Refresh failed — use the existing ticket.
+          } catch (err) {
+            // Refresh failed — use the existing ticket, which is the LOGIN-TIME one:
+            // `pickerTicketRef.current` above holds the ticket minted at staff_login, and
+            // its TTL is five minutes (crates/oz-bridge/src/auth.rs, PICKER_TICKET_TTL_SECS,
+            // which is why this call exists at all). So a silent fallback here can hand
+            // create_session a ticket that has already aged out.
+            //
+            // The catch used to be empty, and that is how the defect below survived six
+            // rounds of green tests: this shell had no `refresh_picker_ticket` command until
+            // 683c9f2b9, so every hot-swap on a tablet threw into this branch and looked
+            // exactly like a healthy swap. The suite even documents the blind spot from its
+            // own side (ui/src/__tests__/WorkspaceContext.test.tsx:209-213).
+            console.warn(
+              "WorkspaceContext: picker-ticket refresh failed, reusing the login-time ticket",
+              err,
+            );
           }
 
-          await destroySession(prev).catch(() => {});
+          await destroySession(prev).catch((err) =>
+            reportTeardownFailure("swapSessionToken", err),
+          );
           setSessionToken(null);
         }
 
@@ -364,6 +466,30 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  // A rejected create_session has to reach the operator, not just the console.
+  // The toast is the immediate surface; `sessionError` is the durable one, read
+  // by the desktop shell's `bootBadges` element. The tablet shell has no
+  // bootBadges slot, so it renders neither — and stays silent after the toast.
+  const reportSessionTokenFailure = useCallback((err: unknown) => {
+    const message = requiredLocalized(
+      l10nRef.current,
+      'workspace-session-token-error',
+    );
+    setSessionError(message);
+    // The backend reason (clock rollback / denied workspace type / expired
+    // subscription / bad signature) under the error toast's Show detail
+    // toggle, via the ERR-06 normalizer: it contributes the typed
+    // `kind`/`subKind` code and only a redacted server line, so no raw Rust
+    // string (unlocalized, possibly carrying internals) reaches the UI.
+    const detail = errorDetail(err);
+    toastRef.current?.addToast({
+      type: 'error',
+      message,
+      ...(detail ? { detail } : {}),
+    });
+    console.warn("WorkspaceContext: failed to create session token", err);
+  }, []);
 
   // ADR #4 Phase 3: Resolve the boot store first, then load workspaces.
   // This is called once on mount (or when the picker ticket changes).
@@ -472,6 +598,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       null;
     if (!tokenInstance) return;
 
+    // Remembered so a retry knows WHICH instance to re-mint, and so
+    // `retrySessionToken` can be a no-op before anything was attempted.
+    sessionAttemptRef.current = tokenInstance;
+
     let cancelled = false;
 
     // Resolve device ID for terminal binding (ADR #7), then refresh
@@ -503,7 +633,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       // Destroy any previous token before creating a new one.
       if (prevToken) {
-        destroySession(prevToken).catch(() => {});
+        destroySession(prevToken).catch((err) =>
+          reportTeardownFailure("token re-mint", err),
+        );
         setSessionToken(null);
       }
 
@@ -522,11 +654,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             setSessionToken(result.session_token);
             setOrgLabel(result.context.orgLabel ?? null);
             setPendingOrgId(null);
+            setSessionError(null);
           }
         })
         .catch((err) => {
           if (!cancelled) {
-            console.warn("WorkspaceContext: failed to create session token", err);
+            reportSessionTokenFailure(err);
           }
         });
     })();
@@ -534,7 +667,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn]);
+  // tokenAttemptNonce is the retry lever: bumping it re-runs this effect over
+  // the same instance, which is exactly what a retry must do (re-resolve the
+  // device id, refresh the picker ticket, destroy the stale token, re-mint).
+  }, [activeInstance, session, availableWorkspaces, pickerTicket, updatePickerTicketFn, tokenAttemptNonce, reportSessionTokenFailure]);
+
+  // Retry lever for a failed create_session. Bumping the nonce re-fires the
+  // effect above; the remembered instance is what makes the replay targeted,
+  // and its absence (nothing ever attempted) makes this a no-op.
+  const retrySessionToken = useCallback(() => {
+    if (!sessionAttemptRef.current) return;
+    setSessionError(null);
+    setTokenAttemptNonce((n) => n + 1);
+  }, []);
 
 
   // Backward-compat: sets the type_key string directly.
@@ -594,7 +739,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // useCallback-stable: handleSetActive/handleSetActiveInstance ([]),
   // retry ([pickerTicket, resolvedStoreId, fetchWorkspaces]),
   // switchStore ([fetchWorkspaces]), swapSessionToken
-  // ([updatePickerTicketFn] — stable per the comment at its deps).
+  // ([updatePickerTicketFn] — stable per the comment at its deps), and
+  // retrySessionToken ([] — it reads only refs and a state setter).
   const value = useMemo(
     () => ({
       activeWorkspace,
@@ -615,6 +761,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       orgLabel,
       setPendingOrgId,
       switchOrganization,
+      sessionError,
+      retrySessionToken,
     }),
     [
       activeWorkspace,
@@ -635,6 +783,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       orgLabel,
       setPendingOrgId,
       switchOrganization,
+      sessionError,
+      retrySessionToken,
     ],
   );
 

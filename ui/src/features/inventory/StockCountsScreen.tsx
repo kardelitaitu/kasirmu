@@ -12,6 +12,9 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import './StockCountsScreen.css';
+// The sc-badge family (base + four state modifiers) is hoisted into its own sheet;
+// imported AFTER this screen's own so the relative order the list had in one file is kept.
+import './StockCountBadge.css';
 
 /** Stock counts list screen — displays all stock counts with status filters and links to create new counts or view details. */
 export default function StockCountsScreen() {

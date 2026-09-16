@@ -55,13 +55,28 @@ pub use oz_bridge::auth::{
 /// site already holds the global DB lock; re-entering it would deadlock the
 /// tokio mutex.
 ///
-/// `debug_upgrade: false` — the tablet never mirrors the desktop's dev
-/// Free→Premium promotion (the per-client invariant from dfbc41b2), so a dev
-/// tablet on a Free row records nothing, exactly like a production one.
+/// `debug_upgrade: false` is the tablet's side of a per-client policy that
+/// `Store::record_security_event` documents at
+/// `crates/oz-core/src/db/audit_security.rs:369-373`: the flag is the caller's and is
+/// passed through unchanged, the desktop's dev Free→Premium promotion applies only under
+/// `cfg!(debug_assertions)`, and "tablet passes `false` so it never mirrors the desktop
+/// divergence". This comment used to cite commit `dfbc41b2` for that invariant; the hash
+/// does not exist in this repository (`git cat-file -t dfbc41b2` → "Not a valid object
+/// name"), so the live citation is the one above, plus `06dcc61f4`, whose message records
+/// the same divergence as preserved on purpose.
 ///
-/// `pub(crate)` so the staff commands share this one definition: the
-/// per-client tier-promotion policy is then stated exactly once and cannot
-/// drift between the auth and staff-management paths.
+/// What the flag does NOT decide on its own: the skip needs a CONFIRMED Free row
+/// (`ent.loaded && tier.audit_retention_days().is_none()`, audit_security.rs:389), and a
+/// missing, tampered or unverifiable subscription row fails OPEN and records anyway
+/// (audit_security.rs:357-367). So "a dev tablet records nothing, exactly like a
+/// production one" — the sentence this comment used to end with — was true only of a
+/// verified Free tenant, and is false for the release case it implied.
+///
+/// `pub(crate)` so the staff commands share this one definition: the per-client
+/// tier-promotion policy is then stated exactly once and cannot drift between the auth and
+/// staff-management paths. That the two SHELLS differ is the documented design, not drift;
+/// `the_debug_upgrade_policy_is_per_client_by_design` in `auth_tests.rs` is what stops a
+/// future consolidation from collapsing it quietly.
 pub(crate) fn record_security_event(store: &Store, event: &SecurityEvent) {
     match store.record_security_event(event, false) {
         Ok(true) => {}
@@ -1023,6 +1038,32 @@ pub async fn session_keepalive(
     Ok(SessionKeepaliveResult { expires_at })
 }
 
+/// Re-mint the picker ticket for the caller's own live session (ADR #4 / STAFF-01).
+///
+/// The ticket is signed at login with a five-minute TTL, so a user who lingers on
+/// the workspace picker longer than that cannot re-enter a store: `create_session`
+/// rejects the expired ticket. This command is the way back. It checks no role, and
+/// does not need to -- holding a valid, unexpired session token already proves the
+/// caller authenticated, and the ticket minted is bound to `session.user_id`, not to
+/// anything the caller sent.
+///
+/// A pure shim over `oz_bridge::auth::refresh_picker_ticket`, which is verbatim the
+/// body the desktop registers (`apps/desktop-client/src/commands/auth.rs:294`). Before
+/// this existed the name was in `scripts/ipc-parity-allowlist.json` **twice** in the
+/// tablet's own array (:154 and :233) with no implementation behind either copy, so
+/// `ui/src/api/staff.ts:569` had a wrapper this shell could never answer, and the
+/// duplicate entry made the exemption look like coverage. Both entries are gone with
+/// this command. What the renderer does with the rejection on a tablet that had no
+/// such command is a separate question, recorded as T5-5 in
+/// `todo-refactor-oz-pos-app-agents-3.md`.
+#[command]
+pub async fn refresh_picker_ticket(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<oz_bridge::auth::RefreshPickerTicketResult, AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::auth::refresh_picker_ticket(&ctx, &session_token).map_err(Into::into)
+}
 #[cfg(test)]
 #[path = "auth_tests.rs"]
 mod tests;

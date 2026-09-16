@@ -438,6 +438,10 @@ refund-line-sku = SKU
 refund-line-qty = Jml
 refund-line-total = Total
 refund-action-refund = Kembalikan
+# en: Refunded. Past participle of the verb this bundle already uses for the action
+# (refund-action-refund = Kembalikan) and the same word sales.id.ftl uses for the en
+# label "Refunded: { $amount }" at refund-done-amount.
+refund-status-refunded = Dikembalikan
 
 # Item Modifier Modal
 modifier-no-options = Tidak ada opsi tersedia
@@ -890,14 +894,6 @@ scale-weigh-add-aria = Timbang & tambah { $name }
 scale-weigh-added = Ditambahkan { $weight }g dari { $name }
 scale-target-set = { $name } dipilih untuk ditimbang
 scale-clear-aria = Hapus target timbangan
-weight-scale-aria = Timbangan
-weight-scale-stable = Stabil
-weight-scale-unstable = Tidak stabil
-weight-scale-error = Kesalahan timbangan
-weight-scale-idle = —
-weight-scale-weigh-aria = Timbang
-weight-scale-weighing = Menimbang…
-weight-scale-weigh = Timbang
 
 # ── Gift Cards ─────────────────────────────────────────────────────
 gift-cards-loading = Memuat...

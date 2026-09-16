@@ -224,12 +224,12 @@
 }
 
 .sales-report-forecast-up {
-  color: var(--color-success, #16a34a);
+  color: var(--color-success);
   font-weight: var(--font-weight-semibold);
 }
 
 .sales-report-forecast-down {
-  color: var(--color-danger, #dc2626);
+  color: var(--color-danger);
 }
 
 /* ── Heatmap ──────────────────────────────────────────────── */

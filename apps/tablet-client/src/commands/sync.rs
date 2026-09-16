@@ -1,8 +1,15 @@
 //! Cloud sync commands — configure and trigger sync from the UI.
 //!
-//! The `sync_run` command runs a sync cycle immediately (instead of
-//! waiting for the background daemon's interval). The settings commands
-//! let the user configure the server URL and API key.
+//! `sync_run_scoped` runs a sync cycle immediately (instead of waiting for the
+//! background daemon's interval), and the settings commands let the user configure
+//! the server URL and API key. What the front-end can invoke is the scoped set plus
+//! `test_sync_connection`, which is registered without a session-token twin.
+//!
+//! The unscoped `sync_run` that used to sit beside it is retired: registered in
+//! neither shell, called by no production code, and kept alive only by a test that
+//! exercised the plan-gating policy through a door no real build can open. That case
+//! now runs against `sync_run_scoped`, so the invariant is graded on the path the
+//! tablet ships (named by T19's census on 2026-09-16, closed by T27 the same day).
 
 use serde::{Deserialize, Serialize};
 use tauri::{State, command};
@@ -18,7 +25,13 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 /// Get the current sync configuration settings.
+///
+/// Wire keys are camelCase because this crosses Tauri IPC to the shared
+/// settings page (`ui/src/api/offline.ts` `SyncSettingsDto` reads `serverUrl`
+/// / `hasApiKey`), which is also what the bridge twin this command must agree
+/// with serialises.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncSettingsDto {
     /// Server Url.
     pub server_url: Option<String>,
@@ -28,23 +41,21 @@ pub struct SyncSettingsDto {
     pub enabled: bool,
 }
 
-/// Get sync settings.
-#[command]
-pub async fn get_sync_settings(state: State<'_, AppState>) -> Result<SyncSettingsDto, AppError> {
-    let db = state.db.lock().await;
-    let server_url = Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty());
-    let api_key = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
-    let enabled = Settings::is_sync_enabled(&db)?;
-    drop(db);
-    Ok(SyncSettingsDto {
-        server_url,
-        has_api_key: api_key.is_some(),
-        enabled,
-    })
-}
-
 /// Update sync settings.
+///
+/// The effective wire keys are camelCase — `serverUrl` / `apiKey` / `enabled`
+/// — because that is what the settings page sends (`ui/src/api/offline.ts`
+/// `UpdateSyncSettingsArgs`, payload built in
+/// `ui/src/features/settings/hooks/saveDiff.ts`) and what the bridge twin
+/// `crates/oz-bridge/src/sync.rs` already expects. Without `rename_all` this
+/// struct silently ignored the UI's payload: both divergent fields are
+/// `Option<String>`, so serde filled `None` instead of erroring and
+/// `update_sync_settings_data`'s `unwrap_or("")` then WIPED the stored server
+/// URL on tablet while the same save worked on desktop. The pair assertion in
+/// `sync_tests.rs::update_sync_settings_wire_keys_match_bridge_twin` pins the
+/// two structs against each other so casing drift reads red.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateSyncSettingsArgs {
     /// Server Url.
     pub server_url: Option<String>,
@@ -52,18 +63,6 @@ pub struct UpdateSyncSettingsArgs {
     pub api_key: Option<String>,
     /// Enabled.
     pub enabled: bool,
-}
-
-#[command]
-/// Update sync settings.
-pub async fn update_sync_settings(
-    args: UpdateSyncSettingsArgs,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    update_sync_settings_data(&db, &args)?;
-    drop(db);
-    Ok(())
 }
 
 /// Persist sync settings (server URL, API key, enabled flag) atomically.
@@ -96,143 +95,6 @@ pub fn update_sync_settings_data(
     Ok(())
 }
 
-/// Immediately run a sync cycle that pushes pending sales, credit, and
-/// other queued offline transactions to the configured cloud server.
-///
-/// Uses a three-phase split (read → async HTTP → write) so the DB
-/// lock is not held during the network round-trip.
-#[command]
-pub async fn sync_run(state: State<'_, AppState>) -> Result<SyncAttemptResult, AppError> {
-    // Phase 1: Read pending items and config from DB (brief lock).
-    let (pending_items, config_opt) = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let pending = store.list_pending_offline()?;
-        let config = SyncConfig::from_settings(&store)?;
-        (pending, config)
-    };
-
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            return Ok(SyncAttemptResult {
-                synced: 0,
-                failed: 0,
-                error: Some("Sync is not configured or disabled".into()),
-                plan_required: false,
-            });
-        }
-    };
-
-    if pending_items.is_empty() {
-        return Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: None,
-            plan_required: false,
-        });
-    }
-
-    // Phase 2: Async HTTP push (no DB lock held).
-    let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;
-
-    // Phase 3: Write outcomes back to DB (brief lock).
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    match outcomes {
-        Ok(outcomes) => Ok(sync_client::apply_sync_outcomes(
-            &store,
-            &pending_items,
-            &outcomes,
-        )?),
-        // ADR sync-plan-gating: a free tenant is gated, not broken. Do NOT
-        // mark the items failed — they stay `pending` and sync automatically
-        // once the tenant upgrades.
-        Err(sync_client::SyncHttpError::PlanRequired) => Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        }),
-        Err(e) => Ok(sync_client::mark_all_failed(
-            &store,
-            &pending_items,
-            &e.to_string(),
-        )?),
-    }
-}
-
-/// Get the pending sync count.
-#[command]
-pub async fn pending_sync_count(state: State<'_, AppState>) -> Result<i64, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let count = store.pending_offline_count()?;
-    drop(db);
-    Ok(count)
-}
-
-/// Request a new JWT API token from the cloud server's
-/// `POST /api/v1/tokens` endpoint.
-///
-/// Uses the URL from the front-end text field if provided,
-/// otherwise falls back to saved settings.
-#[command]
-pub async fn request_sync_token(
-    url: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<sync_client::TokenResult, AppError> {
-    let resolved = match url.filter(|u| !u.is_empty()) {
-        Some(u) => Some(u),
-        None => {
-            let db = state.db.lock().await;
-            Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty())
-        }
-    };
-    match resolved {
-        Some(u) => {
-            Ok(sync_client::request_token(&u, sync_client::admin_key_from_env().as_deref()).await)
-        }
-        None => Ok(sync_client::TokenResult {
-            ok: false,
-            token: None,
-            status: "No server URL configured".into(),
-            expires_at: None,
-        }),
-    }
-}
-
-/// Read the caller's own sync plan from the server (ADR sync-plan-gating).
-///
-/// Resolves URL + API key from settings, then calls `GET
-/// /api/v1/tenants/me/plan`. The endpoint is not plan-gated, so a free
-/// tenant can read its own plan to render the upgrade prompt without
-/// running a sync.
-#[command]
-pub async fn get_sync_plan(
-    state: State<'_, AppState>,
-) -> Result<sync_client::TenantPlanResult, AppError> {
-    // Resolve URL + API key first (brief DB lock), then drop the lock
-    // before the async HTTP call.
-    let (url, api_key) = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        let config = SyncConfig::from_settings(&store)?;
-        match config {
-            Some(c) => (Some(c.server_url), c.api_key),
-            None => (None, None),
-        }
-    };
-    match (url, api_key) {
-        (Some(u), Some(key)) => Ok(sync_client::fetch_tenant_plan(&u, &key).await),
-        _ => Ok(sync_client::TenantPlanResult {
-            ok: false,
-            plan: None,
-            status: "Sync is not configured".into(),
-        }),
-    }
-}
-
 /// Test the cloud sync connection by pinging the configured server.
 /// If `url` is provided from the front-end, it is used directly.
 #[command]
@@ -257,7 +119,7 @@ pub async fn test_sync_connection(
     }
 }
 
-/// Arguments for `sync_pull`.
+/// Arguments for `sync_pull_scoped`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncPullArgs {
@@ -280,55 +142,7 @@ fn validate_pull_consent(args: &SyncPullArgs) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Pull a server snapshot and overwrite the local cache for products,
-/// tax rates, and users. The UI is expected to confirm the overwrite
-/// before invoking this command.
-///
-/// Uses a three-phase split (read → async HTTP → write) so the DB
-/// lock is not held during the network round-trip.
-#[command]
-pub async fn sync_pull(
-    args: SyncPullArgs,
-    state: State<'_, AppState>,
-) -> Result<PullResult, AppError> {
-    validate_pull_consent(&args)?;
-    // Phase 1: Read config from DB (brief lock).
-    let config_opt = {
-        let db = state.db.lock().await;
-        let store = Store::new(&db);
-        SyncConfig::from_settings(&store)?
-    };
-
-    let config = match config_opt {
-        Some(c) => c,
-        None => {
-            return Ok(PullResult {
-                products_pulled: 0,
-                tax_rates_pulled: 0,
-                users_pulled: 0,
-                error: Some("Sync is not configured or disabled".into()),
-            });
-        }
-    };
-
-    // Phase 2: Async HTTP fetch (no DB lock held).
-    let snapshot = sync_client::fetch_snapshot_from_server(&config).await;
-
-    // Phase 3: Apply snapshot to DB (brief lock).
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    match snapshot {
-        Ok(s) => Ok(sync_client::apply_snapshot(&store, &s)?),
-        Err(e) => Ok(PullResult {
-            products_pulled: 0,
-            tax_rates_pulled: 0,
-            users_pulled: 0,
-            error: Some(e.to_string()),
-        }),
-    }
-}
-
-/// Session-scoped variant of `get_sync_settings`.
+/// Get sync settings resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_sync_settings_scoped(
@@ -351,7 +165,7 @@ pub async fn get_sync_settings_scoped(
     })
 }
 
-/// Session-scoped variant of `update_sync_settings`.
+/// Update sync settings resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_sync_settings_scoped(
@@ -370,7 +184,7 @@ pub async fn update_sync_settings_scoped(
     Ok(())
 }
 
-/// Session-scoped variant of `sync_run`.
+/// Immediately run a sync cycle that pushes pending sales, credit, and resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn sync_run_scoped(
@@ -455,7 +269,7 @@ pub async fn sync_run_scoped(
     }
 }
 
-/// Session-scoped variant of `pending_sync_count`.
+/// Get the pending sync count resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn pending_sync_count_scoped(
@@ -474,7 +288,7 @@ pub async fn pending_sync_count_scoped(
     Ok(count)
 }
 
-/// Session-scoped variant of `request_sync_token`.
+/// Request a new JWT API token from the cloud server's resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn request_sync_token_scoped(
@@ -511,7 +325,7 @@ pub async fn request_sync_token_scoped(
     }
 }
 
-/// Session-scoped variant of `get_sync_plan`.
+/// Read the caller's own sync plan from the server (ADR sync-plan-gating) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_sync_plan_scoped(
@@ -578,7 +392,7 @@ pub async fn test_sync_connection_scoped(
     }
 }
 
-/// Session-scoped variant of `sync_pull`.
+/// Pull a server snapshot and overwrite the local cache for products, resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn sync_pull_scoped(

@@ -5,7 +5,12 @@ export type WorkspaceCardVariant = 'full-page' | 'modal' | 'inspector-drawer';
 export interface WorkspaceCardProps {
   /** Session token for authenticated API calls. */
   sessionToken?: string;
-  /** User ID for unscoped API calls (e.g. setReceiptSettings, setHardwareSettings). */
+  /**
+   * Kept optional for call-site compatibility only. Both readers it
+   * once existed for are gone: `set_receipt_settings` was retired in
+   * T10 and `set_hardware_settings` in T11, so no card may pass a
+   * renderer-named actor to a permission check any more.
+   */
   userId?: string;
   /** Inventory location ID scoping deduction rules. */
   locationId?: string;

@@ -117,6 +117,51 @@ describe('OfflineQueueScreen', () => {
     });
   });
 
+  // ── a FAILED quarantine read is not "nothing failed remotely" ─────────
+  //
+  // The outlier was `listRemoteFailuresScoped(...).catch(() => [])`: the
+  // rejection was converted into an EMPTY LIST and written into the same
+  // state a real answer writes, so the one screen whose job is showing sync
+  // trouble reported "No quarantined items." — a clean queue — for a read
+  // that never answered. The file already gets this right twice (:128 and
+  // :173's `.catch(() => null)` behind `if (summary)`, and the phase
+  // 'error' branch at :469-479), so these cases pin the outlier to the same
+  // rule: failure leaves the quarantine UNKNOWN, the existing error copy
+  // carries it, and a later real answer replaces it. No new Fluent key is
+  // used or needed — `offline-queue-error` / `offline-queue-retry` already
+  // exist in both bundles and this screen already renders them.
+
+  it('reports an UNKNOWN quarantine, not a clean one, when the read fails', async () => {
+    mockListRemoteFailures.mockRejectedValue(new Error('offline_remote_failures not registered'));
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Quarantined Remote Items')).toBeTruthy();
+    });
+    // The claim under test: this copy is the positive assertion "nothing
+    // failed remotely", and a failed read cannot license it.
+    expect(screen.queryByText('No quarantined items.')).toBeNull();
+    // The file's existing degraded surface carries it instead.
+    expect(screen.getByText('Failed to load queue. Please try again.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('restores a known quarantine when a later read answers', async () => {
+    mockListRemoteFailures.mockRejectedValueOnce(new Error('transient read failure'));
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load queue. Please try again.')).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No quarantined items.')).toBeTruthy();
+    });
+    expect(screen.queryByText('Failed to load queue. Please try again.')).toBeNull();
+  });
+
   it('renders quarantined remote items with attempts and last error', async () => {
     mockListRemoteFailures.mockResolvedValue([
       makeFailure(),

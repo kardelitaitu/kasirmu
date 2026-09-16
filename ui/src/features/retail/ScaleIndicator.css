@@ -1,0 +1,152 @@
+/* ScaleIndicator - the weigh readout a cashier opens when FEATURES.USB_SCALE is lit
+   (mounted RetailProductGrid.tsx:603-604, flag from RetailPosScreen.tsx:1552, toggled
+   at settings/FeatureToggleScreen.tsx:41). Before this sheet the component imported no
+   CSS at all and `git grep scale-indicator -- '*.css'` returned zero files, so all 17
+   names it renders were undefined tree-wide. Every declaration below is a port from its
+   predecessor ui/src/features/sales/WeightScaleWidget.css, named per declaration; nothing
+   here is a value chosen by the author of this sheet, and no hex or rgba appears in it -
+   the two source rules that carried a hard-coded colour fallback (:26 --color-success and
+   :30 --color-warning) are ported as the bare token, because that token resolves in all
+   three theme blocks and the literal could only ever mask its absence.
+
+   READ THIS BEFORE TRUSTING THE SURFACE: crates/oz-hal/src/drivers/scale.rs is a stub -
+   HidWeightScale::read_weight returns NotFound unconditionally, nothing calls
+   register_scale(), and crates/oz-hal/src/bootstrap.rs:4 says the wiring waits on the
+   driver. So the indicator mounts, polls every 2s and sits permanently in --idle: the
+   --stable, --unstable, -dot--stable, -dot--unstable and -actions rules style states no
+   device can produce today. They are ported because the DRIVER unblocks them, not the
+   sheet. This commit does not make weigh-and-add work. */
+
+/* display, align-items, gap from .weight-scale-widget:2-4. The surface trio
+   (--color-bg-surface / --color-border / --radius-md at :6-8) is NOT ported: this
+   element renders inside a footer that already owns a panel background, so a second
+   frame would double-box it. */
+.scale-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* color from .weight-scale-idle:42. The idle container is the only state reachable in a
+   shipped build today. */
+.scale-indicator--idle {
+  color: var(--color-fg-tertiary);
+}
+
+/* color from .weight-scale-stable:26 (token only, hex fallback dropped). */
+.scale-indicator--stable {
+  color: var(--color-success);
+}
+
+/* color from .weight-scale-unstable:30 (token only, hex fallback dropped). */
+.scale-indicator--unstable {
+  color: var(--color-warning);
+}
+
+/* color from .weight-scale-error:37. */
+.scale-indicator--error {
+  color: var(--color-danger);
+}
+
+/* font-size from .weight-scale-error:38 - the same status-text role. */
+.scale-indicator-error {
+  font-size: var(--text-sm);
+}
+
+/* font-size from .weight-scale-widget:9, which sized the label text of the whole
+   widget. Colour is inherited from the --idle container above. */
+.scale-indicator-label {
+  font-size: var(--text-sm);
+}
+
+/* display, align-items, gap from .weight-scale-display:13-15. The fourth declaration of
+   that rule, min-width: 5rem (:16), is not ported: the one-declaration ceiling aside,
+   a 5rem floor pushes the readout out of the grid footer it now sits in. */
+.scale-indicator-display {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* NO ANCESTOR EXISTS FOR THIS ONE: WeightScaleWidget.css has no dot. Size is taken from
+   the existing --space-1 step (4px) rather than a literal, and border-radius: 50% is a
+   shape, not a colour - the fill is deliberately absent here so that the only two
+   places a state colour is applied stay in the --stable / --unstable modifiers below. */
+.scale-indicator-dot {
+  width: var(--space-1);
+  height: var(--space-1);
+  border-radius: 50%;
+}
+
+/* the token of .weight-scale-stable:26, applied as background because this element is an
+   empty span and has no text to colour. */
+.scale-indicator-dot--stable {
+  background: var(--color-success);
+}
+
+/* the token of .weight-scale-unstable:30, same property substitution. */
+.scale-indicator-dot--unstable {
+  background: var(--color-warning);
+}
+
+/* font-weight, font-variant-numeric from .weight-scale-value:20-21. NO font-size: the
+   readout is a measured quantity a cashier prices against, and tabular-nums is the
+   declaration that stops it jittering. (The rule's third declaration, color:
+   var(--color-fg) at :22, is left with the owner along with the rest of the ink
+   cluster.) */
+.scale-indicator-weight {
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* font-size from .weight-scale-error:38 - the Stable/Unstable word is the same kind of
+   status text. */
+.scale-indicator-stable-label {
+  font-size: var(--text-sm);
+}
+
+/* display, align-items from .weight-scale-display:13-14, gap from :15. Deliberately not
+   byte-identical to .scale-indicator, which differs in its gap step, so this sheet
+   starts with no declaration-identical twin inside it. */
+.scale-indicator-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* white-space from .weight-scale-btn:54 - the product name the cashier is weighing must
+   not break across lines next to the buttons. */
+.scale-indicator-target {
+  white-space: nowrap;
+}
+
+/* padding, background, color from .weight-scale-btn:46-48. KNOWN INCOMPLETE: the source
+   rule holds eight declarations and this sheet is under a three-declaration ceiling, so
+   border: none, border-radius: var(--radius-sm), font-size, font-weight, cursor and the
+   transition (:49-55) plus the :disabled pair (:58-61) were not ported. The unported
+   border:none is the one a reviewer should look at first. */
+.scale-indicator-add-btn {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+/* background from .weight-scale-btn:hover:not(:disabled):64. */
+.scale-indicator-add-btn:hover {
+  background: var(--color-accent-hover);
+}
+
+/* box-shadow from .weight-scale-btn:focus-visible:68. */
+.scale-indicator-add-btn:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-border-focus);
+}
+
+/* padding from .weight-scale-btn:46 and white-space from :54. It gets NO colour rule:
+   the source sheet has one button class for two buttons, while this markup has an Add
+   action and a dismiss, and giving the &times; the same accent fill as Add is the
+   hierarchy the predecessor never had to express. That asymmetry is a finding for the
+   owner of the ink cluster, not a value I chose. */
+.scale-indicator-clear-btn {
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+}

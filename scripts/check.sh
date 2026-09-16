@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# scripts/check.sh — local pre-push gate. Mirrors .github/workflows/ci.yml.
+# scripts/check.sh — the FULL local matrix, run by hand (bash scripts/check.sh).
+# It is NOT what `git push` runs. .githooks/pre-push invokes
+# scripts/run-pre-push.py and nothing else, and that script is a SUBSET of this
+# one — its Tier 0 static gates plus path-routed cargo check, cargo fmt --check,
+# ui typecheck, ui vitest, analytics timezone invariance, website checks and
+# lint-i18n — and it never calls check.sh. So a red pre-push is not a failure of
+# this matrix, and a green push does not mean these steps ran.
+# Nothing here mirrors .github/workflows/ci.yml either: that workflow was
+# retired to ci.yml.bak in 23c96330, and the two live ones are dev-ci.yml (PRs
+# and pushes to main) and release.yml (v* tags). See docs/operations/ci-pipeline.md.
 #
 # Usage:  bash scripts/check.sh
 #         (run from the workspace root)
@@ -105,6 +114,22 @@ cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
     step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet" cargo nextest run --workspace --all-features --exclude oz-pos-app --exclude oz-pos-tablet
     step "test doctests" "cargo test --doc --workspace" cargo test --doc --workspace
+    # Grade the run's JUnit report, not its summary line. A retry-rescued flake is
+    # invisible to every other reader: nextest turns a genuine failure into
+    # `... passed (1 flaky)` with exit 0, and the report's OWN `failures=` attributes
+    # count that as a pass -- `<flakyFailure>` is the only place it survives. Measured
+    # 2026-09-16 on this repo's real suite: 1084 tests, `failures=0`, exit 0, over a
+    # revenue-netting assertion that had in fact failed and been bought back.
+    #
+    # Deliberately in this branch only: the `cargo test` fallback below emits no JUnit
+    # report at all, and a missing report must not be able to read as a clean one.
+    #
+    # The path is the DEFAULT profile's artifact directory. This command passes no
+    # `--profile`, so `path = "junit.xml"` in .config/nextest.toml resolves to
+    # target/nextest/default/junit.xml -- nextest resolves it relative to the profile's
+    # own dir, not the workspace root, which is why the old config value wrote a
+    # doubled path nobody read.
+    step "test workspace flake receipt (junit)" "python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml" python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml
 else
     echo -e "${YELLOW}⚠ nextest not found — falling back to cargo test (slower)${NC}"
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
@@ -122,7 +147,7 @@ step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli
 step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm
 
-# ── Skill drift guard (extra local guard; CI doesn't run this) ────────────
+# ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
 if command -v bash &>/dev/null; then
     step "skill-drift-guard" "bash .agents/skills/skill-drift-guard/scripts/detect.sh --report" bash .agents/skills/skill-drift-guard/scripts/detect.sh --report
 else
@@ -150,6 +175,55 @@ if command -v python3 &>/dev/null; then
     fi
 else
     echo -e "${YELLOW}⚠ panic-inventory skipped (python3 not found)${NC}"
+fi
+
+# ── Supply chain: cargo-deny (deny.toml) — ADVISORY, never fails the run ──
+# This is the runner that deny.toml's own header used to say did not exist.
+# Three deliberate absences, each load-bearing:
+#   • It is NOT a step() call. step() ends in `exit 1` and this script runs
+#     under `set -euo pipefail` (:16), so wrapping an advisory check there
+#     would convert one advisory finding into a hard abort of the whole matrix.
+#   • It is NOT in CI. No live workflow invokes cargo-deny, and
+#     .githooks/pre-push runs scripts/run-pre-push.py, which never calls
+#     check.sh — so a green PR is no evidence this leg ran, and this leg
+#     running is no evidence that anything was enforced.
+#   • It is NOT npm dependency auditing. The UI and website legs below run
+#     `npm ci --no-audit`, a deliberate suppression, so this leg is Rust-only
+#     and must never be described more widely than that.
+# Branching is on rc==0 vs rc!=0 ONLY. No numeric exit code appears anywhere
+# in this block: cargo-deny's and cargo-audit's numeric failure semantics are
+# not knowable from this checkout, so a code-tested branch would be a guess.
+# What the leg does distinguish — an unreachable advisory DB vs a real finding
+# — it distinguishes by grepping the captured log, the same shape as the npm
+# EPERM/esbuild classifier above. This is the only leg in the matrix that
+# touches the network, so an outage must read as neither a pass nor a finding.
+# The `command -v` probe is for the NEXT clone, not this box: cargo-deny IS
+# installed on the machine that wrote this leg, so the skip branch below has
+# never fired here and exists only so that a checkout without the binary skips
+# loudly instead of dying under `set -u`.
+if command -v cargo-deny &>/dev/null; then
+    echo -n "supply chain advisories (advisory)... "
+    if deny_out=$(cargo deny check 2>&1); then
+        # Success: print the tool's own summary line (panic-inventory style) so
+        # the PASS says what was checked, not merely that it passed.
+        if deny_summary=$(printf '%s\n' "$deny_out" | grep -E '(advisories|bans|licenses|sources) ok' | tail -1); then
+            echo -e "${GREEN}PASS${NC} (${deny_summary})"
+        else
+            echo -e "${GREEN}PASS${NC} (cargo-deny reported no failures)"
+        fi
+    elif printf '%s\n' "$deny_out" | grep -qiE 'failed to (fetch|clone|download)|could not (connect|resolve)|network|offline|Updating advisory database'; then
+        # Network-class failure: the advisories were never evaluated. Yellow,
+        # and worded so the line cannot be misread as a pass.
+        echo -e "${YELLOW}⚠ SKIP (advisory database unreachable — supply chain NOT checked; this is not a pass)${NC}"
+    else
+        # A real finding. Advisory by design, on this repo's own reasoning from
+        # the a11y leg below: a gate that arrives yellow gets disabled within a
+        # day, so this reports and does not abort.
+        echo -e "${YELLOW}WARN (cargo-deny findings — non-blocking, and NOT checked in any CI workflow)${NC}"
+        printf '%s\n' "$deny_out" | tail -20
+    fi
+else
+    echo -e "${YELLOW}⚠ supply chain advisories skipped (cargo-deny not installed — cargo install cargo-deny)${NC}"
 fi
 
 # ── Go: license-server (mirrors CI `go` job — auto-detected) ────────────

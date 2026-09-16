@@ -108,7 +108,18 @@ UI_INVOKE_RE = re.compile(
 HANDLER_BLOCK_RE = re.compile(r"generate_handler!\[", re.S)
 ENTRY_RE = re.compile(r"^(?:[a-z0-9_]+(?:::[a-z0-9_]+)+|[a-z0-9_]+)$")
 COMMAND_FN_RE = re.compile(
-    r"#\[tauri::command\]\s*pub (?:async )?fn ([a-z0-9_]+)"
+    # Both spellings of the attribute. `#[command]` is the short form of the same token, used
+    # wherever a file has `use tauri::command;` -- which is how this shell's tablet modules are
+    # written. Matching only the qualified form made this leg blind to nearly the whole tablet:
+    # measured 2026-09-16 in three stages. Qualified form only: 20 of the tablet's command
+    # declarations were visible and the leg printed 0 unregistered. Short form added: 326
+    # visible, 59 unregistered. command_fns_in() also taught to look past a doc comment or a
+    # second attribute between the token and its signature: 441 visible, 122 unregistered (and
+    # the desktop went 16 -> 16 -> 43). No record of mine ever cited that first 0 as an
+    # argument -- I asserted as much in an earlier draft of this comment and it was false, so it
+    # is corrected here rather than left standing -- but the number was printed on every run and
+    # read as clean, which is what the eight f006 fixtures in self_test() are for.
+    r"#\[(?:tauri::)?command\]\s*pub (?:async )?fn ([a-z0-9_]+)"
 )
 
 
@@ -135,6 +146,128 @@ def extract_ui_commands() -> dict[str, list[str]]:
     return found
 
 
+# The ADR #7 pattern in the UI is a two-arm choice: with a session token call the scoped
+# wrapper, without one call the unscoped wrapper. Both wrappers exist in `ui/src/api/*.ts`, and
+# the parity leg grades the command each one invokes. What nothing asked until 2026-09-16 is
+# whether the ELSE arm is reachable at all: `list_scanners`, `create_product`, `adjust_stock`
+# and fourteen others are named by production UI code, allowlisted as known gaps, and have a
+# Rust body in the tablet -- but are registered in NEITHER shell, so the no-token branch of a
+# tested hook resolves to "command not found" in a production build while Vitest mocks the
+# wrapper (`useBarcodeScanner.test.tsx` asserts the branch fires) and the dev-mock answers the
+# key (`system.ts:501 'list_scanners': ...`). That is the defect class this programme keeps
+# meeting: two instruments agreeing with each other and neither touching reality.
+UI_EXPORT_INVOKE_RE = re.compile(
+    r"export const ([A-Za-z]\w*)[\s\S]{0,320}?loggedInvoke(?:<[^>]*>)?\(\s*[\"']([a-z0-9_]+)[\"']"
+)
+# `sessionToken ? () => scopedWrapper(sessionToken) : plainWrapper` and the call-immediately
+# form, captured as (token-taking wrapper, fallback wrapper).
+UI_FALLBACK_TERNARY_RE = re.compile(
+    r"sessionToken\s*\?\s*(?:\(\s*[^)]*\)\s*=>\s*)?([A-Za-z]\w*)\s*\(([^)]*)\)\s*:\s*([A-Za-z]\w*)\b"
+)
+# The parameter list in the optional arrow prefix is load-bearing and was missing until 2026-09-16:
+# it used to be `(\s*)`, which matches only a ZERO-ARGUMENT arm. So
+#     const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id) : startScanner
+# did not match at all, while `? () => stopScannerScoped(sessionToken) : stopScanner` did -- and the
+# leg under-reported its own population because of it: `start_scanner` and `lookup_by_barcode` sit in
+# exactly that shape at ui/src/features/sales/useBarcodeScanner.ts:63 and :83 and never appeared in
+# the counts the T21 decision was going to be made from. Same shape as the round-24 near-miss, where
+# requiring `wrapper(` hid every bare `: listScanners`: a matcher written against the FIRST form it
+# saw reads as a clean census of a family it cannot see. `[^)]*` cannot cross the closing paren of
+# the parameter list, so widening it this far is safe.
+
+
+def no_token_fallbacks(
+    files: list[tuple[str, str]], registered: set[str]
+) -> dict[str, list[str]]:
+    """Unregistered commands the UI reaches through a no-session branch, by command.
+
+    Pure over (relative path, text) pairs and a registered set so the self-test can hand it a
+    fabricated tree: the whole point of the leg is a claim about a shape, and a check that
+    cannot be shown red cannot be trusted green.
+    """
+    wrapper_to_cmd: dict[str, str] = {}
+    for _, text in files:
+        for fn, cmd in UI_EXPORT_INVOKE_RE.findall(text):
+            wrapper_to_cmd.setdefault(fn, cmd)
+    gaps: dict[str, list[str]] = {}
+    for rel, text in files:
+        for number, line in enumerate(text.splitlines(), 1):
+            for scoped, _args, fallback in UI_FALLBACK_TERNARY_RE.findall(line):
+                cmd = wrapper_to_cmd.get(fallback)
+                if not cmd or cmd in registered:
+                    continue
+                # The token arm must itself be a real wrapper, or this is some other ternary
+                # that happens to mention a token and an unregistered name.
+                if wrapper_to_cmd.get(scoped) == cmd + "_scoped" or wrapper_to_cmd.get(scoped):
+                    gaps.setdefault(cmd, []).append(f"{rel}:{number}")
+    return gaps
+
+
+# `export const listProducts = (sessionToken) => loggedInvoke('list_products_scoped', ...)`,
+# read as (wrapper, command). A wrapper is a NAME; the question this exists to ask is whether
+# anything besides the wrapper's own file and its contract test uses it.
+API_WRAPPER_RE = re.compile(
+    r"export (?:const|async function|function) ([A-Za-z]\w*)"
+    r"[\s\S]{0,320}?loggedInvoke(?:<[^>]*>)?\(\s*[\"']([a-z0-9_]+)[\"']"
+)
+
+
+def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]]:
+    """Who references the wrappers that invoke `cmd`, split by where the reference lives.
+
+    Three buckets, because "the UI invokes it" has been read as one claim where the tree
+    holds three. `runtime` is a screen, hook, context or component -- code that runs in a
+    shipped build. `client` is `ui/src/api/client`, a programmatic facade that is a public
+    surface of its own and is legitimately callable from outside the app. `api` is a wrapper
+    file other than the one that defines it. A command whose only references are in
+    `__tests__` and `ui/src/dev-mock` lands in none of them, which is what "the UI invokes
+    it" was hiding: contract suites named
+    `api-*-contract.test.ts` exist to pin the command string inside a wrapper, so they call
+    `updateProduct(args)` forever while every screen imports `updateProductScoped`, and the
+    parity leg counts that as the front-end asking for an unscoped door.
+    """
+    wrappers = {w for path, text in files if "/api/" in f"/{path}" or path.startswith("ui/src/api")
+                for w, c in API_WRAPPER_RE.findall(text) if c == cmd}
+    out: dict[str, list[str]] = {"runtime": [], "client": [], "api": []}
+    if not wrappers:
+        return out
+    for path, text in files:
+        if path.startswith("ui/src/api/client"):
+            bucket = "client"
+        elif path.startswith("ui/src/api"):
+            bucket = "api"
+        else:
+            bucket = "runtime"
+        for w in wrappers:
+            if re.search(r"(?<![\w.])" + re.escape(w) + r"\b", text):
+                # The defining file is not a reference to itself.
+                if bucket == "api" and re.search(r"export (?:const|async function|function) "
+                                                + re.escape(w) + r"\b", text):
+                    continue
+                out[bucket].append(f"{path}#{w}")
+    return out
+
+
+def ui_runtime_files() -> list[tuple[str, str]]:
+    """UI sources that can execute in a shipped build: no tests, no dev-mock."""
+    out: list[tuple[str, str]] = []
+    for scan_dir in UI_SCAN_DIRS:
+        base = REPO_ROOT / scan_dir
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if path.suffix not in (".ts", ".tsx"):
+                continue
+            if "__tests__" in path.parts or "dev-mock" in path.parts:
+                continue
+            try:
+                out.append((path.relative_to(REPO_ROOT).as_posix(),
+                            path.read_text(encoding="utf-8")))
+            except (OSError, UnicodeDecodeError):
+                continue
+    return out
+
+
 def extract_handlers(lib_path: Path) -> list[str]:
     """Return the command names registered in one shell's lib.rs."""
     text = lib_path.read_text(encoding="utf-8")
@@ -156,19 +289,426 @@ def extract_handlers(lib_path: Path) -> list[str]:
     return sorted(set(names))
 
 
+COMMAND_ATTR_RE = re.compile(r"""^\s*#\[(?:tauri::)?command(?:\([^\]]*\))?\]\s*$""")
+COMMAND_SIG_RE = re.compile(r"""^\s*pub (?:async )?fn ([a-z0-9_]+)""")
+# A line that may legally sit between the attribute and the signature: blank, any comment
+# form, or any other attribute. Rust allows all of them, in any order and quantity.
+COMMAND_GAP_RE = re.compile(r"""^\s*(?://|/\*|\*/|#!?\[|$)""")
+
+
+def command_fns_in(text: str) -> set[str]:
+    """Every command function defined in one source, attributes and all.
+
+    Two passes, unioned, because each catches what the other cannot:
+
+    * `COMMAND_FN_RE` handles the compact form, including an attribute and its signature on
+      the SAME line, which a line-oriented walk would never find.
+    * the walk handles what that regex cannot: a `#[command]` or `#[tauri::command]` separated
+      from its `pub fn` by a doc comment or another attribute. Tauri accepts both, and this
+      tree uses both -- measured 2026-09-16, the single-regex pass saw 430 of the desktop's
+      495 command definitions and 326 of the tablet's 441, so this leg printed 16 and 59 where
+      the honest figures are 43 and 122.
+
+    That difference also closes a question this programme left open in its own plan file: a
+    pass recorded "`#[tauri::command]` definition sites 496 against 453 registered paths, and
+    parity grades a name-level form of the same gap and prints 16; 43 != 16 is a unit
+    difference -- sites against names -- and this pass did not reconcile them". It was not a
+    unit difference. 496 - 453 is 43, and 43 is exactly what the walk reports as unregistered;
+    the note's own arithmetic was right and its explanation was wrong, because the 496 and the
+    16 were counting the same population with a parser that could see only part of it.
+
+    The walk stops at the first line that is not blank, not a comment and not another
+    attribute, so an attribute sitting over something that is not a `pub fn` contributes
+    nothing -- the case `f006   an attribute over a non-function is not a command` holds open.
+    """
+    names = set(COMMAND_FN_RE.findall(text))
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not COMMAND_ATTR_RE.match(line):
+            continue
+        j = i + 1
+        while j < len(lines) and COMMAND_GAP_RE.match(lines[j]):
+            j += 1
+        if j < len(lines):
+            sig = COMMAND_SIG_RE.match(lines[j])
+            if sig:
+                names.add(sig.group(1))
+    return names
+
+
 def extract_unregistered(shell: str, lib_path: Path, registered: set[str]) -> list[str]:
-    """`#[tauri::command]` fns in the shell that are not registered."""
+    """Command fns in the shell that are not registered -- either attribute spelling."""
     unregistered: list[str] = []
     commands_dir = lib_path.parent / "commands"
     for path in sorted(commands_dir.rglob("*.rs")):
         if path.name.endswith("_tests.rs"):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for match in COMMAND_FN_RE.finditer(text):
-            fn = match.group(1)
+        for fn in command_fns_in(text):
             if fn not in registered:
                 unregistered.append(fn)
     return sorted(set(unregistered))
+
+
+PROSE_LINE_RE = re.compile(r"^\s*(?://[/*]?|\*)")
+DEF_LINE_RE = re.compile(r"^\s*pub (?:async )?fn\b")
+# The text immediately before a match, when the match is the name being DEFINED. `DEF_LINE_RE`
+# only anchors the `pub` form, so `#[test] fn list_roles()` read as a call of the `list_roles`
+# command; this catches any visibility, and `async` anywhere in the prefix.
+FN_DEFINITION_BEFORE_RE = re.compile(r"\bfn\s+$")
+TYPE_QUALIFIER_RE = re.compile(r"[A-Z]|^Self$")
+# Path prefixes that name somebody else's function. This is the shape the whole sharing
+# programme produces, so it is not an edge case: a desktop shim whose own body reads
+#     oz_bridge::settings::get_receipt_settings(&ctx)
+# inside `pub async fn get_receipt_settings`. A name search sees a call to
+# `get_receipt_settings` and grades the command as load-bearing, when what it found is the
+# shim reaching the bridge's version of the same name. `crate::` is deliberately absent -- a
+# same-crate path call really is this shell's function.
+FOREIGN_PATH_ROOTS = {
+    "oz_bridge", "oz_core", "oz_lan", "oz_local_api", "tauri", "std", "core", "alloc",
+}
+
+
+def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
+    """Lines in `sources` that call the free function `name`, as ["label:line", ...].
+
+    Five exclusions, and every one of them was paid for. A probe written for this leg on
+    2026-09-16 counted none of them and reported 78 of 101 unreachable command fns as "live
+    helpers wearing a stale `#[command]` attribute" -- a conclusion that would have stopped
+    the thinning on a false premise. The calls it saw were `store.create_bundle(&bundle,
+    &items)`: a `Store` method that shares the command's spelling, which is the same
+    collision direction as the sweep-marker error recorded in T13, one layer over. The fifth
+    exclusion was earned after the first commit of this leg shipped, when its "32 desktop
+    helpers" turned out to be mostly shim bodies.
+
+    * preceded by `.`  -> a method call on a value, not this function.
+    * preceded by `::` -> a path call. Kept only when the qualifier is a module path inside
+      this crate (`super::x`, `crate::commands::auth::x`) and dropped when it is a type
+      (`Store::x`, `Self::x`) or another crate in the workspace (FOREIGN_PATH_ROOTS). Whether
+      the qualifier is a module or a type is read off the capitalisation of the segment before
+      the `::`, which is a heuristic and not a parser: the false negative it accepts is a
+      module named like a type, and this tree has none.
+    * a `///`, `//` or `*` line -> prose. Two earlier probes in this programme were
+      contaminated exactly that way.
+    * any line inside a `/* ... */` block -> prose too, and this exclusion was MISSING until
+      2026-09-16. The audit stamps this repo leaves at the top of many modules carry a `next:`
+      clause naming commands as work items -- `next: consider soft-delete or referential guard on
+      delete_customer (COR-23)` -- and a scanner reading for calls cannot tell that sentence from
+      a call site. `PROSE_LINE_RE` only knows line PREFIXES (`//`, `*`), so a bare prose line
+      inside a block comment slipped through as a caller. Found by this lane's cross-crate audit
+      of retired names, whose four "true suspects" were all this one shape.
+      `retire-legacy-commands.py` has tracked block interiors since round 20 for its own
+      stale-prose check; the gate is the instrument that fell behind its tool. Nesting is not
+      modelled (Rust allows `/* /* */ */`), which can only over-exclude -- the conservative
+      direction here, and why no depth counter is attempted.
+    * a line starting `pub fn` / `pub async fn` -> the definition itself.
+    * the match sitting immediately after `fn` on the same line -> a definition of `name` under
+       any visibility. Earned 2026-09-16: the bullet above is anchored on `pub`, so a Rust test
+       written as `#[test] fn pending_offline_count()` counted as a call of the command of the
+       same name, and three deletion candidates sat behind a refusal that had no evidence in
+       it. The bodies were `store.pending_offline_count()` -- the Store method -- which the
+       first bullet already rejects, so the only "caller" in the crate was the test's own
+       title. A check that reads a name as a call wherever the name appears cannot tell a
+       caller from a thing named after the caller.
+    """
+    # `\w` only -- a preceding `.` or `::` is rejected in the loop below, where the reason can
+    # be written out and a fixture can reach it. That rejection used to ALSO sit in this
+    # pattern's lookbehind, which made the branch dead code, and a mutation aimed at the
+    # branch came back green on 2026-09-16 for no other reason. One mechanism, one test.
+    pattern = re.compile(r"(?<!\w)" + re.escape(name) + r"\s*\(")
+    hits: list[str] = []
+    for label, text in sources:
+        # Per-file, not per-scan: a flag shared across sources would let one file's open block
+        # silence a real call in the next file, which is the same leak in a louder shape.
+        in_block = False
+        for number, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if in_block:
+                if stripped.endswith("*/"):
+                    in_block = False
+                continue
+            if stripped.startswith("/*") and not stripped.endswith("*/"):
+                in_block = True
+                continue
+            if PROSE_LINE_RE.match(line) or DEF_LINE_RE.match(line):
+                continue
+            for match in pattern.finditer(line):
+                before = line[:match.start()]
+                if FN_DEFINITION_BEFORE_RE.search(before):
+                    continue  # `fn name(` / `async fn name(`: this is the definition, not a call
+                if before.endswith("."):
+                    continue
+                if before.endswith("::"):
+                    chain = [s[:-2] for s in re.findall(r"[A-Za-z0-9_]+::", before)]
+                    if any(seg in FOREIGN_PATH_ROOTS for seg in chain):
+                        continue
+                    last = chain[-1] if chain else ""
+                    if TYPE_QUALIFIER_RE.search(last):
+                        continue
+                hits.append(f"{label}:{number}")
+    return hits
+
+
+def camel(param: str) -> str:
+    """The payload key Tauri expects for a Rust parameter name.
+
+    Tauri v2 renames command ARGUMENTS to camelCase, and nothing else -- which is why a snake_case
+    key in a caller is a real mismatch rather than a style question. Both spellings are accepted by
+    the caller side below, deliberately: accepting the snake form costs one false negative class
+    (a caller that would in fact fail at runtime) and refusing it would cost the leg's whole
+    credibility, because a handful of wrappers in this tree do pass snake_case keys for arguments
+    that are `Option` and therefore arrive as `undefined` either way.
+    """
+    parts = param.split("_")
+    return parts[0] + "".join(p[:1].upper() + p[1:] for p in parts[1:])
+
+
+RUST_PARAM_SPLIT_RE = re.compile(r",(?![^<>()]*[>)])")
+OPTIONAL_TYPE_RE = re.compile(r"^\s*(?:std::)?(?:primitive::)?Option\s*<|^\s*Option<")
+INJECTED_PARAMS = ("state", "app", "webview", "window", "app_handle", "_")
+
+
+def rust_required_params(prod: list[tuple[str, str]], fn: str) -> list[str] | None:
+    """The caller-supplied, non-Option parameter names of one command fn, or None if not found.
+
+    None is a distinct answer from [] and the leg treats it that way: "I could not read the
+    signature" must not be reported as "this command needs nothing".
+    """
+    for label, text in prod:
+        m = re.search(r"^\s*(?:#\[[^\]]*\]\s*)*pub\s+(?:async\s+)?fn\s+" + re.escape(fn)
+                      + r"\s*\(", text, re.M)
+        if not m:
+            continue
+        open_idx = text.index("(", m.end() - 1)
+        depth, j = 0, open_idx
+        while j < len(text):
+            if text[j] == "(":
+                depth += 1
+            elif text[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        inner = text[open_idx + 1:j]
+        # Strip comments before splitting. This function reported `create_table_scoped<-because the
+        # parameter name IS the payload` for a day, because a comment added INSIDE the parameter
+        # list of that signature contains a colon and the splitter read it as `name: type`. Prose
+        # counted as code, the same failure `fn_call_sites` carries a seventh exclusion for; the
+        # difference is that here the prose was mine and the lie came out of a leg written the same
+        # afternoon to stop trusting prose.
+        inner = re.sub(r"/\*.*?\*/", " ", inner, flags=re.S)
+        inner = re.sub(r"//[^\n]*", " ", inner)
+        out: list[str] = []
+        for piece in RUST_PARAM_SPLIT_RE.split(inner):
+            piece = piece.strip()
+            if not piece or ":" not in piece:
+                continue
+            name, _, typ = piece.partition(":")
+            name = name.strip().removeprefix("mut ").strip()
+            typ = typ.strip()
+            if not name or name.startswith("_") or name in INJECTED_PARAMS:
+                continue
+            if OPTIONAL_TYPE_RE.match(typ) or typ.startswith("Option"):
+                continue
+            # `State<'_, AppState>`, `AppHandle` and friends are injected by Tauri even when the
+            # parameter is named something else, so the TYPE is checked as well as the name.
+            if re.match(r"^(?:std::)?(?:sync::)?Arc<|State\s*<|AppHandle|Webview|Window", typ):
+                continue
+            out.append(name)
+        return out
+    return None
+
+
+def ui_payload_keys(files: list[tuple[str, str]]) -> dict[str, list[tuple[str, set[str], bool]]]:
+    """Per command name: (site, keys, opaque) for every call that passes a second argument.
+
+    `opaque` means "there is an argument and this parse cannot read its keys" -- a non-literal
+    (`invoke(cmd, args)`), or a literal containing a spread. Opaque sites EXCLUDE their command from
+    grading rather than counting against it, because the alternative is a leg reporting a missing key
+    the caller supplies through a variable, and an informational leg that cries wolf is worse than no
+    leg: its entire value is that it is believed without a build behind it.
+
+    Object members are split on TOP-LEVEL commas and each piece classified -- `k:`/`"k":` is a key,
+    a bare identifier is shorthand for a key of the same name. The two-regex version this replaces
+    collected the VALUE of every `id: foo,` pair as a key too, which is the wrong direction (it can
+    only ever clear a finding, never raise one) but it made the leg's set of "supplied keys" mean
+    something other than what its name says.
+    """
+    out: dict[str, list[tuple[str, set[str], bool]]] = {}
+    for rel, text in files:
+        for m in re.finditer(
+            r"(?:loggedInvoke|invoke)(?:<[^()]*>)?\(\s*['\"]([a-z0-9_]+)['\"]\s*,\s*", text
+        ):
+            cmd, after = m.group(1), text[m.end():]
+            site = f"{rel}:{text[:m.start()].count(chr(10)) + 1}"
+            if after.startswith("{"):
+                depth, j = 0, 0
+                while j < len(after):
+                    if after[j] == "{":
+                        depth += 1
+                    elif after[j] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    j += 1
+                obj = after[1:j]
+                keys: set[str] = set()
+                opaque = "..." in obj
+                piece, d = "", 0
+                pieces: list[str] = []
+                for ch in obj:
+                    if ch in "{[(":
+                        d += 1
+                    elif ch in "}])":
+                        d -= 1
+                    if ch == "," and d == 0:
+                        pieces.append(piece)
+                        piece = ""
+                    else:
+                        piece += ch
+                pieces.append(piece)
+                for p in pieces:
+                    p = p.strip()
+                    if not p:
+                        continue
+                    if ":" in p:
+                        k = re.match(r'^["\']?([A-Za-z_$][\w$]*)["\']?\s*:', p)
+                        if k:
+                            keys.add(k.group(1))
+                    elif re.fullmatch(r"[A-Za-z_$][\w$]*", p):
+                        keys.add(p)  # shorthand: `{ productId }` supplies the key productId
+                out.setdefault(cmd, []).append((site, keys, opaque))
+            else:
+                tok = re.match(r"[A-Za-z_$][\w$]*", after)
+                if tok:
+                    out.setdefault(cmd, []).append((site, set(), True))
+    return out
+
+
+def argshape_findings(prod: list[tuple[str, str]], registered: list[str],
+                      payloads: dict) -> dict[str, list[str]]:
+    """Registered commands whose readable callers never supply a required argument.
+
+    The mechanical form of the comparison that found T4-1, T7-2 and all of T8's ten: a human read a
+    Rust signature against a TypeScript object literal, three times, in five domains. Nothing in
+    this repository crosses the IPC boundary in a test (``git grep`` for the Tauri mock idioms
+    returns no files), so until now the only detection was attention.
+
+    Reported only when EVERY readable payload for the command omits the key; one supplying caller
+    clears the argument, and any command with an opaque caller is not graded at all.
+    """
+    res: dict[str, list[str]] = {"missing": [], "ungraded": []}
+    for name in sorted(set(registered)):
+        req = rust_required_params(prod, name)
+        if req is None:
+            res["ungraded"].append(f"{name}(no readable signature)")
+            continue
+        sites = payloads.get(name)
+        if not sites:
+            continue  # no caller at all -- that is the `unrequested` leg's question, not this one
+        readable = [s for s in sites if not s[2]]
+        if not readable:
+            res["ungraded"].append(f"{name}(all callers opaque)")
+            continue
+        supplied: set[str] = set()
+        for _site, keys, _op in readable:
+            supplied |= keys
+        gaps = [p for p in req if camel(p) not in supplied and p not in supplied]
+        if gaps:
+            # Name the caller to look in, not just the command. T9's SECOND AMENDMENT -- which sits
+            # at character ~4400 of a 5,435-character row, below any 2,000-character read -- asks
+            # for a message that "names both sides and the file to look in". The command alone sends
+            # a reader to the Rust; the file is the half that says where the fix belongs, and in
+            # both of this leg's real findings the fix was on the UI side.
+            srcs = sorted({s[0] for s in readable})
+            where = ", ".join(srcs[:2]) + (f" (+{len(srcs) - 2} more)" if len(srcs) > 2 else "")
+            res["missing"].append(f"{name}<-{','.join(gaps)} in {where}")
+    return res
+
+
+def shell_rust_sources(lib_path: Path) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """(production, test) Rust sources of one shell, as (label, text) pairs.
+
+    Extracted so the F-006 classifier and the mirror-direction leg below read exactly the same
+    population. Two forks of "what counts as this shell's sources" is how one leg can look clean
+    while the other grades a different tree.
+    """
+    src = lib_path.parent
+    prod: list[tuple[str, str]] = []
+    tests: list[tuple[str, str]] = []
+    for path in sorted(src.rglob("*.rs")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        (tests if path.name.endswith("_tests.rs") else prod).append((path.name, text))
+    return prod, tests
+
+
+def unrequested_registrations(
+    prod: list[tuple[str, str]], registered: list[str], ui_names: set[str]
+) -> dict[str, list[str]]:
+    """Registered commands that no shipped UI file invokes, split by local Rust callers.
+
+    This is the direction F-006 never asked. F-006 counts "the renderer names a door nobody
+    registered"; a thin shell also has the opposite surface -- "a door is registered and nothing
+    on the client side ever names it" -- and until 2026-09-16 no instrument in this repo printed
+    it, so "the shells are thin" was only ever half-measured. Two sub-populations answer
+    differently and must not be summed into one scary number:
+
+    * `rust_called` -- no UI demand, but the shell's own code calls the fn (a sink wired from an
+      event handler, a command reused by another command). The registration may still be wrong,
+      but the body is load-bearing and deleting it breaks the build.
+    * `dead_registration` -- named by no shipped UI file and called by no Rust in this shell: the
+      only population that a retirement can start from.
+
+    What this deliberately does NOT claim. Demand is counted where the command STRING is written,
+    so a UI file that reaches a command through a wrapper under `ui/src/api` is credited, and a
+    name invoked only from a Vitest case or from `ui/src/dev-mock` reads as unrequested -- that is
+    correct for "shipped" and is the same population `extract_ui_commands` uses (`UI_SCAN_DIRS`
+    omits both; verified against the tree the day this leg was written: no invoke literal lives
+    outside the walked directories today, so a future file there would be invisible to both this
+    leg and F-006, which is the shared caveat to remember, not a claim that either is broken now).
+    A name the OTHER shell's UI calls is also unrequested here, so read the two shells' lists
+    together before believing any entry is dead everywhere.
+
+    Two limits, measured the same day rather than assumed. Demand is found by a LITERAL regex, so
+    `loggedInvoke(cmdVariable, ...)` would be invisible: the only non-literal invoke sites in
+    shipped UI are `ui/src/utils/logged-invoke.ts:14` and `:18`, which are the helper's own
+    parameter, so nothing hides behind a variable today -- and if a future pass adds one, this leg
+    and F-006 go quietly wrong together, because they share the census. And `rust_called` printed
+    zero for both shells that day: an unpopulated arm is not a broken arm, but no real input has
+    exercised it yet, which is what the four fixtures in the self-test exist to keep honest.
+    """
+    out: dict[str, list[str]] = {"rust_called": [], "dead_registration": []}
+    for name in sorted(set(registered)):
+        if name in ui_names:
+            continue
+        sites = fn_call_sites(name, prod)
+        (out["rust_called"] if sites else out["dead_registration"]).append(name)
+    return out
+
+
+def classify_unregistered(
+    lib_path: Path, unregistered: list[str], ui_missing: set[str]
+) -> dict[str, tuple[list[str], list[str]]]:
+    """Split unregistered command fns by whether anything in the shell still calls them.
+
+    Returns {name: (production_call_sites, test_call_sites)}. The F-006 leg counts fns that
+    are defined and not registered; that is a *claim* the source makes and the registry
+    refuses, and on its own it does not say whether the fn does anything. Three populations
+    answer differently:
+
+    * named by the UI as well -> a real IPC gap (the renderer invokes it, nobody answers);
+      graded by the UI->shell direction, not by this leg, and already carried by the
+      allowlist count on the same line.
+    * unreachable and called by production code -> a helper wearing a stale `#[command]`;
+      the attribute is the lie, the fn is load-bearing, and deleting it breaks the build.
+    * unreachable and called by nothing -> a deletion candidate, one name at a time, after
+      reading the body AND the comment above it (T5-3 nearly collapsed a documented
+      per-client policy; T12 nearly deleted a command another shell's fallback needs).
+    """
+    prod, tests = shell_rust_sources(lib_path)
+    return {
+        fn: (fn_call_sites(fn, prod), fn_call_sites(fn, tests)) for fn in unregistered
+    }
 
 
 # The dev-mock surface is a TREE, not a file. ce8666604 moved the scoped-aliasing pass
@@ -281,6 +821,90 @@ def answerable_sets(
     return registered, aliasable
 
 
+# Identical to MOCK_LITERAL_KEY_RE except that it demands a non-space character before the
+# quote instead of the start of the line. The tail is the same value-shape test on purpose:
+# what separates a registrar entry from an arbitrary quoted-key literal here is that its
+# value is a function or a shorthand identifier, and narrowing the difference to POSITION
+# alone is the whole point -- anything else this reports would be a new claim, not a
+# measurement of the blindness.
+MOCK_MIDLINE_KEY_RE = re.compile(
+    r"""\S[ \t]*['"]([a-z0-9_]+)['"][ \t]*:[ \t]*(?:\(|async\b|=>|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*,?[ \t]*$)"""
+)
+
+
+def find_midline_handler_keys(sources: list[tuple[str, str]]) -> dict[str, set[str]]:
+    """Handler-shaped keys the registrar parse cannot see, by file.
+
+    `MOCK_LITERAL_KEY_RE` is anchored (`^[ \\t]*`, `re.M`) and the anchoring is load-bearing:
+    without it the scanner would also collect quoted keys nested inside handler return
+    payloads. The cost of that anchoring is that a key sharing a line with anything else is
+    not a handler as far as this gate is concerned, while TypeScript still sees it as one --
+    a splice, a merge, or a formatter decision can therefore move a name out of the
+    answerable set without any code changing meaning.
+
+    That is not hypothetical: on 2026-09-16 a string splice in this programme's own work left
+    `}),  'set_brand_primary_colour': () => null,` on one line of `handlers/system.ts`, and
+    the gate went red asserting that "no unscoped twin exists for the alias rule to reach"
+    about a twin sitting on the same line as its predecessor. The verdict was the one the
+    tree deserved (line-anchored or not, the parse should not be fooled), but the REASON it
+    printed was false, and a false reason is how a formatting artifact gets "fixed" by
+    allowlisting a gap that does not exist.
+
+    Measured the same day: this returns `{}` for the whole current tree, so nothing here
+    pre-existing is being reported. The function exists to make the blind spot sayable.
+    """
+    found: dict[str, set[str]] = {}
+    for rel, raw in sources:
+        text = _mock_code(raw)
+        visible = set(MOCK_LITERAL_KEY_RE.findall(text))
+        midline = {n for n in MOCK_MIDLINE_KEY_RE.findall(text) if n not in visible}
+        if midline:
+            found[rel] = midline
+    return found
+
+
+def find_unreachable_mock_keys(
+    per_file: dict[str, set[str]], shell_registered: set[str], ui_named: set[str]
+) -> dict[str, set[str]]:
+    """Mock handler keys that nothing on either side can reach, by file.
+
+    The mirror of this gate's own question. It asks, on three sides, whether a call the
+    renderer makes has something behind it, and never asks whether a handler the mock
+    provides has anything in FRONT of it. The asymmetry is not harmless: `rotate_encryption_key`
+    kept answering calls in the browser after the command was deleted from both shells for
+    being an ungated bypass (`ui/src/api/security.ts:31`, and the three test cases closed at
+    `ui/src/__tests__/api-security-contract.test.ts:38-44` on the grounds that resurrecting
+    the wrapper would resurrect the bypass). The contract test's discipline was enforced
+    exactly where it could be enforced, and the two files outside its reach drifted anyway.
+
+    A key counts as reachable on ANY of three routes, which is the whole reason this is
+    worth a function rather than a set subtraction:
+      * a shell registers it;
+      * UI code names it;
+      * it is an UNSCOPED name whose `_scoped` twin takes one of the first two routes,
+        because applyScopedAliases copies this handler onto that name at dispatch time.
+    The third route is what makes the first naive attempt at this census useless: measured
+    against only the first two, 164 of 521 keys looked dead on 2026-09-16, and the true
+    figure after the alias term was 7. Any reader of the count below should re-derive the
+    number before deleting anything, and remember that a handler answering nothing today is
+    also a handler a future screen will silently need.
+
+    Informational by design. A mock key with no consumer is dead weight, not a defect, and
+    the tree is full of surfaces that were built before their callers.
+    """
+    consumers = shell_registered | ui_named
+    found: dict[str, set[str]] = {}
+    for path, names in per_file.items():
+        dead = {
+            n for n in names
+            if n not in consumers and (n.endswith("_scoped") or f"{n}_scoped" not in consumers)
+        }
+        if dead:
+            found[path] = dead
+    return found
+
+
+
 def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str]], str | None]:
     """Names the browser dev-mock can serve.
 
@@ -325,8 +949,17 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     bare name still reads identically whether a slice asked for a browser exemption and
     somebody agreed, or nobody has looked at it since it was written; that is what the
     "carry no reason" line the gate prints on every run is now able to say with a number.
-    The other sections have NOT been given the schema: scoped_orphans, desktop and tablet
-    are still read through bare set() calls, so a dict in one of those still dies.
+    Every section HAS been given the schema since then: scoped_orphans, desktop and tablet
+    are read through section_names exactly as dev_mock is, so the TypeError above is not
+    reachable from any of the four, and self-test case 10 pins both shapes on a scoped_orphans
+    fixture. What stays barred is a SHAPE in two of them. "desktop" and "tablet" keep one bare
+    name per entry because the sibling reader scripts/verify-scoped-reads.py refuses an object
+    there -- measured 2026-09-16 by planting {"name", "reason"} as entry #1 of "desktop" in a
+    copy of the file and running that gate with --allowlist on the copy: it printed
+    "FAIL: 1 member(s) ... this gate could not read" and exited 1. The constraint is therefore
+    enforced at both ends of the shared file, in words rather than by one reader's inability to
+    parse -- which is what this file's EXTERNALLY_READ_SECTIONS / OBJECT_ALLOWED_SECTIONS split
+    records.
     The presence side is honest at least: an entry whose handler lands turns the gate RED as
     stale, so the list cannot rot into a lie in that direction. What is lopsided is the
     editing. --write-dev-mock-gaps unions today's gaps in, alphabetised and additive only,
@@ -677,17 +1310,23 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
 
     The split IS deliberate today, and each message says so, because the reason is external
     rather than internal to this file: scripts/verify-scoped-reads.py reads the "desktop" and
-    "tablet" sections and feeds each member straight into a dict lookup, so an object there
+    "tablet" sections and grades every member of them as a command name, so an object there
     does not merely confuse this gate -- it reds a second gate that runs bare in CI and in
-    check.sh, in a file its owner is not working in. "dev_mock" and "scoped_orphans" have no
+    check.sh, in a file its owner is not working in. HOW that gate reds is measured here rather
+    than remembered: since it grew allowlist_names(), an object in a shell section is reported
+    as an unreadable member and FAILS the run (exit 1, one sentence naming the section and the
+    1-based index), with no TypeError and no traceback -- re-derive it by planting one in a copy
+    and running scripts/verify-scoped-reads.py --allowlist on the copy. The verdict the rule
+    exists to protect is unchanged either way. "dev_mock" and "scoped_orphans" have no
     reader outside this script, so they can take the object form as soon as the reads here
     normalise both shapes, which allowlist_section and section_names now do.
 
     COUPLING, written where the rule lives rather than in a commit message from a lane that
     no longer exists: the two tuples this reads -- EXTERNALLY_READ_SECTIONS ("desktop",
     "tablet") and OBJECT_ALLOWED_SECTIONS ("dev_mock", "scoped_orphans") -- are this file's
-    belief about scripts/verify-scoped-reads.py, whose "for cmd in allow.get(shell, [])"
-    loop feeds each member straight into a dict lookup, and which runs bare at
+    belief about scripts/verify-scoped-reads.py, whose allowlist_names() takes the members of
+    exactly those two sections as the command names it grades and refuses any object member it
+    is handed, and which runs bare at
     .github/workflows/dev-ci.yml:596 and scripts/check.sh:72 (its --shell default is
     desktop, so tablet is the same hazard one flag away). That script is not owned from
     here. If it ever learns the object form, move desktop and tablet into the allowed tuple
@@ -726,12 +1365,12 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
                 f'The "{section}" section of {name} takes one bare command name per entry, '
                 f'like "get_active_cart_scoped"; the object form {OBJECT_FORM} is accepted '
                 f'only in "dev_mock" and "scoped_orphans". That split is deliberate today, '
-                f"not an oversight: scripts/verify-scoped-reads.py parses the \"{section}\" "
-                f"list (dev-ci.yml#static-gates and scripts/check.sh both run it bare) and "
-                f"cannot read an object, so leaving it here would crash a second gate with a "
-                f"TypeError instead of failing it. Record the reason in the "
-                f'\"_{section}_comment\" prose or a tracking doc until that reader is '
-                f"taught the shape."
+                f"not an oversight: scripts/verify-scoped-reads.py grades this section by "
+                f"those names (dev-ci.yml#static-gates and scripts/check.sh both run it "
+                f"bare), so an object here makes that gate FAIL the build -- exit 1 and one "
+                f"sentence naming this section and the entry's 1-based index, not a "
+                f"traceback -- in a file its owner may not be working in. Keep the entry "
+                f"bare and record why in the \"_{section}_comment\" prose or a tracking doc."
             )
         return (
             f'The "{section}" section of {name} accepts a bare command name or an object '
@@ -763,8 +1402,9 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
                     problems.append(f"{where} is an object with no \"name\": {why(section)}")
                 elif section in EXTERNALLY_READ_SECTIONS:
                     problems.append(
-                        f"{where} is an object, {raw.get('name')!r}, and this section is read "
-                        f"by a script that cannot parse one. {why(section)}"
+                        f"{where} is an object, {raw.get('name')!r}, and this section is "
+                        f"graded by a second gate that reads each entry as a name. "
+                        f"{why(section)}"
                     )
                 continue
             problems.append(
@@ -777,8 +1417,11 @@ def allowlist_section(payload: dict, key: str) -> list[tuple[str, str]]:
     """One allowlist section as (name, reason) pairs, in the order the file holds them.
 
     A member is either a bare command name -- the shape every section has always used, and
-    still the shape all 16 dev_mock entries are written in -- or an object carrying "name"
-    and "reason". Both forms normalise to the same name; only the object form can carry a
+    still the shape "desktop", "tablet" and "scoped_orphans" are written in -- or an object
+    carrying "name" and "reason". Measured 2026-09-16 against the committed file: dev_mock
+    holds 15 entries and every one of them is an object (0 bare, 0 carrying a blank reason,
+    since ce0c12357), while the other three hold 16, 143 and 25 bare names respectively.
+    Both forms normalise to the same name; only the object form can carry a
     reason, and an empty, whitespace, or missing reason counts as no reason rather than as
     a reason that says nothing. Unknown keys on an object are ignored here and preserved by
     merge_dev_mock_entries, so an entry that later grows an "owner" or "expires" field loses
@@ -1176,18 +1819,87 @@ def stale_orphan_message(
     )
 
 
+def _balanced_body(text: str, start: int) -> str:
+    """The `{...}` block starting at or after `start`, brace-balanced."""
+    open_idx = text.find("{", start)
+    if open_idx < 0:
+        return ""
+    depth, j = 0, open_idx
+    while j < len(text):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:j + 1]
+        j += 1
+    return ""
+
+
+GATE_TOKEN_RE = re.compile(r"require_\w*permission|ctx\.require_session_permission", re.I)
+
+
+def gate_in_body(body: str) -> str | None:
+    """The permission a body enforces, or None when it enforces no check.
+
+    `require_\\w*permission`, because the shells call `require_permission` and
+    `require_permission_for_session` while `BridgeCtx` exposes `require_session_permission` --
+    which the literal substring `require_permission` does NOT match. Any body that delegates to
+    the bridge and is graded by a check looking for the narrow spelling reads as ungated.
+    """
+    if not body or not GATE_TOKEN_RE.search(body):
+        return None
+    p = re.search(r"permissions::([A-Z_]+)", body)
+    return p.group(1) if p else "UNKNOWN"
+
+
+def _bridge_fn_body(fn_name: str, cache={}) -> str:
+    """The body of a `pub async fn` in `crates/oz-bridge`, "" when there is none.
+
+    Walked once per process and cached by name: this is called for every shell command that looks
+    ungated, and re-reading the crate each time would make the gate slower than the thing it
+    checks. Only the bridge is followed, one level -- a delegation that itself delegates is rare
+    enough that reporting `None` for it is honest, while the one-level case is the repo's dominant
+    shape since the shells became thin.
+    """
+    if not cache:
+        root = REPO_ROOT / "crates" / "oz-bridge" / "src"
+        for rs in sorted(root.rglob("*.rs")) if root.is_dir() else []:
+            text = rs.read_text(encoding="utf-8", errors="replace")
+            for m in re.finditer(r"\bfn\s+(\w+)\s*\(", text):
+                if m.group(1) in cache:
+                    continue
+                cache[m.group(1)] = _balanced_body(text, m.start())
+    return cache.get(fn_name, "")
+
+
+DELEGATION_RE = re.compile(r"\boz_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
+
+
 def orphan_permission(command: str) -> str | None:
     """The permission a scoped command enforces, or None if it enforces no check.
 
     Why the gate bothers to read Rust bodies at all: an orphaned `_scoped` command is not
     one kind of thing. One whose body is only `resolve_session` then a forward is a
     redundant twin -- dead weight, but it guards nothing so it can also leak nothing, and
-    19 of the 25 seeded entries are that. One that DOES call `require_permission*` is
-    different in kind: it is a SECURITY_MANAGE / SETTINGS_EDIT / WORKSPACES_SWITCH gate
-    wired into `generate_handler!` with no reachable caller, which reads as enforced
-    posture while protecting nothing. That distinction is exactly what cost six rounds of
-    manual audit in item 46, and hand-triaging 25 commands every time the list changes is
-    not going to happen.
+    at 32c402d28 and again at 3162b97b6 that is 14 of the section's 25 entries. One that DOES call
+    `require_permission*` is different in kind: it is a permission gate -- one of
+    SALES_PROCESS, SECURITY_MANAGE, SETTINGS_EDIT, SYNC_MANAGE or the four PAYABLES_* --
+    wired into `generate_handler!` with no reachable caller, which reads as enforced posture
+    while protecting nothing, and the same measurement puts it at 11. Neither number is
+    quoted here as a standing fact: both are what THIS function returns, recomputed and
+    printed on every run (python scripts/verify-ipc-parity.py | grep "info[scoped-orphans]").
+    The sentence this slot carried until now read "19 of the 25 seeded entries are that" -- a
+    count of a population the code below recomputes, written in the one place in a file where
+    a stale number is read as the definition rather than as a measurement. What the eight gate
+    names above are is also measured, not remembered: WORKSPACES_SWITCH appeared in the old
+    sentence as a gate in the batch and does not gate any current entry, so it is gone from
+    here and SALES_PROCESS and PAYABLES_*, which do, are named in its place. Whether 19 ever
+    described a tree is a question about that tree, and the answer is in git, not here: `git
+    log -S "19 of the 25" -- scripts/verify-ipc-parity.py` lands on 153c046a5. What the two
+    kinds MEAN has not moved and never depended on the digits -- that distinction is exactly
+    what cost six rounds of manual audit in item 46, and hand-triaging the whole list every
+    time it changes is not going to happen.
 
     Brace-balanced, deliberately. The first pass at this in item 46 took a fixed 900-char
     window from the signature, which for a short function runs past its closing brace and
@@ -1207,23 +1919,21 @@ def orphan_permission(command: str) -> str | None:
             m = re.search(r"\bfn\s+" + re.escape(command) + r"\s*\(", text)
             if not m:
                 continue
-            open_idx = text.find("{", m.end())
-            if open_idx < 0:
+            body = _balanced_body(text, m.start())
+            if not body:
                 continue
-            depth, j = 0, open_idx
-            while j < len(text):
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            body = text[m.start():j + 1]
-            if "require_permission" not in body:
-                return None
-            p = re.search(r"permissions::([A-Z_]+)", body)
-            return p.group(1) if p else "UNKNOWN"
+            direct = gate_in_body(body)
+            if direct is not None:
+                return direct
+            # No gate in the shell's own body. In a thin shell that is the normal shape: the gate
+            # lives in the bridge fn this line delegates to (ADR #49), so `None` used to mean
+            # "redundant twin, wire a caller or allowlist it as host-only" for commands that are
+            # gated two crates away. Follow the delegation one level before saying so.
+            for target in DELEGATION_RE.findall(body):
+                via_bridge = gate_in_body(_bridge_fn_body(target))
+                if via_bridge is not None:
+                    return via_bridge
+            return None
     return None
 
 
@@ -1481,8 +2191,11 @@ def self_test() -> int:
          globals()["ALLOWLIST_PATH"] == saved_path)
 
     # 10: the three reads that used to hand a raw section straight to set(). Grouped as the
-    # no-op claim: routing them through section_names must change nothing on a tree where
-    # every entry is a bare name, and must stop the crash where one is not.
+    # no-op claim: routing them through section_names had to change nothing on a tree where
+    # every entry was a bare name, and had to stop the crash where one is not. Both shapes
+    # below are fixtures; the committed file holds 15 objects in dev_mock and 16 / 143 / 25
+    # bare names in desktop / tablet / scoped_orphans (measured 2026-09-16), so the no-op half
+    # of this claim describes the fixture and not the file on disk.
     mixed_scoped = ["a_scoped", {"name": "b_scoped", "reason": "host-only, no caller"}]
     case("case 10  scoped_orphans reads both shapes through the same helper",
          section_names({"scoped_orphans": mixed_scoped}, "scoped_orphans")
@@ -1543,7 +2256,7 @@ def self_test() -> int:
     case("case 11  an object in desktop is refused, and the message names desktop and the file",
          len(problems_desktop) == 1
          and '"desktop"' in problems_desktop[0] and "probe-allowlist.json" in problems_desktop[0])
-    case("case 11  and it names the external reader that cannot parse the object",
+    case("case 11  and it names the external reader that refuses the object",
          "verify-scoped-reads" in problems_desktop[0]
          and OBJECT_FORM in problems_desktop[0])
     case("case 11  it says the split is deliberate, not an oversight",
@@ -2442,6 +3155,317 @@ def self_test() -> int:
          planted_run(None, json.dumps(probe_clean))[0] in (0, 1)
          and "no-such-allowlist-schema" not in planted_run(None, json.dumps(probe_clean))[1], )
 
+    # The registrar parse's blind spot has to be measurable in both directions. A key the
+    # anchored regex misses must be reported -- and the SAME key sitting at the start of its
+    # line must NOT be, or the scan is just "everything not on a fresh line" and proves
+    # nothing. Both fixtures also pin the anchored parse's own behaviour, so if someone
+    # widens MOCK_LITERAL_KEY_RE the second case is the one that says so.
+    glued = [("x/handlers/a.ts",
+              "export const h = {\n"
+              "  'get_key_rotation_info': () => ({}),\n"
+              "  }),  'set_brand_primary_colour': () => null,\n"
+              "};\n")]
+    unwrapped = [("x/handlers/a.ts",
+                  "export const h = {\n"
+                  "  'get_key_rotation_info': () => ({}),\n"
+                  "  'set_brand_primary_colour': () => null,\n"
+                  "};\n")]
+    commented = [("x/handlers/a.ts",
+                  "export const h = {\n"
+                  "  // callers used to pass { 'set_brand_primary_colour': () => null }\n"
+                  "  'get_key_rotation_info': () => ({}),\n"
+                  "};\n")]
+    case("glue   the anchored parse really does miss a mid-line key",
+         'set_brand_primary_colour' not in set().union(*parse_dev_mock(glued)[0].values()))
+    case("glue   the blind-spot scan reports exactly that key, and only it",
+         find_midline_handler_keys(glued) == {
+             'x/handlers/a.ts': {'set_brand_primary_colour'}})
+    case("glue   the same key unwrapped is visible to the parse and not flagged",
+         'set_brand_primary_colour' in set().union(*parse_dev_mock(unwrapped)[0].values())
+         and not find_midline_handler_keys(unwrapped))
+    case("glue   a key-shaped thing inside a comment is not a key",
+         not find_midline_handler_keys(commented))
+
+    # The reverse census, same both-directions discipline: a key is reachable by ANY of the
+    # three routes, so the test must show all three working AND show a key that has none of
+    # them. The seed route is the one that matters -- drop the twin's consumer and the
+    # unscoped handler that only existed to feed it becomes dead, which is exactly the term
+    # that took a naive 164-name census down to 7.
+    reach_src = {"x/handlers/a.ts": {
+        'alive_registered', 'alive_ui', 'alive_seed', 'dead_one', 'dead_scoped'}}
+    case("reach  registration, a UI name, or a consumed _scoped twin each keep a handler alive",
+         find_unreachable_mock_keys(reach_src, {'alive_registered'},
+                                    {'alive_ui', 'alive_seed_scoped'})
+         == {'x/handlers/a.ts': {'dead_one', 'dead_scoped'}})
+    case("reach  an unscoped seed dies with the twin nobody consumes",
+         find_unreachable_mock_keys(reach_src, {'alive_registered'}, {'alive_ui'})
+         == {'x/handlers/a.ts': {'dead_one', 'dead_scoped', 'alive_seed'}})
+
+    # The F-006 leg's own eyes, both directions. Only the qualified attribute matched before
+    # 2026-09-16, and the tablet spells its commands with the imported short form -- so a fifth
+    # of its command declarations were visible and the leg printed a confident 0 unregistered
+    # fns for a shell that had plenty. The two figures this comment used to carry in present
+    # tense (20 of 326 declarations visible, 59 unregistered fns) were a tree reading too, and
+    # the leg below prints the live pair every run: 4 unregistered fns for the tablet at
+    # 3a9637ece, 7 at 3162b97b6 an hour earlier -- re-derive with
+    #     python scripts/verify-ipc-parity.py | grep "info[tablet]:"
+    # The shape claim is the fixture's job and is unchanged: a pattern fix with no fixture
+    # behind it can be tightened back into blindness by anyone, which is exactly how this
+    # happened the first time.
+    case("f006   the qualified attribute is matched",
+         COMMAND_FN_RE.findall("#[tauri::command]\npub async fn list_staff(") == ['list_staff'])
+    case("f006   the imported short attribute is matched as well",
+         COMMAND_FN_RE.findall("#[command]\npub fn list_roles(") == ['list_roles'])
+    case("f006   a pub fn with no attribute is not a command",
+         COMMAND_FN_RE.findall("pub async fn helper(x: u8) -> u8 { x }") == [])
+    case("f006   a pub fn behind an unrelated attribute is not a command either",
+         COMMAND_FN_RE.findall("#[serde(rename_all = 'camelCase')]\npub async fn not_a_command()") == [])
+
+    # And the walk's own cases: an attribute separated from its signature by a doc comment or
+    # by a second attribute is still a command in Rust, and the single regex cannot see either.
+    # These four together are what make 43 and 122 reproducible rather than a claim.
+    case("f006   a doc comment between attribute and signature does not hide the command",
+         'documented' in command_fns_in("#[tauri::command]\n/// Lists things.\npub async fn documented() -> X {"))
+    case("f006   a second attribute between them does not hide it either",
+         'double' in command_fns_in("#[command]\n#[allow(clippy::unused_async)]\npub fn double() -> X {"))
+    case("f006   attribute and signature on one line still count",
+         'oneline' in command_fns_in("#[command] pub async fn oneline() -> X {"))
+    case("f006   an attribute over a non-function is not a command",
+         not command_fns_in("#[command]\nconst LIMIT: u32 = 4;\n"))
+
+    # What counts as a call of an unregistered fn. The middle line is the one that fooled a
+    # probe written for this leg on 2026-09-16: `store.create_bundle(&x)` is `Store::
+    # create_bundle`, a different function sharing a spelling, and counting it turned 101
+    # unreachable fns into 78 "live helpers" -- a conclusion that would have frozen the
+    # thinning. A module path (super::) IS a call, a type path (Store::) is not, prose is not,
+    # and the signature is the definition.
+    call_sites = fn_call_sites(
+        "create_bundle",
+        [("m.rs", "\n".join([
+            "let a = create_bundle(&x);",
+            "store.create_bundle(&x);",
+            "Store::create_bundle(&x);",
+            "let b = super::create_bundle(&x);",
+            "/// see create_bundle(&x) above",
+            "pub async fn create_bundle(",
+            "    .create_bundle;",
+            "    oz_bridge::bundles::create_bundle(&ctx);",
+            "    crate::commands::bundles::create_bundle(&x);",
+            "fn create_bundle() {",
+            "async fn create_bundle() -> Result<(), E> {",
+            "/*",
+            "next: consider soft-delete on create_bundle (COR-23)",
+            "*/",
+            "let after_block = create_bundle(&y);",
+        ]))])
+    case("call   a free call is counted", "m.rs:1" in call_sites)
+    case("call   a same-named method is NOT (this is the bug the census had)",
+         "m.rs:2" not in call_sites)
+    case("call   a type path is not a call but a module path is",
+         "m.rs:3" not in call_sites and "m.rs:4" in call_sites)
+    case("call   prose is not a call", "m.rs:5" not in call_sites)
+    case("call   the signature itself is not a call", "m.rs:6" not in call_sites)
+    case("call   the whole answer is exactly the four real calls",
+         call_sites == ["m.rs:1", "m.rs:4", "m.rs:9", "m.rs:15"])
+    # The seventh exclusion, both halves in one case: a name inside a `/* */` audit stamp is prose,
+    # AND the block must CLOSE -- an exclusion that swallowed everything after the first `/*`
+    # would read cleaner than the truth, so the code below the block is the load-bearing half.
+    case("call   prose inside a block comment is not a call, and code after it still is",
+         "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
+    # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
+    # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
+    # allowlisted as "host-only", while `crates/oz-bridge/src/pos.rs:505` gates it on
+    # SALES_PROCESS one line below the shell's `oz_bridge::pos::set_line_course_scoped(&ctx, ...)`.
+    thin = "pub async fn x_scoped(t: String) -> R {\n    oz_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
+    ungated = "pub async fn y_scoped(t: String) -> R {\n    load(&t)\n}"
+    case("gate   a shell body that delegates is not judged by its own text alone",
+         gate_in_body(thin) is None and DELEGATION_RE.findall(thin) == ["x_scoped"])
+    case("gate   ctx.require_session_permission counts as a gate the old literal missed",
+         gate_in_body("async fn f() {\n    ctx.require_session_permission(&s, permissions::SALES_PROCESS).await?;\n}")
+         == "SALES_PROCESS")
+    case("gate   a body with neither gate nor delegation is honestly ungated",
+         gate_in_body(ungated) is None and not DELEGATION_RE.findall(ungated))
+    case("gate   the real command that was misreported is now read as gated",
+         orphan_permission("set_line_course_scoped") == "SALES_PROCESS")
+    # The sixth exclusion, earned on 2026-09-16: `offline_tests.rs` opens a case with
+    # `fn pending_offline_count()` and its body calls `store.pending_offline_count()`. The
+    # first is a test title, the second a Store method, so the command had NO caller and the
+    # refusal gate said it had one -- three candidates sat behind that verdict for rounds.
+    case("call   a private or async test fn named after the command is not a call",
+         "m.rs:10" not in call_sites and "m.rs:11" not in call_sites)
+
+    # The shim shape, which is what this programme keeps producing and therefore what the leg
+    # will keep meeting: a command whose body calls the bridge's same-named function. That is
+    # not the command being used, and grading it as such would hide every legacy fn behind its
+    # own replacement. A crate:: path IS this shell's function, so it stays counted.
+    case("call   a shim body calling the bridge twin is not a call of the command",
+         "m.rs:8" not in call_sites and "m.rs:9" in call_sites)
+
+    # The no-session fallback leg: a shape, not a tree count. All three synthetic cases are
+    # load-bearing -- without the second and third, the first would pass for a detector that
+    # reports every ternary, which is the same vacuous-green failure the leg exists to catch.
+    fb_api = ("ui/src/api/hardware.ts",
+              "export const listScanners = (): Promise<number> =>\n"
+              "  loggedInvoke<number>('list_scanners');\n"
+              "export const listScannersScoped = (t: string): Promise<number> =>\n"
+              "  loggedInvoke<number>('list_scanners_scoped', { t });\n")
+    fb_hook = ("ui/src/features/sales/useBarcodeScanner.ts",
+               "const fetch = sessionToken ? () => listScannersScoped(sessionToken) : listScanners;\n")
+    fb_noise = ("ui/src/features/x/Noise.ts", "const n = sessionToken ? 1 : 0;\n")
+    case("fallback an unregistered else-arm wrapper is reported",
+         list(no_token_fallbacks([fb_api, fb_hook], {"list_scanners_scoped"})) == ["list_scanners"])
+    case("fallback the same shape is silent once the command is registered",
+         not no_token_fallbacks([fb_api, fb_hook], {"list_scanners", "list_scanners_scoped"}))
+    case("fallback a ternary whose else-arm is not a wrapper reports nothing",
+         no_token_fallbacks([fb_api, fb_noise], {"list_scanners_scoped"}) == {})
+    case("fallback and the same noise beside a real gap neither invents nor inflates one",
+         len(no_token_fallbacks([fb_api, fb_hook, fb_noise], {"list_scanners_scoped"})) == 1
+         and len(no_token_fallbacks([fb_api, fb_hook, fb_noise],
+                                    {"list_scanners_scoped"})["list_scanners"]) == 1)
+    # The parameterised arm, earned 2026-09-16. The three cases above are all ZERO-ARGUMENT arrows,
+    # which is how the leg could be green while `const start = sessionToken
+    # ? (id: string) => startScannerScoped(sessionToken, id) : startScanner` went unseen: the
+    # fixture and the regex had been written against the same single form, so they agreed with each
+    # other and not with the tree. Two names per shell were missing from the count a T21 decision
+    # was going to be made from.
+    fb_api2 = ("ui/src/api/hardware.ts",
+               "export const startScanner = (id: string): Promise<boolean> =>\n"
+               "  loggedInvoke<boolean>('start_scanner', { id });\n"
+               "export const startScannerScoped = (t: string, id: string): Promise<boolean> =>\n"
+               "  loggedInvoke<boolean>('start_scanner_scoped', { t, id });\n")
+    fb_param = ("ui/src/features/sales/useBarcodeScanner.ts",
+                "const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id)"
+                " : startScanner;\n")
+    case("fallback an arrow arm that takes parameters is the same shape and must be caught",
+         list(no_token_fallbacks([fb_api2, fb_param], {"start_scanner_scoped"})) == ["start_scanner"])
+    case("fallback a parameterised arm whose else-branch is not a wrapper stays silent",
+         no_token_fallbacks([fb_api2, fb_noise], {"start_scanner_scoped"}) == {})
+    case("fallback both arrow forms are reported together without doubling a name",
+         len(no_token_fallbacks([fb_api, fb_hook, fb_api2, fb_param],
+                                {"list_scanners_scoped", "start_scanner_scoped"})) == 2)
+    # And the real tree, so a regex that matched only its own fixture cannot pass: if a future
+    # pass registers these doors and this case goes red, delete the case after reading the
+    # print, not before -- it is the only thing here that knows the shape was ever broken.
+    real_fb = no_token_fallbacks(ui_runtime_files(), set(extract_handlers(REPO_ROOT / SHELLS["tablet"])))
+    # LINEAGE OF THE NAME, which is what licenses this case to carry a different one than it was
+    # born with: it pinned "list_scanners" until 3162b97b6 ("refactor(ui): delete the scanner
+    # hooks' no-session arms") retired that name from the else-arm -- it deleted
+    # `export const listScanners = (): Promise<ScannerInfo[]> => loggedInvoke('list_scanners')`
+    # from ui/src/api/hardware.ts along with the ternary that reached it (fallback 10->7 desktop,
+    # 5->2 tablet). The registered set never moved -- "list_scanners" is absent from BOTH shells
+    # today, exactly as it was when this case was written -- so the gate did not break and the
+    # tree did not regress: the defect this arm was written to witness was REPAIRED for the
+    # scanner trio, and a guard that keeps asserting a repaired defect is a lie that prints
+    # False. It is re-anchored here to the one no-session fallback the real tree still holds,
+    # "list_products" -- unregistered in both shells, reached at
+    # ui/src/features/products/useProducts.ts:132.
+    # THE NAME IS NOT DROPPED: `len(real_fb) >= 1` alone passes for ANY fallback, so it cannot
+    # say the specific arm this leg was written for is still reachable -- which is why this case,
+    # and not the three synthetic ones above, is the thing that knows the shape was ever broken.
+    # One named witness stays; its population now rides in the case name, so a future red prints
+    # its own denominator instead of a bare False. Move the name only under a proven red, and
+    # read the print before deleting anything.
+    case("fallback the real tablet tree exposes the shape the leg was written for "
+         f"[n={len(real_fb)} names={sorted(real_fb)}]",
+         len(real_fb) >= 1 and "list_products" in real_fb)
+
+    # The reachability buckets, same discipline: without the second and third cases the first
+    # would pass for a classifier that counts a wrapper's own definition as one of its users,
+    # which is exactly the mistake that called eleven dead wrappers a parity gap.
+    wr_api = ("ui/src/api/products.ts",
+              "export const listProducts = (sessionToken: string): Promise<number> =>\n"
+              "  loggedInvoke<number>('list_products', { sessionToken });\n")
+    wr_hook = ("ui/src/features/products/useProducts.ts",
+               "import { listProducts } from '@/api/products';\n"
+               "export const use = () => listProducts('tok');\n")
+    wr_client = ("ui/src/api/client/products.ts",
+                 "class C {\n  async listProducts() { return 1; }\n}\n")
+    case("uinamed a screen importing the wrapper makes the command reachable",
+         wrapper_reach([wr_api, wr_hook], "list_products")["runtime"]
+         == ["ui/src/features/products/useProducts.ts#listProducts"])
+    case("uinamed the file that defines a wrapper is not its own user",
+         all(not v for v in wrapper_reach([wr_api], "list_products").values()))
+    case("uinamed the programmatic client is reachable without being a screen",
+         bool(wrapper_reach([wr_api, wr_client], "list_products")["client"])
+         and not wrapper_reach([wr_api, wr_client], "list_products")["runtime"])
+    # Real tree, so a regex that matched only its fixture cannot pass. If a future pass imports
+    # these wrappers into screens and this goes red, retire it only after reading the print:
+    # it is the thing that knows the eleven were ever unreferenced.
+    real_ui = ui_runtime_files()
+    real_unref = [n for n in ("create_product", "delete_product", "print_receipt", "update_product")
+                  if not (lambda r: r["runtime"] or r["client"])(wrapper_reach(real_ui, n))]
+    case("uinamed the real tree still holds at least three of the four named wrappers nobody uses",
+         len(real_unref) >= 3)
+
+    # The mirror leg, four ways to be wrong. `unused_door` is the case that matters most: its own
+    # definition line contains the name, so an instrument that counted definitions as calls would
+    # report every single registered command as "load-bearing from Rust" and the leg would print
+    # zero forever -- a green that measures nothing.
+    mirror_src = [
+        ("a.rs", "async fn helper() -> u8 {\n    compute_total(1).await\n}"),
+        ("b.rs", "#[command]\npub async fn unused_door() -> Result<u8, E> {\n    Ok(0)\n}"),
+        ("c.rs", "fn warm(store: &Store) {\n    store.warm_cache();\n}"),
+    ]
+    mirror = unrequested_registrations(
+        mirror_src,
+        ["compute_total", "unused_door", "warm_cache", "live_door"],
+        {"live_door"},
+    )
+    case("unrequested a command the UI names is not unrequested at all",
+         "live_door" not in mirror["rust_called"] + mirror["dead_registration"])
+    case("unrequested a command this shell's Rust calls is not called dead",
+         mirror["rust_called"] == ["compute_total"])
+    case("unrequested a command's own definition is not a call of it",
+         mirror["dead_registration"] == ["unused_door", "warm_cache"])
+    case("unrequested a same-named method on a value is not a local caller",
+         "warm_cache" not in mirror["rust_called"])
+    # The arg-shape leg, with the two shapes that matter: a nested `args` object (the real defect
+    # this leg found on its first run, in a call whose own contract test asserted the nested shape
+    # and passed) and a spread, which must EXCLUDE the command rather than report it.
+    case("argshape the camelCase mapping is what Tauri asks for",
+         camel("session_token") == "sessionToken" and camel("id") == "id"
+         and camel("product_id") == "productId")
+    as_files = [("ui/src/api/x.ts",
+                 "export const del = (t: string, id: string) =>\n"
+                 "  loggedInvoke('delete_thing_scoped', { sessionToken: t, id });\n"
+                 "export const bad = (t: string, id: string) =>\n"
+                 "  loggedInvoke('put_thing_scoped', { sessionToken: t, args: { id } });\n"
+                 "export const wide = (t: string, a: Args) =>\n"
+                 "  loggedInvoke('wide_thing_scoped', { sessionToken: t, ...a });\n")]
+    as_prod = [("m.rs",
+                "pub async fn delete_thing_scoped(session_token: String, id: String, "
+                "state: State<'_, AppState>) -> R {}\n"
+                "pub async fn put_thing_scoped(session_token: String, id: String, "
+                "state: State<'_, AppState>) -> R {}\n"
+                "pub async fn wide_thing_scoped(session_token: String, note: String, "
+                "state: State<'_, AppState>) -> R {}\n"
+                "pub async fn opt_thing_scoped(session_token: String, maybe: Option<String>, "
+                "state: State<'_, AppState>) -> R {}\n")]
+    as_res = argshape_findings(
+        as_prod,
+        ["delete_thing_scoped", "put_thing_scoped", "wide_thing_scoped", "opt_thing_scoped"],
+        ui_payload_keys(as_files))
+    case("argshape a top-level argument the caller supplies is not reported",
+         not any(x.startswith("delete_thing_scoped") for x in as_res["missing"]))
+    case("argshape an argument hidden inside a nested args object IS reported",
+         any(x.startswith("put_thing_scoped<-id") for x in as_res["missing"]))
+    case("argshape the report names the caller file and line, not only the command",
+         any(x.startswith("put_thing_scoped<-id") and "ui/src/api/x.ts:" in x
+             for x in as_res["missing"]))
+    case("argshape a spread caller is excluded, never reported and never called clean",
+         not any(x.startswith("wide_thing_scoped") for x in as_res["missing"])
+         and any(x.startswith("wide_thing_scoped") for x in as_res["ungraded"]))
+    case("argshape an Option parameter is not required and its absence is not a finding",
+         not any(x.startswith("opt_thing_scoped") for x in as_res["missing"]))
+    # The regression that leg found in itself: a comment written inside a parameter list contains a
+    # colon, and the splitter read "// note: prose" as an argument the caller must supply.
+    case("argshape a comment inside a signature is not a parameter",
+         rust_required_params([("m.rs", "pub async fn c(\n    session_token: String,\n"
+                                        "    // because the name IS the payload key\n"
+                                        "    table: Table,\n"
+                                        "    state: State<'_, AppState>,\n) -> R {}\n")],
+                              "c") == ["session_token", "table"])
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -2609,8 +3633,34 @@ def main() -> int:
 
     mock_entries = allowlist_section(allowlist, "dev_mock")
     mock_allow = {name for name, _ in mock_entries}
+    # A second read of the mock tree in this run. Ten small files, and the note below has to
+    # describe the same bytes the answerable set was parsed from, which a shared variable
+    # threaded across this function would buy at the cost of a longer reach.
+    midline_keys = find_midline_handler_keys(read_dev_mock_sources())
+    midline_paths = {
+        name: sorted(path for path, names in midline_keys.items() if name in names)
+        for name in {n for names in midline_keys.values() for n in names}
+    }
     for command in sorted(set(mock_gaps) - mock_allow):
         refs = ", ".join(sorted(set(ui_commands[command]))[:3])
+        # The alias rule can only copy a name it can see, so a gap on `x_scoped` has two
+        # possible causes: no unscoped handler anywhere, or one this parse cannot read. Say
+        # which, because the sentence below asserts the first and the first is not always the
+        # reason the set is empty.
+        suspects = [command]
+        if command.endswith("_scoped"):
+            suspects.append(command[: -len("_scoped")])
+        hidden = [s for s in suspects if s in midline_paths]
+        note = ""
+        if hidden:
+            where = "; ".join(
+                f"'{s}' sits mid-line in {', '.join(midline_paths[s])}" for s in hidden
+            )
+            note = (
+                f" NOTE: {where} -- the key exists, and it is THIS PARSE that is line-anchored. "
+                f"Unwrap it onto its own line and re-run before accepting the gap as a missing "
+                f"handler."
+            )
         failures.append(
             f"dev-mock: UI invokes '{command}' but no handler anywhere under "
             f"{DEV_MOCK_DIR_REL} registers it (the router and every extracted module "
@@ -2619,6 +3669,7 @@ def main() -> int:
             f"failure path (e.g. {refs}). An allowlist entry may carry why the gap was "
             f"accepted -- rewrite it as {{\"name\": \"{command}\", \"reason\": \"...\"}} "
             f"-- and the count of entries that do not is printed on every run."
+            f"{note}"
         )
     for command in sorted(mock_allow - set(mock_gaps)):
         failures.append(
@@ -2644,8 +3695,28 @@ def main() -> int:
         # this shell does not register (direction: ui -> shell), unregistered is Rust
         # #[tauri::command] FUNCTIONS defined under this shell's commands/ and absent from
         # its generate_handler (direction: shell -> registration). Different populations,
-        # different units, and the tree proves it apart: tablet reports 153 of the former
-        # and 0 of the latter, which one quantity printed twice cannot do.
+        # different units, and the tree proves them apart -- in the figures the print below
+        # measures, which is the only place either number belongs. This comment carried one as
+        # a present-tense claim for a while ("as of the attribute fixes the tablet reports 154
+        # UI names it does not register and 118 command fns registered nowhere, 441
+        # declarations visible to the leg, 43 for the desktop"). The same two lines read
+        # differently in every tree since -- 143 and 7 for the tablet, 15 and 3 for the desktop
+        # at 32c402d28; 140 and 7, 12 and 3 an hour later at 3162b97b6, because the UI surface
+        # those counts run against is being edited under this file by other lanes as of now. The
+        # sentence warning that these numbers move had its own numbers move under it while it
+        # was being written, and that is the whole argument for leaving them to the print:
+        #     python scripts/verify-ipc-parity.py | grep -E '^info\\[(desktop|tablet)\\]:'
+        # What does not depend on any of them is the claim this comment exists for: before the
+        # attribute fix the second figure read 0 for a reason that had nothing to do with the
+        # tree -- the pattern saw 20 of the shell's command declarations. A zero from an
+        # instrument that cannot see its subject is the exact thing this leg exists to avoid
+        # being, which is also why the classification on the next line is printed rather than
+        # left to whoever reads the number.
+        # before the attribute fix the second figure read 0 for a reason that had nothing to do
+        # with the tree -- the pattern saw 20 of the shell's command declarations. A zero from an
+        # instrument that cannot see its subject is the exact thing this leg exists to avoid
+        # being, which is also why the classification on the next line is printed rather than
+        # left to whoever reads the number.
         unreachable = sorted(allowed_names - missing[shell] - set(handlers[shell]))
         print(
             f"info[{shell}]: {len(ui_commands)} UI command strings, "
@@ -2653,6 +3724,105 @@ def main() -> int:
             f"{len(missing[shell])} unregistered UI command names "
             f"({len(unregistered)} unregistered tauri command fns - F-006 tracker) "
             f"({len(allowed_names)} allowlisted)"
+        )
+        # Being unregistered is what the source CLAIMS and the registry REFUSES. Whether the fn
+        # does anything is a different question, and the two answers route to opposite actions:
+        # keep-and-strip-the-attribute versus delete. Printed so a future pass cannot confuse
+        # them, which a probe for this leg did on 2026-09-16 when it counted `store.x(` as a
+        # call to `x()` and reported 78 unreachable fns as live helpers (see fn_call_sites).
+        #
+        # The explicit path below is not redundancy: the first version passed the loop's outer
+        # `lib_path`, which is left over from an earlier section and still pointed at the other
+        # shell, so the desktop's line was graded against the tablet's sources and printed 3
+        # helpers where the tree has 32. The number looked plausible and was cross-checked by
+        # accident, which is the same lesson as the vacuous zero above it.
+        cls = classify_unregistered(REPO_ROOT / SHELLS[shell], unregistered, set(missing[shell]))
+        ui_named = [n for n in unregistered if n in missing[shell]]
+        unreachable_fns = [n for n in unregistered if n not in missing[shell]]
+        helper = [n for n in unreachable_fns if cls[n][0]]
+        uncalled = [n for n in unreachable_fns if not cls[n][0]]
+        test_only = [n for n in uncalled if cls[n][1]]
+        # Name the deletion candidates, and name them as `module::fn`. This leg printed a count of
+        # candidates for weeks while the tool that acts on them requires `--module` and `--only`, so
+        # the number was not actionable without re-deriving the identity somewhere else -- the same
+        # defect fixed three times over (the ceiling leg in T32/T33, the arg-shape leg in T39), and
+        # here it cost this lane a full detour through the retirement tool's per-module report.
+        prod_rs, _tests = shell_rust_sources(REPO_ROOT / SHELLS[shell])
+
+        def _where(n: str, _src: list[tuple[str, str]] = prod_rs) -> str:
+            for label, text in _src:
+                if re.search(r"\bfn " + re.escape(n) + r"\s*\(", text):
+                    return f"{Path(label).stem}::{n}"
+            return f"?::{n}"
+
+        named = ", ".join(_where(n) for n in uncalled[:6])
+        print(
+            f"info[{shell}-f006]: {len(unregistered)} unregistered fns = {len(ui_named)} the UI "
+            f"invokes (graded above) + {len(helper)} unreachable but called by this shell's own "
+            f"code (helpers with a stale attribute, NOT dead) + {len(uncalled)} unreachable and "
+            f"uncalled ({len(test_only)} of those still tested), i.e. deletion candidates"
+            + (f": {named}" + (f" (+{len(uncalled) - 6} more)" if len(uncalled) > 6 else "")
+               if uncalled else ": none")
+        )
+        # "The UI invokes it" is not one claim. A name can be reached by a screen, by the
+        # programmatic client facade, or by nothing but a wrapper export and the contract test
+        # that pins that wrapper's string. Only the first two are a gap this shell owes a door
+        # for; the third is dead surface on both sides of the boundary, and calling it a parity
+        # gap is how 11 unregistered tablet commands kept the count at 17.
+        all_ui = ui_runtime_files()
+        reached = {n for n in ui_named
+                   if (r := wrapper_reach(all_ui, n))["runtime"] or r["client"]}
+        unreferenced = sorted(set(ui_named) - reached)
+        print(
+            f"info[{shell}-uinamed]: {len(ui_named)} unregistered fns are named by UI code = "
+            f"{len(ui_named) - len(unreferenced)} reachable from a screen/hook or the "
+            f"programmatic client + {len(unreferenced)} named only by an api wrapper nothing "
+            f"imports (dead surface both sides, deletable; not a parity gap)"
+            + (": " + ", ".join(unreferenced) if unreferenced else "")
+        )
+        # The mirror direction. F-006 measures doors the UI asks for that no shell opened; this
+        # measures doors a shell opened that no shipped UI asks for. Informational for the same
+        # reason every other leg here is: a registered command with no client is not a bug, it is
+        # a question with several legitimate answers (another shell's UI uses it, a Rust-side
+        # caller wires it, an external facade exposes it), and only the owner can tell them apart.
+        prod_rs, _tests = shell_rust_sources(REPO_ROOT / SHELLS[shell])
+        unreq = unrequested_registrations(prod_rs, handlers[shell], set(ui_commands))
+        dead = unreq["dead_registration"]
+        tail = ", ".join(dead[:8]) + (f" (+{len(dead) - 8} more)" if len(dead) > 8 else "")
+        print(
+            f"info[{shell}-unrequested]: {len(dead) + len(unreq['rust_called'])} "
+            f"of {len(handlers[shell])} registered commands are named by no shipped UI file = "
+            f"{len(unreq['rust_called'])} called by this shell's own Rust (load-bearing, not dead) "
+            f"+ {len(dead)} named by neither side (the only population a retirement can start "
+            f"from; read the other shell's UI before believing one is dead everywhere)"
+            + (": " + tail if dead else "")
+        )
+        # T9's mechanical form, five domains and three real defects after the fact. Informational
+        # like every leg here, and for the same reason: making it fail the build is an owner call
+        # (T9 says so explicitly), and the exclusions are a policy that wants review before it can
+        # block. On the day it was written it found two live breakages that no test could see,
+        # because nothing in this repository crosses the IPC boundary in a test.
+        shape = argshape_findings(prod_rs, handlers[shell], ui_payload_keys(ui_runtime_files()))
+        print(
+            f"info[{shell}-argshape]: {len(shape['missing'])} registered command(s) whose readable "
+            f"callers never supply a required argument "
+            + (": " + ", ".join(shape["missing"][:8])
+               + (f" (+{len(shape['missing']) - 8} more)" if len(shape["missing"]) > 8 else "")
+               if shape["missing"] else "-- none")
+            + f"; {len(shape['ungraded'])} not gradeable (a caller the parse cannot read, or a "
+              f"signature it cannot open -- excluded, never counted as clean)"
+        )
+        # Informational, like every other F-006-adjacent leg: a fallback that cannot resolve is
+        # an owner question (register the door, or change the branch), not a red gate this run
+        # is entitled to call. But it must be named, because both of the instruments that could
+        # have caught it -- Vitest and the dev-mock -- answer as though the door exists.
+        fb = no_token_fallbacks(all_ui, set(handlers[shell]))
+        print(
+            f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
+            f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
+            f"them, so nothing but a real build sees the miss)"
+            + (": " + ", ".join(f"{n} ({v[0]})" for n, v in sorted(fb.items())[:6]) if fb else "")
+            + (f" (+{len(fb) - 6} more)" if len(fb) > 6 else "")
         )
         print(
             f"info[{shell}-unreachable]: {len(unreachable)} of {len(allowed_names)} "
@@ -2690,8 +3860,10 @@ def main() -> int:
     # wrapper out of 407 wrapper keys, and verify-scoped-reads.py owns that notion. The line
     # says which corpus it counted instead of borrowing the neighbour's word for it. Nothing
     # here is widened to make the figures agree: for scoped_orphans the honest reading is that
-    # all 25 entries match a registered name and none matches a caller, and that disagreement
-    # is the product.
+    # every entry in the section matches a registered name and none matches a caller -- 25 and
+    # 25 as the info[scoped_orphans-inert] and info[scoped-orphans] lines of this same run
+    # print them, and they are the place that number lives -- and that disagreement is the
+    # product.
     registered_names = set().union(*(set(handlers[shell]) for shell in SHELLS))
     tree_names = registered_names | set(ui_commands)
     populations = {
@@ -2739,6 +3911,34 @@ def main() -> int:
         f"info[dev-mock]: {len(mock_gaps)} of {len(ui_commands)} UI commands unanswerable "
         f"({len(mock_allow)} allowlisted)"
     )
+    # The parse's own blind spot, printed on the same terms as every other number this run
+    # reports. A key TypeScript can see and MOCK_LITERAL_KEY_RE cannot is neither a handler
+    # gap nor an invisible thing; naming it here means the count is on the record even on a
+    # run with no violations to explain. Informational rather than blocking, because with the
+    # NOTE above attached to the message it can no longer produce a false reason, and
+    # promoting it to a failure would make a formatter opinion a build break.
+    if midline_keys:
+        detail = "; ".join(
+            f"{path}: {', '.join(sorted(names))}"
+            for path, names in sorted(midline_keys.items())
+        )
+        print(
+            f"info[dev-mock]: {sum(len(v) for v in midline_keys.values())} handler-shaped "
+            f"key(s) sit mid-line and are INVISIBLE to the registrar parse -- {detail}"
+        )
+    # The reverse direction, on the gate's own parse of the tree rather than on a second one.
+    shell_all = set().union(*(set(handlers[s]) for s in SHELLS))
+    unreachable = find_unreachable_mock_keys(mock_per_file, shell_all, set(ui_commands))
+    if unreachable:
+        names_all = sorted({n for s in unreachable.values() for n in s})
+        shown = ", ".join(names_all[:12]) + (
+            f" … (+{len(names_all) - 12} more)" if len(names_all) > 12 else ""
+        )
+        print(
+            f"info[dev-mock]: {len(names_all)} handler key(s) across {len(unreachable)} "
+            f"file(s) reach nothing -- no shell registers them, no UI code names them, and "
+            f"they seed no _scoped name that either does: {shown}"
+        )
     # Reason state, printed whether or not anything is wrong, because the count of entries
     # nobody explained is the number an owner has to act on and it is invisible in a list of
     # bare names. Informational only: it appends nothing to `failures`, so a run that was

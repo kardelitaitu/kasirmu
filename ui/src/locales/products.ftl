@@ -4,6 +4,8 @@
 restaurant-menu-search-placeholder = Search Menu
 restaurant-menu-hamburger-aria = Menu
 restaurant-menu-back-aria = Back to workspaces
+restaurant-menu-close = Close
+restaurant-menu-close-aria = Close menu
 restaurant-size-decrease-aria = Decrease size
 restaurant-size-increase-aria = Increase size
 restaurant-font-size-decrease-aria = Decrease font size
@@ -17,6 +19,9 @@ restaurant-clear-color-aria = Clear color
 restaurant-categories-aria = Menu categories
 restaurant-menu-loading = Loading menu…
 restaurant-menu-empty = Menu is empty
+restaurant-menu-no-match = No items match your search
+restaurant-menu-clear-search = Clear search
+restaurant-menu-retry = Retry
 restaurant-size-label = Size
 restaurant-sort-label = Sort
 # Sort options for the restaurant menu grid. RestaurantMenu.tsx:732 builds
@@ -36,11 +41,22 @@ restaurant-search-aria = Search menu items
 restaurant-search-clear-aria = Clear search
 restaurant-context-pin = Pin to top
 restaurant-context-unpin = Unpin from top
+restaurant-context-menu-aria = Menu item actions
 restaurant-context-available = Mark available
 restaurant-context-unavailable = Mark unavailable
 restaurant-card-pin-title = Pinned to top
 restaurant-menu-items-aria = Menu items
 restaurant-color-swatch-aria = Color { $color }
+restaurant-color-emerald = Emerald
+restaurant-color-red = Red
+restaurant-color-orange = Orange
+restaurant-color-amber = Amber
+restaurant-color-green = Green
+restaurant-color-cyan = Cyan
+restaurant-color-blue = Blue
+restaurant-color-violet = Violet
+restaurant-color-fuchsia = Fuchsia
+restaurant-color-pink = Pink
 
 # Product Lookup
 product-lookup-dev-fallback = Using sample data (IPC unavailable)

@@ -66,8 +66,6 @@ export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
     exportEodReport: vi.fn(() => Promise.resolve(null)),
     printSalesReceipt: vi.fn(() => Promise.resolve({ printed: true })),
     onReceiptPrinted: vi.fn(),
-    getProductTrackSerial: vi.fn(() => Promise.resolve(false)),
-    getProductTrackSerialBatch: vi.fn((_skus: string[]) => Promise.resolve([])),
     getProductTrackSerialBatchScoped: vi.fn((_token: string, _skus: string[]) => Promise.resolve([])),
     holdCartScoped: vi.fn((_token: string) => Promise.resolve({ id: 'held-1' })),
     listHeldCartsScoped: vi.fn((_token: string) => Promise.resolve([])),
@@ -109,6 +107,7 @@ export interface SettingsApiOverrides {
   getCreditSettings?: ReturnType<typeof vi.fn>;
   getEnabledFeatures?: ReturnType<typeof vi.fn>;
   getStoreSettingsScoped?: ReturnType<typeof vi.fn>;
+  getSettingScoped?: ReturnType<typeof vi.fn>;
   setReceiptSettingsScoped?: ReturnType<typeof vi.fn>;
   setStoreSettingsScoped?: ReturnType<typeof vi.fn>;
   setCreditSettingsScoped?: ReturnType<typeof vi.fn>;
@@ -141,8 +140,7 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
       { printerConnection: 'auto', printerDevicePath: '', printerPaperSize: '80',
         scannerDeviceId: '', scannerInputMode: 'auto' },
     )),
-    setHardwareSettings: vi.fn(),
-    completeSetup: vi.fn(),
+      completeSetup: vi.fn(),
     dismissSetupWizard: vi.fn(),
     getSetupStatus: vi.fn(),
     getEnabledFeatures: vi.fn(),
@@ -151,6 +149,23 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
     getUserPreferencesScoped: vi.fn((_token: string) => Promise.resolve({})),
     getStoreSettingsScoped: vi.fn((_token: string) =>
       Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),
+    ),
+    // Added 2026-09-16 because `PosScreen` began reading `restaurant.course_firing`
+    // through it (`51936522f`), and the four PosScreen suites mock this module via
+    // THIS factory -- so the missing key threw `No "getSettingScoped" export is
+    // defined on the "@/api/settings" mock` for every test in them. The export has
+    // existed since `6190dda4e` (2026-08-29); this factory never learned it because
+    // nothing consumed it through the shared mock path until now, and
+    // mockFactorySurface.test.ts only checks the other direction (see the gap case
+    // added alongside this line).
+    //
+    // Resolves `null`, i.e. "setting unset", which is what the real call returns for
+    // an absent key. Note the real `getSettingScoped` REJECTS on a null token
+    // (`api/settings.ts:260`-`:262`), and PosScreen maps that rejection to its
+    // tri-state `null` rather than `false`; a test that needs THAT distinction must
+    // pass an override -- this default deliberately models the successful-read path.
+    getSettingScoped: vi.fn((_token: string | null, _key: string) =>
+      Promise.resolve<string | null>(null),
     ),
     getReceiptSettingsScoped: vi.fn((_token: string) => Promise.resolve({
       showCurrency: true, decimalSeparator: 'dot', showTax: true,
@@ -212,15 +227,15 @@ export function createShiftsApiMock(overrides: ShiftsApiOverrides = {}) {
 // ── hardware ──────────────────────────────────────────────────────
 
 export function createHardwareApiMock() {
+  // `listScanners` / `startScanner` / `stopScanner` left this factory together with the
+  // `@/api/hardware` exports they imitated (T21 b2): those three commands are registered in
+  // neither shell, so a test arranging on them was configuring a call that cannot be made.
+  // mockFactorySurface.test.ts caught the mismatch, and the cleanup it asks for is here rather
+  // than a new KNOWN_DEAD entry.
   return {
-    listScanners: vi.fn(() => Promise.resolve([])),
     listDisplays: vi.fn(() => Promise.resolve([])),
     displayShow: vi.fn(() => Promise.resolve()),
     displayClear: vi.fn(() => Promise.resolve()),
-    openCashDrawer: vi.fn(),
-    printReceipt: vi.fn(),
-    startScanner: vi.fn(),
-    stopScanner: vi.fn(),
     onBarcodeScanned: vi.fn(),
     onBarcodeError: vi.fn(),
   };
@@ -229,9 +244,6 @@ export function createHardwareApiMock() {
 // ── products ──────────────────────────────────────────────────────
 
 export interface ProductsApiOverrides {
-  listProducts?: ReturnType<typeof vi.fn>;
-  listCategories?: ReturnType<typeof vi.fn>;
-  lookupByBarcode?: ReturnType<typeof vi.fn>;
   lookupProductBySku?: ReturnType<typeof vi.fn>;
   listProductsScoped?: ReturnType<typeof vi.fn>;
   listCategoriesScoped?: ReturnType<typeof vi.fn>;
@@ -245,13 +257,6 @@ export interface ProductsApiOverrides {
 
 export function createProductsApiMock(overrides: ProductsApiOverrides = {}) {
   return {
-    listProducts: vi.fn(() => Promise.resolve([])),
-    listCategories: vi.fn(() => Promise.resolve([])),
-    lookupByBarcode: vi.fn(() => Promise.resolve(null)),
-    lookupProductBySku: vi.fn(() => Promise.resolve(null)),
-    createProduct: vi.fn(),
-    updateProduct: vi.fn(),
-    deleteProduct: vi.fn(),
     adjustStock: vi.fn(),
     listProductVariants: vi.fn(() => Promise.resolve([])),
     getProductVariant: vi.fn(() => Promise.resolve(null)),

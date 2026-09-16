@@ -1,38 +1,27 @@
-use serde::Serialize;
+//! Loyalty commands: accounts, points and tiers.
+//!
+//! Every body delegates to `oz_bridge::loyalty` (ADR #49), and so does the
+//! `RedeemResult` DTO: it is re-exported from the bridge rather than defined
+//! twice, after checking both fields against the copy this shell used to own.
+//!
+//! The gate is this module's domain helper, `require_loyalty_permission`, which
+//! the registration-gate classifier counts as a gate (it is in `GUARD_MARKERS`
+//! at `registration_gate_tests.rs:326`) — so all eight doors were already
+//! `Gated` and this port is ledger-neutral. The helper runs the **unscoped**
+//! `Store::require_permission` against the GLOBAL identity DB, and it runs
+//! *after* `resolve_scope` has already opened the session's store connection:
+//! the bridge reproduces both, in that order.
+
 use tauri::{State, command};
 
-use oz_core::db::Store;
 use oz_core::loyalty::{
     LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction,
 };
-use oz_core::permissions;
 
-use crate::commands::authz::require_permission_for_user;
+pub use oz_bridge::loyalty::RedeemResult;
+
 use crate::error::AppError;
 use crate::state::AppState;
-
-/// Verify a loyalty permission against the global identity database.
-///
-/// Users and roles are global authentication records; loyalty business data
-/// is read from the store-scoped connection after this check succeeds.
-async fn require_loyalty_permission(
-    state: &AppState,
-    user_id: &str,
-    permission: &str,
-) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, user_id, permission)
-}
-
-/// Result of a successful loyalty points redemption.
-#[derive(Debug, Serialize)]
-pub struct RedeemResult {
-    /// Ledger transaction recording the points deduction.
-    pub transaction: LoyaltyTransaction,
-    /// Calculated discount amount in minor currency units.
-    pub discount_minor: i64,
-}
 
 /// Retrieves a loyalty account from the store resolved by the active session.
 #[command]
@@ -41,13 +30,10 @@ pub async fn get_loyalty_account_scoped(
     customer_id: String,
     state: State<'_, AppState>,
 ) -> Result<Option<LoyaltyAccountWithDetails>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.get_loyalty_account(&customer_id)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::get_loyalty_account_scoped(&ctx, &session_token, &customer_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// Lists loyalty accounts from the store resolved by the active session.
@@ -56,13 +42,10 @@ pub async fn list_loyalty_accounts_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<LoyaltyAccountWithDetails>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.list_loyalty_accounts()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::list_loyalty_accounts_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Awards loyalty points in the store resolved by the active session.
@@ -74,13 +57,16 @@ pub async fn earn_loyalty_points_scoped(
     total_minor: i64,
     state: State<'_, AppState>,
 ) -> Result<LoyaltyTransaction, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_EARN).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.earn_points(&customer_id, &sale_id, total_minor)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::earn_loyalty_points_scoped(
+        &ctx,
+        &session_token,
+        &customer_id,
+        &sale_id,
+        total_minor,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Redeems loyalty points in the store resolved by the active session.
@@ -92,17 +78,16 @@ pub async fn redeem_loyalty_points_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<RedeemResult, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_REDEEM).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let (transaction, discount_minor) = store.redeem_points(&customer_id, points, &sale_id)?;
-    Ok(RedeemResult {
-        transaction,
-        discount_minor,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::redeem_loyalty_points_scoped(
+        &ctx,
+        &session_token,
+        &customer_id,
+        points,
+        &sale_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Lists loyalty tiers from the store resolved by the active session.
@@ -111,13 +96,10 @@ pub async fn list_loyalty_tiers_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<LoyaltyTier>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.list_tiers()?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::list_loyalty_tiers_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Updates a loyalty tier in the store resolved by the active session.
@@ -127,20 +109,10 @@ pub async fn update_loyalty_tier_scoped(
     tier: LoyaltyTier,
     state: State<'_, AppState>,
 ) -> Result<LoyaltyTier, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_MANAGE).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.update_tier(
-        &tier.id,
-        &tier.name,
-        tier.min_points,
-        tier.points_per_unit,
-        tier.earn_multiplier_millionths,
-        &tier.colour,
-    )?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::update_loyalty_tier_scoped(&ctx, &session_token, &tier)
+        .await
+        .map_err(Into::into)
 }
 
 /// Converts loyalty points into minor currency units in the active store.
@@ -150,13 +122,10 @@ pub async fn get_points_value_scoped(
     points: i64,
     state: State<'_, AppState>,
 ) -> Result<i64, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.get_points_value(points)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::get_points_value_scoped(&ctx, &session_token, points)
+        .await
+        .map_err(Into::into)
 }
 
 /// Retrieves or creates a loyalty account in the active store.
@@ -166,13 +135,33 @@ pub async fn get_or_create_loyalty_account_scoped(
     customer_id: String,
     state: State<'_, AppState>,
 ) -> Result<LoyaltyAccount, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_loyalty_permission(&state, &session.user_id, permissions::LOYALTY_VIEW).await?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    Ok(store.get_or_create_loyalty_account(&customer_id)?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::get_or_create_loyalty_account_scoped(&ctx, &session_token, &customer_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Verify a loyalty permission against the global identity database.
+///
+/// Users and roles are global authentication records; loyalty business data
+/// is read from the store-scoped connection after this check succeeds.
+///
+/// Kept only as a test seam: the doors above reach the bridge directly, and
+/// this forwards rather than re-implements so the assertions in
+/// `loyalty_tests.rs` still observe the production gate — including the
+/// `From<BridgeError> for AppError` translation that turns a
+/// `CoreError::PermissionDenied` into the `AppError::PermissionDenied` they
+/// match on.
+#[cfg(test)]
+async fn require_loyalty_permission(
+    state: &AppState,
+    user_id: &str,
+    permission: &str,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    oz_bridge::loyalty::require_loyalty_permission(&ctx, user_id, permission)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

@@ -127,7 +127,7 @@ func createMidtransSnapHTTP(charge midtransSnapCharge) (midtransSnapResult, erro
 			"id":       charge.TierKey + "-" + charge.Period,
 			"price":    charge.GrossAmount,
 			"quantity": 1,
-			"name":     "OZ-POS " + strings.ToUpper(charge.TierKey) + " (" + charge.Period + ")" + midtransBundleItemSuffix(charge.Bundle),
+			"name":     "kasir.mu " + strings.ToUpper(charge.TierKey) + " (" + charge.Period + ")" + midtransBundleItemSuffix(charge.Bundle),
 		}},
 		"customer_details": map[string]any{
 			"email": charge.Email,

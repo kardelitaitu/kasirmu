@@ -239,11 +239,6 @@
 
 .workspace-home-header {}
 
-.workspace-home-user {
-  font-size: var(--text-sm);
-  color: var(--color-fg-tertiary);
-}
-
 /* ── Grid ────────────────────────────────────────────────────────── */
 
 .workspace-grid {
@@ -280,17 +275,17 @@
      side, so the interior scales proportionally at any resolution. */
   padding: 10%;
   background: var(--color-bg-elevated);
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   cursor: pointer;
   overflow: hidden;
   box-shadow: var(--shadow-glow, var(--shadow-2xl)), var(--shadow-sm);
   transition:
-    box-shadow var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
-    border-color var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
-    background var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1);
+    background var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, opacity;
   transform: perspective(800px) rotateX(0deg) rotateY(0deg) translateY(0px);
 }
@@ -318,9 +313,9 @@
 .workspace-card:hover,
 .workspace-card:focus-visible {
   transition:
-    box-shadow var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
-    border-color var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
-    background var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
+    background var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow:
     var(--shadow-glow, var(--shadow-2xl)),
     inset 0 0 0 0.0625rem var(--ws-accent, transparent),
@@ -391,7 +386,7 @@
   justify-content: center;
   color: var(--ws-accent, var(--color-accent));
   transform-origin: center;
-  transition: transform var(--duration-250) var(--ease-out);
+  transition: transform var(--duration-300) var(--ease-out);
 }
 
 .workspace-card-title {
@@ -564,7 +559,7 @@
   opacity: 1;
   border-color: var(--ws-accent, var(--color-accent));
   background: var(--ws-accent-bg, var(--color-bg-elevated));
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   box-shadow:
     var(--shadow-glow, var(--shadow-2xl)),
     inset 0 0 0 0.0625rem var(--ws-accent, var(--color-accent)),
@@ -576,7 +571,7 @@
 .workspace-card--active:hover {
   border-color: var(--ws-accent, var(--color-accent));
   background: var(--ws-accent-bg, var(--color-bg-elevated));
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   transform: perspective(800px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg)) translateY(-0.25rem);
 }
 
@@ -631,7 +626,7 @@
   opacity: 0;
   transform: translate(-0.25rem, -0.25rem) scale(0.85);
   transition:
-    opacity var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     color var(--duration-150) var(--ease-out);
   cursor: pointer;
@@ -688,7 +683,7 @@
   opacity: 0;
   transform: translate(0.25rem, calc(-100% - 0.25rem));
   transition:
-    opacity var(--duration-250) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--duration-300) cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   z-index: 1;
@@ -770,7 +765,7 @@
   align-items: center;
   padding: 10%;
   background: var(--color-bg-elevated);
-  backdrop-filter: blur(var(--blur-amount, 20px));
+  backdrop-filter: blur(var(--blur-amount));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-glow, var(--shadow-2xl)), var(--shadow-sm);
@@ -1059,7 +1054,7 @@
 .role-badge--manager { color: var(--color-info); }
 .role-badge--staff  { color: var(--color-fg-secondary); }
 .role-badge--auditor { color: var(--color-success); }
-.role-badge--custom { color: var(--color-purple, #9333ea); }
+.role-badge--custom { color: var(--color-purple); }
 .role-badge--default { color: var(--color-fg-tertiary); }
 
 /* ═══════════════════════════════════════════════════════════════════

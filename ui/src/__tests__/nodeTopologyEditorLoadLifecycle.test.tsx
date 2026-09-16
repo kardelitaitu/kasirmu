@@ -52,6 +52,8 @@ type LifecycleProps = {
   workspaceInstances?: WorkspaceInstanceSeed[];
   branchLocations?: BranchLocationSeed[];
   branchId?: string;
+  /** R1: the load read is sessioned; tests default to a live-looking token. */
+  sessionToken?: string;
   skipNext?: boolean;
 };
 
@@ -97,6 +99,7 @@ function renderLifecycle(initial: LifecycleProps = {}) {
       workspaceInstances: props.workspaceInstances,
       branchLocations: props.branchLocations,
       branchId: props.branchId,
+    sessionToken: props.sessionToken ?? 'tok-loader',
       reloadKey: 0,
       skipNextLoadRef: deps.skipNextLoadRef,
       migrationDismissedRef: deps.migrationDismissedRef,

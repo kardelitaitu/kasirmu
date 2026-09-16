@@ -22,6 +22,7 @@ import {
   updateKdsStatusScoped,
   createKdsOrderFromSale,
   createKdsOrderFromSaleScoped,
+  publishCourseFiredScoped,
   getKdsOrder,
   getKdsOrderScoped,
   updateKdsOrderItemsScoped,
@@ -105,6 +106,27 @@ describe('kds.ts IPC contract', () => {
     mockInvoke.mockResolvedValue([]);
     await createKdsOrderFromSaleScoped('tok', 's1');
     expect(mockInvoke).toHaveBeenCalledWith('create_kds_order_from_sale_scoped', { sessionToken: 'tok', saleId: 's1' });
+  });
+
+  // ── Publish fired course (session-scoped — ADR #7) ─────────────
+
+  it('publishCourseFiredScoped → publish_course_fired_scoped with sale + course + items', async () => {
+    mockInvoke.mockResolvedValue(undefined);
+    await publishCourseFiredScoped('tok', {
+      saleId: 's1',
+      courseId: 'main',
+      displayNumber: 7,
+      items: [{ sku: 'STEAK', qty: 1, name: 'Ribeye' }],
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('publish_course_fired_scoped', {
+      sessionToken: 'tok',
+      args: {
+        saleId: 's1',
+        courseId: 'main',
+        displayNumber: 7,
+        items: [{ sku: 'STEAK', qty: 1, name: 'Ribeye' }],
+      },
+    });
   });
 
   // ── Get Order (session-scoped — ADR #7) ─────────────────────

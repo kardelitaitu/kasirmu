@@ -52,7 +52,7 @@ fn get_receipt_settings_returns_defaults() {
     assert_eq!(result.margin_bottom, 0);
     assert_eq!(result.margin_left, 0);
     assert_eq!(result.margin_right, 0);
-    assert_eq!(result.tax_rounding_mode, "half_up");
+    assert_eq!(result.tax_rounding_mode, Some("half_up".to_string()));
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn set_receipt_settings_persists() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 2,
-        tax_rounding_mode: "truncate".into(),
+        tax_rounding_mode: Some("truncate".into()),
     };
 
     run_set_receipt_settings(&conn, &dto).unwrap();
@@ -85,7 +85,59 @@ fn set_receipt_settings_persists() {
     assert_eq!(result.margin_bottom, 3);
     assert_eq!(result.margin_left, 2);
     assert_eq!(result.margin_right, 2);
-    assert_eq!(result.tax_rounding_mode, "truncate");
+    assert_eq!(result.tax_rounding_mode, Some("truncate".to_string()));
+}
+
+/// Regression pin for the T4-2 finding in `todo-refactor-oz-pos-app-agents-3.md`.
+///
+/// The restaurant POS settings card sends **ten** of the eleven receipt keys
+/// and omits `taxRoundingMode`. `#[serde(default =
+/// "default_tax_rounding_mode")]` turned that absence into `"half_up"`, and
+/// `run_set_receipt_settings` then stamped it unconditionally — so a merchant
+/// who had chosen `truncate` and afterwards saved anything from that card
+/// silently got `half_up` back, with no error and no visible field.
+///
+/// Absence has to mean "this caller does not speak to this key".
+#[test]
+fn set_receipt_settings_without_tax_rounding_mode_leaves_the_stored_mode_alone() {
+    let conn = fresh_conn();
+
+    // The merchant's choice, written the way a card that owns the field writes
+    // it (the store POS card sends all eleven keys).
+    Settings::set_tax_rounding_mode_str(&conn, "truncate").unwrap();
+    assert_eq!(
+        Settings::get_tax_rounding_mode(&conn).unwrap().wire_name(),
+        "truncate",
+    );
+
+    // The restaurant POS card's exact wire payload: ten keys, no
+    // `taxRoundingMode`.
+    let wire = r#"{
+        "showCurrency": true,
+        "decimalSeparator": "dot",
+        "showTax": true,
+        "footer": "Thanks",
+        "paperWidth": "standard",
+        "showTableNumber": true,
+        "marginTop": 0,
+        "marginBottom": 0,
+        "marginLeft": 0,
+        "marginRight": 0
+    }"#;
+    let dto: ReceiptSettingsDto = serde_json::from_str(wire).unwrap();
+
+    run_set_receipt_settings(&conn, &dto).unwrap();
+
+    assert_eq!(
+        Settings::get_tax_rounding_mode(&conn).unwrap().wire_name(),
+        "truncate",
+        "a payload that omits taxRoundingMode must not reset the stored mode",
+    );
+    // The ten keys it does carry were still written — the fix must not turn a
+    // partial save into a no-op.
+    let after = run_get_receipt_settings(&conn).unwrap();
+    assert!(after.show_table_number);
+    assert_eq!(after.footer, "Thanks");
 }
 
 #[test]
@@ -141,7 +193,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 0,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -159,7 +211,7 @@ fn set_receipt_settings_overwrites_previous() {
             margin_bottom: 5,
             margin_left: 0,
             margin_right: 0,
-            tax_rounding_mode: "half_up".into(),
+            tax_rounding_mode: Some("half_up".into()),
         },
     )
     .unwrap();
@@ -233,7 +285,7 @@ fn receipt_settings_dto_debug() {
         margin_bottom: 0,
         margin_left: 0,
         margin_right: 0,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let d = format!("{dto:?}");
     assert!(d.contains("Thanks"));
@@ -457,7 +509,7 @@ fn receipt_settings_dto_serde_roundtrip() {
         margin_bottom: 3,
         margin_left: 2,
         margin_right: 1,
-        tax_rounding_mode: "half_up".into(),
+        tax_rounding_mode: Some("half_up".into()),
     };
     let json = serde_json::to_value(&dto).unwrap();
     let back: ReceiptSettingsDto = serde_json::from_value(json).unwrap();
@@ -1921,5 +1973,59 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
     assert!(
         !desktop_message.contains(secret_value),
         "the refusal leaked the value it was handed: {desktop_message}"
+    );
+}
+
+/// Pin [`CreditSaleDto`]'s outbound key set against the only consumer it has.
+///
+/// Until 2026-09-15 this type serialized snake_case while the retail credit
+/// list read camelCase, so six of its seven fields arrived `undefined` — and
+/// the failure raised no error anywhere: the row rendered an em-dash, NaN and
+/// "Invalid Date", `!c.settledAt` passed every row so a settled tab stayed on
+/// the unpaid list, and Settle sent `sale_id: undefined`. It survived because
+/// `ui/src/dev-mock/handlers/payment.ts:231-232` answers this command with an
+/// empty array, so no UI test could see a field at all. See the doc comment on
+/// the struct for the full record.
+#[test]
+fn credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads() {
+    let dto = CreditSaleDto {
+        sale_id: "s-1".into(),
+        customer_name: "Bagus".into(),
+        total_minor: 25_000,
+        currency: "IDR".into(),
+        created_at: "2026-09-15T00:00:00Z".into(),
+        settled_at: None,
+        cashier_name: "Rina".into(),
+    };
+    let json = serde_json::to_value(&dto).expect("CreditSaleDto must serialize");
+    let mut keys: Vec<String> = json
+        .as_object()
+        .expect("the wire shape is an object")
+        .keys()
+        .cloned()
+        .collect();
+    keys.sort();
+    let mut want = [
+        "cashierName",
+        "createdAt",
+        "currency",
+        "customerName",
+        "saleId",
+        "settledAt",
+        "totalMinor",
+    ];
+    want.sort_unstable();
+    assert_eq!(
+        keys,
+        want.iter().map(|k| k.to_string()).collect::<Vec<String>>(),
+        "both shells read this type out of the bridge, so the camelCase wire is pinned here as well as on the tablet"
+    );
+    // Names are not the whole contract: the values must land under them.
+    assert_eq!(json["saleId"], "s-1");
+    assert_eq!(json["totalMinor"], 25_000);
+    assert_eq!(json["customerName"], "Bagus");
+    assert!(
+        json["settledAt"].is_null(),
+        "an open tab must emit settledAt: null rather than omitting the key"
     );
 }

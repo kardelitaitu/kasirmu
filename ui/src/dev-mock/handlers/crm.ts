@@ -67,5 +67,27 @@ export const crmHandlers: Record<string, MockHandler> = {
   'update_po_status_scoped': () => null,
   'receive_purchase_order_scoped': () => null,
   'receive_purchase_order_with_lines_scoped': () => null,
+
+  // ── Customer search / history (scoped-only) ────────────────────────
+  // Moved verbatim out of `tauri-api.ts`'s in-place `handlers['x'] = …`
+  // patches by todo-refactor-devmock-router-consolidation.md Phase 5.5.
+  // `MOCK_CUSTOMERS` is this module's own export (see `:71`), so the bodies are
+  // in scope unchanged; both keys were `git grep`-confirmed single-defined
+  // (only in the router), so folding them into this map is a pure copy — no
+  // override body to flip.
+  'search_customers_scoped': (args) => {
+    const { query } = (args ?? {}) as { query?: string };
+    const q = (query ?? '').toLowerCase();
+    const items = MOCK_CUSTOMERS.filter(
+      (c) => !q || c.name.toLowerCase().includes(q),
+    );
+    return { items, total: items.length };
+  },
+  'get_customer_history_scoped': (args) => {
+    const { customerId } = (args ?? {}) as { customerId?: string };
+    const customer =
+      MOCK_CUSTOMERS.find((c) => c.id === customerId) ?? MOCK_CUSTOMERS[0]!;
+    return { customer, loyalty: null, sales: [], sales_total: 0 };
+  },
 };
 export { MOCK_CUSTOMERS };

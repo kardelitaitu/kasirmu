@@ -523,7 +523,7 @@
      screen. 16px reads comfortably on touch and is the iOS Safari
      focus-zoom threshold. */
   font-size: 16px;
-  line-height: 1.25;
+  line-height: var(--leading-tight);
   background: var(--color-bg);
   color: var(--color-fg);
   transition: border-color var(--duration-150) var(--ease-out);
