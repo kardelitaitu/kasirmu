@@ -3347,8 +3347,27 @@ def self_test() -> int:
     # pass registers these doors and this case goes red, delete the case after reading the
     # print, not before -- it is the only thing here that knows the shape was ever broken.
     real_fb = no_token_fallbacks(ui_runtime_files(), set(extract_handlers(REPO_ROOT / SHELLS["tablet"])))
-    case("fallback the real tablet tree exposes the shape the leg was written for",
-         len(real_fb) >= 1 and "list_scanners" in real_fb)
+    # LINEAGE OF THE NAME, which is what licenses this case to carry a different one than it was
+    # born with: it pinned "list_scanners" until 3162b97b6 ("refactor(ui): delete the scanner
+    # hooks' no-session arms") retired that name from the else-arm -- it deleted
+    # `export const listScanners = (): Promise<ScannerInfo[]> => loggedInvoke('list_scanners')`
+    # from ui/src/api/hardware.ts along with the ternary that reached it (fallback 10->7 desktop,
+    # 5->2 tablet). The registered set never moved -- "list_scanners" is absent from BOTH shells
+    # today, exactly as it was when this case was written -- so the gate did not break and the
+    # tree did not regress: the defect this arm was written to witness was REPAIRED for the
+    # scanner trio, and a guard that keeps asserting a repaired defect is a lie that prints
+    # False. It is re-anchored here to the one no-session fallback the real tree still holds,
+    # "list_products" -- unregistered in both shells, reached at
+    # ui/src/features/products/useProducts.ts:132.
+    # THE NAME IS NOT DROPPED: `len(real_fb) >= 1` alone passes for ANY fallback, so it cannot
+    # say the specific arm this leg was written for is still reachable -- which is why this case,
+    # and not the three synthetic ones above, is the thing that knows the shape was ever broken.
+    # One named witness stays; its population now rides in the case name, so a future red prints
+    # its own denominator instead of a bare False. Move the name only under a proven red, and
+    # read the print before deleting anything.
+    case("fallback the real tablet tree exposes the shape the leg was written for "
+         f"[n={len(real_fb)} names={sorted(real_fb)}]",
+         len(real_fb) >= 1 and "list_products" in real_fb)
 
     # The reachability buckets, same discipline: without the second and third cases the first
     # would pass for a classifier that counts a wrapper's own definition as one of its users,
