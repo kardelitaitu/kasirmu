@@ -14,12 +14,33 @@
  *   - Excludes overlays (purposefully translucent dimmers)
  *   - Excludes pseudo-elements, state modifiers (:hover, :focus, --exiting)
  *   - Excludes buttons/inputs inside popups (they have their own styling)
+ *   - DESCENDS into conditional at-blocks (@media, @supports, @container, @layer)
+ *     and grades PER CLASS: a rule's declarations are read MERGED with every other
+ *     rule that re-opens the same class in the same sheet, at any depth, because
+ *     that is the cascade. `@media (prefers-reduced-motion: no-preference) { .toast
+ *     { animation: … } }` does not have to restate `background:` — the class's own
+ *     top-level rule already paints it — so grading such a rule in isolation fails a
+ *     surface that is fully opaque. What the merge buys back and what it costs, both
+ *     printed: a class whose only opaque background lives in a SIBLING rule is no
+ *     longer reported as missing one.
+ *   - Still skips bodies that hold no selector: a `@keyframes` step (`from`, `50%`) is
+ *     a keyframe, not a selector, so it never reaches the graded door. Those blocks
+ *     are counted and named in the print as what is STILL skipped, beside what the
+ *     descent now reads.
  *
  * Population guards, all in the floor case below, with their baselines named in
- * each message: four LOWER bounds on what the walk read, EXACT MEMBERSHIP of the
- * walked stylesheet set, a TWO-SIDED band on (parsed + hidden), a CEILING on
- * hidden, and a required-member identity that names every graded rule by file and
- * by its WHOLE selector.
+ * each message: five LOWER bounds on what the walk read (sheets opened, rules
+ * parsed, at-blocks met, blocks found inside them, rules the descent recovered),
+ * EXACT MEMBERSHIP of the walked stylesheet set, a TWO-SIDED band on (parsed +
+ * still skipped), a CEILING on what is still skipped, and a required-member
+ * identity that names every graded rule by file and by its WHOLE selector.
+ *
+ * The descent moved rules from "hidden inside an at-block" into "parsed", so the
+ * SUM the band holds is conserved by construction while the still-skipped
+ * population fell to the keyframe steps alone. No floor was lowered to accommodate
+ * that: the widened harvest has to clear the OLD floors as well, because a widening
+ * whose counters only ever go up in the flattering direction is how a shrink later
+ * hides inside the same numbers.
  *
  * Membership rather than a band for the sheet set: a sheet that stops existing
  * changes the set on the spot whatever the counts do, while a band wide enough to
@@ -35,8 +56,10 @@
  * enough to survive ordinary work, so up to ~500 rules -- one sheet the size of
  * the largest in the tree -- can still leave the walk silently, and nothing here
  * counts what never reaches the graded door: every selector POPUP_ROOT turns
- * away, and all the rules parked inside at-blocks, are invisible to the
- * background check itself. Tightening the band past that rots the hour a new
+ * away, every block left inside a skipped at-block, and every declaration the
+ * per-class merge borrows from a sibling rule of the same class -- a class that is
+ * painted opaque only by another of its own rules now passes, which is the cascade
+ * and also the blind spot. Tightening the band past that rots the hour a new
  * sheet lands, so the identity and the ceiling are the structural guards and the
  * band is only the net under them. And no guard here grades a commit: the walk
  * reads the working tree through fs with no channel to any revision, so every
@@ -92,51 +115,143 @@ function maskComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '));
 }
 
-/* ── Extract CSS rules (selector + body + line) ─────────────────── */
+/* ── Extract CSS rules (selector + body + line), DESCENDING at-blocks ── */
 interface CssRule {
   selector: string;
   body: string;
+  /** '' at top level; otherwise the at-block chain the rule was found inside. */
+  at: string;
   line: number;
 }
 
-function extractRules(css: string, stats?: { atBlocks: string[]; nestedRules: string[] }): CssRule[] {
+/** What the walker records about the containers it met. */
+interface WalkStats {
+  /** Every at-block header the walk met, descended into or abandoned. */
+  atBlocks: string[];
+  /** Every block found INSIDE an at-block — recovered rules and skipped steps alike. */
+  nestedRules: string[];
+  /** Rules the descent recovered INTO the parsed population. */
+  descendedRules: string[];
+  /** At-blocks whose body is still not read (no selectors in it). */
+  skippedAtBlocks: string[];
+  /** Blocks inside those abandoned bodies — keyframe steps, not selectors. */
+  stillHidden: string[];
+}
+
+/**
+ * At-blocks whose children ARE style rules. Every other at-block is still
+ * abandoned: @keyframes holds percentage/keyword STEPS, @font-face and @property
+ * hold descriptors, and none of those is a selector — parsing them as rules would
+ * hand the graded door strings it cannot grade and inflate every denominator in
+ * this file with non-selectors.
+ */
+const DESCEND = /^@(?:media|supports|container|layer)\b/i;
+
+/** Index just past the '}' that closes the '{' at braceStart, bounded by end. */
+function blockEnd(clean: string, braceStart: number, end: number): number {
+  let depth = 1;
+  let pos = braceStart + 1;
+  while (pos < end && depth > 0) {
+    if (clean[pos] === '{') depth++;
+    else if (clean[pos] === '}') depth--;
+    pos++;
+  }
+  return pos;
+}
+
+/** Walk one container of the masked stylesheet: top level, or inside an at-block. */
+function walkContainer(
+  clean: string, start: number, end: number, at: string, stats: WalkStats | undefined, rules: CssRule[],
+): void {
+  let i = start;
+  while (i < end) {
+    const braceStart = clean.indexOf('{', i);
+    if (braceStart === -1 || braceStart >= end) return;
+    const selector = clean.slice(i, braceStart).trim();
+    const close = blockEnd(clean, braceStart, end);
+    const bodyStart = braceStart + 1;
+    const bodyEnd = close - 1;
+    const label = selector.replace(/\s+/g, ' ');
+
+    if (selector.startsWith('@')) {
+      stats?.atBlocks.push(label.slice(0, 60));
+      // A nested at-block is itself a block living inside an at-block.
+      if (at) stats?.nestedRules.push((at + ' > ' + label).slice(0, 90));
+      if (DESCEND.test(selector)) {
+        walkContainer(clean, bodyStart, bodyEnd, at ? at + ' > ' + label : label, stats, rules);
+      } else {
+        // Count the body's blocks WITHOUT turning them into rules.
+        stats?.skippedAtBlocks.push(label.slice(0, 60));
+        let j = bodyStart;
+        while (j < bodyEnd) {
+          const inner = clean.indexOf('{', j);
+          if (inner === -1 || inner >= bodyEnd) break;
+          const step = clean.slice(j, inner).trim().replace(/\s+/g, ' ');
+          const entry = (label + ' > ' + step).slice(0, 90);
+          stats?.nestedRules.push(entry);
+          stats?.stillHidden.push(entry);
+          j = blockEnd(clean, inner, bodyEnd);
+        }
+      }
+      i = close;
+      continue;
+    }
+
+    const line = clean.slice(0, braceStart).split('\n').length;
+    rules.push({ selector, body: clean.slice(bodyStart, bodyEnd), at, line });
+    if (at) {
+      const entry = (at + ' > ' + label).slice(0, 90);
+      stats?.nestedRules.push(entry);
+      stats?.descendedRules.push(entry);
+    }
+    i = close;
+  }
+}
+
+function extractRules(css: string, stats?: WalkStats): CssRule[] {
   // Masked, never deleted (see maskComments): rule.line is a file address.
   const clean = maskComments(css);
   const rules: CssRule[] = [];
-  let i = 0;
-  while (i < clean.length) {
-    const braceStart = clean.indexOf('{', i);
-    if (braceStart === -1) break;
-    const selector = clean.slice(i, braceStart).trim();
-    // Skip @media, @keyframes, @supports, etc. — only check top-level rules
-    if (selector.startsWith('@')) {
-      // Skip past the entire @-block (including nested rules)
-      let depth = 1;
-      let pos = braceStart + 1;
-      while (pos < clean.length && depth > 0) {
-        if (clean[pos] === '{') { if (depth === 1) stats?.nestedRules.push(selector.trim().slice(0, 60)); depth++; }
-        else if (clean[pos] === '}') depth--;
-        pos++;
-      }
-      stats?.atBlocks.push(selector.trim().slice(0, 60));
-      i = pos;
-      continue;
-    }
-    let depth = 1;
-    let pos = braceStart + 1;
-    while (pos < clean.length && depth > 0) {
-      if (clean[pos] === '{') depth++;
-      else if (clean[pos] === '}') depth--;
-      pos++;
-    }
-    if (depth === 0) {
-      const body = clean.slice(braceStart + 1, pos - 1);
-      const line = clean.slice(0, braceStart).split('\n').length;
-      rules.push({ selector, body, line });
-    }
-    i = pos;
-  }
+  walkContainer(clean, 0, clean.length, '', stats, rules);
   return rules;
+}
+
+/* ── Declarations as the cascade sees them: one bucket per class ─── */
+/**
+ * A selector carrying a pseudo-class or pseudo-element styles a STATE or a
+ * generated box, not the base element, so it must not lend the base class a
+ * background it does not have. Splitting on top-level commas matters because a
+ * rule like `.modal, .popover { background: … }` declares BOTH surfaces.
+ */
+const PSEUDO_SELECTOR = /::|:(?:hover|active|visited|checked|disabled|open|target|focus|first-child|last-child|nth-|not\(|is\(|where\()/i;
+
+function selectorParts(selector: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of selector) {
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  parts.push(cur);
+  return parts;
+}
+
+/** class -> every declaration the sheet writes for that class in its base state. */
+function declarationsByClass(rules: CssRule[]): Map<string, string> {
+  const byClass = new Map<string, string>();
+  for (const rule of rules) {
+    for (const part of selectorParts(rule.selector)) {
+      if (PSEUDO_SELECTOR.test(part)) continue;
+      const cls = primaryClass(part);
+      if (!cls) continue;
+      const prev = byClass.get(cls);
+      byClass.set(cls, prev === undefined ? rule.body : prev + '\n' + rule.body);
+    }
+  }
+  return byClass;
 }
 
 /* ── Pull background declaration ────────────────────────────────── */
@@ -159,7 +274,17 @@ function primaryClass(selector: string): string | null {
 describe('popup surfaces have visible backgrounds', () => {
   const cssFiles = collectCssFiles(UI_SRC);
   const failures: string[] = [];
-  const stats = { atBlocks: [] as string[], nestedRules: [] as string[], parsed: 0, pseudo: 0, notRoot: 0, boundary: 0, boundaryNoBg: 0, graded: 0 };
+  const stats = {
+    atBlocks: [] as string[],        // every at-block met, descended into or abandoned
+    nestedRules: [] as string[],     // every block found inside one, recovered or skipped
+    descendedRules: [] as string[],  // rules the descent brought INTO the parsed set
+    skippedAtBlocks: [] as string[], // at-blocks whose body is still not read
+    stillHidden: [] as string[],     // blocks inside those bodies: @keyframes steps
+    parsed: 0, pseudo: 0, notRoot: 0, boundary: 0, boundaryNoBg: 0, graded: 0,
+    // Graded rules whose background came ONLY from another rule of the same class —
+    // the per-class merge doing its job, and the number that says how often.
+    mergedFrom: 0,
+  };
   // Rules contributed by each sheet the walk opened, so the sheet-membership case
   // can say how much reading a disappeared sheet took with it.
   const perSheet = new Map<string, number>();
@@ -167,15 +292,27 @@ describe('popup surfaces have visible backgrounds', () => {
   // set is what stats.graded is; the set itself is what the graded floor needs, so
   // a rule can be seen LEAVING even when a second rule arrives to hold the number up.
   const gradedAt: string[] = [];
-  // Same population, structured, for the exact-member identity: file plus the whole
-  // whitespace-collapsed selector, never a prefix of it.
-  const gradedMembers: { file: string; selector: string }[] = [];
+  // Same population, structured, for the exact-member identity: file, the whole
+  // whitespace-collapsed selector, and the at-block chain the rule sits in -- never
+  // a prefix of any of the three. The chain is part of the identity because the
+  // descent made "@media (…) { .toast }" and ".toast" two DIFFERENT rules to grade:
+  // without it, the rule the descent newly reaches is invisible to membership, the
+  // baseline still says one member, and a set of two reads exactly like a set of one.
+  const gradedMembers: { file: string; selector: string; at: string }[] = [];
+  // The graded door is per CLASS under the merge, so two rules of one class are one
+  // surface checked twice. The print carries both units or a reader cannot tell a
+  // widened harvest from a doubled denominator.
+  const gradedClasses = new Set<string>();
 
   for (const filePath of cssFiles) {
     const content = readFileSync(filePath, 'utf-8');
     const rules = extractRules(content, stats);
     const relPath = relative(UI_SRC, filePath);
-    perSheet.set(relPath.split(sep).join('/'), rules.length);
+    const gradedFile = relPath.split(sep).join('/');
+    perSheet.set(gradedFile, rules.length);
+    // The cascade's own view of the sheet: each class's declarations, every rule
+    // that writes it, from the top level and from inside every descended at-block.
+    const declarations = declarationsByClass(rules);
 
     for (const rule of rules) { stats.parsed++;
       // Skip pseudo-elements
@@ -191,19 +328,26 @@ describe('popup surfaces have visible backgrounds', () => {
       if (IS_CHILD.test(cls)) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
       if (IS_STATE.test(cls)) { stats.boundary++; if (getBackground(rule.body) === null) stats.boundaryNoBg++; continue; }
 
-      const bg = getBackground(rule.body); stats.graded++;
+      // PER CLASS: the background graded is the class's own declaration, or the one
+      // the cascade hands it from a sibling rule. Read alone, an at-block rule that
+      // overrides only `animation:` is a missing background that does not exist.
+      const own = getBackground(rule.body);
+      const bg = own ?? getBackground(declarations.get(cls) ?? rule.body);
+      if (own === null && bg !== null) stats.mergedFrom++;
+      stats.graded++;
+      gradedClasses.add(gradedFile + ' { ' + cls);
       // Identity, not address: a line number would make this baseline fail when an
       // unrelated edit above it moves the rule, which is not a rule leaving the door.
-      const gradedFile = relPath.split(sep).join('/');
       const gradedSelector = rule.selector.trim().replace(/\s+/g, ' ');
       gradedAt.push(gradedFile + ' { ' + gradedSelector);
-      gradedMembers.push({ file: gradedFile, selector: gradedSelector });
+      gradedMembers.push({ file: gradedFile, selector: gradedSelector, at: rule.at });
 
-      // No background at all
+      // No background at all, for this class anywhere in the sheet
       if (bg === null) {
         failures.push(
-          `${relPath}:${rule.line} — ${rule.selector}\n` +
-          `  No background/background-color declaration`,
+          `${relPath}:${rule.line} — ${rule.at ? rule.at + ' > ' : ''}${rule.selector}\n` +
+          `  No background/background-color declaration, nor on any other rule that` +
+          ` writes .${cls} in this sheet (its own and its at-block rules were merged)`,
         );
         continue;
       }
@@ -227,7 +371,7 @@ describe('popup surfaces have visible backgrounds', () => {
     }
   }
 
-  it(`every popup container has an opaque background (graded ${stats.graded} of ${stats.parsed} top-level rules parsed across ${cssFiles.length} sheets; ${stats.nestedRules.length} rules hidden inside ${stats.atBlocks.length} at-blocks the extractor skips wholesale; ${stats.boundary} rejected by the primary-class boundary, ${stats.boundaryNoBg} of them declaring no background; ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped)`, () => {
+  it(`every popup container has an opaque background (graded per class: ${stats.graded} rules / ${gradedClasses.size} classes of ${stats.parsed} rules parsed across ${cssFiles.length} sheets, ${stats.mergedFrom} of them graded on a declaration merged in from a sibling rule of the same class; ${stats.descendedRules.length} rules descended into from ${stats.atBlocks.length - stats.skippedAtBlocks.length} conditional at-blocks, ${stats.stillHidden.length} still skipped inside ${stats.skippedAtBlocks.length} at-blocks whose body holds no selector (@keyframes steps); ${stats.nestedRules.length} blocks found inside at-blocks in total; ${stats.boundary} rejected by the primary-class boundary, ${stats.boundaryNoBg} of them declaring no background; ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped)`, () => {
     expect(failures, `\n${failures.join('\n\n')}`).toEqual([]);
   });
 
@@ -291,7 +435,7 @@ describe('popup surfaces have visible backgrounds', () => {
   });
 
   /* ── Population floor + counter arithmetic: the print must be alive ─────── */
-  it(`the walk itself: ${cssFiles.length} sheets opened, ${stats.parsed} top-level rules parsed, ${stats.graded} graded, ${stats.nestedRules.length} hidden inside ${stats.atBlocks.length} at-blocks skipped wholesale, ${stats.boundary} refused by the primary-class boundary (${stats.boundaryNoBg} of them carrying no background), ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped`, () => {
+  it(`the walk itself: ${cssFiles.length} sheets opened, ${stats.parsed} rules parsed (${stats.parsed - stats.descendedRules.length} at top level + ${stats.descendedRules.length} descended from inside at-blocks), ${stats.graded} graded (${gradedClasses.size} distinct classes, ${stats.mergedFrom} graded on a merged sibling declaration), ${stats.atBlocks.length} at-blocks met = ${stats.atBlocks.length - stats.skippedAtBlocks.length} descended + ${stats.skippedAtBlocks.length} still skipped holding ${stats.stillHidden.length} selector-less blocks, ${stats.nestedRules.length} blocks found inside at-blocks, ${stats.boundary} refused by the primary-class boundary (${stats.boundaryNoBg} of them carrying no background), ${stats.pseudo} pseudo, ${stats.notRoot} not popup-shaped`, () => {
     // A green on an empty walk would be the same vacuity the bare file count
     // hid, so the harvest is asserted too, not only the verdict it feeds.
 // MAGNITUDE FLOORS. Each `toBeGreaterThan(0)` above is an existence check: it
@@ -304,12 +448,22 @@ describe('popup surfaces have visible backgrounds', () => {
 // headroom BELOW the measurement, never at it: a floor equal to today's value
 // fails on any improvement and teaches people to delete guards instead of
 // reading them. Baselines below were measured 2026-09-15 at tip `af4b27238` by
-// `npx vitest run src/__tests__/popupBackgroundCompliance.test.ts --reporter=verbose`.
-    const FLOORS = { sheets: 120, parsed: 5200, atBlocks: 280, nestedRules: 650 };
+// `npx vitest run src/__tests__/popupBackgroundCompliance.test.ts --reporter=verbose`,
+// and NONE of them was lowered when the extractor started descending: a widening is
+// allowed to blow past its floors, never to be excused by one. The two floors whose
+// UNIT the descent changed are re-named below (atBlocks now counts every at-block MET,
+// nestedRules every block FOUND inside one), and the descent got its own floor, since
+// a walk that silently stops descending back into at-blocks is precisely the shrink
+// these floors exist to catch.
+    const FLOORS = { sheets: 120, parsed: 5200, atBlocks: 280, nestedRules: 650, descendedRules: 300 };
     expect(cssFiles.length, `sheets opened ${cssFiles.length}, floor ${FLOORS.sheets} (baseline 137) -- the walk lost stylesheets, so every other number here is about a smaller tree`).toBeGreaterThan(FLOORS.sheets);
-    expect(stats.parsed, `top-level rules parsed ${stats.parsed}, floor ${FLOORS.parsed} (baseline 6078) -- the harvest shrank; check what stopped being read`).toBeGreaterThan(FLOORS.parsed);
-    expect(stats.atBlocks.length, `at-blocks skipped ${stats.atBlocks.length}, floor ${FLOORS.atBlocks} (baseline 347) -- fewer containers are being abandoned wholesale`).toBeGreaterThan(FLOORS.atBlocks);
-    expect(stats.nestedRules.length, `rules hidden inside at-blocks ${stats.nestedRules.length}, floor ${FLOORS.nestedRules} (baseline 816) -- content moved behind the door that skips it`).toBeGreaterThan(FLOORS.nestedRules);
+    expect(stats.parsed, `rules parsed ${stats.parsed}, floor ${FLOORS.parsed} (baseline 6078 before the descent, 6529 after it) -- the harvest shrank; check what stopped being read`).toBeGreaterThan(FLOORS.parsed);
+    expect(stats.atBlocks.length, `at-blocks met (descended into or skipped) ${stats.atBlocks.length}, floor ${FLOORS.atBlocks} (baseline 347 top-level-only before the descent, 477 counting nested containers now) -- fewer containers are even being seen`).toBeGreaterThan(FLOORS.atBlocks);
+    expect(stats.nestedRules.length, `blocks found inside at-blocks ${stats.nestedRules.length}, floor ${FLOORS.nestedRules} (baseline 816 before the descent, 1111 now that blocks inside nested containers are counted too) -- content moved out of the walk's sight altogether`).toBeGreaterThan(FLOORS.nestedRules);
+    // THE DESCENT'S OWN FLOOR. The other four are satisfied by a top-level-only walk
+    // too, so on their own none of them can see the descent being reverted; 300 of
+    // headroom under 441 is what makes "stopped descending" red rather than quieter.
+    expect(stats.descendedRules.length, `rules descended out of at-blocks ${stats.descendedRules.length}, floor ${FLOORS.descendedRules} (baseline 441) -- the extractor is abandoning at-blocks wholesale again`).toBeGreaterThan(FLOORS.descendedRules);
 
     // SHEET MEMBERSHIP, not a floor on size. Baseline: the 137 stylesheets this walk
     // opened at tip bf990e2cc, read out of a git archive of HEAD and counted by this
@@ -508,14 +662,26 @@ describe('popup surfaces have visible backgrounds', () => {
         JSON.stringify(walkedSheets.map((p) => [p, perSheet.get(p) ?? 0])),
     ).toEqual([]);
 
-    // TWO-SIDED BOUNDS. Four lower bounds cannot see a MOVE, because the counter
+    // TWO-SIDED BOUNDS. These lower bounds cannot see a MOVE, because the counter
     // that a move inflates is one of the counters being floored: putting one whole
     // sheet inside an @media took parsed 6078 -> 5642 and pushed hidden 816 -> 1238,
     // and every floor above read that as healthier. So bound the SUM of what the
-    // walk knows about -- parsed plus hidden -- from both sides, which is what a
-    // deletion cannot hide inside (deleting a rule lowers the sum by exactly one,
-    // whichever door it came out of), and bound HIDDEN from above as well, which is
-    // what a wholesale move into an at-block cannot hide inside. Baselines are the
+    // walk knows about -- parsed plus what is STILL selector-less behind a skipped
+    // at-block -- from both sides, which is what a deletion cannot hide inside
+    // (deleting a rule lowers the sum by exactly one, whichever door it came out of),
+    // and bound the still-skipped population from above as well, which is what a
+    // wholesale move into an at-block cannot hide inside.
+    //
+    // THE UNIT THE DESCENT CHANGED, stated rather than smoothed over: the sum's second
+    // term used to be every block inside an at-block, most of which was real rules the
+    // extractor simply refused to read. It is now only the blocks that genuinely are
+    // not selectors -- @keyframes steps and descriptor blocks -- because everything
+    // else was pulled into `parsed`. So the sum is no longer "6068 + 816"; it is
+    // 6529 parsed (of which 441 came out of at-blocks) + 544 selector-less blocks, and
+    // the same band that held the old pair holds the new one: the descent conserved
+    // this sum by construction, which is the point of it.
+    //
+    // Baselines are the
     // committed tree measured 2026-09-15 at tip `36ca7fc6b` (git archive of HEAD,
     // walked by this file's own extractor): parsed 6068 + hidden 816 = 6884, over
     // 137 sheets whose median holds 30 rules and whose single largest holds 436 and
@@ -524,64 +690,88 @@ describe('popup surfaces have visible backgrounds', () => {
     // blind spot in the header comment.
     const SUM_BASELINE = 6884;                 // 6068 parsed + 816 hidden at 36ca7fc6b
     const SUM_BAND = { low: 6200, high: 7800 }; // -684 / +916: one large sheet either way
-    const rulesSeen = stats.parsed + stats.nestedRules.length;
+    // parsed already CONTAINS the descended rules; the only population not in it is the
+    // blocks inside a skipped at-block, which are not selectors.
+    const rulesSeen = stats.parsed + stats.stillHidden.length;
     expect(
       rulesSeen,
-      `rules the walk knows about: ${stats.parsed} parsed + ${stats.nestedRules.length} hidden inside at-blocks = ${rulesSeen}, ` +
+      `rules the walk knows about: ${stats.parsed} parsed (incl. ${stats.descendedRules.length} descended) + ${stats.stillHidden.length} selector-less blocks inside skipped at-blocks = ${rulesSeen}, ` +
       `outside the band ${SUM_BAND.low}..${SUM_BAND.high} around the baseline ${SUM_BASELINE} (6068 parsed + 816 hidden, ` +
       `measured at 36ca7fc6b) -- rules left the walk, or arrived in it, without either counter's floor noticing`,
     ).toBeGreaterThanOrEqual(SUM_BAND.low);
     expect(
       rulesSeen,
-      `rules the walk knows about: ${stats.parsed} parsed + ${stats.nestedRules.length} hidden = ${rulesSeen}, above the ceiling ` +
+      `rules the walk knows about: ${stats.parsed} parsed + ${stats.stillHidden.length} selector-less = ${rulesSeen}, above the ceiling ` +
       `${SUM_BAND.high} around the baseline ${SUM_BASELINE} (6068 parsed + 816 hidden at 36ca7fc6b) -- the harvest grew past one ` +
       `large sheet since that baseline, so re-measure it here rather than widening the band`,
     ).toBeLessThanOrEqual(SUM_BAND.high);
-    const NESTED_CEILING = 1000;               // baseline 816 at 36ca7fc6b, largest single sheet hides 61
-    // Headroom, recorded rather than retuned: this ceiling leaves 184 rules of room above
-    // today's hidden count while FLOORS.nestedRules leaves 166 below, so the tightest guard
-    // in the file is the one ordinary responsive work trips. It also fails on the RIGHT fix
-    // -- teaching extractRules to descend into at-blocks drives nestedRules and atBlocks
-    // toward zero, which reddens the atBlocks and nestedRules floors above (and the sum band
-    // with them if a descended rule stops counting as seen) -- so whoever lands that descent
-    // re-baselines those floors in the same commit instead of deleting a guard that fired.
+    const SKIPPED_CEILING = 1000;              // same number as before, over a smaller population now
+    // What this ceiling guards was re-aimed by the descent, and the number did not move.
+    // It used to bound EVERY block inside an at-block (816 of them) because the extractor
+    // skipped all of them; it now bounds only the blocks that are not selectors -- the
+    // 544 @keyframes steps and descriptor blocks still behind a skipped body -- because the
+    // other 441 are rules now and no longer belong in a ceiling about invisibility. The
+    // file's own note before this change said it plainly: the ceiling "fails on the RIGHT
+    // fix -- teaching extractRules to descend into at-blocks drives nestedRules and atBlocks
+    // toward zero". It was re-aimed at what the right fix leaves behind, not deleted, and
+    // no floor was lowered to make room for the descent: 1000 is still the same 1000, and
+    // today's 544 sits 456 below it.
     expect(
-      stats.nestedRules.length,
-      `rules hidden inside at-blocks: ${stats.nestedRules.length}, above the ceiling ${NESTED_CEILING} (baseline 816, measured ` +
-      `at 36ca7fc6b) -- content moved behind the door the extractor skips wholesale, which is how a walk gets ` +
-      `emptier while its own hidden counter goes UP; the sum band cannot see this move because hiding conserves it`,
-    ).toBeLessThanOrEqual(NESTED_CEILING);
+      stats.stillHidden.length,
+      `selector-less blocks still hidden inside skipped at-blocks: ${stats.stillHidden.length}, above the ceiling ${SKIPPED_CEILING} ` +
+      `(544 at this tip; 816 was the whole hidden population before the descent learned to read an @media) -- ` +
+      `content moved behind the door the extractor still skips, which is how a walk gets emptier while ` +
+      `its own hidden counter goes UP; the sum band cannot see this move because hiding conserves it`,
+    ).toBeLessThanOrEqual(SKIPPED_CEILING);
 
-    // THE GRADED DOOR. Baseline today is exactly one rule, so `graded > 0` is
-    // arithmetically `graded === 1`: the moment a second rule becomes gradable it
-    // stops distinguishing anything, and one rule can then leave through the graded
-    // door taking its check with it while the floor never blinks. Pinning it to 1
-    // would block legitimate improvement, so the floor says what it actually
-    // protects: the population behind this door is bounded by the sheet and rule
-    // floors around it (137 sheets, 6,078 parsed, and 816 hidden), and what must
-    // never happen is a rule that used to be checked ceasing to be checked. So the
-    // assertion is a SUBSET check on identity -- a new gradable rule passes, a rule
-    // that leaves fails, and the size of the set is never pinned.
-    // Measured at 36ca7fc6b: the only rule reaching this door today, and it is named
-    // by file plus its WHOLE selector, not a prefix of one. A prefix is the escape:
+    // THE GRADED DOOR. Before the descent the baseline was exactly one rule, so
+    // `graded > 0` was arithmetically `graded === 1`: the moment a second rule became
+    // gradable it stopped distinguishing anything, and one rule could then leave
+    // through the graded door taking its check with it while the floor never blinked.
+    // The descent made that rule two -- the base `.toast` and its reduced-motion twin
+    // in an @media -- so the floor is now demonstrably not an existence check, and
+    // pinning the count would still block legitimate improvement. What the door
+    // protects is stated instead: the population behind it is bounded by the sheet
+    // and rule floors around it (139 sheets, 6,529 parsed, 441 of them descended),
+    // and what must never happen is a rule that used to be checked ceasing to be
+    // checked. So the assertion is a SUBSET check on identity -- a new gradable rule
+    // passes, a rule that leaves fails, and the size of the set is never pinned.
+    // Members are named by file, by their WHOLE selector, and by the at-block chain
+    // they were read in -- never a prefix of any of the three. A prefix is the escape:
     // `startsWith('... { .toast')` also accepts `.toast:hover` (the base toast now
     // has no background at all, only a hovered one does) and `.toast, .popover` (the
     // rule quietly grew a second surface). Both were demonstrated green against the
-    // prefix form, which is why the comparison is exact on both halves of the name.
+    // prefix form, which is why the comparison is exact on every part of the name.
     // The check stays a required-member check, never a pinned set: a rule that
     // BECOMES gradable passes, one that changes shape or leaves fails.
-    const GRADED_BASELINE = [{ file: 'frontend/themes/components.css', selector: '.toast' }];
+    const GRADED_BASELINE: { file: string; selector: string; at: string }[] = [
+      // Both members re-earned from a run of this file, not pasted from a header:
+      // the top-level rule at components.css:1106 and the reduced-motion rule at
+      // :1289 that the descent now reads. The second is the false positive a naive
+      // per-rule descent lands RED on -- it declares only `animation:` -- and it is
+      // green here because the per-class merge hands it the `background:
+      // var(--color-toast-bg)` its own top-level rule already declares. Deleting the
+      // merge, or the descent, or that declaration, each fails this list.
+      { file: 'frontend/themes/components.css', selector: '.toast', at: '' },
+      { file: 'frontend/themes/components.css', selector: '.toast', at: '@media (prefers-reduced-motion: no-preference)' },
+    ];
     // A subset check over an EMPTY baseline is a green with no population: toEqual([]) of
     // a filter that had nothing to look for passes when nothing is required to stay graded.
     // So floor the baseline itself, as the magnitude floors above bound the walk -- with a
-    // graded population of one rule this file is one deletion away from grading nothing.
+    // graded population of two rules sharing ONE selector, this file is two deletions away
+    // from grading nothing, and the selector count alone cannot tell that apart.
     expect(
       GRADED_BASELINE.length,
       `the graded-identity baseline holds ${GRADED_BASELINE.length} required rule(s) -- a subset check over nothing passes on ` +
       `nothing, so name the rules that must keep reaching the background check before comparing against them`,
     ).toBeGreaterThan(0);
+    // Identity is file + WHOLE selector + the at-block chain, so a top-level rule and
+    // the descended rule that shares its selector are two named members, not one.
+    // Comparing on file+selector alone would let the descended `.toast` satisfy the
+    // baseline entry written for the top-level one and hide that the merge is what
+    // keeps it green -- which is the exact fact a reader of this file needs kept.
     const lostGraded = GRADED_BASELINE.filter(
-      (b) => !gradedMembers.some((m) => m.file === b.file && m.selector === b.selector),
+      (b) => !gradedMembers.some((m) => m.file === b.file && m.selector === b.selector && m.at === b.at),
     );
     expect(
       lostGraded,
