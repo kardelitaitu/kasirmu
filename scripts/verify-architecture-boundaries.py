@@ -15,10 +15,52 @@ Usage::
     python3 scripts/verify-architecture-boundaries.py --root <path>
     python3 scripts/verify-architecture-boundaries.py --metadata-file <path>
 
-Exit codes:
-  0  no new/stale/expired findings (or report-only mode)
+Exit codes -- and why 0 alone is not a verdict:
+  0  three different facts produce this code: the checker DID NOT RUN against
+     the tree you meant (a --root pointing somewhere with nothing in it), it
+     RAN AND FOUND NOTHING TO REPORT, or it RAN AND WAS TOLD NOT TO JUDGE
+     (--report-only). No exit code distinguishes those three, and by design
+     this one does not try to; the printed line does, because it now carries
+     the population it examined and, under --report-only, the words NOT
+     JUDGING.
   1  new findings, stale baseline entries, or expired baseline entries
   2  malformed metadata, baseline, or unreadable required input
+
+WHAT THE GREEN LINE NAMES
+=========================
+
+The line used to print three counts and nothing else, and every one of them was
+a FINDING count -- tracked, blocking, stale. Those measure debt, not scope. So
+"0 new/expired blocking finding(s)" was equally true of a run that graded this
+workspace and of a run whose --root pointed at a directory holding no crates, no
+ui/src and no crates/oz-bridge. That second run is not hypothetical: --root is a
+supported mode (the node harness in scripts/__tests__/ uses it), --strict is
+silent about scope, and this gate runs in three lanes. The line therefore now
+ends in a denominator built by the same walks that produced the findings -- see
+new_scope() and the "scope" argument every walker takes -- not by a second glob
+beside them, because a denominator computed on a separate path is a denominator
+that can drift from the scan it claims to describe. "2 crates / 0 blockers" and
+"0 crates / 0 blockers" now read differently, and --json carries the same
+numbers under the "population" and "judging" keys.
+
+KNOWN LIMIT -- A REAL REPO CAN PRESENT AS A FIXTURE
+===================================================
+
+An empty population is INTENDED here and stays intended: the walker docstrings
+say a fixture repository without crates/oz-bridge yields no findings, and
+--root / --metadata-file exist precisely so synthetic trees can be graded. So
+this file deliberately has NO empty-population floor -- adding one would break
+the fixture mode that is this checker's own test harness. What remains, and what
+no exit code can close, is narrower: a run that means to grade this repository
+and instead lands on a directory that presents as a fixture is indistinguishable
+from a real fixture run by exit code alone. The caller's check is the printed
+denominator, stated as an action: run the command, read the
+"[population examined: ...]" clause, and confirm it names the tree you meant.
+Re-derive the expected numbers
+rather than trusting anything written here -- `ls -d crates/*/ | wc -l` for the
+crate count and `find ui/src -name '*.ts' -o -name '*.tsx' | wc -l` for the UI
+file count -- and compare those against the line. Zero crates examined with exit
+0 means the scope was empty; it does not mean the boundaries held.
 """
 
 from __future__ import annotations
@@ -232,10 +274,14 @@ def package_path_keys(path: str, root: Path) -> set[str]:
     return candidates
 
 
-def cargo_findings(metadata: dict[str, Any], root: Path) -> list[dict[str, Any]]:
+def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     packages = metadata.get("packages")
     if not isinstance(packages, list):
         raise ValueError("Cargo metadata has no valid 'packages' list")
+    # The Cargo half of the population: crates the graph names, and the
+    # dependency edges actually followed between them. An empty graph and a graph
+    # with no violation produce the same "0 blocking" without this.
+    scope["crates"] += len(packages)
     package_by_path: dict[str, str] = {}
     package_manifest: dict[str, str] = {}
     for package in packages:
@@ -255,6 +301,7 @@ def cargo_findings(metadata: dict[str, Any], root: Path) -> list[dict[str, Any]]
         for dependency in dependencies:
             if not isinstance(dependency, dict):
                 raise ValueError(f"Cargo metadata package {owner} has invalid dependency")
+            scope["dep_edges"] += 1
             dep_path = dependency.get("path")
             if not isinstance(dep_path, str):
                 continue
@@ -506,7 +553,7 @@ def find_invoke_calls(raw: str) -> list[tuple[int, str]]:
     return calls
 
 
-def ui_findings(root: Path) -> list[dict[str, Any]]:
+def ui_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     ui_root = root / "ui" / "src"
     if not ui_root.is_dir():
         raise ValueError(f"UI source directory not found: {ui_root}")
@@ -521,6 +568,9 @@ def ui_findings(root: Path) -> list[dict[str, Any]]:
             raw = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ValueError(f"cannot read UI source: {path}: {exc}") from exc
+        # Counted after the skip filters on purpose: this is how many files the
+        # rule actually opened, not how many the glob could see.
+        scope["ui_files"] += 1
         calls = find_invoke_calls(raw)
         for line, target in calls:
             findings.append(make_finding("ui-direct-invoke", rel, target, line))
@@ -545,7 +595,7 @@ def ui_findings(root: Path) -> list[dict[str, Any]]:
     return dedupe_findings(findings)
 
 
-def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
+def bridge_toolkit_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     """Report UI-toolkit coupling inside `crates/oz-bridge` (ADR #49).
 
     ADR #49 makes the bridge headless *by dependency*: it carries no `tauri`,
@@ -555,10 +605,14 @@ def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
 
     Comments and string contents are masked before scanning, so the crate's own
     "depends on no tauri, gtk or webkit type" assertions do not self-report.
-    A fixture repository without `crates/oz-bridge` yields no findings.
+    A fixture repository without `crates/oz-bridge` yields no findings, and says so:
+    the run's "[population examined: ...]" clause reports 0 bridge files scanned
+    rather than staying silent about the absence.
     """
     crate = root / "crates" / "oz-bridge"
     if not crate.is_dir():
+        # Intended fixture behaviour, and now visible rather than implied: this
+        # walk examined no file, which the green line prints as zero.
         return []
     findings: list[dict[str, Any]] = []
     manifest = crate / "Cargo.toml"
@@ -567,6 +621,7 @@ def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
             raw_manifest = manifest.read_text(encoding="utf-8")
         except OSError as exc:
             raise ValueError(f"cannot read bridge manifest: {manifest}: {exc}") from exc
+        scope["bridge_files"] += 1
         section = ""
         for number, line in enumerate(raw_manifest.splitlines(), start=1):
             stripped = line.strip()
@@ -586,6 +641,7 @@ def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
             raw = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ValueError(f"cannot read bridge source: {path}: {exc}") from exc
+        scope["bridge_files"] += 1
         code = mask_comments_and_strings(raw)
         for match in BRIDGE_TOOLKIT_PATTERN.finditer(code):
             findings.append(
@@ -599,7 +655,7 @@ def bridge_toolkit_findings(root: Path) -> list[dict[str, Any]]:
     return dedupe_findings(findings)
 
 
-def ui_vocabulary_findings(root: Path) -> list[dict[str, Any]]:
+def ui_vocabulary_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     """Report UI-framework vocabulary in the application layer's comments (ADR #53).
 
     The application layer may not name a renderer or its file formats in prose.
@@ -614,18 +670,22 @@ def ui_vocabulary_findings(root: Path) -> list[dict[str, Any]]:
     `platform/sync/src/queue_tests.rs` are string literals, and flagging an
     extension list would be a false positive.
 
-    A fixture repository without any of the four roots yields no findings.
+    A fixture repository without any of the four roots yields no findings, which
+    the green line prints as "0 app-layer .rs file(s) scanned across 0/4 root(s)"
+    instead of hiding behind a zero blocking count.
     """
     findings: list[dict[str, Any]] = []
     for top in UI_VOCABULARY_ROOTS:
         base = root / top
         if not base.is_dir():
             continue
+        scope["app_layer_roots"] += 1
         for path in sorted(base.rglob("*.rs")):
             try:
                 raw = path.read_text(encoding="utf-8")
             except OSError as exc:
                 raise ValueError(f"cannot read application-layer source: {path}: {exc}") from exc
+            scope["app_layer_files"] += 1
             comments = mask_code_preserving_comments(raw)
             for match in UI_VOCABULARY_PATTERN.finditer(comments):
                 findings.append(
@@ -729,8 +789,66 @@ def sort_output(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(items, key=lambda item: (item.get("rule", ""), item.get("path", ""), item.get("target", "")))
 
 
-def report_human(tracked: list[dict[str, Any]], blocking: list[dict[str, Any]], stale: list[dict[str, Any]], expired: list[dict[str, Any]]) -> None:
-    print(f"verify-architecture-boundaries: {len(tracked)} tracked transitional finding(s), {len(blocking)} new/expired blocking finding(s), {len(stale)} stale baseline entry(ies).")
+def new_scope() -> dict[str, int]:
+    """An empty census, filled IN by the walkers as they walk.
+
+    It is threaded through the existing walks instead of computed by a second
+    glob beside them: a denominator that re-derives the scope on its own is a
+    denominator that can disagree with the scan it is meant to describe.
+    """
+    return {
+        "crates": 0,
+        "dep_edges": 0,
+        "ui_files": 0,
+        "bridge_files": 0,
+        "app_layer_roots": 0,
+        "app_layer_files": 0,
+        "baseline_entries": 0,
+    }
+
+
+def population_clause(scope: dict[str, int]) -> str:
+    """The denominator half of the green line.
+
+    All three finding counts can be zero while the scope is zero too, which is
+    what --root on an empty directory produces. Printing the population is what
+    makes that visible without this tool taking an exit code away from a mode
+    (fixtures) that legitimately has nothing to find.
+    """
+    return (
+        f" [population examined: {scope['crates']} crate(s) in the Cargo graph, "
+        f"{scope['dep_edges']} dependency edge(s) followed, "
+        f"{scope['ui_files']} UI file(s) scanned, "
+        f"{scope['bridge_files']} crates/oz-bridge file(s) scanned, "
+        f"{scope['app_layer_files']} app-layer .rs file(s) scanned across "
+        f"{scope['app_layer_roots']}/{len(UI_VOCABULARY_ROOTS)} root(s), "
+        f"{scope['baseline_entries']} baseline entry(ies)]"
+    )
+
+
+def report_human(
+    tracked: list[dict[str, Any]],
+    blocking: list[dict[str, Any]],
+    stale: list[dict[str, Any]],
+    expired: list[dict[str, Any]],
+    scope: dict[str, int],
+    report_only: bool = False,
+) -> None:
+    # Byte-stable head: lanes and the node suite grep
+    # "... N tracked transitional finding(s), M new/expired blocking finding(s)"
+    # out of this line. Everything appended after it is scope, not verdict.
+    line = (
+        f"verify-architecture-boundaries: {len(tracked)} tracked transitional finding(s), "
+        f"{len(blocking)} new/expired blocking finding(s), "
+        f"{len(stale)} stale baseline entry(ies)"
+        + population_clause(scope)
+        + "."
+    )
+    if report_only:
+        # The third green: 0 here means "told not to judge", not "clean". Say so
+        # in the same line, because the exit code is not going to say it.
+        line += " NOT JUDGING: --report-only suppresses the verdict; this run's exit 0 is not a pass."
+    print(line)
     if tracked:
         print("\nTracked transitional findings:")
         for finding in sort_output(tracked):
@@ -753,7 +871,7 @@ def report_human(tracked: list[dict[str, Any]], blocking: list[dict[str, Any]], 
 def main() -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--report-only", action="store_true", help="Report findings but do not fail for policy violations.")
+    parser.add_argument("--report-only", action="store_true", help="Report findings but do not fail for policy violations. The printed line then says NOT JUDGING, because its exit 0 is not a pass.")
     parser.add_argument("--strict", action="store_true", help="Explicitly enforce the default blocking policy.")
     parser.add_argument("--json", action="store_true", help="Emit stable JSON instead of human-readable output.")
     parser.add_argument("--root", type=Path, help="Repository root (defaults to the script's repository root).")
@@ -767,14 +885,24 @@ def main() -> int:
         metadata = load_json(metadata_path, "Cargo metadata fixture") if metadata_path else metadata_from_cargo(root)
         check_graph_root(metadata, root)  # every route in, not only the deleted implicit one
         baseline = load_baseline(baseline_path, root)
-        findings = dedupe_findings(cargo_findings(metadata, root) + ui_findings(root) + bridge_toolkit_findings(root) + ui_vocabulary_findings(root))
+        scope = new_scope()
+        findings = dedupe_findings(
+            cargo_findings(metadata, root, scope)
+            + ui_findings(root, scope)
+            + bridge_toolkit_findings(root, scope)
+            + ui_vocabulary_findings(root, scope)
+        )
+        scope["baseline_entries"] = len(baseline)
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)
     except (ValueError, OSError) as exc:
         return fail(str(exc))
     if args.json:
-        print(json.dumps({"tracked_transitional": sort_output(tracked), "new_blocking": sort_output(blocking), "stale_baseline": sort_output(stale), "expired_baseline": sort_output(expired), "summary": {"tracked": len(tracked), "blocking": len(blocking), "stale": len(stale), "expired": len(expired)}}, indent=2, sort_keys=True))
+        # Same two facts the human line now carries, in machine form: the
+        # findings, and what was examined to produce them. "judging": false is
+        # the report-only case a log parser can no longer read off the exit code.
+        print(json.dumps({"tracked_transitional": sort_output(tracked), "new_blocking": sort_output(blocking), "stale_baseline": sort_output(stale), "expired_baseline": sort_output(expired), "summary": {"tracked": len(tracked), "blocking": len(blocking), "stale": len(stale), "expired": len(expired)}, "population": scope, "judging": not args.report_only}, indent=2, sort_keys=True))
     else:
-        report_human(tracked, blocking, stale, expired)
+        report_human(tracked, blocking, stale, expired, scope, args.report_only)
     if args.report_only:
         return 0
     return 1 if blocking or stale else 0
