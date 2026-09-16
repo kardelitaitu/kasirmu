@@ -128,7 +128,8 @@ ui/src/
 - User-visible strings live in per-feature Fluent bundles under `src/locales/` (e.g. `shared.ftl`, `sales.ftl`, `sales.id.ftl`)
 - Bundles are loaded and merged by `src/locales/index.ts`
 - Referenced via `<Localized id="...">` from `@fluent/react`
-- Hardcoded English in JSX is a build failure (enforced by code review)
+- A Fluent key that resolves in neither the `en .ftl` nor the `id .ftl` bundle IS a build failure: pre-commit step 2 (bundle parity, eight checked surfaces) and CI's `i18n` job (`bash scripts/lint-i18n.sh`, leg 3 → `python3 scripts/verify-bundle-parity.py --full-census`) both fail closed on it.
+- Hardcoded English where a localization call belongs is NOT — it is forbidden (`.agents/AGENTS.md` → *Tauri & UI Standards* → **Localization**) but policed by code review only, because every extraction pattern in `verify-bundle-parity.py` is keyed off a localization *call site* and no gate scans visible text. The form that escapes them all today is `addToast({ message: '<English>' })`; re-count it with `grep -rn "addToast({ message: '" ui/src --include=*.tsx --include=*.ts | wc -l` (13 at `2c03ae152`, 2026-09-16 — trust the command, not the number).
 - Add a new locale: create the matching `.<code>.ftl` files for each bundle, then register the locale in `src/i18n/` and `src/main.tsx`
 
 ## Testing
