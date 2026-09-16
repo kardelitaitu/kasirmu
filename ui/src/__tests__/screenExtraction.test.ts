@@ -1271,14 +1271,6 @@ const SCREENS: ScreenEntry[] = [
     // import (main.tsx:7, main.tablet.tsx:20) — so the name is global, not
     // runtime-composed, and the cite is checkable by the coverage block.
     parentCss: ['../frontend/themes/components.css'],
-    // Trusted child component, named whole: the pin badge's Tooltip renders
-    // `tooltip-wrapper` + `tooltip-wrapper--inline` (Tooltip.tsx:225), defined
-    // by frontend/shell/Tooltip.css:3,12 — OUTSIDE the grammar parentCss
-    // allows (only ../frontend/themes/ escapes src/features, :120-123), so
-    // this is the externalClasses shape, not a sheet cite. A bare `tooltip-`
-    // prefix would excuse any future Tooltip class; the two whole names keep
-    // a third one reading dead.
-    externalClasses: ['restaurant-card', 'tooltip-wrapper', 'tooltip-wrapper--inline'],
   },
 
   // ── Appearance Settings ────────────────────────────────
