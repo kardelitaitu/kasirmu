@@ -18,6 +18,17 @@
 #
 # Usage:  bash .agents/verify-lane.sh            # rust + gates (default)
 #         bash .agents/verify-lane.sh --ui       # also npm typecheck + the touched UI suites
+#         bash .agents/verify-lane.sh --head     # grade the COMMIT, not the dirt
+#
+# --head exists because the dirt warning above turned out to cut both ways. On 2026-09-16 this
+# lane committed a retirement while the tree was red from a neighbour's uncommitted `pos.rs`, and
+# every gate it had run that day read green for the same reason: the working tree carries other
+# sessions' in-flight fixes as well as their breakage. `drift_pin_guard_marker_vocabulary_is_closed`
+# FAILED at HEAD and PASSED in the live tree -- the offender was committed in `audit.rs` and the
+# fix was sitting uncommitted in the same file, one lane over. So a green here is a statement
+# about "HEAD plus this dirt", and the only way to grade a commit is to check the commit out
+# somewhere else. This mode does that in a detached throwaway worktree under TEMP, shares nothing
+# with this checkout's index, and removes itself.
 set -u
 
 LOG=.agents/verify-lane.log
@@ -67,6 +78,31 @@ run() {
   fi
   return 0
 }
+
+if printf '%s' "${*:-}" | grep -q -- '--head'; then
+  WT="${TEMP:-/tmp}/ozpos-verify-head-$$"
+  if ! git worktree add --detach "$WT" HEAD >/dev/null 2>&1; then
+    say "cannot create a detached worktree at HEAD -- refusing to guess about the commit"
+    exit 2
+  fi
+  say "grading the COMMIT: HEAD=$(git rev-parse --short HEAD) checked out at $WT"
+  say "  (nothing in this working tree is read or written by this mode)"
+  for spec in "tablet:apps/tablet-client" "desktop:apps/desktop-client"; do
+    name=${spec%%:*}; path=${spec#*:}
+    run "[$name @HEAD] lib tests" cargo test --manifest-path "$WT/$path/Cargo.toml" --lib
+    run "[$name @HEAD] clippy -D unused-imports -D dead_code" \
+      cargo clippy --manifest-path "$WT/$path/Cargo.toml" --all-targets \
+      -- -D unused-imports -D dead_code
+  done
+  git worktree remove --force "$WT" >/dev/null 2>&1 || rm -rf "$WT"
+  say ""
+  if [ "$FAIL" -eq 0 ]; then
+    say "COMMIT RECEIPT: HEAD=$(git rev-parse --short HEAD) is green on its own, with no neighbour's dirt in the way."
+  else
+    say "COMMIT RECEIPT: HEAD=$(git rev-parse --short HEAD) is RED on its own. A green working-tree run does not rescue it -- read $LOG and find which commit landed the failure before touching anyone else's file."
+  fi
+  exit "$FAIL"
+fi
 
 run "clippy tablet (lib+tests, -D warnings)" cargo clippy -p oz-pos-tablet --all-targets -- -D warnings
 run "clippy desktop (lib+tests, -D warnings)" cargo clippy -p oz-pos-app --all-targets -- -D warnings
