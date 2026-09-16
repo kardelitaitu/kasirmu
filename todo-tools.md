@@ -480,6 +480,8 @@ access: {
       `docs/plans/notes.md` as a question — reported here, not filed there, because that page is
       another lane's fence and is being written now.** Left UNCHECKED on purpose: the row was
       not completed, its premise was found false, and a rewrite is not a completion.
+
+       > **[Board sweep 2026-09-16]** Parked-with-ruling status re-verified live: `enum ScopeType` is still `crates/oz-core/src/db/assignments.rs:127` and the terminal-inheritance refusal still reads "deliberately NOT scope types ... (ruling 1A)" two lines below it. Nothing to code until the owner picks arm (a), (b) or (c); this sweep leaves the box open and adds its name to the owner-decisions pile. The note's instruction "belongs on docs/plans/notes.md as a question" remains UNFILED — that page is still another lane's fence.
 - [x] **Define settings scope.** Mark each Settings section as organization-,
       location-, terminal-, or workspace-scoped before implementation.
       — **DONE 2026-09-07** (the map is the "Settings scope map" section below;
