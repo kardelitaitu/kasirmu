@@ -67,12 +67,17 @@ def main() -> int:
     s_needed = {k for k in seeds if f"{k}_scoped" in ui}
     r_inert = {k for k in redundant if k not in ui}
 
-    # Two closures asserted, not observed: the partitions must account for every key, and the
-    # seed set must be exactly what the gate itself reports as aliasable. Without the second one
-    # this tool would be a mirror that can drift from the gate it claims to agree with.
+    # Two closures asserted, not observed: the partitions must account for every key, and the seed
+    # set must map onto exactly what the gate reports as aliasable. The SECOND one was wrong in the
+    # first version of this file, where it compared `seeds` (unscoped base names) to `aliasable`
+    # (the derived `_scoped` names) -- equal in count at 144 each, unequal as sets, because they are
+    # two UNITS of the same 144 pairs rather than two populations. The guard fired on that in its
+    # own print, "MISMATCH (144 vs 144)", which is the most useful shape a check can take: it does
+    # not hide behind a matching number. Map through the same rule the gate uses before comparing.
     assert len(seeds) + len(redundant) == len(unscoped)
     assert len(unscoped) + len(scoped_explicit) == len(mock_keys)
-    agree = seeds == aliasable
+    derived = {f"{k}_scoped" for k in seeds}
+    agree = derived == aliasable
 
     print(f"dev-mock: {len(per_file)} files walked, alias pass at {alias_file}")
     print(f"  explicit mock keys: {len(mock_keys)}   = {len(unscoped)} unscoped + "
