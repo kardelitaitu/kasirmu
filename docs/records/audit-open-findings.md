@@ -1509,6 +1509,79 @@ being asked, that `--staged-only` with no paths prints `0 missing key(s)` and ex
 change it, because that behaviour is documented in the file's own EXIT CODES and relied on by
 `.githooks/pre-commit` for delete-only commits, a contract decision rather than a fence edit.
 
+### New verified finding (2026-09-16, 10:10) — the Tools grid and the page it links to give opposite answers for a manager, and the two plan docs disagree about which one is right
+
+**Found while attempting `todo-open-debt-program.md` box 3a.2 ("Replace the rank comparisons with
+permission checks"). The box cannot be executed as written, and the reason is not missing work — it
+is two documents that state opposite policies about the same gate.**
+
+**The disagreement, live today on presets.** The `analytics` route carries two gates that do not
+agree:
+
+| Where | Gate | Read at |
+|---|---|---|
+| Home Tools card | `minimumRole: 'admin'` (a **rank**) | `ui/src/features/workspaces/tools.tsx:180` |
+| The route itself | `requiredRole: 'manager'` + `requiredPermission: 'analytics:view'` | `ui/src/features/analytics/register.tsx:12` |
+
+The route's permission arm is **authoritative**, not advisory — `passesGate`
+(`ui/src/platform/ui/page-registry/index.ts:139`) returns `hasGrantedPermission(permissions, …)` and
+never consults `requiredRole` whenever the session carries granted keys. And the `role-manager` preset
+**does** hold that key: `permissions::ANALYTICS_VIEW` is the 36th entry of its list
+(`platform/core/src/rbac_presets.rs:84`, inside the block opening at `:49`).
+
+So a manager session is **shown Analytics in the nav and hidden Analytics in the Tools grid, at the
+same time, on the same route** — `getEnabledPages` admits the page, `roleAtLeast(roleName,
+'admin')` refuses the card. This is not a custom-role edge case; it is the default preset.
+
+**Why it was not simply fixed here.** The two plan documents prescribe opposite resolutions, and
+choosing between them changes who can see an admin surface:
+
+- `todo-tools.md:730-732` states the current shape as **deliberate**: *"the home `minimumRole` is
+  never LOOSER than the route's `requiredRole` (**home-stricter is the documented policy choice**;
+  Settings stays `manager` + authoritative `settings:read` at the route until the §H scope pass)."*
+  Under that policy the grid is a stricter front-door filter and the nav is the authoritative gate —
+  the two surfaces are *supposed* to differ, and the defect is only that nothing says so at either
+  site.
+- `todo-open-debt-program.md` box 3a.2 asks for the rank comparisons to be **replaced** by permission
+  checks, one gate at a time, each pinned by *"a custom role holding the gate permission passing the
+  same way a preset would"*.
+
+Those cannot both hold for `analytics`. The preset that holds `analytics:view` — `manager` — is
+exactly the role the home gate excludes, so 3a.2's required test is unsatisfiable without
+contradicting `todo-tools.md:730`. Either the documented home-stricter policy is retired, or the Tools
+grid keeps its rank and 3a.2 shrinks to the gates that have no route twin.
+
+**Decision required (owner).** Which is authoritative for the home grid — the documented front-door
+policy, or the permission vocabulary? The three sub-questions that follow, none of which a lane should
+answer:
+
+1. If the permission wins, the Analytics card becomes visible to every manager. Is that intended?
+2. If the rank wins, `todo-tools.md:730` should be cited *at* `tools.tsx:180`, because the current
+   file documents only `minimumRole` and `minimumTier` and a reader cannot tell the two gates are
+   meant to differ.
+3. Does the same split exist on any other tool? Only a per-tool census answers it, and that census has
+   not been run — see below.
+
+**Not established, and deliberately not guessed.** This finding proves the disagreement for
+`analytics` by reading both gates and the preset. It does **not** claim `analytics` is the only
+divergent tool: the tool catalogue carries **17** entries and only a per-tool comparison of
+`tools.tsx`'s `minimumRole` against each route's `requiredPermission` coverage across the five presets
+would bound the population. `settings` is documented as a known instance (`todo-tools.md:732` names
+it), and the rest are unmeasured.
+
+**Re-derive, verbatim — no number above rests on another document:**
+
+```bash
+sed -n '180p' ui/src/features/workspaces/tools.tsx
+sed -n '12p' ui/src/features/analytics/register.tsx
+sed -n '84p' platform/core/src/rbac_presets.rs
+sed -n '139p' ui/src/platform/ui/page-registry/index.ts
+sed -n '730,732p' todo-tools.md
+```
+
+**Nothing in the tree was changed to measure this** — every line above was read, not written, and the
+three files it names were clean in `git status --porcelain` at the time of reading.
+
 ## How to close these
 
 Each finding's original remediation guidance lives in git history under
