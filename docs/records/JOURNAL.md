@@ -11257,3 +11257,19 @@ Referee red `61 passed; 1 failed`; after the save-site fix `62 passed; 0 failed;
 All three ruled phases now carry EXECUTED records with prints; the topology program's open boxes are the two reviewer-judgement rows (:469/:471) that no ruling covers. Residuals named, not missed: the ANY-registry gap (T3 pin, upgrade note) and the create-and-migrate file side effect on rejected diagrams (recorded at the site). If a future lane adds the write-side self-seed, T3 fails on purpose and says so.
 
 **Commit:** `32abb9cbb` + plan ticks; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — Phase 7 closes, and with it the whole topology program: review found nothing to fix, and fixed nothing anyway
+
+**Context:**
+The last two NO-REFEREE rows (the F5 tautology sweep, the F1-shape handler pass) plus the standing no-fix fence. Executed as the ordered reviewer pass: read-only, findings into the existing review document, per the plan's own prescription that the deliverable is "a table, not an exit code".
+
+**Findings (all recorded, none fixed):**
+F5 across the 53-file canvas sub-surface: zero live hits — the one cited population member is the comment documenting an already-deleted tautology, and all seven restate-shape candidates read as genuine cross-consumer equivalence properties (one suite actively asserts the two-consumers-agree property F1 violates). F1 over pointer/keyboard/drag/touch/bend (2,349 lines total): zero tenant-scope reads in any handler file — the family is geometry-only; the tabulated scope layer (load/compare/history/apply/revision) keys every consumer on the same gated `selectedBranchId`. One second-order finding worth the wait: the revision-browser TEST helper snapshots baseRevision without a branch while deploying with one and passes only because the dev-mock's envelope is global — the T-1 divergence teaching a scaffold to rely on the wrong shape; filed as part of T-1's blast radius, not fixed.
+
+**Verification:**
+`d94bd313e` + `733d744e0` are the pass's only commits — both `docs(...)`, zero code paths, which is itself the fence's compliance record. The plan's open-box count is now 0 (`rg -c '^\- \[ \]' todo-topology-editor.md` → none). And the pass caught its own measurement lying: the first F5 sweep's clean 0 was PowerShell passing a glob literally into rg with stderr silenced — corrected to an explicit file list before any number was written down; the lesson went into the review document on purpose.
+
+**What it means:**
+The topology-editor program is closed: every one of its boxes has a dated record — executed, ruled-and-executed, reviewed-and-clean, or honored-as-fence. Open threads in the world: the push debt (~215), the T-1 mock ruling (still just recommended, now with a second dependent finding), and the sibling lanes' dirty clusters, which grew rather than died.
+
+**Commit:** `d94bd313e` + `733d744e0`; this entry rides its own docs(journal) commit -- never push without a direct user order.
