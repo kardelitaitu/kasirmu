@@ -255,8 +255,12 @@
 /* ── Search box ──────────────────────────────────── */
 .restaurant-search {
   display: flex;
-  flex: 1 1 calc(var(--space-24) + var(--space-24) + var(--space-24) + var(--space-8));
-  min-width: calc(var(--space-24) + var(--space-12) + var(--space-4));
+  /* Grow to fill the header but shrink below the basis: the later
+     `flex-shrink: 0` that used to win here is gone, so at narrow widths the
+     box yields instead of pushing the header into horizontal overflow. The
+     floor is just icon + clear control + a few characters of input. */
+  flex: 1 1 auto;
+  min-width: calc(var(--touch-target-min) * 2 + var(--space-8));
   max-width: none;
   min-height: var(--space-11);
   margin-left: auto;
@@ -266,7 +270,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-bg-input);
-  flex-shrink: 0;
   transition: border-color var(--duration-150) var(--ease-out);
 }
 
