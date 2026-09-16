@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
- * check-font-claims.mjs -- run the commands in todo-font-system.md's reproduction block
- * and report whether each still produces what the plan says it produces.
+ * check-font-claims.mjs -- execute the claims THIS LANE publishes, and report whether each
+ * command still produces what the prose says it produces.
+ *
+ * The population widened in stages, and the sentence had to follow it: it began as the
+ * reproduction block of todo-font-system.md, then took on the bundle-budget facts, and now
+ * covers claims published in docs/plans/notes.md items 37-39 as well. Calling all of that
+ * "the plan's reproduction block" would leave the tool's own description narrower than its
+ * set -- the exact defect this file keeps finding in other people's counts.
  *
  * Why this exists: the block was written as "commands, not values", but the expectations
  * beside those commands were still prose, and prose drifts. Round 15 proved the point the
@@ -201,7 +207,7 @@ if (!fs.existsSync(VITEST_BIN)) {
   check('the sixteen rules', false, `vitest not installed at ${path.relative(REPO, VITEST_BIN)} -- row could not run`,
     'at most 1 failure, and that one only while a walked path is dirty');
 } else {
-  const suite = run([process.execPath, VITEST_BIN, 'run', 'src/__tests__/themeTokenCompliance.test.ts'], { cwd: path.join(REPO, 'ui') });
+  const suite = run([process.execPath, VITEST_BIN, 'run', 'src/__tests__/themeTokenCompliance.test.ts', '--reporter=verbose'], { cwd: path.join(REPO, 'ui') });
   const suiteOut = suite.out ?? '';
   const failed = /Tests\s+(?:(\d+) failed \| )?(\d+) passed(?: \((\d+)\))?/.exec(suiteOut);
   if (!failed) {
@@ -209,9 +215,36 @@ if (!fs.existsSync(VITEST_BIN)) {
       'at most 1 failure, and that one only while a walked path is dirty');
   } else {
     const nf = Number(failed[1] ?? 0);
-    check('the sixteen rules', nf <= 1 && (nf === 0 || dirtyLines.length > 0),
+    // This row used to allow one failure while a walked path was dirty. The allowance was
+    // written for a specific borrowed red -- `--shadow-md` in another session's UNCOMMITTED
+    // ui/src/features/sales/CartPanelLineItem.css -- and that red cleared on 2026-09-16
+    // while the tree stayed dirty. A temporary tolerance with no expiry condition becomes a
+    // mask: it would have accepted any new failure silently. So: zero, and the dirty tree is
+    // a NOTE about what the green covers, never a reason to grade a red as passing.
+    check('the sixteen rules (frozen: zero failures since the borrowed red cleared)', nf === 0,
       `${nf} failed | ${failed[2]} passed (of ${failed[3] ?? '?'})`,
-      'at most 1 failure, and that one only while a walked path is dirty');
+      '0 failures. If the only failure is again a borrowed one from a dirty walked path, that is a '
+      + 'conversation with the lane that owns the file -- not a reason to loosen this row again.');
+
+    // The two walkers in that suite print their own populations in their case titles. Take
+    // the numbers from the run and the floors from the test's own source: restating 575 or
+    // 120 here would create a second copy of a value whose whole purpose is to be one.
+    const srcTest = fs.readFileSync(path.join(REPO, 'ui', 'src', '__tests__', 'themeTokenCompliance.test.ts'), 'utf8');
+    const floor = (name) => Number(new RegExp(`const ${name} = (\\d+);`).exec(srcTest)?.[1] ?? NaN);
+    const jsTitle = /the script walk opened every directory it was pointed at \((\d+) files in hand\)/.exec(suiteOut);
+    const cssTitle = /the CSS walk opened every directory it was pointed at \((\d+) sheets in hand\)/.exec(suiteOut);
+    const jsFloor = floor('scriptFloor');
+    check('both walkers print their own denominator, above their own floor',
+      !!jsTitle && !!cssTitle && Number.isFinite(jsFloor) && Number(jsTitle[1]) >= jsFloor,
+      `script walk ${jsTitle ? jsTitle[1] : 'title not printed'} files against a floor of ${Number.isFinite(jsFloor) ? jsFloor : 'unreadable'} (item 36 quotes 671 at its writing); CSS walk ${cssTitle ? cssTitle[1] : 'title not printed'} sheets`,
+      'both case titles present and the JS count at or above the floor declared in the test source -- if the title vanished the guard was deleted, and if the count fell the walk narrowed');
+
+    // notes.md item 39's published number, executed rather than remembered.
+    const reach = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.filter(x=>x.status==='required'&&!x.ci);console.log(r.length+'|'+r.map(x=>x.id).join(','))"]);
+    const [rc, ids] = (reach.out || '').trim().split('|');
+    check('notes.md item 39: the count of required rows with no ci block', reach.status === 0 && rc === '6',
+      `${rc} row(s): ${ids}`,
+      '6 -- if this drifts a row gained or lost CI coverage: repair item 39, and note that bundle-budget left this set in d3ae1e201');
     // Informational, not a verdict: in a shared checkout the tree is dirty more often
     // than it is clean, and a tool that reports that as drift every day is a tool whose
     // drift signal gets ignored. It is recorded because AGENTS.md's rule binds every
@@ -223,7 +256,7 @@ if (!fs.existsSync(VITEST_BIN)) {
 }
 
 
-console.log('\n  todo-font-system.md -- reproduction block, executed');
+console.log('\n  claims published by this lane (todo-font-system.md + notes.md items 37-39), executed');
 for (const r of results) {
   console.log(`   ${r.pass ? 'OK  ' : 'DRIFT'}  ${r.name}`);
   console.log(`          observed : ${r.observed}`);
