@@ -584,11 +584,27 @@
   }
 }
 
-/* Pinned badge on menu cards */
-.restaurant-card-pin-badge {
+/* Pinned badge on menu cards. The positioning context is the WRAP, not the
+   card body: the badge renders inside a Tooltip whose wrapper is
+   position:relative, so absolute top/left resolve against the wrap's box.
+   The wrap is a zero-size anchor at the body's top-left padding corner, and
+   the badge is centred on it — the coordinates below are the badge's own
+   centring, not body-relative offsets. */
+.restaurant-card-pin-wrap {
   position: absolute;
   top: var(--space-2);
   left: var(--space-2);
+  width: 0;
+  height: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.restaurant-card-pin-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -600,6 +616,13 @@
   font-size: var(--text-xs);
   z-index: 2;
   pointer-events: none;
+}
+
+/* The inline Tooltip wrapper is shrink-to-fit content, but inside the
+   zero-size anchor it must not contribute a box of its own — the badge
+   above is the only painted box. */
+.restaurant-card-pin-wrap .tooltip-wrapper--inline {
+  display: contents;
 }
 
 /* Card body — name area to the left of the diagonal */
