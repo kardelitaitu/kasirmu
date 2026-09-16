@@ -3,6 +3,36 @@
 //! CRUD operations for product variants (size, colour, flavour).
 //! Each variant is linked to a parent product via `parent_sku` and has
 //! its own SKU, optional price override, and barcode.
+//!
+//! # ADR #49 status — measured 2026-09-16, `verify-body-parity.py` → **3 / 5**
+//!
+//! All five twins are **renamed** (`list_product_variants_scoped` →
+//! `list_scoped`), so a parity run needs `--map` or it compares nothing at all
+//! and reports the doors as `shell-only` facing five `bridge-only` twins.
+//!
+//! **Three doors are ported** — [`list_product_variants_scoped`],
+//! [`get_product_variant_scoped`] and [`delete_product_variant_scoped`]. Their
+//! bodies were already statement-identical, and each names a permission
+//! (`PRODUCTS_READ` / `PRODUCTS_READ` / `PRODUCTS_DELETE`), so all three are
+//! case 1 and the delegation is ledger-neutral. Note the twins' argument order:
+//! the payload comes **first** and `session_token` **last**
+//! (`crates/oz-bridge/src/product_variants.rs:160-164`), the reverse of most
+//! modules in this campaign — a straight copy of the usual call shape will not
+//! compile.
+//!
+//! **Two doors are REFUSED on the log text, and nothing else.**
+//! [`create_product_variant_scoped`] and [`update_product_variant_scoped`] are
+//! otherwise statement-identical to their twins — same validation, same `Money`
+//! parse, same store call — but the bridge appends `" (scoped)"` where this
+//! shell logs `"product variant created"` (`:133` vs
+//! `crates/oz-bridge/src/product_variants.rs:316`) and `"product variant
+//! updated"` (`:188` vs `:386`). §4 pins log text byte-identical, so these are a
+//! **decision rather than work**: reconcile the suffix and both become
+//! whole-body moves.
+//!
+//! [`delete_product_variant_scoped`] is the control case: its log line matches
+//! on both sides (`:212` / `:248`), which is exactly why it ports while its two
+//! siblings do not.
 
 use tauri::{State, command};
 
@@ -35,53 +65,60 @@ pub use oz_bridge::product_variants::{
 // ── Delete ────────────────────────────────────────────────────────────
 
 /// List all variants for a given parent product SKU resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::product_variants::list_scoped`]. The body was
+/// statement-identical and the gate is `PRODUCTS_READ` on both sides, so the
+/// move is ledger-neutral. Argument order follows the twin: payload first,
+/// `session_token` last.
 #[command]
 pub async fn list_product_variants_scoped(
     session_token: String,
     parent_sku: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductVariantDto>, AppError> {
-    validate_not_empty("parent_sku", &parent_sku).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let variants = store.list_product_variants(&parent_sku)?;
-    drop(db);
-
-    let dtos: Vec<ProductVariantDto> = variants.into_iter().map(ProductVariantDto::from).collect();
-    Ok(dtos)
+    let ctx = state.bridge_ctx();
+    oz_bridge::product_variants::list_scoped(&ctx, &parent_sku, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Get a single variant by its own SKU resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::product_variants::get_scoped`]; the body was
+/// statement-identical and the gate is `PRODUCTS_READ` on both sides, so the
+/// move is ledger-neutral.
 #[command]
 pub async fn get_product_variant_scoped(
     session_token: String,
     sku: String,
     state: State<'_, AppState>,
 ) -> Result<Option<ProductVariantDto>, AppError> {
-    validate_not_empty("sku", &sku).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_READ).await?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    let variant = store.get_product_variant(&sku)?;
-    drop(db);
-
-    Ok(variant.map(ProductVariantDto::from))
+    let ctx = state.bridge_ctx();
+    oz_bridge::product_variants::get_scoped(&ctx, &sku, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create a new product variant resolved from a session token. ADR #7.
+///
+/// # ADR #49 NOT APPLIED, deliberately — the log line is the only obstacle
+///
+/// Refused 2026-09-16. The gate matches (`PRODUCTS_CREATE`, same kind, same
+/// order) and the body is otherwise statement-identical to
+/// [`oz_bridge::product_variants::create_scoped`] — same three
+/// `validate_not_empty` calls, same `Money` parse, same barcode handling, same
+/// store call. The single delta is the log text: this shell logs
+/// `"product variant created"` (`:133`) where the bridge logs
+/// `"product variant created (scoped)"`
+/// (`crates/oz-bridge/src/product_variants.rs:316`). §4 pins log text
+/// byte-identical, and the `resolve_boot_store` refusal set that precedent.
+///
+/// This is a **decision rather than work** — reconcile the `(scoped)` suffix on
+/// one side and the door becomes a whole-body move with nothing left to rewrite.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_product_variant_scoped(
@@ -135,6 +172,16 @@ pub async fn create_product_variant_scoped(
 }
 
 /// Update an existing product variant (matched by SKU) resolved from a session token. ADR #7.
+///
+/// # ADR #49 NOT APPLIED, deliberately — the log line is the only obstacle
+///
+/// Refused 2026-09-16 on the same ground as
+/// [`create_product_variant_scoped`]: the gate matches (`PRODUCTS_UPDATE`), the
+/// body is otherwise statement-identical, and the one delta is the log text —
+/// `"product variant updated"` here (`:188`) against
+/// `"product variant updated (scoped)"` in the twin
+/// (`crates/oz-bridge/src/product_variants.rs:386`). §4 pins log text
+/// byte-identical.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn update_product_variant_scoped(
@@ -190,27 +237,23 @@ pub async fn update_product_variant_scoped(
 }
 
 /// Delete a product variant by its own SKU resolved from a session token. ADR #7.
-#[allow(clippy::needless_borrow, dropping_references)]
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::product_variants::delete_scoped`]. The body was
+/// statement-identical — including the log line, `"product variant deleted"`,
+/// which is what distinguishes this door from its two refused siblings — and the
+/// gate is `PRODUCTS_DELETE` on both sides, so the move is ledger-neutral.
 #[command]
 pub async fn delete_product_variant_scoped(
     session_token: String,
     sku: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    validate_not_empty("sku", &sku).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::PRODUCTS_DELETE).await?;
-    let db_guard = conn_arc
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let db = &*db_guard;
-    let store = Store::new(&db);
-    store.delete_product_variant(&sku)?;
-    drop(db);
-
-    tracing::info!(sku, "product variant deleted");
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::product_variants::delete_scoped(&ctx, &sku, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
