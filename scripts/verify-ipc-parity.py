@@ -949,8 +949,17 @@ def extract_dev_mock_answerable() -> tuple[set[str], set[str], dict[str, set[str
     bare name still reads identically whether a slice asked for a browser exemption and
     somebody agreed, or nobody has looked at it since it was written; that is what the
     "carry no reason" line the gate prints on every run is now able to say with a number.
-    The other sections have NOT been given the schema: scoped_orphans, desktop and tablet
-    are still read through bare set() calls, so a dict in one of those still dies.
+    Every section HAS been given the schema since then: scoped_orphans, desktop and tablet
+    are read through section_names exactly as dev_mock is, so the TypeError above is not
+    reachable from any of the four, and self-test case 10 pins both shapes on a scoped_orphans
+    fixture. What stays barred is a SHAPE in two of them. "desktop" and "tablet" keep one bare
+    name per entry because the sibling reader scripts/verify-scoped-reads.py refuses an object
+    there -- measured 2026-09-16 by planting {"name", "reason"} as entry #1 of "desktop" in a
+    copy of the file and running that gate with --allowlist on the copy: it printed
+    "FAIL: 1 member(s) ... this gate could not read" and exited 1. The constraint is therefore
+    enforced at both ends of the shared file, in words rather than by one reader's inability to
+    parse -- which is what this file's EXTERNALLY_READ_SECTIONS / OBJECT_ALLOWED_SECTIONS split
+    records.
     The presence side is honest at least: an entry whose handler lands turns the gate RED as
     stale, so the list cannot rot into a lie in that direction. What is lopsided is the
     editing. --write-dev-mock-gaps unions today's gaps in, alphabetised and additive only,
@@ -1301,17 +1310,23 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
 
     The split IS deliberate today, and each message says so, because the reason is external
     rather than internal to this file: scripts/verify-scoped-reads.py reads the "desktop" and
-    "tablet" sections and feeds each member straight into a dict lookup, so an object there
+    "tablet" sections and grades every member of them as a command name, so an object there
     does not merely confuse this gate -- it reds a second gate that runs bare in CI and in
-    check.sh, in a file its owner is not working in. "dev_mock" and "scoped_orphans" have no
+    check.sh, in a file its owner is not working in. HOW that gate reds is measured here rather
+    than remembered: since it grew allowlist_names(), an object in a shell section is reported
+    as an unreadable member and FAILS the run (exit 1, one sentence naming the section and the
+    1-based index), with no TypeError and no traceback -- re-derive it by planting one in a copy
+    and running scripts/verify-scoped-reads.py --allowlist on the copy. The verdict the rule
+    exists to protect is unchanged either way. "dev_mock" and "scoped_orphans" have no
     reader outside this script, so they can take the object form as soon as the reads here
     normalise both shapes, which allowlist_section and section_names now do.
 
     COUPLING, written where the rule lives rather than in a commit message from a lane that
     no longer exists: the two tuples this reads -- EXTERNALLY_READ_SECTIONS ("desktop",
     "tablet") and OBJECT_ALLOWED_SECTIONS ("dev_mock", "scoped_orphans") -- are this file's
-    belief about scripts/verify-scoped-reads.py, whose "for cmd in allow.get(shell, [])"
-    loop feeds each member straight into a dict lookup, and which runs bare at
+    belief about scripts/verify-scoped-reads.py, whose allowlist_names() takes the members of
+    exactly those two sections as the command names it grades and refuses any object member it
+    is handed, and which runs bare at
     .github/workflows/dev-ci.yml:596 and scripts/check.sh:72 (its --shell default is
     desktop, so tablet is the same hazard one flag away). That script is not owned from
     here. If it ever learns the object form, move desktop and tablet into the allowed tuple
@@ -1401,8 +1416,11 @@ def allowlist_section(payload: dict, key: str) -> list[tuple[str, str]]:
     """One allowlist section as (name, reason) pairs, in the order the file holds them.
 
     A member is either a bare command name -- the shape every section has always used, and
-    still the shape all 16 dev_mock entries are written in -- or an object carrying "name"
-    and "reason". Both forms normalise to the same name; only the object form can carry a
+    still the shape "desktop", "tablet" and "scoped_orphans" are written in -- or an object
+    carrying "name" and "reason". Measured 2026-09-16 against the committed file: dev_mock
+    holds 15 entries and every one of them is an object (0 bare, 0 carrying a blank reason,
+    since ce0c12357), while the other three hold 16, 143 and 25 bare names respectively.
+    Both forms normalise to the same name; only the object form can carry a
     reason, and an empty, whitespace, or missing reason counts as no reason rather than as
     a reason that says nothing. Unknown keys on an object are ignored here and preserved by
     merge_dev_mock_entries, so an entry that later grows an "owner" or "expires" field loses
@@ -2160,8 +2178,11 @@ def self_test() -> int:
          globals()["ALLOWLIST_PATH"] == saved_path)
 
     # 10: the three reads that used to hand a raw section straight to set(). Grouped as the
-    # no-op claim: routing them through section_names must change nothing on a tree where
-    # every entry is a bare name, and must stop the crash where one is not.
+    # no-op claim: routing them through section_names had to change nothing on a tree where
+    # every entry was a bare name, and had to stop the crash where one is not. Both shapes
+    # below are fixtures; the committed file holds 15 objects in dev_mock and 16 / 143 / 25
+    # bare names in desktop / tablet / scoped_orphans (measured 2026-09-16), so the no-op half
+    # of this claim describes the fixture and not the file on disk.
     mixed_scoped = ["a_scoped", {"name": "b_scoped", "reason": "host-only, no caller"}]
     case("case 10  scoped_orphans reads both shapes through the same helper",
          section_names({"scoped_orphans": mixed_scoped}, "scoped_orphans")
