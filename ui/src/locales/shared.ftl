@@ -467,7 +467,7 @@ auth-version = Version { $version }
 auth-ip-address = IP Address : { $ip }
 auth-ip-detecting = Detecting...
 auth-ip-unknown = Unknown
-auth-copyright = OZ-POS © { $year } All rights reserved.
+auth-copyright = kasir.mu © { $year } All rights reserved.
 auth-clipboard-error = Clipboard error: { $message }
 auth-error-title = Error
 

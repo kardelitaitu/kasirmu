@@ -1,7 +1,7 @@
 # ui/src/locales/settings.ftl — Settings page, setup wizard, sync
 
 # Setup Wizard
-setup-logo = OZ-POS
+setup-logo = kasir.mu
 # ── License: over-quota remediation (§J) ──
 settings-license-quota-title = Quota status
 settings-license-quota-intro = Resources measured against the { $tier } tier quotas — the same numbers the creation gates enforce.
@@ -201,7 +201,7 @@ setup-default-currency-label = Default Currency
 
 setup-complete-title = All Set!
 setup-complete-desc = Your { $preset } POS is configured and ready. You can adjust settings anytime.
-setup-launch = Launch OZ-POS
+setup-launch = Launch kasir.mu
 setup-complete-features = { $count } { $count ->
     [one] feature enabled
     *[other] features enabled
@@ -385,7 +385,7 @@ settings-sync-result = Last sync: { $synced } synced, { $failed } failed
 settings-sync-success = Sync complete: { $synced } synced, { $failed } failed
 settings-sync-nothing = Nothing to sync — all caught up
 settings-store-name-placeholder =
-    .placeholder = OZ-POS Store
+    .placeholder = kasir.mu Store
 settings-address-placeholder =
     .placeholder = 123 Main Street
 settings-tax-id-placeholder =
@@ -442,7 +442,7 @@ settings-software-edition = Software Edition
 settings-license-type = License Type
 settings-copyright-notice = Copyright Notice
 settings-commercial-contact = Commercial Contact
-settings-app-version = OZ-POS Enterprise v{ $version }
+settings-app-version = kasir.mu Enterprise v{ $version }
 
 # ── License Info Section ──
 settings-section-license = License
@@ -501,7 +501,7 @@ settings-license-resume-subscription = Resume subscription
 settings-license-resume-aria = Resume paused subscription
 settings-license-resume-success = Subscription resumed!
 settings-license-resume-failed = Failed to resume subscription
-settings-copyright-notice-value = OZ-POS © 2025–2026 OZ Systems. All rights reserved.
+settings-copyright-notice-value = kasir.mu © 2025–2026. All rights reserved.
 
 # Appearance / Brand settings
 appearance-primary-colour = Primary Colour
@@ -531,7 +531,7 @@ appearance-zoom-200 = 200%
 appearance-branding = Branding
 appearance-interface = Interface
 appearance-preview-heading = Preview
-appearance-store-name-fallback = OZ-POS
+appearance-store-name-fallback = kasir.mu
 appearance-hw-accel = Hardware Acceleration
 appearance-hw-accel-aria =
     .aria-label = Toggle hardware acceleration
@@ -614,7 +614,7 @@ data-mgmt-encrypt-export = Export
 # Import wizard
 data-mgmt-import-wizard-aria = Import wizard
 data-mgmt-import-title = Select a backup file
-data-mgmt-import-desc = Choose an encrypted .ozpkg file to import. The file must have been created by OZ-POS export.
+data-mgmt-import-desc = Choose an encrypted .kasirpkg file to import. The file must have been created by kasir.mu export.
 data-mgmt-import-browse = Browse files…
 data-mgmt-import-preview-title = Preview import
 data-mgmt-import-meta-file = File
@@ -930,7 +930,7 @@ addon-owned-badge = Active
 addon-analytics-name = Advanced Analytics
 addon-analytics-desc = Unlock detailed sales reports, trend analysis, and custom date ranges on the Plus plan.
 addon-support-name = Priority Support
-addon-support-desc = Get faster response times and dedicated support from the OZ-POS team.
+addon-support-desc = Get faster response times and dedicated support from the kasir.mu team.
 addon-storage-name = Extra Cloud Storage
 addon-storage-desc = Increase your cloud sync storage quota for larger product catalogs and longer history.
 addon-hal-name = Custom HAL Drivers

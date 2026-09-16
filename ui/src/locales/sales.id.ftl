@@ -105,7 +105,7 @@ payment-qris-confirmed = Pembayaran dikonfirmasi!
 payment-qris-amount = Jumlah
 payment-qris-reference = Referensi
 payment-qris-merchant = Pedagang
-payment-qris-merchant-name = OZ-POS Store
+payment-qris-merchant-name = kasir.mu Store
 
 # Price Override Modal
 price-override-dialog-aria = Override harga
@@ -923,7 +923,7 @@ payment-qris-upgrade-cta = Tingkatkan ke Plus
 
 # ── Receipt Preview ──
 receipt-preview-aria = Pratinjau Struk
-receipt-preview-store-name = Toko OZ-POS
+receipt-preview-store-name = Toko kasir.mu
 receipt-preview-col-item = Item
 receipt-preview-col-qty = Jum
 receipt-preview-col-price = Harga

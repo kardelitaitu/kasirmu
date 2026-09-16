@@ -114,7 +114,7 @@ payment-qris-confirmed = Payment confirmed!
 payment-qris-amount = Amount
 payment-qris-reference = Reference
 payment-qris-merchant = Merchant
-payment-qris-merchant-name = OZ-POS Store
+payment-qris-merchant-name = kasir.mu Store
 
 # Price Override Modal
 price-override-dialog-aria = Price override
@@ -979,7 +979,7 @@ payment-qris-upgrade-cta = Upgrade to Plus
 
 # ── Receipt Preview ──
 receipt-preview-aria = Receipt Preview
-receipt-preview-store-name = OZ-POS Store
+receipt-preview-store-name = kasir.mu Store
 receipt-preview-col-item = Item
 receipt-preview-col-qty = Qty
 receipt-preview-col-price = Price

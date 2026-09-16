@@ -124,7 +124,7 @@ appearance-preview-btn-outline-label = Sekunder
 appearance-preview-badge-label = Aktif
 
 # ── Product Lookup ──
-setup-logo = OZ-POS
+setup-logo = kasir.mu
 setup-tagline = Point of Sale — Sederhana
 setup-step-store-type = Tipe Toko
 setup-step-payments = Pembayaran
@@ -265,7 +265,7 @@ setup-default-currency-label = Mata Uang Default
 
 setup-complete-title = Siap!
 setup-complete-desc = { $preset } POS Anda telah dikonfigurasi dan siap digunakan. Anda dapat menyesuaikan pengaturan kapan saja.
-setup-launch = Luncurkan OZ-POS
+setup-launch = Luncurkan kasir.mu
 setup-complete-features = { $count } { $count ->
     [one] fitur diaktifkan
     *[other] fitur diaktifkan
@@ -376,7 +376,7 @@ settings-sync-result = Sinkronisasi terakhir: { $synced } tersinkron, { $failed 
 settings-sync-success = Sinkronisasi selesai: { $synced } tersinkron, { $failed } gagal
 settings-sync-nothing = Tidak ada yang perlu disinkronkan
 settings-store-name-placeholder =
-    .placeholder = Toko OZ-POS
+    .placeholder = Toko kasir.mu
 settings-address-placeholder =
     .placeholder = Jl. Contoh No. 123
 settings-tax-id-placeholder =
@@ -451,7 +451,7 @@ appearance-zoom-200 = 200%
 appearance-branding = Merek
 appearance-interface = Antarmuka
 appearance-preview-heading = Pratinjau
-appearance-store-name-fallback = OZ-POS
+appearance-store-name-fallback = kasir.mu
 appearance-hw-accel = Akselerasi Perangkat Keras
 appearance-hw-accel-aria =
     .aria-label = Aktifkan/nonaktifkan akselerasi perangkat keras
@@ -514,7 +514,7 @@ data-mgmt-encrypt-back = Kembali
 data-mgmt-encrypt-export = Ekspor
 data-mgmt-import-wizard-aria = Wizard impor
 data-mgmt-import-title = Pilih file cadangan
-data-mgmt-import-desc = Pilih file .ozpkg terenkripsi untuk diimpor. File harus dibuat oleh ekspor OZ-POS.
+data-mgmt-import-desc = Pilih file .kasirpkg terenkripsi untuk diimpor. File harus dibuat oleh ekspor kasir.mu.
 data-mgmt-import-browse = Cari file…
 data-mgmt-import-preview-title = Pratinjau impor
 data-mgmt-import-meta-file = File
@@ -671,7 +671,7 @@ settings-software-edition = Edisi Perangkat Lunak
 settings-license-type = Tipe Lisensi
 settings-copyright-notice = Pemberitahuan Hak Cipta
 settings-commercial-contact = Kontak Komersial
-settings-app-version = OZ-POS Enterprise v{ $version }
+settings-app-version = kasir.mu Enterprise v{ $version }
 
 # ── License Info Section ──
 settings-section-license = Lisensi
@@ -730,7 +730,7 @@ settings-license-resume-subscription = Lanjutkan langganan
 settings-license-resume-aria = Lanjutkan langganan yang dijeda
 settings-license-resume-success = Langganan dilanjutkan!
 settings-license-resume-failed = Gagal melanjutkan langganan
-settings-copyright-notice-value = OZ-POS © 2025–2026 OZ Systems. Seluruh hak cipta dilindungi.
+settings-copyright-notice-value = kasir.mu © 2025–2026. Seluruh hak cipta dilindungi.
 
 # ── Toast messages ──
 
@@ -913,7 +913,7 @@ addon-owned-badge = Aktif
 addon-analytics-name = Analitik Lanjutan
 addon-analytics-desc = Buka laporan penjualan detail, analisis tren, dan rentang tanggal kustom di paket Plus.
 addon-support-name = Dukungan Prioritas
-addon-support-desc = Dapatkan waktu respons lebih cepat dan dukungan khusus dari tim OZ-POS.
+addon-support-desc = Dapatkan waktu respons lebih cepat dan dukungan khusus dari tim kasir.mu.
 addon-storage-name = Penyimpanan Cloud Tambahan
 addon-storage-desc = Tingkatkan kuota penyimpanan cloud sync untuk katalog produk yang lebih besar dan riwayat lebih panjang.
 addon-hal-name = Driver HAL Kustom

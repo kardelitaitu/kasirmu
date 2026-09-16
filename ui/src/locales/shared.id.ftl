@@ -1,4 +1,4 @@
--app-name = OZ-POS
+-app-name = kasir.mu
 
 save = Simpan
 cancel = Batal
@@ -433,7 +433,7 @@ auth-version = Versi { $version }
 auth-ip-address = Alamat IP : { $ip }
 auth-ip-detecting = Mendeteksi...
 auth-ip-unknown = Tidak diketahui
-auth-copyright = OZ-POS © { $year } Hak Cipta Dilindungi.
+auth-copyright = kasir.mu © { $year } Hak Cipta Dilindungi.
 auth-clipboard-error = Kesalahan papan klip: { $message }
 auth-error-title = Kesalahan
 
