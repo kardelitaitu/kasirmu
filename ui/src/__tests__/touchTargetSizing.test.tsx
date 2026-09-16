@@ -45,6 +45,20 @@ function isAdequate(px: number | null, value: string): boolean {
 const INTERACTIVE_SELECTOR_RE =
   /\.(?:btn|button|tab|switch|toggle|close|clickable|action-btn|nav-item|filter-btn|modal-close|line-remove|theme-toggle|card-clickable|action-button|icon-btn|cat-mgmt-(?:edit|delete|icon)-btn|cat-mgmt-colour-swatch)\b/i;
 
+// Restaurant surface (resto-pos tackle-all Phase 5): exact-match controls
+// from the menu sheet. The scanner tests the selector STRING, so a \b-style
+// alternation over-matched every decorative descendant (card parts, state
+// classes); the exact set below is the graded population — verify with the
+// suite's own violation print, not by widening this list.
+//
+// Two deliberate non-matches: `.restaurant-card` is the product tile itself
+// and is graded by the card-height suite rather than by a height declaration
+// (the scanner cannot resolve its calc() of --space-* tokens and mis-reads
+// it as 22px); the colour swatches are decorative fill (no text) and are
+// graded by their focus treatment, not their size.
+const RESTAURANT_INTERACTIVE_RE =
+  /^\s*\.(?:restaurant-hamburger-btn|restaurant-back-btn|restaurant-category-pill|restaurant-search-clear|restaurant-context-item|restaurant-size-btn|restaurant-hamburger-item)\s*$/i;
+
 /** Selectors to skip — known false positives (decorative parts of custom controls). */
 const SKIP_SELECTOR_RE = [
   // Custom toggle switch: hidden native checkbox, visual track/thumb
@@ -116,7 +130,7 @@ function scanCSS(filePath: string): Violation[] {
     if (isSkipSelector(selectors)) continue;
 
     // Skip non-interactive selectors
-    if (!INTERACTIVE_SELECTOR_RE.test(selectors)) continue;
+    if (!INTERACTIVE_SELECTOR_RE.test(selectors) && !RESTAURANT_INTERACTIVE_RE.test(selectors)) continue;
 
     // Check each declaration
     const decls = body.split(';');

@@ -350,6 +350,18 @@ function assertContrast(pair: ContrastPair, tokens: Record<string, string>): voi
 
 /* ── Test runner ─────────────────────────────────────────────── */
 
+// SCOPE NOTE (resto-pos tackle-all Phase 5, 2026-09-16): this suite reads
+// ONLY `frontend/themes/tokens.css` and grades a fixed pair list built from
+// those tokens. No feature stylesheet is opened, so every restaurant-specific
+// paint is outside its scope except where a restaurant rule happens to reuse
+// a globally-tested pair (the pin badge: accentFg on accent). Ungraded by
+// construction: the "Unavailable" chip (fg-secondary on bg-hover — the suite
+// tests fg-secondary only against bg/bg-input), data-driven category colours
+// used as active-pill text (no contrast guard anywhere), the disabled-tile
+// fade (composited contrast is not modelled), the deduction-override marker
+// (danger-fg on the popover surface, tested only against --color-danger).
+// Widening this suite to feature sheets is a separate decision, not a
+// follow-up fix — recorded here so a green is never read as "colours checked".
 const TOKENS_PATH = resolve(__dirname, '../frontend/themes/tokens.css');
 
 interface ThemeInfo {

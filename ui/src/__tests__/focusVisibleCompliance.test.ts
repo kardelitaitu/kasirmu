@@ -29,6 +29,21 @@ const INTERACTIVE_SELECTORS = [
   /^\s*\.clickable/, /^\s*\.card-clickable/, /^\s*\.select/,
   /^\s*input(?:\s|\.|#|\[|$)/, /^\s*select(?:\s|\.|#|\[|$)/,
   /^\s*textarea(?:\s|\.|#|\[|$)/, /^\s*\.toggle-/,
+  // Restaurant surface (resto-pos tackle-all Phase 5): the menu sheet's
+  // class-named controls never matched the prefixes above, so the sheet was
+  // listed but contributed zero graded selectors. Each pattern names one
+  // control exactly (trailing `$`-ish boundary: no `--modifier` or
+  // descendant may ride along) — over-matching here graded decorative
+  // card parts and state classes as interactive elements.
+  /^\s*\.restaurant-hamburger-btn$/, /^\s*\.restaurant-back-btn$/,
+  /^\s*\.restaurant-category-pill$/, /^\s*\.restaurant-search-input$/,
+  /^\s*\.restaurant-search-clear$/, /^\s*\.restaurant-context-item$/,
+  /^\s*\.restaurant-context-swatch$/, /^\s*\.restaurant-size-btn$/,
+  /^\s*\.restaurant-hamburger-item$/,
+  // The tile itself is a native <button>, caught below — but its name is a
+  // prefix of a dozen decorative descendants, so it needs the same exact
+  // treatment rather than a bare \b.
+  /^\s*\.restaurant-card$/,
 ];
 
 function isInteractiveSelector(selector: string): boolean {
@@ -426,8 +441,8 @@ describe('Focus-visible compliance', () => {
     // it is the one figure that cannot be shuffled between doors.
     expect(
       INTERACTIVE_SELECTORS.length,
-      `INTERACTIVE_SELECTORS members: ${INTERACTIVE_SELECTORS.length}, floor 19 (19 measured 2026-09-15 -- a pattern deleted from the list shrinks the input at its source)`,
-    ).toBeGreaterThanOrEqual(19);
+      `INTERACTIVE_SELECTORS members: ${INTERACTIVE_SELECTORS.length}, floor 29 (19 measured 2026-09-15 plus 10 restaurant controls added 2026-09-16 in the resto-pos tackle-all Phase 5 -- a pattern deleted from the list shrinks the input at its source)`,
+    ).toBeGreaterThanOrEqual(29);
     expect(
       S.interactive + S.skipSelectors,
       `selectors the walk could see at all: ${S.interactive} interactive + ${S.skipSelectors} inside skip rule-groups = ${S.interactive + S.skipSelectors}, floor 1490 (1,495 measured 2026-09-15, headroom 5)`,
