@@ -702,8 +702,10 @@ describe('WorkspaceContext', () => {
   // operator then sees a signed-out screen while the server session can still be live
   // for the next person at the till. The change under test is ONLY the silence: each
   // case asserts (a) the failure is REPORTED, in this file's message shape
-  // (`"WorkspaceContext: <what failed>", err`, the shape used for the degraded reads at
-  // :328, :404, :483 and :514) but at ERROR level -- a session that may still be live
+  // (`"WorkspaceContext: <what failed>", err`, the shape used for its four degraded
+  // reads -- "failed to list workspaces", "picker-ticket refresh failed", "failed to
+  // create session token", "boot store resolution failed") but at ERROR level -- a
+  // session that may still be live
   // on the till the next operator stands at is a security event, not a degraded read,
   // so it does not get to share a volume with "failed to list workspaces" -- and (b)
   // the local token clear and the navigation that follows it are unchanged. Nothing
@@ -785,7 +787,7 @@ describe('WorkspaceContext', () => {
       );
     }
 
-    // :266 -- the login/logout reset effect.
+    // Site 1 of 4 (the brief's :266) -- the login/logout reset effect.
     it('logout: reports a failed teardown and still clears the local token', async () => {
       const log = spyLevels();
       try {
@@ -809,7 +811,7 @@ describe('WorkspaceContext', () => {
       }
     });
 
-    // :325 -- switchStore.
+    // Site 2 of 4 (the brief's :325) -- switchStore.
     it('switchStore: reports a failed teardown and still completes the switch', async () => {
       const log = spyLevels();
       try {
@@ -831,7 +833,8 @@ describe('WorkspaceContext', () => {
       }
     });
 
-    // :384 -- swapSessionToken (ADR #6 hot-swap on a shared touchscreen).
+    // Site 3 of 4 (the brief's :384) -- swapSessionToken, the ADR #6 hot-swap on a
+    // shared touchscreen.
     it('swapSessionToken: reports a failed teardown and still completes the swap', async () => {
       const log = spyLevels();
       try {
@@ -854,7 +857,8 @@ describe('WorkspaceContext', () => {
       }
     });
 
-    // :600 -- the token-creation effect re-entering with a previous token.
+    // Site 4 of 4 (the brief's :600) -- the token-creation effect re-entering with a
+    // previous token.
     it('re-minting on a new workspace: reports a failed teardown of the previous token', async () => {
       const log = spyLevels();
       try {

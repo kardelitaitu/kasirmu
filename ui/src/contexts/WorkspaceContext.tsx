@@ -180,8 +180,10 @@ function useToastIfAvailable(): ReturnType<typeof useToast> | null {
  * that the failure is OBSERVABLE.
  *
  * Same MESSAGE shape as every other diagnostic in this file --
- * `"WorkspaceContext: <what failed>", err` (the degraded reads at :328, :404, :483,
- * :514) -- with `where` naming which teardown broke, but one LEVEL LOUDER: those four
+ * `"WorkspaceContext: <what failed>", err`, the form used by the four degraded reads
+ * ("failed to list workspaces", "picker-ticket refresh failed", "failed to create
+ * session token", "boot store resolution failed") -- with `where` naming which
+ * teardown broke, but one LEVEL LOUDER: those four
  * warn because a read came back short and the app still knows its own state. This one
  * means the client believes it is signed out while the server session may not be, which
  * on a shared till becomes the next operator's problem -- so it goes to
