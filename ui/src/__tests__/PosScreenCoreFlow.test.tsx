@@ -45,7 +45,6 @@ vi.mock('@/features/sales/useBarcodeScanner', async () => {
 const mockLookupByBarcode = vi.hoisted(() => vi.fn((_code: string) => Promise.resolve(null)));
 
 vi.mock('@/api/products', () => ({
-  lookupByBarcode: mockLookupByBarcode,
   lookupByBarcodeScoped: vi.fn((_sessionToken: string, code: string) =>
     mockLookupByBarcode(code),
   ),

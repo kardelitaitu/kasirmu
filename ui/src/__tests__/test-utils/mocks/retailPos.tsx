@@ -56,7 +56,6 @@ export function createRetailProductsApiMock() {
     listCategories: vi.fn(() => Promise.resolve(retailCategories)),
     listCategoriesScoped: vi.fn((_token: string) => Promise.resolve(retailCategories)),
     lookupProductBySkuScoped: vi.fn((_token: string, _sku: string) => Promise.resolve(null)),
-    lookupByBarcode: vi.fn(() => Promise.resolve(null)),
     lookupByBarcodeScoped: vi.fn((_token: string, _code: string) => Promise.resolve(null)),
     createProductScoped: vi.fn(),
     updateProductScoped: vi.fn(),

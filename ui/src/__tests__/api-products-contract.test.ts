@@ -9,7 +9,7 @@ import {
   createProductScoped,
   updateProductScoped,
   deleteProductScoped,
-  lookupByBarcode,
+  lookupByBarcodeScoped,
   recordProductSearchScoped,
 } from '@/api/products';
 
@@ -60,10 +60,17 @@ describe('products.ts API contract', () => {
     });
   });
 
-  it('lookupByBarcode calls correct command', async () => {
+  // Moved rather than dropped, and this was the ONLY wire-shape pin on barcode lookup: the suite
+  // had no `lookupByBarcodeScoped` case at all, so the command both shells register went unwired
+  // in tests while the one no shell registers had one. The `barcode` key name is the point --
+  // Tauri converts the command's outer name and nothing inside the payload.
+  it('lookupByBarcodeScoped calls correct command', async () => {
     mockInvoke.mockResolvedValue(null);
-    await lookupByBarcode('123456');
-    expect(mockInvoke).toHaveBeenCalledWith('lookup_by_barcode', { barcode: '123456' });
+    await lookupByBarcodeScoped(TOKEN, '123456');
+    expect(mockInvoke).toHaveBeenCalledWith('lookup_by_barcode_scoped', {
+      sessionToken: TOKEN,
+      barcode: '123456',
+    });
   });
 
   it('recordProductSearchScoped calls correct command', async () => {

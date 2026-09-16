@@ -13,7 +13,7 @@ import {
   listScannersScoped,
   type BarcodeScannedPayload,
 } from '@/api/hardware';
-import { lookupByBarcode, lookupByBarcodeScoped } from '@/api/products';
+import { lookupByBarcodeScoped } from '@/api/products';
 
 export interface UseWarehouseScannerOptions {
   /** Session token for scoped API calls. */
@@ -73,9 +73,15 @@ export function useWarehouseScanner({
   }, [preferredId, sessionToken]);
 
   const handleScan = useCallback(async (payload: BarcodeScannedPayload) => {
+    // T21 (b2), same reason as the sales twin: no shell registers `lookup_by_barcode`, and
+    // screens that scan already resolve the store through a session token (AppShell.tsx:518,
+    // tablet/TabletAppShell.tsx:194). Not-found without a token matches the existing `catch`.
+    if (!sessionToken) {
+      onProductNotFoundRef.current?.(payload.code);
+      return;
+    }
     try {
-      const lookup = sessionToken ? (code: string) => lookupByBarcodeScoped(sessionToken, code) : lookupByBarcode;
-      const product = await lookup(payload.code);
+      const product = await lookupByBarcodeScoped(sessionToken, payload.code);
       if (product) {
         onProductFoundRef.current(payload);
       } else {

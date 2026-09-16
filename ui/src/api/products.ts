@@ -152,10 +152,6 @@ export const deleteProductScoped = (sessionToken: string, sku: string): Promise<
 
 // ── Barcode / SKU Lookup ───────────────────────────────────────────
 
-/** Look up a product by its barcode. */
-export const lookupByBarcode = (barcode: string): Promise<ProductDto | null> =>
-  loggedInvoke<ProductDto | null>('lookup_by_barcode', { barcode });
-
 /** ADR #7: Scoped barcode lookup using session token. */
 export const lookupByBarcodeScoped = (sessionToken: string, barcode: string): Promise<ProductDto | null> =>
   loggedInvoke<ProductDto | null>('lookup_by_barcode_scoped', { sessionToken, barcode });

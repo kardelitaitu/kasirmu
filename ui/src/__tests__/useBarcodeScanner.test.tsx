@@ -6,7 +6,6 @@ import { useBarcodeScanner } from '@/features/sales/useBarcodeScanner';
 const mocks = vi.hoisted(() => ({
   onBarcodeScanned: vi.fn(),
   onBarcodeError: vi.fn(),
-  lookupByBarcode: vi.fn(),
   // The scoped twins, added by 403030ad ("migrate remaining frontend components to scoped
   // APIs"), which did not touch this file: without these keys the mocked module had no such
   // export, so any test that passed a sessionToken called undefined and threw "xScoped is not
@@ -14,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   // defect as WeightScaleWidget.test.tsx, fixed in 65971d0f. T21 (b2) then deleted the three
   // unscoped scanner exports this hook used to fall back to: `list_scanners`, `start_scanner`
   // and `stop_scanner` are registered in neither shell, so the fallback could only answer
-  // "command not found" in a build. `lookupByBarcode` stays for the same reason it is not
+  // "command not found" in a build. `lookupByBarcodeScoped` stays for the same reason it is not
   // migrated here -- it belongs to the products api, and its arm is still there to test.
   startScannerScoped: vi.fn(),
   stopScannerScoped: vi.fn(),
@@ -31,7 +30,6 @@ vi.mock('@/api/hardware', () => ({
 }));
 
 vi.mock('@/api/products', () => ({
-  lookupByBarcode: (...args: unknown[]) => mocks.lookupByBarcode(...args),
   lookupByBarcodeScoped: (...args: unknown[]) => mocks.lookupByBarcodeScoped(...args),
 }));
 
@@ -47,7 +45,7 @@ function makeOpts(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   mocks.onBarcodeScanned.mockResolvedValue(() => {});
   mocks.onBarcodeError.mockResolvedValue(() => {});
-  mocks.lookupByBarcode.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
+  mocks.lookupByBarcodeScoped.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
   // Scoped twins default to the same shapes, so a scoped-path test differs from an
   // unscoped one only in which mock records the call.
   mocks.listScannersScoped.mockResolvedValue([{ id: 'scanner-1' }]);
@@ -155,9 +153,10 @@ describe('useBarcodeScanner', () => {
     it('calls onProductFound when barcode matches a product', async () => {
       const onProductFound = vi.fn();
       const payload = { code: '4901234567890', symbology: 'ean13' };
-      mocks.lookupByBarcode.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
+      mocks.lookupByBarcodeScoped.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts({ onProductFound })));
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ onProductFound, sessionToken: 'tok-1' })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
       await scanHandler(payload);
@@ -168,9 +167,10 @@ describe('useBarcodeScanner', () => {
     it('calls onProductNotFound when barcode matches no product', async () => {
       const onProductNotFound = vi.fn();
       const payload = { code: '0000000000000', symbology: 'ean13' };
-      mocks.lookupByBarcode.mockResolvedValue(null);
+      mocks.lookupByBarcodeScoped.mockResolvedValue(null);
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts({ onProductNotFound })));
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ onProductNotFound, sessionToken: 'tok-1' })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
       await scanHandler(payload);
@@ -181,9 +181,10 @@ describe('useBarcodeScanner', () => {
     it('calls onProductNotFound when lookup throws', async () => {
       const onProductNotFound = vi.fn();
       const payload = { code: '0000000000000', symbology: 'ean13' };
-      mocks.lookupByBarcode.mockRejectedValue(new Error('db error'));
+      mocks.lookupByBarcodeScoped.mockRejectedValue(new Error('db error'));
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts({ onProductNotFound })));
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ onProductNotFound, sessionToken: 'tok-1' })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
       await scanHandler(payload);
@@ -194,9 +195,10 @@ describe('useBarcodeScanner', () => {
     it('calls onProductNotFound when lookup returns a dto with null sku', async () => {
       const onProductNotFound = vi.fn();
       const payload = { code: '0000000000000', symbology: 'ean13' };
-      mocks.lookupByBarcode.mockResolvedValue(null);
+      mocks.lookupByBarcodeScoped.mockResolvedValue(null);
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts({ onProductNotFound })));
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ onProductNotFound, sessionToken: 'tok-1' })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
       await scanHandler(payload);
@@ -206,9 +208,10 @@ describe('useBarcodeScanner', () => {
 
     it('does not call onProductNotFound when handler is not provided', async () => {
       const payload = { code: '0000000000000', symbology: 'ean13' };
-      mocks.lookupByBarcode.mockResolvedValue(null);
+      mocks.lookupByBarcodeScoped.mockResolvedValue(null);
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts({ onProductNotFound: undefined })));
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ onProductNotFound: undefined, sessionToken: 'tok-1' })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
 
@@ -330,26 +333,35 @@ describe('useBarcodeScanner', () => {
     });
 
     it('looks up a scanned barcode through the scoped API when a token is given', async () => {
-      // Added after per-branch sabotage: the first three tests here left :83 unguarded.
-      // Flipping that one ternary to the unscoped path changed nothing, which a single
-      // all-at-once sabotage would have hidden behind three passing assertions.
+      // Added after per-branch sabotage: the first three tests here left the lookup ternary at
+      // the old :83 unguarded, and flipping it to the unscoped path changed nothing -- which a
+      // single all-at-once sabotage would have hidden behind three passing assertions. That
+      // ternary is gone now (T21 b2): the hook has one arm, and this case pins that the token
+      // reaches it.
       await renderHookInAct(() => useBarcodeScanner(makeOpts({ sessionToken: 'tok-1' })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
       await scanHandler({ code: '1234567890', scannerId: 'scanner-1' });
 
+      // The line that used to sit here read `expect(mocks.lookupByBarcode).not.toHaveBeenCalled()`
+      // and was the real half of a discriminator: scoped called, unscoped not. With one name there
+      // is nothing to discriminate, so it asserted the opposite of the line above it.
       expect(mocks.lookupByBarcodeScoped).toHaveBeenCalledWith('tok-1', '1234567890');
-      expect(mocks.lookupByBarcode).not.toHaveBeenCalled();
     });
 
-    it('looks up through the unscoped API when no token is given', async () => {
-      await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+    // T21 (b2): the arm this case pinned is gone -- no shell registers `lookup_by_barcode`. It
+    // becomes the guard's pin, and unlike the assertions it replaces it can fail: without a token
+    // the hook must report not-found and must not reach for any lookup command.
+    it('reports not-found without a token and calls no lookup command', async () => {
+      const onProductNotFound = vi.fn();
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ onProductNotFound })));
 
       const scanHandler = mocks.onBarcodeScanned.mock.calls[0]![0];
       await scanHandler({ code: '1234567890', scannerId: 'scanner-1' });
 
-      expect(mocks.lookupByBarcode).toHaveBeenCalledWith('1234567890');
       expect(mocks.lookupByBarcodeScoped).not.toHaveBeenCalled();
+      expect(onProductNotFound).toHaveBeenCalledWith('1234567890');
     });
   });
 });

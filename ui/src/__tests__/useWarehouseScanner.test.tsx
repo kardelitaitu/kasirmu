@@ -15,7 +15,6 @@ import { useWarehouseScanner } from '@/features/warehouse/useWarehouseScanner';
 const mocks = vi.hoisted(() => ({
   onBarcodeScanned: vi.fn(),
   onBarcodeError: vi.fn(),
-  lookupByBarcode: vi.fn(),
   // The scoped twins. useWarehouseScanner picks its API per call with
   //   sessionToken ? () => xScoped(sessionToken, ...) : x
   // at :60, :68, :77 and :105 -- added by 403030ad ("migrate remaining frontend
@@ -39,7 +38,6 @@ vi.mock('@/api/hardware', () => ({
 }));
 
 vi.mock('@/api/products', () => ({
-  lookupByBarcode: (...args: unknown[]) => mocks.lookupByBarcode(...args),
   lookupByBarcodeScoped: (...args: unknown[]) => mocks.lookupByBarcodeScoped(...args),
 }));
 
@@ -57,7 +55,6 @@ const payload = { code: 'WH-001', scannerId: 'scanner-1' };
 beforeEach(() => {
   mocks.onBarcodeScanned.mockResolvedValue(() => {});
   mocks.onBarcodeError.mockResolvedValue(() => {});
-  mocks.lookupByBarcode.mockResolvedValue({ sku: 'WH-001', name: 'Widget' });
   // Scoped twins mirror the unscoped defaults so a scoped-path test differs only in which
   // mock records the call.
   mocks.startScannerScoped.mockResolvedValue(undefined);
@@ -125,9 +122,9 @@ describe('useWarehouseScanner', () => {
       // This hook passes `payload`, not the looked-up product (useWarehouseScanner.ts:80).
       // Asserted explicitly because the barcode twin differs here, and a copied test would
       // have asserted the wrong object.
-      await renderHookInAct(() => useWarehouseScanner(makeOpts()));
       const onProductFound = vi.fn();
-      await renderHookInAct(() => useWarehouseScanner(makeOpts({ onProductFound })));
+      await renderHookInAct(() =>
+        useWarehouseScanner(makeOpts({ onProductFound, sessionToken: 'tok-1' })));
       const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];
 
       await scanHandler(payload);
@@ -136,10 +133,11 @@ describe('useWarehouseScanner', () => {
     });
 
     it('reports an unmatched code through onProductNotFound', async () => {
-      mocks.lookupByBarcode.mockResolvedValue(null);
+      mocks.lookupByBarcodeScoped.mockResolvedValue(null);
       const onProductNotFound = vi.fn();
 
-      await renderHookInAct(() => useWarehouseScanner(makeOpts({ onProductNotFound })));
+      await renderHookInAct(() =>
+        useWarehouseScanner(makeOpts({ onProductNotFound, sessionToken: 'tok-1' })));
       const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];
 
       await scanHandler(payload);
@@ -148,12 +146,12 @@ describe('useWarehouseScanner', () => {
     });
 
     it('treats a lookup that throws as not-found rather than surfacing an error', async () => {
-      mocks.lookupByBarcode.mockRejectedValue(new Error('db down'));
+      mocks.lookupByBarcodeScoped.mockRejectedValue(new Error('db down'));
       const onProductNotFound = vi.fn();
       const onError = vi.fn();
 
       await renderHookInAct(() =>
-        useWarehouseScanner(makeOpts({ onProductNotFound, onError })));
+        useWarehouseScanner(makeOpts({ onProductNotFound, onError, sessionToken: 'tok-1' })));
       const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];
 
       await scanHandler(payload);
@@ -206,7 +204,8 @@ describe('useWarehouseScanner', () => {
       await scanHandler(payload);
 
       expect(mocks.lookupByBarcodeScoped).toHaveBeenCalledWith('tok-1', 'WH-001');
-      expect(mocks.lookupByBarcode).not.toHaveBeenCalled();
+      // Its former second line named the unscoped export to prove the arm chosen was the scoped
+      // one; that export is gone, so the pair would have contradicted itself.
     });
 
     // handleScan is a useCallback whose body reads `sessionToken` (useWarehouseScanner.ts:77)
@@ -235,10 +234,11 @@ describe('useWarehouseScanner', () => {
       expect(mocks.lookupByBarcodeScoped.mock.calls.every((c) => c[0] !== 'tok-1')).toBe(true);
     });
 
-    // Split rather than deleted: the scanner half of this case is gone (no session, no scanner
-    // call), and the lookup half stays, because `lookup_by_barcode` is still a live ternary at
-    // useWarehouseScanner.ts:77 and is not in this slice.
-    it('does not touch the scanner without a token, and still looks up unscoped', async () => {
+    // Round 40 split this case in two because the lookup arm was still live; round 41 deleted
+    // that arm as well, so the whole thing is now the guard's pin -- no session means no scanner
+    // call, no lookup call, and the code reported as not-found rather than looked up against no
+    // store.
+    it('without a session token touches neither the scanner nor the lookup', async () => {
       await renderHookInAct(() => useWarehouseScanner(makeOpts()));
       const scanHandler = mocks.onBarcodeScanned.mock.calls.at(-1)![0];
       await scanHandler(payload);
@@ -246,7 +246,8 @@ describe('useWarehouseScanner', () => {
       expect(mocks.listScannersScoped).not.toHaveBeenCalled();
       expect(mocks.startScannerScoped).not.toHaveBeenCalled();
       expect(mocks.stopScannerScoped).not.toHaveBeenCalled();
-      expect(mocks.lookupByBarcode).toHaveBeenCalledWith('WH-001');
+      // Round 40 left the lookup half of this case live (the arm still existed and answered
+      // unscoped); round 41 deleted that arm, so the guard now covers the lookup as well.
       expect(mocks.lookupByBarcodeScoped).not.toHaveBeenCalled();
     });
   });
