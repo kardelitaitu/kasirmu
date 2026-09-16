@@ -148,10 +148,10 @@ export default function RestaurantMenu({
   cartActions,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
-  const { products, categoryMeta, loading, error, reload } = useProducts();
+  const { sessionToken } = useWorkspace();
+  const { products, categoryMeta, loading, error, reload } = useProducts(sessionToken ?? undefined);
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { session } = useAuth();
-  const { sessionToken } = useWorkspace();
   const userId = session?.user_id ?? 'default';
   const [internalMenuOpen, setInternalMenuOpen] = useState(false);
   const isControlled = controlledSidebarOpen !== undefined;

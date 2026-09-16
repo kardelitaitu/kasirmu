@@ -470,17 +470,20 @@ describe('settings.ts IPC contract', () => {
 // ── products.ts ───────────────────────────────────────────────────
 
 import {
-  listProducts,
+  listProductsScoped,
   adjustStock,
 } from '@/api/products';
 
 describe('products.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
 
-  it('listProducts invokes "list_products" with no args', async () => {
+  // T21: the unscoped `list_products` door was deleted from the module -- neither app shell
+  // registers it, and the desktop has no body for it at all. This asserts the door that exists
+  // instead of arranging a response on a name nothing can call.
+  it('listProductsScoped invokes "list_products_scoped" with the session token', async () => {
     mockInvoke.mockResolvedValue([]);
-    await listProducts();
-    expect(mockInvoke).toHaveBeenCalledWith('list_products', undefined);
+    await listProductsScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('list_products_scoped', { sessionToken: 'tok' });
   });
 
 

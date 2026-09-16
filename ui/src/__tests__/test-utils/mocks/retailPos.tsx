@@ -51,9 +51,7 @@ export const retailCategories = [
 /** Full `@/api/products` module mock with the retail fixtures baked in. */
 export function createRetailProductsApiMock() {
   return {
-    listProducts: vi.fn(() => Promise.resolve(retailProducts)),
     listProductsScoped: vi.fn((_token: string) => Promise.resolve(retailProducts)),
-    listCategories: vi.fn(() => Promise.resolve(retailCategories)),
     listCategoriesScoped: vi.fn((_token: string) => Promise.resolve(retailCategories)),
     lookupProductBySkuScoped: vi.fn((_token: string, _sku: string) => Promise.resolve(null)),
     lookupByBarcodeScoped: vi.fn((_token: string, _code: string) => Promise.resolve(null)),

@@ -14,16 +14,19 @@ import ProductLookupScreen from '@/features/products/ProductLookupScreen';
 import type { Product } from '@/types/domain';
 import type * as productsModule from '@/api/products';
 
-// ── Mock: make listProducts / listCategories reject so useProducts
+// ── Mock: make the scoped catalogue reads reject so useProducts
 //    falls back to its own SAMPLE_PRODUCTS (coffee-shop items) instead
 //    of the dev-mock's PC hardware catalog. All other exports (e.g.
-//    lookupProductBySku) remain the real implementations.
+//    lookupProductBySkuScoped) remain the real implementations.
 vi.mock('@/api/products', async (importOriginal) => {
   const actual = await importOriginal<typeof productsModule>();
   return {
     ...actual,
-    listProducts: vi.fn(() => Promise.reject(new Error('IPC unavailable'))),
-    listCategories: vi.fn(() => Promise.reject(new Error('IPC unavailable'))),
+    // T21: the unscoped listProducts / listCategories doors were deleted from the module, so
+    // overriding them configured nothing and the real scoped reads ran instead — the fallback
+    // this file is about never happened. Reject the doors the hook actually calls.
+    listProductsScoped: vi.fn(() => Promise.reject(new Error('IPC unavailable'))),
+    listCategoriesScoped: vi.fn(() => Promise.reject(new Error('IPC unavailable'))),
   };
 });
 

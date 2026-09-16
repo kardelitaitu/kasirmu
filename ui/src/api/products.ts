@@ -45,10 +45,6 @@ export interface ProductDto {
   images?: ProductImageDto[];
 }
 
-/** List all products. */
-export const listProducts = (): Promise<ProductDto[]> =>
-  loggedInvoke<ProductDto[]>('list_products');
-
 /**
  * Fetch products scoped to the store resolved from a session token.
  *
@@ -56,8 +52,9 @@ export const listProducts = (): Promise<ProductDto[]> =>
  * `sessionToken` to a `SessionContext` (containing `store_id`), opens
  * the store-scoped database, and returns only that store's products.
  *
- * Prefer this over the unscoped `listProducts()` in multi-store
- * deployments.
+ * This is the only door: the unscoped `list_products` it used to be preferred over is gone (T21)
+ * -- neither shell registers it, and the desktop has no body for it at all, so "prefer this" was
+ * describing a choice between one working call and one that cannot.
  */
 export const listProductsScoped = (sessionToken: string): Promise<ProductDto[]> =>
   loggedInvoke<ProductDto[]>('list_products_scoped', { sessionToken });
@@ -275,10 +272,6 @@ export interface UpdateCategoryArgs {
   /** Icon identifier, e.g. "dots-2". */
   icon: string;
 }
-
-/** List all product categories. */
-export const listCategories = (): Promise<CategoryDto[]> =>
-  loggedInvoke<CategoryDto[]>('list_categories');
 
 /** List all product categories for the store resolved from a session token. ADR #7. */
 export const listCategoriesScoped = (sessionToken: string): Promise<CategoryDto[]> =>

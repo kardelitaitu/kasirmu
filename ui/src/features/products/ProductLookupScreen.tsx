@@ -87,7 +87,7 @@ export default function ProductLookupScreen({ onAddProduct }: ProductLookupScree
   const { addToast } = useToast();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
-  const { products, categories, loading, error, usingFallback, reload } = useProducts();
+  const { products, categories, loading, error, usingFallback, reload } = useProducts(sessionToken);
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [activeCategory, setActiveCategory] = useState<Category>('All');

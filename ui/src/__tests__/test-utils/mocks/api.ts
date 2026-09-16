@@ -244,8 +244,6 @@ export function createHardwareApiMock() {
 // ── products ──────────────────────────────────────────────────────
 
 export interface ProductsApiOverrides {
-  listProducts?: ReturnType<typeof vi.fn>;
-  listCategories?: ReturnType<typeof vi.fn>;
   lookupProductBySku?: ReturnType<typeof vi.fn>;
   listProductsScoped?: ReturnType<typeof vi.fn>;
   listCategoriesScoped?: ReturnType<typeof vi.fn>;
@@ -259,8 +257,6 @@ export interface ProductsApiOverrides {
 
 export function createProductsApiMock(overrides: ProductsApiOverrides = {}) {
   return {
-    listProducts: vi.fn(() => Promise.resolve([])),
-    listCategories: vi.fn(() => Promise.resolve([])),
     adjustStock: vi.fn(),
     listProductVariants: vi.fn(() => Promise.resolve([])),
     getProductVariant: vi.fn(() => Promise.resolve(null)),

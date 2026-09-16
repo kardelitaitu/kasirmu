@@ -103,7 +103,7 @@ vi.mock('@/api/products', () => ({
     };
     return Promise.resolve(products[sku] ?? null);
   }),
-  listProducts: vi.fn(() => Promise.resolve([
+  listProductsScoped: vi.fn((_sessionToken: string) => Promise.resolve([
     {
       sku: 'ITEM-001',
       name: 'Item 1',
@@ -131,7 +131,7 @@ vi.mock('@/api/products', () => ({
       price_updated_at: '',
     },
   ])),
-  listCategories: vi.fn(() => Promise.resolve([])),
+  listCategoriesScoped: vi.fn((_sessionToken: string) => Promise.resolve([])),
   createProduct: vi.fn(),
   updateProduct: vi.fn(),
   deleteProduct: vi.fn(),
