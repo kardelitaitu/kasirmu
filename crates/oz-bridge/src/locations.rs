@@ -233,6 +233,23 @@ pub async fn create_location_profile_scoped(
     // Quota tier now flows from the entitlements read model (Phase B one
     // limit table), so the gate and the caps projection share one source.
     let tier = Entitlements::from_subscription(&sub, UsageCounts::default()).tier;
+    // Dev shim, and a deliberately PARKED release arm
+    // (`todo-open-debt-program.md:109`). Debug upgrades bootstrap-Free to
+    // Premium so a fresh install is not dead-ended by a 1-location quota the
+    // UI calls unlimited; release keeps Free and enforces the real limit.
+    //
+    // The release arm is not reachable from a test and is parked beside
+    // `license.rs:670-683` rather than faked. Reaching the quota call below
+    // means getting past `sub.verify_signature()?` above, and no fixture can
+    // mint a verifying signature (`testing.rs:103-148` — the licence private
+    // key is not in this checkout). The permission gate at `:220` is upstream
+    // of the signature read, so it makes a PERMISSION refusal assertable in
+    // both profiles — it does not make this quota outcome reachable. Do not
+    // add a shared bootstrap/Free helper to get here: that converts a loud
+    // forged-row error into a silent Free run.
+    //
+    // Debug coverage is implicit but real: `create_location_profile_scoped_
+    // end_to_end_owner` succeeds on a Free-seeded db only because of this.
     #[cfg(debug_assertions)]
     let tier = if tier == SubscriptionTier::Free {
         SubscriptionTier::Premium
