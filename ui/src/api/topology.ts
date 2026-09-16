@@ -52,9 +52,15 @@ export interface TopologyData {
   wires: TopologyWirePayload[];
 }
 
-/** Probe the backend capability used to gate topology editing UI. */
-export const canSaveTopology = (sessionToken: string): Promise<boolean> =>
-  loggedInvoke<boolean>('can_save_topology', { sessionToken });
+/** Probe the backend capability used to gate topology editing UI.
+ *  R2 (todo-topology-editor.md §5): the probe is location-scoped like the
+ *  enforcement — pass the branch being probed for; omitting it asks about
+ *  no branch and the scoped gate treats that as the session's own scope. */
+export const canSaveTopology = (
+  sessionToken: string,
+  branchId?: string,
+): Promise<boolean> =>
+  loggedInvoke<boolean>('can_save_topology', { sessionToken, branchId });
 
 /** Load the persisted topology graph for a branch, or `null` if none saved yet. */
 export const loadTopology = (branchId?: string): Promise<TopologyData | null> =>

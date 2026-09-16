@@ -36,10 +36,11 @@ use super::persistence::*;
 #[tauri::command]
 pub async fn can_save_topology(
     session_token: String,
+    branch_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<bool, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::can_save_topology(&ctx, session_token)
+    oz_bridge::topology::commands::can_save_topology(&ctx, session_token, branch_id)
         .await
         .map_err(Into::into)
 }

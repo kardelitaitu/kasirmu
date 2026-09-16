@@ -1412,19 +1412,19 @@ async fn can_save_topology_probe_gates_on_topology_write_permission() {
         .unwrap();
 
     assert!(
-        can_save_topology(owner_token, app.state()).await.unwrap(),
+        can_save_topology(owner_token, None, app.state()).await.unwrap(),
         "an owner session must be allowed to save topology"
     );
     assert!(
-        can_save_topology(admin_token, app.state()).await.unwrap(),
+        can_save_topology(admin_token, None, app.state()).await.unwrap(),
         "an admin session must be allowed to save topology"
     );
-    let manager_denied = can_save_topology(manager_token, app.state()).await;
+    let manager_denied = can_save_topology(manager_token, None, app.state()).await;
     assert!(
         matches!(manager_denied, Err(AppError::PermissionDenied(_))),
         "a manager session (has staff:update, lacks topology:write) must be denied by the capability probe, got {manager_denied:?}"
     );
-    let denied = can_save_topology(cashier_token, app.state()).await;
+    let denied = can_save_topology(cashier_token, None, app.state()).await;
     assert!(
         matches!(denied, Err(AppError::PermissionDenied(_))),
         "a limited session must be denied by the capability probe, got {denied:?}"
@@ -1510,6 +1510,114 @@ async fn authorize_topology_write_enforces_location_scope() {
     assert!(
         matches!(key_err, Err(AppError::PermissionDenied(_))),
         "scoped manager must be denied on an unassigned branch, got {key_err:?}"
+    );
+}
+
+#[tokio::test]
+async fn probe_and_enforcement_agree_for_a_branch_scoped_writer() {
+    // R2 / Phase 3 (todo-topology-editor.md §5, ruled 2026-09-16): topology
+    // is LOCATION-SCOPED, and the capability probe must answer through the
+    // same gate the enforcement uses. A writer whose assignment covers
+    // store-allowed only hears "yes" from the probe exactly where
+    // authorize_topology_write says "yes", and "no" — same error kind —
+    // exactly where it says no. The pin arm (M3, same ruling) asserts the
+    // scope check runs BEFORE the revision-row lookup: revision 99 exists
+    // nowhere, so PermissionDenied proves the gate fired first, while any
+    // not-found answer would prove the old scope-free body reached the row
+    // lookup unguarded. Fixture shape is authorize_topology_write_enforces_location_scope's,
+    // reused so the two checks demonstrably read one rule and one assignment.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute_batch(
+                "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+                    ('role-topo-mgr2', 'Topo Mgr2', 'Scoped Topo 2', '[\"topology:write\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+            )
+            .unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+                 VALUES ('user-scoped-mgr2', 'scoped-mgr2', 'hash', 'Scoped Mgr 2', 'role-topo-mgr2', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        store
+            .set_assignment(
+                "user-scoped-mgr2",
+                "role-topo-mgr2",
+                &oz_core::db::assignments::AssignmentSpec {
+                    scope_mode: oz_core::db::assignments::ScopeMode::Scoped,
+                    branches_all: false,
+                    branches: vec!["store-allowed".into()],
+                    workspaces_all: true,
+                    workspaces: vec![],
+                    scope_type: oz_core::db::assignments::ScopeType::Organization,
+                    scope_id: None,
+                },
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    let token = "token-scoped-mgr2".to_string();
+    {
+        let mut sessions = state.session_store.write().unwrap();
+        sessions.insert(
+            token.clone(),
+            SessionContext::new(
+                "user-scoped-mgr2".into(),
+                "role-topo-mgr2".into(),
+                "term-2".into(),
+                "store-allowed".into(),
+                "inst-2".into(),
+                "admin".into(),
+                None,
+                0,
+            ),
+        );
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // The assigned branch: probe and enforcement must both answer yes.
+    let probe_ok =
+        can_save_topology(token.clone(), Some("store-allowed".into()), app.state()).await;
+    let write_ok = authorize_topology_write(&token, &app.state(), Some("store-allowed")).await;
+    assert!(
+        matches!(probe_ok, Ok(true)),
+        "the probe must allow the branch the assignment covers, got {probe_ok:?}"
+    );
+    assert!(write_ok.is_ok(), "the enforcement allows the covered branch");
+
+    // The unassigned branch: BOTH answer no, with the SAME error kind —
+    // agreeing on a different failure is not the property.
+    let probe_no =
+        can_save_topology(token.clone(), Some("store-denied".into()), app.state()).await;
+    let write_no = authorize_topology_write(&token, &app.state(), Some("store-denied")).await;
+    assert!(
+        matches!(probe_no, Err(AppError::PermissionDenied(_))),
+        "R2: the probe must deny a branch the assignment does not cover, got {probe_no:?}"
+    );
+    assert!(
+        matches!(write_no, Err(AppError::PermissionDenied(_))),
+        "the enforcement already denies it — the disagreement this ruling ends"
+    );
+
+    // Pin (M3 arm): scope BEFORE row lookup. Revision 99 exists nowhere, so
+    // a PermissionDenied answer can only have come from the gate, while the
+    // old scope-free body would fall through to the row lookup.
+    let pin_no =
+        pin_topology_revision(token.clone(), Some("store-denied".into()), 99, true, app.state())
+            .await;
+    assert!(
+        matches!(pin_no, Err(AppError::PermissionDenied(_))),
+        "pin must scope-check the named branch before touching any row, got {pin_no:?}"
     );
 }
 
