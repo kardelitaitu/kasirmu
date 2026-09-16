@@ -70,14 +70,16 @@
   > `.kds-zone-chip` families).
 
 ### Phase 2.1: Extract Ticket Cards & Line Items
-- [ ] Extract `<KdsTicketLineItem />` into `components/KdsTicketLineItem.tsx` (handles strike-through, modifier notes, course tag).
+- [x] Extract `<KdsTicketLineItem />` into `components/KdsTicketLineItem.tsx` (handles strike-through, modifier notes, course tag).
+      > **EXECUTED 2026-09-16 (`622a33bfb`).** The course-group item loop (:401-446 at measurement) relocated VERBATIM into `components/KdsTicketLineItem.tsx` — qty×name, status dot+label, served-duration, modifier-badge row, per-item advance behind its 200 ms cooldown — memoized like its parent. `itemDone` and `fmtDuration` moved WITH the JSX that consumes them and are re-exported from the card, so all nine shipped importers (incl. `KdsTicketCardItemDone.test.ts`, `KdsTicketCardFmtDuration.test.ts`) keep resolving; the corrected note stands: no strike-through was invented (0 `line-through` hits honored), this is the relocation it described. Both new components registered in `screenExtraction.test.ts` (the KdsHeaderLeft convention — without the entry the guard reads `kds-item*`/`kds-ticket-time*` as dead CSS; proven live: the guard ran red exactly until registered).
   > Still open, and **corrected on two specifics**: (a) there is **no strike-through** in the
   > feature — 0 `line-through` hits under `ui/src/features/kds/`; a completed line is signalled by
   > status, not decoration. (b) the course tag + modifier list already exist, but inside
   > `KdsTicketCard.tsx`: `groupByCourse` at `:112`, groups rendered at `:378`, `ModifierBadge` at
   > `:439` (landed in `67b2849dd`, 2026-09-13). So this bullet is a *relocation* of shipped code,
   > not a new capability.
-- [ ] Extract `<KdsTimerBadge />` into `components/KdsTimerBadge.tsx` (green → yellow → red preparation thresholds).
+- [x] Extract `<KdsTimerBadge />` into `components/KdsTimerBadge.tsx` (green → yellow → red preparation thresholds).
+      > **EXECUTED 2026-09-16 (`622a33bfb`) as the view-only wrapper the correction demanded.** `components/KdsTimerBadge.tsx` (35 ln) renders `useTicketSla`'s `level`/`urgent`/`display` — imported TYPE `SlaLevel`, zero logic duplicated; the hook call and the audio side-effects stay in the card, as the "risk here is duplicating logic, not writing it" note prescribed. Acceptance for both: `npx vitest run Kds screenExtraction ModifierBadge` -> **77 files / 1308 tests passed**, the 14 card cases + 5 sibling suites green UNCHANGED (behavior-preserving relocation, DOM identical); `npm run typecheck` -> one error, foreign and owned (a sibling's deliberate `CartPanel.test.tsx` red, named in their own commit message).
   > **Wrong-by-omission, now corrected:** the thresholds are **already implemented** in
   > `hooks/useTicketSla.ts` (196 ln, added by `d82a1aa1a`) — `SlaLevel = 'green' | 'yellow' |
   > 'red'` (`:6`), defaults `yellowAtSec: 300` / `redAtSec: 600` (`:17-20`), `urgent` at ≥900 s
@@ -91,15 +93,17 @@
   > with 14 cases, plus 5 sibling test files for course label, duration format, grouping and
   > next-action). Nothing left in this bullet to do.
 - [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: ONE `npm run typecheck` (tsc --noEmit) from ui/ at bd1a8a4e32 -> no diagnostics, exit code 0. The same run also satisfies agents-1:73 and agents-1:94 per the lane owner's shared-command ruling; see "Acceptance runs (2026-09-15, HEAD c8ea8bbe4)" below. -->
-- [ ] **Commit Milestone:**
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-ui): extract KdsTicketCard, line items, and timer badges"
   ```
+      > **SHIPPED 2026-09-16 as `622a33bfb`** — subject kept in the plan's `refactor(kds-ui):` convention, narrowed per this box's own audit ("KdsTicketCard is already extracted, so the remaining work is the line item and the badge view") and it did exactly that, one commit, four paths (2 new via the §3 chain), hook's bundle-parity green (0 missing).
   > Narrowed by this audit: `KdsTicketCard` is already extracted, so the remaining work is the
   > line item and the badge view.
 
 ### Phase 2.2: Extract KDS Header Toolbar & Screen Reduction
-- [ ] Extract `<KdsHeaderToolbar />` (station filter, sound toggle, device status, shift button).
+- [x] Extract `<KdsHeaderToolbar />` (station filter, sound toggle, device status, shift button).
+      > **ALREADY PAID by decomposition — reconciled 2026-09-16, not re-done.** The header no longer exists as inline JSX: `KdsScreen.tsx:406-453` composes `KdsHeaderLeft` (211 ln, filter cluster — `7d0dc4d60`, 2 days ago), `KdsHeaderTabs` (104 ln) and `KdsHeaderRight` (142 ln, shift controls + device status), with `KdsZoneChips` and `KdsNoticeBanners` below. Every element this box enumerates is shipped: station/filter UI in Left, shift button in Right, `KdsDeviceStatusIndicator` (192 ln) composed there; the sound toggle lives in the hamburger, exactly as this file's correction states. Writing the named single `KdsHeaderToolbar.tsx` over a live three-way split would be this plan's own forbidden move — duplicating what exists instead of ticking with evidence — so the box closes on the decomposition above and NO new file was created.
   > **Corrected contents — the old list was wrong in two ways.** There is **no recall modal
   > trigger** on this screen: recall (and `StationSelectorModal`) belongs to `ExpoScreen.tsx`
   > (`recallCandidates` at `:120`, recall button at `:432-521`; `grep -c 'ecall'
@@ -108,17 +112,19 @@
   > lives in the hamburger panel, not the header. What the header really holds, in
   > `KdsScreen.tsx:715-935`: Open/Completed tabs (`:856`), view
   > filter, `KdsDeviceStatusIndicator`, shift start/stop (`:887-900`).
-- [ ] Reduce `KdsScreen.tsx` to orchestrating the header toolbar, ticket grid, and confirm modal.
+- [x] Reduce `KdsScreen.tsx` to orchestrating the header toolbar, ticket grid, and confirm modal.
+      > **MET at reconciliation 2026-09-16 — the render tree is composition.** Return-block survey at HEAD: the screen orchestrates 10 children (the three header parts, zone chips, banners, `KdsMainContent` over the grid — `fc29f3690` — `KdsProductPickerModal`, `KdsEnrollmentModal`, `KdsScreenFooter`, and the confirm modal it names). Residual inline JSX is the a11y live-region (10 ln), the pull-to-refresh labels (2), the confirm dialog body (~25 ln, state-driven, focus-trapped via `confirmRef`) and the Profiler/Provider wrappers — orchestration furniture, not delegated substance. The 634-line file is ~390 ln of hook/callback territory owned by Agent 1 (a fence this lane honors); the line-count gate itself was already ticked at :115 (634 ≤ 700).
   > Corrected: this screen has a **confirm** modal (`:137-141`, rendered `:1159-1169`), not a recall
   > modal. Not started — the grid is already delegated to `KdsLayoutMasonry` (`:666`) and the
   > completed view to `KdsCompletedView` (`:686`), but the header is not.
 - [x] Verify `KdsScreen.tsx` line count drops from 1,193 to < 350 lines. <!-- TICKED 2026-09-15 at 32886394e: wc -l ui/src/features/kds/KdsScreen.tsx = 634, so the accepted <= 700 gate is MET by 66; the as-written < 350 stays unreachable and this row's own 1,193 is stale by 559 -->
   > **Unmet:** still 1,193 (measured at HEAD and already 1,193 at `1af143f23`). The screen has <!-- 2026-09-15 re-measure, replacement beside the original per 57bca12f8's form: wc -l ui/src/features/kds/KdsScreen.tsx = **634**, not 1,193 -- the file's own "Corrections (2026-09-15)" item 1 already logged the 1,193 -> 680 drift and is itself now 46 lines stale. The box stays open on its literal `< 350`; see :159-165 below. -->
   > not shrunk at all since this roadmap was written.
-- [ ] **Commit Milestone:**
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-ui): consolidate KdsHeaderToolbar and reduce KdsScreen to composition root"
   ```
+      > **MILESTONE CONTENT SHIPPED IN SIBLING COMMITS — ticked as evidence, not re-committed 2026-09-16.** The consolidation this box enshrines landed as `7d0dc4d60` (KdsHeaderLeft), `fc29f3690` (KdsMainContent = grid composition) and the earlier `KdsHeaderRight`/`KdsHeaderTabs`/`KdsZoneChips` slices; no further commit was honest to make — a re-split under this lane's name would move bytes, not debt. The plan's own precedent (the already-extracted `KdsTicketCard` row, ticked "nothing left in this bullet to do") is the pattern followed.
 
 ---
 
