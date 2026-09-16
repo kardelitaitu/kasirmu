@@ -79,9 +79,15 @@ ARM_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
 # ARM_CRATES bounds the membership, and a partition that sums correctly can still
 # be walking a silently narrowed population.
 #
-# Measured baseline: 64 arms across 12 test files in 3 crates, 2026-09-15.
-ARM_FLOOR = 55  # headroom below 64: absorbs a legitimate conversion, fires on drift
-ARM_BASELINE = 64
+# Measured baseline: 66 arms across 12 test files in 3 crates. Was 64 until
+# 2026-09-16, when the two migrate-bin PG tests gained a throwaway database and
+# each acquired a second skip arm ("cannot create throwaway DB") alongside its
+# original connect arm. The self-test's baseline assertion fired on that edit the
+# moment it was made -- which is the entire reason it asserts equality rather than
+# printing a count: a census that silently grows is as untrustworthy as one that
+# silently shrinks. Floor unchanged at 55; only the reference moved.
+ARM_FLOOR = 55  # headroom below 66: absorbs a legitimate conversion, fires on drift
+ARM_BASELINE = 66
 # Per-crate membership: each crate that owns arms today must keep at least one.
 # Renaming a file survives this; a whole crate's arms going uncounted does not,
 # which is the "fix landed in one crate, 17 left behind" failure in another form.
