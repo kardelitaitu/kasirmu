@@ -141,9 +141,14 @@ check('the budget gate prices .woff2 (dd12da524)', src.ran && src.out.includes('
   'a woff2 entry in `budgets` in scripts/check-bundle.mjs');
 
 const wfGate = run(['git', '--no-optional-locks', 'grep', '-l', '-i', '-e', 'check-bundle', '-e', 'bundle:check', '--', ...WF]);
-check('no live workflow runs the budget gate', cleanAbsence(wfGate, [0, 1]),
-  wfGate.out.trim() === '' ? `${WF.join('/')} names the gate 0 times` : `found: ${wfGate.out.trim().replace(/\n/g, ', ')}`,
-  '0 -- if this drifts the gate was wired into CI: repair notes.md item 37 and the note in scripts/check-font-bundle.mjs');
+// This claim was INVERTED by d3ae1e201, which added `Bundle budget (desktop)` and
+// `(tablet)` steps to dev-ci.yml#ui-test. The row that asserted the absence fired, and now
+// asserts the presence -- so a future edit that drops those steps goes red instead of
+// quietly returning to the state this whole thread was about.
+const wfFiles = wfGate.out.trim() === '' ? [] : wfGate.out.trim().split('\n').filter(Boolean);
+check('the budget gate runs in a live workflow', wfGate.ran && wfFiles.length >= 1 && wfFiles.some((f) => /dev-ci\.yml$/.test(f)),
+  `${wfFiles.length} live workflow(s) name it: ${wfFiles.join(', ') || 'none'}`,
+  '>=1, with dev-ci.yml among them -- if this drifts the CI steps were deleted, and the `ci` block on the bundle-budget row became a lie in the same commit');
 
 const shGate = run(['git', '--no-optional-locks', 'grep', '-i', '-n', 'bundle budget', '--', 'scripts/check.sh']);
 check('scripts/check.sh has no budget step (its header claims otherwise)', cleanAbsence(shGate, [0, 1]),
@@ -170,9 +175,18 @@ check('the tablet budget is called by the runner that exists', tabletHits.ran &&
 const gateRows = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.find(x=>x.id==='bundle-budget');console.log(JSON.stringify({found:!!r,status:r&&r.status,runners:r&&r.runners,ci:(r&&r.ci)??'absent'}))"]);
 let gj = {};
 try { gj = JSON.parse(gateRows.out.trim() || '{}'); } catch { gj = {}; }
-check("gates.json's bundle-budget row still has no ci block", gateRows.status === 0 && gj.found === true && gj.ci === 'absent',
-  `status=${gj.status} runners=${JSON.stringify(gj.runners)} ci=${gj.ci}`,
-  'ci absent -- `required` in this manifest is policy language, not machine state (AGENTS.md, the rust-clippy precedent)');
+// The row that used to assert `ci` was ABSENT now asserts it points somewhere real.
+// Reading the workflow file is the difference: a ci block naming a retired `.bak`
+// pipeline, or a job that no longer exists in it, satisfies "a key is present" and
+// enforces nothing -- which is exactly the shape AGENTS.md documents for `required`.
+const ciBlock = (gj.ci && gj.ci !== 'absent') ? gj.ci : null;
+const ciWfPath = ciBlock ? path.join(REPO, '.github', 'workflows', path.basename(ciBlock.workflow ?? '')) : null;
+const ciJobDeclared = !!(ciWfPath && fs.existsSync(ciWfPath) && String(ciBlock.job)
+  && fs.readFileSync(ciWfPath, 'utf8').split('\n').includes(`  ${ciBlock.job}:`));
+check('the manifest ci block points at a job declared in a live workflow',
+  gateRows.status === 0 && gj.found === true && !!ciBlock && !/\.bak$/.test(String(ciBlock.workflow)) && ciJobDeclared,
+  `ci=${JSON.stringify(ciBlock)} -> ${ciBlock ? path.basename(ciBlock.workflow) : 'none'}${ciJobDeclared ? ` job '${ciBlock.job}' declared` : ` job '${ciBlock.job ?? '-'}' NOT declared at job indent`}; status=${gj.status} is policy language, this row is the machine state beside it`,
+  'a real workflow file (not .bak) with that job key -- if this drifts, either the steps or the row was edited and the other was left behind');
 
 // ---- row: the rules themselves ---------------------------------------------------
 // Spawned through process.execPath and the package's own bin script: `npx` is a .cmd
