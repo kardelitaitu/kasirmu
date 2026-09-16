@@ -227,13 +227,15 @@ export function createShiftsApiMock(overrides: ShiftsApiOverrides = {}) {
 // ── hardware ──────────────────────────────────────────────────────
 
 export function createHardwareApiMock() {
+  // `listScanners` / `startScanner` / `stopScanner` left this factory together with the
+  // `@/api/hardware` exports they imitated (T21 b2): those three commands are registered in
+  // neither shell, so a test arranging on them was configuring a call that cannot be made.
+  // mockFactorySurface.test.ts caught the mismatch, and the cleanup it asks for is here rather
+  // than a new KNOWN_DEAD entry.
   return {
-    listScanners: vi.fn(() => Promise.resolve([])),
     listDisplays: vi.fn(() => Promise.resolve([])),
     displayShow: vi.fn(() => Promise.resolve()),
     displayClear: vi.fn(() => Promise.resolve()),
-    startScanner: vi.fn(),
-    stopScanner: vi.fn(),
     onBarcodeScanned: vi.fn(),
     onBarcodeError: vi.fn(),
   };

@@ -120,17 +120,6 @@ export interface BarcodeScannedPayload {
   symbology: string;
 }
 
-/** List all connected barcode scanners. */
-export const listScanners = (): Promise<ScannerInfo[]> =>
-  loggedInvoke<ScannerInfo[]>('list_scanners');
-
-/** Start listening for barcode scans on a specific scanner. */
-export const startScanner = (scannerId: string): Promise<void> =>
-  loggedInvoke('start_scanner', { scannerId });
-
-/** Stop listening for barcode scans. */
-export const stopScanner = (): Promise<void> => loggedInvoke('stop_scanner');
-
 /** Subscribe to barcode-scanned events. Returns an unsubscribe function. */
 export const onBarcodeScanned = (handler: (payload: BarcodeScannedPayload) => void): Promise<UnlistenFn> =>
   listen<BarcodeScannedPayload>('barcode:scanned', (e) => handler(e.payload));

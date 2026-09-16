@@ -6,13 +6,10 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import {
-  startScanner,
-  stopScanner,
   startScannerScoped,
   stopScannerScoped,
   onBarcodeScanned,
   onBarcodeError,
-  listScanners,
   listScannersScoped,
   type BarcodeScannedPayload,
 } from '@/api/hardware';
@@ -54,19 +51,22 @@ export function useWarehouseScanner({
   useEffect(() => {
     let cancelled = false;
 
+    // T21 (b2), same disposition and for the same reason as sales/useBarcodeScanner.ts, which this
+    // file's header calls a self-contained copy of: no session means no screen, so the unscoped
+    // half was unreachable in a build and answered only by the mock.
+    if (!sessionToken) return;
+
     (async () => {
       const scannerId = preferredId ?? (await autoDetectScanner(sessionToken));
       if (!scannerId || cancelled) return;
-      const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id) : startScanner;
-      await start(scannerId);
+      await startScannerScoped(sessionToken, scannerId);
       startedRef.current = true;
     })();
 
     return () => {
       cancelled = true;
       if (startedRef.current) {
-        const stop = sessionToken ? () => stopScannerScoped(sessionToken) : stopScanner;
-        stop().catch(() => {});
+        stopScannerScoped(sessionToken).catch(() => {});
         startedRef.current = false;
       }
     };
@@ -106,10 +106,9 @@ export function useWarehouseScanner({
   }, [handleScan, handleError]);
 }
 
-async function autoDetectScanner(sessionToken?: string): Promise<string | null> {
+async function autoDetectScanner(sessionToken: string): Promise<string | null> {
   try {
-    const fetchScanners = sessionToken ? () => listScannersScoped(sessionToken) : listScanners;
-    const scanners = await fetchScanners();
+    const scanners = await listScannersScoped(sessionToken);
     return scanners[0]?.id ?? null;
   } catch {
     return null;

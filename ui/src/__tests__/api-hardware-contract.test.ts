@@ -20,9 +20,9 @@ vi.mock('@tauri-apps/api/event', () => ({
 import {
   openCashDrawerScoped,
   printSalesReceiptScoped,
-  listScanners,
-  startScanner,
-  stopScanner,
+  listScannersScoped,
+  startScannerScoped,
+  stopScannerScoped,
   listDisplaysScoped,
   displayShowScoped,
   displayClearScoped,
@@ -76,22 +76,28 @@ describe('hardware.ts IPC contract', () => {
 
   // ── Barcode Scanner ───────────────────────────────────────
 
-  it('listScanners → list_scanners (no args)', async () => {
+  // These three cases used to pin `list_scanners` / `start_scanner` / `stop_scanner` -- commands
+  // registered in NEITHER shell (T21). They are the only wire-shape coverage this surface has, so
+  // deleting the unscoped wrappers without moving them would have left the registered doors with
+  // no test at all while an unregistered one kept three. `start_scanner`'s camelCase `scannerId`
+  // key is the load-bearing half: Tauri converts the command's OUTER name and nothing else, so a
+  // payload that says `scanner_id` is silently None on the Rust side (T23's `deviceId` lesson).
+  it('listScannersScoped → list_scanners_scoped with sessionToken', async () => {
     mockInvoke.mockResolvedValue([]);
-    await listScanners();
-    expect(mockInvoke).toHaveBeenCalledWith('list_scanners', undefined);
+    await listScannersScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('list_scanners_scoped', { sessionToken: 'tok' });
   });
 
-  it('startScanner → start_scanner with scannerId', async () => {
+  it('startScannerScoped → start_scanner_scoped with sessionToken + scannerId', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await startScanner('scanner-1');
-    expect(mockInvoke).toHaveBeenCalledWith('start_scanner', { scannerId: 'scanner-1' });
+    await startScannerScoped('tok', 'scanner-1');
+    expect(mockInvoke).toHaveBeenCalledWith('start_scanner_scoped', { sessionToken: 'tok', scannerId: 'scanner-1' });
   });
 
-  it('stopScanner → stop_scanner (no args)', async () => {
+  it('stopScannerScoped → stop_scanner_scoped with sessionToken', async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await stopScanner();
-    expect(mockInvoke).toHaveBeenCalledWith('stop_scanner', undefined);
+    await stopScannerScoped('tok');
+    expect(mockInvoke).toHaveBeenCalledWith('stop_scanner_scoped', { sessionToken: 'tok' });
   });
 
   // ── Customer Display (scoped — ADR #7) ──────────────────────
@@ -144,6 +150,6 @@ describe('hardware.ts IPC contract', () => {
 
   it('propagates backend errors', async () => {
     mockInvoke.mockRejectedValueOnce(new Error('device not found'));
-    await expect(listScanners()).rejects.toThrow('device not found');
+    await expect(listScannersScoped('tok')).rejects.toThrow('device not found');
   });
 });

@@ -4,20 +4,18 @@ import { renderHookInAct } from '@/test-utils/renderInAct';
 import { useBarcodeScanner } from '@/features/sales/useBarcodeScanner';
 
 const mocks = vi.hoisted(() => ({
-  startScanner: vi.fn(),
-  stopScanner: vi.fn(),
   onBarcodeScanned: vi.fn(),
   onBarcodeError: vi.fn(),
-  listScanners: vi.fn(),
   lookupByBarcode: vi.fn(),
-  // The scoped twins. useBarcodeScanner picks its API per call with
-  //   sessionToken ? () => xScoped(sessionToken, ...) : x
-  // at :63, :71, :83 and :117 -- added by 403030ad ("migrate remaining frontend
-  // components to scoped APIs"), which did not touch this file. Without these keys the
-  // mocked module has no such export, so any test that passed a sessionToken would call
-  // undefined and throw "xScoped is not a function": all four scoped branches were
-  // unrenderable, not merely uncovered. Same defect as WeightScaleWidget.test.tsx, fixed
-  // in 65971d0f, found by scanning for subjects that call a name their test omits.
+  // The scoped twins, added by 403030ad ("migrate remaining frontend components to scoped
+  // APIs"), which did not touch this file: without these keys the mocked module had no such
+  // export, so any test that passed a sessionToken called undefined and threw "xScoped is not
+  // a function" -- all four scoped branches were unrenderable, not merely uncovered. Same
+  // defect as WeightScaleWidget.test.tsx, fixed in 65971d0f. T21 (b2) then deleted the three
+  // unscoped scanner exports this hook used to fall back to: `list_scanners`, `start_scanner`
+  // and `stop_scanner` are registered in neither shell, so the fallback could only answer
+  // "command not found" in a build. `lookupByBarcode` stays for the same reason it is not
+  // migrated here -- it belongs to the products api, and its arm is still there to test.
   startScannerScoped: vi.fn(),
   stopScannerScoped: vi.fn(),
   listScannersScoped: vi.fn(),
@@ -25,11 +23,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/api/hardware', () => ({
-  startScanner: (...args: unknown[]) => mocks.startScanner(...args),
-  stopScanner: (...args: unknown[]) => mocks.stopScanner(...args),
   onBarcodeScanned: (...args: unknown[]) => mocks.onBarcodeScanned(...args),
   onBarcodeError: (...args: unknown[]) => mocks.onBarcodeError(...args),
-  listScanners: (...args: unknown[]) => mocks.listScanners(...args),
   startScannerScoped: (...args: unknown[]) => mocks.startScannerScoped(...args),
   stopScannerScoped: (...args: unknown[]) => mocks.stopScannerScoped(...args),
   listScannersScoped: (...args: unknown[]) => mocks.listScannersScoped(...args),
@@ -50,9 +45,6 @@ function makeOpts(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  mocks.startScanner.mockResolvedValue(undefined);
-  mocks.stopScanner.mockResolvedValue(undefined);
-  mocks.listScanners.mockResolvedValue([{ id: 'scanner-1' }]);
   mocks.onBarcodeScanned.mockResolvedValue(() => {});
   mocks.onBarcodeError.mockResolvedValue(() => {});
   mocks.lookupByBarcode.mockResolvedValue({ sku: 'LATTE', name: 'Latte' });
@@ -70,52 +62,61 @@ afterEach(() => {
 });
 
 describe('useBarcodeScanner', () => {
+  // T21 (b2) moved this whole group onto a session token. It used to render with `makeOpts()`
+  // and no token, which drove the hook's `: plainWrapper` arm -- a call to a command neither
+  // shell registers. Every case below asserts the same behaviour as before, through the path a
+  // real POS screen takes.
+  const TOKEN = 'tok-1';
+
   describe('scanner lifecycle', () => {
     it('auto-detects and starts the first available scanner on mount', async () => {
-      await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+      await renderHookInAct(() => useBarcodeScanner(makeOpts({ sessionToken: TOKEN })));
 
-      expect(mocks.listScanners).toHaveBeenCalled();
-      expect(mocks.startScanner).toHaveBeenCalledWith('scanner-1');
+      expect(mocks.listScannersScoped).toHaveBeenCalledWith(TOKEN);
+      expect(mocks.startScannerScoped).toHaveBeenCalledWith(TOKEN, 'scanner-1');
     });
 
     it('uses the provided scannerId instead of auto-detecting', async () => {
-      await renderHookInAct(() => useBarcodeScanner(makeOpts({ scannerId: 'my-scanner' })));
+      await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ sessionToken: TOKEN, scannerId: 'my-scanner' })));
 
-      expect(mocks.listScanners).not.toHaveBeenCalled();
-      expect(mocks.startScanner).toHaveBeenCalledWith('my-scanner');
+      expect(mocks.listScannersScoped).not.toHaveBeenCalled();
+      expect(mocks.startScannerScoped).toHaveBeenCalledWith(TOKEN, 'my-scanner');
     });
 
     it('does not start scanner when auto-detect returns no scanners', async () => {
-      mocks.listScanners.mockResolvedValue([]);
+      mocks.listScannersScoped.mockResolvedValue([]);
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+      await renderHookInAct(() => useBarcodeScanner(makeOpts({ sessionToken: TOKEN })));
 
-      expect(mocks.startScanner).not.toHaveBeenCalled();
+      expect(mocks.startScannerScoped).not.toHaveBeenCalled();
     });
 
     it('does not start scanner when auto-detect throws', async () => {
-      mocks.listScanners.mockRejectedValue(new Error('no backend'));
+      mocks.listScannersScoped.mockRejectedValue(new Error('no backend'));
 
-      await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+      await renderHookInAct(() => useBarcodeScanner(makeOpts({ sessionToken: TOKEN })));
 
-      expect(mocks.startScanner).not.toHaveBeenCalled();
+      expect(mocks.startScannerScoped).not.toHaveBeenCalled();
     });
 
     it('stops the scanner on unmount when it was started', async () => {
-      const { unmount } = await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+      const { unmount } = await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ sessionToken: TOKEN })));
 
       unmount();
 
-      expect(mocks.stopScanner).toHaveBeenCalled();
+      expect(mocks.stopScannerScoped).toHaveBeenCalledWith(TOKEN);
     });
 
     it('does not stop the scanner on unmount when it was never started', async () => {
-      mocks.listScanners.mockResolvedValue([]);
-      const { unmount } = await renderHookInAct(() => useBarcodeScanner(makeOpts()));
+      mocks.listScannersScoped.mockResolvedValue([]);
+      const { unmount } = await renderHookInAct(() =>
+        useBarcodeScanner(makeOpts({ sessionToken: TOKEN })));
 
       unmount();
 
-      expect(mocks.stopScanner).not.toHaveBeenCalled();
+      expect(mocks.stopScannerScoped).not.toHaveBeenCalled();
     });
   });
 
@@ -238,28 +239,28 @@ describe('useBarcodeScanner', () => {
 
   describe('idempotency', () => {
     it('re-starts scanner when preferredId changes', async () => {
-      mocks.startScanner.mockClear();
+      mocks.startScannerScoped.mockClear();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { rerender } = await (renderHookInAct as any)(
-        ({ scannerId }: { scannerId?: string }) => useBarcodeScanner(makeOpts({ scannerId })),
+        ({ scannerId }: { scannerId?: string }) => useBarcodeScanner(makeOpts({ scannerId, sessionToken: 'tok-1' })),
         { initialProps: { scannerId: 'scanner-1' } },
       );
 
-      mocks.startScanner.mockClear();
+      mocks.startScannerScoped.mockClear();
       rerender({ scannerId: 'scanner-2' });
 
-      expect(mocks.startScanner).toHaveBeenCalledWith('scanner-2');
+      expect(mocks.startScannerScoped).toHaveBeenCalledWith('tok-1', 'scanner-2');
       await vi.waitFor(() => {});
     });
   });
 
   // ── Scoped vs unscoped API selection ───────────────────────────
   //
-  // Four branches, one per operation, each choosing by the presence of sessionToken:
-  //   :63  start   :71  stop   :83  lookup   :117  listScanners
-  // None of them could be exercised before this block: the mock module did not export the
-  // scoped names at all, so a test that passed a token threw "xScoped is not a function"
-  // rather than failing an assertion.
+  // This block used to grade four ternaries: start, stop, lookup, listScanners. T21 (b2)
+  // deleted three of them -- `list_scanners`, `start_scanner` and `stop_scanner` are
+  // registered in neither shell, so the no-token half was a lookup that could only fail.
+  // What is left to choose is the lookup arm (:83), which still has both halves because
+  // `lookup_by_barcode` sits in the products api and is not part of this slice.
 
   describe('scoped vs unscoped API selection', () => {
     it('starts and lists through the scoped API when a session token is given', async () => {
@@ -268,10 +269,10 @@ describe('useBarcodeScanner', () => {
       // The token has to reach the command or the backend cannot resolve a store.
       expect(mocks.listScannersScoped).toHaveBeenCalledWith('tok-1');
       expect(mocks.startScannerScoped).toHaveBeenCalledWith('tok-1', 'scanner-1');
-      // And the unscoped pair must stay untouched: those read the ambient store, which is
-      // precisely what the scoped migration exists to prevent.
-      expect(mocks.listScanners).not.toHaveBeenCalled();
-      expect(mocks.startScanner).not.toHaveBeenCalled();
+      // The matching negatives here used to read `expect(mocks.listScanners).not...`, which
+      // after the deletion would have been an assertion about an export that no longer exists:
+      // always true, so not a test. The case at the end of this block ("does not touch the
+      // scanner when no session token is given") is the half of that intent that can still fail.
     });
 
     it('stops through the scoped API on unmount when a token was given', async () => {
@@ -281,7 +282,6 @@ describe('useBarcodeScanner', () => {
       unmount();
 
       expect(mocks.stopScannerScoped).toHaveBeenCalledWith('tok-1');
-      expect(mocks.stopScanner).not.toHaveBeenCalled();
     });
 
     // handleScan is a useCallback whose body reads `sessionToken` (:83) but whose dependency
@@ -316,13 +316,17 @@ describe('useBarcodeScanner', () => {
       expect(mocks.lookupByBarcodeScoped.mock.calls.every((c) => c[0] !== 'tok-1')).toBe(true);
     });
 
-    it('falls back to the unscoped API when no token is given', async () => {
+    // This case used to REQUIRE the dead call: no token meant `list_scanners` then
+    // `start_scanner`. It is inverted now, and it is the only pin on the guard itself --
+    // T11(a) shipped a no-session guard in useTerminalHardware with nothing to hold it, which
+    // I disclosed in the plan rather than papering over. Here the guard is pinned: the hook
+    // must not reach for the scanner at all without a session.
+    it('does not touch the scanner when no session token is given', async () => {
       await renderHookInAct(() => useBarcodeScanner(makeOpts()));
 
-      expect(mocks.listScanners).toHaveBeenCalled();
-      expect(mocks.startScanner).toHaveBeenCalledWith('scanner-1');
       expect(mocks.listScannersScoped).not.toHaveBeenCalled();
       expect(mocks.startScannerScoped).not.toHaveBeenCalled();
+      expect(mocks.stopScannerScoped).not.toHaveBeenCalled();
     });
 
     it('looks up a scanned barcode through the scoped API when a token is given', async () => {

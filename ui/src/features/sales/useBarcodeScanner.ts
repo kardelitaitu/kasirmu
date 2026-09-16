@@ -1,12 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import {
-  startScanner,
-  stopScanner,
   startScannerScoped,
   stopScannerScoped,
   onBarcodeScanned,
   onBarcodeError,
-  listScanners,
   listScannersScoped,
   type BarcodeScannedPayload,
 } from '@/api/hardware';
@@ -54,22 +51,28 @@ export function useBarcodeScanner({
   useEffect(() => {
     let cancelled = false;
 
+    // T21 (b2): the no-session arm is deleted, not repaired. `list_scanners`, `start_scanner` and
+    // `stop_scanner` are registered in neither shell's generate_handler, so the `: plainWrapper`
+    // half of each ternary could only return "command not found" -- and a real build could not
+    // reach it anyway, because both shells return <StaffLoginScreen/> before any screen holding
+    // this hook mounts (ui/src/frontend/shell/AppShell.tsx:518, tablet/TabletAppShell.tsx:194).
+    // The dev-mock answered those names, so every browser preview and every Vitest run passed.
+    if (!sessionToken) return;
+
     (async () => {
       // Auto-detect scanner if no id was given.
       const scannerId = preferredId ?? (await autoDetectScanner(sessionToken));
 
       if (!scannerId || cancelled) return;
 
-      const start = sessionToken ? (id: string) => startScannerScoped(sessionToken, id) : startScanner;
-      await start(scannerId);
+      await startScannerScoped(sessionToken, scannerId);
       startedRef.current = true;
     })();
 
     return () => {
       cancelled = true;
       if (startedRef.current) {
-        const stop = sessionToken ? () => stopScannerScoped(sessionToken) : stopScanner;
-        stop().catch(() => {
+        stopScannerScoped(sessionToken).catch(() => {
           // Cleanup on unmount — scanner may already be stopped.
         });
         startedRef.current = false;
@@ -120,10 +123,9 @@ export function useBarcodeScanner({
   }, [handleScan, handleError]);
 }
 
-async function autoDetectScanner(sessionToken?: string): Promise<string | null> {
+async function autoDetectScanner(sessionToken: string): Promise<string | null> {
   try {
-    const fetchScanners = sessionToken ? () => listScannersScoped(sessionToken) : listScanners;
-    const scanners = await fetchScanners();
+    const scanners = await listScannersScoped(sessionToken);
     return scanners[0]?.id ?? null;
   } catch {
     return null;
