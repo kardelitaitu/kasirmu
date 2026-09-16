@@ -17,6 +17,11 @@
  * fetch and the handler went back to the screen and the two ternaries stayed there
  * byte-identical and untouched.
  *
+ * 2026-09-16 DSH: one of those two ternaries is no longer byte-identical -- the last-backup
+ * ?? collapsed three states into two (timestamp / answered-empty / read-failed), so it is now
+ * an explicit three-way. The state, the mount fetch and the handler are still where this
+ * comment says they are.
+ *
  * Registered in screenExtraction.test.ts (additionalTsx) because the data-mgmt-*
  * classes it uses are styled by DataManagementScreen.css.
  */
@@ -60,7 +65,16 @@ export function BackupSection({ flashRows, backup, onBackup }: BackupSectionProp
                     <span className="data-mgmt-label">Last backup</span>
                   </Localized>
                   <span className="data-mgmt-value">
-                    {backup.lastBackup ?? l10n.getString('data-mgmt-backup-never')}
+                    {/* Three-way on purpose. The old ?? folded undefined (read failed) into
+                        null (read answered: nothing yet), so a machine whose read failed looked
+                        like a machine that had never been backed up. Only the answered-empty
+                        state may claim 'Never'. The failure string is the existing en+id pair
+                        this read already uses for its toast -- no new copy was invented. */}
+                    {typeof backup.lastBackup === 'string'
+                      ? backup.lastBackup
+                      : backup.lastBackup === undefined
+                        ? l10n.getString('data-mgmt-toast-backup-status-fail')
+                        : l10n.getString('data-mgmt-backup-never')}
                   </span>
                 </div>
                 {backup.lastBackupSize && (

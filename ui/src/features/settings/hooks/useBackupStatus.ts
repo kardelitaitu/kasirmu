@@ -30,6 +30,10 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
 }): { backup: BackupInfo; handleBackup: () => Promise<void> } {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
+  // Initial value stays null (renders 'Never'), deliberately: the in-flight window is NOT the
+  // failed read, and the only existing en+id pair that fits the failure is a past-tense load
+  // error. Calling a pending read 'failed' would be a second false claim; and this tab mounts
+  // only on demand, by which time the effect below has normally settled.
   const [backup, setBackup] = useState<BackupInfo>({
     lastBackup: null,
     lastBackupSize: null,
@@ -67,7 +71,10 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
         }));
       })
       .catch(() => {
-        setBackup((prev) => ({ ...prev, lastBackup: null }));
+        // A failed read is not an answered-empty read. Writing null here made the panel say
+        // 'Last backup: Never', a compliance claim this read cannot support, and the toast that
+        // did say so expires while the null does not. undefined = never answered.
+        setBackup((prev) => ({ ...prev, lastBackup: undefined }));
         addToast({ message: l10n.getString('data-mgmt-toast-backup-status-fail'), type: 'error' });
       });
     // addToast and l10n stay excluded, as the original comment said -- but the reason is now

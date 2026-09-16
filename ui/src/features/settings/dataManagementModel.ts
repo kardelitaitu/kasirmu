@@ -66,7 +66,16 @@ export interface ImportState {
 }
 
 export interface BackupInfo {
-  lastBackup: string | null;
+  /**
+   * THREE states, and the third is the one that was missing:
+   *   string    -> the read answered with a timestamp
+   *   null      -> the read ANSWERED that no backup exists; 'Never' is true here
+   *   undefined -> the read never answered; it FAILED. Not assertable as 'Never'.
+   * null and undefined used to be one value, so a failed read rendered the same compliance
+   * claim as an answered-empty one. The string|null|undefined shape is this struct's own
+   * existing convention -- lastBackupSize one line below already uses it.
+   */
+  lastBackup: string | null | undefined;
   lastBackupSize: string | null | undefined;
   backingUp: boolean;
 }
