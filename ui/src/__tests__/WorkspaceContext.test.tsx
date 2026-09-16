@@ -694,4 +694,170 @@ describe('WorkspaceContext', () => {
       }
     });
   });
+
+  // ── A failed server-side session teardown must be observable ───────────────
+  //
+  // Four sites in WorkspaceContext destroy the server-side session and swallow the
+  // rejection (`destroySession(token).catch(() => {})`). On a shared POS terminal the
+  // operator then sees a signed-out screen while the server session can still be live
+  // for the next person at the till. The change under test is ONLY the silence: each
+  // case asserts (a) the failure is REPORTED through this file's existing logging
+  // idiom -- `console.warn("WorkspaceContext: <what failed>", err)`, the shape used at
+  // :304, :378, :455 and :486 -- and (b) the local token clear and the navigation that
+  // follows it are unchanged. Nothing here may require a retry, a UI state or a toast.
+  describe('failed server-side session teardown', () => {
+    const TEARDOWN = 'server-side session teardown failed';
+
+    /** The auth session is mutable so a test can walk the provider through a logout. */
+    function renderWithMutableSession() {
+      const sessionRef: { current: LoginSessionDto | null } = {
+        current: DEFAULT_SESSION,
+      };
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        withFluent(
+          <MockAuthCtx.Provider
+            value={{
+              session: sessionRef.current,
+              pickerTicket: sessionRef.current ? DEFAULT_TICKET : null,
+            }}
+          >
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </MockAuthCtx.Provider>,
+        );
+      const hook = renderHook(() => useWorkspace(), { wrapper });
+      return { ...hook, sessionRef };
+    }
+
+    /** Renders the provider and mints a token for the restaurant instance. */
+    async function withLiveToken() {
+      const view = renderWithMutableSession();
+      await waitFor(() => {
+        expect(view.result.current.availableWorkspaces).toHaveLength(2);
+      }, FAST_WAIT);
+      act(() => {
+        view.result.current.setActiveWorkspace('restaurant-pos');
+      });
+      await waitFor(() => {
+        expect(view.result.current.sessionToken).toBe('tok-abc-123');
+      }, FAST_WAIT);
+      expect(mocks.destroySession).not.toHaveBeenCalled();
+      return view;
+    }
+
+    function rejectingTeardown() {
+      mocks.destroySession.mockRejectedValue(
+        new Error('destroy_session rejected (simulated)'),
+      );
+    }
+
+    // :266 -- the login/logout reset effect.
+    it('logout: reports a failed teardown and still clears the local token', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { result, rerender, sessionRef } = await withLiveToken();
+        rejectingTeardown();
+
+        sessionRef.current = null; // the operator signed out
+        await act(async () => {
+          rerender();
+        });
+        await flushAsync();
+
+        // Behaviour unchanged: the local token is cleared regardless of the IPC result.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBeNull();
+        // The only thing that changed: the failure is no longer silent.
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(TEARDOWN),
+          expect.anything(),
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    // :325 -- switchStore.
+    it('switchStore: reports a failed teardown and still completes the switch', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { result } = await withLiveToken();
+        rejectingTeardown();
+
+        act(() => {
+          result.current.switchStore('store-2');
+        });
+        await flushAsync();
+
+        // Behaviour unchanged: local clear + navigation to the new store.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBeNull();
+        expect(result.current.resolvedStoreId).toBe('store-2');
+        // The only thing that changed: the failure is no longer silent.
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(TEARDOWN),
+          expect.anything(),
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    // :384 -- swapSessionToken (ADR #6 hot-swap on a shared touchscreen).
+    it('swapSessionToken: reports a failed teardown and still completes the swap', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { result } = await withLiveToken();
+        rejectingTeardown();
+        mocks.createSession.mockResolvedValue(
+          makeSessionResult({ session_token: 'tok-swapped' }),
+        );
+
+        await act(async () => {
+          await result.current.swapSessionToken('user-2', 'role-manager');
+        });
+
+        // Behaviour unchanged: the swap finishes on the new cashier's token.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBe('tok-swapped');
+        // The only thing that changed: the failure is no longer silent.
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(TEARDOWN),
+          expect.anything(),
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    // :600 -- the token-creation effect re-entering with a previous token.
+    it('re-minting on a new workspace: reports a failed teardown of the previous token', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const { result } = await withLiveToken();
+        rejectingTeardown();
+        mocks.createSession.mockResolvedValue(
+          makeSessionResult({ session_token: 'tok-xyz' }),
+        );
+
+        act(() => {
+          result.current.setActiveWorkspace('store-pos');
+        });
+        await waitFor(() => {
+          expect(result.current.sessionToken).toBe('tok-xyz');
+        }, FAST_WAIT);
+        await flushAsync();
+
+        // Behaviour unchanged: the old token is dropped and the new one minted.
+        expect(mocks.destroySession).toHaveBeenCalledWith('tok-abc-123');
+        expect(result.current.sessionToken).toBe('tok-xyz');
+        // The only thing that changed: the failure is no longer silent.
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(TEARDOWN),
+          expect.anything(),
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
 });

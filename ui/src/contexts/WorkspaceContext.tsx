@@ -166,6 +166,28 @@ function useToastIfAvailable(): ReturnType<typeof useToast> | null {
   }
 }
 
+/**
+ * A rejected `destroy_session` is the one logout failure nobody could see.
+ *
+ * Every site below still clears the LOCAL token right afterwards -- the operator's
+ * screen goes to the picker either way -- so when the server-side teardown fails the
+ * UI says "logged out" while that session can still be live on the server. On a
+ * shared POS terminal the next person at the till inherits it.
+ *
+ * Nothing else is safe to do from here: a retry would re-destroy a token this client
+ * has already let go of, and a UI state would have to answer a question this lane has
+ * not decided (does a half-teardown block navigation?). So the requirement is only
+ * that the failure is OBSERVABLE. Same shape as every other diagnostic in this file
+ * -- `console.warn("WorkspaceContext: <what failed>", err)` (see :304, :378, :455,
+ * :486) -- with `where` naming which teardown broke.
+ */
+function reportTeardownFailure(where: string, err: unknown): void {
+  console.warn(
+    `WorkspaceContext: server-side session teardown failed (${where}) -- the local token was cleared but the server session may still be live`,
+    err,
+  );
+}
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session, pickerTicket, updatePickerTicket } = useAuth();
   // Localized copy for the error state. WorkspaceProvider mounts inside
@@ -263,7 +285,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveInstance(null);
     const token = sessionTokenRef.current;
     if (token) {
-      destroySession(token).catch(() => {});
+      destroySession(token).catch((err) =>
+        reportTeardownFailure("login/logout reset", err),
+      );
       setSessionToken(null);
     }
   }, [session]);
@@ -322,7 +346,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     (storeId: string) => {
       const token = sessionTokenRef.current;
       if (token) {
-        destroySession(token).catch(() => {});
+        destroySession(token).catch((err) =>
+          reportTeardownFailure("switchStore", err),
+        );
         setSessionToken(null);
       }
       setActiveWorkspace(null);
@@ -381,7 +407,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             );
           }
 
-          await destroySession(prev).catch(() => {});
+          await destroySession(prev).catch((err) =>
+            reportTeardownFailure("swapSessionToken", err),
+          );
           setSessionToken(null);
         }
 
@@ -597,7 +625,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       // Destroy any previous token before creating a new one.
       if (prevToken) {
-        destroySession(prevToken).catch(() => {});
+        destroySession(prevToken).catch((err) =>
+          reportTeardownFailure("token re-mint", err),
+        );
         setSessionToken(null);
       }
 
