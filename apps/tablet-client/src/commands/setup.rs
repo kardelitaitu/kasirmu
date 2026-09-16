@@ -9,6 +9,38 @@
 //! re-exported from `oz_bridge::setup`: the wire shape is one type shared
 //! with the desktop shell, so a key the wizard sends — or a key the wizard
 //! reads back — cannot exist on only one side.
+//!
+//! # ADR #49 status — measured 2026-09-16, `census-portable-doors.py` → 3 of 4
+//!
+//! **Three doors are ported, and all three are whole-body moves.** The census
+//! calls a door *portable* only when its body is already statement-identical to
+//! its twin, so these needed no rewriting — only the ctx source changes, which
+//! is what [`AppState::bridge_ctx`] supplies: [`get_enabled_features`],
+//! [`dismiss_setup_wizard`] and [`get_setup_status`]. None resolves a session,
+//! so all three are ledger-neutral and the registration ratchet does not move.
+//!
+//! **What proves the move is the instrument, not a test on this shell.** The
+//! `setup_tests.rs` cases that name two of these doors assert a hand-written
+//! copy of the old body against a plain `Connection` (`setup_tests.rs:382` and
+//! `:392`), so they keep passing while exercising `Settings` rather than the
+//! command — the very mirrored-copy failure mode [`write_setup`] was split out
+//! to avoid, and the reason those tests cannot reach the bridge twins either,
+//! since a `BridgeCtx` is not constructible from a bare connection. The proof
+//! is `verify-body-parity.py`: the pre-port bodies were statement-identical,
+//! and the twins themselves are exercised by the desktop shell.
+//!
+//! **One door is REFUSED.** [`complete_setup`] would *gain* a statement: the
+//! bridge's body opens its transaction with `store.seed_default_roles()`
+//! (`crates/oz-bridge/src/setup.rs:99`) and this shell has never run it. §4
+//! forbids adding a statement inside an extraction as plainly as removing one,
+//! so the body stays tablet-native and [`write_setup`] stays with it.
+//!
+//! The absent leg is **not** a defect here: `bootstrap_owner` seeds the default
+//! roles before creating the first owner
+//! (`apps/tablet-client/src/commands/staff.rs:444` → `oz_bridge::staff::
+//! bootstrap_owner` → `run_bootstrap_owner`), so a tablet-provisioned store
+//! holds its role rows by the time the wizard runs. That is why the divergence
+//! is recorded in [`write_setup`] as deliberate rather than owed.
 
 use oz_core::{FeatureRegistry, Settings, features};
 use rusqlite::Connection;
@@ -51,19 +83,20 @@ pub use oz_bridge::setup::{EnabledFeaturesResult, SetupStatus};
 ///
 /// The front-end calls this once on mount to decide which nav items
 /// and UI elements to show/hide.
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::setup::get_enabled_features`]. The two bodies were
+/// statement-identical, so this is a whole-body move rather than a rewrite; the
+/// door resolves no session, which makes the delegation ledger-neutral.
 #[command]
 pub async fn get_enabled_features(
     state: State<'_, AppState>,
 ) -> Result<EnabledFeaturesResult, AppError> {
-    let conn = state.db.lock().await;
-    let registry = Settings::load_features(&conn)?;
-
-    let features: Vec<String> = registry
-        .enabled_features()
-        .map(|f| oz_core::features::feature_key(f).to_string())
-        .collect();
-
-    Ok(EnabledFeaturesResult { features })
+    let ctx = state.bridge_ctx();
+    oz_bridge::setup::get_enabled_features(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Write every row the setup wizard collects, into `conn`.
@@ -119,6 +152,20 @@ fn write_setup(conn: &Connection, args: &CompleteSetupArgs) -> Result<(), AppErr
 ///
 /// Called by the front-end when the user clicks "Complete Setup" on
 /// the last step of the wizard.
+///
+/// # ADR #49 NOT APPLIED, deliberately
+///
+/// Refused 2026-09-16. Delegating would **add a statement**: the bridge body
+/// opens its transaction with `store.seed_default_roles()`
+/// (`crates/oz-bridge/src/setup.rs:99`) which this shell's body has never
+/// executed, and §4 pins the transaction's legs and their order. This is the
+/// same class of change as adding a gate, and it is not an extraction.
+///
+/// The gap is deliberate rather than owed — `bootstrap_owner` already seeds
+/// those rows on this shell — so nothing is filed as debt against this door.
+/// What does *not* follow from that is a licence to delegate: the ledger is not
+/// the only constraint, and a body that would gain a write leg fails §4 whether
+/// or not anyone is owed it.
 #[command]
 pub async fn complete_setup(
     state: State<'_, AppState>,
@@ -145,29 +192,34 @@ pub async fn complete_setup(
 ///
 /// Called when the user clicks "Skip setup". Only writes the
 /// `show_setup_wizard = false` flag — no preset or features are saved.
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::setup::dismiss_setup_wizard`]; the bodies were
+/// statement-identical. Resolves no session, so the move is ledger-neutral.
 #[command]
 pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppError> {
-    let db = state.db.lock().await;
-    Settings::set(&db, oz_core::settings::keys::SHOW_SETUP_WIZARD, "false")?;
-    tracing::info!("setup wizard dismissed (skip)");
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::setup::dismiss_setup_wizard(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 /// Returns whether the setup wizard has been completed.
 ///
 /// The front-end calls this on mount to decide whether to render
 /// the wizard or the main application.
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::setup::get_setup_status`]; the bodies were
+/// statement-identical. Resolves no session, so the move is ledger-neutral.
 #[command]
 pub async fn get_setup_status(state: State<'_, AppState>) -> Result<SetupStatus, AppError> {
-    let db = state.db.lock().await;
-
-    let completed = Settings::get(&db, oz_core::settings::keys::SHOW_SETUP_WIZARD)?
-        .map(|v| v == "false")
-        .unwrap_or(false);
-
-    let preset = Settings::get(&db, oz_core::settings::keys::STORE_PRESET)?;
-
-    Ok(SetupStatus { completed, preset })
+    let ctx = state.bridge_ctx();
+    oz_bridge::setup::get_setup_status(&ctx)
+        .await
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
