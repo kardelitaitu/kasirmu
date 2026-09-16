@@ -276,8 +276,14 @@ pub async fn assert_refused_by_the_seeded_row<T>(
 ) {
     let ctx = tb.ctx();
     let db = ctx.lock_global().await;
+    // INVARIANT: the test bridge seeds a valid TenantSubscription row for "default"
+    // before any test that calls assert_refused_by_the_seeded_row runs; a missing row
+    // means the fixture setup failed, not a live user-facing error path.
     let row = TenantSubscription::load(&db, "default")
         .expect("the tenant_subscription read must succeed")
+        // INVARIANT: seeded_row_loads() is the predicate for whether the fixture is
+        // healthy; None here means the seed migration or the TestBridge setup panicked
+        // earlier — a harness bug, not a condition a production code path can reach.
         .expect("the seeded default row must EXIST: seeded_row_loads() == false is also the answer for a lost seed, and a fixture fork must never be able to read a broken migration as a profile difference");
     assert_eq!(
         row.tier.tier_key(),

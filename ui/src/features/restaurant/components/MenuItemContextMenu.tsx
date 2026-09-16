@@ -62,7 +62,7 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
   // menu is immediately operable without an extra Tab.
   useEffect(() => {
     if (!menu.fromKeyboard) return;
-    menuRef.current?.querySelector<HTMLElement>('button[role="menuitem"]')?.focus();
+    menuRef.current?.querySelector<HTMLElement>('.restaurant-context-item')?.focus();
   }, [menu]);
 
   // A11Y-06: ArrowUp / ArrowDown roving focus across every control in the
@@ -73,7 +73,7 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     const items = Array.from(
       e.currentTarget.querySelectorAll<HTMLElement>(
-        'button[role="menuitem"], .restaurant-context-colors button',
+        '.restaurant-context-item, .restaurant-context-colors button',
       ),
     );
     if (items.length === 0) return;
@@ -176,7 +176,6 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
         aria-label={l10n.getString(menu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin')}
         aria-pressed={menu.isPinned}
         onClick={togglePin}
-        role="menuitem"
       >
         <Localized id={menu.isPinned ? 'restaurant-context-unpin' : 'restaurant-context-pin'}>
         <span>{menu.isPinned ? 'Unpin from top' : 'Pin to top'}</span>
@@ -189,7 +188,6 @@ export function MenuItemContextMenu({ menu, setPinned, setUnavailable, setColors
           aria-label={l10n.getString(menu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable')}
           aria-pressed={menu.isUnavailable}
           onClick={toggleUnavailable}
-          role="menuitem"
         >
           <Localized id={menu.isUnavailable ? 'restaurant-context-available' : 'restaurant-context-unavailable'}>
           <span>{menu.isUnavailable ? 'Mark available' : 'Mark unavailable'}</span>

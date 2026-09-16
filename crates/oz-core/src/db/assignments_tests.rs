@@ -435,8 +435,6 @@ fn covers_resource_unparsable_pair_denies() {
 
 #[test]
 fn migration_backfills_existing_assignments_to_organization() {
-    use crate::migrations;
-
     // Split the registry at the ADR-47 migration: apply everything up to
     // but not including it, seed a legacy assignment row, then apply the
     // rest — the row must come out org-wide with NULL scope_id.
@@ -444,7 +442,11 @@ fn migration_backfills_existing_assignments_to_organization() {
         .iter()
         .position(|m| m.id == "20260916_role_assignment_scopes.sql")
         .expect("ADR-47 migration present in registry");
-    let mut conn = migrations::fresh_db();
+    // Use a blank connection, not fresh_db(): fresh_db() returns a snapshot with
+    // ALL migrations already recorded, so the boot guard would see the post-split
+    // migrations as "from a newer build" and refuse to run the prefix slice.
+    let mut conn = rusqlite::Connection::open_in_memory()
+        .expect("blank in-memory DB for migration split test");
     platform_core::database::run(&mut conn, &crate::migrations::ALL[..split]).unwrap();
 
     seed_user(&conn);
