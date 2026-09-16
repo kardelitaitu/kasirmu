@@ -9,24 +9,39 @@
 #     severity threshold). Unmaintained/unsound/yanked are gated at the
 #     `workspace` level so a transitive-only finding stays visible but does
 #     not fail the check — matching the "informational warnings stay visible
-#     but non-blocking" stance documented in .cargo/audit.toml. Non-blocking
-#     is the smaller problem: nothing runs this file in CI at all. Neither
-#     `dev-ci.yml` nor `release.yml` has a cargo-deny step
-#     (`grep -c "cargo deny" .github/workflows/dev-ci.yml` → 0), `check.sh`
-#     and `run-pre-push.py` do not call it, and `scripts/gates.json` files
-#     the `audit` row as `status: "retired"`. Every statement below about
-#     what "fails CI" is therefore about what this config WOULD do if a
-#     runner invoked it — as measured 2026-09-16, `cargo deny check
-#     advisories` exits 1 locally on RUSTSEC-2026-0285 (rustls 0.23.41) and
-#     nobody is told.
+#     but non-blocking" stance documented in .cargo/audit.toml.
+#   • ENFORCEMENT, re-measured 2026-09-16 at dd95374f7. A runner now exists:
+#     scripts/check.sh carries a leg labelled "supply chain advisories
+#     (advisory)" that invokes `cargo deny check`, so this file is no longer
+#     unread by anything. That leg is NON-BLOCKING by design — it prints
+#     PASS / SKIP / WARN and never fails the run — and it is still in NO live
+#     workflow and NOT in pre-push:
+#     `grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml
+#     .github/workflows/release.yml` exits 1, and .githooks/pre-push calls
+#     scripts/run-pre-push.py, which never calls check.sh. So every statement
+#     below about what "fails CI" still describes only what this config WOULD
+#     do if a WORKFLOW invoked it. In scripts/gates.json the `audit` row is
+#     now `status: "advisory"` with that leg as its only runner (it was
+#     `retired` when the paragraph this one replaces was written).
+#     The other half of that replaced paragraph was stale in its number, not
+#     only in its runner: it asserted "as measured 2026-09-16, `cargo deny
+#     check advisories` exits 1 locally on RUSTSEC-2026-0285 (rustls
+#     0.23.41)". Cargo.lock no longer holds rustls 0.23.41 — `8a9954d7c
+#     chore(deps): bump rustls to 0.23.45 to clear RUSTSEC-2026-0285`, and
+#     `grep -A1 'name = "rustls"' Cargo.lock` prints 0.23.45 — so re-measured
+#     at dd95374f7 `cargo deny check advisories` exits 0 and prints
+#     `advisories ok`. Read the exit code off the command, not off this file.
 #   • The workspace's own crates are proprietary (LICENSE, `SEE LICENSE IN
 #     LICENSE` is not SPDX-parseable) — clarified per crate below.
 #
-# Refresh procedure (DOCKER-02-style, deliberate — and entirely MANUAL:
-# no live workflow, no pre-commit hook step, no pre-push step and no
-# scripts/check.sh leg invokes cargo-deny (`grep -rn "cargo deny"
-# .github/workflows/*.yml scripts/check.sh scripts/run-pre-push.py` hits
-# nothing outside a comment), so none of the steps below happens by itself:
+# Refresh procedure (DOCKER-02-style, deliberate — and still MANUAL in every
+# way that decides an outcome: no live workflow, no pre-commit hook step and no
+# pre-push step invokes cargo-deny (`grep -rnE 'cargo deny'
+# .github/workflows/*.yml scripts/run-pre-push.py .githooks` exits 1). The one
+# automatic reader is the non-blocking scripts/check.sh leg named above, which
+# SURFACES a finding and stops nothing — it SKIPs where cargo-deny is not
+# installed and SKIPs where the advisory database is unreachable, so its own
+# green is not proof this file was evaluated. Nothing below happens by itself:
 #   After adding a dependency, run `cargo deny check licenses` and add any
 #   new license to `allow` ONLY after reviewing it. Run `cargo deny check
 #   advisories` and move an advisory to `ignore` only with a justification

@@ -63,8 +63,8 @@
 | `lighthouse` | ❌ Runs nowhere | ci.yml | Lighthouse a11y audit. gates.json: **retired** |
 | `docker` | ❌ Runs nowhere | ci.yml | No Trivy or docker-build step exists in either live workflow (verified by grep), and the gate has no gates.json record at all |
 | `coverage` | ❌ Runs nowhere | ci.yml | Coverage report. gates.json: **retired**. `scripts/coverage.sh` exists; nothing invokes it in CI |
-| `audit` | ❌ Runs nowhere | ci.yml | `cargo audit` + `npm audit`. gates.json: **retired**; the runner lived in `security.yml`, which was renamed to `security.yml.bak` by `23c963303` on 2026-09-02 (cargo-audit job at `security.yml.bak:19-34`, cargo-deny at `:36-50`) — so the file did exist live before that rename, contrary to what this row claimed until 09-09-26. This is the row AGENTS.md means by "security suites are not enforced" |
-| `security-pr` | ❌ Runs nowhere | ci.yml | gates.json marks this **retired** with no CI runner. The row claimed ✅ Required until 08-09-26 |
+| `audit` | ⚠️ Advisory, **local check.sh only** | ci.yml | **Status re-filed at `dd95374f7`, the first commit in this repo's history to RUN either tool anywhere.** `cargo deny check` is now the `supply chain advisories (advisory)` leg of `scripts/check.sh` — non-blocking (PASS / SKIP / WARN, never a failed run), Rust-only, local-only. Still `cargo audit` runs nowhere, and neither tool runs in a live workflow: `grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1, so the runner that once lived in `security.yml` (renamed to `security.yml.bak` by `23c963303` on 2026-09-02, cargo-audit job at `security.yml.bak:19-34`, cargo-deny at `:36-50`) has no CI successor and the row's `ci.yml` column stays history. gates.json: **advisory** (was retired), runners `check.sh` only, deliberately no `ci` block. Read the green as: advisories were *looked at* if cargo-deny is installed and the advisory DB answered — the leg SKIPs when either is missing. `npm audit` remains suppressed by `npm ci --no-audit` |
+| `security-pr` | ❌ Runs nowhere **as a job** | ci.yml | gates.json marks this **retired** with no CI runner, and that is still exactly right: no live workflow runs it. What moved under this row at `dd95374f7` is the *tool*, not the job — `cargo deny` now runs as the non-blocking `supply chain advisories (advisory)` leg of `scripts/check.sh` (see the `audit` row), which is why the row cannot simply say "cargo deny appears nowhere" the way it used to. The row claimed ✅ Required until 08-09-26 |
 | `fuzz` | ❌ Runs nowhere | ci.yml | Fuzz targets exist under `fuzz/`; gates.json marks the runner **retired**, so nothing executes them |
 | `flaky-quarantine` | ❌ Runs nowhere | ci.yml | gates.json: **retired**, no runner. `scripts/verify-flaky-quarantine.py` exists and passes, but no live workflow and not `check.sh` invoke it |
 | `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-windows-config.py`, step "Windows config drift" |
@@ -134,7 +134,7 @@
 | Security PR baseline | `security-pr` | Required | — |
 | Lighthouse a11y | `lighthouse` | Advisory | — |
 | Coverage | `coverage` | Advisory | — |
-| Dependency audit | `audit` | Required on push | — |
+| Dependency audit | — (no CI job; `check.sh` leg) | Advisory (local, non-blocking) | `check.sh` (supply chain advisories) |
 | Fuzz | `fuzz` | Advisory | — |
 | Flaky quarantine registry | `flaky-quarantine` | Required | — |
 | E2E Docker image | `e2e-docker-image` | Required | — |
@@ -166,7 +166,7 @@
 | `release.yml.bak` | 🟠 **stale twin of a LIVE workflow** | (inert — GitHub never reads `.bak`) | The pre-retirement release pipeline, 512 lines vs the live 470. Retired by `23c963303` (09-02) and left behind when `release.yml` was restored on 09-04, so the directory now holds two tracked release workflows that differ by 42 lines. See the note below. |
 | `ci.yml` | 🔴 retired `.bak` | push/PR to main | Primary CI pipeline (lint, test, build, scan) |
 | `nightly.yml` | 🔴 retired `.bak` | schedule (daily) + dispatch | Nightly Rust/doc/UI/E2E + flaky detection |
-| `security.yml` | 🔴 retired `.bak` | schedule (weekly) + dispatch | Cargo audit/deny + container scan |
+| `security.yml` | 🔴 retired `.bak` | schedule (weekly) + dispatch | Cargo audit/deny + container scan — as a WORKFLOW still retired, and neither live workflow replaced it (`grep -nE 'cargo deny|cargo audit|osv' .github/workflows/dev-ci.yml .github/workflows/release.yml` exits 1). Its cargo-deny half has had a LOCAL successor since `dd95374f7`: the non-blocking `supply chain advisories (advisory)` leg in `scripts/check.sh`. Its cargo-audit and container-scan halves run nowhere |
 | `android.yml` | 🔴 retired `.bak` | push/PR to main | Android build |
 | `ios.yml` | 🔴 retired `.bak` | push/PR to main | iOS build |
 | `e2e-pr.yml` | 🔴 retired `.bak` | PR to main | E2E on PRs |
@@ -254,6 +254,7 @@ Comprehensive pre-push gate mirroring CI. Runs:
 20. Healthcheck script test
 21. CI docs drift
 22. Optional: Docker build (`--docker-dry-run`)
+23. `cargo deny check` — supply-chain advisories, **advisory**: prints PASS / SKIP / WARN and never fails the matrix (added `dd95374f7`; Rust only, no workflow, not in pre-push)
 
 ### `scripts/check-ui.mjs` (Node, cross-platform)
 

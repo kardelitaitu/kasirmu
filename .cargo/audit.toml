@@ -3,12 +3,20 @@
 # This file is the REVIEWED BASELINE referenced by docs/operations/ci-pipeline.md
 # and the required/advisory policy its gate matrix states. Every ignore entry
 # below must carry an owner/review date, a severity, and a justification.
-# Do not add entries casually: nothing polices this file. `cargo audit` runs in
-# neither live workflow, and scripts/gates.json files both `audit` and
-# `security-pr` as retired with runners: null — docs/operations/ci-pipeline.md
-# records both as "Runs nowhere". The tool is installed on developer machines
-# only, so an ignore entry is unenforced and a new finding of this class stays
-# invisible until someone types the command.
+# Do not add entries casually: nothing polices this file. `cargo audit` runs
+# in neither live workflow, not in scripts/check.sh, and not in pre-push
+# (`grep -rn 'cargo audit' .github/workflows/*.yml scripts/check.sh .githooks`
+# exits 1) — that is STILL true as of `dd95374f7`, which wired the OTHER tool:
+# the check.sh leg "supply chain advisories (advisory)" runs `cargo deny check`
+# against deny.toml, non-blocking, local-only, in no workflow. So
+# scripts/gates.json no longer files `audit` as retired (it is `advisory`,
+# runners: check.sh); `security-pr` stays retired, and docs/operations/
+# ci-pipeline.md now says so per row rather than "Runs nowhere" for both.
+# None of that reaches THIS file: the leg runs cargo-deny, which reads
+# deny.toml, not this baseline. The tool named in this file's first line is
+# installed on developer machines only, so an ignore entry here stays
+# unenforced and a new finding of this class stays invisible until someone
+# types the command.
 
 [advisories]
 # RUSTSEC-2023-0071 — Marvin Attack (rsa crate, medium 5.9)
