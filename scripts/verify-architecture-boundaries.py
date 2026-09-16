@@ -33,9 +33,17 @@ The line used to print three counts and nothing else, and every one of them was
 a FINDING count -- tracked, blocking, stale. Those measure debt, not scope. So
 "0 new/expired blocking finding(s)" was equally true of a run that graded this
 workspace and of a run whose --root pointed at a directory holding no crates, no
-ui/src and no crates/oz-bridge. That second run is not hypothetical: --root is a
-supported mode (the node harness in scripts/__tests__/ uses it), --strict is
-silent about scope, and this gate runs in three lanes. The line therefore now
+ui/src and no crates/oz-bridge. That second run is a supported mode, not a
+corruption: --root is a documented flag above, and the node suite in
+scripts/__tests__/verify-architecture-boundaries.test.mjs already reaches fixture
+scope another way -- it copies this script into the fixture directory and passes
+--metadata-file, so the empty population is the intended shape of every test in
+that file. --strict is not a scope control either (it is parsed and never read).
+The lanes that run this gate are whatever
+`grep -ln verify-architecture-boundaries.py scripts/run-pre-push.py
+scripts/check.sh scripts/check.ps1 .github/workflows/*.yml` names, and none of
+them passes --root, so all of them print a real denominator. The line therefore
+now
 ends in a denominator built by the same walks that produced the findings -- see
 new_scope() and the "scope" argument every walker takes -- not by a second glob
 beside them, because a denominator computed on a separate path is a denominator
@@ -48,19 +56,25 @@ KNOWN LIMIT -- A REAL REPO CAN PRESENT AS A FIXTURE
 
 An empty population is INTENDED here and stays intended: the walker docstrings
 say a fixture repository without crates/oz-bridge yields no findings, and
---root / --metadata-file exist precisely so synthetic trees can be graded. So
-this file deliberately has NO empty-population floor -- adding one would break
-the fixture mode that is this checker's own test harness. What remains, and what
+--root / --metadata-file exist precisely so synthetic trees can be graded -- and
+the node suite named above is made of nothing else. So this file deliberately has
+NO empty-population floor: adding one would fail the fixture runs that are this
+checker's own tests, which is a different tool's fix and not this one's. What remains, and what
 no exit code can close, is narrower: a run that means to grade this repository
 and instead lands on a directory that presents as a fixture is indistinguishable
 from a real fixture run by exit code alone. The caller's check is the printed
 denominator, stated as an action: run the command, read the
 "[population examined: ...]" clause, and confirm it names the tree you meant.
 Re-derive the expected numbers
-rather than trusting anything written here -- `ls -d crates/*/ | wc -l` for the
-crate count and `find ui/src -name '*.ts' -o -name '*.tsx' | wc -l` for the UI
-file count -- and compare those against the line. Zero crates examined with exit
-0 means the scope was empty; it does not mean the boundaries held.
+rather than trusting anything written here. The crate count is the number of
+PACKAGES the graph names, not the number of directories under `crates/` (this
+workspace also carries `modules/`, `platform/`, `foundation/` and app crates),
+so re-derive it with the same request the checker makes: `cargo metadata --no-deps
+--format-version 1 | python -c "import json,sys; print(len(json.load(sys.stdin)
+['packages']))"`. For the UI half use `find ui/src -name '*.ts' -o -name '*.tsx'
+| wc -l` and remember the printed number is lower, because the rule skips
+`ui/src/api/` and the test/mock trees. Zero crates examined with exit 0 means the
+scope was empty; it does not mean the boundaries held.
 """
 
 from __future__ import annotations
