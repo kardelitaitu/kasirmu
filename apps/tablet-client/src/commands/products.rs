@@ -168,23 +168,6 @@ fn map_products_to_dtos(
 
 // ── Lookup by barcode ────────────────────────────────────────────────
 
-/// Look up a single product by barcode.
-///
-/// Returns the product DTO or `null` when no match is found.
-/// Returns validation error for empty barcodes.
-#[command]
-pub async fn lookup_by_barcode(
-    barcode: String,
-    state: State<'_, AppState>,
-) -> Result<Option<ProductDto>, AppError> {
-    validate_not_empty("barcode", &barcode).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let db = state.db.lock().await;
-    let _store = Store::new(&db);
-    let result = run_lookup_by_barcode(&db, &barcode);
-    drop(db);
-    result
-}
-
 /// Business logic for barcode lookup (extracted for testing).
 fn run_lookup_by_barcode(
     conn: &rusqlite::Connection,
@@ -379,7 +362,7 @@ pub async fn list_warehouse_products_scoped(
     run_list_warehouse_products(&db)
 }
 
-/// Session-scoped variant of `lookup_by_barcode`.
+/// Look up a single product by barcode resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn lookup_by_barcode_scoped(
