@@ -812,9 +812,16 @@ async fn pg_integration_rls_force_blocks_owner() {
     // first version of this change did pass it, and the test then reported
     // `1 passed` in 80.09s after printing `failed to connect to PostgreSQL after
     // 5 attempts: pool.get() failed: Timeout occurred while creating a new
-    // object` -- the schema path does not finish inside that helper's own connect
-    // budget on a freshly created database, so the error arm fired, the test
-    // returned, and 220 lines of assertions silently did not run. Same shape as
+    // object` -- on this machine, at that moment, the schema path exceeded that
+    // helper's own connect budget on a freshly created database, so the error arm
+    // fired, the test returned, and 220 lines of assertions silently did not run.
+    //
+    // Phrased that way deliberately, because the general form is NOT true: two
+    // siblings in `email_pg_tests.rs` (`:920`, `:1067`) pass `apply_schema = true`
+    // against a throwaway database and run green, and `pg_daily_revenue_...` in that
+    // file now does the same. What is established is the 80.09s vacuous PASS, twice,
+    // which is enough to prefer an explicit apply here and not enough to call the
+    // helper broken. Same shape as
     // `pg_ddl_guard`'s continue-unserialized fallback at
     // `crates/oz-api/src/pg_tests.rs:78`-`:82`: an error path that yields a PASS
     // is worse than one that yields a failure. `expect` here fails loudly.

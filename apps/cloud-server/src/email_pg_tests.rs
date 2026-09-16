@@ -1202,7 +1202,22 @@ async fn pg_integration_active_tenants_survives_rls_cutover() {
 async fn pg_daily_revenue_nets_refunds_per_date_and_currency() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
-    let pool = match crate::db::DbPool::connect_postgres(&url, false, 20, true).await {
+    // Throwaway database, exactly as the two sibling tests here already do (`:920`,
+    // `:1067`) -- this was the last one in the file left on the base DB, and it was
+    // measured failing: `E40P01 deadlock detected ... AccessExclusiveLock`, rescued by
+    // nextest's retry budget so CI reported `1084 passed (1 flaky)` and exit 0 for a
+    // revenue-netting assertion that had actually failed on its first attempt.
+    //
+    // Every reason this file already documents applies here: `apply_schema = true`
+    // below means PG_INIT's catalog DDL runs on connect, and two parallel binaries
+    // doing that in `postgres` deadlock (`:17`-`:20`); a 20-connection pool against the
+    // shared dev DB exhausts `max_connections` under concurrency (`:101`-`:103`); and
+    // `#[serial(pg_rls_cutover)]` above it does not cover nextest, which forks a process
+    // per test -- a peer records that at `prune_tests.rs:443`-`:445`.
+    let Some((db_url, db_name, admin_pool)) = throwaway_pg_db(&url, "oz_refund_net").await else {
+        return;
+    };
+    let pool = match crate::db::DbPool::connect_postgres(&db_url, false, 20, true).await {
         Ok(crate::db::DbPool::Postgres(pool)) => pool,
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
@@ -1295,6 +1310,17 @@ async fn pg_daily_revenue_nets_refunds_per_date_and_currency() {
         .unwrap();
     client
         .execute("DELETE FROM sales WHERE id LIKE 'pg-refund-net-%'", &[])
+        .await
+        .unwrap();
+    // Release the database. The row sweep above is now belt-and-braces -- a throwaway
+    // cannot carry rows into a later run -- but it stays so this change is confined to
+    // where the test runs rather than what it asserts. Sibling idiom at
+    // `:1174`-`:1178`: DROP DATABASE cannot run inside a transaction.
+    drop(client);
+    drop(pool);
+    let admin = admin_pool.get().await.unwrap();
+    admin
+        .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
         .await
         .unwrap();
 }
