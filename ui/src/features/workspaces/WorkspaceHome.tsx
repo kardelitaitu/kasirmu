@@ -10,7 +10,7 @@ import OrgSelector from '@/components/OrgSelector';
 import type { LoginSessionDto } from '@/api/staff';
 import { useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
 import { tierSatisfies } from '@/utils/tierLevel';
-import { ROLE_HIERARCHY } from '@/utils/role';
+import { ROLE_HIERARCHY, roleAtLeast } from '@/utils/role';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
@@ -374,10 +374,18 @@ export default function WorkspaceHome() {
 
   // ── Tools gates (todo-tools.md role/tier matrix) ─────────────
 
+  // Routed through `roleAtLeast` rather than compared inline, so this gate and
+  // the settings-page gate read ONE vocabulary instead of two with opposite
+  // defaults. The inline form was `roleLevel >= (ROLE_HIERARCHY[minimumRole] ?? 0)`
+  // — an unrecognised `minimumRole` demanded **0** and the gate FAILED OPEN,
+  // while `roleAtLeast` (role.ts:72) demands `Number.MAX_SAFE_INTEGER` for an
+  // unknown floor. Ruled FAIL CLOSED (2026-09-16): an unknown floor on an
+  // admin-tool gate must deny, not allow. Type-blocked today — `ToolRole` is
+  // 'owner' | 'admin' | 'manager' (tools.tsx:25) and all three are in the
+  // table — so this is behaviour-neutral now and removes a latent fail-open.
   const canAccessTool = useCallback(
-    (access: ToolItem['access']): boolean =>
-      roleLevel >= (ROLE_HIERARCHY[access.minimumRole] ?? 0),
-    [roleLevel],
+    (access: ToolItem['access']): boolean => roleAtLeast(roleName, access.minimumRole),
+    [roleName],
   );
 
   // C2.2/§B: capabilities + lifecycle state drive the tier and validity
