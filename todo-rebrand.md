@@ -1,8 +1,25 @@
 # todo-rebrand.md — OZ-POS → kasir.mu
 
-<!-- Rebrand status: IN PROGRESS — 689 old-brand files, 98 already rebranded -->
+<!-- Rebrand status: PLANNED — no phase started. Every checklist box in this file is `[ ]`; none
+     carries `[/]` or `[x]`, so the file describes work-to-do rather than work-in-progress. (The token
+     `[/]` does appear once, at `:24` — that is the Legend defining it, not a phase marked in
+     progress.)
+     Counts measured 2026-09-16 at `442473337`, each with its command because two defensible greps
+     disagree and the population matters:
+       git grep -l -i -E "oz[-_ ]?pos" | wc -l                                  -> 692 files
+       git grep -l -F "OZ-POS" | wc -l                                           -> 462 files
+       git grep -l -F "ozpos" | wc -l                                            -> 93 files
+     The 692 is the widest population and INCLUDES the Tier-3 names this plan defers (crate names,
+     binary names, doc prose), so it is not "files to change in this plan". The 462 (literal brand
+     text) is the closest thing to the user-visible set. The previous header claimed "689 old-brand
+     files, 98 already rebranded"; 689 sits within noise of the 692 above (same grep, a few commits
+     earlier), but "98 already rebranded" has no command and no `[/]`/`[x]` box anywhere in this file
+     to back it, so it is dropped rather than carried. -->
 <!-- Decisions locked: identifier=mu.kasir.app, db=kasir.db, format=.kasirpkg, env=KASIRMU_* -->
-<!-- Commit law: one pathspec commit per phase below; no git add; no -a; no amend -->
+<!-- Commit law: one pathspec commit per phase below; no git add, no -a, no amend — EXCEPT the §3
+     one-line new-file chain (`git add -- <new/path> && git commit -m "..." -- <new/path>`), which
+     Phase 4 needs for the Android Java directory move. (This line previously said a bare "no git
+     add", contradicting Phase 4:104-106.) -->
 
 ## Legend
 - `[ ]` not started
@@ -55,20 +72,57 @@
 
 ## Phase 2 — UI hardcoded strings + test fixtures
 **Commit:** `refactor(ui): remove hardcoded OZ-POS brand strings; use FTL or kasir.mu`
-**Pathspec:** `ui/src/features/auth/SessionLockScreen.tsx ui/src/features/auth/StaffLoginScreen.tsx ui/src/dev-mock/handlers/settings.ts ui/src/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/StaffLoginKeyboard.test.tsx ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx`
+**Pathspec:** `ui/src/features/auth/SessionLockScreen.tsx ui/src/features/auth/StaffLoginScreen.tsx ui/src/features/auth/LicenseActivationScreen.tsx ui/src/features/setup/SetupWizard.tsx ui/src/features/settings/components/SettingsFooter.tsx ui/src/features/settings/components/ImportSection.tsx ui/src/features/settings/sections/AboutSection.tsx ui/src/features/settings/sections/GeneralSection.tsx ui/src/features/settings/AppearanceSettings.tsx ui/src/features/sales/ReceiptPreview.tsx ui/src/features/kiosk/KioskScreen.tsx ui/src/frontend/shell/AppLayout.tsx ui/src/dev-mock/handlers/settings.ts ui/src/features/design/brand-tokens.css ui/src/features/design/TooltipPreview.tsx ui/src/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/StaffLoginKeyboard.test.tsx ui/src/__tests__/StaffLoginScreen.test.tsx ui/src/__tests__/AppearanceSettings.test.tsx ui/src/__tests__/QrisQrDisplay.test.tsx ui/src/__tests__/ReceiptPreview.test.tsx ui/src/__tests__/GeneralSection.test.tsx ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx ui/src/__tests__/a11y/axe-helper.tsx ui/src/__tests__/a11y/WorkspaceHome.a11y.test.tsx ui/src/__tests__/a11y/StaffLoginScreen.a11y.test.tsx ui/src/__tests__/a11y/SettingsPage.a11y.test.tsx ui/src/__tests__/a11y/SalesHistoryScreen.a11y.test.tsx ui/src/__tests__/a11y/ProductLookupScreen.a11y.test.tsx`
 
+> **The list below was rebuilt from `git grep -n "OZ-POS" -- ui/src` at `442473337`.** The previous
+> version named 6 items; the tree holds **15 user-visible source files** (19 bullets, since some files
+> carry several sites) plus **14 test/fixture files** that pin the old text — 29 paths, which is the
+> pathspec above. As written before, the phase would have shipped a half-rebranded UI and a red suite.
+
+### User-visible hardcoded strings (source)
 - [ ] `ui/src/features/auth/SessionLockScreen.tsx:357`
   `OZ-POS © {new Date().getFullYear()} All rights reserved.` — wire the existing `auth-copyright` FTL key instead of this hardcode
 - [ ] `ui/src/features/auth/StaffLoginScreen.tsx:597`
   `© OZ-POS. All rights reserved.` — wire `staff-login-copyright` FTL key instead
-- [ ] `ui/src/dev-mock/handlers/settings.ts:121,127`
-  `store_name: 'OZ-POS Demo'` → `store_name: 'kasir.mu Demo'`
-- [ ] `ui/src/__tests__/LicenseActivationScreen.test.tsx:80`
-  Update snapshot: `'auth-copyright': 'OZ-POS © {year} All rights reserved.'` → new FTL value
-- [ ] `ui/src/__tests__/StaffLoginKeyboard.test.tsx:76`
-  `staff-login-copyright = © 2026 OZ-POS. All rights reserved.` → updated value
-- [ ] `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:51`
-  Update inline snapshot to match new `auth-copyright` FTL value
+- [ ] `ui/src/features/auth/StaffLoginScreen.tsx:363,369`
+  `alt={storeName || 'OZ-POS'}` — a11y-visible alt text; the fallback is the brand
+- [ ] `ui/src/features/auth/LicenseActivationScreen.tsx:178` — `alt="OZ-POS Logo"`
+- [ ] `ui/src/features/auth/LicenseActivationScreen.tsx:338`
+  `OZ-POS © {new Date().getFullYear()} All rights reserved.` — the same hardcode as SessionLockScreen:357; both should use `auth-copyright`
+- [ ] `ui/src/features/setup/SetupWizard.tsx:415,460`
+  `<div className="setup-logo">OZ-POS</div>` — hardcoded, although the FTL key `setup-logo` exists (Phase 1); wire it
+- [ ] `ui/src/features/setup/SetupWizard.tsx:441`
+  `<Localized id="setup-launch">Launch OZ-POS</Localized>` — JSX fallback text; update with the FTL value
+- [ ] `ui/src/features/settings/components/SettingsFooter.tsx:149` — `OZ-POS Enterprise v{appVersion}`
+- [ ] `ui/src/features/settings/sections/AboutSection.tsx:38` — `OZ-POS Enterprise v{appVersion}`
+- [ ] `ui/src/features/settings/sections/AboutSection.tsx:60` — `&copy; 2024-2026 OZ-POS Contributors. All Rights Reserved.`
+- [ ] `ui/src/features/settings/sections/GeneralSection.tsx:75` — `placeholder="OZ-POS Store"`
+- [ ] `ui/src/features/settings/AppearanceSettings.tsx:416` — `<Localized id="appearance-store-name-fallback"><span>OZ-POS</span></Localized>` fallback text
+- [ ] `ui/src/features/settings/components/ImportSection.tsx:62` — "created by OZ-POS export." (prose, user-visible)
+- [ ] `ui/src/features/sales/ReceiptPreview.tsx:65` — `l10n.getString('receipt-preview-store-name', null, 'OZ-POS Store')` fallback
+- [ ] `ui/src/features/kiosk/KioskScreen.tsx:113` — `<h1 className="kiosk-attract-title">OZ-POS</h1>` (attract screen — the most customer-visible string in the app)
+- [ ] `ui/src/frontend/shell/AppLayout.tsx:129,132,133,151,171` — document title (`${store_name} — OZ-POS` / `'OZ-POS'`) and the sidebar/tooltip store-name fallbacks
+- [ ] `ui/src/dev-mock/handlers/settings.ts:121,127` — `store_name: 'OZ-POS Demo'` → `'kasir.mu Demo'`
+- [ ] `ui/src/features/design/brand-tokens.css:2,9` — `--brand-app-name: 'OZ-POS'` (and `:10` `--brand-company: 'OZ POS Inc.'`). ⚠️ `themeTokenCompliance.test.ts` pins the company value, so this file and that test move together
+- [ ] `ui/src/features/design/TooltipPreview.tsx:440` — `OZ-POS v0.0.39` (dev-preview surface only)
+
+### Test fixtures that pin the old text (must move in the same commit)
+- [ ] `ui/src/__tests__/LicenseActivationScreen.test.tsx:80` — `'auth-copyright': 'OZ-POS © {year} All rights reserved.'`
+- [ ] `ui/src/__tests__/StaffLoginKeyboard.test.tsx:47,76` — `staff-login-title = OZ-POS` and `staff-login-copyright = © 2026 OZ-POS. All rights reserved.`
+- [ ] `ui/src/__tests__/StaffLoginScreen.test.tsx:41,48` — `store_name: 'OZ-POS'` fixture and `staff-login-title = OZ-POS`
+- [ ] `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx:51,634,636,644` — inline `auth-copyright` snapshot, the logo-hero test name, `getByAltText('OZ-POS Logo')`, and the `OZ-POS © ${year}` regex
+- [ ] `ui/src/__tests__/AppearanceSettings.test.tsx:343,346` — test name + `expect(screen.getByText('OZ-POS'))`
+- [ ] `ui/src/__tests__/QrisQrDisplay.test.tsx:188` — `expect(screen.getByText('OZ-POS Store'))`
+- [ ] `ui/src/__tests__/ReceiptPreview.test.tsx:64,199` — `'OZ-POS Store'` and `'Toko OZ-POS'`
+- [ ] `ui/src/__tests__/GeneralSection.test.tsx:34` — `'settings-store-name-placeholder': 'OZ-POS Store'`
+- [ ] `ui/src/__tests__/a11y/axe-helper.tsx:51,54,63` — `store_name: 'OZ-POS'` fixtures and `staff-login-title = OZ-POS`
+- [ ] `ui/src/__tests__/a11y/WorkspaceHome.a11y.test.tsx:42` · `StaffLoginScreen.a11y.test.tsx:32` · `SettingsPage.a11y.test.tsx:47,53` · `SalesHistoryScreen.a11y.test.tsx:39` · `ProductLookupScreen.a11y.test.tsx:51` — `store_name: 'OZ-POS'` fixtures
+
+### Deliberately NOT in this phase
+- CSS section headers (`ui/src/**/*.css:2`) and `//!` doc comments (`ui/src/api/client/*.ts`) carry the
+  old brand in 30+ files. They are not user-visible; sweep them mechanically in one later commit rather
+  than bloating this one. Enumerate with `git grep -ln "OZ-POS" -- 'ui/src/**/*.css' 'ui/src/api/client'`.
+
 
 ---
 
@@ -120,7 +174,7 @@
 
 ## Phase 5 — DB filename defaults (cloud / CLI / Docker)
 **Commit:** `refactor(config): rename default db filename oz-pos.db → kasir.db`
-**Pathspec:** (list all affected files explicitly)
+**Pathspec:** `apps/cloud-server/src/config.rs apps/cloud-server/src/db.rs apps/cloud-server/src/main.rs apps/cloud-server/src/bin/migrate_sqlite_to_pg/main.rs apps/cloud-server/src/bin/migrate_sqlite_to_pg/migrate_sqlite_to_pg_tests.rs apps/cloud-server/src/db_tests.rs crates/oz-api/src/lib.rs crates/oz-api/README.md crates/oz-cli/src/cli.rs crates/oz-cli/README.md crates/oz-cli/src/commands/mod.rs crates/oz-cli/src/commands/credential_deltas.rs crates/oz-cli/src/commands/backup.rs crates/oz-cli/src/seed_demo.rs crates/oz-cli/src/seed_demo_tests.rs crates/oz-bridge/src/sync_tests.rs scripts/backup-db.sh scripts/restore-db.sh scripts/check.sh scripts/check.ps1 scripts/setup-dev.ps1 apps/unified/supervisord.conf apps/unified/docker-entrypoint.sh apps/tablet-client/src/commands/offline.rs apps/tablet-client/src/commands/pos_tests.rs .agents/skills/database/SKILL.md .env.example Dockerfile.server Dockerfile.unified docker-compose.yml platform/core/src/database/manager.rs`
 
 - [ ] `apps/cloud-server/src/config.rs:201` — `"oz-pos.db"` → `"kasir.db"`
 - [ ] `apps/cloud-server/src/db.rs:12,128` — comments
@@ -143,12 +197,21 @@
 - [ ] `crates/oz-cli/src/cli_tests.rs:132` — `assert_eq!(cli.db, "oz-pos.db")` → `"kasir.db"`
 - [ ] `crates/oz-cli/src/seed_demo_tests.rs:97` — verify semantics
 - [ ] `platform/core/src/database/manager.rs:32` — comment
+- [ ] `crates/oz-cli/src/cli.rs:27` — the doc comment (`default: ./oz-pos.db`) immediately above `:28`; the original list cited only `:28`, which would have left the `--help` text stale
+- [ ] `crates/oz-cli/src/commands/backup.rs:69` — `unwrap_or_else(|| "oz-pos.db".into())` — a **real default in code**, absent from the original list
+- [ ] `scripts/backup-db.sh:10,15,21` — ⚠️ **FOOTGUN, and the reason this belongs in this phase rather than a docs sweep.** Both this and `restore-db.sh` resolve `DB_FILE="${1:-${OZ_DB_PATH:-oz-pos.db}}"`. After the rename a bare `bash scripts/backup-db.sh` still targets the OLD filename; if that file is absent, opening it **creates an empty database** and the backup reports success against nothing. Update both scripts in the same commit as the rename.
+- [ ] `scripts/restore-db.sh:9,19,24` — same `${...:-oz-pos.db}` default
+- [ ] `scripts/check.sh:148`, `scripts/check.ps1:132`, `scripts/setup-dev.ps1:115` — `rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm`: the dev-DB cleanup between runs. After the rename these stop matching and stale `kasir.db` files accumulate silently
+- [ ] `apps/unified/supervisord.conf:32`, `apps/unified/docker-entrypoint.sh:8` — comments naming `/data/oz-pos.db` (the unified image's own documentation of its volume)
+- [ ] `crates/oz-cli/README.md:28`, `crates/oz-api/README.md:19` — documented CLI/API defaults
+- [ ] `.agents/skills/database/SKILL.md:58,65` — the database skill's own statement of the default path (it is the file an agent reads before touching this area)
+- [ ] `apps/tablet-client/src/commands/offline.rs:38,280`, `apps/tablet-client/src/commands/pos_tests.rs:866` — comments
 
 ---
 
 ## Phase 6 — `.ozpkg` → `.kasirpkg` (user-visible + import alias)
 **Commit:** `refactor(data): rename .ozpkg → .kasirpkg with backward-compat import alias`
-**Pathspec:** `apps/desktop-client/src/commands/data.rs apps/tablet-client/src/commands/features.rs crates/oz-bridge/src/data.rs crates/oz-bridge/src/data_tests.rs crates/oz-cli/src/cli.rs crates/oz-cli/src/cli_tests.rs`
+**Pathspec:** `ui/src/api/data.ts apps/desktop-client/src/commands/data.rs apps/tablet-client/src/commands/features.rs crates/oz-bridge/src/data.rs crates/oz-bridge/src/data_tests.rs crates/oz-cli/src/cli.rs crates/oz-cli/src/cli_tests.rs`
 
 > Internal Rust module/struct names (OzpkgPayload, export_ozpkg, import_ozpkg, oz_core::ozpkg,
 > CLI subcommands export-ozpkg/import-ozpkg) are Tier 3 — deferred. Only user-visible extension
@@ -166,6 +229,11 @@
 - [ ] `crates/oz-cli/src/cli.rs:70,82,84`
   `--help` text: `.ozpkg file` → `.kasirpkg file (also accepts legacy .ozpkg files)`
 - [ ] FTL strings: already covered in Phase 1 (`data-mgmt-import-desc`)
+- [ ] `ui/src/api/data.ts:66,67,75` — ⚠️ **the dialog the user actually sees, and the original phase listed no `ui/` file at all.** `pickExportPath`/`pickImportFile` build it:
+  - `:66` `defaultPath: \`ozpos_export_${date}.ozpkg\`` → `kasir_export_${date}.kasirpkg` (the default filename carries both the old brand and the old extension)
+  - `:67`, `:75` `filters: [{ name: 'OZ-POS Export', extensions: ['ozpkg'] }]` → name `kasir.mu Package`, extensions `['kasirpkg', 'ozpkg']` so the legacy alias is selectable in the picker
+  - Also update the doc comments at `:1,21,37,72,112,122,133` which say `.ozpkg`, and `ui/src/features/settings/components/ImportSection.tsx:2,61` and `ui/src/features/settings/DataManagementScreen.tsx:5` (the import wizard's own copy)
+  - Referee that can disagree: `cd ui && npx vitest run src/__tests__/DataManagementBackup.test.tsx` plus whichever suite asserts the dialog filter shape
 
 **Test fixtures:**
 - [ ] `crates/oz-bridge/src/data_tests.rs:313,339,350,363,365,423,425`
@@ -220,6 +288,7 @@
 Key files with functional (not just prose) brand references:
 - [ ] `docs/guides/EXTENDING.md:321`
   `sqlite3 "$APPDATA/com.ozpos.app/oz-pos.db"` → `"$APPDATA/mu.kasir.app/kasir.db"`
+- [ ] `docs/guides/EXTENDING.md:78` — same file, second functional reference: `env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default oz-pos.db)`
 - [ ] `docs/guides/android-install-test.md`
   All `com.ozpos.tablet` → `mu.kasir.tablet`; `oz-pos.db` → `kasir.db`
 - [ ] `docs/guides/ios-install-test.md`
@@ -245,9 +314,14 @@ Key files with functional (not just prose) brand references:
 - [ ] `.github/workflows/dev-ci.yml:763–764`
   `NF_PROJECT_ID` fallback `'oz-pos'` → `'kasir-mu'`
   `NF_SERVICE_ID` fallback `'oz-pos-cloud'` → `'kasir-cloud'`
+  > ⚠️ **These fallbacks must match the LIVE Northflank names, not the desired ones.** They resolve only
+  > when the repo variable is unset, and the deployed project/service are still `oz-pos` / `oz-pos-cloud`
+  > (`website/worker.ts:54-55` uses `NF_PROJECT='oz-pos'` / `NF_SERVICE='cloud'` against the same API).
+  > Renaming the fallback alone breaks the deploy on any run where the variable is unset. Either rename
+  > the Northflank project first and land both together, or leave the fallback and mark it Tier 3.
 - [ ] `scripts/check.sh:529,531`
   Docker image tag `oz-pos-cloud:local` → `kasir-cloud:local`
-- [ ] `release.yml:149,243` — leave `oz-pos-app` / `oz-pos-tablet` references (binary names, Tier 3)
+- [ ] `.github/workflows/release.yml:149,243` — leave `oz-pos-app` / `oz-pos-tablet` references (binary names, Tier 3). *(Path corrected: the original cited bare `release.yml`, which is also the filename of the retired `.github/workflows/release.yml.bak` sibling — ambiguous in a directory that holds both.)*
 - [ ] `scripts/release.sh` — prose/comments only; `--exclude oz-pos-app` stays (Tier 3)
 
 ---
@@ -263,6 +337,11 @@ Zero user-visible effect. Do not mix into this rebrand diff.
 - [ ] CLI subcommand names: `export-ozpkg`, `import-ozpkg` (breaking — needs deprecation notice)
 - [ ] `deny.toml` crate-level metadata
 - [ ] GitHub repo move: `kardelitaitu/oz-pos` → `kasirmu/kasir.mu` (admin action)
+- [ ] **Persisted client keys — missing from this list, and they belong here rather than in Phase 2.** Renaming any of these logs every existing user out or resets their preferences, so each needs a read-old/write-new migration like Phase 4's DB copy, not a find-and-replace:
+  - ui: `oz-pos-locale` (`ui/src/utils/storage.ts:8`, `ui/src/i18n/LocaleContext.tsx:44`), `oz-pos-decimal-sep` (`ui/src/utils/storage.ts:9`), `oz-pos-theme-v4` (`ui/src/frontend/shell/ThemeProvider.tsx:41`)
+  - website: `oz_theme` (`website/src/layouts/Base.astro` inline pre-paint script) and the `oz_session` cookie (`website/worker.ts`)
+  - Pinned by `ui/src/__tests__/storageKeyPins.test.ts:44,45`, `storage.test.ts:10,14`, `LocaleContext.test.tsx:17`, `ThemeProvider.test.tsx:11`, `themeRegression.test.tsx:10`, and the website's `apply-theme.test.ts` — those tests move with any rename.
+  - Without this entry the verification greps below can never return zero, and a reader would chase them as rebrand debt.
 - [ ] CI badge URLs and CHANGELOG compare links (after repo move)
 
 ---
@@ -270,10 +349,21 @@ Zero user-visible effect. Do not mix into this rebrand diff.
 ## Verification checklist (run after all phases)
 
 ```bash
-# 1. No old-brand strings in user-facing surfaces
+# 1. No old-brand strings in user-facing surfaces.
+#    NOTE: this grep is NON-ZERO even when every phase is complete, by design. The survivors are
+#    exactly two classes, both recorded above so a future reader does not chase them as debt:
+#      (a) CSS section headers and `//!` doc comments under ui/src/features (Phase 2, "Deliberately
+#          NOT in this phase"); and
+#      (b) Tier-3 persisted keys, which are underscores not hyphens so only `oz-pos-*` here
+#          (Tier 3, "Persisted client keys").
+#    Enumerate first, then confirm every remaining hit belongs to (a) or (b); anything else is a miss.
 git grep -rn "OZ-POS\|OZ_POS\|OZPOS\|ozpos\|oz-pos" -- \
   ui/src/locales/ ui/src/features/ ui/src/dev-mock/ \
   apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json
+
+# 1b. Agent-facing surfaces (absent from the original checklist, although Phase 5 now edits one of
+#     them and the database skill is what an agent reads before touching the DB layer).
+git grep -rn "OZ-POS\|oz-pos\.db" -- .agents/skills/
 
 # 2. No old identifier
 git grep -rn "com\.ozpos" -- apps/ docs/ crates/ scripts/
