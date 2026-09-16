@@ -96,7 +96,6 @@ vi.mock('@/api/settings', () => ({
     if (key === 'restaurant.course_firing') return 'false';
     return null;
   }),
-  setHardwareSettings: vi.fn().mockResolvedValue(undefined),
   getHardwareSettings: vi.fn().mockResolvedValue({
     printerConnection: 'auto', printerDevicePath: '', printerPaperSize: '80',
     scannerDeviceId: '', scannerInputMode: 'auto',

@@ -20,7 +20,10 @@ import { hasChanges } from './helpers';
  */
 export function TerminalPreferencesCard({
   terminalId,
-  userId,
+  // `userId` is deliberately not destructured: the only thing that read it was the unscoped
+  // `set_hardware_settings` fallback in T11, which is gone with this shell's command. It stays on
+  // the props interface so the modal's `cardProps` spread and the card tests keep working -- the
+  // same choice `WorkspaceKdsSettings.tsx` and `WorkspaceInventorySettings.tsx` already made.
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
@@ -84,7 +87,7 @@ export function TerminalPreferencesCard({
     setSaving(true);
     try {
       if (terminalId && hw.profile) {
-        await hw.save(userId);
+        await hw.save();
       }
       originalsRef.current = { soundVolume, darkMode, scaleAutoZero };
       setDirtyVersion((v) => v + 1);
@@ -96,7 +99,7 @@ export function TerminalPreferencesCard({
     }
   // The only deps that change are draft values. addToast/l10n are stable.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terminalId, hw, userId, soundVolume, darkMode, scaleAutoZero, onSaved]);
+  }, [terminalId, hw, soundVolume, darkMode, scaleAutoZero, onSaved]);
 
   const isCompact = variant === 'inspector-drawer';
 

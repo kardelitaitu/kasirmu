@@ -9,7 +9,6 @@ import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 
 const mockGetHardwareSettings = vi.fn();
 const mockGetHardwareSettingsScoped = vi.fn();
-const mockSetHardwareSettings = vi.fn();
 const mockSetHardwareSettingsScoped = vi.fn();
 
 vi.mock('@/api/settings', () => ({
@@ -17,7 +16,6 @@ vi.mock('@/api/settings', () => ({
   // Its own spy, not a delegate onto the unscoped one: a mirror registers a call on
   // the other spy and makes `not.toHaveBeenCalled()` unprovable.
   getHardwareSettingsScoped: (token: string) => mockGetHardwareSettingsScoped(token),
-  setHardwareSettings: (...args: unknown[]) => mockSetHardwareSettings(...args),
   setHardwareSettingsScoped: (token: string, args: unknown) =>
     mockSetHardwareSettingsScoped(token, args),
 }));
@@ -43,7 +41,6 @@ describe('useTerminalHardware', () => {
     mockGetHardwareSettings.mockResolvedValue(defaultDto);
     // Configured in parallel with the unscoped one, not by delegating to it.
     mockGetHardwareSettingsScoped.mockResolvedValue(defaultDto);
-    mockSetHardwareSettings.mockResolvedValue(undefined);
     mockSetHardwareSettingsScoped.mockResolvedValue(undefined);
   });
 
@@ -81,7 +78,7 @@ describe('useTerminalHardware', () => {
     });
 
     await act(async () => {
-      await result.current.save('user-1');
+      await result.current.save();
     });
 
     await waitFor(() => {
@@ -90,7 +87,6 @@ describe('useTerminalHardware', () => {
         expect.objectContaining({ printerConnection: 'auto' }),
       );
     });
-    expect(mockSetHardwareSettings).not.toHaveBeenCalled();
   });
 
   // ── Initial load ──────────────────────────────────────────────
@@ -170,7 +166,6 @@ describe('useTerminalHardware', () => {
     expect(result.current.profile!.hardware.printer.devicePath).toBe('COM5');
 
     // Not yet persisted
-    expect(mockSetHardwareSettings).not.toHaveBeenCalled();
   });
 
   it('updateScale modifies local state', async () => {
@@ -220,7 +215,7 @@ describe('useTerminalHardware', () => {
 
   // ── Save (persist to IPC) ─────────────────────────────────────
 
-  it('save calls setHardwareSettings with DTO subset', async () => {
+  it('save writes the DTO subset through the scoped command only', async () => {
     const { result } = renderHook(() => useTerminalHardware('term-i'));
 
     await waitFor(() => {
@@ -232,7 +227,7 @@ describe('useTerminalHardware', () => {
     });
 
     await act(async () => {
-      await result.current.save('user-1');
+      await result.current.save();
     });
 
     await waitFor(() => {
@@ -246,8 +241,9 @@ describe('useTerminalHardware', () => {
     expect(dto['printerDevicePath']).toBe('192.168.1.99');
     expect(dto['printerConnection']).toBe('auto');
     expect(token).toBe(HARNESS_SESSION_TOKEN);
-    // The scoped setter derives the user from the session, so the caller's userId is not sent.
-    expect(mockSetHardwareSettings).not.toHaveBeenCalled();
+    // The single `toHaveBeenCalledTimes(1)` above is the whole of what the retired
+    // `expect(mockSetHardwareSettings).not.toHaveBeenCalled()` used to claim: after T11
+    // there is one arm in `save()`, so a second write path cannot exist to be checked.
     expect(result.current.error).toBeNull();
   });
 
@@ -321,6 +317,5 @@ describe('useTerminalHardware', () => {
       await result.current.save();
     });
 
-    expect(mockSetHardwareSettings).not.toHaveBeenCalled();
   });
 });

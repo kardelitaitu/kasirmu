@@ -24,7 +24,10 @@ import { hasChanges } from './helpers';
  */
 export function WorkspaceRestaurantPosSettings({
   terminalId,
-  userId,
+  // `userId` is deliberately not destructured: the only thing that read it was the unscoped
+  // `set_hardware_settings` fallback in T11, which is gone with this shell's command. It stays on
+  // the props interface so the modal's `cardProps` spread and the card tests keep working -- the
+  // same choice `WorkspaceKdsSettings.tsx` and `WorkspaceInventorySettings.tsx` already made.
   variant = 'full-page',
   onSaved,
 }: WorkspaceCardProps) {
@@ -115,7 +118,7 @@ export function WorkspaceRestaurantPosSettings({
       );
 
       if (terminalId && hw.profile) {
-        tasks.push(hw.save(userId));
+        tasks.push(hw.save());
       }
 
       await Promise.all(tasks);
@@ -132,7 +135,7 @@ export function WorkspaceRestaurantPosSettings({
     } finally {
       setSaving(false);
     }
-  }, [terminalId, hw, userId, tableManagement, courseFiring, settings.receipt, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
+  }, [terminalId, hw, tableManagement, courseFiring, settings.receipt, onSaved, addToast, l10n, markSettingsUpdated, sessionToken]);
 
   const isCompact = variant === 'inspector-drawer';
 

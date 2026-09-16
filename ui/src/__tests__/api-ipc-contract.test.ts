@@ -375,7 +375,7 @@ describe('topology.ts IPC contract', () => {
 
 import {
   getHardwareSettings,
-  setHardwareSettings,
+  setHardwareSettingsScoped,
   getEnabledFeatures,
   completeSetup,
   dismissSetupWizard,
@@ -407,7 +407,10 @@ describe('settings.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('get_hardware_settings', undefined);
   });
 
-  it('setHardwareSettings invokes "set_hardware_settings" with args + userId', async () => {
+  it('setHardwareSettingsScoped invokes "set_hardware_settings_scoped" with sessionToken + args', async () => {
+    // T11 retired the unscoped `set_hardware_settings` wrapper: it carried `userId` from the
+    // renderer, which is the actor the permission check asks about. The payload pin moves to the
+    // only door that remains rather than being dropped with the old one.
     mockInvoke.mockResolvedValue(undefined);
     const args = {
       printerConnection: 'usb',
@@ -426,8 +429,11 @@ describe('settings.ts IPC contract', () => {
       darkMode: true,
       scaleAutoZero: false,
     };
-    await setHardwareSettings(args, 'u1');
-    expect(mockInvoke).toHaveBeenCalledWith('set_hardware_settings', { args, userId: 'u1' });
+    await setHardwareSettingsScoped('tok-1', args);
+    expect(mockInvoke).toHaveBeenCalledWith('set_hardware_settings_scoped', {
+      sessionToken: 'tok-1',
+      args,
+    });
   });
 
   it('getEnabledFeatures invokes "get_enabled_features" with no args', async () => {
