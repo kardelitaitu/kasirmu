@@ -615,7 +615,14 @@ def argshape_findings(prod: list[tuple[str, str]], registered: list[str],
             supplied |= keys
         gaps = [p for p in req if camel(p) not in supplied and p not in supplied]
         if gaps:
-            res["missing"].append(f"{name}<-{','.join(gaps)}")
+            # Name the caller to look in, not just the command. T9's SECOND AMENDMENT -- which sits
+            # at character ~4400 of a 5,435-character row, below any 2,000-character read -- asks
+            # for a message that "names both sides and the file to look in". The command alone sends
+            # a reader to the Rust; the file is the half that says where the fix belongs, and in
+            # both of this leg's real findings the fix was on the UI side.
+            srcs = sorted({s[0] for s in readable})
+            where = ", ".join(srcs[:2]) + (f" (+{len(srcs) - 2} more)" if len(srcs) > 2 else "")
+            res["missing"].append(f"{name}<-{','.join(gaps)} in {where}")
     return res
 
 
@@ -3382,7 +3389,10 @@ def self_test() -> int:
     case("argshape a top-level argument the caller supplies is not reported",
          not any(x.startswith("delete_thing_scoped") for x in as_res["missing"]))
     case("argshape an argument hidden inside a nested args object IS reported",
-         "put_thing_scoped<-id" in as_res["missing"])
+         any(x.startswith("put_thing_scoped<-id") for x in as_res["missing"]))
+    case("argshape the report names the caller file and line, not only the command",
+         any(x.startswith("put_thing_scoped<-id") and "ui/src/api/x.ts:" in x
+             for x in as_res["missing"]))
     case("argshape a spread caller is excluded, never reported and never called clean",
          not any(x.startswith("wide_thing_scoped") for x in as_res["missing"])
          and any(x.startswith("wide_thing_scoped") for x in as_res["ungraded"]))
