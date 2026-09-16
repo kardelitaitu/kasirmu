@@ -1,4 +1,4 @@
-// OZ-POS Admin — pure helper module (H1/H2 hardening).
+// kasir.mu Admin — pure helper module (H1/H2 hardening).
 //
 // Extracted from the monolithic admin.js so the chart/format/escape logic
 // is unit-testable in isolation (vitest, jsdom). Loaded as a plain script

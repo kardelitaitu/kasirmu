@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker for the OZ-POS website — marketing site + dashboard subdomains.
+ * Cloudflare Worker for the kasir.mu website — marketing site + dashboard subdomains.
  *
  * Hostname routing:
  *   kasir.mu          → marketing site (static assets, runtime config, contact form)
@@ -815,7 +815,7 @@ export default {
             { name: 'Email', value: email.slice(0, 200), inline: true },
             { name: 'Message', value: message.slice(0, 1024) },
           ],
-          color: 0x147efb, // OZ-POS blue
+          color: 0x147efb, // kasir.mu blue
           timestamp: new Date().toISOString(),
         };
         const discordRes = await fetch(env.CONTACT_WEBHOOK_URL, {

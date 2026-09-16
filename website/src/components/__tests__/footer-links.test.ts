@@ -140,8 +140,8 @@ describe('Footer copyright', () => {
     expect(FOOTER_SRC).toContain('new Date().getFullYear()');
   });
 
-  it('has the OZ-POS brand name', () => {
-    expect(FOOTER_SRC).toContain('OZ-POS');
+  it('has the kasir.mu brand name', () => {
+    expect(FOOTER_SRC).toContain('kasir.mu');
   });
 
   it('has Discord social link', () => {

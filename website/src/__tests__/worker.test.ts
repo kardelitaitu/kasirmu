@@ -70,7 +70,7 @@ describe('Cloudflare Worker — worker.ts', () => {
       body: JSON.stringify({
         name: 'Bob',
         email: 'bob@example.com',
-        message: 'Hello OZ-POS team!',
+        message: 'Hello kasir.mu team!',
       }),
     });
 

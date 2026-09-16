@@ -1,4 +1,4 @@
-# OZ-POS Website — Cloudflare Workers (static assets)
+# kasir.mu Website — Cloudflare Workers (static assets)
 #
 # The site is a pure static build (Astro outputs dist/), served at
 # https://kasir.mu. Workers static assets honors public/_headers (CSP)

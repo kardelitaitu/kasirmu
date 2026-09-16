@@ -9,7 +9,7 @@
 
 @import "tailwindcss";
 
-/* ── OZ-POS Design Language Tokens ─────────────────────────────
+/* ── kasir.mu Design Language Tokens ─────────────────────────────
    Applied from dev/design-language.html (UX Guidelines).
    Light is the DEFAULT theme; dark is layered via [data-theme="dark"].
    Components consume semantic tokens only — never raw hex. */
