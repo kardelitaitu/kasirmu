@@ -1882,12 +1882,24 @@ def orphan_permission(command: str) -> str | None:
     Why the gate bothers to read Rust bodies at all: an orphaned `_scoped` command is not
     one kind of thing. One whose body is only `resolve_session` then a forward is a
     redundant twin -- dead weight, but it guards nothing so it can also leak nothing, and
-    19 of the 25 seeded entries are that. One that DOES call `require_permission*` is
-    different in kind: it is a SECURITY_MANAGE / SETTINGS_EDIT / WORKSPACES_SWITCH gate
-    wired into `generate_handler!` with no reachable caller, which reads as enforced
-    posture while protecting nothing. That distinction is exactly what cost six rounds of
-    manual audit in item 46, and hand-triaging 25 commands every time the list changes is
-    not going to happen.
+    at 32c402d28 and again at 3162b97b6 that is 14 of the section's 25 entries. One that DOES call
+    `require_permission*` is different in kind: it is a permission gate -- one of
+    SALES_PROCESS, SECURITY_MANAGE, SETTINGS_EDIT, SYNC_MANAGE or the four PAYABLES_* --
+    wired into `generate_handler!` with no reachable caller, which reads as enforced posture
+    while protecting nothing, and the same measurement puts it at 11. Neither number is
+    quoted here as a standing fact: both are what THIS function returns, recomputed and
+    printed on every run (python scripts/verify-ipc-parity.py | grep "info[scoped-orphans]").
+    The sentence this slot carried until now read "19 of the 25 seeded entries are that" -- a
+    count of a population the code below recomputes, written in the one place in a file where
+    a stale number is read as the definition rather than as a measurement. What the eight gate
+    names above are is also measured, not remembered: WORKSPACES_SWITCH appeared in the old
+    sentence as a gate in the batch and does not gate any current entry, so it is gone from
+    here and SALES_PROCESS and PAYABLES_*, which do, are named in its place. Whether 19 ever
+    described a tree is a question about that tree, and the answer is in git, not here: `git
+    log -S "19 of the 25" -- scripts/verify-ipc-parity.py` lands on 153c046a5. What the two
+    kinds MEAN has not moved and never depended on the digits -- that distinction is exactly
+    what cost six rounds of manual audit in item 46, and hand-triaging the whole list every
+    time it changes is not going to happen.
 
     Brace-balanced, deliberately. The first pass at this in item 46 took a fixed 900-char
     window from the signature, which for a short function runs past its closing brace and
@@ -3658,13 +3670,28 @@ def main() -> int:
         # this shell does not register (direction: ui -> shell), unregistered is Rust
         # #[tauri::command] FUNCTIONS defined under this shell's commands/ and absent from
         # its generate_handler (direction: shell -> registration). Different populations,
-        # different units, and the tree proves them apart -- as of the attribute fixes the tablet
-        # reports 154 UI names it does not register and 118 command fns registered nowhere (441
-        # declarations visible to the leg, 43 for the desktop), and before them the second figure
-        # read 0 for a reason that had nothing to do with the tree: the pattern saw 20 of the
-        # shell's command declarations. A zero from an instrument that cannot see its subject is
-        # the exact thing this leg exists to avoid being -- which is also why the classification
-        # on the next line is printed rather than left to whoever reads the number.
+        # different units, and the tree proves them apart -- in the figures the print below
+        # measures, which is the only place either number belongs. This comment carried one as
+        # a present-tense claim for a while ("as of the attribute fixes the tablet reports 154
+        # UI names it does not register and 118 command fns registered nowhere, 441
+        # declarations visible to the leg, 43 for the desktop"). The same two lines read
+        # differently in every tree since -- 143 and 7 for the tablet, 15 and 3 for the desktop
+        # at 32c402d28; 140 and 7, 12 and 3 an hour later at 3162b97b6, because the UI surface
+        # those counts run against is being edited under this file by other lanes as of now. The
+        # sentence warning that these numbers move had its own numbers move under it while it
+        # was being written, and that is the whole argument for leaving them to the print:
+        #     python scripts/verify-ipc-parity.py | grep -E '^info\\[(desktop|tablet)\\]:'
+        # What does not depend on any of them is the claim this comment exists for: before the
+        # attribute fix the second figure read 0 for a reason that had nothing to do with the
+        # tree -- the pattern saw 20 of the shell's command declarations. A zero from an
+        # instrument that cannot see its subject is the exact thing this leg exists to avoid
+        # being, which is also why the classification on the next line is printed rather than
+        # left to whoever reads the number.
+        # before the attribute fix the second figure read 0 for a reason that had nothing to do
+        # with the tree -- the pattern saw 20 of the shell's command declarations. A zero from an
+        # instrument that cannot see its subject is the exact thing this leg exists to avoid
+        # being, which is also why the classification on the next line is printed rather than
+        # left to whoever reads the number.
         unreachable = sorted(allowed_names - missing[shell] - set(handlers[shell]))
         print(
             f"info[{shell}]: {len(ui_commands)} UI command strings, "
@@ -3808,8 +3835,10 @@ def main() -> int:
     # wrapper out of 407 wrapper keys, and verify-scoped-reads.py owns that notion. The line
     # says which corpus it counted instead of borrowing the neighbour's word for it. Nothing
     # here is widened to make the figures agree: for scoped_orphans the honest reading is that
-    # all 25 entries match a registered name and none matches a caller, and that disagreement
-    # is the product.
+    # every entry in the section matches a registered name and none matches a caller -- 25 and
+    # 25 as the info[scoped_orphans-inert] and info[scoped-orphans] lines of this same run
+    # print them, and they are the place that number lives -- and that disagreement is the
+    # product.
     registered_names = set().union(*(set(handlers[shell]) for shell in SHELLS))
     tree_names = registered_names | set(ui_commands)
     populations = {
