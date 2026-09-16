@@ -8,14 +8,10 @@
 //! tablet authenticates with `resolve_session` rather than `resolve_scope`
 //! for commands that touch no database row.
 
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, command};
-use tokio::sync::oneshot;
 
 use oz_core::{Currency, Money, Settings};
-use oz_hal::BarcodeScanner;
 use oz_hal::DisplayContent;
 use oz_hal::drivers::receipt;
 use oz_hal::transport::usb::{UsbDeviceInfo, probe_all};
@@ -148,104 +144,6 @@ pub struct PrintSalesReceiptResult {
 pub struct ScannerInfo {
     /// Unique identifier.
     pub id: String,
-}
-
-/// List all registered barcode scanners.
-#[command]
-pub async fn list_scanners(state: State<'_, AppState>) -> Result<Vec<ScannerInfo>, AppError> {
-    let ids = state.registry.scanner_ids().await;
-    Ok(ids.into_iter().map(|id| ScannerInfo { id }).collect())
-}
-
-/// Start a background polling task for the named scanner.
-///
-/// Every decoded barcode is emitted as a `barcode:scanned` event
-/// with shape `{ code: String, symbology: String }`. Calling
-/// `start_scanner` while a scanner is already running stops the
-/// previous one first.
-#[command]
-pub async fn start_scanner(scanner_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    // Stop any existing scanner first.
-    {
-        let mut cancel = state.scanner_cancel.lock().await;
-        if let Some(sender) = cancel.take() {
-            let _ = sender.send(());
-        }
-    }
-
-    let driver: Arc<dyn BarcodeScanner> = state
-        .registry
-        .scanner(&scanner_id)
-        .await
-        .ok_or_else(|| AppError::Invalid(format!("no scanner registered as '{scanner_id}'")))?;
-
-    let app = state
-        .app
-        .clone()
-        .ok_or_else(|| AppError::Internal("AppHandle unavailable".into()))?;
-
-    let (tx, mut rx) = oneshot::channel::<()>();
-
-    tokio::spawn(async move {
-        // Attempt to connect (idempotent – a second connect is a no-op).
-        let mut scanner = match driver.connect().await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!(scanner = %scanner_id, error = %e, "scanner connect failed");
-                let _ = app.emit(
-                    "barcode:error",
-                    serde_json::json!({ "error": e.to_string() }),
-                );
-                return;
-            }
-        };
-
-        tracing::info!(scanner = %scanner_id, "barcode scanner started");
-
-        loop {
-            tokio::select! {
-                _ = &mut rx => {
-                    tracing::info!(scanner = %scanner_id, "barcode scanner stopped");
-                    break;
-                }
-                result = scanner.poll(300) => {
-                    match result {
-                        Ok(Some(barcode)) => {
-                            let payload = serde_json::json!({
-                                "code": barcode.code,
-                                "symbology": format!("{:?}", barcode.symbology),
-                            });
-                            let _ = app.emit("barcode:scanned", payload);
-                        }
-                        Ok(None) => {
-                            // Timeout — loop again.
-                        }
-                        Err(e) => {
-                            tracing::warn!(scanner = %scanner_id, error = %e, "scanner poll error");
-                            let _ = app.emit("barcode:error", serde_json::json!({ "error": e.to_string() }));
-                            // Keep trying after a brief backoff.
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Store the cancel-sender so a subsequent start_scanner or stop_scanner can shut it down.
-    state.scanner_cancel.lock().await.replace(tx);
-
-    Ok(())
-}
-
-/// Stop the active barcode scanner background task (if any).
-#[command]
-pub async fn stop_scanner(state: State<'_, AppState>) -> Result<(), AppError> {
-    let mut cancel = state.scanner_cancel.lock().await;
-    if let Some(sender) = cancel.take() {
-        let _ = sender.send(());
-    }
-    Ok(())
 }
 
 /// Open cash drawer resolved from a session token. ADR #7.
@@ -447,7 +345,7 @@ fn prefer_first(mut scanners: Vec<ScannerInfo>, preferred: &str) -> Vec<ScannerI
     scanners
 }
 
-/// Session-scoped variant of `list_scanners`.
+/// List all registered barcode scanners resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_scanners_scoped(
@@ -466,7 +364,7 @@ pub async fn list_scanners_scoped(
     ))
 }
 
-/// Session-scoped variant of `start_scanner`.
+/// Start a background polling task for the named scanner resolved from a session token. ADR #7.
 ///
 /// ADR #49: the body is the bridge's. This was a byte-identical second copy of
 /// `oz_bridge::hardware::start_scanner_scoped` — same cancel-then-take, same
@@ -483,8 +381,12 @@ pub async fn list_scanners_scoped(
 /// behaviour (the desktop has delegated this door all along), so it is parity
 /// rather than a regression — but it does add a store open to every scanner
 /// start, and the scanner state it writes (`scanner_cancel`) is the same
-/// `Arc<Mutex<..>>` this shell's own `stop_scanner` reads, because
-/// `bridge_ctx()` binds `scanner_cancel: &self.scanner_cancel`.
+/// `Arc<Mutex<..>>` this shell hands to the bridge and that `stop_scanner_scoped`
+/// below locks, because
+/// `bridge_ctx()` binds `scanner_cancel: &self.scanner_cancel`. The unscoped
+/// `stop_scanner` that also read this field was retired in T21 (b2): it was registered
+/// in neither shell, so no client could reach it to read anything. The field and its
+/// binding are unchanged.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn start_scanner_scoped(
@@ -498,8 +400,7 @@ pub async fn start_scanner_scoped(
         .map_err(Into::into)
 }
 
-/// Session-scoped variant of `stop_scanner`.
-/// Session-scoped variant of `stop_scanner`.
+/// Stop the active barcode scanner background task (if any) resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn stop_scanner_scoped(
