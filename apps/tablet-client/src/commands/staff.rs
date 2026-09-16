@@ -8,8 +8,6 @@ next: none | perf: fine
 //!
 //! These commands are the IPC surface for the Staff Management UI.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use tauri::{State, command};
 
 use oz_core::auth::hash_pin;
@@ -20,13 +18,13 @@ use oz_core::db::audit_security::{
 };
 use oz_core::permissions;
 
+#[cfg(test)]
 use oz_core::Role;
 
-use foundation::{validate_min_length, validate_not_empty};
+use foundation::validate_min_length;
 
 use crate::commands::auth::record_security_event;
-use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
-use crate::commands::picker_ticket;
+use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -39,19 +37,18 @@ use crate::state::AppState;
 // seam); the shell keeps two thin `AppError` adapters that the sibling test
 // modules call directly.
 //
-// ADR #49: `list_staff_scoped`, `list_roles_scoped`, `list_permission_keys_scoped`,
-// `delete_role_scoped`, `list_role_holders_scoped` and `create_staff_scoped`
-// delegate — their bodies are statement-identical to the bridge twins.
-//
-// The other five are PENDING, not refused. The parity instrument flags them,
-// but each difference is spelling, not behaviour: `bootstrap_owner` qualifies
-// `SystemTime`/`sign_picker_ticket` where the bridge imports them;
-// `get_staff_profile_scoped` takes `user_id: String` where the bridge takes
-// `&str` and allocates; `update_staff_scoped` calls
-// `invalidate_user_sessions_except` as a `BridgeCtx` method where the shell
-// has a free fn. `create_role_scoped` and `update_role_scoped` need the shell
-// to compute `grants_json` and pass it as a parameter — ADR #49 §Decision 2's
-// own pattern, and the bridge module doc names it as the one exception.
+// ADR #49: every door in this module now delegates to `oz_bridge::staff`, and
+// each body is statement-identical to its bridge twin. Five of them the parity
+// instrument flags anyway, and each flag is spelling, not behaviour:
+// `bootstrap_owner` qualifies `SystemTime`/`sign_picker_ticket` where the
+// bridge imports them; `get_staff_profile_scoped` takes `user_id: String` where
+// the bridge takes `&str` and allocates; `update_staff_scoped` calls
+// `invalidate_user_sessions_except` as a `BridgeCtx` method where the shell had
+// a free fn. `create_role_scoped` and `update_role_scoped` take the bridge's
+// `grants_json` parameter — the shell computes it and passes it in, which is
+// ADR #49 §Decision 2's own pattern (the bridge module doc names it as the one
+// exception: encoding needs `serde_json`, which is not an oz-bridge
+// dependency).
 pub use oz_bridge::staff::{
     AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
     CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto, RoleHolderDto,
@@ -74,6 +71,7 @@ fn grants_json(keys: &[String]) -> Result<String, AppError> {
 /// Thin adapter over `oz_bridge::staff::role_dto`: same name, parameters
 /// and `Result<_, AppError>` so the sibling test modules keep building DTOs
 /// from a shell-held `Store` (mirrors the desktop staff.rs adapter).
+#[cfg(test)]
 fn role_dto(store: &Store<'_>, role: Role) -> Result<RoleDto, AppError> {
     oz_bridge::staff::role_dto(store, role).map_err(AppError::from)
 }
@@ -108,17 +106,10 @@ pub async fn get_staff_profile_scoped(
     user_id: String,
     state: State<'_, AppState>,
 ) -> Result<ProfileViewDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
-    let view = store
-        .get_user_profile_viewed_by(&session.user_id, &user_id)?
-        .ok_or_else(|| AppError::Invalid(format!("no such user: {user_id}")))?;
-    drop(db);
-    let mut dto: ProfileViewDto = view.into();
-    dto.user_id = user_id;
-    Ok(dto)
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::get_staff_profile_scoped(&ctx, &session_token, &user_id)
+        .await
+        .map_err(Into::into)
 }
 
 /// List roles. Caller identity is resolved from the session token.
@@ -167,18 +158,14 @@ pub async fn create_role_scoped(
     args: CreateRoleArgs,
     state: State<'_, AppState>,
 ) -> Result<RoleDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
-    validate_not_empty("name", &args.name).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let role = store.create_role(
-        &format!("role-{}", uuid::Uuid::now_v7()),
-        &args.name,
-        &args.description,
-        &grants_json(&args.permissions)?,
-    )?;
-    role_dto(&store, role)
+    // ADR #49 §Decision 2: `grants_json` needs `serde_json`, which is not an
+    // `oz-bridge` dependency, so the shim computes it and passes it in. The
+    // bridge module doc names this as its one exception.
+    let grants = grants_json(&args.permissions)?;
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::create_role_scoped(&ctx, &session_token, &args, &grants)
+        .await
+        .map_err(Into::into)
 }
 
 /// Re-name, re-describe, or re-grant an authored role.
@@ -192,17 +179,12 @@ pub async fn update_role_scoped(
     args: UpdateRoleArgs,
     state: State<'_, AppState>,
 ) -> Result<RoleDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let role = store.update_role(
-        &args.id,
-        &args.name,
-        &args.description,
-        &grants_json(&args.permissions)?,
-    )?;
-    role_dto(&store, role)
+    // ADR #49 §Decision 2 — see `create_role_scoped` above.
+    let grants = grants_json(&args.permissions)?;
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::update_role_scoped(&ctx, &session_token, &args, &grants)
+        .await
+        .map_err(Into::into)
 }
 
 /// Delete an authored role.
@@ -275,6 +257,17 @@ pub async fn create_staff_scoped(
 /// failure rolls the whole update back atomically. The legacy store-scoped
 /// `workspace_keys` write path (which needed cross-DB compensation) is
 /// retired; assignments ride the same transaction as the profile.
+///
+/// ADR #49 §4: **not delegated**, and the pin
+/// `staff_security_events_tests::confirmed_free_records_nothing_even_in_a_debug_build`
+/// is the proof. `Store::record_security_event` takes a `debug_upgrade` flag;
+/// the tablet passes **`false`** (`commands/auth.rs:81`) and the bridge passes
+/// **`true`** (`crates/oz-bridge/src/auth.rs:160`), which is the desktop's
+/// dev Free→Premium promotion. Delegating would start auditing Free-tier
+/// staff updates in debug builds on a client that deliberately never does.
+/// `create_staff_scoped` shares the fork but not the exposure: the quota check
+/// precedes the recorder and Free caps staff at one account, so a Free tenant
+/// cannot reach its `record_security_event` call at all.
 #[command]
 pub async fn update_staff_scoped(
     session_token: String,
@@ -452,23 +445,10 @@ pub async fn bootstrap_owner(
     args: BootstrapOwnerArgs,
     state: State<'_, AppState>,
 ) -> Result<BootstrapOwnerResult, AppError> {
-    let db = state.db.lock().await;
-    let mut result = run_bootstrap_owner(&db, &args)?;
-    drop(db);
-
-    // Mint the short-lived picker ticket bound to the new owner. It is
-    // only valid for the pre-session workspace picker; `create_session`
-    // hands out the opaque session token afterwards.
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    result.picker_ticket = picker_ticket::sign_picker_ticket(
-        &state.picker_ticket_secret,
-        &result.session.user_id,
-        now_ts + picker_ticket::PICKER_TICKET_TTL_SECS,
-    );
-    Ok(result)
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::bootstrap_owner(&ctx, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Business logic for `bootstrap_owner` (extracted for testing).
@@ -483,6 +463,7 @@ pub async fn bootstrap_owner(
 /// command wrapper above replaces) apart from the error type, so
 /// `BridgeError::Invalid -> AppError::Invalid` keeps every message byte-equal
 /// and those tests are the proof rather than a claim of equivalence.
+#[cfg(test)]
 fn run_bootstrap_owner(
     conn: &rusqlite::Connection,
     args: &BootstrapOwnerArgs,
