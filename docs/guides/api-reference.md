@@ -653,7 +653,6 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`list_credit_sales_scoped`** [D+T] — List credit sales for the store resolved from a session token. ADR #7.
 - **`set_credit_settings`** [T] — Set credit settings.
 - **`set_credit_settings_scoped`** [D+T] — Set credit settings resolved from a session token. ADR #7.
-- **`set_hardware_settings`** [T] — Set hardware settings.
 - **`set_hardware_settings_scoped`** [D+T] — Set hardware settings resolved from a session token. ADR #7.
 - **`set_receipt_settings`** [T] — Set receipt settings.
 - **`set_receipt_settings_scoped`** [D+T] — Set receipt settings resolved from a session token. ADR #7.

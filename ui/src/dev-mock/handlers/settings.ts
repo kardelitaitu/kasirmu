@@ -75,7 +75,6 @@ export const settingsHandlers: Record<string, MockHandler> = {
     printerConnection: 'usb', printerDevicePath: '', printerPaperSize: '80mm',
     scannerDeviceId: '', scannerInputMode: 'usb',
   }),
-  'set_hardware_settings': () => null,
   'set_hardware_settings_scoped': () => null,
 
   'get_credit_settings': () => ({ enabled: false, reminderIntervalHours: 24, maxLimitMinor: 1000000 }),
