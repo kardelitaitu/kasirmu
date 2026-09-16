@@ -2265,13 +2265,16 @@ describe('font-reference portability', () => {
     ).toEqual([]);
     // Measured at 139 when this floor was written, floored at 120: enough headroom that
     // a sheet or two appearing is not a failure, small enough that losing a whole
-    // directory (features/ has 106 alone) is.
+    // directory (features/ has 106 alone) is. The threshold is a local because a plant that
+    // raised it printed a failure naming the OLD number -- the literal was in two places
+    // and only one of them was the assertion. Same repair as the script floor below.
+    const cssFloor = 120;
     expect(
       CSS_SOURCES.length,
-      `the walk found ${CSS_SOURCES.length} stylesheets under ui/src, below the 120 it was measured at `
-        + 'when this floor was written. Either the tree shrank dramatically or the walk is reaching '
+      `the walk found ${CSS_SOURCES.length} stylesheets under ui/src, below the ${cssFloor} it was measured `
+        + `at when this floor was written. Either the tree shrank dramatically or the walk is reaching `
         + 'somewhere other than what these rules claim to cover.',
-    ).toBeGreaterThanOrEqual(120);
+    ).toBeGreaterThanOrEqual(cssFloor);
   });
 
   it('scope floor probe: an unopenable directory is recorded, not read as empty', () => {
@@ -2481,16 +2484,19 @@ describe("JS walk scope floor (notes.md item 36)", () => {
         + "Fix the access; do not lower the floor.\n"
         + JS_WALK_ABANDONED.map((a) => `  ${a.dir} -- ${a.reason}`).join("\n"),
     ).toEqual([]);
-    // Measured at 671 when this floor was written (features/ alone is 418 of them), floored
-    // at 575: 96 of slack, ~14 %, the same proportion the CSS floor uses (120 against 139).
-    // Losing features/ crosses it; the empty-abandon assertion above is the sensitive guard
-    // and this floor is the backstop for a narrowing that still lists everything.
+    // One number, used twice. A plant that raised this threshold to 700 printed a failure
+    // naming 575, because the literal was written in two places and only one of them was the
+    // assertion -- measured at 671 when the floor was written (features/ alone is 418 of
+    // them), 96 of slack is ~14 %, the same proportion the CSS floor uses (120 against 139).
+    // Losing features/ crosses it; the abandon assertion above is the sensitive guard and
+    // this floor is the backstop for a walk that lists every directory but shrinks.
+    const scriptFloor = 575;
     expect(
       SCRIPT_SOURCES.length,
       `the script walk found ${SCRIPT_SOURCES.length} production .ts/.tsx files under ui/src, below the `
-        + "575 it was measured at when this floor was written. Either the tree shrank dramatically or the "
-        + "walk is reaching somewhere other than what the token rules above claim to cover.",
-    ).toBeGreaterThanOrEqual(575);
+        + `${scriptFloor} it was measured at when this floor was written. Either the tree shrank `
+        + "dramatically or the walk is reaching somewhere other than what the token rules above claim to cover.",
+    ).toBeGreaterThanOrEqual(scriptFloor);
   });
 
   it("scope floor probe: an unlistable directory is recorded, not read as empty", () => {
