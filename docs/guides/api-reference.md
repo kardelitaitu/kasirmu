@@ -255,7 +255,6 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`display_clear_scoped`** [D+T] — Clear a customer-facing pole display (scoped).
 - **`display_show_scoped`** [D+T] — Show content on a customer-facing pole display (scoped).
 - **`list_displays_scoped`** [D+T] — List all registered customer displays (scoped).
-- **`list_scanners`** [T] — List all registered barcode scanners.
 - **`list_scanners_scoped`** [D+T] — List all registered barcode scanners (scoped).
 - **`open_cash_drawer`** [T] — Open cash drawer.
 - **`open_cash_drawer_scoped`** [D+T] — Open cash drawer (scoped — requires valid session).
@@ -263,9 +262,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`print_receipt_scoped`** [D+T] — Print receipt (scoped — requires valid session).
 - **`print_sales_receipt`** [T] — Print sales receipt.
 - **`print_sales_receipt_scoped`** [D+T] — Print sales receipt for the store resolved from a session token. ADR #7.
-- **`start_scanner`** [T] — Start a background polling task for the named scanner.
 - **`start_scanner_scoped`** [D+T] — Start a barcode scanner (scoped).
-- **`stop_scanner`** [T] — Stop the active barcode scanner background task (if any).
 - **`stop_scanner_scoped`** [D+T] — Stop the active barcode scanner (scoped).
 
 ### `commands::health` (8)
