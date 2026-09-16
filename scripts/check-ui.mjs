@@ -8,13 +8,20 @@
  *
  * Usage:  cd ui && npm run check:all
  *
- * Gates (in order):
- *   1. Lint          — ESLint (jsx-a11y, react-hooks)
- *   2. TypeScript    — tsc --noEmit (strict type checking)
- *   3. Unit tests    — vitest run (214 files, 3230+ tests)
- *   4. i18n lint     — Fluent key consistency check *  5. FTL dedupe    — detect duplicate Fluent keys
- *  6. Bundle budget — gzip budgets on the production build (PERF-02)
- *  7. E2E tests     — Playwright (SKIPPED if Docker is unavailable)
+ * Gates (in order; the numbering matches the section comments in main()):
+ *   1.  Lint          — ESLint (jsx-a11y, react-hooks)
+ *   2.  TypeScript    — tsc --noEmit (strict type checking)
+ *   3.  Unit tests    — vitest run. File and case counts are printed by the leg
+ *       itself; the numbers previously quoted here (214 files / 3230 tests) had
+ *       rotted by a factor of ~3 while nobody was looking, which is why they are
+ *       no longer in a comment.
+ *   4.  i18n lint     — Fluent key consistency check
+ *   5.  FTL dedupe    — detect duplicate Fluent keys
+ *   6.  Bundle budget — gzip budgets on the desktop production build (PERF-02)
+ *   6b. Bundle budget — the same budgets on the TABLET production build
+ *   7.  E2E tests     — Playwright via scripts/run-e2e.mjs (SKIPPED if Docker is unavailable)
+ *   8.  Perf smoke    — Playwright runtime budgets, desktop + tablet (SKIPPED if
+ *       browsers are not installed)
  */
 
 import { execSync } from 'child_process';
@@ -155,6 +162,19 @@ function main() {
 
   // ── 6. Bundle budget (PERF-02) — production build + gzip size gates ────
   gate('Bundle budget', 'npm run bundle:check', { timeout: 300_000 });
+
+  // ── 6b. Bundle budget, TABLET artifact — the second shipped app ─────────
+  // Two apps build from this one `ui/` tree and the tablet artifact is not the
+  // desktop one under a new name: 59 stylesheets against 56, its own chunk
+  // graph, its own content hashes, and its own ~296 KB font payload. The script
+  // for it (`npm run bundle:check:tablet`) has existed since 2b762b08f and had
+  // ZERO callers repo-wide, so a tablet-only size regression passed this runner
+  // without a word -- recorded as notes.md item 38. Cost of closing it, measured rather
+  // than assumed: 9.4s for this leg against the desktop leg's 9.6s in the same run
+  // (`cd ui && npm run check:all`, whose summary prints both durations), so the second
+  // build is not the tax it was written as if it would be. A red line now says which of
+  // the two artifacts broke.
+  gate('Bundle budget (tablet)', 'npm run bundle:check:tablet', { timeout: 300_000 });
 
   // ── 7. E2E tests (optional — requires Docker) ──────────────────────────
   // AUDIT-27 CI-07: use `npm run e2e` (scripts/run-e2e.mjs) which
