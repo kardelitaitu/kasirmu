@@ -1,7 +1,25 @@
-//! Receipt format commands (receipt-format axis) — tablet twin. The
-//! tablet shell checks `settings:edit` on the session; the location-
-//! resource scoping the desktop layers on top (ADR #47) has no tablet
-//! helper yet, matching this shell's other scoped write commands.
+//! Receipt format commands (receipt-format axis) — tablet twin.
+//!
+//! # ADR #49 status — measured 2026-09-16, `verify-body-parity.py` → **1 / 3**
+//!
+//! **One door is ported.** [`get_receipt_format_scoped`] delegates to
+//! [`oz_bridge::receipt_format::get_receipt_format_scoped`]: the bodies were
+//! statement-identical, and the door names a permission (`SETTINGS_READ`), so
+//! the move is ledger-neutral. The twin takes `session_token` **last**.
+//!
+//! **Two doors are REFUSED, on an added gate.** [`set_receipt_layout_scoped`] and
+//! [`set_receipt_content_scoped`] gate on the session alone here
+//! (`SETTINGS_EDIT`, `require_permission_for_session`), while the bridge twins
+//! layer an ADR #47 location-resource check on top —
+//! `require_permission_for_session_resource(&session, SETTINGS_EDIT,
+//! ScopeType::Location, …)` (`crates/oz-bridge/src/receipt_format.rs:65-70` and
+//! `:150-155`) — which this shell has never enforced. §4 forbids adding a gate
+//! inside an extraction as plainly as removing one, and a stricter gate can start
+//! refusing writes the shell accepts today.
+//!
+//! That is precisely why the location-resource scoping the desktop layers on top
+//! (ADR #47) still has **no tablet helper**: adopting it is a gating change, so it
+//! must land in its own commit rather than inside an extraction.
 
 use oz_core::db::receipt_formats::{EffectiveReceiptFormat, ReceiptContent, ReceiptLayout};
 use oz_core::{Store, permissions};
@@ -12,6 +30,13 @@ use crate::error::AppError;
 use crate::state::AppState;
 
 /// Read the effective receipt format for the session's terminal.
+///
+/// # ADR #49 — ported 2026-09-16
+///
+/// Delegates to [`oz_bridge::receipt_format::get_receipt_format_scoped`]. The
+/// body was statement-identical and the gate is `SETTINGS_READ` on both sides, so
+/// the move is ledger-neutral. Argument order follows the twin: `terminal_id`,
+/// `workspace_id`, then `session_token`.
 #[tauri::command]
 pub async fn get_receipt_format_scoped(
     terminal_id: Option<String>,
@@ -19,17 +44,29 @@ pub async fn get_receipt_format_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
-    let conn = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&conn);
-    Ok(store.effective_receipt_format(terminal_id.as_deref(), workspace_id.as_deref())?)
+    let ctx = state.bridge_ctx();
+    oz_bridge::receipt_format::get_receipt_format_scoped(
+        &ctx,
+        terminal_id,
+        workspace_id,
+        &session_token,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Replace the workspace-layer layout record for the session's store db
 /// and return the freshly effective format.
+///
+/// # ADR #49 NOT APPLIED, deliberately — delegating would ADD a gate
+///
+/// Refused 2026-09-16. This shell gates on the session alone (`SETTINGS_EDIT`).
+/// The bridge twin adds an ADR #47 location-resource check —
+/// `require_permission_for_session_resource(&session, SETTINGS_EDIT,
+/// ScopeType::Location, workspace_id)`
+/// (`crates/oz-bridge/src/receipt_format.rs:65-70`) — which has never run here.
+/// §4 forbids adding a gate inside an extraction, and the added check can start
+/// refusing writes this shell accepts today.
 #[tauri::command]
 pub async fn set_receipt_layout_scoped(
     layout: ReceiptLayoutArgs,
@@ -89,6 +126,15 @@ pub struct ReceiptLayoutArgs {
 /// matching this shell's other scoped write commands); the entity is
 /// resolved server-side through the store's primary location and the
 /// write fails closed without one.
+///
+/// # ADR #49 NOT APPLIED, deliberately — delegating would ADD a gate
+///
+/// Refused 2026-09-16, on the same ground as [`set_receipt_layout_scoped`]: the
+/// bridge twin adds an ADR #47 location-resource check —
+/// `require_permission_for_session_resource(&session, SETTINGS_EDIT,
+/// ScopeType::Location, &primary_location_id(&conn)?)`
+/// (`crates/oz-bridge/src/receipt_format.rs:150-155`) — which this shell has
+/// never enforced, and §4 forbids adding a gate inside an extraction.
 #[tauri::command]
 pub async fn set_receipt_content_scoped(
     content: ReceiptContentArgs,
