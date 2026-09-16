@@ -4,13 +4,13 @@ version: "1.0"
 effective: "17 Agustus 2026"
 ---
 
-Syarat dan Ketentuan Layanan ini ("Ketentuan") merupakan perjanjian yang mengikat secara hukum antara Anda ("Anda" atau "Pelanggan") dan pengoperasi layanan OZ-POS ("Perusahaan", "kami", atau "kita") yang mengatur akses dan penggunaan Anda atas situs web, aplikasi desktop, layanan cloud, server lisensi, dan layanan terkait OZ-POS (secara bersama-sama, "Layanan").
+Syarat dan Ketentuan Layanan ini ("Ketentuan") merupakan perjanjian yang mengikat secara hukum antara Anda ("Anda" atau "Pelanggan") dan pengoperasi layanan kasir.mu ("Perusahaan", "kami", atau "kita") yang mengatur akses dan penggunaan Anda atas situs web, aplikasi desktop, layanan cloud, server lisensi, dan layanan terkait kasir.mu (secara bersama-sama, "Layanan").
 
 Dengan membuat akun, mengunduh perangkat lunak, mengaktifkan lisensi, atau menggunakan Layanan dengan cara apa pun, Anda menyetujui Ketentuan ini. Jika Anda menggunakan Layanan atas nama suatu usaha/badan usaha, Anda menyatakan bahwa Anda berwenang mengikat badan usaha tersebut, dan "Anda" berarti badan usaha tersebut.
 
 ## 1. Tentang Layanan
 
-OZ-POS adalah sistem point-of-sale (POS) yang berjalan lokal di perangkat Anda ("offline-first") dan, pada paket berbayar, dapat menyinkronkan data bisnis terpilih ke server cloud kami serta menghasilkan laporan. Layanan mencakup aplikasi desktop, aktivasi lisensi, sinkronisasi cloud opsional, dan situs web akun.
+kasir.mu adalah sistem point-of-sale (POS) yang berjalan lokal di perangkat Anda ("offline-first") dan, pada paket berbayar, dapat menyinkronkan data bisnis terpilih ke server cloud kami serta menghasilkan laporan. Layanan mencakup aplikasi desktop, aktivasi lisensi, sinkronisasi cloud opsional, dan situs web akun.
 
 Kami dapat menambah, mengubah, atau menghapus fitur dari waktu ke waktu. Kami akan berupaya memberikan pemberitahuan yang wajar atas perubahan yang bersifat material, tetapi Layanan dapat berkembang tanpa pemberitahuan apabila perubahan tersebut tidak berdampak material bagi Anda.
 

@@ -45,7 +45,7 @@ it:
 
 1. In the app, choose **Recover license** (or just try to renew — the app
    walks you through it).
-2. OZ-POS emails a **6-digit recovery code** to your account address.
+2. kasir.mu emails a **6-digit recovery code** to your account address.
 3. Enter the code in the app. Your management key is restored and the old
    one stops working.
 

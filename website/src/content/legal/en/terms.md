@@ -4,13 +4,13 @@ version: "1.0"
 effective: "August 17, 2026"
 ---
 
-These Terms of Service (the "Terms") are a legally binding agreement between you ("you", "your", or the "Customer") and the operator of the OZ-POS service (the "Company", "we", "us", or "our") governing your access to and use of the OZ-POS website, desktop application, cloud services, license server, and related services (together, the "Service").
+These Terms of Service (the "Terms") are a legally binding agreement between you ("you", "your", or the "Customer") and the operator of the kasir.mu service (the "Company", "we", "us", or "our") governing your access to and use of the kasir.mu website, desktop application, cloud services, license server, and related services (together, the "Service").
 
 By creating an account, downloading the software, activating a license, or otherwise using the Service, you agree to these Terms. If you are using the Service on behalf of a business, you represent that you have authority to bind that business, and "you" means the business.
 
 ## 1. About the Service
 
-OZ-POS is a point-of-sale (POS) system that runs locally on your devices ("offline-first") and, on paid plans, can synchronize selected business data to our cloud servers and produce reports. The Service includes the desktop application, license activation, optional cloud sync, and the account website.
+kasir.mu is a point-of-sale (POS) system that runs locally on your devices ("offline-first") and, on paid plans, can synchronize selected business data to our cloud servers and produce reports. The Service includes the desktop application, license activation, optional cloud sync, and the account website.
 
 We may add, change, or remove features over time. We will try to give reasonable notice of material changes, but the Service may evolve without notice where the change does not materially affect you.
 

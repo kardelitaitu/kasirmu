@@ -1,6 +1,6 @@
 ---
 title: Terminal
-description: Daftarkan dan konfigurasikan perangkat yang menjalankan OZ-POS.
+description: Daftarkan dan konfigurasikan perangkat yang menjalankan kasir.mu.
 category: guides
 order: 8
 updated: "2026-09-09"
@@ -11,7 +11,7 @@ updated: "2026-09-09"
 ## Apa itu terminal
 
 Terminal — register yang Anda lihat di topologi — adalah perangkat yang
-menjalankan OZ-POS: register kasir, tablet, atau layar dapur. Setiap terminal
+menjalankan kasir.mu: register kasir, tablet, atau layar dapur. Setiap terminal
 punya nama dan pengenal perangkat (hostname atau alamat MAC) yang dilaporkan
 otomatis oleh aplikasi. Mengelola terminal memerlukan peran manajer.
 

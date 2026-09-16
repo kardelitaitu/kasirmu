@@ -4,7 +4,7 @@ version: "1.0"
 effective: "17 Agustus 2026"
 ---
 
-Kebijakan Privasi ini menjelaskan data apa saja yang dikumpulkan oleh OZ-POS ("Perusahaan", "kami", atau "kita") melalui situs web, aplikasi desktop, layanan cloud, dan layanan terkait OZ-POS (secara bersama-sama, "Layanan"), alasan pengumpulannya, cara kami menggunakan dan melindunginya, serta hak-hak Anda atas data tersebut.
+Kebijakan Privasi ini menjelaskan data apa saja yang dikumpulkan oleh kasir.mu ("Perusahaan", "kami", atau "kita") melalui situs web, aplikasi desktop, layanan cloud, dan layanan terkait kasir.mu (secara bersama-sama, "Layanan"), alasan pengumpulannya, cara kami menggunakan dan melindunginya, serta hak-hak Anda atas data tersebut.
 
 Dengan membuat akun atau menggunakan Layanan, Anda menyetujui praktik yang dijelaskan dalam kebijakan ini. Jika Anda tidak setuju, mohon jangan menggunakan Layanan.
 
@@ -12,7 +12,7 @@ Dengan membuat akun atau menggunakan Layanan, Anda menyetujui praktik yang dijel
 
 ## 1. Siapa kami (pengendali data pribadi)
 
-OZ-POS mengoperasikan Layanan dan merupakan pengendali data pribadi yang bertanggung jawab atas data pribadi yang dijelaskan dalam kebijakan ini. Anda dapat menghubungi kami kapan saja:
+kasir.mu mengoperasikan Layanan dan merupakan pengendali data pribadi yang bertanggung jawab atas data pribadi yang dijelaskan dalam kebijakan ini. Anda dapat menghubungi kami kapan saja:
 
 - **Surel:** support@kasir.mu
 - **Penjualan:** sales@kasir.mu

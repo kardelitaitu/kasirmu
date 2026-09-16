@@ -32,7 +32,7 @@ Download the installer from the
 is required.
 
 **Windows** — run `OZ-POS_<version>_x64-setup.exe` (or the `.msi`) and follow
-the prompts. It installs for your user account and adds an OZ-POS entry to
+the prompts. It installs for your user account and adds a kasir.mu entry to
 the Start menu.
 
 ## First launch
@@ -43,7 +43,7 @@ upgrade any time from Settings → License.
 
 ## Updates
 
-OZ-POS checks for updates on startup, and you can check any time from
+kasir.mu checks for updates on startup, and you can check any time from
 Settings → About → Check for Updates. Updates are signature-verified and
 installed through the platform installer, so nothing is applied without your
 confirmation. There is no rollback button — a previous version can be

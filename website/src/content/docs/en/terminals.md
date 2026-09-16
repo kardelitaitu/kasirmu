@@ -1,6 +1,6 @@
 ---
 title: Terminals
-description: Register and configure the devices that run OZ-POS.
+description: Register and configure the devices that run kasir.mu.
 category: guides
 order: 8
 updated: "2026-09-09"
@@ -11,7 +11,7 @@ updated: "2026-09-09"
 ## What a terminal is
 
 Terminals — the registers you see in the topology — are the devices that run
-OZ-POS: a counter register, a tablet, or a kitchen screen. Each terminal has
+kasir.mu: a counter register, a tablet, or a kitchen screen. Each terminal has
 a name and a device identifier (hostname or MAC address) that the app reports
 automatically. Managing terminals requires the manager role.
 

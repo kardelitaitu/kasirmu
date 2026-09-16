@@ -1,6 +1,6 @@
 ---
 title: Mode Offline-First
-description: Bagaimana OZ-POS tetap berjalan tanpa koneksi sama sekali.
+description: Bagaimana kasir.mu tetap berjalan tanpa koneksi sama sekali.
 category: guides
 order: 1
 updated: "2026-08-16"

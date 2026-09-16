@@ -44,7 +44,7 @@ akan meminta Anda **memulihkannya**:
 
 1. Di aplikasi, pilih **Pulihkan lisensi** (atau coba perpanjang — aplikasi
    akan memandu Anda).
-2. OZ-POS mengirim **kode pemulihan 6 digit** ke alamat email akun Anda.
+2. kasir.mu mengirim **kode pemulihan 6 digit** ke alamat email akun Anda.
 3. Masukkan kode tersebut di aplikasi. Kunci manajemen Anda dipulihkan dan
    kunci lama berhenti bekerja.
 

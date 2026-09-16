@@ -4,7 +4,7 @@ version: "1.0"
 effective: "August 17, 2026"
 ---
 
-This Privacy Policy explains what data OZ-POS (the "Company", "we", "us", or "our") collects through the OZ-POS website, desktop application, cloud services, and related services (together, the "Service"), why we collect it, how we use and protect it, and the rights you have over it.
+This Privacy Policy explains what data kasir.mu (the "Company", "we", "us", or "our") collects through the kasir.mu website, desktop application, cloud services, and related services (together, the "Service"), why we collect it, how we use and protect it, and the rights you have over it.
 
 By creating an account or using the Service, you agree to the practices described in this policy. If you do not agree, please do not use the Service.
 
@@ -12,7 +12,7 @@ By creating an account or using the Service, you agree to the practices describe
 
 ## 1. Who we are (data controller)
 
-OZ-POS operates the Service and is the data controller responsible for the personal data described in this policy. You can contact us at any time:
+kasir.mu operates the Service and is the data controller responsible for the personal data described in this policy. You can contact us at any time:
 
 - **Email:** support@kasir.mu
 - **Sales:** sales@kasir.mu
