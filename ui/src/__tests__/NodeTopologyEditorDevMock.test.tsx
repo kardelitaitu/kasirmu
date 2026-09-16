@@ -119,7 +119,9 @@ describe('editor revision-conflict recovery through the real dev-mock IPC', () =
   it('reloads the authoritative diagram when the dev-mock rejects a stale Apply', async () => {
     // Snapshot the seeded dev-mock state (persisted to localStorage, so
     // read the CURRENT revision/nodes to self-heal across re-runs).
-    const seeded = await loadTopology();
+    // R1: the read is sessioned; the dev-mock handler is permissive by the
+    // T-4 convention (it models state, not auth), so any token snapshots.
+    const seeded = await loadTopology('dev-mock-test-token');
     expect(seeded).not.toBeNull();
     const seedNodes = seeded?.nodes ?? [];
     const seedWires = seeded?.wires ?? [];

@@ -131,11 +131,12 @@ pub async fn delete_topology_template(
 /// should fall back to the built-in retail preset).
 #[tauri::command]
 pub async fn load_topology(
+    session_token: String,
     branch_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Option<Value>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::topology::commands::load_topology(&ctx, branch_id)
+    oz_bridge::topology::commands::load_topology(&ctx, session_token, branch_id)
         .await
         .map_err(Into::into)
 }

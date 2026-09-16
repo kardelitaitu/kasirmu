@@ -39,6 +39,30 @@ fn make_node_cmd(id: &str) -> TopologyNodePayload {
     }
 }
 
+/// R1 (ruled 2026-09-16): `load_topology` now rides a session like the
+/// template reads. The older command tests seed this session at their call
+/// sites — same shape the auth-gated tests build by hand further down the
+/// file; the token is constant because the load gate checks existence and
+/// liveness, nothing about identity.
+fn seed_topology_session(state: &AppState) -> String {
+    let token = "token-topology-loader".to_string();
+    let mut sessions = state.session_store.write().unwrap();
+    sessions.insert(
+        token.clone(),
+        SessionContext::new(
+            "user-loader".into(),
+            "role-admin".into(),
+            "term-loader".into(),
+            "store-1".into(),
+            "inst-loader".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    token
+}
+
 #[tokio::test]
 async fn tauri_save_topology_persists_and_load_returns_it() {
     let state = AppState::for_test();
@@ -60,7 +84,8 @@ async fn tauri_save_topology_persists_and_load_returns_it() {
     )
     .await
     .unwrap();
-    let loaded = load_topology(None, app.state()).await.unwrap();
+    let loaded =
+        load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state()).await.unwrap();
     assert!(loaded.is_some());
     let data = loaded.unwrap();
     assert_eq!(data["nodes"].as_array().unwrap().len(), 1);
@@ -98,7 +123,10 @@ async fn tauri_save_topology_overwrites_previous() {
     .await
     .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 1);
     assert_eq!(loaded["nodes"][0]["id"], "second");
 }
@@ -133,11 +161,12 @@ async fn tauri_topology_commands_are_branch_scoped() {
     .await
     .unwrap();
 
-    let branch_a = load_topology(Some("branch-a".into()), app.state())
+    let token = seed_topology_session(app.state::<AppState>().inner());
+    let branch_a = load_topology(token.clone(), Some("branch-a".into()), app.state())
         .await
         .unwrap()
         .unwrap();
-    let branch_b = load_topology(Some("branch-b".into()), app.state())
+    let branch_b = load_topology(token, Some("branch-b".into()), app.state())
         .await
         .unwrap()
         .unwrap();
@@ -171,7 +200,10 @@ async fn tauri_load_topology_serves_stored_node_without_display_name_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
+        .await
+        .unwrap()
+        .unwrap();
     // Raw passthrough: the nameless node is served intact (the editor
     // renders the card without a title and heals it on the next edit).
     assert!(loaded["nodes"][0].get("name").is_none());
@@ -191,7 +223,8 @@ async fn tauri_load_topology_returns_none_for_fresh_app() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap();
+    let loaded =
+        load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state()).await.unwrap();
     assert!(loaded.is_none());
 }
 
@@ -243,7 +276,10 @@ async fn tauri_save_topology_with_wires_roundtrips_fully() {
     save_topology(nodes, wires, None, app.state())
         .await
         .unwrap();
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
+        .await
+        .unwrap()
+        .unwrap();
 
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 2);
     assert_eq!(loaded["wires"].as_array().unwrap().len(), 1);
@@ -277,7 +313,10 @@ async fn tauri_load_topology_serves_corrupt_stored_direction_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
+        .await
+        .unwrap()
+        .unwrap();
     // Raw passthrough: the editor's normalizeWireDirection folds the
     // corrupt value to one-way and heals the row on the next Apply.
     assert_eq!(loaded["wires"][0]["direction"], "bidirectional");
@@ -312,8 +351,57 @@ async fn tauri_load_topology_serves_semantic_contract_violation_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(None, app.state()).await.unwrap().unwrap();
+    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn load_topology_requires_a_session() {
+    // R1 (todo-topology-editor.md §5, ruled 2026-09-16): reading a branch's
+    // diagram reveals its configuration, so it rides the same session gate
+    // the template reads ride — the "the draft endpoint stays open for
+    // pre-session canvases" asymmetry was the oversight this ruling ends.
+    // The eight older command tests prove the gate ACCEPTS a live session;
+    // this proves it REFUSES without one, and that the refusal comes from
+    // the session rather than the branch, the key, or the stored row — the
+    // same call succeeds once a session exists.
+    let state = AppState::for_test();
+    {
+        let mut conn = state.db.lock().await;
+        migrations::run(&mut conn).unwrap();
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    save_topology(
+        vec![serde_json::to_value(make_node_cmd("secret-plan")).unwrap()],
+        vec![],
+        Some("branch-under-read".into()),
+        app.state(),
+    )
+    .await
+    .unwrap();
+
+    let anon = load_topology(
+        "token-never-issued".into(),
+        Some("branch-under-read".into()),
+        app.state(),
+    )
+    .await;
+    assert!(
+        matches!(anon, Err(AppError::InvalidSession)),
+        "an unknown token must not read a branch's diagram, got {anon:?}"
+    );
+    let token = seed_topology_session(app.state::<AppState>().inner());
+    let seen = load_topology(token, Some("branch-under-read".into()), app.state())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(seen["nodes"][0]["id"], "secret-plan");
 }
 // ── Audit follow-up: node-id uniqueness + enum validation + atomicity ─
 //

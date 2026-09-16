@@ -327,11 +327,14 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
    *  from the backend keeps the panel honest — it compares the saved
    *  states, not the possibly-unsaved canvas in front of the user. */
   const loadCompare = useCallback(async (otherBranchId: string) => {
+    // R1: the read is sessioned; the screen's house guard (same shape as
+    // the revision-fetch callback's) — no session, no compare fetch.
+    if (!sessionToken) return;
     setCompareLoading(true);
     try {
       const [currentData, otherData] = await Promise.all([
-        loadTopology(selectedBranchId ?? undefined),
-        loadTopology(otherBranchId),
+        loadTopology(sessionToken, selectedBranchId ?? undefined),
+        loadTopology(sessionToken, otherBranchId),
       ]);
       setCompareResult(compareBranchTopologies(currentData, otherData));
       setCompareOverlay(buildTopologyOverlay(currentData, otherData));
@@ -344,7 +347,7 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
     } finally {
       setCompareLoading(false);
     }
-  }, [selectedBranchId, addToast, l10n]);
+  }, [selectedBranchId, sessionToken, addToast, l10n]);
 
   /** Open the compare panel against the first other branch. */
   const openCompare = useCallback(() => {
@@ -849,8 +852,13 @@ function TopologyScreenContent({ initialBranchId, openCreateOnMount }: TopologyS
                 onClick={() => {
                   // Fetch the saved diagram first so the very first revision
                   // the operator selects can be diffed without a second round
-                  // trip.
-                  void loadTopology(selectedBranchId)
+                  // trip. R1: the read is sessioned — with no session, the
+                  // panel degrades exactly like a failed fetch below.
+                  if (!sessionToken) {
+                    setHistoryOpen(true);
+                    return;
+                  }
+                  void loadTopology(sessionToken, selectedBranchId)
                     .then((data) => {
                       setHistoryCurrent(data);
                       setHistoryOpen(true);

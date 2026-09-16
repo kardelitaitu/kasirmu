@@ -71,7 +71,7 @@ const deploy = async (nodes: TopologyNodePayload[], note: string, branchId?: str
   // `baseRevision = 0`, so passing `undefined` sends 0 rather than omitting
   // it, and the dev-mock's conflict gate (correctly) rejects the second
   // deploy in any test.
-  const current = await api.loadTopology();
+  const current = await api.loadTopology(TOKEN);
   return api.applyTopologyDiff(
     TOKEN, [], [], [], nodes, [], branchId,
     current?.revision ?? 0,

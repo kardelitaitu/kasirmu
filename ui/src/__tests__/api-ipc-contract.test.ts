@@ -193,16 +193,23 @@ import {
 describe('topology.ts IPC contract', () => {
   beforeEach(() => mockInvoke.mockReset());
 
-  it('loadTopology invokes "load_topology" with no args', async () => {
+  it('loadTopology invokes "load_topology" with the session only', async () => {
     mockInvoke.mockResolvedValue(null);
-    await loadTopology();
-    expect(mockInvoke).toHaveBeenCalledWith('load_topology', undefined);
+    await loadTopology('tok');
+    // R1 (2026-09-16): sessioned read; no branch means the session's scope.
+    expect(mockInvoke).toHaveBeenCalledWith('load_topology', {
+      sessionToken: 'tok',
+      branchId: undefined,
+    });
   });
 
-  it('loadTopology invokes "load_topology" with a branch id', async () => {
+  it('loadTopology invokes "load_topology" with a session and a branch id', async () => {
     mockInvoke.mockResolvedValue(null);
-    await loadTopology('branch-a');
-    expect(mockInvoke).toHaveBeenCalledWith('load_topology', { branchId: 'branch-a' });
+    await loadTopology('tok', 'branch-a');
+    expect(mockInvoke).toHaveBeenCalledWith('load_topology', {
+      sessionToken: 'tok',
+      branchId: 'branch-a',
+    });
   });
 
   it('applyTopologyDiff invokes "apply_topology_diff" with full diff payload', async () => {
@@ -282,7 +289,7 @@ describe('topology.ts IPC contract', () => {
 
   it('loadTopology returns null when no topology saved', async () => {
     mockInvoke.mockResolvedValue(null);
-    const result = await loadTopology();
+    const result = await loadTopology('tok');
     expect(result).toBeNull();
   });
 

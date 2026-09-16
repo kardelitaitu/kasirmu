@@ -62,12 +62,15 @@ export const canSaveTopology = (
 ): Promise<boolean> =>
   loggedInvoke<boolean>('can_save_topology', { sessionToken, branchId });
 
-/** Load the persisted topology graph for a branch, or `null` if none saved yet. */
-export const loadTopology = (branchId?: string): Promise<TopologyData | null> =>
-  loggedInvoke<TopologyData | null>(
-    'load_topology',
-    branchId !== undefined ? { branchId } : undefined,
-  );
+/** Load the persisted topology graph for a branch, or `null` if none saved yet.
+ *  R1 (todo-topology-editor.md §5, ruled 2026-09-16): the read is sessioned
+ *  like the template reads it mirrors — a diagram reveals a branch's
+ *  configuration, which is exactly why those reads required a session. */
+export const loadTopology = (
+  sessionToken: string,
+  branchId?: string,
+): Promise<TopologyData | null> =>
+  loggedInvoke<TopologyData | null>('load_topology', { sessionToken, branchId });
 
 // ── Deployed revision history (ADR #46) ─────────────────────────
 

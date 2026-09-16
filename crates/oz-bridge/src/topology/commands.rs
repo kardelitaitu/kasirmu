@@ -163,9 +163,18 @@ pub async fn delete_topology_template(
 /// editor repair it.
 pub async fn load_topology(
     ctx: &BridgeCtx<'_>,
+    // R1 (todo-topology-editor.md §5, ruled 2026-09-16): this read requires
+    // a session, mirroring load_topology_template — the parameter landed in
+    // all three layers before the body enforced it, so the session test in
+    // `topology_command_tests.rs` failed for the RIGHT reason (behavior,
+    // not compile) against the stage-1 body.
+    session_token: String,
     branch_id: Option<String>,
 ) -> Result<Option<Value>, BridgeError> {
     let setting_key = topology_setting_key(branch_id.as_deref())?;
+    // Resolve BEFORE the settings lookup: an unauthorized caller learns
+    // nothing about whether a diagram exists, in this branch or any other.
+    ctx.resolve_session(&session_token)?;
     let conn = ctx.db.lock().await;
     let raw = match oz_core::Settings::get(&conn, &setting_key)? {
         Some(json) => Some(json),

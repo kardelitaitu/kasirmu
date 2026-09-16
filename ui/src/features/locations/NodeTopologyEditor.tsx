@@ -1118,6 +1118,7 @@ export default function NodeTopologyEditor({
     workspaceInstances,
     branchLocations,
     branchId,
+    sessionToken,
     reloadKey,
     skipNextLoadRef,
     migrationDismissedRef,
