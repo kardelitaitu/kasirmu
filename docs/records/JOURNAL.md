@@ -11225,3 +11225,19 @@ The acceptance printed at the wired state: `cargo test -p oz-pos-app --lib topol
 The plan's Phase 3 went from 5 NEEDS-RULING boxes to 5 ticked with prints in one round, and the two-store-plus-assignment fixture pattern now demonstrably lives in the DESKTOP test file — which retires the earlier "the harness cannot be built in 15 minutes" note's reach for Phase 1: the `:183` box had studied the BRIDGE file only. Next up in the goal: Phase 2/R1 (session-thread `load_topology`), then Phase 1/R4, which the fresh fixture makes materially less hypothetical.
 
 **Commit:** `4efcb0971` + plan ticks `43090bf46`; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — Phase 2/R1: the diagram read got its session, red first at the right assertion (topology)
+
+**Context:**
+The owner-ratified rulings run smallest-first under the armed goal; Phase 3/R2 closed this morning. R1 was the plan's M1: `load_topology` answers with no session at all while `load_topology_template` justifies its session check by saying a template reveals a branch's configuration — and a live diagram reveals strictly more. The ruling chose the three-layer fix and cancelled the comment branch.
+
+**Changes:**
+`8286f43ae` (13 files, +184/−47): `session_token` first in the bridge signature, resolved BEFORE any settings lookup; desktop shim forwards; the UI wrapper always sends a payload object now (the old no-branch quirk of a whole-`undefined` payload died with the change, and both contract tests pin the new wire); the load-lifecycle hook gained a sessionToken dep fed from the editor's own `useWorkspace`; TopologyScreen's three sites took the house no-session guard, the history button degrading like a failed fetch; nine older command tests seed a documented constant-token session; the new `load_topology_requires_a_session` proves both arms (unknown token refused, live session reads the same row).
+
+**Verification:**
+Stage 1 (wired, unenforced) printed the honest red: `58 passed; 1 failed` with the failure AT the refusal assertion — behavior, not compile (the path from `&State<AppState>` to `&AppState` through a generic method receiver needs `state::<AppState>().inner()`, discovered the expensive way in two extra builds). Stage 2: `59 passed; 0 failed; 0 ignored`; bridge `314/0/0` baseline held; `verify-ipc-parity.py` exit 0 (names-only, no allowlist entry); `npm run typecheck` clean — it caught three zero-arg test callers and the `string | null` screen tokens that esbuild-transpiled vitest happily ran around; UI contract + consumer suites 145/145.
+
+**What it means:**
+Two of four rulings now land with prints; Phase 1/R4 remains — the only one whose facts (which database holds a fresh branch profile's row) still need establishing empirically, and the fixture worry that blocked it ("needs a two-store harness") is now doubly retired: this round added a second reusable session-seeding pattern to the same file.
+
+**Commit:** `8286f43ae` + plan ticks `docs(topology)` -- never push without a direct user order.
