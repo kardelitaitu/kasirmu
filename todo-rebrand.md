@@ -337,21 +337,22 @@ Key files with functional (not just prose) brand references:
 
 ## Tier 3 — Deferred (separate PR after brand launch)
 
-Zero user-visible effect. Do not mix into this rebrand diff.
+**Zero user-visible effect. Do not mix into this rebrand diff.**
 
-- [ ] Crate names: `oz-core`, `oz-bridge`, `oz-hal`, `oz-api`, `oz-cli`, `oz-lan`, `oz-local-api` → `kasirmu-*`
-- [ ] Binary names: `oz-pos-app`, `oz-pos-tablet`, `oz-pos-cli` in `Cargo.toml [[bin]]`
-- [ ] All `use oz_core::`, `use oz_api::` etc. imports across all apps/modules
-- [ ] Internal Rust symbols: `OzpkgPayload`, `export_ozpkg`, `import_ozpkg`, `oz_core::ozpkg` module path
-- [ ] CLI subcommand names: `export-ozpkg`, `import-ozpkg` (breaking — needs deprecation notice)
-- [ ] `deny.toml` crate-level metadata
-- [ ] GitHub repo move: `kardelitaitu/oz-pos` → `kasirmu/kasir.mu` (admin action)
-- [ ] **Persisted client keys — missing from this list, and they belong here rather than in Phase 2.** Renaming any of these logs every existing user out or resets their preferences, so each needs a read-old/write-new migration like Phase 4's DB copy, not a find-and-replace:
-  - ui: `oz-pos-locale` (`ui/src/utils/storage.ts:8`, `ui/src/i18n/LocaleContext.tsx:44`), `oz-pos-decimal-sep` (`ui/src/utils/storage.ts:9`), `oz-pos-theme-v4` (`ui/src/frontend/shell/ThemeProvider.tsx:41`)
-  - website: `oz_theme` (`website/src/layouts/Base.astro` inline pre-paint script) and the `oz_session` cookie (`website/worker.ts`)
-  - Pinned by `ui/src/__tests__/storageKeyPins.test.ts:44,45`, `storage.test.ts:10,14`, `LocaleContext.test.tsx:17`, `ThemeProvider.test.tsx:11`, `themeRegression.test.tsx:10`, and the website's `apply-theme.test.ts` — those tests move with any rename.
-  - Without this entry the verification greps below can never return zero, and a reader would chase them as rebrand debt.
-- [ ] CI badge URLs and CHANGELOG compare links (after repo move)
+The work is specified in full in [`todo-rebrand-2.md`](./todo-rebrand-2.md) (phases T3-1…T3-7). That
+file is authoritative; this section previously carried a **second copy** of the list, and the two had
+already drifted:
+
+- the copy here named **`oz-pos-cli`** as a binary to rename — no such target exists.
+  `crates/oz-cli/Cargo.toml` declares exactly one: `[[bin]] name = "oz"` (`:10-11`)
+- it listed **7 crates** (`oz-core`, `oz-bridge`, `oz-hal`, `oz-api`, `oz-cli`, `oz-lan`,
+  `oz-local-api`); the rename set is **16** (`crates/` holds 16 `oz-*` dirs plus `qris-core`, which stays)
+- it knew nothing of the `ozpkg_parse` fuzz target, the `oz-security` deny.toml entry, the
+  **website** and **install/** URL surfaces, or the **persisted client keys** — all found in review
+  and recorded in `todo-rebrand-2.md`
+
+Keeping one list is the fix: two enumerations of the same work cannot be edited in step, and this
+repo has paid for that lesson repeatedly.
 
 ---
 
@@ -364,7 +365,7 @@ Zero user-visible effect. Do not mix into this rebrand diff.
 #      (a) CSS section headers and `//!` doc comments under ui/src/features (Phase 2, "Deliberately
 #          NOT in this phase"); and
 #      (b) Tier-3 persisted keys, which are underscores not hyphens so only `oz-pos-*` here
-#          (Tier 3, "Persisted client keys").
+#          (todo-rebrand-2.md, Notes: "Persisted client keys").
 #    Enumerate first, then confirm every remaining hit belongs to (a) or (b); anything else is a miss.
 git grep -rn "OZ-POS\|OZ_POS\|OZPOS\|ozpos\|oz-pos" -- \
   ui/src/locales/ ui/src/features/ ui/src/dev-mock/ \
@@ -377,8 +378,13 @@ git grep -rn "OZ-POS\|oz-pos\.db" -- .agents/skills/
 # 2. No old identifier
 git grep -rn "com\.ozpos" -- apps/ docs/ crates/ scripts/
 
-# 3. No old DB default in code
-git grep -rn '"oz-pos\.db"\|/oz-pos\.db' -- apps/ crates/ Dockerfile* docker-compose* .env.example
+# 3. No old DB default in code OR in the scripts that default to it.
+#    NOTE the pattern is deliberately bare `oz-pos\.db` with no surrounding quotes: the scripts this
+#    phase now covers write it unquoted, in `${OZ_DB_PATH:-oz-pos.db}` (backup-db.sh / restore-db.sh)
+#    and `rm -f oz-pos.db …` (check.sh / check.ps1 / setup-dev.ps1). The previous pattern —
+#    `'"oz-pos\.db"\|/oz-pos\.db'` — required a quote or a leading slash and therefore reported ZERO
+#    while every one of those script defaults was still stale.
+git grep -rn "oz-pos\.db" -- apps/ crates/ scripts/ platform/ Dockerfile* docker-compose* .env.example .agents/skills/
 
 # 4. No old env var in live code
 git grep -rn "OZPOS_" -- .githooks/ scripts/ AGENTS.md

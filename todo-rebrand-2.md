@@ -1,8 +1,12 @@
 # todo-rebrand-2.md — Structural renames (Tier 3)
 
 <!-- Follows todo-rebrand.md (Phases 1-9, user-visible changes). -->
-<!-- This file covers zero-user-visible structural renames: crate names, binary names, -->
+<!-- This file covers the structural renames `todo-rebrand.md` defers: crate names, binary names, -->
 <!-- Rust symbols, CLI subcommands, and the GitHub repo move. -->
+<!-- NOT "zero user-visible", which is what this line used to claim while T3-5 said the opposite in its
+     own body. Three items here are visible breaking changes: the CLI binary `oz` → `kasir` (T3-2),
+     the subcommands `export-ozpkg`/`import-ozpkg` → `export`/`import` (T3-5), and the persisted
+     client keys (Notes), which log every existing user out unless migrated. -->
 <!-- Execute only AFTER todo-rebrand.md is fully merged. -->
 <!-- Commit law: one pathspec commit per phase; no git add, no -a, no amend — EXCEPT the §3 one-line
      new-file chain (`git add -- <new/path> && git commit -m "..." -- <new/path>`), which T3-1
@@ -24,9 +28,9 @@
 | Phase | What | Files affected |
 |---|---|---|
 | T3-1 | Crate library renames — `Cargo.toml` + directory renames | 17 crates × 2–4 files |
-| T3-2 | Binary / lib-crate target names | 5 targets in 4 Cargo.toml files |
+| T3-2 | Binary / lib-crate target names | 6 targets in 4 Cargo.toml files, + the root profile section (30 paths once the scripts/packaging surface is included — see the phase) |
 | T3-3 | `use oz_*` imports across all Rust source | 413 `.rs` files (`git grep -l "use oz_" -- "*.rs" \| wc -l`) |
-| T3-4 | `oz_core::ozpkg` module + `OzpkgPayload` struct + `export_ozpkg`/`import_ozpkg` fn names | ~15 `.rs` files |
+| T3-4 | `oz_core::ozpkg` module + `OzpkgPayload` struct + `export_ozpkg`/`import_ozpkg` fn names | 8 `.rs` files carry the symbols (`git grep -l -E "OzpkgPayload\|export_ozpkg\|import_ozpkg\|oz_core::ozpkg\|run_export_ozpkg\|run_import_ozpkg" -- "*.rs"`), + the test/fuzz files that rename with the module |
 | T3-5 | CLI subcommand names `export-ozpkg` / `import-ozpkg` → `export` / `import` (with deprecation) | `oz-cli` crate |
 | T3-6 | `deny.toml` + workspace `Cargo.toml` metadata | 2 files |
 | T3-7 | GitHub repo move + badge URLs + updater endpoints | admin action + ~20 files |
@@ -81,7 +85,9 @@ Files to touch per crate:
 ## T3-2 — Binary and lib-crate target names
 
 **Commit:** `refactor(cargo): rename oz-pos-app / oz-pos-tablet / oz-cloud-server binary targets`
-**Pathspec:** `apps/desktop-client/Cargo.toml apps/tablet-client/Cargo.toml apps/cloud-server/Cargo.toml crates/kasirmu-cli/Cargo.toml Cargo.toml scripts/check.sh scripts/release.sh .github/workflows/release.yml .github/workflows/dev-ci.yml`
+**Pathspec:** `apps/desktop-client/Cargo.toml apps/tablet-client/Cargo.toml apps/cloud-server/Cargo.toml crates/kasirmu-cli/Cargo.toml Cargo.toml apps/desktop-client/src/main.rs apps/tablet-client/src/main.rs apps/cloud-server/build.rs apps/cloud-server/src/main.rs apps/cloud-server/tests/startup.rs crates/kasirmu-cli/src/cli.rs scripts/check.sh scripts/check.ps1 scripts/release.sh scripts/coverage.sh scripts/coverage.ps1 scripts/setup-cache.sh scripts/setup-cache.ps1 scripts/setup-dev.ps1 scripts/build-exe-release.ps1 scripts/dev-code-sign.ps1 scripts/profile.sh scripts/profile.ps1 scripts/gates.json scripts/architecture-cargo-metadata.json .agents/verify-lane.sh packaging/linux/oz-pos.desktop packaging/mobile/README.md .github/workflows/release.yml .github/workflows/dev-ci.yml`
+
+> **Pathspec rebuilt.** The original listed 9 files but its own body edits at least 4 more it never named — `apps/desktop-client/src/main.rs`, `apps/tablet-client/src/main.rs`, `apps/cloud-server/build.rs` and `apps/cloud-server/tests/startup.rs`. A pathspec commit takes only the paths named, so those edits would have been left in the working tree and the commit would not have compiled (`oz_…_lib::run()` renamed in the lib, old name still called in the bin).
 
 ### `apps/desktop-client/Cargo.toml`
 - [ ] `name = "oz-pos-app"` (package) → `"kasirmu-app"`
@@ -102,6 +108,7 @@ Files to touch per crate:
 - [ ] `[[bin]] name = "oz"` — decide: keep `oz` as the CLI command name (user-facing), or rename to `kasir`
   - **Recommendation:** rename to `kasir` — this IS user-visible (breaking change)
   - Add a deprecation shim or note in release notes
+- [ ] `crates/kasirmu-cli/src/cli.rs:25` — `#[command(name = "oz", about = "OZ-POS maintenance and migration CLI")]`. **Two names on one line, and neither follows the Cargo rename on its own:** clap's `name` is what `--help` and usage errors print, so renaming only the `[[bin]]` target leaves the CLI still calling itself `oz`. The `about` prose is a user-visible brand string too, and it is not in `todo-rebrand.md` either (whose `cli.rs` citations are `:28` for the DB default and `:70,82,84` for the subcommand help).
 
 ### `apps/desktop-client/src/main.rs:6,11`
 - [ ] `oz_pos_app_lib::run()` → `kasirmu_app_lib::run()`
@@ -382,18 +389,23 @@ platform/sync/src/crdt/          platform/sync/tests/
 git grep -rn "oz-core\|oz-bridge\|oz-api\|oz-hal\|oz-cli\|oz-lan\|oz-crypto\|oz-lua\|oz-media\|oz-payment\|oz-plugin\|oz-reporting\|oz-security\|oz-logging\|oz-notification\|oz-cloud-server" \
   -- Cargo.toml deny.toml crates/ apps/ modules/ platform/
 
-# 2. No old binary names in scripts/CI
+# 2. No old binary names in scripts/CI/packaging. (`packaging/` was absent from the original, and
+#    it is where the Linux launcher lives: `Exec=oz-pos-app` would survive every other check.)
 git grep -rn "oz-pos-app\|oz-pos-tablet\|oz_pos_app_lib\|oz_pos_tablet_lib" \
-  -- scripts/ .github/ .agents/ "*.rs"
+  -- scripts/ .github/ .agents/ packaging/ "*.rs"
 
-# 3. No old use imports
-git grep -rn "use oz_core::\|use oz_bridge::\|use oz_api::\|use oz_hal::" -- "*.rs"
+# 3. No old use imports. A pattern over all roots, not the original's four: `oz_local_api` (added to
+#    this plan after review) and the others would each have passed a four-root check while unchanged.
+git grep -rn "use oz_[a-z_]*::" -- "*.rs"
 
 # 4. No old ozpkg symbols
 git grep -rn "OzpkgPayload\|export_ozpkg\|import_ozpkg\|oz_core::ozpkg\|run_export_ozpkg\|run_import_ozpkg" -- "*.rs"
 
-# 5. No old GitHub URLs (excluding CHANGELOG historical compare links if not yet updated)
-git grep -rn "kardelitaitu/oz-pos" -- Cargo.toml README.md docs/ apps/ .agents/
+# 5. No old GitHub URLs (excluding CHANGELOG historical compare links if not yet updated).
+#    `install/`, `website/` and `packaging/` were missing from the original path list — and they are
+#    exactly where the URLs are executable (install one-liners, the site's download button), so the
+#    original check reported zero while the live download path was still stale.
+git grep -rn "kardelitaitu/oz-pos" -- Cargo.toml README.md CHANGELOG.md docs/ apps/ .agents/ install/ website/ packaging/ .github/
 
 # 6. Full build
 cargo check --workspace --all-targets --all-features
@@ -412,6 +424,21 @@ cargo fmt --all -- --check
 
 ## Notes
 
+- **Persisted client keys — the one item here that can lose user state, and it has no phase above.**
+  Renaming any of these logs every existing user out or resets their preferences, so each needs a
+  read-old/write-new migration like `todo-rebrand.md` Phase 4's DB copy, not a find-and-replace:
+  - ui: `oz-pos-locale` (`ui/src/utils/storage.ts:8`, `ui/src/i18n/LocaleContext.tsx:44`),
+    `oz-pos-decimal-sep` (`ui/src/utils/storage.ts:9`),
+    `oz-pos-theme-v4` (`ui/src/frontend/shell/ThemeProvider.tsx:41`)
+  - website: `oz_theme` (`website/src/layouts/Base.astro` inline pre-paint script) and the
+    `oz_session` cookie (`website/worker.ts`)
+  - Pinned by `ui/src/__tests__/storageKeyPins.test.ts:44,45`, `storage.test.ts:10,14`,
+    `LocaleContext.test.tsx:17`, `ThemeProvider.test.tsx:11`, `themeRegression.test.tsx:10`, and the
+    website's `apply-theme.test.ts` — those tests move with any rename.
+  - Without this entry the verification greps in *both* files can never return zero, and a reader
+    would chase the survivors as outstanding debt. (Moved here from `todo-rebrand.md`'s Tier 3
+    section, which is now a pointer to this file; it was the only item in that duplicate list that
+    this file did not already carry.)
 - **`install/**` and `packaging/**` are covered by NEITHER plan, and this note is the only place that says so.** T3-7 above picks up their *repo URLs* only. Two other families live in the same files and belong to `todo-rebrand.md`, not here:
   - **identifier paths → Phase 4.** `install/uninstall.sh:55,56,59,96` removes `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`; `install/win/uninstall.ps1:97,98` removes `%APPDATA%\com.ozpos.app` and `%LOCALAPPDATA%\com.ozpos.app`; `install/win/README.md:58` documents both. After the identifier change these paths are stale and an uninstall leaves the new data dirs behind. **`todo-rebrand.md` Phase 4 lists neither file.**
   - **artifact names → Phase 3.** `install/install.sh` (18 sites) uses `OZ-POS.app`, `/opt/oz-pos/OZ-POS.AppImage`, `~/.local/bin/oz-pos.AppImage`, `/usr/local/bin/oz-pos`, `/usr/share/applications/oz-pos.desktop` and `dpkg -s oz-pos`; `install/win/install.ps1`/`uninstall.ps1` use `Programs\OZ-POS\OZ-POS.exe` and `DisplayName -like 'OZ-POS*'`. These follow `productName`, so they break in Phase 3 — **whose file list also omits them.**
