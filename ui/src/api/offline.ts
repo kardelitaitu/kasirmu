@@ -83,7 +83,12 @@ export const retryOfflineSyncScoped = (sessionToken: string): Promise<SyncResult
 
 /** Delete an offline queue item (scoped). */
 export const deleteOfflineItemScoped = (sessionToken: string, id: string): Promise<void> =>
-  loggedInvoke('delete_offline_item_scoped', { sessionToken, args: { id } });
+  // Both shells declare this command with a TOP-LEVEL `id` (`apps/desktop-client/.../offline.rs:118`
+  // and `apps/tablet-client/.../offline.rs:391`), and Tauri matches command arguments at the top
+  // level of the payload object -- so the `{ sessionToken, args: { id } }` shape this line used to
+  // build was rejected by the IPC layer in either shell before any Rust body ran. The dev-mock
+  // answers the name, which is why no screen ever showed it.
+  loggedInvoke('delete_offline_item_scoped', { sessionToken, id });
 
 // ── Remote Dead-Letter (quarantined pulls) ────────────────────────
 

@@ -213,9 +213,14 @@ describe('offline.ts IPC contract', () => {
   it('deleteOfflineItemScoped invokes "delete_offline_item_scoped" with id arg', async () => {
     mockInvoke.mockResolvedValue(undefined);
     await deleteOfflineItemScoped('tok', 'oq-1');
+    // `id` at the TOP LEVEL, because that is what both shells' command signatures declare
+    // (`id: String`). This assertion used to read `args: { id: 'oq-1' }` and PASS -- it was
+    // grading the wrapper against the wrapper, so the case that carries the title "with id arg"
+    // pinned a payload shape Tauri rejects before any body runs. The title was the intent; the
+    // object below is now the contract. See T34.
     expect(mockInvoke).toHaveBeenCalledWith('delete_offline_item_scoped', {
       sessionToken: 'tok',
-      args: { id: 'oq-1' },
+      id: 'oq-1',
     });
   });
 
