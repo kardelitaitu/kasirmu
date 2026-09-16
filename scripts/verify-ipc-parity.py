@@ -449,6 +449,176 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
     return hits
 
 
+def camel(param: str) -> str:
+    """The payload key Tauri expects for a Rust parameter name.
+
+    Tauri v2 renames command ARGUMENTS to camelCase, and nothing else -- which is why a snake_case
+    key in a caller is a real mismatch rather than a style question. Both spellings are accepted by
+    the caller side below, deliberately: accepting the snake form costs one false negative class
+    (a caller that would in fact fail at runtime) and refusing it would cost the leg's whole
+    credibility, because a handful of wrappers in this tree do pass snake_case keys for arguments
+    that are `Option` and therefore arrive as `undefined` either way.
+    """
+    parts = param.split("_")
+    return parts[0] + "".join(p[:1].upper() + p[1:] for p in parts[1:])
+
+
+RUST_PARAM_SPLIT_RE = re.compile(r",(?![^<>()]*[>)])")
+OPTIONAL_TYPE_RE = re.compile(r"^\s*(?:std::)?(?:primitive::)?Option\s*<|^\s*Option<")
+INJECTED_PARAMS = ("state", "app", "webview", "window", "app_handle", "_")
+
+
+def rust_required_params(prod: list[tuple[str, str]], fn: str) -> list[str] | None:
+    """The caller-supplied, non-Option parameter names of one command fn, or None if not found.
+
+    None is a distinct answer from [] and the leg treats it that way: "I could not read the
+    signature" must not be reported as "this command needs nothing".
+    """
+    for label, text in prod:
+        m = re.search(r"^\s*(?:#\[[^\]]*\]\s*)*pub\s+(?:async\s+)?fn\s+" + re.escape(fn)
+                      + r"\s*\(", text, re.M)
+        if not m:
+            continue
+        open_idx = text.index("(", m.end() - 1)
+        depth, j = 0, open_idx
+        while j < len(text):
+            if text[j] == "(":
+                depth += 1
+            elif text[j] == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        inner = text[open_idx + 1:j]
+        # Strip comments before splitting. This function reported `create_table_scoped<-because the
+        # parameter name IS the payload` for a day, because a comment added INSIDE the parameter
+        # list of that signature contains a colon and the splitter read it as `name: type`. Prose
+        # counted as code, the same failure `fn_call_sites` carries a seventh exclusion for; the
+        # difference is that here the prose was mine and the lie came out of a leg written the same
+        # afternoon to stop trusting prose.
+        inner = re.sub(r"/\*.*?\*/", " ", inner, flags=re.S)
+        inner = re.sub(r"//[^\n]*", " ", inner)
+        out: list[str] = []
+        for piece in RUST_PARAM_SPLIT_RE.split(inner):
+            piece = piece.strip()
+            if not piece or ":" not in piece:
+                continue
+            name, _, typ = piece.partition(":")
+            name = name.strip().removeprefix("mut ").strip()
+            typ = typ.strip()
+            if not name or name.startswith("_") or name in INJECTED_PARAMS:
+                continue
+            if OPTIONAL_TYPE_RE.match(typ) or typ.startswith("Option"):
+                continue
+            # `State<'_, AppState>`, `AppHandle` and friends are injected by Tauri even when the
+            # parameter is named something else, so the TYPE is checked as well as the name.
+            if re.match(r"^(?:std::)?(?:sync::)?Arc<|State\s*<|AppHandle|Webview|Window", typ):
+                continue
+            out.append(name)
+        return out
+    return None
+
+
+def ui_payload_keys(files: list[tuple[str, str]]) -> dict[str, list[tuple[str, set[str], bool]]]:
+    """Per command name: (site, keys, opaque) for every call that passes a second argument.
+
+    `opaque` means "there is an argument and this parse cannot read its keys" -- a non-literal
+    (`invoke(cmd, args)`), or a literal containing a spread. Opaque sites EXCLUDE their command from
+    grading rather than counting against it, because the alternative is a leg reporting a missing key
+    the caller supplies through a variable, and an informational leg that cries wolf is worse than no
+    leg: its entire value is that it is believed without a build behind it.
+
+    Object members are split on TOP-LEVEL commas and each piece classified -- `k:`/`"k":` is a key,
+    a bare identifier is shorthand for a key of the same name. The two-regex version this replaces
+    collected the VALUE of every `id: foo,` pair as a key too, which is the wrong direction (it can
+    only ever clear a finding, never raise one) but it made the leg's set of "supplied keys" mean
+    something other than what its name says.
+    """
+    out: dict[str, list[tuple[str, set[str], bool]]] = {}
+    for rel, text in files:
+        for m in re.finditer(
+            r"(?:loggedInvoke|invoke)(?:<[^()]*>)?\(\s*['\"]([a-z0-9_]+)['\"]\s*,\s*", text
+        ):
+            cmd, after = m.group(1), text[m.end():]
+            site = f"{rel}:{text[:m.start()].count(chr(10)) + 1}"
+            if after.startswith("{"):
+                depth, j = 0, 0
+                while j < len(after):
+                    if after[j] == "{":
+                        depth += 1
+                    elif after[j] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    j += 1
+                obj = after[1:j]
+                keys: set[str] = set()
+                opaque = "..." in obj
+                piece, d = "", 0
+                pieces: list[str] = []
+                for ch in obj:
+                    if ch in "{[(":
+                        d += 1
+                    elif ch in "}])":
+                        d -= 1
+                    if ch == "," and d == 0:
+                        pieces.append(piece)
+                        piece = ""
+                    else:
+                        piece += ch
+                pieces.append(piece)
+                for p in pieces:
+                    p = p.strip()
+                    if not p:
+                        continue
+                    if ":" in p:
+                        k = re.match(r'^["\']?([A-Za-z_$][\w$]*)["\']?\s*:', p)
+                        if k:
+                            keys.add(k.group(1))
+                    elif re.fullmatch(r"[A-Za-z_$][\w$]*", p):
+                        keys.add(p)  # shorthand: `{ productId }` supplies the key productId
+                out.setdefault(cmd, []).append((site, keys, opaque))
+            else:
+                tok = re.match(r"[A-Za-z_$][\w$]*", after)
+                if tok:
+                    out.setdefault(cmd, []).append((site, set(), True))
+    return out
+
+
+def argshape_findings(prod: list[tuple[str, str]], registered: list[str],
+                      payloads: dict) -> dict[str, list[str]]:
+    """Registered commands whose readable callers never supply a required argument.
+
+    The mechanical form of the comparison that found T4-1, T7-2 and all of T8's ten: a human read a
+    Rust signature against a TypeScript object literal, three times, in five domains. Nothing in
+    this repository crosses the IPC boundary in a test (``git grep`` for the Tauri mock idioms
+    returns no files), so until now the only detection was attention.
+
+    Reported only when EVERY readable payload for the command omits the key; one supplying caller
+    clears the argument, and any command with an opaque caller is not graded at all.
+    """
+    res: dict[str, list[str]] = {"missing": [], "ungraded": []}
+    for name in sorted(set(registered)):
+        req = rust_required_params(prod, name)
+        if req is None:
+            res["ungraded"].append(f"{name}(no readable signature)")
+            continue
+        sites = payloads.get(name)
+        if not sites:
+            continue  # no caller at all -- that is the `unrequested` leg's question, not this one
+        readable = [s for s in sites if not s[2]]
+        if not readable:
+            res["ungraded"].append(f"{name}(all callers opaque)")
+            continue
+        supplied: set[str] = set()
+        for _site, keys, _op in readable:
+            supplied |= keys
+        gaps = [p for p in req if camel(p) not in supplied and p not in supplied]
+        if gaps:
+            res["missing"].append(f"{name}<-{','.join(gaps)}")
+    return res
+
+
 def shell_rust_sources(lib_path: Path) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """(production, test) Rust sources of one shell, as (label, text) pairs.
 
@@ -3183,6 +3353,49 @@ def self_test() -> int:
          mirror["dead_registration"] == ["unused_door", "warm_cache"])
     case("unrequested a same-named method on a value is not a local caller",
          "warm_cache" not in mirror["rust_called"])
+    # The arg-shape leg, with the two shapes that matter: a nested `args` object (the real defect
+    # this leg found on its first run, in a call whose own contract test asserted the nested shape
+    # and passed) and a spread, which must EXCLUDE the command rather than report it.
+    case("argshape the camelCase mapping is what Tauri asks for",
+         camel("session_token") == "sessionToken" and camel("id") == "id"
+         and camel("product_id") == "productId")
+    as_files = [("ui/src/api/x.ts",
+                 "export const del = (t: string, id: string) =>\n"
+                 "  loggedInvoke('delete_thing_scoped', { sessionToken: t, id });\n"
+                 "export const bad = (t: string, id: string) =>\n"
+                 "  loggedInvoke('put_thing_scoped', { sessionToken: t, args: { id } });\n"
+                 "export const wide = (t: string, a: Args) =>\n"
+                 "  loggedInvoke('wide_thing_scoped', { sessionToken: t, ...a });\n")]
+    as_prod = [("m.rs",
+                "pub async fn delete_thing_scoped(session_token: String, id: String, "
+                "state: State<'_, AppState>) -> R {}\n"
+                "pub async fn put_thing_scoped(session_token: String, id: String, "
+                "state: State<'_, AppState>) -> R {}\n"
+                "pub async fn wide_thing_scoped(session_token: String, note: String, "
+                "state: State<'_, AppState>) -> R {}\n"
+                "pub async fn opt_thing_scoped(session_token: String, maybe: Option<String>, "
+                "state: State<'_, AppState>) -> R {}\n")]
+    as_res = argshape_findings(
+        as_prod,
+        ["delete_thing_scoped", "put_thing_scoped", "wide_thing_scoped", "opt_thing_scoped"],
+        ui_payload_keys(as_files))
+    case("argshape a top-level argument the caller supplies is not reported",
+         not any(x.startswith("delete_thing_scoped") for x in as_res["missing"]))
+    case("argshape an argument hidden inside a nested args object IS reported",
+         "put_thing_scoped<-id" in as_res["missing"])
+    case("argshape a spread caller is excluded, never reported and never called clean",
+         not any(x.startswith("wide_thing_scoped") for x in as_res["missing"])
+         and any(x.startswith("wide_thing_scoped") for x in as_res["ungraded"]))
+    case("argshape an Option parameter is not required and its absence is not a finding",
+         not any(x.startswith("opt_thing_scoped") for x in as_res["missing"]))
+    # The regression that leg found in itself: a comment written inside a parameter list contains a
+    # colon, and the splitter read "// note: prose" as an argument the caller must supply.
+    case("argshape a comment inside a signature is not a parameter",
+         rust_required_params([("m.rs", "pub async fn c(\n    session_token: String,\n"
+                                        "    // because the name IS the payload key\n"
+                                        "    table: Table,\n"
+                                        "    state: State<'_, AppState>,\n) -> R {}\n")],
+                              "c") == ["session_token", "table"])
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
@@ -3483,6 +3696,21 @@ def main() -> int:
             f"+ {len(dead)} named by neither side (the only population a retirement can start "
             f"from; read the other shell's UI before believing one is dead everywhere)"
             + (": " + tail if dead else "")
+        )
+        # T9's mechanical form, five domains and three real defects after the fact. Informational
+        # like every leg here, and for the same reason: making it fail the build is an owner call
+        # (T9 says so explicitly), and the exclusions are a policy that wants review before it can
+        # block. On the day it was written it found two live breakages that no test could see,
+        # because nothing in this repository crosses the IPC boundary in a test.
+        shape = argshape_findings(prod_rs, handlers[shell], ui_payload_keys(ui_runtime_files()))
+        print(
+            f"info[{shell}-argshape]: {len(shape['missing'])} registered command(s) whose readable "
+            f"callers never supply a required argument "
+            + (": " + ", ".join(shape["missing"][:8])
+               + (f" (+{len(shape['missing']) - 8} more)" if len(shape["missing"]) > 8 else "")
+               if shape["missing"] else "-- none")
+            + f"; {len(shape['ungraded'])} not gradeable (a caller the parse cannot read, or a "
+              f"signature it cannot open -- excluded, never counted as clean)"
         )
         # Informational, like every other F-006-adjacent leg: a fallback that cannot resolve is
         # an owner question (register the door, or change the branch), not a red gate this run
