@@ -5,7 +5,7 @@
  *
  * The population widened in stages, and the sentence had to follow it: it began as the
  * reproduction block of todo-font-system.md, then took on the bundle-budget facts, and now
- * covers claims published in docs/plans/notes.md items 37-40 as well. Calling all of that
+ * covers claims published in docs/plans/notes.md items 37 onward as well. Calling all of that
  * "the plan's reproduction block" would leave the tool's own description narrower than its
  * set -- the exact defect this file keeps finding in other people's counts.
  *
@@ -245,6 +245,7 @@ if (!fs.existsSync(VITEST_BIN)) {
     check('notes.md item 39: the count of required rows with no ci block', reach.status === 0 && rc === '6',
       `${rc} row(s): ${ids}`,
       '6 -- if this drifts a row gained or lost CI coverage: repair item 39, and note that bundle-budget left this set in d3ae1e201');
+
     // Informational, not a verdict: in a shared checkout the tree is dirty more often
     // than it is clean, and a tool that reports that as drift every day is a tool whose
     // drift signal gets ignored. It is recorded because AGENTS.md's rule binds every
@@ -256,7 +257,7 @@ if (!fs.existsSync(VITEST_BIN)) {
 }
 
 
-console.log('\n  claims published by this lane (todo-font-system.md + notes.md items 37-40), executed');
+console.log('\n  claims published by this lane (todo-font-system.md + notes.md items 37 onward), executed');
 for (const r of results) {
   console.log(`   ${r.pass ? 'OK  ' : 'DRIFT'}  ${r.name}`);
   console.log(`          observed : ${r.observed}`);
