@@ -38,6 +38,15 @@
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
+  /* Sticky: the scroll container is the parent `.pos-products`, so the
+     header stays visible while the grid scrolls beneath it. The panel
+     background keeps scrolled cards from showing through. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg);
+  padding-block: var(--space-1);
+  margin-block: calc(var(--space-1) * -1);
 }
 
 .restaurant-header-left {
@@ -345,6 +354,11 @@
   -webkit-overflow-scrolling: touch;
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-border);
+  /* Sticky under the header: same scroll container, stacked below it. */
+  position: sticky;
+  top: calc(var(--space-11) + var(--space-2));
+  z-index: 9;
+  background: var(--color-bg);
 }
 
 .restaurant-categories::-webkit-scrollbar {
