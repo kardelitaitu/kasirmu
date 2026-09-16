@@ -211,7 +211,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Open the DB at `<app_data_dir>/oz-pos.db`, run migrations, and
+    /// Open the DB at `<app_data_dir>/kasir.db`, run migrations, and
     /// create the empty driver registry.
     pub fn new(app: &AppHandle) -> Result<Self, AppError> {
         let db_path = resolve_db_path(app)?;
@@ -759,7 +759,25 @@ fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
         .path()
         .app_data_dir()
         .map_err(|e| AppError::Internal(format!("resolving app data dir: {e}")))?;
-    Ok(dir.join("oz-pos.db"))
+
+    // ── Data-dir migration ─────────────────────────────────────────────
+    // Before the bundle identifier change (com.ozpos.app → mu.kasir.app),
+    // the DB lived at <base>/com.ozpos.app/oz-pos.db. After the change,
+    // app_data_dir() returns the new path. Copy (not move) the old DB to
+    // the new location so existing installs keep their data.
+    if let Some(base) = dir.parent() {
+        let old_db = base.join("com.ozpos.app").join("oz-pos.db");
+        let new_db = dir.join("kasir.db");
+        if old_db.exists() && !new_db.exists() {
+            std::fs::copy(&old_db, &new_db).map_err(|e| {
+                AppError::Internal(format!(
+                    "migrating db from {old_db:?} to {new_db:?}: {e}"
+                ))
+            })?;
+        }
+    }
+
+    Ok(dir.join("kasir.db"))
 }
 
 impl Drop for AppState {

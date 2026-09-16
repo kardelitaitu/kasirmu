@@ -51,12 +51,12 @@ if [ "$OS" = "Darwin" ]; then
         found=1
     fi
     if [ "$PURGE" = 1 ]; then
-        for d in \
-            "$HOME/Library/Application Support/com.ozpos.app" \
-            "$HOME/Library/Caches/com.ozpos.app"; do
+            for d in \
+            "$HOME/Library/Application Support/mu.kasir.app" \
+            "$HOME/Library/Caches/mu.kasir.app"; do
             if [ -d "$d" ]; then rm -rf "$d"; echo "Removing $d"; fi
         done
-        rm -f "$HOME/Library/Preferences/com.ozpos.app.plist"
+        rm -f "$HOME/Library/Preferences/mu.kasir.app.plist"
     fi
 else
     # Per-user footprint (no elevation).
@@ -93,7 +93,7 @@ else
     done
 
     if [ "$PURGE" = 1 ]; then
-        for d in "$HOME/.local/share/com.ozpos.app" "$HOME/.config/com.ozpos.app"; do
+        for d in "$HOME/.local/share/mu.kasir.app" "$HOME/.config/mu.kasir.app"; do
             if [ -d "$d" ]; then rm -rf "$d"; echo "Removing $d"; fi
         done
     fi

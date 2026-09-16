@@ -1,4 +1,4 @@
-# OZ-POS Windows install scripts
+# kasir.mu Windows install scripts
 
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: install.ps1 supports all documented flags (-Channel/-Version/-System/-DryRun/-NoLaunch/-Repo, default kardelitaitu/oz-pos); uninstall.ps1 -Purge exists; NSIS installMode=currentUser (tauri.conf.json:47); ../install.sh + ../uninstall.sh exist -->
 
@@ -29,7 +29,7 @@ Options:
 | `-Version x.y.z`| Pin a specific release (e.g. `-Version 0.0.28`)                |
 | `-System`       | Per-machine install to Program Files via the MSI (UAC prompt)  |
 | `-DryRun`       | Download + verify everything, but do not run the installer     |
-| `-NoLaunch`     | Do not launch OZ-POS after a successful install                |
+| `-NoLaunch`     | Do not launch kasir.mu after a successful install             |
 | `-Repo owner/repo` | Override the GitHub repository (forks)                     |
 
 > **Go-live note:** the `releases/latest/download/…` URLs (and the in-app
@@ -39,7 +39,7 @@ Options:
 
 The default install is **per-user, no elevation**: the Tauri NSIS installer
 is compiled with `installMode=currentUser`, so it installs to
-`%LOCALAPPDATA%\Programs\OZ-POS`, creates the Start Menu shortcut and the
+`%LOCALAPPDATA%\Programs\kasir.mu`, creates the Start Menu shortcut and the
 HKCU uninstall registry entry, and never shows a UAC prompt. Running the
 script again over an existing install upgrades in place.
 
@@ -53,9 +53,9 @@ irm https://github.com/kardelitaitu/oz-pos/releases/latest/download/uninstall.ps
 ```
 
 The script locates the uninstall entry the installer itself wrote to the
-registry (HKCU for per-user, HKLM for per-machine), stops a running OZ-POS,
+registry (HKCU for per-user, HKLM for per-machine), stops a running kasir.mu,
 and runs the uninstaller silently. `-Purge` additionally removes
-`%APPDATA%\com.ozpos.app` / `%LOCALAPPDATA%\com.ozpos.app` and the install
+`%APPDATA%\mu.kasir.app` / `%LOCALAPPDATA%\mu.kasir.app` and the install
 directory — it cannot be undone.
 
 ## How it works (security model)

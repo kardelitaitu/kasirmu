@@ -94,9 +94,9 @@ Write-Host 'kasir.mu uninstalled.'
 # ── Optional data purge ──────────────────────────────────────────────────
 if ($Purge) {
     $dirs = @(
-        (Join-Path $env:APPDATA 'com.ozpos.app'),
-        (Join-Path $env:LOCALAPPDATA 'com.ozpos.app'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\OZ-POS')
+        (Join-Path $env:APPDATA 'mu.kasir.app'),
+        (Join-Path $env:LOCALAPPDATA 'mu.kasir.app'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\kasir.mu')
     )
     foreach ($d in $dirs) {
         if (Test-Path $d) {

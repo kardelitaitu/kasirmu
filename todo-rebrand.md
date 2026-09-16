@@ -187,27 +187,27 @@
 > copy the DB to the new location before opening. Copy (not move) — old install stays as backup.
 
 ### Identifier changes
-- [ ] `apps/desktop-client/tauri.conf.json` — `"identifier": "com.ozpos.app"` → `"mu.kasir.app"`
-- [ ] `apps/tablet-client/tauri.conf.json` — `"identifier": "com.ozpos.tablet"` → `"mu.kasir.tablet"`
-- [ ] `apps/tablet-client/gen/android/app/build.gradle.kts:31`
+- [x] `apps/desktop-client/tauri.conf.json` — `"identifier": "com.ozpos.app"` → `"mu.kasir.app"`
+- [x] `apps/tablet-client/tauri.conf.json` — `"identifier": "com.ozpos.tablet"` → `"mu.kasir.tablet"`
+- [x] `apps/tablet-client/gen/android/app/build.gradle.kts:31`
   `namespace = "com.ozpos.tablet"` → `"mu.kasir.tablet"`
-- [ ] `apps/tablet-client/gen/android/app/build.gradle.kts:34`
+- [x] `apps/tablet-client/gen/android/app/build.gradle.kts:34`
   `applicationId = "com.ozpos.tablet"` → `"mu.kasir.tablet"`
-- [ ] `apps/tablet-client/gen/android/app/src/main/java/com/ozpos/tablet/MainActivity.kt:1`
+- [x] `apps/tablet-client/gen/android/app/src/main/java/com/ozpos/tablet/MainActivity.kt:1`
   `package com.ozpos.tablet` → `package mu.kasir.tablet`
   Also rename the Java directory tree: `com/ozpos/tablet/` → `mu/kasir/tablet/`
   (new files — use §3 one-line new-file chain for the directory move)
-- [ ] `install/uninstall.sh:55,56,59,96` — **added after review; the original list had no `install/` file.** The uninstaller removes the *old* identifiers' data dirs: `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`. After the identifier change these are stale, so an uninstall leaves `mu.kasir.app` data behind. Point them at the new identifier, and decide whether to also remove the legacy path (a separate, deliberate choice — deleting the old dir destroys the user's pre-migration data)
-- [ ] `install/win/uninstall.ps1:97,98` — `%APPDATA%\com.ozpos.app`, `%LOCALAPPDATA%\com.ozpos.app`; same decision as above
-- [ ] `install/win/README.md:58` — documents both paths
+- [x] `install/uninstall.sh:55,56,59,96` — **added after review; the original list had no `install/` file.** The uninstaller removes the *old* identifiers' data dirs: `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`. After the identifier change these are stale, so an uninstall leaves `mu.kasir.app` data behind. Point them at the new identifier, and decide whether to also remove the legacy path (a separate, deliberate choice — deleting the old dir destroys the user's pre-migration data)
+- [x] `install/win/uninstall.ps1:97,98` — `%APPDATA%\com.ozpos.app`, `%LOCALAPPDATA%\com.ozpos.app`; same decision as above
+- [x] `install/win/README.md:58` — documents both paths
 
 ### Data-dir migration in state.rs
-- [ ] `apps/desktop-client/src/state.rs:757–762` — `resolve_db_path()`
+- [x] `apps/desktop-client/src/state.rs:757–762` — `resolve_db_path()`
   - Change `dir.join("oz-pos.db")` → `dir.join("kasir.db")`
   - Before returning the new path, add migration: if old `%APPDATA%/com.ozpos.app/oz-pos.db` exists
     and new `%APPDATA%/mu.kasir.app/kasir.db` does not → `std::fs::copy(old, new)?`
   - Update doc comment at `:214`
-- [ ] `apps/tablet-client/src/state.rs:373–378` — same pattern
+- [x] `apps/tablet-client/src/state.rs:373–378` — same pattern
   - `dir.join("oz-pos.db")` → `dir.join("kasir.db")`
   - Migration: old `com.ozpos.tablet/oz-pos.db` → new `mu.kasir.tablet/kasir.db`
   - Update doc comment at `:153`
