@@ -90,22 +90,9 @@ export interface TerminalFeatureOverride {
   updatedAt: string;
 }
 
-/** List feature overrides for a terminal. */
-export const listTerminalOverrides = (terminalId: string): Promise<TerminalFeatureOverride[]> =>
-  loggedInvoke<TerminalFeatureOverride[]>('list_terminal_overrides', { terminalId });
-
 /** List terminal overrides (scoped — ADR #7). */
 export const listTerminalOverridesScoped = (sessionToken: string, terminalId: string): Promise<TerminalFeatureOverride[]> =>
   loggedInvoke<TerminalFeatureOverride[]>('list_terminal_overrides_scoped', { sessionToken, terminalId });
-
-/** Enable or disable a feature override for a terminal. */
-export const setTerminalOverride = (
-  userId: string,
-  terminalId: string,
-  feature: string,
-  enabled: boolean,
-): Promise<void> =>
-  loggedInvoke<void>('set_terminal_override', { userId, terminalId, feature, enabled });
 
 /** Set terminal override (scoped — ADR #7). */
 export const setTerminalOverrideScoped = (
@@ -115,14 +102,6 @@ export const setTerminalOverrideScoped = (
   enabled: boolean,
 ): Promise<void> =>
   loggedInvoke<void>('set_terminal_override_scoped', { sessionToken, terminalId, feature, enabled });
-
-/** Remove a feature override from a terminal. */
-export const deleteTerminalOverride = (
-  userId: string,
-  terminalId: string,
-  feature: string,
-): Promise<void> =>
-  loggedInvoke<void>('delete_terminal_override', { userId, terminalId, feature });
 
 /** Delete terminal override (scoped — ADR #7). */
 export const deleteTerminalOverrideScoped = (
