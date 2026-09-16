@@ -226,7 +226,7 @@ export default function RetailCartPanel({
                                   <button
                                     type="button"
                                     className={`retail-cart-course-option${!line.courseId ? ' retail-cart-course-option--active' : ''}`}
-                                    onClick={() => { lineActions.onAssignCourse(line.id as LineId, '' as CourseId); setCourseDropdownLine(null); }}
+                                    onClick={() => { lineActions.onAssignCourse(line.id as LineId, ''); setCourseDropdownLine(null); }}
                                     role="option"
                                     aria-selected={!line.courseId}
                                   >

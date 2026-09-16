@@ -121,6 +121,62 @@ describe('usePosState course methods', () => {
     expect(ref.current.lines[0]!.coursingStatus).toBe('hold');
   });
 
+  // ── Clearing a course (the chip's "None" option) ─────────────────────
+  //
+  // Clearing is expressed as an empty courseId. Both fields must go, not just
+  // courseId: a line left at coursingStatus 'hold' with no course keeps the
+  // firing bar's "Fire All" button alive (CourseSelectorBar counts it without
+  // naming a course) and makes the course bar show nothing for an item that
+  // still reads as being held for the kitchen.
+
+  it('clearing a course drops both courseId and coursingStatus', async () => {
+    const ref = await renderHarness();
+    act(() => {
+      ref.current.addProduct({ sku: 'STEAK' as never, name: 'Ribeye', category: 'Main', price: { minor_units: 150000, currency: 'IDR' }, barcode: null, inStock: true, stockQty: null, productType: 'restaurant' });
+    });
+
+    const lineId = ref.current.lines[0]!.id;
+    act(() => { ref.current.assignCourse(lineId, 'main'); });
+    expect(ref.current.lines[0]!.coursingStatus).toBe('hold');
+
+    act(() => { ref.current.assignCourse(lineId, ''); });
+
+    expect(ref.current.lines[0]!.courseId).toBeUndefined();
+    expect(ref.current.lines[0]!.coursingStatus).toBeUndefined();
+  });
+
+  it('a cleared line no longer holds anything for the kitchen', async () => {
+    const ref = await renderHarness();
+    act(() => {
+      ref.current.addProduct({ sku: 'STEAK' as never, name: 'Ribeye', category: 'Main', price: { minor_units: 150000, currency: 'IDR' }, barcode: null, inStock: true, stockQty: null, productType: 'restaurant' });
+      ref.current.addProduct({ sku: 'COLA' as never, name: 'Cola', category: 'Beverage', price: { minor_units: 15000, currency: 'IDR' }, barcode: null, inStock: true, stockQty: null, productType: 'restaurant' });
+    });
+
+    const steakId = ref.current.lines.find((l) => l.sku === 'STEAK')!.id;
+    const colaId = ref.current.lines.find((l) => l.sku === 'COLA')!.id;
+    act(() => { ref.current.assignCourse(steakId, 'main'); ref.current.assignCourse(colaId, 'beverage'); });
+    act(() => { ref.current.assignCourse(colaId, ''); });
+
+    // Exactly one line is still held; clearing cola did not leave a phantom.
+    expect(ref.current.lines.filter((l) => l.coursingStatus === 'hold')).toHaveLength(1);
+    expect(ref.current.lines.find((l) => l.sku === 'COLA')!.coursingStatus).toBeUndefined();
+  });
+
+  it('re-assigning a cleared line returns it to hold', async () => {
+    const ref = await renderHarness();
+    act(() => {
+      ref.current.addProduct({ sku: 'STEAK' as never, name: 'Ribeye', category: 'Main', price: { minor_units: 150000, currency: 'IDR' }, barcode: null, inStock: true, stockQty: null, productType: 'restaurant' });
+    });
+
+    const lineId = ref.current.lines[0]!.id;
+    act(() => { ref.current.assignCourse(lineId, 'main'); });
+    act(() => { ref.current.assignCourse(lineId, ''); });
+    act(() => { ref.current.assignCourse(lineId, 'dessert'); });
+
+    expect(ref.current.lines[0]!.courseId).toBe('dessert');
+    expect(ref.current.lines[0]!.coursingStatus).toBe('hold');
+  });
+
   it('unassigned items have undefined courseId and coursingStatus', async () => {
     const ref = await renderHarness();
     act(() => {

@@ -1595,7 +1595,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
             onUpdateQty: updateQty,
             onSerialChange: handleSerialChange,
             onSetOverrideTarget: setOverrideTarget,
-            onAssignCourse: (lineId, courseId) => { assignCourse(lineId, courseId as CourseId); },
+            onAssignCourse: (lineId, courseId) => { assignCourse(lineId, courseId); },
             onEditModifiers: handleEditModifiers,
           }}
           panelActions={{

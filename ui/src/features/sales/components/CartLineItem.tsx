@@ -174,7 +174,7 @@ export function CartLineItem({
                       data-testid="cart-line-course-option-none"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onAssignCourse(line.id, '' as CourseId);
+                        onAssignCourse(line.id, '');
                         onCourseMenuLineChange?.(null);
                       }}
                     >

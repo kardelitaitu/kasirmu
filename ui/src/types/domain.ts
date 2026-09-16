@@ -35,8 +35,14 @@ export const DEFAULT_HIGH_STOCK_THRESHOLD = 10;
 /** Course identifier for restaurant order coursing — the canonical KDS
  * vocabulary (`appetizer | main | side | dessert | beverage`), shared with
  * the KDS sort, the picker, and the backend `course` column. The legacy POS
- * value `drinks` normalizes to `beverage` at every boundary. */
-export type CourseId = 'appetizer' | 'main' | 'side' | 'dessert' | 'beverage';
+ * value `drinks` normalizes to `beverage` at every boundary.
+ *
+ * The empty string is the CLEAR sentinel, not a course: the chip's "None"
+ * option and the panel's `onAssignCourse` pass `''` to unassign a line. It is
+ * part of the type because three call sites were already writing
+ * `'' as CourseId` to defeat it, and a cast is a worse place for a contract
+ * than the type is. */
+export type CourseId = 'appetizer' | 'main' | 'side' | 'dessert' | 'beverage' | '';
 /** Legacy POS course value, kept only for normalizing persisted data. */
 export type LegacyCourseId = CourseId | 'drinks';
 
