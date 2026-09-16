@@ -39,22 +39,6 @@ use crate::state::AppState;
 // and asserts `None`, so it is the pin: it passes today and must still pass.
 pub use oz_bridge::hardware::{OpenCashDrawerArgs, OpenCashDrawerResult};
 
-#[command]
-/// Open cash drawer.
-pub async fn open_cash_drawer(
-    args: OpenCashDrawerArgs,
-    state: State<'_, AppState>,
-) -> Result<OpenCashDrawerResult, AppError> {
-    let id = args.device_id.as_deref().unwrap_or("default");
-    let drawer = state
-        .registry
-        .cash_drawer(id)
-        .await
-        .ok_or_else(|| AppError::Invalid(format!("no cash drawer registered as '{id}'")))?;
-    drawer.open().await?;
-    Ok(OpenCashDrawerResult { opened: true })
-}
-
 // ── Raw text receipt (legacy) ───────────────────────────
 
 #[derive(Debug, Deserialize)]
@@ -71,27 +55,6 @@ pub struct PrintReceiptArgs {
 pub struct PrintReceiptResult {
     /// Printed Lines.
     pub printed_lines: usize,
-}
-
-#[command]
-/// Print receipt.
-pub async fn print_receipt(
-    args: PrintReceiptArgs,
-    state: State<'_, AppState>,
-) -> Result<PrintReceiptResult, AppError> {
-    let printer = state
-        .registry
-        .printer("default")
-        .await
-        .ok_or_else(|| AppError::Invalid("no receipt printer registered".into()))?;
-    let lines: Vec<&str> = args.body.lines().collect();
-    let n = lines.len();
-    printer.print_receipt(&args.body).await?;
-    // Emit a completion event so the front-end can show a toast.
-    if let Some(ref app) = state.app {
-        let _ = app.emit("receipt:printed", serde_json::json!({ "lines": n }));
-    }
-    Ok(PrintReceiptResult { printed_lines: n })
 }
 
 // ── Structured sales receipt ────────────────────────────
@@ -285,7 +248,7 @@ pub async fn stop_scanner(state: State<'_, AppState>) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Session-scoped variant of `open_cash_drawer`.
+/// Open cash drawer resolved from a session token. ADR #7.
 ///
 /// ADR #49: the body is the bridge's. This door earned its delegation in two
 /// steps, and the order matters. **First the gate:** this shell resolved the
@@ -317,7 +280,7 @@ pub async fn open_cash_drawer_scoped(
         .map_err(Into::into)
 }
 
-/// Session-scoped variant of `print_receipt`.
+/// Print receipt resolved from a session token. ADR #7.
 ///
 /// ADR #49 — NOT delegated. The bridge's twin (`crates/oz-bridge/src/hardware.rs:443`)
 /// is this body plus one block: it calls `printer.get_status()`, rejects the print with
