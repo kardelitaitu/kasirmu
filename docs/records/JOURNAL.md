@@ -11345,3 +11345,16 @@ The one open ruling from the topology program's Phase-6 review (`.agents/topolog
 `npx vitest run` over dev-mock-stores + TopologyRevisionBrowser + NodeTopologyEditorDevMock -> **21/21**; api topology+ipc contracts -> **55/55**; TopologyApplyConfirm characterization -> **22/22**. Registered-handler digest re-derived before and after via the throwaway dump test: **682 / `0afa39b2126b` byte-identical** — no command name entered or left the mock, exactly what a state-shape fix must not do (and the count moved 681->682 from a sibling's commit since morning, which is why the house rule says re-derive, never remember). Typecheck: one error, foreign and owned (a sibling's deliberate red in `CartPanel.test.tsx`, named in their own commit message).
 
 **Commit:** `ec7b63175`; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — KDS-2 closed: line-item and timer-badge relocated, Phase 2.2 reconciled as already paid, and the plan's own corrections honored instead of re-executed
+
+**Context:**
+`todo-refactor-kds-agents-2.md` — six open boxes behind an 11-hour-stale header. The plan's audit had already corrected its fence (KdsTicketCard long extracted; strike-through never existed; SLA thresholds live in `hooks/useTicketSla.ts`), and the tree had moved twice more since: `7d0dc4d60` and `fc29f3690` decomposed the header and grid into five components nobody had ticked.
+
+**Work:**
+Phase 2.1 executed for real: the course-group item loop and the SLA time+urgent badge moved out of `KdsTicketCard.tsx` verbatim into `components/KdsTicketLineItem.tsx` (memoized; `itemDone`/`fmtDuration` moved WITH their consuming JSX and are re-exported from the card so all nine importers keep resolving) and `components/KdsTimerBadge.tsx` (a 35-line view over the shipped hook — the correction "the risk is duplicating logic" honored to the letter). Both registered in `screenExtraction.test.ts` — and that guard proved it earns its keep: it ran red on the unregistered extraction and only went green when the entries landed, exactly as KdsHeaderLeft's registration comment promises. Phase 2.2 ticked as RECONCILIATION, not code: the header toolbar box describes a single file; reality ships a better three-way split (Left/Tabs/Right) plus zone chips, and rewriting decomposition under a new name is the move the plan's own KdsTicketCard precedent forbids. `exactOptionalPropertyTypes` caught one real typing subtlety on the way (optional prop vs explicitly-passed-undefined callback) — fixed in the component, not by loosening the caller.
+
+**Verification:**
+`npx vitest run Kds screenExtraction ModifierBadge` -> **77 files / 1308 tests passed**, card's 14 + five sibling suites unchanged (behavior-preserving relocation); typecheck -> sole error foreign and owned (a sibling's deliberate red, cited in their commit message). `622a33bfb` (4 paths, §3 new-file chain for the two components, hook bundle-parity 0 missing) + plan ticks `4c52547c6`. KDS-2's open-box count: **0**.
+
+**Commit:** `622a33bfb` + `4c52547c6`; this entry rides its own docs(journal) commit -- never push without a direct user order.
