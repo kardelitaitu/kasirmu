@@ -95,9 +95,11 @@ a synthetic fixture instead of on a tree that will drift.
 
 A FOURTH LINE, for shells, printed only when the run grades fewer sections than the allowlist
 has: what an UNGRADED section would report. '--shell' defaults to 'desktop', and desktop
-contributes 0 findings on this tree while 'tablet' contributes 101 at exit 1, so the bare runs
-(dev-ci.yml#static-gates, scripts/check.sh) were printing a clean verdict over an allowlist whose
-other half is where every finding lives. That number is stated, never scored -- same contract as
+contributes 0 findings on this tree while 'tablet' contributes 101 at exit 1 (101 at the tip the
+line shipped on and 101 re-measured two peer commits later at e6d211b98 -- the number is the
+tree's, the sentence is this file's), so the bare runs (dev-ci.yml#static-gates,
+scripts/check.sh) were printing a clean verdict over an allowlist whose other half is where every
+finding lives. That number is stated, never scored -- same contract as
 the three above, and case 39 pins both halves: the line prints what an independent audit of the
 other section computed, and the run's exit code does not move whether it says 0 or 101.
 
@@ -769,16 +771,24 @@ def allowlist_names(payload, section, problems, source=ALLOWLIST):
     Two shapes are in circulation in the file: a bare command name and the object form
     {"name": ..., "reason": ...}, accepted by the validator in the two sections named in
     OBJECT_ALLOWED_SECTIONS above. Which sections hold which shape is not a guess and was not
-    true as this clause stood until 0.0.39: measured by isinstance over the four sections of
-    scripts/ipc-parity-allowlist.json at this checkout, "desktop" is 16 bare names and 0
-    objects, "tablet" 143 bare and 0 objects, "scoped_orphans" 25 bare and 0 objects, and
-    "dev_mock" is 0 bare and 15 OBJECTS -- so "the shape every entry on disk is written in
-    today" was false on its own page: every dev_mock entry contradicts it, and since
-    ce0c12357 the two sections this reader takes objects from are the ones where the bare
-    shape is now the minority. The graded sections ("desktop"/"tablet") do still hold bare
-    names only, which is what the strict-section rejection below is aimed at. `reason` exists
-    to be read by a human and says nothing to this gate, so only `name` is taken out of an
-    object.
+    true as this clause stood until 0.0.39. Measured by isinstance over the four sections of
+    scripts/ipc-parity-allowlist.json at e6d211b98, and re-derivable in one line
+    (python -c "import json;d=json.load(open('scripts/ipc-parity-allowlist.json',encoding='utf-8'));print({k:(sum(1 for x in v if isinstance(x,str)),sum(1 for x in v if isinstance(x,dict))) for k,v in d.items() if isinstance(v,list)})"):
+    "desktop" is 15 bare names and 0 objects, "tablet" 143 bare and 0 objects,
+    "scoped_orphans" 25 bare and 0 objects, and "dev_mock" is 0 bare and 15 OBJECTS -- so "the
+    shape every entry on disk is written in today" was false on its own page: every dev_mock
+    entry contradicts it, and since ce0c12357 the two sections this reader takes objects from
+    are the ones where the bare shape is now the minority. The graded sections
+    ("desktop"/"tablet") do still hold bare names only, which is what the strict-section
+    rejection below is aimed at.
+    THE 15 ABOVE IS NOT THE 16 THIS CLAUSE CARRIED AN HOUR EARLIER, and that is the hazard of
+    writing a tree count into a docstring at all: 54133fd12 deleted the desktop member
+    "set_hardware_settings", which was the one name in that section resolving to no wrapper
+    (this gate's own line printed "15 of 16 (desktop 15 of 16)" while it stood, and prints
+    "15 of 15" now). The shape split this clause is about did not move -- desktop was bare-only
+    at 16 and is bare-only at 15 -- so read the COUNTS as dated and the SHAPE claim as the
+    point. `reason` exists to be read by a human and says nothing to this gate, so only `name`
+    is taken out of an object.
 
     Anything that cannot become a command name is appended to `problems` and skipped in the
     local sense of "not added to the returned list" -- which is why the caller has to fail on
@@ -1192,10 +1202,15 @@ def describe_unggraded(shells, allowlist):
     because --shell defaults to "desktop" (see build_argparser), so the bare runs -- the one
     .github/workflows/dev-ci.yml makes and the one scripts/check.sh:72 makes -- grade the
     shell that contributes zero findings here and never mention that the other section is
-    where every finding lives. Measured on this checkout the moment the line landed: bare = 0
+    where every finding lives. Measured the moment the line landed, at 8a9954d7c: bare = 0
     findings at exit 0; --shell tablet = 101 findings at exit 1. Nothing in a log of the first
     run hints that the second exists, so the 101 was real and invisible at once -- knowable
-    only by someone who already knew to pass the flag.
+    only by someone who already knew to pass the flag. Re-measured at e6d211b98 after two peer
+    commits moved the data this reads -- 54133fd12 dropped a desktop member and d29a7c0f4
+    retired a registered tablet door -- and the stated figure is 101 unchanged, 57 cleared
+    unchanged, exit 1 unchanged. It is a timestamp on a checkout, not a constant: any later
+    reader who sees a different number has a changed tree, not a broken line, and the number
+    this file owns is the presence of the sentence, never its digits.
 
     Nothing reads what this prints. No exit code branches on it, no threshold lives near it,
     and the three-way contract is untouched: 0 a clean verdict, 1 a verdict that found
@@ -1204,8 +1219,9 @@ def describe_unggraded(shells, allowlist):
 
     THE COST, stated because a line that looks free is a line nobody can review: the numbers
     are not free, they are an audit of the other shell, so a bare run pays one extra
-    walk-and-scan per ungraded section (measured here: bare 1.0 s, --shell tablet 8.0 s, bare
-    with this line about 9 s). That is the price of the 101 reaching a CI log instead of
+    walk-and-scan per ungraded section (measured here at e6d211b98 on this machine: bare 1.0 s
+    before the line, --shell tablet 8.0 s, bare WITH this line about 9 s). That is the price of
+    the 101 reaching a CI log instead of
     staying in one developer's terminal. It is paid only when a section goes ungraded: a run
     that names every shell passes --shell desktop,tablet, prints nothing here and pays nothing.
 
