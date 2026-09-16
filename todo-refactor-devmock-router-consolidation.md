@@ -323,4 +323,19 @@ All four sibling refactor lanes are closed, so the old cross-lane fence no longe
   is legitimately unmet and, per the §4 rule and the `agents-3` precedent, the file stays `todo-` however
   clean the router becomes.
 
+  > **RAN 2026-09-16 (owner "proceed") at HEAD `693444658` — `npm run check:all` → exit 1. Exact result:**
+  > ESLint **PASS**, TypeScript typecheck **PASS**, Unit tests (vitest) **FAIL** — and the failure is
+  > **one case in one file**: `themeTokenCompliance › no new literal tail lands on a token whose blocks
+  > disagree (frozen population)`, on `--shadow-md @ ui/src/features/sales/CartPanelLineItem.css`. Totals:
+  > **581 of 582 test files pass; 10005 tests pass / 1 failed / 24 skipped / 3 todo.** **No `dev-mock`
+  > failure** — all seven `dev-mock-*` suites (96 tests) passed inside the run. Attribution is airtight and
+  > NOT this order's: the offending line `box-shadow: var(--shadow-md, var(--cart-line-shadow-hover));`
+  > (`:438`) is a `+` line in `git diff` — an **uncommitted foreign-WIP edit** (that file is 491 disk lines
+  > vs a 347-line HEAD blob); none of this order's commits ever touched a `.css`; §3 forbids me from
+  > committing or reverting another lane's in-flight file. So every gate attributable to this order is
+  > green, and the single red is a stranger's stylesheet the CSS walkers happen to read. Box stays
+  > **UNTICKED** — not because the router is unsound, but because the acceptance command did not exit 0,
+  > and per §4 an un-run-or-red acceptance keeps the file `todo-` (the same posture as the `agents-3`
+  > precedent, which required an explicit owner §4 waiver to rename).
+
 > **§4 naming rule reminder:** this file earns `done-todo-` only when its own acceptance command was RUN and PASSED. Router line-count reduction is the objective; the whole-tree green is the gate, and it is currently blocked on surfaces outside this order's fence.
