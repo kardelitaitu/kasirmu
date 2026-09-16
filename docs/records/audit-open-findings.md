@@ -1562,12 +1562,36 @@ answer:
 3. Does the same split exist on any other tool? Only a per-tool census answers it, and that census has
    not been run — see below.
 
-**Not established, and deliberately not guessed.** This finding proves the disagreement for
-`analytics` by reading both gates and the preset. It does **not** claim `analytics` is the only
-divergent tool: the tool catalogue carries **17** entries and only a per-tool comparison of
-`tools.tsx`'s `minimumRole` against each route's `requiredPermission` coverage across the five presets
-would bound the population. `settings` is documented as a known instance (`todo-tools.md:732` names
-it), and the rest are unmeasured.
+**CENSUS RUN 2026-09-16, 10:25 — the population is bounded: 6 of 17, and the widener is the
+auditor.** The paragraph that stood here said the population was unmeasured. It has since been
+measured, so it is corrected in place rather than left to rot. All **17** catalogue entries were
+compared against the **45** registered pages, with preset grants resolved from the registry rather
+than from prose:
+
+| Result | Count | Tools |
+|---|---|---|
+| Home gate agrees with the route | 9 | `locations` `terminals` `memo` `promotions` `tax-config` `exchange-rates` `offline-queue` `features` `data-management` |
+| Invariant **violated** (`todo-tools.md:730`) | **0** | — |
+| Would **widen** if gated on the permission | **6** | `staff` `shifts` `analytics` `reports` `audit` `settings` |
+| No registered page — deep link into the Settings hub | 2 | `settings/topology`, `settings/sync` |
+
+**The documented invariant holds.** Zero tools carry a home `minimumRole` looser than their route's
+`requiredRole`, so `todo-tools.md:730` is accurate as written and no card is a plain bug.
+
+**What the 6 would admit — and this is the whole decision.** In five of the six the role that gains
+the card is the **auditor**, because the auditor preset genuinely holds read keys the home gate never
+consults. Verified at `platform/core/src/rbac_presets.rs:262-272`: `STAFF_READ`, `SETTINGS_READ`,
+`REPORTS_VIEW`, `AUDIT_VIEW`, `SHIFTS_VIEW_ANY`. A permission-gated grid would therefore hand a
+**read-only** role the Staff, Shifts, Reports, Audit Log and Settings cards. The sixth is `analytics`,
+where the gainer is `manager`.
+
+That generalises the `analytics` table above. The route gate already admits these roles today — their
+nav already shows the pages — so the question is not *whether the auditor should see the audit log*
+(it does) but whether the home grid should mirror the nav or stay the stricter front door.
+
+**Census instrument** (read-only; parses the four files; nothing above is carried from another
+document): `%TEMP%/tool-gate-census.py`, run at HEAD `845ecf0f4`. It is a scratch instrument, not a
+gate — nothing in CI calls it, and it was deliberately **not** added to `scripts/`.
 
 **Re-derive, verbatim — no number above rests on another document:**
 
