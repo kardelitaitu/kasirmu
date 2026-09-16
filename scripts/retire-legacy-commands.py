@@ -168,6 +168,35 @@ def span_of(lines: list[str], sig: int) -> tuple[int, int] | None:
     return (start, end)
 
 
+# Same spelling the retire path counts with: the desktop writes `#[tauri::command]`, the tablet
+# imports `command` and writes `#[command]`, and a checker that only knew one of them would
+# grade 20 of one shell's declarations and report the rest as gone.
+ATTR_RE = re.compile(r"^\s*#\[(?:tauri::)?command\]", re.M)
+
+
+def verify_on_disk(mod: pathlib.Path, planned: str, spans, attrs_after: int) -> list[str]:
+    """Re-read `mod` and report every way it disagrees with the string we meant to write.
+
+    Split out so it can be pointed at a file it was not written for: a check that has only
+    ever run against its own success is not known to be able to fail. Passing a real file with
+    a bogus expectation must return problems, and that is the control run in the commit
+    message's body, not a claim made here.
+    """
+    back = mod.read_text(encoding="utf-8", newline=None)
+    expected = len(planned.splitlines())
+    got = len(back.splitlines())
+    problems: list[str] = []
+    if got != expected:
+        problems.append(f"line count on disk is {got}, expected {expected}")
+    for name in spans:
+        if re.search(r"^\s*pub (?:async )?fn " + re.escape(name) + r"\b", back, re.M):
+            problems.append(f"{name} is still defined on disk")
+    attrs_now = len(ATTR_RE.findall(back))
+    if attrs_now != attrs_after:
+        problems.append(f"attribute count on disk is {attrs_now}, expected {attrs_after}")
+    return problems
+
+
 def main() -> int:
     vip = load_leg()
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -413,7 +442,8 @@ def main() -> int:
             print(f"abort: {name} survived its own deletion")
             return 2
 
-    print(f"  {len(lines)} -> {len(out.splitlines())} lines "
+    verb = "planned" if not args.apply else "writing"
+    print(f"  {verb}: {len(lines)} -> {len(out.splitlines())} lines "
           f"(-{len(lines) - len(out.splitlines())}), attributes {attrs_before} -> {attrs_after}")
     print("  imports are NOT touched: run clippy --all-targets -- -D warnings and drop what "
           "it reports as unused")
@@ -421,7 +451,21 @@ def main() -> int:
         print("dry run: nothing written. Re-run with --apply.")
         return 0
     mod.write_text(out, encoding="utf-8", newline="\n")
-    print(f"applied to {mod.relative_to(REPO).as_posix()}")
+    # Re-read from disk. The checks above grade the string this process intended to write, so
+    # they can all pass while nothing reaches the file -- and on 2026-09-16 a filtered run of
+    # this tool printed "644 -> 607 lines" for a tablet module whose write never happened
+    # (an allowlist KEEP gate stopped it further down), and that planned number was reported
+    # as a completed retirement. A number describing a plan is not evidence of a change; only
+    # the disk is. Failure here is exit 3, not a warning: the tree is now in an unknown state.
+    problems = verify_on_disk(mod, out, spans, attrs_after)
+    if problems:
+        print(f"!! WRITE DID NOT LAND AS PLANNED in {mod.relative_to(REPO).as_posix()}:")
+        for p in problems:
+            print(f"   - {p}")
+        return 3
+    print(f"VERIFIED on disk: {mod.relative_to(REPO).as_posix()} is now "
+          f"{len(out.splitlines())} lines, {len(spans)} command fn(s) absent, "
+          f"{attrs_after} attributes remain")
     return 0
 
 
