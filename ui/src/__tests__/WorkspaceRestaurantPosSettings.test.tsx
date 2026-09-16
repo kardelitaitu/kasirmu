@@ -12,7 +12,7 @@ import type { ReactNode, ReactElement } from 'react';
 import { LocalizationProvider } from '@fluent/react';
 import { ToastProvider } from '@/frontend/shared/Toast';
 import { WorkspaceRestaurantPosSettings } from '@/features/settings/workspace-cards/WorkspaceRestaurantPosSettings';
-import { setSettingsScoped } from '@/api/settings';
+import { setReceiptSettingsScoped, setSettingsScoped } from '@/api/settings';
 
 // ── Fluent test l10n ───────────────────────────────────────────────
 
@@ -227,6 +227,7 @@ describe('WorkspaceRestaurantPosSettings', () => {
     fireEvent.click(document.getElementById('resto-table-mgmt') as HTMLInputElement);
     await waitFor(() => expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled());
     vi.mocked(setSettingsScoped).mockClear();
+    vi.mocked(setReceiptSettingsScoped).mockClear();
     fireEvent.click(screen.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(setSettingsScoped).toHaveBeenCalled());
 
@@ -236,6 +237,13 @@ describe('WorkspaceRestaurantPosSettings', () => {
     for (const [k, v] of Object.entries(entries!)) {
       expect(typeof v, `${k} must be serialised as a string`).toBe('string');
     }
+
+    // The table-management toggle rides alongside as the receipt settings
+    // write: flipping the checkbox must persist showTableNumber: true.
+    await waitFor(() => expect(setReceiptSettingsScoped).toHaveBeenCalled());
+    const [receiptToken, receiptDto] = vi.mocked(setReceiptSettingsScoped).mock.calls[0]!;
+    expect(receiptToken).toBe('test-session-token');
+    expect(receiptDto.showTableNumber).toBe(true);
   });
 
   it('hides Save button in inspector-drawer variant', () => {

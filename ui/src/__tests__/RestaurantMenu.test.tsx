@@ -715,8 +715,9 @@ describe('RestaurantMenu', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('hides out-of-stock products when marked unavailable via context menu', async () => {
+  it('marks a product unavailable via the context menu and blocks adding it', async () => {
     renderMenu();
+    const user = userEvent.setup();
     const card = screen.getByText('Nasi Goreng').closest('button')!;
 
     await act(async () => {
@@ -726,6 +727,16 @@ describe('RestaurantMenu', () => {
     await waitFor(() => {
       expect(screen.getByText('Mark unavailable')).toBeTruthy();
     });
+    await user.click(screen.getByText('Mark unavailable'));
+
+    // The menu closes and the card reads as blocked: aria-disabled plus the
+    // Unavailable badge (the card stays visible — it is not hidden).
+    await waitFor(() => {
+      expect(screen.queryByText('Mark unavailable')).toBeNull();
+    });
+    const blocked = screen.getByRole('button', { name: /Nasi Goreng.*Unavailable/i });
+    expect(blocked).toHaveAttribute('aria-disabled', 'true');
+    expect(blocked.textContent).toContain('Unavailable');
   });
 
   // ── A11Y-06: context menu keyboard operability (WAI-ARIA menu pattern) ──
