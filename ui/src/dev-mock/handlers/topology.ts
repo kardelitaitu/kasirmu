@@ -19,7 +19,7 @@
  */
 
 import type { MockHandler } from '../core/mockDispatcher';
-import { MOCK_TOPOLOGY_KEY, readSlice, writeSlice } from '../core/mockDatabase';
+import { MOCK_TOPOLOGY_KEY, readSlice, readSliceRaw, writeSlice } from '../core/mockDatabase';
 import { mockWorkspaces, saveMockWorkspaces } from './workspaces';
 import {
   type MockTopology,
@@ -30,14 +30,22 @@ import {
   summarizeMockTopologyRevision,
 } from './topology-state';
 
-// ── Topology diagram (stateful mock) ─────────────────────────────
-// The real backend persists the node/wire diagram as JSON under the
-// `oz-pos/topology` settings key. The mock previously returned hardcoded
-// positions (and used the wrong payload shape: `label` instead of `name`,
-// `from`/`to` instead of `from_node_id`/`to_node_id` — so wires never even
-// loaded in the preview) while discarding saves, which made node locations
-// revert on every reload. Seed from localStorage so previews round-trip
-// positions exactly like a real store DB.
+// ── Topology diagram (stateful mock, BRANCH-KEYED) ─────────────────
+// The real backend persists the node/wire diagram as JSON under
+// `topology_setting_key(branch_id)` — one envelope, and therefore ONE
+// revision counter, per branch. The mock previously kept a single global
+// envelope (its history was branch-keyed but the live diagram was not:
+// finding T-1, `todo-topology-editor.md` §"Follow-up"), so applying at
+// branch A changed what branch B loaded, and a stale baseRevision for one
+// branch conflicted against another branch's counter. Ruled FIXED
+// 2026-09-16 by the owner. Slices now mirror the backend's key structure:
+// `<MOCK_TOPOLOGY_KEY>/<branchId>` for named branches, the bare key for
+// the legacy unscoped view — which is also the only slot that seeds the
+// first-run canvas; a named branch with nothing saved answers `null`
+// exactly like the real command, so the editor takes its documented
+// built-in-preset fallback. The previous hardcoded-position behavior
+// (wrong payload shape, discarding saves) is the older fixed bug, kept
+// here so the seed's purpose is legible: previews round-trip positions.
 
 /** First-run canvas: matches the current preview's starting topology.
  *  Cards are 240px wide/tall, so positions sit on a spread grid (rows 80/320,
@@ -57,13 +65,41 @@ const MOCK_TOPOLOGY_SEED: MockTopology = {
   ],
 };
 
-function loadMockTopology(): MockTopology {
-  return readSlice(MOCK_TOPOLOGY_KEY, () => MOCK_TOPOLOGY_SEED);
+// One envelope — and therefore one revision counter — per branch, mirroring
+// the real `topology_setting_key(branch_id)`. The write-through cache keeps
+// repeated loads from re-parsing localStorage; `readSliceRaw` answers the
+// "never saved" question `readSlice` cannot, because its seed-on-missing
+// collapses "absent" and "seeded" into one shape.
+const topologySlices = new Map<string, MockTopology>();
+
+function topologySliceKey(branchId?: string): string {
+  return branchId ? `${MOCK_TOPOLOGY_KEY}/${branchId}` : MOCK_TOPOLOGY_KEY;
 }
-function saveMockTopology(topology: MockTopology): void {
-  writeSlice(MOCK_TOPOLOGY_KEY, topology);
+
+function branchTopology(branchId?: string): MockTopology {
+  const key = topologySliceKey(branchId);
+  const cached = topologySlices.get(key);
+  if (cached) return cached;
+  // Only the legacy unscoped slot seeds the first-run canvas; a named
+  // branch starts as nothing-saved, exactly like a fresh store DB.
+  const slice = readSlice(key, () =>
+    branchId
+      ? { revision: 0, resolved_issue_keys: [], nodes: [], wires: [] }
+      : MOCK_TOPOLOGY_SEED,
+  );
+  topologySlices.set(key, slice);
+  return slice;
 }
-const mockTopology: MockTopology = loadMockTopology();
+
+function hasBranchTopology(branchId: string): boolean {
+  const key = topologySliceKey(branchId);
+  return readSliceRaw(key) !== null || topologySlices.has(key);
+}
+
+function saveBranchTopology(branchId: string | undefined, topology: MockTopology): void {
+  topologySlices.set(topologySliceKey(branchId), topology);
+  writeSlice(topologySliceKey(branchId), topology);
+}
 
 // ── Topology revision history (ADR #46) ───────────────────────
 //
@@ -76,12 +112,20 @@ const mockTopology: MockTopology = loadMockTopology();
 export const topologyHandlers: Record<string, MockHandler> = {
 
   'can_save_topology': () => true,
-  'load_topology': () => ({
-    revision: mockTopology.revision ?? 0,
-    resolved_issue_keys: [...(mockTopology.resolved_issue_keys ?? [])],
-    nodes: mockTopology.nodes.map((n) => ({ ...n })),
-    wires: mockTopology.wires.map((w) => ({ ...w })),
-  }),
+  'load_topology': (args) => {
+    const { branchId } = (args as { branchId?: string }) ?? {};
+    // Parity with the real command's `Ok(None)`: a named branch with nothing
+    // saved answers null and the editor takes its built-in-preset fallback.
+    // The legacy unscoped view keeps the seeded first-run canvas.
+    if (branchId && !hasBranchTopology(branchId)) return null;
+    const topo = branchTopology(branchId);
+    return {
+      revision: topo.revision ?? 0,
+      resolved_issue_keys: [...(topo.resolved_issue_keys ?? [])],
+      nodes: topo.nodes.map((n) => ({ ...n })),
+      wires: topo.wires.map((w) => ({ ...w })),
+    };
+  },
   // The editor's Apply button saves through this command. Mirror the real
   // backend's atomic diff: apply instance creates/updates/archives AND
   // persist the diagram (node positions included) so reloads keep both the
@@ -103,7 +147,8 @@ export const topologyHandlers: Record<string, MockHandler> = {
     // with the typed conflict the editor's recovery path detects (round
     // 137). Skipped when the field is absent — the real command requires
     // base_revision, so only callers that send it opt into the guard.
-    const currentRevision = mockTopology.revision ?? 0;
+    const topo = branchTopology(branchId);
+    const currentRevision = topo.revision ?? 0;
     if (baseRevision !== undefined && baseRevision !== currentRevision) {
       throw {
         kind: 'topologyValidation',
@@ -139,31 +184,31 @@ export const topologyHandlers: Record<string, MockHandler> = {
     if (workspaceCreations?.length || workspaceUpdates?.length || workspaceArchives?.length) {
       saveMockWorkspaces();
     }
-    if (diagramNodes) mockTopology.nodes = diagramNodes.map((n) => ({ ...n }));
-    if (diagramWires) mockTopology.wires = diagramWires.map((w) => ({ ...w }));
-    if (resolvedIssueKeys) mockTopology.resolved_issue_keys = [...resolvedIssueKeys];
-    mockTopology.revision = (mockTopology.revision ?? 0) + 1;
-    saveMockTopology(mockTopology);
+    if (diagramNodes) topo.nodes = diagramNodes.map((n) => ({ ...n }));
+    if (diagramWires) topo.wires = diagramWires.map((w) => ({ ...w }));
+    if (resolvedIssueKeys) topo.resolved_issue_keys = [...resolvedIssueKeys];
+    topo.revision = (topo.revision ?? 0) + 1;
+    saveBranchTopology(branchId, topo);
     // ADR #46 §3: in the real backend this row is written INSIDE the same
     // transaction as the envelope, so a rejected Apply leaves no history. The
     // conflict throw above already mirrors that — control never reaches here
     // on a rejected Apply.
     recordMockTopologyRevision({
       branchId: branchId ?? '',
-      revision: mockTopology.revision,
+      revision: topo.revision,
       changeNote: changeNote ?? '',
       publishedAt: new Date().toISOString(),
       publishedBy: 'dev-mock',
       pinned: false,
-      nodeCount: mockTopology.nodes.length,
-      wireCount: mockTopology.wires.length,
+      nodeCount: topo.nodes.length,
+      wireCount: topo.wires.length,
       workspaceCreations: workspaceCreations?.length ?? 0,
       workspaceUpdates: workspaceUpdates?.length ?? 0,
       workspaceArchives: workspaceArchives?.length ?? 0,
       contractSchemaVersion: 2,
-      diagram: JSON.parse(JSON.stringify(mockTopology)) as MockTopology,
+      diagram: JSON.parse(JSON.stringify(topo)) as MockTopology,
     });
-    return { revision: mockTopology.revision };
+    return { revision: topo.revision };
   },
 
   // ADR #46 §1/§8: metadata only, newest first — the diagram is fetched per
