@@ -193,6 +193,51 @@ def no_token_fallbacks(
     return gaps
 
 
+# `export const listProducts = (sessionToken) => loggedInvoke('list_products_scoped', ...)`,
+# read as (wrapper, command). A wrapper is a NAME; the question this exists to ask is whether
+# anything besides the wrapper's own file and its contract test uses it.
+API_WRAPPER_RE = re.compile(
+    r"export (?:const|async function|function) ([A-Za-z]\w*)"
+    r"[\s\S]{0,320}?loggedInvoke(?:<[^>]*>)?\(\s*[\"']([a-z0-9_]+)[\"']"
+)
+
+
+def wrapper_reach(files: list[tuple[str, str]], cmd: str) -> dict[str, list[str]]:
+    """Who references the wrappers that invoke `cmd`, split by where the reference lives.
+
+    Three buckets, because "the UI invokes it" has been read as one claim where the tree
+    holds three. `runtime` is a screen, hook, context or component -- code that runs in a
+    shipped build. `client` is `ui/src/api/client`, a programmatic facade that is a public
+    surface of its own and is legitimately callable from outside the app. `api` is a wrapper
+    file other than the one that defines it. A command whose only references are in
+    `__tests__` and `ui/src/dev-mock` lands in none of them, which is what "the UI invokes
+    it" was hiding: contract suites named
+    `api-*-contract.test.ts` exist to pin the command string inside a wrapper, so they call
+    `updateProduct(args)` forever while every screen imports `updateProductScoped`, and the
+    parity leg counts that as the front-end asking for an unscoped door.
+    """
+    wrappers = {w for path, text in files if "/api/" in f"/{path}" or path.startswith("ui/src/api")
+                for w, c in API_WRAPPER_RE.findall(text) if c == cmd}
+    out: dict[str, list[str]] = {"runtime": [], "client": [], "api": []}
+    if not wrappers:
+        return out
+    for path, text in files:
+        if path.startswith("ui/src/api/client"):
+            bucket = "client"
+        elif path.startswith("ui/src/api"):
+            bucket = "api"
+        else:
+            bucket = "runtime"
+        for w in wrappers:
+            if re.search(r"(?<![\w.])" + re.escape(w) + r"\b", text):
+                # The defining file is not a reference to itself.
+                if bucket == "api" and re.search(r"export (?:const|async function|function) "
+                                                + re.escape(w) + r"\b", text):
+                    continue
+                out[bucket].append(f"{path}#{w}")
+    return out
+
+
 def ui_runtime_files() -> list[tuple[str, str]]:
     """UI sources that can execute in a shipped build: no tests, no dev-mock."""
     out: list[tuple[str, str]] = []
@@ -2901,6 +2946,34 @@ def self_test() -> int:
     case("fallback the real tablet tree exposes the shape the leg was written for",
          len(real_fb) >= 1 and "list_scanners" in real_fb)
 
+    # The reachability buckets, same discipline: without the second and third cases the first
+    # would pass for a classifier that counts a wrapper's own definition as one of its users,
+    # which is exactly the mistake that called eleven dead wrappers a parity gap.
+    wr_api = ("ui/src/api/products.ts",
+              "export const listProducts = (sessionToken: string): Promise<number> =>\n"
+              "  loggedInvoke<number>('list_products', { sessionToken });\n")
+    wr_hook = ("ui/src/features/products/useProducts.ts",
+               "import { listProducts } from '@/api/products';\n"
+               "export const use = () => listProducts('tok');\n")
+    wr_client = ("ui/src/api/client/products.ts",
+                 "class C {\n  async listProducts() { return 1; }\n}\n")
+    case("uinamed a screen importing the wrapper makes the command reachable",
+         wrapper_reach([wr_api, wr_hook], "list_products")["runtime"]
+         == ["ui/src/features/products/useProducts.ts#listProducts"])
+    case("uinamed the file that defines a wrapper is not its own user",
+         all(not v for v in wrapper_reach([wr_api], "list_products").values()))
+    case("uinamed the programmatic client is reachable without being a screen",
+         bool(wrapper_reach([wr_api, wr_client], "list_products")["client"])
+         and not wrapper_reach([wr_api, wr_client], "list_products")["runtime"])
+    # Real tree, so a regex that matched only its fixture cannot pass. If a future pass imports
+    # these wrappers into screens and this goes red, retire it only after reading the print:
+    # it is the thing that knows the eleven were ever unreferenced.
+    real_ui = ui_runtime_files()
+    real_unref = [n for n in ("create_product", "delete_product", "print_receipt", "update_product")
+                  if not (lambda r: r["runtime"] or r["client"])(wrapper_reach(real_ui, n))]
+    case("uinamed the real tree still holds at least three of the four named wrappers nobody uses",
+         len(real_unref) >= 3)
+
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
     real_per, real_loop = parse_dev_mock(read_dev_mock_sources())
@@ -3168,11 +3241,27 @@ def main() -> int:
             f"code (helpers with a stale attribute, NOT dead) + {len(uncalled)} unreachable and "
             f"uncalled ({len(test_only)} of those still tested), i.e. deletion candidates"
         )
+        # "The UI invokes it" is not one claim. A name can be reached by a screen, by the
+        # programmatic client facade, or by nothing but a wrapper export and the contract test
+        # that pins that wrapper's string. Only the first two are a gap this shell owes a door
+        # for; the third is dead surface on both sides of the boundary, and calling it a parity
+        # gap is how 11 unregistered tablet commands kept the count at 17.
+        all_ui = ui_runtime_files()
+        reached = {n for n in ui_named
+                   if (r := wrapper_reach(all_ui, n))["runtime"] or r["client"]}
+        unreferenced = sorted(set(ui_named) - reached)
+        print(
+            f"info[{shell}-uinamed]: {len(ui_named)} unregistered fns are named by UI code = "
+            f"{len(ui_named) - len(unreferenced)} reachable from a screen/hook or the "
+            f"programmatic client + {len(unreferenced)} named only by an api wrapper nothing "
+            f"imports (dead surface both sides, deletable; not a parity gap)"
+            + (": " + ", ".join(unreferenced) if unreferenced else "")
+        )
         # Informational, like every other F-006-adjacent leg: a fallback that cannot resolve is
         # an owner question (register the door, or change the branch), not a red gate this run
         # is entitled to call. But it must be named, because both of the instruments that could
         # have caught it -- Vitest and the dev-mock -- answer as though the door exists.
-        fb = no_token_fallbacks(ui_runtime_files(), set(handlers[shell]))
+        fb = no_token_fallbacks(all_ui, set(handlers[shell]))
         print(
             f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
             f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
