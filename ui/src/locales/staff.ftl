@@ -117,7 +117,7 @@ staff-login-submitting = Logging in…
 staff-login-error-connection = Could not verify username. Check your connection.
 staff-login-pin-min-length = PIN must be at least 4 digits.
 staff-login-back = ← Back
-staff-login-copyright = © 2026 OZ-POS. All rights reserved.
+staff-login-copyright = © 2026 kasir.mu. All rights reserved.
 staff-login-attempts-remaining = ({ $count } attempt{ $count -> [1] { "" } *{ "s" } } remaining)
 staff-login-lockout = Locked out. Try again in { $seconds }s
 

@@ -360,13 +360,13 @@ export default function StaffLoginScreen() {
         {!primaryLogoError && resizedUrl ? (
           <img
             src={resizedUrl}
-            alt={storeName || 'OZ-POS'}
+            alt={storeName || 'kasir.mu'}
             className="staff-login-logo-img"
           />
         ) : !fallbackSvgError ? (
           <img
             src="/branding/logo-mark.svg"
-            alt={storeName || 'OZ-POS'}
+            alt={storeName || 'kasir.mu'}
             className="staff-login-logo-img"
             onError={() => setFallbackSvgError(true)}
           />
@@ -594,7 +594,9 @@ export default function StaffLoginScreen() {
       <div className="staff-login-footer">
         <div className="staff-login-footer-left">
           <span className="staff-login-footer-version">v0.0.39</span>
-          <span className="staff-login-footer-copyright">&copy; OZ-POS. All rights reserved.</span>
+          <Localized id="staff-login-copyright">
+            <span className="staff-login-footer-copyright">&copy; 2026 kasir.mu. All rights reserved.</span>
+          </Localized>
           {lastLogin && (
             <span
               className="staff-login-last-login"

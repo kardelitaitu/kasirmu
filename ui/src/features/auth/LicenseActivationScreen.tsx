@@ -175,7 +175,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       </div>
       <div className="license-activation-layout">
         <div className="license-activation-hero">
-          <img src="/256x256.png" alt="OZ-POS Logo" className="license-activation-logo" />
+          <img src="/256x256.png" alt="kasir.mu Logo" className="license-activation-logo" />
         </div>
         
         <div className="license-activation-card">
@@ -335,7 +335,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
           <span>IP Address : {ipAddress}</span>
         </Localized>
         <Localized id="auth-copyright" vars={{ year: new Date().getFullYear().toString() }}>
-          <span>OZ-POS © {new Date().getFullYear()} All rights reserved.</span>
+          <span>kasir.mu © {new Date().getFullYear()} All rights reserved.</span>
         </Localized>
       </div>
 

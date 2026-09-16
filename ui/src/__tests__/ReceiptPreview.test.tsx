@@ -61,7 +61,7 @@ describe('ReceiptPreview', () => {
   it('renders store name and receipt info', async () => {
     await renderWithFluent(<ReceiptPreview {...defaultProps} />);
 
-    expect(screen.getByText('OZ-POS Store')).toBeInTheDocument();
+    expect(screen.getByText('kasir.mu Store')).toBeInTheDocument();
     expect(screen.getByText('Jul 15, 2025')).toBeInTheDocument();
     expect(screen.getByText('SALE-123')).toBeInTheDocument();
   });
@@ -196,7 +196,7 @@ describe('ReceiptPreview', () => {
     );
 
     expect(screen.getByRole('region', { name: /pratinjau struk/i })).toBeInTheDocument();
-    expect(screen.getByText('Toko OZ-POS')).toBeInTheDocument();
+    expect(screen.getByText('Toko kasir.mu')).toBeInTheDocument();
     expect(screen.getByText('Item')).toBeInTheDocument();
     expect(screen.getByText('Jum')).toBeInTheDocument();
     expect(screen.getByText('Harga')).toBeInTheDocument();

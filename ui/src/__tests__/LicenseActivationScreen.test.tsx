@@ -77,7 +77,7 @@ vi.mock('@fluent/react', () => ({
           'auth-paste': 'Paste',
           'auth-version': 'Version {version}',
           'auth-ip-address': 'IP Address : {ip}',
-          'auth-copyright': 'OZ-POS © {year} All rights reserved.',
+          'auth-copyright': 'kasir.mu © {year} All rights reserved.',
           'staff-login-connection-auth': 'Auth Server',
           'staff-login-connection-sync': 'Sync Server',
         };

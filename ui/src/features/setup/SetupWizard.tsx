@@ -412,7 +412,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
         <div className="setup-container">
           <div className="setup-header">
             <Localized id="setup-logo">
-              <div className="setup-logo">OZ-POS</div>
+              <div className="setup-logo">kasir.mu</div>
             </Localized>
           </div>
 
@@ -438,7 +438,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
               </p>
             </Localized>
             <Button size="lg" onClick={() => onLaunch?.()}>
-              <Localized id="setup-launch">Launch OZ-POS</Localized>
+              <Localized id="setup-launch">Launch kasir.mu</Localized>
             </Button>
           </div>
         </div>
@@ -457,7 +457,7 @@ export default function SetupWizard({ onComplete, onSkip, onLaunch }: SetupWizar
         {/* ── Header ──────────────────────────────── */}
         <div className="setup-header">
           <Localized id="setup-logo">
-            <div className="setup-logo">OZ-POS</div>
+            <div className="setup-logo">kasir.mu</div>
           </Localized>
           <Localized id="setup-tagline">
             <div className="setup-tagline">Point of Sale — Simplified</div>

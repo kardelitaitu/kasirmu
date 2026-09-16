@@ -185,7 +185,7 @@ describe('QrisQrDisplay — QR rendering & payment flow', () => {
     // never the old hardcoded /100 '250.00 IDR'.
     expect(screen.getByText('25000 IDR')).toBeInTheDocument();
     expect(screen.getByText('REF-1234')).toBeInTheDocument();
-    expect(screen.getByText('OZ-POS Store')).toBeInTheDocument();
+    expect(screen.getByText('kasir.mu Store')).toBeInTheDocument();
     expect(screen.getByText('QRIS')).toBeInTheDocument();
     expect(screen.getByText('Scan with your payment app')).toBeInTheDocument();
   });

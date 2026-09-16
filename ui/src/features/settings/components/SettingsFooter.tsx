@@ -146,7 +146,7 @@ export function SettingsFooter({ theme, onToggleTheme, themeSwitcherAvailable, a
           </button>
         )}
         <Localized id="settings-app-version" vars={{ version: appVersion }}>
-          <span>OZ-POS Enterprise v{appVersion}</span>
+          <span>kasir.mu Enterprise v{appVersion}</span>
         </Localized>
       </span>
       <span className="settings-footer-right">

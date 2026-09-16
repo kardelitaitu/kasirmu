@@ -340,10 +340,10 @@ describe('AppearanceSettings', () => {
     });
   });
 
-  it('shows OZ-POS fallback in preview when store name is empty', async () => {
+  it('shows kasir.mu fallback in preview when store name is empty', async () => {
     render(<AppearanceSettings />);
     await waitFor(() => {
-      expect(screen.getByText('OZ-POS')).toBeInTheDocument();
+      expect(screen.getByText('kasir.mu')).toBeInTheDocument();
     });
   });
 

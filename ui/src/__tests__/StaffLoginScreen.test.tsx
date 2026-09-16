@@ -38,14 +38,14 @@ vi.mock('@/api/branding', () => ({
   getBrandSettings: () => Promise.resolve({
     primary_colour: '#147EFB',
     logo_path: null,
-    store_name: 'OZ-POS',
+    store_name: 'kasir.mu',
   }),
 }));
 
 function withProviders(children: ReactNode): ReactElement {
   const bundle = new FluentBundle('en-US');
   bundle.addResource(new FluentResource(`
-staff-login-title = OZ-POS
+staff-login-title = kasir.mu
 staff-login-subtitle = Staff Login
 staff-login-progress-aria =
     .aria-label = Login progress

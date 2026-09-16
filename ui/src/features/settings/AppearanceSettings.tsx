@@ -413,7 +413,7 @@ export function AppearanceSettings({
         >
           <div className="appearance-preview-sample">
             <span className="appearance-preview-text">
-              {activeStoreName ? activeStoreName : <Localized id="appearance-store-name-fallback"><span>OZ-POS</span></Localized>}
+              {activeStoreName ? activeStoreName : <Localized id="appearance-store-name-fallback"><span>kasir.mu</span></Localized>}
             </span>
           </div>
           <div className="appearance-preview-elements">

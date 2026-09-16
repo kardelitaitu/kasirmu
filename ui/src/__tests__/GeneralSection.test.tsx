@@ -31,7 +31,7 @@ const testL10n = {
       'settings-field-language': 'Language',
       'settings-field-default-currency': 'Default currency',
       'settings-currency-loading': 'Loading currencies…',
-      'settings-store-name-placeholder': 'OZ-POS Store',
+      'settings-store-name-placeholder': 'kasir.mu Store',
       'settings-address-placeholder': '123 Main Street',
       'settings-tax-id-placeholder': '12-3456789',
       'settings-branch-placeholder': 'Main Branch',

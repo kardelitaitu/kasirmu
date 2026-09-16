@@ -58,8 +58,8 @@ export function ImportSection({ importState, flashRows, showImportPw, onFileSele
                 </Localized>
                 <Localized id="data-mgmt-import-desc">
                   <p className="data-mgmt-section-desc">
-                    Choose an encrypted .ozpkg file to import. The file must have been
-                    created by OZ-POS export.
+                    Choose an encrypted .kasirpkg file to import. The file must have been
+                    created by kasir.mu export.
                   </p>
                 </Localized>
 

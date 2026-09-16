@@ -62,7 +62,7 @@ export default function ReceiptPreview({
         {/* ── Store Header ── */}
         <div className="receipt-preview-header">
           <div className="receipt-preview-store-name">
-            {l10n.getString('receipt-preview-store-name', null, 'OZ-POS Store')}
+            {l10n.getString('receipt-preview-store-name', null, 'kasir.mu Store')}
           </div>
           <div className="receipt-preview-receipt-info">
             <span className="receipt-preview-date">{receipt.date}</span>

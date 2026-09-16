@@ -26,7 +26,7 @@ staff-login-submitting = Memasuki sistem…
 staff-login-error-connection = Tidak dapat memverifikasi nama pengguna. Periksa koneksi Anda.
 staff-login-pin-min-length = PIN harus minimal 4 digit.
 staff-login-back = ← Kembali
-staff-login-copyright = © 2026 OZ-POS. Seluruh hak cipta dilindungi.
+staff-login-copyright = © 2026 kasir.mu. Seluruh hak cipta dilindungi.
 staff-login-attempts-remaining = ({ $count } percobaan tersisa)
 staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 

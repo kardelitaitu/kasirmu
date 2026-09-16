@@ -48,10 +48,10 @@ vi.mock('@/api/currency', () => ({
 
 vi.mock('@/api/branding', () => ({
   getBrandSettings: vi.fn(() => Promise.resolve({
-    primary_colour: '#147EFB', logo_path: null, store_name: 'OZ-POS',
+    primary_colour: '#147EFB', logo_path: null, store_name: 'kasir.mu',
   })),
   getBrandSettingsScoped: vi.fn(() => Promise.resolve({
-    primary_colour: '#147EFB', logo_path: null, store_name: 'OZ-POS',
+    primary_colour: '#147EFB', logo_path: null, store_name: 'kasir.mu',
   })),
 }));
 
@@ -60,7 +60,7 @@ expect.extend(toHaveNoViolations);
 
 /// Minimal Fluent bundle with common keys used across screens.
 const MINIMAL_FTL = `
-staff-login-title = OZ-POS
+staff-login-title = kasir.mu
 staff-login-subtitle = Staff Login
 staff-login-step-username = Enter your username
 staff-login-step-pin = Enter your PIN

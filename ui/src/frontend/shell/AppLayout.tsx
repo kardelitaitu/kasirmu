@@ -126,11 +126,11 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
     setExpandedSection((prev) => (prev === section ? null : section));
   }, []);
 
-  // Set document title to the brand store name (fallback to 'OZ-POS').
+  // Set document title to the brand store name (fallback to 'kasir.mu').
   useEffect(() => {
     document.title = brandSettings.store_name
-      ? `${brandSettings.store_name} — OZ-POS`
-      : 'OZ-POS';
+      ? `${brandSettings.store_name} — kasir.mu`
+      : 'kasir.mu';
   }, [brandSettings.store_name]);
 
   return (
@@ -148,7 +148,7 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
         <aside className={`app-sidebar${sidebarCollapsed ? ' collapsed' : ''}`} aria-label={l10n.getString('nav-main-aria')}>
           <div className="app-sidebar-header">
             {/* ── Brand ──────────────────────────────── */}
-            <Tooltip content={brandSettings.store_name || 'OZ-POS'}>
+            <Tooltip content={brandSettings.store_name || 'kasir.mu'}>
               <div className="app-sidebar-brand">
                 {brandSettings.logo_path ? (
                   <img
@@ -168,7 +168,7 @@ export default function AppLayout({ route, onNavigate, children, enabledFeatures
                 )}
                 <div className="app-sidebar-brand-text">
                   <span className="app-sidebar-store-name">
-                    {brandSettings.store_name || 'OZ-POS'}
+                    {brandSettings.store_name || 'kasir.mu'}
                   </span>
                   <Localized id="app-sidebar-subtitle">
                     <span className="app-sidebar-subtitle">Point of Sale</span>
