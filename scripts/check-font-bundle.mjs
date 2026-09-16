@@ -105,10 +105,13 @@ console.log('    closed. Its own report prints the threshold it enforces; run it
 console.log("    than trusting this sentence: `cd ui && node ../scripts/check-bundle.mjs`.");
 console.log('    What has NOT changed is enforcement: no live workflow invokes that gate, and');
 console.log('    scripts/check.sh has no such step, whatever its header promises. The one');
-console.log('    runner is `cd ui && npm run check:all` (scripts/check-ui.mjs) -- and it runs');
-console.log('    `bundle:check` only, never `bundle:check:tablet`, so the tablet artifact\'s');
-console.log('    fonts are priced by a script nobody calls. Re-derive with -i, because the step');
-console.log('    is capitalised and a case-sensitive grep reads an absent file:');
+console.log('    runner is `cd ui && npm run check:all` (scripts/check-ui.mjs), which declares');
+console.log('    BOTH `Bundle budget` and `Bundle budget (tablet)` -- the second leg was added');
+console.log('    the round notes.md item 38 closed, when `bundle:check:tablet` was found to have');
+console.log('    existed since 2b762b08f with zero callers. Its absence is guarded by a row in');
+console.log('    scripts/check-font-claims.mjs, so removing a leg goes red rather than quiet.');
+console.log('    Re-derive with -i, because the steps are capitalised and a case-sensitive grep');
+console.log('    reads an absent file:');
 console.log("    `git grep -in 'bundle budget' scripts/check-ui.mjs scripts/check.sh`.");
 console.log(`\n  subject: ${ASSETS} (gitignored; this is a build of whatever tree made it)`);
 
