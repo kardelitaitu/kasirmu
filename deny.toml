@@ -48,177 +48,177 @@ allow = [
 name = "foundation"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-api"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-cli"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-cloud-server"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-core"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-crypto"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-hal"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-logging"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-lua"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-media"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-notification"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-payment"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-plugin"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-pos-app"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-pos-tablet"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-reporting"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-security"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-core"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-kernel"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-startup"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "platform-sync"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-crm"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-currency"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-giftcards"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-inventory"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-kitchen"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-loyalty"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-promotions"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-purchasing"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-reporting"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-sales"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-settings"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-staff"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-tax"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "modules-terminal"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
-license-files = [{ path = "../../LICENSE", hash = 0x6435f60b }]
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 
 [advisories]
 # Keep yanked crates visible but non-blocking (default is already warn).
