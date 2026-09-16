@@ -33,8 +33,8 @@ use crate::state::AppState;
 pub use oz_bridge::pos::{
     AddLineArgs, AddLineResult, CartLineData, CompleteSaleArgs, CompleteSaleResult,
     CompleteSaleScopedArgs, CompleteSaleWithResolvedShortfallsArgs, DeductionLocationInfo,
-    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs,
-    PaymentKind, PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
+    HoldCartArgs, HoldCartResult, OverrideLinePriceArgs, OverrideLinePriceScopedArgs, PaymentKind,
+    PreviewLineArgs, PreviewPromotedTotalArgs, PreviewPromotedTotalFromLinesArgs,
     PreviewPromotedTotalResult, PreviewPromotionDiscount, PublishCourseFiredArgs,
     PublishCourseFiredItem, SerialNumberArg, SetCartDiscountArgs, SetCartDiscountScopedArgs,
     SetLineCourseArgs, StartSaleArgs, StartSaleResult, default_bill_type,

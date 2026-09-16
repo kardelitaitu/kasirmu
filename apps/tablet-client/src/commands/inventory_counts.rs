@@ -52,7 +52,9 @@ pub use oz_bridge::inventory_counts::{
 /// than a local copy of it.
 #[cfg(test)]
 fn validate_quantity(field: &'static str, quantity: i64) -> Result<(), AppError> {
-    Ok(oz_bridge::inventory_counts::validate_quantity(field, quantity)?)
+    Ok(oz_bridge::inventory_counts::validate_quantity(
+        field, quantity,
+    )?)
 }
 
 /// Test seam for the counted-vs-expected difference.

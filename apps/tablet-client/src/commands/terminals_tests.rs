@@ -624,8 +624,13 @@ async fn scoped_terminal_writes_deny_a_session_without_their_permission() {
         Err(AppError::PermissionDenied(_))
     ));
     assert!(matches!(
-        delete_terminal_override_scoped("cashier-token".into(), "t1".into(), "kds".into(), app.state())
-            .await,
+        delete_terminal_override_scoped(
+            "cashier-token".into(),
+            "t1".into(),
+            "kds".into(),
+            app.state()
+        )
+        .await,
         Err(AppError::PermissionDenied(_))
     ));
     assert!(matches!(

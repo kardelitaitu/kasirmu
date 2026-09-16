@@ -16,7 +16,7 @@
 use tauri::State;
 
 pub use oz_bridge::legal_entities::{
-    CreateLegalEntityArgs, LegalEntityDto, UpdateLegalEntityArgs, DEFAULT_TENANT_ID,
+    CreateLegalEntityArgs, DEFAULT_TENANT_ID, LegalEntityDto, UpdateLegalEntityArgs,
 };
 
 use crate::error::AppError;

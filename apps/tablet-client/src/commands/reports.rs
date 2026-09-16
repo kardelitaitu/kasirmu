@@ -275,15 +275,9 @@ pub async fn get_voided_items_scoped(
     state: State<'_, AppState>,
 ) -> Result<Vec<VoidedItemRow>, AppError> {
     let ctx = state.bridge_ctx();
-    oz_bridge::reports::get_voided_items_scoped(
-        &ctx,
-        &session_token,
-        &start_date,
-        &end_date,
-        limit,
-    )
-    .await
-    .map_err(Into::into)
+    oz_bridge::reports::get_voided_items_scoped(&ctx, &session_token, &start_date, &end_date, limit)
+        .await
+        .map_err(Into::into)
 }
 
 #[command]
