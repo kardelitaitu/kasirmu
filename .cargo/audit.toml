@@ -1,7 +1,7 @@
 # cargo-audit baseline — reviewed 2026-08-03 (AUDIT-27 CI-03/CI-10)
 #
-# This file is the REVIEWED BASELINE referenced by docs/ci-pipeline.md and
-# the audit/27-ci-pipeline.md required/advisory policy. Every ignore entry
+# This file is the REVIEWED BASELINE referenced by docs/operations/ci-pipeline.md
+# and the required/advisory policy its gate matrix states. Every ignore entry
 # below must carry an owner/review date, a severity, and a justification.
 # Do not add entries casually: nothing polices this file. `cargo audit` runs in
 # neither live workflow, and scripts/gates.json files both `audit` and
@@ -18,7 +18,7 @@
 # key is used ONLY by the operator-side signing path
 # (crates/oz-core/src/export/cloud_destination.rs `sign_rsa256`, license
 # key generation) — verification is public-key only
-# (crates/oz-core/src/export/license_verification.rs). The Marvin attack is
+# (crates/oz-core/src/license_verification.rs). The Marvin attack is
 # a timing side-channel against a remote RSA decryption/signing oracle; our
 # private key never services network-originated oracle queries. Re-audit on
 # every major release and when `rsa` 0.10 (or a 0.9.x patch) ships.
