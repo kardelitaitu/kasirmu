@@ -56,7 +56,7 @@
 ## 📋 Task Checklist
 
 ### Phase 1.0: Baseline Audit
-- [ ] Run `cargo test -p oz-cloud-server sync` to establish baseline.
+- [x] Run `cargo test -p oz-cloud-server sync` to establish baseline. <!-- TICKED 2026-09-16 at tip 6481c39fe: the literal condition in the blockquote below (its own corrected instruction, `sync -- --nocapture`, zero `skipped:` lines) measured on a live oz-pg-test-15432 under the DEFAULT parallel harness -> 84 passed; 0 failed; 0 ignored, `skipped:` grep count = 0, and scripts/verify-pg-tests-ran.py --log <that log> grades PASS independently. The fourth pass cited 84 / 12-skipped on this same filter: same denominator, skip count now zero. -->
   > Package name verified: `apps/cloud-server/Cargo.toml:2` declares `name = "oz-cloud-server"`, so
   > the command is well-formed, and the suite exists (`sync_store_tests.rs`: 20 `#[tokio::test]`,
   > 0 plain `#[test]`). **The test run itself was NOT performed by this docs audit** (it is a cargo
@@ -97,7 +97,7 @@
   > hit (`mod tests;`, `:1757`). **Re-measured 2026-09-15: TWO hits — `mod pg;` at `:34` and `mod tests;` at `:1412` — so the claim that there is no submodule structure to inherit a split is FALSE: `sync_store/pg.rs` IS one. Three
   > separate `impl SyncStore` blocks (`:90`, `:927`, `:1112`; `:84`/`:1272`/`:1457` were their `7a310e013^` positions) confirm the file has grown by
   > accretion, not by decomposition. **2026-09-15: this box is HALF SHIPPED and the plan did not know it — `sync_store/pg.rs`, 378 ln, landed in `7a310e013` under this plan own `refactor(cloud-sync)` prefix (`:42`). NO TICK: the box asks for both halves, and the SQLite half is what remains; detail at EOF.** <!-- 2026-09-15 fourth pass: "the SQLite half is what remains" and "NO TICK" were true when written and are FALSE now — sqlite.rs landed in 8193fd3d5 the same morning, and the box is TICKED at :94. Kept verbatim as the record of what the third pass could see. Two other claims in this same note are superseded: "TWO hits" for `mod ` is now FIVE (:34 pg, :35 conflicts, :36 sqlite, :37 tenant, :408 tests), and the "three separate impl SyncStore blocks" at :90/:927/:1112 are now ONE in the parent (:99) plus three in the children (conflicts.rs:30, :215, tenant.rs:21). -->
-- [ ] Verify `cargo test -p oz-cloud-server sync` passes.
+- [x] Verify `cargo test -p oz-cloud-server sync` passes. <!-- TICKED 2026-09-16 at tip 6481c39fe, same run as :59 above. Note the two words this box needed distinguished: it passed AND it ran -- the whole crate under the parallel harness grades 354 passed / 0 failed / 4 ignored with 0 skip events (guard exit 0), against 8 of 8 pre-fix runs carrying exactly one. The event that still appears in a THREE-crate run is not this crate's: it is crates/oz-api/src/pg_tests.rs:596's `PG REST RLS test skipped (Postgres unreachable at ...)`, an arm whose message asserts a network cause for a catalog failure -- out of this plan's fence, and named so the next reader does not go looking for a dead container. -->
   > **Sizing pass 2026-09-14 — the same condition as `:51` above, and it is the whole point of this box:**
   > "passes" is not "ran". Tick only on a run against a live `oz-pg-test-15432` whose captured output
   > contains **zero `skipped:` lines**. With the container down, 7 of the 20 cases `return` as a pass,
