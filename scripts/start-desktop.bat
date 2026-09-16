@@ -68,17 +68,17 @@ if errorlevel 1 (
 )
 
 REM Sync connectivity: the debug build auto-provisions a connection to the
-REM cloud server (https://license.ozpos.my.id). The health endpoint check
+REM cloud server (https://license.kasir.mu). The health endpoint check
 REM below just confirms the cloud is reachable before launching — a warning
 REM here means the cloud server is unreachable but the app will still start
 REM and show a red sync indicator until connectivity is restored.
-echo Checking cloud sync backend on https://license.ozpos.my.id...
-curl -s -m 3 -o nul https://license.ozpos.my.id/api/health >nul 2>&1
+echo Checking cloud sync backend on https://license.kasir.mu...
+curl -s -m 3 -o nul https://license.kasir.mu/api/health >nul 2>&1
 if errorlevel 1 (
-    echo [WARNING] Cloud sync backend NOT reachable at https://license.ozpos.my.id.
+    echo [WARNING] Cloud sync backend NOT reachable at https://license.kasir.mu.
     echo           The app will start, but sync will be unavailable.
 ) else (
-    echo [OK] Cloud sync backend reachable at https://license.ozpos.my.id
+    echo [OK] Cloud sync backend reachable at https://license.kasir.mu
 )
 
 cargo tauri dev
