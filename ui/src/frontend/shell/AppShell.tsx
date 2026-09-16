@@ -200,8 +200,21 @@ export default function AppShell() {
       // PERF-06: time-to-shell marker — app shell became interactive.
       recordMark('oz:shell-ready');
       // Check if any users exist so we can show CreatePinScreen
-      // for first-run bootstrapping even in dev mode.
-      hasUsers().then((result) => setHasAnyUsers(result.has_users)).catch(() => {});
+      // for first-run bootstrapping even in dev mode. This read goes through the
+      // SAME `settle` as its production siblings, because an empty catch is not a
+      // degraded-state surface: on a shell whose command list is shorter than
+      // desktop's the call rejects, and `.catch(() => {})` recorded that failure
+      // nowhere — not a log, not a toast, not a badge. A read that can never
+      // answer then looked exactly like a read still in flight, and "which of the
+      // two is it" was unanswerable from outside. `settle` writes the failure to
+      // the console under its own `[boot] has_users` label and returns
+      // `{ ok: false }`, which leaves `hasAnyUsers` at null — the explicit
+      // UNKNOWN that the badge below renders — so an unavailable capability is
+      // never reported as the positive assertion "this store has no users", the
+      // value that would open CreatePinScreen.
+      settle('has_users', hasUsers()).then((res) => {
+        if (res.ok) setHasAnyUsers(res.value.has_users);
+      });
       return;
     }
 
