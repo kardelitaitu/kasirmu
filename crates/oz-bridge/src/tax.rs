@@ -151,9 +151,8 @@ pub struct CategoryTaxRateRow {
 ///
 /// Deliberately **snake_case, with no `rename_all`**. The renderer reads
 /// `sale_lines` — declared at `ui/src/api/tax.ts:114` and consumed by the
-/// delete guard at
-/// `ui/src/features/tax/TaxConfigurationScreen.tsx:933`
-/// (`disabled={(pendingDeleteCounts?.sale_lines ?? 0) > 0}`). This type used to
+/// tax configuration screen's delete guard, whose Confirm button is
+/// `disabled={(pendingDeleteCounts?.sale_lines ?? 0) > 0}`. This type used to
 /// carry `rename_all = "camelCase"`, which emitted `saleLines` instead, so the
 /// guard read `undefined`, `undefined > 0` is `false`, and the dialog offered a
 /// rate that historical sale lines reference with no warning and a live Confirm

@@ -663,9 +663,9 @@ fn rounding_mode_wire_is_the_core_serde_snake_case() {
 
 #[test]
 fn tax_rate_dependency_counts_wire_is_the_key_the_delete_guard_reads() {
-    // The whole point of these counts is the delete confirmations on
-    // `ui/src/features/tax/TaxConfigurationScreen.tsx`, and the load-bearing
-    // read is `:933` — `disabled={(pendingDeleteCounts?.sale_lines ?? 0) > 0}`.
+    // The whole point of these counts is the delete confirmations on the tax
+    // configuration screen, and the load-bearing read is that screen's own
+    // `disabled={(pendingDeleteCounts?.sale_lines ?? 0) > 0}` guard.
     // The key it names is declared at `ui/src/api/tax.ts:114` as `sale_lines`,
     // but this type carried `#[serde(rename_all = "camelCase")]`, so the wire
     // said `saleLines` and the guard read `undefined`. `undefined > 0` is
