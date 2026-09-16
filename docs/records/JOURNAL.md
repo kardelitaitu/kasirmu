@@ -11273,3 +11273,61 @@ F5 across the 53-file canvas sub-surface: zero live hits — the one cited popul
 The topology-editor program is closed: every one of its boxes has a dated record — executed, ruled-and-executed, reviewed-and-clean, or honored-as-fence. Open threads in the world: the push debt (~215), the T-1 mock ruling (still just recommended, now with a second dependent finding), and the sibling lanes' dirty clusters, which grew rather than died.
 
 **Commit:** `d94bd313e` + `733d744e0`; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — Absorb: the coursing pair lands on the desktop registration floor (desktop-client/records)
+
+**Context:**
+`b07e8c3ac` (10:03, with its feature `a8a5eeb79` at 09:51) registered `pos::set_line_course_scoped`
+and `pos::publish_course_fired_scoped` in `apps/desktop-client/src/lib.rs`. Two names, both
+arriving already gated: each shell body is one line delegating to `oz_bridge::pos::*`, and both
+bridge fns resolve the session and call `ctx.require_session_permission(..., SALES_PROCESS)`
+(`crates/oz-bridge/src/pos.rs:505` and `:591`). `gated_bridge_stems()` reads the bridge directory
+and `names_permission` sees those calls, so neither command entered the debt ledger and no ceiling
+moved — the only leg in the file able to see a command that arrives gated is
+`drift_pin_registration_floor_is_met`, whose equality is against the tree. That leg has been red
+on a clean checkout since the commit landed: `lib.rs registers 455 commands and this floor says
+453`, proven by an isolated `HEAD` checkout rather than by reading a working tree a neighbour was
+editing (`bash .agents/verify-lane.sh --head`, which exists because this lane committed once while
+its own checks were red).
+
+**Changes:**
+1. `apps/desktop-client/src/commands/registration_gate_tests.rs:82` — `REGISTERED_FLOOR` 453 → 455,
+   the number the harness prints rather than a chosen one.
+2. Same file, `:6` and `:79-80` — the two prose measurements moved with the const, and the causal
+   clause now names `b07e8c3ac` and the two `pos::` commands. The superseded 453 stays in both
+   places as the dated predecessor, per this file's convention.
+3. Deliberately untouched: both ceilings, `REGISTERED_SLACK` (24), and
+   `registration_gate_debt.generated.rs` (still 447 total, 8 behind the tree and inside slack).
+   A gated pair adds no debt, and widening an allowance in the same pass that raises a pin would be
+   the wrong kind of green.
+
+**What it means:**
+This entry does not make the desktop gate green, and says so with numbers.
+`drift_pin_debt_ceilings_only_shrink` still fails: **27** names in the
+`resolves_session_names_no_permission` class against a ceiling of **26**, with
+`no_session_resolution` at 42 under its 43. The second class is authenticate-then-assume, the
+largest here, and its leg's own wording is "it moved without a decision" — so the honest options
+belong to the owner: gate the one offending command, or raise that ceiling deliberately. This pass
+did not take either. It also did not identify the offender, and that is a limit of the instrument,
+not of the effort: the leg prints two counts and no names, and this lane declined to re-derive the
+sweep's predicate in another language to find it, because a second implementation of
+`resolves_session` is exactly the kind of fork this file has been keeping a single copy of. The
+name is reachable by whoever regenerates the ledger: `registration_gate_debt.generated.rs` was last
+written 14-09-26 and lists the class members, so a regenerated diff shows the addition as one line.
+Attribution note, because the timing looked suspicious: the same two commands were the subject of
+a parity-gate red earlier in the day that accused `set_line_course_scoped` of enforcing no
+permission. That accusation was wrong and was a defect in `scripts/verify-ipc-parity.py`, fixed at
+`c99abc832` by following the one-line delegation into the bridge. The red this entry absorbs is the
+consequence of those commands being real and gated, not of that mistake.
+
+**Verification:**
+- Before: `cargo test -p oz-pos-app --lib drift_pin` → `5 passed; 2 failed`
+  (`drift_pin_registration_floor_is_met`, `drift_pin_debt_ceilings_only_shrink`), exit 101.
+- After: the same command → `6 passed; 1 failed`, exit 101 — the floor leg green, the ceiling leg
+  still red by one name, and left that way on purpose.
+- `grep -i 'set_line_course_scoped\|publish_course_fired_scoped' docs/records/JOURNAL.md` now
+  names both commands in this entry; it named neither before.
+
+**Commit:** single pathspec commit touching the gate file and this file together — the assertion
+asks for one deliberate pass, so splitting the const from its record would reproduce the exact
+failure mode the message describes. Never push without a direct user order.
