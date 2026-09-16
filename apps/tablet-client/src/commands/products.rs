@@ -271,34 +271,6 @@ fn to_update_attributes(args: &UpdateProductArgs) -> oz_core::db::UpdateProductA
     }
 }
 
-/// Check whether a product tracks serial numbers.
-#[command]
-pub async fn get_product_track_serial(
-    sku: String,
-    state: State<'_, AppState>,
-) -> Result<bool, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let product = store.get_product(&sku)?;
-    drop(db);
-    Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
-}
-
-/// Check serial-tracking flags for many SKUs in one round trip
-/// (PERF-03: replaces the N+1 `get_product_track_serial` loop).
-/// Unknown SKUs resolve to `track_serial: false`; order is preserved.
-#[command]
-pub async fn get_product_track_serial_batch(
-    skus: Vec<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<SerialTrackRow>, AppError> {
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let rows = run_get_product_track_serial_batch(&store, &skus);
-    drop(db);
-    Ok(rows)
-}
-
 /// Business logic for the batch serial-tracking lookup (extracted for testing).
 fn run_get_product_track_serial_batch(store: &Store<'_>, skus: &[String]) -> Vec<SerialTrackRow> {
     skus.iter()
@@ -597,7 +569,7 @@ pub async fn update_product_scoped(
     Ok(UpdateProductResult { sku: args.sku })
 }
 
-/// Session-scoped variant of `get_product_track_serial`.
+/// Check whether a product tracks serial numbers resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_product_track_serial_scoped(
@@ -616,7 +588,7 @@ pub async fn get_product_track_serial_scoped(
     Ok(product.map(|p| p.product.track_serial).unwrap_or(false))
 }
 
-/// Session-scoped variant of `get_product_track_serial_batch`.
+/// Check serial-tracking flags for many SKUs in one round trip resolved from a session token. ADR #7.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn get_product_track_serial_batch_scoped(
