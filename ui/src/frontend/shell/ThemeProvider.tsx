@@ -38,7 +38,17 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = 'oz-pos-theme-v4';
+const STORAGE_KEY = 'kasirmu-theme-v4';
+const LEGACY_THEME = 'oz-pos-theme-v4';
+
+// Migrate legacy theme key on first load after upgrade.
+try {
+  const legacyValue = localStorage.getItem(LEGACY_THEME);
+  if (legacyValue !== null && localStorage.getItem(STORAGE_KEY) === null) {
+    localStorage.setItem(STORAGE_KEY, legacyValue);
+  }
+  localStorage.removeItem(LEGACY_THEME);
+} catch { /* localStorage unavailable */ }
 
 // ── Provider ───────────────────────────────────────────────────────
 
@@ -55,7 +65,7 @@ interface ThemeProviderProps {
  *
  * Sets `data-theme` on `<html>` so the CSS theme selectors work
  * (`:root` is dark; `[data-theme='light']` overrides to light).
- * Legacy `oz-pos-theme-v4` values of `'default'` are migrated to
+ * Legacy `kasirmu-theme-v4` values of `'default'` are migrated to
  * `'dark'` (the old glass default is gone — dark is now solid).
  * Also reactively applies the brand accent palette from BrandContext
  * whenever the primary colour changes.

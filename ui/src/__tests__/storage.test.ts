@@ -7,11 +7,11 @@ describe('STORAGE_KEYS', () => {
   });
 
   it('defines LOCALE key', () => {
-    expect(STORAGE_KEYS.LOCALE).toBe('oz-pos-locale');
+    expect(STORAGE_KEYS.LOCALE).toBe('kasirmu-locale');
   });
 
   it('defines DECIMAL_SEP key', () => {
-    expect(STORAGE_KEYS.DECIMAL_SEP).toBe('oz-pos-decimal-sep');
+    expect(STORAGE_KEYS.DECIMAL_SEP).toBe('kasirmu-decimal-sep');
   });
 });
 

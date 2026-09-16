@@ -38,16 +38,22 @@ const path = !rawPath || rawPath.replace(/^\/+/, '').startsWith('404') ? '/' : r
          global.css as the 'Inter Variable' / 'JetBrains Mono Variable'
          families) — no third-party font origin, no blocking font CSS. -->
 <!-- Apply the stored theme before first paint and on SPA swaps. -->
-    <script is:inline>
-      (() => {
-        const applyTheme = () => {
-          const t = localStorage.getItem('oz_theme');
-          document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
-        };
-        applyTheme();
-        document.addEventListener('astro:after-swap', applyTheme);
-      })();
-    </script>
+<script is:inline>
+  (() => {
+    const applyTheme = () => {
+      // Read new key first, fall back to legacy key for migration
+      const t = localStorage.getItem('kasirmu_theme') ?? localStorage.getItem('oz_theme');
+      // Migrate legacy key if present
+      if (localStorage.getItem('oz_theme') !== null) {
+        localStorage.setItem('kasirmu_theme', localStorage.getItem('oz_theme'));
+        localStorage.removeItem('oz_theme');
+      }
+      document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+    };
+    applyTheme();
+    document.addEventListener('astro:after-swap', applyTheme);
+  })();
+</script>
     <meta name="description" content={desc} />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <link rel="sitemap" href="/sitemap-index.xml" />

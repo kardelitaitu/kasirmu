@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 
 // ── Theme values (hardcoded from reset.css + theme files) ──────────
 
-const STORAGE_KEY = 'oz-pos-theme-v4';
+const STORAGE_KEY = 'kasirmu-theme-v4';
 
 /** Shared wrapper that provides both brand and theme context. */
 function Wrapper({ children }: { children: ReactNode }) {

@@ -6,11 +6,14 @@ import { join } from 'node:path';
 /**
  * Tests for Base.astro applyTheme inline script.
  *
- * The script reads localStorage.oz_theme and applies it to
+ * The script reads localStorage.kasirmu_theme and applies it to
  * document.documentElement.dataset.theme before first paint.
  * It also re-applies on astro:after-swap for SPA navigation.
  *
  * Dark is the default; light is the fallback.
+ *
+ * Migration: reads legacy `oz_theme` key, copies to `kasirmu_theme`,
+ * and removes the legacy key on first run.
  */
 
 const LAYOUT_SRC = readFileSync(
@@ -38,8 +41,8 @@ describe('Base.astro applyTheme', () => {
       expect(LAYOUT_SRC).toContain('applyTheme');
     });
 
-    it('reads localStorage.oz_theme', () => {
-      expect(LAYOUT_SRC).toContain("localStorage.getItem('oz_theme')");
+    it('reads localStorage.kasirmu_theme', () => {
+      expect(LAYOUT_SRC).toContain("localStorage.getItem('kasirmu_theme')");
     });
 
     it('sets document.documentElement.dataset.theme', () => {
@@ -67,14 +70,14 @@ describe('Base.astro applyTheme', () => {
     });
 
     it('applies dark theme when localStorage has "dark"', () => {
-      localStorage.setItem('oz_theme', 'dark');
+      localStorage.setItem('kasirmu_theme', 'dark');
       const script = extractApplyThemeScript();
       injectScript(script);
       expect(document.documentElement.dataset.theme).toBe('dark');
     });
 
     it('applies light theme when localStorage has "light"', () => {
-      localStorage.setItem('oz_theme', 'light');
+      localStorage.setItem('kasirmu_theme', 'light');
       const script = extractApplyThemeScript();
       injectScript(script);
       expect(document.documentElement.dataset.theme).toBe('light');
@@ -87,7 +90,7 @@ describe('Base.astro applyTheme', () => {
     });
 
     it('defaults to light when localStorage has unknown value', () => {
-      localStorage.setItem('oz_theme', 'blue');
+      localStorage.setItem('kasirmu_theme', 'blue');
       const script = extractApplyThemeScript();
       injectScript(script);
       expect(document.documentElement.dataset.theme).toBe('light');
@@ -95,10 +98,19 @@ describe('Base.astro applyTheme', () => {
 
     it('overwrites existing theme on page load', () => {
       document.documentElement.dataset.theme = 'dark';
-      localStorage.setItem('oz_theme', 'light');
+      localStorage.setItem('kasirmu_theme', 'light');
       const script = extractApplyThemeScript();
       injectScript(script);
       expect(document.documentElement.dataset.theme).toBe('light');
+    });
+
+    it('migrates legacy oz_theme key to kasirmu_theme', () => {
+      localStorage.setItem('oz_theme', 'dark');
+      const script = extractApplyThemeScript();
+      injectScript(script);
+      expect(document.documentElement.dataset.theme).toBe('dark');
+      expect(localStorage.getItem('kasirmu_theme')).toBe('dark');
+      expect(localStorage.getItem('oz_theme')).toBeNull();
     });
   });
 });

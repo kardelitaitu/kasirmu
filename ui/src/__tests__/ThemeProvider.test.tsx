@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 // ── Hooks only used for type-level assertions are tested implicitly
 //    via renderHook + wrapper. No need to import Theme explicitly.
 
-const STORAGE_KEY = 'oz-pos-theme-v4';
+const STORAGE_KEY = 'kasirmu-theme-v4';
 
 /** Shared wrapper that provides both brand and theme context. */
 function Wrapper({ children }: { children: ReactNode }) {

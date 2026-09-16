@@ -41,8 +41,8 @@ const EXPECTED_KEYS: Record<string, string> = {
   'auto-lock-minutes': 'hooks/useIdleTimer.ts',
   'current-username': 'contexts/AuthContext.tsx',
   'oz-key-created-at': 'hooks/useKeyAge.ts',
-  'oz-pos-locale': 'i18n/LocaleContext.tsx',
-  'oz-pos-theme-v4': 'frontend/shell/ThemeProvider.tsx',
+  'kasirmu-locale': 'i18n/LocaleContext.tsx',
+  'kasirmu-theme-v4': 'frontend/shell/ThemeProvider.tsx',
 
   // KDS
   'kds-cached-orders': 'hooks/useKdsOffline.ts',

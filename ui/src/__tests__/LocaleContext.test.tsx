@@ -14,7 +14,7 @@ import type { ReactNode } from 'react';
 import { LocaleProvider, LocaleContext } from '@/i18n/LocaleContext';
 import { useContext } from 'react';
 
-const STORAGE_KEY = 'oz-pos-locale';
+const STORAGE_KEY = 'kasirmu-locale';
 
 function wrapper({ children }: { children: ReactNode }) {
   return <LocaleProvider>{children}</LocaleProvider>;

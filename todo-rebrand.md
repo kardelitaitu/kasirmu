@@ -134,27 +134,26 @@
 > optionally clear the old key). A bare rename orphans every existing user's preferences.
 
 ### UI (localStorage — `ui/src/utils/storage.ts`)
-- [ ] `oz-pos-locale` (`:8`) → `kasirmu-locale`
+- [x] `oz-pos-locale` (`:8`) → `kasirmu-locale`
   - Migration in `ui/src/i18n/LocaleContext.tsx:44` — read `oz-pos-locale`, write `kasirmu-locale`
-- [ ] `oz-pos-decimal-sep` (`:9`) → `kasirmu-decimal-sep`
+- [x] `oz-pos-decimal-sep` (`:9`) → `kasirmu-decimal-sep`
   - Migration inline in whichever hook/context reads this key on startup
-- [ ] `oz-pos-theme-v4` (`ui/src/frontend/shell/ThemeProvider.tsx:41`) → `kasirmu-theme-v4`
+- [x] `oz-pos-theme-v4` (`ui/src/frontend/shell/ThemeProvider.tsx:41`) → `kasirmu-theme-v4`
   - Migration in `ThemeProvider.tsx` — read old key on mount, write new key, remove old key
 
 ### Website
-- [ ] `oz_theme` (`website/src/layouts/Base.astro` inline pre-paint script) → `kasirmu_theme`
+- [x] `oz_theme` (`website/src/layouts/Base.astro` inline pre-paint script) → `kasirmu_theme`
   - Pre-paint script runs before React hydration; old key must be read as fallback until cleared
-- [ ] `oz_session` cookie (`website/worker.ts`) → `kasirmu_session`
-  - ⚠️ Cookie rename logs every user out unless the worker accepts both old and new cookies during a
-    transition window, or migrates on the next authenticated request
+- [x] `oz_session` cookie (`website/worker.ts`) → `kasirmu_session`
+  - Cookie rename with backward-compat: worker accepts both old and new cookies during transition
 
 ### Test fixtures (must move in the same commit)
-- [ ] `ui/src/__tests__/storageKeyPins.test.ts:44,45` — pinned key values
-- [ ] `ui/src/__tests__/storage.test.ts:10,14` — key constant assertions
-- [ ] `ui/src/__tests__/LocaleContext.test.tsx:17` — locale key reference
-- [ ] `ui/src/__tests__/ThemeProvider.test.tsx:11` — theme key reference
-- [ ] `ui/src/__tests__/themeRegression.test.tsx:10` — regression fixture
-- [ ] `website/src/__tests__/apply-theme.test.ts` — website theme key
+- [x] `ui/src/__tests__/storageKeyPins.test.ts:44,45` — pinned key values
+- [x] `ui/src/__tests__/storage.test.ts:10,14` — key constant assertions
+- [x] `ui/src/__tests__/LocaleContext.test.tsx:17` — locale key reference
+- [x] `ui/src/__tests__/ThemeProvider.test.tsx:11` — theme key reference
+- [x] `ui/src/__tests__/themeRegression.test.tsx:10` — regression fixture
+- [x] `website/src/__tests__/apply-theme.test.ts` — website theme key
 
 **Pre-commit gate:** `cd ui && npm run test -- --run storageKeyPins storage LocaleContext ThemeProvider themeRegression` after editing.
 
