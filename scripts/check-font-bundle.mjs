@@ -103,16 +103,15 @@ console.log('\n    Budget: scripts/check-bundle.mjs DOES price these bytes now -
 console.log('    was added by `dd12da524`, so the gap this tool reported for several rounds is');
 console.log('    closed. Its own report prints the threshold it enforces; run it rather');
 console.log("    than trusting this sentence: `cd ui && node ../scripts/check-bundle.mjs`.");
-console.log('    What has NOT changed is enforcement: no live workflow invokes that gate, and');
-console.log('    scripts/check.sh has no such step, whatever its header promises. The one');
-console.log('    runner is `cd ui && npm run check:all` (scripts/check-ui.mjs), which declares');
-console.log('    BOTH `Bundle budget` and `Bundle budget (tablet)` -- the second leg was added');
-console.log('    the round notes.md item 38 closed, when `bundle:check:tablet` was found to have');
-console.log('    existed since 2b762b08f with zero callers. Its absence is guarded by a row in');
-console.log('    scripts/check-font-claims.mjs, so removing a leg goes red rather than quiet.');
-console.log('    Re-derive with -i, because the steps are capitalised and a case-sensitive grep');
-console.log('    reads an absent file:');
-console.log("    `git grep -in 'bundle budget' scripts/check-ui.mjs scripts/check.sh`.");
+console.log('    Enforcement is now real, and moved twice in two rounds: `b89747b28` gave the');
+console.log('    local runner its tablet leg, and `d3ae1e201` added `Bundle budget (desktop)`');
+console.log('    and `Bundle budget (tablet)` steps to dev-ci.yml#ui-test -- the first CI steps');
+console.log('    to compile the UI at all. What still has no step is scripts/check.sh, whatever');
+console.log('    its header promises. One consequence worth knowing before a budget goes red:');
+console.log('    northflank-deploy lists ui-test in its `needs`, so a size breach now stops a');
+console.log('    production deploy. Re-derive with -i, because the steps are capitalised and a');
+console.log('    case-sensitive grep reads a present file as absent:');
+console.log("    `git grep -in 'bundle budget' scripts/check-ui.mjs scripts/check.sh .github/workflows/dev-ci.yml`.");
 console.log(`\n  subject: ${ASSETS} (gitignored; this is a build of whatever tree made it)`);
 
 // A walker has no channel to the revision it is being asked about -- AGENTS.md says so
