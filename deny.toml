@@ -55,6 +55,11 @@ version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
+name = "oz-bridge"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
 name = "oz-cli"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
@@ -76,6 +81,16 @@ expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 [[licenses.clarify]]
 name = "oz-hal"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
+name = "oz-lan"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
+name = "oz-local-api"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
