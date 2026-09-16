@@ -11358,3 +11358,19 @@ Phase 2.1 executed for real: the course-group item loop and the SLA time+urgent 
 `npx vitest run Kds screenExtraction ModifierBadge` -> **77 files / 1308 tests passed**, card's 14 + five sibling suites unchanged (behavior-preserving relocation); typecheck -> sole error foreign and owned (a sibling's deliberate red, cited in their commit message). `622a33bfb` (4 paths, §3 new-file chain for the two components, hook bundle-parity 0 missing) + plan ticks `4c52547c6`. KDS-2's open-box count: **0**.
 
 **Commit:** `622a33bfb` + `4c52547c6`; this entry rides its own docs(journal) commit -- never push without a direct user order.
+
+## 2026-09-16 — Board-shrink sweep: seven "open boxes" triaged to zero code, two honest ticks, five re-verified dispositions, and the pile named what it is
+
+**Context:**
+The four coldest plans on the board (settings-2/3, tools, kds-agents-1) advertised seven open boxes between them. Pre-claim triage — the discipline the whole session has been converging on — decided what each glyph actually owed.
+
+**Findings, box by box:**
+kds-agents-1's two milestone rows: their PHASES had shipped under sibling subjects long ago (`c965baddb` keyboard relocation, `useNewTicketSound.ts` wired at `KdsScreen.tsx:159`, lifecycle landed as `useKdsRealtime.ts` per the :81 record) — ticked as evidence, the agents-2:118 precedent, no empty `refactor(kds-state):` commit filed. Settings-2's two RETIRED-with-proof rows: premises re-checked live (`panels/` absent, `sections/` holds 8) and the deliberate UNtick honored — those glyphs are dispositions, not work. Settings-3's AuditRetention row: still 0 hits for the symbol — the row is a tier-gated FEATURE wearing an extraction box; building product UI under a refactor glyph is scope inflation, so it stays open WITH its do-not-delete instruction confirmed. FactoryReset row: the recorded vocabulary-zero reproduces verbatim (grep exit 1 = the measurement). Tools' SaaS-scope row: parked-owner-ruling confirmed against the code — `enum ScopeType` at `assignments.rs:127` still refuses terminal scope "deliberately ... (ruling 1A)"; the (a)/(b)/(c) choice is unsatisfiable by a coder. Also folded in: KDS-2 renamed to `done-todo-*` under the owner's §4 waiver (`0ffebc667`).
+
+**Verification:**
+Five commits, all docs, all pathspec-clean: `0ffebc667` rename, `88e21cad3` kds-1 ticks (that plan now 0 open — renameable at the next word), `cce17ed3f` + `4f382332a` settings confirmations, `c7ece72a9` tools confirmation. Every dated note carries its re-check command; kds-1 is the sweep's only box-count change (7 open across the four plans before → 5 after, all five deliberate).
+
+**What it means:**
+The board's remaining open glyphs now decompose honestly: real work lives in exactly one cold plan (none), the rest are owner decisions (tools arm a/b/c; settings-3's two feature/product calls; operational-integrity's four) or deliberate dispositions no dispatcher should re-mistake. That pile is one decision-session deep.
+
+**Commit:** five above; this entry rides its own docs(journal) commit -- never push without a direct user order.
