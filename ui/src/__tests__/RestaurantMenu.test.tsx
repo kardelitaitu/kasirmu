@@ -284,6 +284,33 @@ describe('RestaurantMenu', () => {
     expect(screen.getByText('Minuman')).toBeTruthy();
   });
 
+  it('moves between category tabs with arrows and roves the Tab stop', async () => {
+    renderMenu();
+    const user = userEvent.setup();
+    const all = screen.getByRole('tab', { name: 'All' });
+    const makanan = screen.getByRole('tab', { name: 'Makanan' });
+    const minuman = screen.getByRole('tab', { name: 'Minuman' });
+    // Active tab holds the single Tab stop.
+    expect(all).toHaveAttribute('tabindex', '0');
+    expect(makanan).toHaveAttribute('tabindex', '-1');
+
+    all.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(makanan);
+    // Arrows move focus only — manual activation, so no refilter yet.
+    expect(screen.getByText('Es Teh')).toBeTruthy();
+    await user.keyboard('{End}');
+    expect(document.activeElement).toBe(minuman);
+    await user.keyboard('{Home}');
+    expect(document.activeElement).toBe(all);
+    // Enter activates the focused tab.
+    makanan.focus();
+    await user.keyboard('{ArrowRight}');
+    await user.keyboard('{Enter}');
+    expect(screen.queryByText('Nasi Goreng')).toBeNull();
+    expect(screen.getByText('Es Teh')).toBeTruthy();
+  });
+
   it('derives category pills from restaurant products only', () => {
     const retailProduct = {
       sku: 'RETAIL-COFFEE', name: 'Retail Coffee', category: 'Retail Only',
