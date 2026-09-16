@@ -1,55 +1,53 @@
 //! Customer management commands — list, get, create, update, delete.
 //!
 //! Delegates to `oz_core::db::Store` for all CRUD operations.
+//!
+//! # ADR #49 status — 1 of 7 doors extracted, 6 refused
+//!
+//! Only [`list_customers_scoped`] delegates to `oz-bridge`. The other six are
+//! **refused** under ADR #49 §4 — not merely unported — and each carries a
+//! note saying which parity rule it breaks:
+//!
+//! * `get_customer_scoped` — the bridge twin gates with the scope-aware
+//!   `require_session_permission`; this shell gates with the non-scope-aware
+//!   `require_customer_permission`. §4: *"Gates that are not scope-aware stay
+//!   not scope-aware; an extraction is not the place to widen a gate."*
+//! * `create_customer_scoped`, `update_customer_scoped`,
+//!   `delete_customer_scoped`, `search_customers_scoped`,
+//!   `get_customer_history_scoped` — these open the store database **before**
+//!   the gate; the bridge twins gate first and open afterwards. `open_store`
+//!   is not free (`platform/core/src/database/manager.rs:73-103`: on a cache
+//!   miss it creates the directory, creates the database file and runs
+//!   migrations), so the two orderings differ observably, and against an
+//!   unopenable store they return different errors — `Internal` here,
+//!   `PermissionDenied` there.
+//!
+//! The bridge's ordering came from the **desktop** shell, which disagreed with
+//! this one long before the campaign started; the bridge is not at fault and
+//! is not internally consistent about it either — `gift_cards`, `loyalty` and
+//! `purchasing` all use the open-before-gate order this shell uses. This is a
+//! two-shell fork for an owner to rule on. Filed in
+//! `docs/records/audit-open-findings.md`.
 
-use serde::{Deserialize, Serialize};
 use tauri::{State, command};
 
-use oz_core::Customer;
-use oz_core::db::Store;
-
 use foundation::validate_not_empty;
-
+use oz_core::db::Store;
 use oz_core::permissions;
 
 use crate::commands::authz::require_permission_for_user;
 use crate::error::AppError;
 use crate::state::AppState;
 
-// ── DTO for the front-end ───────────────────────────────────────────
-
-/// Customer as seen by the front-end.
-#[derive(Debug, Serialize)]
-pub struct CustomerDto {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: String,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-    /// ISO-8601 last-update timestamp.
-    pub updated_at: String,
-}
-
-impl From<Customer> for CustomerDto {
-    fn from(c: Customer) -> Self {
-        Self {
-            id: c.id,
-            name: c.name,
-            email: c.email.map(|e| e.to_string()),
-            phone: c.phone.map(|p| p.to_string()),
-            notes: c.notes,
-            created_at: c.created_at,
-            updated_at: c.updated_at,
-        }
-    }
-}
+// The wire DTOs and the create/update argument sets now live in `oz-bridge`.
+// All ten definitions are byte-identical (verified block-by-block) and the
+// orphan rule forbids a shell-side `impl From<Customer> for CustomerDto`, so
+// they are re-exported rather than duplicated.
+pub use oz_bridge::customers::{
+    CreateCustomerArgs, CreateCustomerScopedArgs, CustomerDto, CustomerHistoryDto,
+    CustomerLoyaltySummaryDto, CustomerSaleSummaryDto, CustomerSearchPage, DeleteCustomerArgs,
+    UpdateCustomerArgs, UpdateCustomerScopedArgs,
+};
 
 // ── List customers ──────────────────────────────────────────────────
 
@@ -64,15 +62,10 @@ pub async fn list_customers_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CustomerDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let customers = store.list_customers()?;
-    Ok(customers.into_iter().map(CustomerDto::from).collect())
+    let ctx = state.bridge_ctx();
+    oz_bridge::customers::list_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Get single customer ─────────────────────────────────────────────
@@ -83,6 +76,11 @@ pub async fn list_customers_scoped(
 /// without a session/permission/scope gate on the tablet (the desktop
 /// had already moved to this shape). Gated on `customers:view` like
 /// every other customer read.
+///
+/// ADR #49 §4: **not delegated.** `oz_bridge::customers::get_scoped` gates
+/// with the scope-aware `require_session_permission`; this body gates with
+/// the non-scope-aware `require_customer_permission`. Delegating would widen
+/// the gate, which §4 forbids outright.
 #[command]
 pub async fn get_customer_scoped(
     id: String,
@@ -101,86 +99,12 @@ pub async fn get_customer_scoped(
     Ok(customer.map(CustomerDto::from))
 }
 
-// ── Create customer ─────────────────────────────────────────────────
-
-/// Arguments for creating a customer in the session's store.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateCustomerScopedArgs {
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Createcustomerargs.
-pub struct CreateCustomerArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
-
-// ── Update customer ─────────────────────────────────────────────────
-
-/// Arguments for updating a customer in the session's store.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateCustomerScopedArgs {
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-/// Updatecustomerargs.
-pub struct UpdateCustomerArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Unique identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Email address.
-    pub email: Option<String>,
-    /// Phone number.
-    pub phone: Option<String>,
-    /// Notes.
-    pub notes: Option<String>,
-}
-
-// ── Delete customer ─────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-/// Deletecustomerargs.
-pub struct DeleteCustomerArgs {
-    /// ID of the associated user.
-    pub user_id: String,
-    /// Unique identifier.
-    pub id: String,
-}
-
 // ── Store-scoped mutations (ADR #7) ─────────────────────────────────
 
 /// Create a customer in the store resolved from a session token. ADR #7.
+///
+/// ADR #49 §4: **not delegated.** This body opens the store database before
+/// the gate; `oz_bridge::customers::create_scoped` gates first.
 #[command]
 pub async fn create_customer_scoped(
     session_token: String,
@@ -204,6 +128,9 @@ pub async fn create_customer_scoped(
 }
 
 /// Update a customer in the store resolved from a session token. ADR #7.
+///
+/// ADR #49 §4: **not delegated.** This body opens the store database before
+/// the gate; `oz_bridge::customers::update_scoped` gates first.
 #[command]
 pub async fn update_customer_scoped(
     session_token: String,
@@ -228,6 +155,9 @@ pub async fn update_customer_scoped(
 }
 
 /// Delete a customer from the store resolved from a session token. ADR #7.
+///
+/// ADR #49 §4: **not delegated.** This body opens the store database before
+/// the gate; `oz_bridge::customers::delete_scoped` gates first.
 #[command]
 pub async fn delete_customer_scoped(
     session_token: String,
@@ -246,20 +176,13 @@ pub async fn delete_customer_scoped(
 
 // ── Search (CUST-06) ──────────────────────────────────────────────
 
-/// Bounded page of search results (CUST-06) — server-side query with an
-/// explicit sort order and total count for pagination.
-#[derive(Debug, Serialize)]
-pub struct CustomerSearchPage {
-    /// Matching customers on this page.
-    pub items: Vec<CustomerDto>,
-    /// Total number of matches across all pages.
-    pub total: u64,
-}
-
 /// Search customers in the store resolved from a session token. ADR #7.
 ///
 /// CUST-06: the query runs server-side (LIKE over name/email/phone) with a
 /// bounded page size so the renderer never holds the full customer list.
+///
+/// ADR #49 §4: **not delegated.** This body opens the store database before
+/// the gate; `oz_bridge::customers::search_scoped` gates first.
 #[command]
 pub async fn search_customers_scoped(
     session_token: String,
@@ -284,52 +207,14 @@ pub async fn search_customers_scoped(
 
 // ── Customer history (CUST-05) ────────────────────────────────────
 
-/// Summary of a single sale for the history view.
-#[derive(Debug, Serialize)]
-pub struct CustomerSaleSummaryDto {
-    /// Sale id.
-    pub id: String,
-    /// Total in minor units.
-    pub total_minor: i64,
-    /// Currency code (e.g. "USD") for the total.
-    pub currency: String,
-    /// Status string (e.g. "Completed").
-    pub status: String,
-    /// Number of line items.
-    pub line_count: i64,
-    /// ISO-8601 creation timestamp.
-    pub created_at: String,
-}
-
-/// Loyalty summary for the history view (CUST-05).
-#[derive(Debug, Serialize)]
-pub struct CustomerLoyaltySummaryDto {
-    /// Current redeemable points.
-    pub points: i64,
-    /// Lifetime points earned.
-    pub lifetime_points: i64,
-    /// Current tier name (None when unassigned).
-    pub tier_name: Option<String>,
-}
-
-/// Read-only customer history: profile, loyalty summary, recent sales.
-#[derive(Debug, Serialize)]
-pub struct CustomerHistoryDto {
-    /// The customer profile.
-    pub customer: CustomerDto,
-    /// Loyalty account summary, if any.
-    pub loyalty: Option<CustomerLoyaltySummaryDto>,
-    /// Recent sales for this customer (most recent first).
-    pub sales: Vec<CustomerSaleSummaryDto>,
-    /// Total number of sales across all pages.
-    pub sales_total: u64,
-}
-
 /// Get the read-only history for a customer (CUST-05). ADR #7.
 ///
 /// Scoped to the session's store and gated on `customers:view`. Sales are
 /// bounded (max 100/page) so a heavy-spending customer cannot bloat the
 /// renderer.
+///
+/// ADR #49 §4: **not delegated.** This body opens the store database before
+/// the gate; `oz_bridge::customers::history_scoped` gates first.
 #[command]
 pub async fn get_customer_history_scoped(
     session_token: String,
