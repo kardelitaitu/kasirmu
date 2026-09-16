@@ -127,6 +127,43 @@ if (!bundle.ran || bundle.status !== 0) {
     '0 -- rebuild (cd ui && npm run build) before trusting the figures above');
 }
 
+// ---- rows: the bundle-budget gate this plan now makes claims about ----------------
+// Population, every time: these greps are scoped to the paths where the thing would HAVE
+// to live, not to the whole repo. A whole-repo search for a script name counts prose about
+// its absence as a hit; see the tablet row's message.
+const WF = ['.github/workflows'];
+const WIRING = ['.github/workflows', '.githooks', 'scripts/check-ui.mjs', 'scripts/check.sh'];
+
+const src = run(['git', '--no-optional-locks', 'grep', '-n', '-e', 'BUDGET_WOFF2_KB', '-e', "woff2:", '--', 'scripts/check-bundle.mjs']);
+const woff2Line = /BUDGET_WOFF2_KB\s*\?\?\s*(\d+)/.exec(src.out)?.[1];
+check('the budget gate prices .woff2 (dd12da524)', src.ran && src.out.includes('woff2:'),
+  `woff2 budget present, default prints as ${woff2Line ?? '?'} KB (value shown, not asserted)`,
+  'a woff2 entry in `budgets` in scripts/check-bundle.mjs');
+
+const wfGate = run(['git', '--no-optional-locks', 'grep', '-l', '-i', '-e', 'check-bundle', '-e', 'bundle:check', '--', ...WF]);
+check('no live workflow runs the budget gate', cleanAbsence(wfGate, [0, 1]),
+  wfGate.out.trim() === '' ? `${WF.join('/')} names the gate 0 times` : `found: ${wfGate.out.trim().replace(/\n/g, ', ')}`,
+  '0 -- if this drifts the gate was wired into CI: repair notes.md item 37 and the note in scripts/check-font-bundle.mjs');
+
+const shGate = run(['git', '--no-optional-locks', 'grep', '-i', '-n', 'bundle budget', '--', 'scripts/check.sh']);
+check('scripts/check.sh has no budget step (its header claims otherwise)', cleanAbsence(shGate, [0, 1]),
+  shGate.out.trim() === '' ? 'no match (case-INsensitive: the step is capitalised "Bundle budget", so a case-sensitive grep reads an absent file)' : shGate.out.trim(),
+  '0 -- this is the half of notes.md item 37 that dd12da524 did not close');
+
+const tabletCallers = run(['git', '--no-optional-locks', 'grep', '-n', 'bundle:check:tablet', '--', ...WIRING]);
+const tabletProse = run(['git', '--no-optional-locks', 'grep', '-l', 'bundle:check:tablet', '--', '.']);
+const proseCount = tabletProse.out.trim().split('\n').filter(Boolean).length;
+check('the tablet budget has no executable caller', cleanAbsence(tabletCallers, [0, 1]),
+  `wiring paths (${WIRING.join(', ')}): ${(tabletCallers.out.trim().split('\n').filter(Boolean).length)} call(s); whole-repo mentions: ${proseCount} -- all prose about the absence, which is why this row is path-scoped`,
+  '0 call sites -- notes.md item 38; if it drifts, repair item 38 and the note in scripts/check-font-bundle.mjs');
+
+const gateRows = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.find(x=>x.id==='bundle-budget');console.log(JSON.stringify({found:!!r,status:r&&r.status,runners:r&&r.runners,ci:(r&&r.ci)??'absent'}))"]);
+let gj = {};
+try { gj = JSON.parse(gateRows.out.trim() || '{}'); } catch { gj = {}; }
+check("gates.json's bundle-budget row still has no ci block", gateRows.status === 0 && gj.found === true && gj.ci === 'absent',
+  `status=${gj.status} runners=${JSON.stringify(gj.runners)} ci=${gj.ci}`,
+  'ci absent -- `required` in this manifest is policy language, not machine state (AGENTS.md, the rust-clippy precedent)');
+
 // ---- row: the rules themselves ---------------------------------------------------
 // Spawned through process.execPath and the package's own bin script: `npx` is a .cmd
 // shim on Windows and execFileSync does not resolve it, so the first version of this
