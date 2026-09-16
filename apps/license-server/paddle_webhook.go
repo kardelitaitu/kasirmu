@@ -513,7 +513,7 @@ func sendReceiptEmailSMTP(to, licenseKey, tier, expiresAt string) error {
 	password := os.Getenv("OZ_SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("OZ_SMTP_FROM"))
 	if from == "" {
-		from = "no-reply@ozpos.my.id"
+		from = "no-reply@kasir.mu"
 	}
 
 	msg := buildReceiptEmail(from, to, licenseKey, tier, expiresAt)
@@ -523,17 +523,17 @@ func sendReceiptEmailSMTP(to, licenseKey, tier, expiresAt string) error {
 // buildReceiptEmail renders the plain-text license-key receipt email
 // (RFC 5322 message bytes).
 func buildReceiptEmail(from, to, licenseKey, tier, expiresAt string) []byte {
-	subject := "Your OZ-POS license key"
+	subject := "Your kasir.mu license key"
 	body := fmt.Sprintf(
-		"Thank you for purchasing OZ-POS %s!\n\n"+
+		"Thank you for purchasing kasir.mu %s!\n\n"+
 			"Your license key is:\n\n%s\n\n"+
-			"It is valid until %s. Activate it in the OZ-POS desktop app "+
+			"It is valid until %s. Activate it in the kasir.mu desktop app "+
 			"(Settings → License) with the email address you used to purchase.\n\n"+
 			"You can also view your subscription at any time from the account page on our website.\n",
 		tier, licenseKey, expiresAt)
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "From: OZ-POS <%s>\r\n", from)
+	fmt.Fprintf(&sb, "From: kasir.mu <%s>\r\n", from)
 	fmt.Fprintf(&sb, "To: %s\r\n", to)
 	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")

@@ -1,4 +1,4 @@
-// Package main is the entry point for the OZ-POS license server.
+// Package main is the entry point for the kasir.mu license server.
 // It extends PocketBase with custom Go hooks for license activation,
 // renewal, and status checks with RSA-2048 signing.
 //
@@ -367,7 +367,7 @@ func main() {
 		go startPasswordRotationScheduler(app)
 
 		// ── Root → PocketBase admin UI redirect ───────────────────
-		// The bare domain (https://license.ozpos.my.id) 301-redirects to
+		// The bare domain (https://license.kasir.mu) 301-redirects to
 		// the PocketBase admin console at /_/ — which then auto-navigates
 		// to #/login when no session exists. Done server-side so the
 		// redirect can't be confused with a proxy loop (Cloudflare Page

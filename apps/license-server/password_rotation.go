@@ -207,21 +207,21 @@ func runPasswordRotationScanner(app core.App) {
 	}
 
 	// Send the reminder email.
-	subject := "Reminder: Change your OZ-POS admin password — it's been %d days"
+	subject := "Reminder: Change your kasir.mu admin password — it's been %d days"
 	subject = fmt.Sprintf(subject, daysSinceChange)
 	body := fmt.Sprintf(`Hi,
 
-This is an automated reminder from OZ-POS.
+This is an automated reminder from kasir.mu.
 
 Your admin account password has not been changed in %d days.
-For security, OZ-POS requires the admin password to be rotated at least every 120 days.
+For security, kasir.mu requires the admin password to be rotated at least every 120 days.
 
 Please change your password now:
-https://ozpos.my.id/account
+https://kasir.mu/account
 
 If you do not change it, you will receive another reminder in 30 days.
 
-— The OZ-POS Team`, daysSinceChange)
+— The kasir.mu Team`, daysSinceChange)
 
 	if err := sendPasswordRotationEmail(adminEmail, subject, body); err != nil {
 		log.Printf("password-rotation-scanner: failed to send reminder to %q: %v", adminEmail, err)
@@ -287,7 +287,7 @@ func sendPasswordRotationEmail(to, subject, body string) error {
 	password := os.Getenv("OZ_SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("OZ_SMTP_FROM"))
 	if from == "" {
-		from = "no-reply@ozpos.my.id"
+		from = "no-reply@kasir.mu"
 	}
 
 	msg := buildPasswordRotationEmail(from, to, subject, body)
@@ -297,7 +297,7 @@ func sendPasswordRotationEmail(to, subject, body string) error {
 // buildPasswordRotationEmail renders an RFC 5322 message.
 func buildPasswordRotationEmail(from, to, subject, body string) []byte {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "From: OZ-POS Security <%s>\r\n", from)
+	fmt.Fprintf(&sb, "From: kasir.mu Security <%s>\r\n", from)
 	fmt.Fprintf(&sb, "To: %s\r\n", to)
 	fmt.Fprintf(&sb, "Subject: %s\r\n", subject)
 	sb.WriteString("MIME-Version: 1.0\r\n")

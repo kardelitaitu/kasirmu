@@ -67,7 +67,7 @@ func sendLicenseRecoveryEmailSMTP(to, code string) error {
 	password := os.Getenv("OZ_SMTP_PASSWORD")
 	from := strings.TrimSpace(os.Getenv("OZ_SMTP_FROM"))
 	if from == "" {
-		from = "no-reply@ozpos.my.id"
+		from = "no-reply@kasir.mu"
 	}
 
 	msg := buildLicenseRecoveryEmail(from, to, code)
@@ -78,18 +78,18 @@ func sendLicenseRecoveryEmailSMTP(to, code string) error {
 // (RFC 5322 message bytes). The code is only ever sent to the tenant's
 // inbox — never stored in plaintext server-side.
 func buildLicenseRecoveryEmail(from, to, code string) []byte {
-	subject := "Your OZ-POS license recovery code"
+	subject := "Your kasir.mu license recovery code"
 	body := fmt.Sprintf(
-		"Your OZ-POS license recovery code is: %s\n\n"+
+		"Your kasir.mu license recovery code is: %s\n\n"+
 			"Enter this code in the app to restore license management access "+
 			"(renewals and status checks). It expires in %d minutes.\n\n"+
 			"If you did NOT request this code, someone may be trying to use "+
-			"your license key: sign in at https://ozpos.my.id/en/login/ to "+
+			"your license key: sign in at https://kasir.mu/en/login/ to "+
 			"review your devices and contact support.\n",
 		code, int(webOtpTTL.Minutes()))
 
 	var sb strings.Builder
-	sb.WriteString("From: OZ-POS <" + from + ">\r\n")
+	sb.WriteString("From: kasir.mu <" + from + ">\r\n")
 	sb.WriteString("To: " + to + "\r\n")
 	sb.WriteString("Subject: " + subject + "\r\n")
 	sb.WriteString("MIME-Version: 1.0\r\n")

@@ -820,11 +820,11 @@ func TestWebAllowedOrigins_Default(t *testing.T) {
 	if len(origins) != 4 {
 		t.Fatalf("expected 4 default origins, got %d: %v", len(origins), origins)
 	}
-	if !strings.Contains(strings.Join(origins, ","), "ozpos.my.id") {
-		t.Errorf("expected ozpos.my.id origin in defaults, got %v", origins)
+	if !strings.Contains(strings.Join(origins, ","), "kasir.mu") {
+		t.Errorf("expected kasir.mu origin in defaults, got %v", origins)
 	}
-	if !strings.Contains(strings.Join(origins, ","), "dashboard.ozpos.my.id") {
-		t.Errorf("expected dashboard.ozpos.my.id origin in defaults, got %v", origins)
+	if !strings.Contains(strings.Join(origins, ","), "dashboard.kasir.mu") {
+		t.Errorf("expected dashboard.kasir.mu origin in defaults, got %v", origins)
 	}
 }
 
@@ -846,8 +846,8 @@ func TestWebAllowedOrigins_CorsOriginsMerged(t *testing.T) {
 		found[o] = true
 	}
 	// Default origins still present.
-	if !found["https://ozpos.my.id"] {
-		t.Error("default ozpos.my.id origin missing after OZ_CORS_ORIGINS merge")
+	if !found["https://kasir.mu"] {
+		t.Error("default kasir.mu origin missing after OZ_CORS_ORIGINS merge")
 	}
 	if !found["http://localhost:4321"] {
 		t.Error("default localhost origin missing after OZ_CORS_ORIGINS merge")
@@ -876,8 +876,8 @@ func TestWebAllowedOrigins_CorsOriginsWithCustomPrimary(t *testing.T) {
 	if !found["https://extra.com"] {
 		t.Error("extra origin missing")
 	}
-	// Default ozpos.my.id should NOT be present (overridden by primary).
-	if found["https://ozpos.my.id"] {
+	// Default kasir.mu should NOT be present (overridden by primary).
+	if found["https://kasir.mu"] {
 		t.Error("default origin should not appear when OZ_WEB_ALLOWED_ORIGINS is set")
 	}
 }
@@ -995,13 +995,13 @@ func TestWindowLimiter_Sweep(t *testing.T) {
 // ── Email builder tests ─────────────────────────────────────────────
 
 func TestBuildOtpEmail_RFC5322Headers(t *testing.T) {
-	msg := buildOtpEmail("no-reply@ozpos.my.id", "user@example.com", "123456")
+	msg := buildOtpEmail("no-reply@kasir.mu", "user@example.com", "123456")
 	s := string(msg)
 
 	for _, want := range []string{
-		"From: OZ-POS <no-reply@ozpos.my.id>",
+		"From: kasir.mu <no-reply@kasir.mu>",
 		"To: user@example.com",
-		"Subject: Your OZ-POS verification code",
+		"Subject: Your kasir.mu verification code",
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=utf-8",
 		"Date:",

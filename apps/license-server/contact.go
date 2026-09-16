@@ -173,7 +173,7 @@ func postToDiscord(webhook, name, email, message string) error {
 	// default).
 	payload, err := json.Marshal(map[string]any{
 		"content":          content,
-		"username":         "OZ-POS Support",
+		"username":         "kasir.mu Support",
 		"allowed_mentions": map[string]any{"parse": []string{}},
 	})
 	if err != nil {

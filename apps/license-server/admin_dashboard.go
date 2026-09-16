@@ -1,7 +1,7 @@
 package main
 
 // Admin dashboard API endpoints (ADR #42 Phase 3) — internal operations
-// for the OZ-POS admin panel at admin.ozpos.my.id. All endpoints require
+// for the kasir.mu admin panel at admin.kasir.mu. All endpoints require
 // Authorization: Bearer <OZ_ADMIN_KEY> (a server-side secret, never the
 // tenant API key). They expose tenant management: list, drill-down, and
 // lifecycle actions (activate/renew/revoke/tier-override).

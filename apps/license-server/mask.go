@@ -3,8 +3,8 @@ package main
 // maskLicenseKey renders a license key for logging without handing over the
 // key itself.
 //
-// A license key is a bearer entitlement: whoever holds it can activate an
-// OZ-POS instance against the tenant's subscription, so writing one to the
+// A license key is a bearer entitlement: whoever holds it can activate a
+// kasir.mu instance against the tenant's subscription, so writing one to the
 // server log — which is collected, shipped, and readable by whoever can run
 // the container — leaks the entitlement, not just an identifier.
 //
