@@ -84,8 +84,13 @@ async fn tauri_save_topology_persists_and_load_returns_it() {
     )
     .await
     .unwrap();
-    let loaded =
-        load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state()).await.unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap();
     assert!(loaded.is_some());
     let data = loaded.unwrap();
     assert_eq!(data["nodes"].as_array().unwrap().len(), 1);
@@ -123,10 +128,14 @@ async fn tauri_save_topology_overwrites_previous() {
     .await
     .unwrap();
 
-    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
-        .await
-        .unwrap()
-        .unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 1);
     assert_eq!(loaded["nodes"][0]["id"], "second");
 }
@@ -200,10 +209,14 @@ async fn tauri_load_topology_serves_stored_node_without_display_name_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
-        .await
-        .unwrap()
-        .unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     // Raw passthrough: the nameless node is served intact (the editor
     // renders the card without a title and heals it on the next edit).
     assert!(loaded["nodes"][0].get("name").is_none());
@@ -223,8 +236,13 @@ async fn tauri_load_topology_returns_none_for_fresh_app() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded =
-        load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state()).await.unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap();
     assert!(loaded.is_none());
 }
 
@@ -276,10 +294,14 @@ async fn tauri_save_topology_with_wires_roundtrips_fully() {
     save_topology(nodes, wires, None, app.state())
         .await
         .unwrap();
-    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
-        .await
-        .unwrap()
-        .unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
 
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 2);
     assert_eq!(loaded["wires"].as_array().unwrap().len(), 1);
@@ -313,10 +335,14 @@ async fn tauri_load_topology_serves_corrupt_stored_direction_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
-        .await
-        .unwrap()
-        .unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     // Raw passthrough: the editor's normalizeWireDirection folds the
     // corrupt value to one-way and heals the row on the next Apply.
     assert_eq!(loaded["wires"][0]["direction"], "bidirectional");
@@ -351,10 +377,14 @@ async fn tauri_load_topology_serves_semantic_contract_violation_raw() {
         .build(tauri::generate_context!())
         .unwrap();
 
-    let loaded = load_topology(seed_topology_session(app.state::<AppState>().inner()), None, app.state())
-        .await
-        .unwrap()
-        .unwrap();
+    let loaded = load_topology(
+        seed_topology_session(app.state::<AppState>().inner()),
+        None,
+        app.state(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(loaded["nodes"].as_array().unwrap().len(), 2);
 }
 
@@ -1500,11 +1530,15 @@ async fn can_save_topology_probe_gates_on_topology_write_permission() {
         .unwrap();
 
     assert!(
-        can_save_topology(owner_token, None, app.state()).await.unwrap(),
+        can_save_topology(owner_token, None, app.state())
+            .await
+            .unwrap(),
         "an owner session must be allowed to save topology"
     );
     assert!(
-        can_save_topology(admin_token, None, app.state()).await.unwrap(),
+        can_save_topology(admin_token, None, app.state())
+            .await
+            .unwrap(),
         "an admin session must be allowed to save topology"
     );
     let manager_denied = can_save_topology(manager_token, None, app.state()).await;
@@ -1681,12 +1715,14 @@ async fn probe_and_enforcement_agree_for_a_branch_scoped_writer() {
         matches!(probe_ok, Ok(true)),
         "the probe must allow the branch the assignment covers, got {probe_ok:?}"
     );
-    assert!(write_ok.is_ok(), "the enforcement allows the covered branch");
+    assert!(
+        write_ok.is_ok(),
+        "the enforcement allows the covered branch"
+    );
 
     // The unassigned branch: BOTH answer no, with the SAME error kind —
     // agreeing on a different failure is not the property.
-    let probe_no =
-        can_save_topology(token.clone(), Some("store-denied".into()), app.state()).await;
+    let probe_no = can_save_topology(token.clone(), Some("store-denied".into()), app.state()).await;
     let write_no = authorize_topology_write(&token, &app.state(), Some("store-denied")).await;
     assert!(
         matches!(probe_no, Err(AppError::PermissionDenied(_))),
@@ -1700,9 +1736,14 @@ async fn probe_and_enforcement_agree_for_a_branch_scoped_writer() {
     // Pin (M3 arm): scope BEFORE row lookup. Revision 99 exists nowhere, so
     // a PermissionDenied answer can only have come from the gate, while the
     // old scope-free body would fall through to the row lookup.
-    let pin_no =
-        pin_topology_revision(token.clone(), Some("store-denied".into()), 99, true, app.state())
-            .await;
+    let pin_no = pin_topology_revision(
+        token.clone(),
+        Some("store-denied".into()),
+        99,
+        true,
+        app.state(),
+    )
+    .await;
     assert!(
         matches!(pin_no, Err(AppError::PermissionDenied(_))),
         "pin must scope-check the named branch before touching any row, got {pin_no:?}"
@@ -2136,6 +2177,332 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
         "no instance and no audit row may exist in either store; observed {} errors [{}]",
         obs,
         errs,
+    );
+    let _ = dir;
+}
+
+// ── Phase 1 / R4: the ownership gate must consult the store it writes ──────
+//
+// The ruled design (todo-topology-editor.md §5, 2026-09-16) confirms the
+// diagram's storeProfileId MAY select the write store, but every gate layer
+// must resolve against the TARGET store. The permission layer already does
+// (`char_apply`'s scoped user is refused out-of-scope; `commands.rs` passes
+// `Some(&effective_store_id)`). The ownership gate did not: `validate_apply_gate`
+// saw [global, session] and NEVER the target's own registry, so a store that
+// describes itself — its own `locations` carries its id — could not be a
+// write target, while the reverse acceptance path stayed undocumented.
+//
+// Fact of record, established BEFORE choosing the fix: the scoped-create
+// family writes the profile row into the SESSION store's database — pinned
+// green by `create_location_profile_scoped_end_to_end_owner` at
+// `crates/oz-bridge/src/locations_tests.rs:148-154` (count == 2 after create),
+// and `platform_core::StoreDatabaseManager::create_store_db` runs migrations
+// only — which seed every new store database exactly one row under the id
+// 'default', never a self-named row. So the ruling's literal
+// [global, effective] alone WOULD
+// recreate the forever-reject the old comment guards (a freshly created
+// branch profile exists only in the session registry) — the goal's fact
+// clause selects [global, session, EFFECTIVE]: the target is finally
+// consulted, and no working flow loses its arm.
+//
+// Each test below builds its own state (fresh global, legacy-owner session,
+// NOTHING in any locations table beyond migration defaults) and adds
+// registry rows explicitly — the registry placement IS the variable.
+#[tokio::test]
+async fn self_describing_store_passes_the_ownership_gate() {
+    // R4 referee: the profile row exists ONLY in the named store's own
+    // registry. Today the gate never reads that registry, so Apply answers
+    // `unknown-branch-location` — the target's self-knowledge is worthless.
+    // After the alignment the gate must accept (diagram-only apply saves).
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-gate-owner', 'gateowner', 'hash', 'Gate Owner', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    // The session store exists but carries no char-gate rows.
+    {
+        let c = state.db_manager.open_store("char-gate-sess").unwrap();
+        drop(c.lock().unwrap());
+    }
+    // The target store exists and describes ITSELF — and nothing else does:
+    // not the global identity DB, not the session registry.
+    {
+        let c = state.db_manager.open_store("char-gate-self").unwrap();
+        let db = c.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name) VALUES ('char-gate-self', 'Self Named')",
+            [],
+        )
+        .unwrap();
+    }
+    let token = "token-gate-owner".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-gate-owner".into(),
+            "role-owner".into(),
+            "terminal-g".into(),
+            "char-gate-sess".into(),
+            "instance-g".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let nodes = vec![serde_json::json!({
+        "id": "branch-g",
+        "type": "branch-location",
+        "name": "Self",
+        "store_profile_id": "char-gate-self",
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    let result = apply_topology_diff(
+        token,
+        vec![],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        "request-gate-self".to_string(),
+        None,
+        Some("R4 referee: target registry consulted".into()),
+        app.state(),
+    )
+    .await;
+    let msg = result
+        .as_ref()
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(
+        result.is_ok(),
+        "a store whose own registry names its profile must pass the ownership gate (R4); got [{}]",
+        msg,
+    );
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn session_registry_row_still_authorizes_the_fresh_branch() {
+    // The forever-reject guard (green BEFORE and AFTER the alignment — its
+    // job is to make a wrong fix fail): a freshly scoped-created profile
+    // lives ONLY in the session registry (locations_tests.rs:148-154). The
+    // aligned gate keeps that arm, so the same apply that works today must
+    // still work after the target registry joins the slice.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-gate-fresh', 'gatefresh', 'hash', 'Gate Fresh', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    {
+        let c = state.db_manager.open_store("char-gate-sess2").unwrap();
+        let db = c.lock().unwrap();
+        // Exactly what create_location_profile_scoped leaves behind: the row
+        // in the SESSION store's registry, and a bare store db for the
+        // target with only its 'default' migration seed.
+        db.execute(
+            "INSERT INTO locations (id, name) VALUES ('char-gate-freshb', 'Fresh Branch')",
+            [],
+        )
+        .unwrap();
+    }
+    {
+        let c = state.db_manager.open_store("char-gate-freshb").unwrap();
+        drop(c.lock().unwrap());
+    }
+    let token = "token-gate-fresh".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-gate-fresh".into(),
+            "role-owner".into(),
+            "terminal-g2".into(),
+            "char-gate-sess2".into(),
+            "instance-g2".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let nodes = vec![serde_json::json!({
+        "id": "branch-f",
+        "type": "branch-location",
+        "name": "Fresh",
+        "store_profile_id": "char-gate-freshb",
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    let result = apply_topology_diff(
+        token,
+        vec![],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        "request-gate-fresh".to_string(),
+        None,
+        Some("R4 false-reject guard".into()),
+        app.state(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "the session-registry arm must survive the alignment or the \
+         documented forever-reject returns; got {:?}",
+        result.as_ref().err(),
+    );
+    let _ = dir;
+}
+
+#[tokio::test]
+async fn session_only_row_authorizing_a_foreign_target_is_the_accepted_residual() {
+    // ACCEPTED RESIDUAL, pinned deliberately (R4 round, 2026-09-16): the
+    // gate keeps ANY-registry semantics, so a row sitting in the SESSION's
+    // registry still authorises writing into a DIFFERENT target store whose
+    // own registry does not name it — here the target store db exists and
+    // carries only its 'default' seed. Closing this fully needs either a
+    // write-side change (scoped create seeds a self-row into the new store
+    // db — touches the §I locations family, outside this phase's fence) or
+    // dropping the session arm (which the fresh-create fact above shows
+    // would regress real flows). The alignment records the gap, not misses
+    // it; this test fails the day either closure lands, and whoever breaks
+    // it should read this comment as the upgrade note it is.
+    let dir = tempdir().unwrap();
+    let global = oz_core::migrations::fresh_db();
+    {
+        let store = Store::new(&global);
+        store.seed_default_roles().unwrap();
+        global
+            .execute(
+                "INSERT INTO users (id, username, pin_hash, display_name, role_id, \
+                     is_active, created_at, updated_at) \
+                     VALUES ('user-gate-res', 'gateres', 'hash', 'Gate Res', 'role-owner', 1, \
+                             '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        global
+            .execute(
+                r#"INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES ('default', 'pro', 'active', NULL, 2, 3, '["store-pos"]', 'BOOTSTRAP_FREE', '', '', '2026-08-10T00:00:00.000Z')"#,
+                [],
+            )
+            .unwrap();
+    }
+    let mut state = AppState::for_test_with_conn(global);
+    state.db_manager =
+        platform_core::StoreDatabaseManager::new(dir.path().to_path_buf(), migrations::ALL);
+    {
+        let c = state.db_manager.open_store("char-gate-sess3").unwrap();
+        let db = c.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name) VALUES ('char-gate-resb', 'Residual Branch')",
+            [],
+        )
+        .unwrap();
+    }
+    {
+        // Target exists WITHOUT a self row — the non-target membership is
+        // what still accepts.
+        let c = state.db_manager.open_store("char-gate-resb").unwrap();
+        drop(c.lock().unwrap());
+    }
+    let token = "token-gate-res".to_string();
+    state.session_store.write().unwrap().insert(
+        token.clone(),
+        SessionContext::new(
+            "user-gate-res".into(),
+            "role-owner".into(),
+            "terminal-g3".into(),
+            "char-gate-sess3".into(),
+            "instance-g3".into(),
+            "admin".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+    let nodes = vec![serde_json::json!({
+        "id": "branch-r",
+        "type": "branch-location",
+        "name": "Residual",
+        "store_profile_id": "char-gate-resb",
+        "x": 0.0,
+        "y": 0.0,
+    })];
+    let result = apply_topology_diff(
+        token,
+        vec![],
+        vec![],
+        vec![],
+        nodes,
+        vec![],
+        None,
+        0,
+        "request-gate-res".to_string(),
+        None,
+        Some("R4 residual pinned".into()),
+        app.state(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "the accepted residual is documented behavior, not an oversight — \
+         if this fails, the closure landed; upgrade the comment above; got {:?}",
+        result.as_ref().err(),
     );
     let _ = dir;
 }

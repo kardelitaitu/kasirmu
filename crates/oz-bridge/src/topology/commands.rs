@@ -568,20 +568,30 @@ pub async fn apply_topology_diff(
     // requires canonical semantic node and wire fields, semantic ownership,
     // and structural validity.
     //
-    // Ownership registries: branch profiles created through the scoped
-    // commands land in the SESSION's store database (store-<id>.sqlite),
-    // while the global database only carries the seeded default profile.
-    // The gate therefore accepts a canonical branch profile from either
-    // registry — validating the global one alone rejected every freshly
-    // created branch with `unknown-branch-location` forever.
+    // Ownership registries (R4, ruled 2026-09-16): [global, session,
+    // EFFECTIVE].
+    //   * SESSION stays required by fact, not habit: branch profiles created
+    //     through the scoped commands land in the session store's database
+    //     (`locations_tests.rs:148-154` pins it green), and a store database
+    //     is migrated with only a 'default' seed — dropping this arm would
+    //     return every freshly created branch to the `unknown-branch-location`
+    //     forever-reject the previous comment on this block guarded.
+    //   * EFFECTIVE is NEW: the store the diagram actually writes into is
+    //     finally consulted about its own identity. Before this line existed,
+    //     a self-describing store's registry could not authorize an Apply
+    //     into it — the referee is
+    //     `self_describing_store_passes_the_ownership_gate`.
+    //   * ACCEPTED RESIDUAL, pinned by
+    //     `session_only_row_authorizing_a_foreign_target_is_the_accepted_residual`:
+    //     ownership keeps ANY-registry semantics, so a session-side row can
+    //     still authorize writes into a target that does not name itself.
+    //     Full closure needs a write-side self-seed in the §I locations
+    //     family (outside this fence) or removal of the session arm (which
+    //     the fresh-create fact rules out). Recorded, not missed.
     {
         let global_db = ctx.db.lock().await;
         let branch_conn = ctx.db_manager.open_store(&session.store_id).map_err(|e| {
-            // M5 / ruling R3: the open_store cause interpolates filesystem
-            // detail that must not cross IPC into a renderer toast; the full
-            // error is logged, the returned one is path-free. (Which store
-            // this line OPENS is Phase 1's question — this changes only the
-            // error TEXT.)
+            // M5 / ruling R3: cause is logged, not returned (path-free error).
             tracing::error!(store = %session.store_id, error = %e, "topology Apply: opening store db failed for the ownership gate");
             BridgeError::Internal(format!(
                 "opening store db for topology gate: store '{}'",
@@ -591,7 +601,36 @@ pub async fn apply_topology_diff(
         let branch_db = branch_conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        validate_apply_gate(&[&global_db, &branch_db], &diagram_nodes, &diagram_wires)?;
+        // The effective store's registry joins the slice — same physical DB
+        // when the diagram names the session's own store, so that case does
+        // not re-open or double-lock. Note: `open_store` creates-and-migrates
+        // an absent file, so a diagram naming an entirely unknown id can now
+        // leave an empty store database behind even as the gate rejects it —
+        // file-only, zero rows, identical to what `create_store_db` already
+        // produces on the success path. Accepted side effect, recorded.
+        let effective_conn = (effective_store_id != session.store_id)
+            .then(|| ctx.db_manager.open_store(&effective_store_id))
+            .transpose()
+            .map_err(|e| {
+                // M5 / ruling R3 discipline holds on the new arm too.
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening the effective store db failed for the ownership gate");
+                BridgeError::Internal(format!(
+                    "opening store db for topology gate: store '{}'",
+                    effective_store_id
+                ))
+            })?;
+        let effective_db = effective_conn
+            .as_ref()
+            .map(|c| {
+                c.lock()
+                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))
+            })
+            .transpose()?;
+        let mut registries: Vec<&rusqlite::Connection> = vec![&global_db, &branch_db];
+        if let Some(db) = effective_db.as_deref() {
+            registries.push(db);
+        }
+        validate_apply_gate(&registries, &diagram_nodes, &diagram_wires)?;
     }
 
     // Capture lengths before the workspace block consumes the vectors
@@ -982,7 +1021,33 @@ pub async fn apply_topology_diff(
         let branch_db = branch_conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        save_topology_json_at_key_with_revision(
+        // R4: the save boundary's ownership re-check must agree with the
+        // gate it follows — same [global, session, EFFECTIVE] slice, built
+        // the same way (no re-open when the diagram names the session's own
+        // store). The second site of the same class was real: the referee
+        // passed the gate and died HERE before this line existed.
+        let effective_conn = (effective_store_id != session.store_id)
+            .then(|| ctx.db_manager.open_store(&effective_store_id))
+            .transpose()
+            .map_err(|e| {
+                tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening the effective store db failed for the diagram save");
+                BridgeError::Internal(format!(
+                    "opening store db for topology save: store '{}'",
+                    effective_store_id
+                ))
+            })?;
+        let effective_db = effective_conn
+            .as_ref()
+            .map(|c| {
+                c.lock()
+                    .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))
+            })
+            .transpose()?;
+        let mut save_registries: Vec<&rusqlite::Connection> = vec![&global_db, &branch_db];
+        if let Some(db) = effective_db.as_deref() {
+            save_registries.push(db);
+        }
+        save_topology_json_at_key_with_registries(
             &global_db,
             diagram_nodes,
             diagram_wires,
@@ -990,10 +1055,10 @@ pub async fn apply_topology_diff(
             &resolved_issue_keys,
             Some(base_revision),
             Some((&request_key, &request_fingerprint)),
-            Some(&branch_db),
+            &save_registries,
             Some(&revision_ctx),
         )
-        // branch_db and branch_conn drop here with the block.
+        // The guards and slice drop here with the block.
     };
     if let Err(save_error) = save_result {
         drop(global_db);

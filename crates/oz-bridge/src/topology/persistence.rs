@@ -283,10 +283,60 @@ pub fn save_topology_json_at_key_with_revision(
     branch_registry: Option<&Connection>,
     revision_ctx: Option<&TopologyRevisionContext<'_>>,
 ) -> Result<u64, BridgeError> {
-    match branch_registry {
-        Some(branch_db) => validate_semantic_ownership_in(&[conn, branch_db], &nodes, &wires)?,
-        None => validate_semantic_ownership(conn, &nodes, &wires)?,
-    }
+    // Thin adapter over the registries form (R4 alignment): one optional
+    // extra registry becomes the two-element slice Apply used before the
+    // target store joined it; the 40-odd test callers keep this shape.
+    let registries: Vec<&Connection> = match branch_registry {
+        Some(b) => vec![conn, b],
+        None => vec![conn],
+    };
+    save_topology_json_at_key_with_registries(
+        conn,
+        nodes,
+        wires,
+        setting_key,
+        resolved_issue_keys,
+        expected_revision,
+        request,
+        &registries,
+        revision_ctx,
+    )
+}
+
+/// The registries form of the save-boundary ownership re-check.
+///
+/// `ownership_registries` is the caller's FULL set — every database whose
+/// `locations` table may vouch for the canonical Branch Location profile.
+/// Production Apply passes `[global, session, effective]` (R4, ruled
+/// 2026-09-16, mirroring `validate_apply_gate`'s slice at its call site:
+/// the save boundary that did NOT consult the target registry was the second
+/// site of the same class and is the reason the R4 referee test
+/// (`self_describing_store_passes_the_ownership_gate`) failed here first).
+/// `conn` (the settings database the envelope lands in) is not implicit —
+/// pass it explicitly as the first element; the old single-`branch_registry`
+/// adapter constructs exactly `[conn]` or `[conn, b]`.
+///
+/// CONTRACT — callers must gate; this is not safe to call directly. It re-runs
+/// semantic OWNERSHIP only (`validate_semantic_ownership_in`, its first
+/// statement), and nothing else: `validate_apply_gate`'s canonical-semantic
+/// and structural checks, `validate_warehouse_quota`, `validate_warehouse_capacity`
+/// and the session/entitlement resolution are the CALLER's. A client that
+/// saves through this helper without them can publish a diagram the Apply
+/// command would reject — the hazard M4 (`todo-topology-editor.md:408`) exists
+/// to close.
+#[allow(clippy::too_many_arguments)]
+pub fn save_topology_json_at_key_with_registries(
+    conn: &Connection,
+    nodes: Vec<Value>,
+    wires: Vec<Value>,
+    setting_key: &str,
+    resolved_issue_keys: &[String],
+    expected_revision: Option<u64>,
+    request: Option<(&str, &str)>,
+    ownership_registries: &[&Connection],
+    revision_ctx: Option<&TopologyRevisionContext<'_>>,
+) -> Result<u64, BridgeError> {
+    validate_semantic_ownership_in(ownership_registries, &nodes, &wires)?;
     // The legacy typed structs validate geometry and known serialized node
     // kinds. `branch-location` is a semantic alias, so normalize only the
     // temporary validation copy; the raw command payload is persisted intact.
@@ -674,8 +724,11 @@ pub fn validate_semantic_ownership_in(
 ///
 /// CONTRACT — this is the gate, not a helper behind it: a caller that mutates
 /// workspaces or saves an envelope without having run it first has skipped the
-/// only place the canonical semantic shape is required. Production runs it at
-/// `commands.rs:561`, before the workspace block.
+/// only place the canonical semantic shape is required. Production runs it
+/// from `apply_topology_diff`'s ownership block in
+/// `crates/oz-bridge/src/topology/commands.rs` (the `validate_apply_gate`
+/// call), before the workspace block — by name, not line number, because
+/// R4 moved the block the old `commands.rs:561` citation pointed at.
 ///
 /// NARROWED to `pub(crate)` (M4, `todo-topology-editor.md:408`). Its whole
 /// caller set is inside this crate — `commands.rs:561` plus the mounted
