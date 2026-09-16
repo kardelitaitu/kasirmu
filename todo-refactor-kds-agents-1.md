@@ -71,11 +71,12 @@
   > with a trailing catch-up), gated by `settings.soundEnabled`. Evidence: `useNewTicketSound.ts:5`
   > (`DEBOUNCE_MS = 5000`), `:29` (signature), wired at `KdsScreen.tsx:159`.
 - [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: ONE `npm run typecheck` (tsc --noEmit) from ui/ at bd1a8a4e32 (= c8ea8bbe4 for this surface) -> no diagnostics, exit code 0. Per the lane owner's ruling this single run also satisfies agents-1:94 and agents-2:93; see "Acceptance runs (2026-09-15, HEAD c8ea8bbe4)". -->
-- [ ] **Commit Milestone:**
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-state): extract keyboard navigation and audio alerts"
   ```
   > Subject adjusted to drop the invented "bump bar" noun; the prefix is unchanged.
+  > **SHIPPED IN SIBLING COMMITS — ticked 2026-09-16 as evidence, no re-commit made.** Every Phase 1.1 work box above is closed with its own print (keyboard: `c965baddb refactor(kds): move useKdsShortcuts to hooks/useKdsKeyboardShortcuts` over the shipped feature-root extraction; audio: `hooks/useNewTicketSound.ts` with its 5 s-debounce evidence wired at `KdsScreen.tsx:159`). The milestone's CONTENT exists; filing a literal `refactor(kds-state):` commit over shipped code would move zero bytes — the pattern this family itself set at agents-2's Phase 2.2 milestone (ticked-as-evidence, 2026-09-16).
 
 ### Phase 1.2: Extract KDS Ticket Lifecycle State Machine
 - [x] Extract ticket fetching, the `kds:orders-changed` listener and status updates into `hooks/useKdsTickets.ts`. <!-- TICKED 2026-09-15 at 32886394e: landed under another name - the named target hooks/useKdsTickets.ts does not exist (ls returns 0) and the work is ui/src/features/kds/useKdsRealtime.ts, in the flat kds/ directory rather than hooks/ -->
@@ -92,10 +93,12 @@
   > `sameOrders` diff helper exported at `KdsScreen.tsx:42`.
 - [x] Wire hook into `KdsScreen.tsx`. <!-- TICKED 2026-09-15 at 32886394e: proved by grep -c addEventListener ui/src/features/kds/KdsScreen.tsx printing 0 - the screen no longer subscribes -->
 - [x] Verify: `npm run typecheck`. <!-- TICKED 2026-09-15 by the acceptance lane: the same single `npm run typecheck` run at bd1a8a4e32 -> exit code 0, no diagnostics; one run, three identically-worded boxes (this one, agents-1:73, agents-2:93) per the lane owner's ruling. The box's own text names only that command and asks for nothing further. -->
-- [ ] **Commit Milestone:**
+- [x] **Commit Milestone:**
   ```bash
   git commit -m "refactor(kds-state): decouple ticket lifecycle state machine into useKdsTickets"
   ```
+
+  > **SHIPPED UNDER ANOTHER NAME — ticked 2026-09-16 as evidence.** Both work boxes closed 2026-09-15 at `32886394e`, the :81 record naming the landing shape (`useKdsRealtime.ts` flat in `features/kds/`, not the guessed `hooks/useKdsTickets.ts`) and the wiring box proved by `addEventListener` = 0 in the screen. The decoupling exists in substance under the extraction commits; the named subject would file no new change — same disposition as the 1.1 milestone directly above.
 
 ---
 
