@@ -273,6 +273,21 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   the desktop layers on top (ADR #47) has no tablet helper yet"*. `get_receipt_format_scoped` carries
   only the shared gate and **is** delegated. Same owner question as BR-S8 and BR-X4: which shell's gate
   set is authoritative.
+- **BR-S10** — **[PBD]** `update_staff_scoped` is not delegated because the two shells disagree on the
+  security-audit `debug_upgrade` flag — a divergence in **what gets audited**, not in a gate, so it is
+  not covered by the BR-S8/BR-X4/BR-S9 ruling. `Store::record_security_event(event, debug_upgrade)`
+  (`crates/oz-core/src/db/audit_security.rs:382-392`) drops the write for a CONFIRMED Free tier
+  (`ent.loaded && ent.tier.audit_retention_days().is_none()`), and `debug_upgrade` decides whether the
+  desktop's dev Free→Premium promotion applies first. The tablet wrapper passes **`false`**
+  (`apps/tablet-client/src/commands/auth.rs:81`); the bridge wrapper passes **`true`**
+  (`crates/oz-bridge/src/auth.rs:160`) — the desktop's behaviour. The core doc states the intent at
+  `audit_security.rs:370-374`: *"tablet passes `false` so it never mirrors the desktop divergence"*.
+  Delegating would therefore begin writing security events for Free-tier staff updates on the tablet in
+  debug builds. Pinned by `confirmed_free_records_nothing_even_in_a_debug_build`
+  (`apps/tablet-client/src/commands/staff_security_events_tests.rs:179-194`), which went red during the
+  port and is how this was found. `create_staff_scoped` carries the same fork but not the exposure:
+  `enforce_staff_quota` precedes the recorder and Free caps staff at one account, so a Free tenant
+  cannot reach that `record_security_event` call.
 
 ### Correctness / robustness
 
