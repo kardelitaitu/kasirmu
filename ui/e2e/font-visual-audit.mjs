@@ -17,7 +17,7 @@
  * any report using these numbers names its own subject instead of implying one.
  *
  * Usage:
- *   node e2e/font-visual-audit.mjs [--dist ui/dist] [--out <dir, default ui/font-audit/<shell>/>] [--keep-js]
+ *   node e2e/font-visual-audit.mjs [--dist ui/dist] [--out <dir, default ui/font-audit/<shell>/>] [--keep-js] [--report]
  *
  * Vitest never collects e2e/** (see ui/vite.config.ts's test.exclude), and this is
  * deliberately not a *.spec.ts: it asserts nothing, so it can never go red, and a
@@ -36,6 +36,22 @@ import { ageHours, buildTimeOf, stylesheetsNewerThan, surfaceCommitsSince } from
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const argv = process.argv.slice(2);
+
+// --report tees every line this tool prints and writes them into one self-contained HTML
+// page beside the PNGs, with each image embedded as a data URI. The reason is specific: the
+// numbers live in this stdout and the renderings live in ui/font-audit/, which is gitignored,
+// so an owner who wants to rule on a visual question currently has to read a terminal scroll
+// and open files one at a time. One file, opened in a browser, no Docker, no server.
+// Installed here rather than at the bottom so the `artifacts ->` line is captured too.
+const REPORT = argv.includes('--report');
+const TEE = [];
+if (REPORT) {
+  const rawLog = console.log.bind(console);
+  console.log = (...args) => {
+    TEE.push(args.map((v) => (typeof v === 'string' ? v : String(v))).join(' '));
+    rawLog(...args);
+  };
+}
 const flag = (name, dflt) => {
   const i = argv.indexOf(`--${name}`);
   return i === -1 ? dflt : argv[i + 1];
@@ -607,7 +623,42 @@ async function run() {
   server.close();
 }
 
-run().catch((e) => {
+run().then(() => {
+  if (!REPORT) return;
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const shots = fs.readdirSync(outDir).filter((f) => f.endsWith('.png')).sort();
+  const figures = shots.map((f) => {
+    const full = path.join(outDir, f);
+    const bytes = fs.statSync(full).size;
+    const b64 = fs.readFileSync(full).toString('base64');
+    return `<figure><img alt="${esc(f)}" src="data:image/png;base64,${b64}">`
+      + `<figcaption><b>${esc(f)}</b> &middot; ${(bytes / 1024).toFixed(1)} KB &middot; `
+      + `written ${esc(fs.statSync(full).mtime.toISOString())}</figcaption></figure>`;
+  }).join('\n');
+  const html = `<!doctype html><meta charset="utf-8"><title>font visual audit -- ${esc(path.basename(outDir))}</title>
+<style>
+ body{font:14px/1.5 system-ui;margin:2rem auto;max-width:1100px;padding:0 1rem;background:#111;color:#ddd}
+ pre{background:#1b1b1b;padding:1rem;overflow:auto;border-radius:6px;font-size:12.5px;white-space:pre-wrap}
+ figure{margin:1.4rem 0} img{max-width:100%;border:1px solid #444;background:#fff}
+ figcaption{color:#9a9;font-size:12px;margin-top:.3rem}
+ h1{font-size:1.25rem} h2{font-size:1rem;margin-top:2rem;color:#9cf}
+</style>
+<h1>font visual audit -- ${esc(path.basename(outDir))}</h1>
+<p>Generated ${esc(new Date().toISOString())} from <code>${esc(outDir)}</code> by
+<code>node e2e/font-visual-audit.mjs ${esc(argv.join(' '))}</code>. The PNGs are embedded, so this
+one file is the whole review -- nothing here needs a server, a browser session, or Docker.
+The transcript is the tool's own stdout, unedited.</p>
+<h2>What the tool measured</h2>
+<pre>${esc(TEE.join('\n'))}</pre>
+<h2>The renderings (${shots.length})</h2>
+${figures}
+`;
+  const file = path.join(outDir, 'report.html');
+  fs.writeFileSync(file, html);
+  const rawLog = (m) => process.stdout.write(m + '\n');
+  rawLog(`\nreport           ${file}  (${(html.length / 1024).toFixed(0)} KB, ${shots.length} images embedded)`);
+  rawLog('                 open this one file to review the numbers and both renderings together.');
+}).catch((e) => {
   console.error(e);
   process.exit(1);
 });
