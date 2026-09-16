@@ -1,7 +1,8 @@
 //! Audit log commands.
 //!
-//! `list_audit_log` exposes the append-only audit log entries stored in
-//! SQLite via `oz_core::db::Store::list_audit_entries`. Every scoped body
+//! The live read surface is `list_audit_log_scoped`, which exposes the
+//! append-only audit log entries stored in SQLite via
+//! `oz_core::db::Store::list_audit_entries`. Every scoped body
 //! lives in the headless `oz_bridge::audit` module (ADR #49 Slice 1): each
 //! `#[command]` below keeps its exact name, parameter list and
 //! `Result<_, AppError>` return, so the registered IPC surface and the
@@ -12,10 +13,14 @@
 //! `use super::*;` in `audit_tests.rs` keeps resolving them and no field
 //! list is duplicated across two crates.
 //!
-//! One command is **not** delegated: [`list_audit_log`] has no bridge
-//! equivalent - `grep -n 'fn list_audit_log\b' crates/oz-bridge/src/audit.rs`
-//! matches only the `_scoped` form - so its body stays tablet-native rather
-//! than waiting on bridge code that is a different box.
+//! One command used to sit here unhomed: the unscoped `list_audit_log`, the
+//! only audit fn with no bridge equivalent, which is why it was never ported
+//! rather than why it stayed. It is retired (T37, 2026-09-16), and the reason
+//! it could go without losing a test is the useful part: it was registered in
+//! **neither** shell and named by no production UI file - only by a
+//! `ui/src/dev-mock` key, which stays as an alias seed for the scoped name -
+//! so the tier-gate panic it pinned was already covered twice through the
+//! scoped door, once at Premium and once at Free.
 //!
 //! Gate order runs inside the bridge, in the same order as before: resolve
 //! the scope, enforce the Premium+ audit tier, then `audit:view` /
@@ -40,33 +45,6 @@ pub use oz_bridge::audit::{
 };
 
 // -- Deprecated, non-scoped read (no bridge equivalent) ---------------
-
-/// Fetch audit log entries in reverse chronological order.
-///
-/// Supports pagination via `limit` and `offset`. Returns an array of
-/// [`AuditEntryDto`] with action, target, outcome, and timestamp.
-///
-/// **Deprecated for multi-store UI paths (ADR #7):** Use
-/// [`list_audit_log_scoped`] so the session selects the store and user.
-/// Still tenant-facing audit data - the Premium+ tier gate applies here
-/// too.
-///
-/// **Not a shim:** `oz_bridge::audit` has no unscoped `list_audit_log`, so
-/// this body stays here. It is also why [`require_audit_tier`] survives: the
-/// deprecated command is still live, still gated, and the scoped shims reuse
-/// the same gate as their fourth move.
-#[command]
-pub async fn list_audit_log(
-    args: ListAuditLogArgs,
-    state: State<'_, AppState>,
-) -> Result<Vec<AuditEntryDto>, AppError> {
-    require_audit_tier(&state).await?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    let entries = store.list_audit_entries(args.limit, args.offset)?;
-    drop(db);
-    Ok(entries.into_iter().map(AuditEntryDto::from).collect())
-}
 
 /// Tier gate for every tenant-facing audit-log surface (AUD-01/04/09,
 /// todo-global-saas-2.md P1 "audit baseline").

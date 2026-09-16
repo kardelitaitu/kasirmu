@@ -206,6 +206,17 @@ fn security_page_args() -> ListSecurityEventsScopedArgs {
 
 #[tokio::test]
 async fn list_command_passes_the_tier_gate_without_panicking() {
+    // This case now carries the whole "the audit tier gate must not panic on the
+    // list path" invariant. It used to have a twin aimed at the unscoped
+    // `list_audit_log`, `deprecated_list_command_passes_the_tier_gate_without_panicking`,
+    // which was the fifth of the five `require_audit_tier` call sites the panic touched.
+    // That command was retired on 2026-09-16 (T37) -- registered in neither shell, named
+    // by no production UI file, only by a dev-mock key that survives as an alias seed --
+    // and its case was this one's structural duplicate: same `app_for("premium")`, same
+    // assertion, different door. The free-tier refusal direction is covered by
+    // `the_gate_denies_a_free_tier_session_without_panicking` below, also through the
+    // scoped door. Nothing about the gate lost its test; one door that cannot be opened
+    // stopped having one.
     let app = app_for("premium");
     let page = list_audit_log_scoped("tok".into(), page_args(), app.state()).await;
     assert!(page.is_ok(), "{:?}", page.err());
@@ -279,23 +290,6 @@ async fn security_events_page_denies_a_free_tier_session() {
         }
         other => panic!("expected a Premium tier refusal, got {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn deprecated_list_command_passes_the_tier_gate_without_panicking() {
-    // The fifth call site: the non-scoped command is deprecated for the UI but
-    // still live, still gated, and was panicking exactly like the others.
-    let app = app_for("premium");
-    let entries = list_audit_log(
-        ListAuditLogArgs {
-            limit: 50,
-            offset: 0,
-        },
-        app.state(),
-    )
-    .await;
-    assert!(entries.is_ok(), "{:?}", entries.err());
-    assert!(entries.unwrap().is_empty());
 }
 
 #[tokio::test]
