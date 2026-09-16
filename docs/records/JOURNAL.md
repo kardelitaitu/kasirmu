@@ -38,7 +38,7 @@ The pre-commit hook's fmt step was trigger-scoped but never work-scoped: it fire
 8. Not edited (historical records, correct as records): `docs/plans/0.0.36-backlog.md` eight-step mentions, agent journals, `docs/archived/*`, audit-stamp history inside onboarding-guide.
 
 **What it means:**
-Formatting stays enforced — check-only, outside the commit path: `cargo fmt --all -- --check` in pre-push (`scripts/run-pre-push.py:127`), CI (`dev-ci.yml#cargo-check`), `check.sh:39`, `release.sh:59`. An unformatted commit now fails loudly at pre-push/CI instead of being silently fixed at commit time. Agents must run `cargo fmt --all` themselves before pushing. Trade-off recorded: a hook-less clone with an unformatted HEAD has no commit-time guard at all — CI remains the backstop, same as every other gate in this repo.
+Formatting stays enforced — check-only, outside the commit path: `cargo fmt --all -- --check` in pre-push (`scripts/run-pre-push.py`, task named `cargo fmt --check` — `grep -n 'cargo fmt' scripts/run-pre-push.py`), CI (`dev-ci.yml#cargo-check`), `scripts/check.sh` step `cargo fmt` (`grep -n 'step "cargo fmt"' scripts/check.sh`), `release.sh:59`. An unformatted commit now fails loudly at pre-push/CI instead of being silently fixed at commit time. Agents must run `cargo fmt --all` themselves before pushing. Trade-off recorded: a hook-less clone with an unformatted HEAD has no commit-time guard at all — CI remains the backstop, same as every other gate in this repo.
 
 **Verification:**
 - `python3 scripts/verify-agents-mirrors.py` — green (all mirrors + skills agree with the hook's 7 sections).
