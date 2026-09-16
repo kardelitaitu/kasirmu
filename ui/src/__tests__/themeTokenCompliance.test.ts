@@ -2413,13 +2413,26 @@ function customPropNamesIn(text: string): string[] {
   return [...blanked.matchAll(CUSTOM_PROP_DEF_RE)].map((m) => m[1] as string);
 }
 
+/**
+ * The same swallow, one helper later, and this one was still open when `notes.md` item 36
+ * filed both of them: `collectScriptFiles` had `catch { return out }`, so a directory this
+ * walk cannot list removes its whole subtree from `jsProvidedTokens` -- and that set is what
+ * two rules below use to decide whether a token is "provided from JS". A script nobody
+ * reached is a token nobody credited, which fails the other way from the CSS case: not a
+ * false green on a sheet, but a rule that can report a token as unprovided because the file
+ * providing it was silently skipped. Fixed the way `c7b1034ce` fixed the dither walker:
+ * name the directory, keep the reason, and let a case assert the list is empty.
+ */
+const JS_WALK_ABANDONED: { dir: string; reason: string }[] = [];
+
 /** .ts/.tsx under dir -- production code only: no __tests__, no *.test.*, no spec. */
 function collectScriptFiles(dir: string): string[] {
   const out: string[] = [];
   let entries: Dirent[] = [];
   try {
     entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
+  } catch (e) {
+    JS_WALK_ABANDONED.push({ dir, reason: e instanceof Error ? e.message : String(e) });
     return out;
   }
   for (const entry of entries) {
@@ -2447,6 +2460,53 @@ function jsProvidedTokens(dir: string): Set<string> {
   }
   return found;
 }
+
+/**
+ * Taken once at module load so a case title can print the size of the population two rules
+ * depend on. This is the measurement, not a cache -- `jsProvidedTokens` still walks on its
+ * own, which is also why an unlistable directory can be recorded more than once.
+ */
+const SCRIPT_SOURCES = collectScriptFiles(UI_SRC);
+
+describe("JS walk scope floor (notes.md item 36)", () => {
+  // The CSS walk above has carried this guard for several rounds; the script walk is the
+  // subject of two rules -- which tokens JS provides at runtime -- and until now a directory
+  // it could not list simply was not there, which those rules read as "not provided".
+  it(`the script walk opened every directory it was pointed at (${SCRIPT_SOURCES.length} files in hand)`, () => {
+    expect(
+      JS_WALK_ABANDONED,
+      "the production-script walk could not list a directory and carried on, so `jsProvidedTokens` "
+        + "was built from a smaller tree than these rules claim to read. A script nobody reached is a "
+        + "token nobody credited: the failure is a rule reporting a token missing, not a green. "
+        + "Fix the access; do not lower the floor.\n"
+        + JS_WALK_ABANDONED.map((a) => `  ${a.dir} -- ${a.reason}`).join("\n"),
+    ).toEqual([]);
+    // Measured at 671 when this floor was written (features/ alone is 418 of them), floored
+    // at 575: 96 of slack, ~14 %, the same proportion the CSS floor uses (120 against 139).
+    // Losing features/ crosses it; the empty-abandon assertion above is the sensitive guard
+    // and this floor is the backstop for a narrowing that still lists everything.
+    expect(
+      SCRIPT_SOURCES.length,
+      `the script walk found ${SCRIPT_SOURCES.length} production .ts/.tsx files under ui/src, below the `
+        + "575 it was measured at when this floor was written. Either the tree shrank dramatically or the "
+        + "walk is reaching somewhere other than what the token rules above claim to cover.",
+    ).toBeGreaterThanOrEqual(575);
+  });
+
+  it("scope floor probe: an unlistable directory is recorded, not read as empty", () => {
+    const before = JS_WALK_ABANDONED.length;
+    expect(collectScriptFiles(join(UI_SRC, "no-such-directory-at-all"))).toEqual([]);
+    // A returned [] and a recorded abandon are two different facts, and before this helper
+    // existed both looked identical to the caller -- which is the whole defect.
+    expect(JS_WALK_ABANDONED.length).toBe(before + 1);
+    expect(JS_WALK_ABANDONED[before]?.dir).toContain("no-such-directory-at-all");
+    expect(JS_WALK_ABANDONED[before]?.reason).toBeTruthy();
+    // The probe pays for its own plant: leaving the entry would fire the assertion above on
+    // every later run, which is correct behaviour for a real abandon and wrong for a probe.
+    JS_WALK_ABANDONED.length = before;
+    expect(JS_WALK_ABANDONED.length).toBe(before);
+  });
+});
 
 const FEATURE_CSS_SOURCES = collectCssFiles(join(UI_SRC, "features"))
   .map((f) => ({ file: f, text: readFileSync(f, "utf-8") }));
