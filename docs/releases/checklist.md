@@ -45,6 +45,9 @@
 - [ ] All CI jobs pass — `dev-ci.yml` jobs are `changes` (path router),
       `website`, `cargo-check` (fmt → check → clippy), `cargo-nextest`,
       `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`,
+      `release-bridge-test` (push-only; runs `cargo nextest run -p
+      oz-bridge --release`. The release profile is where `BOOTSTRAP_FREE`
+      stops verifying, so a debug-green run says nothing about it),
       `ci-docs-drift`, `static-gates` (architecture boundaries, money format,
       windows config, skill drift, healthcheck, panic inventory, release
       workflow validation, Go fmt/vet/test), `release-readiness` (updater

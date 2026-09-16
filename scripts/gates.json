@@ -99,6 +99,13 @@
       "ci": { "workflow": "dev-ci.yml", "job": "cargo-nextest" }
     },
     {
+      "id": "release-bridge-tests",
+      "label": "Release-profile bridge tests",
+      "status": "required",
+      "_note": "CI-ONLY by design: no check.sh runner, because a release build would add minutes to every local run. dev-ci.yml#release-bridge-test runs `cargo nextest run -p oz-bridge --release` on push to main only (not PR, not scheduled): a release compile is much colder than the debug one, and taxing every PR with it was ruled not worth the guarantee. Landable because release went green at 2dc500382 - never land a gate red. Flag trap: `-P release` is the NEXTEST profile and would silently re-run the debug build; `-r`/`--release` is the cargo profile.",
+      "ci": { "workflow": "dev-ci.yml", "job": "release-bridge-test" }
+    },
+    {
       "id": "architecture-boundaries",
       "label": "Architecture boundaries",
       "status": "required",
