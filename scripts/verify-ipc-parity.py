@@ -1365,12 +1365,12 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
                 f'The "{section}" section of {name} takes one bare command name per entry, '
                 f'like "get_active_cart_scoped"; the object form {OBJECT_FORM} is accepted '
                 f'only in "dev_mock" and "scoped_orphans". That split is deliberate today, '
-                f"not an oversight: scripts/verify-scoped-reads.py parses the \"{section}\" "
-                f"list (dev-ci.yml#static-gates and scripts/check.sh both run it bare) and "
-                f"cannot read an object, so leaving it here would crash a second gate with a "
-                f"TypeError instead of failing it. Record the reason in the "
-                f'\"_{section}_comment\" prose or a tracking doc until that reader is '
-                f"taught the shape."
+                f"not an oversight: scripts/verify-scoped-reads.py grades this section by "
+                f"those names (dev-ci.yml#static-gates and scripts/check.sh both run it "
+                f"bare), so an object here makes that gate FAIL the build -- exit 1 and one "
+                f"sentence naming this section and the entry's 1-based index, not a "
+                f"traceback -- in a file its owner may not be working in. Keep the entry "
+                f"bare and record why in the \"_{section}_comment\" prose or a tracking doc."
             )
         return (
             f'The "{section}" section of {name} accepts a bare command name or an object '
@@ -1402,8 +1402,9 @@ def allowlist_shape_problems(payload: dict, path) -> list[str]:
                     problems.append(f"{where} is an object with no \"name\": {why(section)}")
                 elif section in EXTERNALLY_READ_SECTIONS:
                     problems.append(
-                        f"{where} is an object, {raw.get('name')!r}, and this section is read "
-                        f"by a script that cannot parse one. {why(section)}"
+                        f"{where} is an object, {raw.get('name')!r}, and this section is "
+                        f"graded by a second gate that reads each entry as a name. "
+                        f"{why(section)}"
                     )
                 continue
             problems.append(
@@ -2243,7 +2244,7 @@ def self_test() -> int:
     case("case 11  an object in desktop is refused, and the message names desktop and the file",
          len(problems_desktop) == 1
          and '"desktop"' in problems_desktop[0] and "probe-allowlist.json" in problems_desktop[0])
-    case("case 11  and it names the external reader that cannot parse the object",
+    case("case 11  and it names the external reader that refuses the object",
          "verify-scoped-reads" in problems_desktop[0]
          and OBJECT_FORM in problems_desktop[0])
     case("case 11  it says the split is deliberate, not an oversight",
