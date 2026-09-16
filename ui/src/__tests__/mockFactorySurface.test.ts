@@ -168,6 +168,109 @@ const KNOWN_DEAD: Record<string, string[]> = {
   ],
 };
 
+/**
+ * The direction this file never asked, added 2026-09-16 while it was green and the
+ * suite was red.
+ *
+ * KNOWN_DEAD answers "what does the mock define that the module does not export?" --
+ * a stale key, which fails SILENTLY because nothing calls it. The defect that day was
+ * the mirror image: `PosScreen` started calling `getSettingScoped`, `@/api/settings`
+ * has exported it since `6190dda4e` (2026-08-29), and `createSettingsApiMock` never
+ * defined it. Every suite routing through that factory threw at render time -- 125
+ * tests in four files -- and this file, whose whole subject is mock-vs-module surface,
+ * stayed green, because it only ever looked for EXTRA keys in the mock.
+ *
+ * Note the asymmetry that makes this worth pinning: a mock that is MISSING a key fails
+ * LOUDLY at the first call, and a mock carrying a DEAD key fails QUIETLY forever. The
+ * existing case listens for the quiet one only.
+ *
+ * Baseline generated from the runtime rather than transcribed, for the reason at
+ * :138, and asserted by EQUALITY for the reason at :130-:136: a plain allowlist rots
+ * the moment a gap closes, equality makes every change in either direction an explicit
+ * edit. A name belongs OUT of this map when the factory gains it, not when someone
+ * remembers to remove it.
+ */
+const KNOWN_GAPS: Record<string, string[]> = {
+  // 3 names.
+  '@/api/shifts   <- createShiftsApiMock': [
+    'createCashPayoutScoped', 'getShiftReportScoped', 'getShiftScoped',
+  ],
+  // 6 names. `completeSaleWithResolvedShortfalls` is the one the retail cart calls
+  // on a shortfall, so a suite routing through this factory cannot exercise it.
+  '@/api/sales    <- createSalesApiMock': [
+    'completeSaleWithResolvedShortfalls', 'lookupSaleByReceiptBarcodeScoped',
+    'overrideCartDeductionLocation', 'overrideLinePriceScoped',
+    'previewPromotedTotalFromLinesScoped', 'previewPromotedTotalScoped',
+  ],
+  // 9 names. This is the family that broke today: the scoped setters/getter exist in
+  // the module and not in the factory, so PosScreen's new read threw. `getSettingScoped`
+  // itself is now OUT of this list because the factory defines it -- which is the
+  // deletion direction this map is designed to force a visible edit for.
+  '@/api/settings <- createSettingsApiMock': [
+    'getCreditSettingsScoped', 'getDeploymentInfo', 'getHardwareSettingsScoped',
+    'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',
+    'setSetting', 'setSettingScoped', 'setSettingsScoped',
+  ],
+  // 10 names.
+  '@/api/products <- createProductsApiMock': [
+    'createCategoryScoped', 'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'getProductTrackSerialScoped', 'listWarehouseProductsAtLocation',
+    'productsClearImageScoped', 'productsListImagesScoped', 'productsSetImageScoped',
+    'recordProductSearchScoped', 'updateCategoryScoped',
+  ],
+  // 14 names, including `publishCourseFiredScoped` -- the publish half of today's
+  // coursing feature is also unmocked here, so only the read half was caught.
+  '@/api/kds      <- createKdsApiMock': [
+    'ackKdsOrderScoped', 'deactivateKdsDeviceScoped', 'getKdsDeviceScoped',
+    'getKdsOrderLinesScoped', 'getKdsRoutingRulesScoped', 'listKdsDevicesScoped',
+    'printKdsChitScoped', 'publishCourseFiredScoped', 'registerKdsDeviceScoped',
+    'resolveKdsTargetsScoped', 'saveKdsRoutingRulesScoped',
+    'updateKdsDeviceStatusScoped', 'updateKdsLineItemStatusScoped',
+    'updateKdsOrderItemsScoped',
+  ],
+  // 15 names. Every report reader in this repo mocks a module whose reports surface
+  // is mostly absent -- which is why a report suite can be green while reading
+  // nothing but the five shapes the factory happens to define.
+  '@/api/reports  <- createReportsApiMock': [
+    'getBasketSize', 'getBasketSizeTrend', 'getCategoryForecast',
+    'getCategoryPopularity', 'getCategoryPopularityTrend', 'getCustomerSplit',
+    'getDiscountsSummary', 'getHourlyOccupancy', 'getInventoryTrend',
+    'getInventoryTurnover', 'getPaymentMethodBreakdown', 'getSaleLineMarginsScoped',
+    'getTableTurnover', 'getVoidedItems', 'getVoidedSalesSummary',
+  ],
+  // 13 names. `ScannerError` is a class, and `readScaleWeight` / `getCurrencyInfo`
+  // style helpers are value exports; a `typeof x === 'function'` audit would have
+  // missed all three, which is why this counts keys, not functions.
+  '@/api/hardware <- createHardwareApiMock': [
+    'ScannerError', 'discoverHardwareScoped', 'displayClearScoped',
+    'displayShowScoped', 'listDisplaysScoped', 'listScannersScoped',
+    'openCashDrawerScoped', 'printReceiptScoped', 'printSalesReceiptScoped',
+    'readScaleWeight', 'readScaleWeightScoped', 'startScannerScoped',
+    'stopScannerScoped',
+  ],
+  // 8 names.
+  '@/api/products <- createRetailProductsApiMock': [
+    'createCategoryScoped', 'deleteCategoryScoped', 'deleteProductVariantScoped',
+    'listWarehouseProductsAtLocation', 'productsClearImageScoped',
+    'productsListImagesScoped', 'productsSetImageScoped', 'updateCategoryScoped',
+  ],
+  // 10 names, of which four are pure helpers, not IPC calls.
+  '@/api/currency <- createRetailCurrencyApiMock': [
+    'convertMinorUnits', 'createExchangeRateScoped', 'deleteExchangeRateScoped',
+    'exchangeRateToDecimal', 'formatExchangeRate', 'getCurrencyInfo',
+    'getLatestExchangeRateScoped', 'reciprocalMillionths', 'setDefaultCurrency',
+    'setDefaultCurrencyScoped',
+  ],
+  // 2 names -- both of them the scoped customer lookups the POS cart depends on.
+  '@/api/customers <- createRetailCustomersApiMock': [
+    'getCustomerHistoryScoped', 'searchCustomersScoped',
+  ],
+  // No entry for '@/api/giftCards', '@/api/loyalty' or the retail-KDS case: they
+  // measured ZERO gaps, which is the empty baseline this map's `?? []` already
+  // asserts. retail-KDS is complete by construction (`:70`-`:76`, callers spread
+  // the real module), and the other two are simply small.
+};
+
 describe('mock factory surface conforms to the module it replaces', () => {
   it.each(CASES)('$label defines no unexpected key the module lacks', ({ label, real, mock }) => {
     // A type-only namespace member is not a runtime key, so `in` is the right
@@ -180,6 +283,18 @@ describe('mock factory surface conforms to the module it replaces', () => {
       `configuring nothing). A removed entry means real cleanup -- delete it from ` +
       `KNOWN_DEAD too.`,
     ).toEqual([...(KNOWN_DEAD[label] ?? [])].sort());
+  });
+
+  it.each(CASES)('$label mocks every runtime export the module has, or names the gap', ({ label, real, mock }) => {
+    // The mirror image of the case above, added 2026-09-16.
+    const missing = Object.keys(real).filter((k) => !(k in mock)).sort();
+    expect(
+      missing,
+      `${label}: gap set changed. A NEW entry means the module exports something this ` +
+      `factory does not mock, so any suite routing through it throws at call time. A ` +
+      `REMOVED entry means the gap closed -- delete it from KNOWN_GAPS too. ` +
+      `Measured gap now: ${JSON.stringify(missing)}`,
+    ).toEqual([...(KNOWN_GAPS[label] ?? [])].sort());
   });
 
   it('every case has at least one live key, so an empty mock cannot pass by defining nothing', () => {

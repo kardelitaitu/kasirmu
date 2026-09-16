@@ -107,6 +107,7 @@ export interface SettingsApiOverrides {
   getCreditSettings?: ReturnType<typeof vi.fn>;
   getEnabledFeatures?: ReturnType<typeof vi.fn>;
   getStoreSettingsScoped?: ReturnType<typeof vi.fn>;
+  getSettingScoped?: ReturnType<typeof vi.fn>;
   setReceiptSettingsScoped?: ReturnType<typeof vi.fn>;
   setStoreSettingsScoped?: ReturnType<typeof vi.fn>;
   setCreditSettingsScoped?: ReturnType<typeof vi.fn>;
@@ -149,6 +150,23 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
     getUserPreferencesScoped: vi.fn((_token: string) => Promise.resolve({})),
     getStoreSettingsScoped: vi.fn((_token: string) =>
       Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),
+    ),
+    // Added 2026-09-16 because `PosScreen` began reading `restaurant.course_firing`
+    // through it (`51936522f`), and the four PosScreen suites mock this module via
+    // THIS factory -- so the missing key threw `No "getSettingScoped" export is
+    // defined on the "@/api/settings" mock` for every test in them. The export has
+    // existed since `6190dda4e` (2026-08-29); this factory never learned it because
+    // nothing consumed it through the shared mock path until now, and
+    // mockFactorySurface.test.ts only checks the other direction (see the gap case
+    // added alongside this line).
+    //
+    // Resolves `null`, i.e. "setting unset", which is what the real call returns for
+    // an absent key. Note the real `getSettingScoped` REJECTS on a null token
+    // (`api/settings.ts:260`-`:262`), and PosScreen maps that rejection to its
+    // tri-state `null` rather than `false`; a test that needs THAT distinction must
+    // pass an override -- this default deliberately models the successful-read path.
+    getSettingScoped: vi.fn((_token: string | null, _key: string) =>
+      Promise.resolve<string | null>(null),
     ),
     getReceiptSettingsScoped: vi.fn((_token: string) => Promise.resolve({
       showCurrency: true, decimalSeparator: 'dot', showTax: true,
