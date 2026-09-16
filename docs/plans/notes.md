@@ -1727,3 +1727,48 @@ Seven decisions a docs session parked rather than took. Each is three lines: the
 - **WHAT A READER SHOULD TAKE FROM IT.** Two things, neither about coursing. First: a shared branch that cannot trigger CI has no automatic feedback at all, so the local matrix is the only gate between a required-prop change and 37 strangers -- running `scripts/check.sh` is cheap insurance, and its legs cover the exact error class. Second: HEAD's red was discovered here by *this* lane's failed `npm run build`, one leg of which (`tsc -b`) grades test files. The build failure was the signal; the typecheck was already telling the same story and nobody had listened, because `npm run build` is skipped by `check.sh` (`:250`, with its reasoning printed beside it) and CI cannot run.
 - **Currency.** Taken 2026-09-16 with **7 paths under `ui/src` dirty** in this shared checkout. The HEAD-side greps are about a revision and do not move; the `tsc` results and the +48 diff are a working-tree reading at a timestamp, and the fix may have landed by the time this is read -- which is the outcome this item wants.
 - **Filed by:** the `todo-font-system.md` lane, 2026-09-16, while failing to rebuild an artifact for reasons that turned out not to be the ones it first blamed.
+
+---
+
+## STALE-CLEANING SWEEP — resolved items whose headers still read "open" (2026-09-16, HEAD `68358a924`)
+
+A read-only pass over the parking lot found several items the tree has since answered while the
+`## N` header still advertises a decision. Corrected **forward here, at EOF, rather than in place** —
+editing the numbered blocks would shift the `:NNN` line-cites the whole file is written against, and the
+index already refuses to state a total. Every cited commit was re-derived this pass with
+`git merge-base --is-ancestor <sha> HEAD` (all exit 0) and its subject checked; the ⚠ items are the
+agent's own read at this HEAD, not a claim inherited from a dated note.
+
+- **## 8 — selector-class conflict: RESOLVED.** The "no rule can settle it" conflict is gone: `16258b37e`
+  added the graded `selectorOnlyClasses` field carrying exactly the three `kds-column--*` names, and
+  `fffc4672f` struck the inert `kds-column--` mute. Not an open ruling any more.
+- **## 13 — Free-tenant staff-login audit "red test": premise DELETED; residual is now a policy doc, not a ruling.**
+  `4d08338cf` removed the profile-keyed assertion (`auth_tests.rs` now asserts 1 row in *both* profiles) and
+  `2dc500382` made the refused-create case non-vacuous in release. What remains is a *written* product policy,
+  not a test to satisfy — so it drops out of the decision queue.
+- **## 14 — seeded sentinel / no CI release leg: DONE for the leg it asked for.** `9d5c33c68` added the
+  `release-bridge-test` job (`dev-ci.yml`) running `cargo nextest run -p oz-bridge --release` on push. ⚠ The
+  tablet release run the item also wanted is still unquoted (no number to check), so that sliver stays open.
+- **## 16 and ## 20 — topology rulings: RULED elsewhere; headers stale.** Both were ruled 2026-09-16 in
+  `done-todo-topology-editor.md` (R1 require a session · R2 location-scoped · R3 path-free errors · R4 the
+  diagram's store may select the target; an unscoped grant authorises writes into no store the diagram
+  mentions), landed as `8286f43ae` / `4efcb0971` / `a718dd1e4` / `32abb9cbb`. `notes.md` still reads "RULING NEEDED" — that is stale, not a live ask.
+- **## 17 — class-guard fifth axis: ANSWERED — "fund the ledger" shipped.** `7cee5f8e7` added
+  `EXTERNAL_CLASS_LEDGER` (4 members, each with a reason); the `EXTERNAL_CLASS_OPEN_QUESTIONS` list is now empty.
+- **## 26 — gate borrowing another checkout's graph: half-one FIXED.** `95ad42ea2` dropped the implicit
+  cargo-metadata cache fallback and restored `check_graph_root`. ⚡ The `--strict` half is still true (`grep args.strict` = 0 at HEAD) — that one remains open.
+- **## 30 — wire-bug rules, live second copy FIXED.** `6a08e0e3a` made `verify-topology-parity.py` fail on
+  drift and skip only when there is no `ui/` tree at all. The lesson text stands; the defect it tracked is closed.
+- **## 41 — HEAD UI typecheck red: FIXED.** `3394866ac` landed the course chip's props/styles/tests, clearing
+  the 37-commit red. The durable point (a shared branch can't trigger CI, so the local matrix is the only gate)
+  is unaffected by the fix.
+
+**Net after this sweep — what genuinely still needs an owner decision:** ## 1 (light-theme contrast, both pairs
+< 4.5:1), ## 5 / ## 6 / ## 7 / ## 32 (product yes/no), ## 9 (title/aria intent vs debt), ## 12 (release-profile
+security seam — the highest-consequence item), ## 15 (tender "terminal" naming, gates 103 sites), ## 18 (ADR #47
+ruling 1A), ## 19 (backup bypass — route vs accept, still live at `UpdateBanner.tsx:184`), ## 21 (reduced-motion
+per-declaration campaign), ## 23 (SyncStore trait — build nothing until a 3rd backend), ## 27 (offline payload
+TEXT/`String` format, still `offline.rs:40/88/134`), ## 29 / ## 31 / ## 39 (dated-literal home / widen the
+bundle-parity scan / the six required-no-CI gates — the last asks to *file*, not fix). The `todo-review-type.md`
+R-series (## 25) is already fully disposed (R3/R7 no, R6/R9/R10 yes, R8 by evidence, R1/R2/R5 moot) — only work,
+not rulings, remain there.
