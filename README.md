@@ -104,7 +104,8 @@ oz-pos/
 │   ├── desktop-client/     # Tauri v2 shell: IPC commands, app state, plugins
 │   ├── tablet-client/      # Tablet-optimised Tauri shell
 │   ├── cloud-server/       # Cloud HTTP API (axum, hosted tenants)
-│   └── license-server/     # License activation & validation
+│   ├── license-server/     # License activation & validation (Go: go.mod, no Cargo.toml)
+│   └── unified/            # container glue only: Caddyfile, supervisord.conf, docker-entrypoint.sh, healthcheck.sh + test-healthcheck.sh — a packaging dir, not a Cargo workspace member (this listing named four of the five apps/ dirs until 2026-09-16)
 ├── crates/                 # 17 libraries (`ls -d crates/*/ | wc -l` = 17, 2026-09-16; = 16 when this line was last measured on 2026-09-14 — the crate that moved it, `qris-core`, landed at `c7009520d` and had never been listed here)
 │   ├── oz-api/             # HTTP API server (axum)
 │   ├── oz-bridge/          # Command bodies behind the desktop/tablet IPC shims — tauri-free (BridgeCtx, BridgeError)
@@ -133,7 +134,7 @@ oz-pos/
 │       ├── features/       # 301 .tsx files across the domain feature dirs (`find ui/src/features -name '*.tsx' | wc -l` = 301, 2026-09-16; 299 on 2026-09-15)
 │       ├── locales/        # Fluent (.ftl) — 54 files (27 en + 27 id), 9,841 message definitions (4,883 en + 4,958 id), 4,958 distinct IDs; 75 of them have NO English definition (2026-09-16, counted PER FILE by `ls ui/src/locales/*.ftl | xargs grep -hcE '^[A-Za-z][A-Za-z0-9_.-]*[[:space:]]*=' | awk '{s+=$1} END {print s}'` and `grep -hoE '^[A-Za-z][A-Za-z0-9_.-]*[[:space:]]*=' ui/src/locales/*.ftl | sed -E 's/[[:space:]]*=$//' | sort -u | wc -l`; the 2026-09-15 pass read 9,809 = 4,867 + 4,942 with 4,942 distinct. A `cat ui/src/locales/*.ftl | grep -c` pipeline under-reads by exactly 1 — 9,840 / 4,957 here — because `sales.ftl` has no final newline (last byte `}`, the only such file of the 54) and `cat` welds its last definition onto the next file's first line; nothing is attributed to dotted `key.attr =` lines, which number 0 tree-wide)
 │       └── __tests__/      # Vitest + testing-library (593 files: 320 .tsx, 272 .ts, 1 .json — `find ui/src/__tests__ -type f | wc -l` and the same find per extension, 2026-09-16, the split summing to the total; an earlier pass on 2026-09-16 read 592 = 319 .tsx + 272 .ts + 1 .json and the one-file delta is `b61aedee0`, which added `appShellBootDevRead.test.tsx`; was 589 = 317 .tsx + 271 .ts + 1 .json on 2026-09-15; case total not measured)
-├── docs/                   # guides/ (QUICKSTART, ROADMAP, ARCHITECTURE, API, WHITEPAPER), decisions/ (ADRs), specs/, plans/, records/, operations/
+├── docs/                   # guides/ (QUICKSTART, ROADMAP, ARCHITECTURE, api-reference, WHITEPAPER — five names sampled out of 24 .md files, `ls -1 docs/guides/*.md | wc -l`; the name `API` this line carried until 2026-09-16 matched no file — `ls docs/guides/API.md` fails, the page is `api-reference.md`), decisions/ (ADRs), specs/, plans/, records/, operations/
 ├── scripts/                # Example Lua business rule scripts, coverage scripts
 └── packaging/              # Linux .deb maintainer scripts + .desktop entry, mobile build guide (MSI/AppImage/DMG come from the Tauri bundler, not this dir)
 ```
@@ -177,7 +178,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | Command | Action |
 |---|---|
 | `npm run dev` | Development server |
-| `npm run check:all` | One command — `node ../scripts/check-ui.mjs` (`ui/package.json:11`; no npm-level chaining) — chaining **eight** legs: ESLint → TypeScript → Unit tests → i18n lint → FTL dedupe → Bundle budget → E2E* → Perf smoke, then a `scripts/gates.json` self-audit* |
+| `npm run check:all` | One command — `node ../scripts/check-ui.mjs` (`ui/package.json:11`; no npm-level chaining) — chaining **nine** legs: ESLint → TypeScript → Unit tests → i18n lint → FTL dedupe → Bundle budget → Bundle budget (tablet) → E2E* → Perf smoke, then a `scripts/gates.json` self-audit* (the reading before `b89747b28` said **eight**; that commit added the tablet budget leg between the desktop one and E2E) |
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript validation |
 | `npm run lint` | ESLint + jsx-a11y |
@@ -187,7 +188,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | `npm run e2e:api` | API integration tests only |
 | `npm run e2e:ui` | All UI E2E tests (excl. API) |
 
-> * Structure, named rather than located — `scripts/check-ui.mjs` is being edited concurrently, so its line numbers go stale faster than this row can be read: `grep -n "gate('" scripts/check-ui.mjs` prints the eight legs in run order (ESLint, TypeScript type check, Unit tests (vitest), i18n lint, FTL dedupe, Bundle budget, E2E tests, Perf smoke). Only the last two are conditional: `dockerAvailable()` — a `docker info` probe on a 10 s timeout — gates the E2E leg, which is recorded as a skip rather than a failure when Docker is absent, while `playwrightAvailable()` gates the Docker-free perf leg (`npm run test:e2e:perf`). The `gates.json` self-audit is not a UI check either: it compares every manifest `check:all` needle against the gate labels this runner declared and fails closed on drift, so `check:all` can be refused by the manifest itself rather than by any of the eight. See [`ui/README.md`](./ui/README.md) and [`ui/e2e/README.md`](./ui/e2e/README.md) for details.
+> * Structure, named rather than located — `scripts/check-ui.mjs` is being edited concurrently, so its line numbers go stale faster than this row can be read: `grep -n "gate('" scripts/check-ui.mjs` prints the nine legs in run order (ESLint, TypeScript type check, Unit tests (vitest), i18n lint, FTL dedupe, Bundle budget, Bundle budget (tablet), E2E tests (Playwright, provisioned), Perf smoke (Playwright)) — nine call sites, and the seventh of them is the leg `b89747b28` landed on 2026-09-16, which is why this sentence read "eight" until this pass. Only the last two are conditional: `dockerAvailable()` — a `docker info` probe on a 10 s timeout — gates the E2E leg, which is recorded as a skip rather than a failure when Docker is absent, while `playwrightAvailable()` gates the Docker-free perf leg (`npm run test:e2e:perf`). The `gates.json` self-audit is not a UI check either: it compares every manifest `check:all` needle against the gate labels this runner declared and fails closed on drift, so `check:all` can be refused by the manifest itself rather than by any of the nine. See [`ui/README.md`](./ui/README.md) and [`ui/e2e/README.md`](./ui/e2e/README.md) for details.
 
 ### Backend (root)
 
