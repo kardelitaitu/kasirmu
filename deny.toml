@@ -1,17 +1,32 @@
 # cargo-deny configuration — mirrors the reviewed baseline in .cargo/audit.toml.
 #
-# Policy (see audit/27-ci-pipeline.md + docs/ci-pipeline.md security section):
+# Policy (see docs/operations/ci-pipeline.md — the two paths named here
+# until 2026-09-16, `audit/27-ci-pipeline.md` and `docs/ci-pipeline.md`,
+# exist neither at the root nor under docs/; the page moved to operations/).
 #   • License check: fail-closed. Only the permissive licenses below are
 #     allowed; anything new must be added deliberately.
 #   • Advisories: all vulnerability advisories fail (cargo-deny 0.19 has no
 #     severity threshold). Unmaintained/unsound/yanked are gated at the
 #     `workspace` level so a transitive-only finding stays visible but does
-#     not block CI — matching the "informational warnings stay visible but
-#     non-blocking" stance documented in .cargo/audit.toml.
+#     not fail the check — matching the "informational warnings stay visible
+#     but non-blocking" stance documented in .cargo/audit.toml. Non-blocking
+#     is the smaller problem: nothing runs this file in CI at all. Neither
+#     `dev-ci.yml` nor `release.yml` has a cargo-deny step
+#     (`grep -c "cargo deny" .github/workflows/dev-ci.yml` → 0), `check.sh`
+#     and `run-pre-push.py` do not call it, and `scripts/gates.json` files
+#     the `audit` row as `status: "retired"`. Every statement below about
+#     what "fails CI" is therefore about what this config WOULD do if a
+#     runner invoked it — as measured 2026-09-16, `cargo deny check
+#     advisories` exits 1 locally on RUSTSEC-2026-0285 (rustls 0.23.41) and
+#     nobody is told.
 #   • The workspace's own crates are proprietary (LICENSE, `SEE LICENSE IN
 #     LICENSE` is not SPDX-parseable) — clarified per crate below.
 #
-# Refresh procedure (DOCKER-02-style, deliberate):
+# Refresh procedure (DOCKER-02-style, deliberate — and entirely MANUAL:
+# no live workflow, no pre-commit hook step, no pre-push step and no
+# scripts/check.sh leg invokes cargo-deny (`grep -rn "cargo deny"
+# .github/workflows/*.yml scripts/check.sh scripts/run-pre-push.py` hits
+# nothing outside a comment), so none of the steps below happens by itself:
 #   After adding a dependency, run `cargo deny check licenses` and add any
 #   new license to `allow` ONLY after reviewing it. Run `cargo deny check
 #   advisories` and move an advisory to `ignore` only with a justification
@@ -43,7 +58,12 @@ allow = [
 # `license = "SEE LICENSE IN LICENSE"` which is not SPDX-parseable). Clarify
 # each against the root LICENSE so they are treated as the project's own
 # code. If a LICENSE hash ever changes, cargo-deny prints the expected value
-# — update deliberately.
+# — but only to whoever runs the check, and nothing runs it (see the Refresh
+# procedure above). That gap has already cost one full cycle: the root LICENSE
+# text changed at `4fae8bba2` (2026-09-14), 13 days after this file was last
+# edited (`86aa825f9`, 2026-09-01), and all 35 clarify hashes sat stale and
+# warning-ing in silence until `f25347c63` (2026-09-16) re-pinned them. Re-run
+# `cargo deny check licenses` after ANY edit to the root LICENSE.
 [[licenses.clarify]]
 name = "foundation"
 version = "*"
@@ -240,8 +260,11 @@ license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 yanked = "warn"
 # Only fail on unmaintained/unsound crates that a workspace crate depends on
 # DIRECTLY; transitive-only findings stay visible as warnings. This mirrors
-# the .cargo/audit.toml stance that these are informational, reviewed in the
-# weekly security.yml run.
+# the .cargo/audit.toml stance that these are informational. They used to
+# be reviewed on a schedule: `.github/workflows/security.yml` is retired
+# (`security.yml.bak`, whose inert copy carries cron `0 6 * * 1`), so as of
+# 2026-09-16 no schedule reviews them — and with no cargo-deny runner, no
+# thing reports them either.
 unmaintained = "workspace"
 unsound = "workspace"
 # RUSTSEC-2023-0071 — Marvin Attack (rsa 0.9.x, medium 5.9). Mirrors the
