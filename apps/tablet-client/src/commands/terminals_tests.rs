@@ -278,7 +278,10 @@ fn delete_terminal_override_not_found() {
     );
 }
 
-// ── delete_terminal ──────────────────────────────────────────────
+// ── Store::delete_terminal ───────────────────────────────────────
+// These cases reach the `oz_core` store method, not a command fn: the unscoped
+// `delete_terminal` command this banner used to name was retired on 2026-09-16 (T7-4) and all 37
+// cases passed unchanged before and after, which is the proof that none of them ever called it.
 
 #[test]
 fn delete_terminal_removes_row() {
