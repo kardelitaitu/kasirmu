@@ -2,7 +2,7 @@
 //! SQLite database to Postgres, then verify row counts + checksums.
 //!
 //! The old single-node cloud server kept its data in a SQLite file
-//! (`OZ_DB_PATH`, default `oz-pos.db`). Phase 1 moved the cloud branch onto
+//! (`OZ_DB_PATH`, default `kasir.db`). Phase 1 moved the cloud branch onto
 //! Postgres; this binary performs the cutover copy for the surface the cloud
 //! server actually reads/writes:
 //!
@@ -35,7 +35,7 @@
 //!
 //! ```text
 //! cargo run -p oz-cloud-server --bin migrate_sqlite_to_pg \
-//!     --sqlite oz-pos.db --pg postgres://postgres:postgres@localhost:5432/postgres
+//!     --sqlite kasir.db --pg postgres://postgres:postgres@localhost:5432/postgres
 //! ```
 //!
 //! Environment fallbacks: `OZ_DB_PATH` for `--sqlite`, `DATABASE_URL` for
@@ -110,7 +110,7 @@ USAGE:
     migrate_sqlite_to_pg [OPTIONS]
 
 OPTIONS:
-    --sqlite <path>    SQLite database file (default: $OZ_DB_PATH or 'oz-pos.db')
+    --sqlite <path>    SQLite database file (default: $OZ_DB_PATH or 'kasir.db')
     --pg <url>         Postgres connection URL (default: $DATABASE_URL)
     --tables <list>    Comma-separated table list (default: the full copy surface)
     --batch <n>        Rows per INSERT batch (default: 500)
@@ -123,7 +123,7 @@ row count + content checksum. See the module docs for the memory envelope
 and CHECKSUM-DIFF semantics.";
 
 fn parse_args() -> Result<Option<Args>, String> {
-    let mut sqlite = env::var("OZ_DB_PATH").unwrap_or_else(|_| "oz-pos.db".into());
+    let mut sqlite = env::var("OZ_DB_PATH").unwrap_or_else(|_| "kasir.db".into());
     let mut pg: Option<String> = env::var("DATABASE_URL").ok();
     let mut tables: Vec<String> = DEFAULT_TABLES.iter().map(|s| s.to_string()).collect();
     let mut batch = 500usize;

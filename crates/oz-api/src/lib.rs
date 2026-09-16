@@ -98,7 +98,7 @@ pub struct AppState {
     /// the operator never minted (review MED-5).
     pub allow_terminal_credentials: bool,
 
-    /// Database path (default: `oz-pos.db`).
+    /// Database path (default: `kasir.db`).
     pub db_path: String,
 
     /// HTTP listen port (default: `3099`).

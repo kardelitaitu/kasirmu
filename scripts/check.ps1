@@ -129,7 +129,7 @@ if ($nextestAvailable) {
 # --- Migration ----------------------------------------------------------
 Step -Name "migration smoke test" -RetryCommand "cargo run -p oz-cli -- migrate" -ScriptBlock { cargo run -p oz-cli -- migrate }
 Step -Name "migration idempotency" -RetryCommand "cargo run -p oz-cli -- migrate" -ScriptBlock { cargo run -p oz-cli -- migrate }
-Remove-Item -LiteralPath "oz-pos.db", "oz-pos.db-wal", "oz-pos.db-shm" -ErrorAction Ignore
+Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
 
 # --- Skill drift guard --------------------------------------------------
 $gitBash = if (Test-Path "C:\Program Files\Git\bin\bash.exe") {

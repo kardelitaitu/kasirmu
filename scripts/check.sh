@@ -145,7 +145,7 @@ fi
 # Recorded in scripts/gates.json -> "migration".
 step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
-rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm
+rm -f kasir.db kasir.db-wal kasir.db-shm
 
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
 if command -v bash &>/dev/null; then

@@ -9,7 +9,7 @@
 #   docker run -d -p 3099:3099 -v oz-data:/data oz-pos-cloud:latest
 #
 # Environment variables:
-#   OZ_DB_PATH   — SQLite database path (default: /data/oz-pos.db)
+#   OZ_DB_PATH   — SQLite database path (default: /data/kasir.db)
 #   OZ_API_PORT  — HTTP listen port (default: 3099)
 #   RUST_LOG     — log level filter (default: info)
 #   OZ_API_SECRET— JWT signing secret (REQUIRED in production)
@@ -194,7 +194,7 @@ RUN chmod +x /app/docker-entrypoint.sh
 VOLUME ["/data"]
 
 # Default environment.
-ENV OZ_DB_PATH=/data/oz-pos.db
+ENV OZ_DB_PATH=/data/kasir.db
 ENV OZ_API_PORT=3099
 ENV RUST_LOG=info
 

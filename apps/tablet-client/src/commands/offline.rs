@@ -35,7 +35,7 @@
 //! - **Storage source** — [`retry_offline_sync_scoped`]. Phase 1 reads the
 //!   pending rows from the store database on both sides, but Phase 3 writes the
 //!   outcomes to `state.db`, and on this shell `state.db` is the **global
-//!   identity** database (`<app_data_dir>/oz-pos.db`), while the bridge
+    //!   identity** database (`<app_data_dir>/kasir.db`), while the bridge
 //!   re-resolves the session and writes to the store database
 //!   (`<data_dir>/store-<id>.sqlite`, `platform/core/src/database/manager.rs:167`).
 //!   Two different files — the `branding::get_brand_settings` refusal class.
@@ -277,7 +277,7 @@ pub async fn pending_offline_count_scoped(
 /// Phase 1 reads the pending rows from the store database on both sides. Phase 3
 /// then does `let db = state.db.lock().await;` (below, `:314`) and hands that to
 /// `apply_sync_outcomes` / `mark_all_failed` — and on this shell `state.db` is
-/// the **global identity** database (`<app_data_dir>/oz-pos.db`,
+    /// the **global identity** database (`<app_data_dir>/kasir.db`,
 /// `AppState::new` → `state.rs:153-170`), not the store database Phase 1 read.
 /// The bridge re-resolves the session and writes to
 /// `<data_dir>/store-<id>.sqlite` (`platform/core/src/database/manager.rs:167`).

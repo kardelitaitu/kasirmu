@@ -863,7 +863,7 @@ fn shortfall_collision_on_one_attempt_returns_first_sale_id() {
     // lock can close: the loser's guard read `Fresh` BEFORE the winner
     // committed (asserted below), the winner then committed, and the loser's
     // write half runs against the same file — the point where a second app
-    // instance (two processes, one oz-pos.db, no single-instance guard)
+    // instance (two processes, one kasir.db, no single-instance guard)
     // reaches the UNIQUE index. Two live connections cannot reproduce the
     // window deterministically — SQLite answers the loser's write with
     // SQLITE_BUSY while the winner's tx holds the write lock, not UNIQUE —

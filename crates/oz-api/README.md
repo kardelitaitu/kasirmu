@@ -16,7 +16,7 @@ let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
 axum::serve(listener, app).await?;
 ```
 
-Listens on `OZ_API_PORT` (default `3099`). DB path from `OZ_DB_PATH` (default `oz-pos.db`).
+Listens on `OZ_API_PORT` (default `3099`). DB path from `OZ_DB_PATH` (default `kasir.db`).
 
 ## API routes
 

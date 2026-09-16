@@ -46,7 +46,7 @@ services:
       - "${OZ_API_PORT:-3099}:${OZ_API_PORT:-3099}"
     environment:
       # Runtime database — SQLite by default.
-      OZ_DB_PATH: /data/oz-pos.db
+      OZ_DB_PATH: /data/kasir.db
       OZ_API_PORT: "${OZ_API_PORT:-3099}"
       RUST_LOG: "${RUST_LOG:-info}"
 

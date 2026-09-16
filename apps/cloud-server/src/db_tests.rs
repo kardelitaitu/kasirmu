@@ -45,8 +45,8 @@ fn windows_style_paths_are_detected() {
     assert!(DbPool::looks_like_windows_path("C:relative.db"));
     assert!(DbPool::looks_like_windows_path("/data/oz\\pos.db"));
     // Legitimate Linux/container paths must NOT be flagged.
-    assert!(!DbPool::looks_like_windows_path("/data/oz-pos.db"));
-    assert!(!DbPool::looks_like_windows_path("oz-pos.db"));
+    assert!(!DbPool::looks_like_windows_path("/data/kasir.db"));
+    assert!(!DbPool::looks_like_windows_path("kasir.db"));
     assert!(!DbPool::looks_like_windows_path(":memory:"));
 }
 

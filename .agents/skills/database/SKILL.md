@@ -55,7 +55,7 @@ are named and enforced, and how the PostgreSQL replica is generated.
 
 Two different resolution stories, and they do not share code:
 
-- **Desktop and tablet clients** — `<app_data_dir>/oz-pos.db`, unconditionally.
+- **Desktop and tablet clients** — `<app_data_dir>/kasir.db`, unconditionally.
   `resolve_db_path` (`apps/desktop-client/src/state.rs:757-763`) joins the Tauri
   app-data directory with the literal file name. The tablet twin is
   `apps/tablet-client/src/state.rs`. **There is no env-var override and no dev/prod

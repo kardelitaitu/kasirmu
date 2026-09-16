@@ -25,7 +25,7 @@ CLI tool for OZ-POS maintenance — migrations, backup, export, and data CRUD.
 
 ## Notes
 
-- DB path defaults to `./oz-pos.db`; use `--db <path>` (global flag) to override.
+- DB path defaults to `./kasir.db`; use `--db <path>` (global flag) to override.
 - Prices and monetary values are `i64` minor units (e.g. `350` for $3.50).
 - `oz import-ozpkg` writes the decrypted payload (products, categories, sales, customers, users, settings) inside a single transaction (sale imports go through the tx-aware `Store::create_sale_in_tx`); `--dry-run` prints metadata and writes nothing. **Settings are filtered, not copied**: every settings row is run through the shared platform-core predicate `is_non_exportable_setting_key`, so credential and device-bound keys are withheld by `export-ozpkg` and SKIPPED by `import-ozpkg` (the count of skipped rows goes to stderr) while ordinary settings such as `store.name` and `currency.default` still travel with their values. The predicate lives in platform core, not in the CLI, so the desktop and tablet export lanes apply the same rule. This filters `.ozpkg` settings only — a whole-file `.db` or `.backup.db` snapshot is not filtered and still carries everything.
 

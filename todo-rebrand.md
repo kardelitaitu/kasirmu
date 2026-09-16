@@ -218,36 +218,35 @@
 **Commit:** `refactor(config): rename default db filename oz-pos.db → kasir.db`
 **Pathspec:** `apps/cloud-server/src/config.rs apps/cloud-server/src/db.rs apps/cloud-server/src/main.rs apps/cloud-server/src/bin/migrate_sqlite_to_pg/main.rs apps/cloud-server/src/bin/migrate_sqlite_to_pg/migrate_sqlite_to_pg_tests.rs apps/cloud-server/src/db_tests.rs crates/oz-api/src/lib.rs crates/oz-api/README.md crates/oz-cli/src/cli.rs crates/oz-cli/README.md crates/oz-cli/src/commands/mod.rs crates/oz-cli/src/commands/credential_deltas.rs crates/oz-cli/src/commands/backup.rs crates/oz-cli/src/seed_demo.rs crates/oz-cli/src/seed_demo_tests.rs crates/oz-bridge/src/sync_tests.rs scripts/backup-db.sh scripts/restore-db.sh scripts/check.sh scripts/check.ps1 scripts/setup-dev.ps1 apps/unified/supervisord.conf apps/unified/docker-entrypoint.sh apps/tablet-client/src/commands/offline.rs apps/tablet-client/src/commands/pos_tests.rs .agents/skills/database/SKILL.md .env.example Dockerfile.server Dockerfile.unified docker-compose.yml platform/core/src/database/manager.rs`
 
-- [ ] `apps/cloud-server/src/config.rs:201` — `"oz-pos.db"` → `"kasir.db"`
-- [ ] `apps/cloud-server/src/db.rs:12,128` — comments
-- [ ] `apps/cloud-server/src/main.rs:9,16` — doc comment + table
-- [ ] `apps/cloud-server/src/bin/migrate_sqlite_to_pg/main.rs:5,38,113,126`
-- [ ] `crates/oz-api/src/lib.rs:101,442,450` — default + doc
-- [ ] `crates/oz-cli/src/cli.rs:28` — `default_value = "oz-pos.db"` → `"kasir.db"`
-- [ ] `crates/oz-cli/src/commands/credential_deltas.rs:106,114,771,797` — user-facing --db text
-- [ ] `crates/oz-cli/src/commands/mod.rs:67,86` — footgun doc + error text
-- [ ] `crates/oz-cli/src/seed_demo.rs:71` — `unwrap_or("oz-pos.db")` → `"kasir.db"`
-- [ ] `.env.example:22,24` — `OZ_DB_PATH=oz-pos.db` → `kasir.db` + comment
-- [ ] `Dockerfile.server:12,197` — comment + `ENV OZ_DB_PATH=/data/oz-pos.db` → `/data/kasir.db`
-- [ ] `Dockerfile.unified:18,187,208,211` — all occurrences
-- [ ] `docker-compose.yml:49` — `OZ_DB_PATH: /data/oz-pos.db` → `/data/kasir.db`
+- [x] `apps/cloud-server/src/config.rs:201` — `"oz-pos.db"` → `"kasir.db"`
+- [x] `apps/cloud-server/src/db.rs:12,128` — comments
+- [x] `apps/cloud-server/src/main.rs:9,16` — doc comment + table
+- [x] `apps/cloud-server/src/bin/migrate_sqlite_to_pg/main.rs:5,38,113,126`
+- [x] `crates/oz-api/src/lib.rs:101,442,450` — default + doc
+- [x] `crates/oz-cli/src/cli.rs:27-28` — doc comment + `default_value = "kasir.db"`
+- [x] `crates/oz-cli/src/commands/credential_deltas.rs:106,114,771,797` — user-facing --db text
+- [x] `crates/oz-cli/src/commands/mod.rs:67,86` — footgun doc + error text
+- [x] `crates/oz-cli/src/seed_demo.rs:71` — `unwrap_or("kasir.db")`
+- [x] `.env.example:22,24` — `OZ_DB_PATH=kasir.db` + comment
+- [x] `Dockerfile.server:12,197` — comment + `ENV OZ_DB_PATH=/data/kasir.db`
+- [x] `Dockerfile.unified:18,187,208,211` — all occurrences
+- [x] `docker-compose.yml:49` — `OZ_DB_PATH: /data/kasir.db`
 
 **Test fixtures (same commit):**
-- [ ] `apps/cloud-server/src/bin/migrate_sqlite_to_pg/migrate_sqlite_to_pg_tests.rs:107,218,367`
-- [ ] `apps/cloud-server/src/db_tests.rs:48,49` — update assert strings (verify logic still correct)
-- [ ] `crates/oz-bridge/src/sync_tests.rs:551,569,586,606,628,682,740,773`
-- [ ] `crates/oz-cli/src/cli_tests.rs:132` — `assert_eq!(cli.db, "oz-pos.db")` → `"kasir.db"`
-- [ ] `crates/oz-cli/src/seed_demo_tests.rs:97` — verify semantics
-- [ ] `platform/core/src/database/manager.rs:32` — comment
-- [ ] `crates/oz-cli/src/cli.rs:27` — the doc comment (`default: ./oz-pos.db`) immediately above `:28`; the original list cited only `:28`, which would have left the `--help` text stale
-- [ ] `crates/oz-cli/src/commands/backup.rs:69` — `unwrap_or_else(|| "oz-pos.db".into())` — a **real default in code**, absent from the original list
-- [ ] `scripts/backup-db.sh:10,15,21` — ⚠️ **FOOTGUN, and the reason this belongs in this phase rather than a docs sweep.** Both this and `restore-db.sh` resolve `DB_FILE="${1:-${OZ_DB_PATH:-oz-pos.db}}"`. After the rename a bare `bash scripts/backup-db.sh` still targets the OLD filename; if that file is absent, opening it **creates an empty database** and the backup reports success against nothing. Update both scripts in the same commit as the rename.
-- [ ] `scripts/restore-db.sh:9,19,24` — same `${...:-oz-pos.db}` default
-- [ ] `scripts/check.sh:148`, `scripts/check.ps1:132`, `scripts/setup-dev.ps1:115` — `rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm`: the dev-DB cleanup between runs. After the rename these stop matching and stale `kasir.db` files accumulate silently
-- [ ] `apps/unified/supervisord.conf:32`, `apps/unified/docker-entrypoint.sh:8` — comments naming `/data/oz-pos.db` (the unified image's own documentation of its volume)
-- [ ] `crates/oz-cli/README.md:28`, `crates/oz-api/README.md:19` — documented CLI/API defaults
-- [ ] `.agents/skills/database/SKILL.md:58,65` — the database skill's own statement of the default path (it is the file an agent reads before touching this area)
-- [ ] `apps/tablet-client/src/commands/offline.rs:38,280`, `apps/tablet-client/src/commands/pos_tests.rs:866` — comments
+- [x] `apps/cloud-server/src/bin/migrate_sqlite_to_pg/migrate_sqlite_to_pg_tests.rs:107,218,367`
+- [x] `apps/cloud-server/src/db_tests.rs:48,49` — assert strings updated
+- [x] `crates/oz-bridge/src/sync_tests.rs:551,569,586,606,628,682,740,773`
+- [x] `crates/oz-cli/src/cli_tests.rs:132` — `assert_eq!(cli.db, "kasir.db")`
+- [x] `crates/oz-cli/src/seed_demo_tests.rs:97` — `is_store_db_filename("kasir.db")`
+- [x] `platform/core/src/database/manager.rs:32` — comment
+- [x] `crates/oz-cli/src/commands/backup.rs:69` — `unwrap_or_else(|| "kasir.db".into())`
+- [x] `scripts/backup-db.sh:10,15,21` — default `./kasir.db`
+- [x] `scripts/restore-db.sh:9,19,24` — default `kasir.db`
+- [x] `scripts/check.sh:148`, `scripts/check.ps1:132`, `scripts/setup-dev.ps1:115` — `rm -f kasir.db kasir.db-wal kasir.db-shm`
+- [x] `apps/unified/supervisord.conf:32`, `apps/unified/docker-entrypoint.sh:8` — comments naming `/data/kasir.db`
+- [x] `crates/oz-cli/README.md:28`, `crates/oz-api/README.md:19` — documented CLI/API defaults
+- [x] `.agents/skills/database/SKILL.md:58,65` — skill doc updated
+- [x] `apps/tablet-client/src/commands/offline.rs:38,280`, `apps/tablet-client/src/commands/pos_tests.rs:866` — comments
 
 ---
 

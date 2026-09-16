@@ -9,7 +9,7 @@ next: none | perf: N/A
 //!
 //! Supports two backends determined by environment variables:
 //!
-//! - **SQLite** (default): `OZ_DB_PATH` env var (defaults to `oz-pos.db`)
+//! - **SQLite** (default): `OZ_DB_PATH` env var (defaults to `kasir.db`)
 //! - **PostgreSQL**: `DATABASE_URL` env var (must start with `postgres://`)
 //!
 //! # Usage
@@ -125,7 +125,7 @@ impl DbPool {
                 "OZ_DB_PATH is set to {path:?}, which looks like a Windows path but the cloud \
                  server runs on Linux. This is usually a Git Bash path-conversion artifact: \
                  prefix the docker run command with `MSYS_NO_PATHCONV=1` or pass a container \
-                 path such as /data/oz-pos.db"
+                 path such as /data/kasir.db"
             )));
         }
         let mut conn = rusqlite::Connection::open(path)?;

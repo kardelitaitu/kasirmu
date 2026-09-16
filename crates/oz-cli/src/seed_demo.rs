@@ -68,7 +68,7 @@ pub fn run_seed_demo(conn: &Connection, args: &SeedDemoArgs) -> Result<()> {
     conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
     // Run migrations on a separate connection to the same DB file.
     // SQLite schema changes are immediately visible to all connections.
-    let db_path = conn.path().unwrap_or("oz-pos.db");
+    let db_path = conn.path().unwrap_or("kasir.db");
     {
         let mut mig_conn = rusqlite::Connection::open(db_path)
             .with_context(|| format!("opening {db_path} for migrations"))?;

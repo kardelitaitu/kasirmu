@@ -112,7 +112,7 @@ step -Label "database migration" -Block {
 step -Label "migration idempotency" -Block {
     cargo run -p oz-cli -- migrate
     Write-Host "  Idempotent -- second run succeeds"
-    Remove-Item -LiteralPath "oz-pos.db", "oz-pos.db-wal", "oz-pos.db-shm" -ErrorAction Ignore
+            Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
 }
 
 # Step 6: Demo data seed (optional, skip if command not available)

@@ -94,7 +94,7 @@ fn store_db_filename_matcher() {
 #[test]
 fn store_db_filename_rejects_non_matches() {
     assert!(
-        !is_store_db_filename("oz-pos.db"),
+        !is_store_db_filename("kasir.db"),
         "main db is not a store db"
     );
     assert!(

@@ -103,7 +103,7 @@ pub(crate) const HELP_SCOPE: &str = concat!(
 /// `crate::commands::open_db` sets `PRAGMA journal_mode=WAL` on EVERY CLI path
 /// (unchanged by this command, deliberately), so even a bare report rewrites the
 /// database header and creates `<db>-wal` / `<db>-shm` beside the file. And
-/// `--db` defaults to `./oz-pos.db` in the CURRENT directory, which
+/// `--db` defaults to `./kasir.db` in the CURRENT directory, which
 /// `Connection::open` will CREATE if it is not there.
 pub(crate) const HELP_BYTES_NOT_CONTENT: &str = concat!(
     "READ-ONLY IN CONTENT, NOT BYTE-FOR-BYTE: a bare run updates no row and deletes nothing, but the\n",
@@ -111,7 +111,7 @@ pub(crate) const HELP_BYTES_NOT_CONTENT: &str = concat!(
     "(measured: byte 18 of the database header reads 2 after a run) and creates <db>-wal and\n",
     "<db>-shm beside it for the duration of the run, so the bytes and the mtime DO change on a\n",
     "report. A clean close checkpoints the sidecars away, so their absence afterwards is NOT\n",
-    "evidence the file was untouched. And --db defaults to ./oz-pos.db in the CURRENT DIRECTORY,\n",
+    "evidence the file was untouched. And --db defaults to ./kasir.db in the CURRENT DIRECTORY,\n",
     "where opening a MISSING path creates one. Take a copy first and run the census on the copy:\n",
     "oz backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Do not do this to a\n",
     "live store."
@@ -768,7 +768,7 @@ pub(crate) fn format_setting_counts(rows: &SettingCounts) -> Vec<String> {
 /// Refuse a database that is not a store database BEFORE reporting a clean zero
 /// against it: the in-scope half of the path footgun.
 ///
-/// --db defaults to ./oz-pos.db in the CURRENT directory and Connection::open
+/// --db defaults to ./kasir.db in the CURRENT directory and Connection::open
 /// CREATES a missing path, so a mistyped database opened an empty file, every
 /// count here returned zero, and the command reported "nothing to delete" about
 /// a file it had just made. Checking that both tables exist is the strongest
@@ -794,7 +794,7 @@ pub(crate) fn require_store_database(conn: &Connection) -> Result<()> {
             .with_context(|| format!("looking for the {table} table"))?;
         if present == 0 {
             anyhow::bail!(
-                "the database at {path} has no {table} table, so it is not a migrated OZ-POS store and every count below would read zero. Note that --db defaults to ./oz-pos.db in the CURRENT directory and opening a MISSING path CREATES one, so this file may have been made by the very command meant to inspect it. Point --db at a real store, or take a copy first with oz backup --output <copy.db> and run this against the copy."
+                "the database at {path} has no {table} table, so it is not a migrated kasir.mu store and every count below would read zero. Note that --db defaults to ./kasir.db in the CURRENT directory and opening a MISSING path CREATES one, so this file may have been made by the very command meant to inspect it. Point --db at a real store, or take a copy first with oz backup --output <copy.db> and run this against the copy."
             );
         }
     }

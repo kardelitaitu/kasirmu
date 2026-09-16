@@ -29,7 +29,7 @@ use crate::error::PlatformError;
 ///
 /// 1. On startup, the manager is created with the data directory
 ///    and migration definitions.
-/// 2. The global DB (existing `oz-pos.db`) contains store_profiles,
+    /// 2. The global DB (existing `kasir.db`) contains store_profiles,
 ///    terminals, users, and other cross-store data — it is accessed
 ///    via `AppState.db`, not through this manager.
 /// 3. When a second store is created via `create_store_profile`, the

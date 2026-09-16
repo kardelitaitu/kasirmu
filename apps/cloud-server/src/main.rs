@@ -6,14 +6,14 @@
 //! # Usage
 //!
 //! ```bash
-//! OZ_DB_PATH=/data/oz-pos.db OZ_API_PORT=3099 oz-cloud-server
+//! OZ_DB_PATH=/data/kasir.db OZ_API_PORT=3099 oz-cloud-server
 //! ```
 //!
 //! # Environment variables
 //!
 //! | Variable | Default | Description |
 //! |---|---|---|
-//! | `OZ_DB_PATH` | `oz-pos.db` | Path to the SQLite database file |
+//! | `OZ_DB_PATH` | `kasir.db` | Path to the SQLite database file |
 //! | `OZ_API_PORT` | `3099` | HTTP server listen port |
 //! | `OZ_ADMIN_KEY` | — | Admin key gating `POST /api/v1/tokens` (ADR sync-auth-hardening P2). When unset the token endpoint stays open (dev mode); set it in production so only callers with the matching `X-Admin-Key` header can mint tokens. |
 //! | `OZ_ENFORCE_PLANS` | — | When `1`/`true`/`on`, sync requests from tenants on the `free` plan (or with no plan row) are rejected with `403 plan_required` (ADR sync-plan-gating). When unset, plan gating is off — dev mode keeps working as before. |

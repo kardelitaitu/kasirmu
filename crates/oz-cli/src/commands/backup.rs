@@ -66,7 +66,7 @@ pub(crate) fn run_restore(conn: Connection, input: &str) -> Result<()> {
     let db_path = conn
         .path()
         .map(|p| p.to_owned())
-        .unwrap_or_else(|| "oz-pos.db".into());
+        .unwrap_or_else(|| "kasir.db".into());
 
     // Fold any WAL frames back into the main file so nothing live is
     // stranded in the sidecars, then close.

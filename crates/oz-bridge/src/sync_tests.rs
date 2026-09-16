@@ -548,7 +548,7 @@ fn backup_name_matching_is_strict_enough_to_scope_by_store() {
 #[test]
 fn successful_pull_removes_the_pre_pull_backup() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let backup = write_backup(&store, "20260908121212");
     dispose_pre_pull_backup(&main_db, &store, &backup, true);
@@ -566,7 +566,7 @@ fn successful_pull_removes_the_pre_pull_backup() {
 #[test]
 fn failed_pull_retains_the_pre_pull_backup() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let backup = write_backup(&store, "20260908121212");
     dispose_pre_pull_backup(&main_db, &store, &backup, false);
@@ -583,7 +583,7 @@ fn failed_pull_retains_the_pre_pull_backup() {
 #[test]
 fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     for ts in ["20260101000000", "20260102000000", "20260103000000"] {
         write_backup(&store, ts);
@@ -603,7 +603,7 @@ fn a_pile_of_pre_pull_backups_is_capped_at_the_newest_one() {
 #[test]
 fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     write_backup(&store, "20260101000000");
     write_backup(&store, "20260102000000");
@@ -625,7 +625,7 @@ fn a_successful_pull_also_sweeps_orphans_from_earlier_failures() {
 #[test]
 fn two_stores_do_not_rotate_each_other_out() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store_a = store_db_in(&dir, "a");
     let store_b = store_db_in(&dir, "b");
 
@@ -679,11 +679,11 @@ fn two_stores_do_not_rotate_each_other_out() {
 #[test]
 fn legacy_main_named_backups_are_swept_by_the_next_pull() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let legacy: Vec<std::path::PathBuf> = ["20260101000000", "20260102000000", "20260103000000"]
         .iter()
-        .map(|ts| touch(&dir, &format!("oz-pos.sync-pull-{ts}.backup.db")))
+        .map(|ts| touch(&dir, &format!("kasir.sync-pull-{ts}.backup.db")))
         .collect();
     // This store's own retained copy from a failed pull under the NEW scheme.
     let a_retained = write_backup(&store, "20260104000000");
@@ -737,7 +737,7 @@ fn the_legacy_sweep_stands_down_when_the_stems_coincide() {
 #[test]
 fn rotation_never_touches_files_that_are_not_pre_pull_backups() {
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let other_db = touch(&dir, "warehouse.db");
     let other_backup = touch(&dir, "warehouse.sync-pull-20260102000000.backup.db");
@@ -770,7 +770,7 @@ fn disposal_survives_a_missing_or_unlistable_directory() {
     // failed before Phase 3) must not turn into a second error, and a db path
     // with no readable parent must not panic.
     let dir = unique_backup_dir();
-    let main_db = touch(&dir, "oz-pos.db");
+    let main_db = touch(&dir, "kasir.db");
     let store = store_db_in(&dir, "7");
     let gone = pre_pull_backup_path(&store, "20260101000000");
     dispose_pre_pull_backup(&main_db, &store, &gone, true);
