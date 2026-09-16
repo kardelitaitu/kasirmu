@@ -83,7 +83,7 @@ stage_and_run() {
     [ -f "$f" ] && printf '// touched %s\n' "$RANDOM$RANDOM" >> "$f"
     git add -- "$f" 2>/dev/null
   done
-  OUT=$(OZPOS_SKIP_TYPECHECK="${SKIP:-0}" NPM_EXIT="${NPMX:-0}" \
+  OUT=$(KASIRMU_SKIP_TYPECHECK="${SKIP:-0}" NPM_EXIT="${NPMX:-0}" \
         bash "$TMP/step.sh" 2>&1); RC=$?
   local ran=no
   printf '%s' "$OUT" | grep -q 'STUB-NPM-RAN' && ran=yes
@@ -112,21 +112,21 @@ stage_and_run "staged Rust + CI + docs" apps/desktop-client/src/lib.rs .github/w
 expect "non-TS alone must NOT trigger" $([ "$LAST_RAN" = no ] && echo 0 || echo 1)
 
 git reset -q -- .
-OUT=$(OZPOS_SKIP_TYPECHECK=0 bash "$TMP/step.sh" 2>&1); RC=$?
+OUT=$(KASIRMU_SKIP_TYPECHECK=0 bash "$TMP/step.sh" 2>&1); RC=$?
 ran=no; printf '%s' "$OUT" | grep -q 'STUB-NPM-RAN' && ran=yes
 printf '  %-44s rc=%s  %s\n' "nothing staged" "$RC" \
   "$([ "$ran" = yes ] && echo 'typecheck RAN' || echo 'typecheck skipped')"
 expect "empty index must NOT trigger" $([ "$ran" = no ] && echo 0 || echo 1)
 
-SKIP=1 stage_and_run "TS staged + OZPOS_SKIP_TYPECHECK=1" ui/src/api/kds.ts
+SKIP=1 stage_and_run "TS staged + KASIRMU_SKIP_TYPECHECK=1" ui/src/api/kds.ts
 expect "the documented skip must skip" $([ "$LAST_RAN" = no ] && echo 0 || echo 1)
 SKIP=0
 
 # A failing typecheck must abort the commit with rc=1 and name the escape hatch.
 NPMX=2 stage_and_run "typecheck FAILS -> commit aborts" ui/src/api/kds.ts
 expect "must abort with rc=1" $([ "$RC" = 1 ] && echo 0 || echo 1)
-expect "message names OZPOS_SKIP_TYPECHECK" \
-  $(printf '%s' "$OUT" | grep -q 'OZPOS_SKIP_TYPECHECK=1' && echo 0 || echo 1)
+expect "message names KASIRMU_SKIP_TYPECHECK" \
+  $(printf '%s' "$OUT" | grep -q 'KASIRMU_SKIP_TYPECHECK=1' && echo 0 || echo 1)
 expect "message warns against --no-verify" \
   $(printf '%s' "$OUT" | grep -q -- '--no-verify' && echo 0 || echo 1)
 NPMX=0

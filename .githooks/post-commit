@@ -5,7 +5,7 @@
 #
 # WHY THIS IS NOT JUST pre-commit STEP 9
 #   Step 9 exists, works, and is bypassable twice over: `git commit --no-verify`
-#   skips pre-commit and commit-msg outright, and a one-off `OZPOS_SKIP_TYPECHECK=1`
+#   skips pre-commit and commit-msg outright, and a one-off `KASIRMU_SKIP_TYPECHECK=1`
 #   prefix skips that step alone. Both leave no trace anywhere. --no-verify does
 #   NOT skip post-commit, and post-commit cannot abort a commit, which is exactly
 #   what makes it the right place for a tripwire: it observes, it records, it gets
@@ -73,11 +73,11 @@
         exit 0
     fi
 
-    # When OZPOS_SKIP_TRIPWIRE=1 (default) or OZPOS_FAST_HOOKS=1, avoid running
+    # When KASIRMU_SKIP_TRIPWIRE=1 (default) or KASIRMU_FAST_HOOKS=1, avoid running
     # foreground typecheck (~21s) during atomic commits. Heavy typechecks are
     # enforced at pre-push (scripts/run-pre-push.py) and in CI (dev-ci.yml#ui-test).
     # Preserves execution in test harnesses where NPM_STUB_MODE is set.
-    if [ "${OZPOS_SKIP_TRIPWIRE:-1}" = "1" ] && [ -z "${NPM_STUB_MODE:-}" ]; then
+    if [ "${KASIRMU_SKIP_TRIPWIRE:-1}" = "1" ] && [ -z "${NPM_STUB_MODE:-}" ]; then
         exit 0
     fi
 
@@ -103,7 +103,7 @@
     echo "==============================================================================" >&2
     echo " post-commit tripwire: $_TC_VERDICT - $_TC_ERRS TypeScript error(s) at $_TC_SHA" >&2
     echo " pre-commit step 9 was bypassed for this commit (--no-verify or" >&2
-    echo " OZPOS_SKIP_TYPECHECK=1). Nothing enforced this; the commit stands." >&2
+    echo " KASIRMU_SKIP_TYPECHECK=1). Nothing enforced this; the commit stands." >&2
     printf '%s\n' "$_TC_OUT" | grep 'error TS' | head -30 >&2
     echo "------------------------------------------------------------------------------" >&2
     echo " Recorded in $_TC_LOG" >&2

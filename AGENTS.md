@@ -73,27 +73,27 @@ The `.githooks/pre-commit` hook runs **seven steps** automatically before every 
 
 ---
 
-## 🔑 Global Environment Variables (`OZPOS_*`)
+## 🔑 Global Environment Variables (`KASIRMU_*`)
 
-The developer machine's API keys are stored as **user-scope Windows environment variables** with an `OZPOS_` prefix (persisted in `HKCU\Environment`; they survive reboots and are available in every **new** PowerShell session — the session that set them must be reopened). Source of truth: the gitignored `.env` at the repo root.
+The developer machine's API keys are stored as **user-scope Windows environment variables** with a `KASIRMU_` prefix (persisted in `HKCU\Environment`; they survive reboots and are available in every **new** PowerShell session — the session that set them must be reopened). Source of truth: the gitignored `.env` at the repo root.
 
 ```powershell
-$env:OZPOS_CLOUDFLARE_API_TOKEN        # Cloudflare Workers deploy token
-$env:OZPOS_CLOUDFLARE_ACCOUNT_ID       # Cloudflare account id
-$env:OZPOS_CLOUDFLARE_ACCESS_KEY       # R2 access key id
-$env:OZPOS_CLOUDFLARE_SECRET_ACCESS_KEY# R2 secret access key
-$env:OZPOS_CLOUDFLARE_S3_ENDPOINT      # R2 S3 endpoint
-$env:OZPOS_NORTHFLANK_API_TOKEN        # Northflank deploy token
-$env:OZPOS_OZ_ADMIN_KEY                # admin dashboard API key
-$env:OZPOS_OZ_API_SECRET               # JWT signing secret
-$env:OZPOS_OZ_ENFORCE_PLANS            # plan gating flag
-$env:OZPOS_OZ_LICENSE_PRIVATE_KEY      # RSA license signing key (PEM, multiline)
+$env:KASIRMU_CLOUDFLARE_API_TOKEN        # Cloudflare Workers deploy token
+$env:KASIRMU_CLOUDFLARE_ACCOUNT_ID       # Cloudflare account id
+$env:KASIRMU_CLOUDFLARE_ACCESS_KEY       # R2 access key id
+$env:KASIRMU_CLOUDFLARE_SECRET_ACCESS_KEY# R2 secret access key
+$env:KASIRMU_CLOUDFLARE_S3_ENDPOINT      # R2 S3 endpoint
+$env:KASIRMU_NORTHFLANK_API_TOKEN        # Northflank deploy token
+$env:KASIRMU_ADMIN_KEY                    # admin dashboard API key
+$env:KASIRMU_API_SECRET                  # JWT signing secret
+$env:KASIRMU_ENFORCE_PLANS               # plan gating flag
+$env:KASIRMU_LICENSE_PRIVATE_KEY         # RSA license signing key (PEM, multiline)
 ```
 
 - Use them in commands instead of hardcoding secrets, e.g. the website deploy:
   ```powershell
-  $env:CLOUDFLARE_API_TOKEN=$env:OZPOS_CLOUDFLARE_API_TOKEN
-  $env:CLOUDFLARE_ACCOUNT_ID=$env:OZPOS_CLOUDFLARE_ACCOUNT_ID
+  $env:CLOUDFLARE_API_TOKEN=$env:KASIRMU_CLOUDFLARE_API_TOKEN
+  $env:CLOUDFLARE_ACCOUNT_ID=$env:KASIRMU_CLOUDFLARE_ACCOUNT_ID
   npm run deploy   # from website/
   ```
 - Update `.env` → variables by re-running the save step (same names/prefix); never commit `.env`.

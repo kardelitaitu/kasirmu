@@ -308,12 +308,12 @@
 | `OZPOS_OZ_ENFORCE_PLANS` | `KASIRMU_ENFORCE_PLANS` |
 | `OZPOS_OZ_LICENSE_PRIVATE_KEY` | `KASIRMU_LICENSE_PRIVATE_KEY` |
 
-- [ ] `.githooks/post-commit` — 4 occurrences (`OZPOS_SKIP_TYPECHECK` x2, `OZPOS_SKIP_TRIPWIRE` x2)
-- [ ] `scripts/generate-records-index.mjs` — `OZPOS_RECORDS_ROOT` (3 occurrences)
-- [ ] `scripts/test-records-index-escaping.sh` — `OZPOS_RECORDS_ROOT` (4 occurrences)
-- [ ] `scripts/test-typecheck-gate.sh` — `OZPOS_SKIP_TYPECHECK` (5 occurrences)
-- [ ] `scripts/gates.json` — `_note` text at typecheck-gate row
-- [ ] `AGENTS.md:76–96` — section heading + all `$env:OZPOS_*` listings
+- [x] `.githooks/post-commit` — 4 occurrences (`KASIRMU_SKIP_TYPECHECK` x2, `KASIRMU_SKIP_TRIPWIRE` x2)
+- [x] `scripts/generate-records-index.mjs` — `KASIRMU_RECORDS_ROOT` (3 occurrences)
+- [x] `scripts/test-records-index-escaping.sh` — `KASIRMU_RECORDS_ROOT` (4 occurrences)
+- [x] `scripts/test-typecheck-gate.sh` — `KASIRMU_SKIP_TYPECHECK` (5 occurrences)
+- [x] `scripts/gates.json` — `_note` text at typecheck-gate row
+- [x] `AGENTS.md:76–96` — section heading + all `$env:KASIRMU_*` listings
 
 > Confirm before committing: `git grep -n OZPOS_ .githooks/pre-commit` should return 0 lines.
 
