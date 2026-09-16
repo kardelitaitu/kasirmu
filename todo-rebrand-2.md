@@ -4,7 +4,13 @@
 <!-- This file covers zero-user-visible structural renames: crate names, binary names, -->
 <!-- Rust symbols, CLI subcommands, and the GitHub repo move. -->
 <!-- Execute only AFTER todo-rebrand.md is fully merged. -->
-<!-- Commit law: one pathspec commit per phase; no git add; no -a; no amend. -->
+<!-- Commit law: one pathspec commit per phase; no git add, no -a, no amend — EXCEPT the §3 one-line
+     new-file chain (`git add -- <new/path> && git commit -m "..." -- <new/path>`), which T3-1
+     (16 crate-directory renames — `crates/` holds 16 `oz-*` dirs plus `qris-core`, which stays) and
+     T3-4 (two module-file renames) both require. This line previously said a bare "no git add" while
+     T3-4:176 instructed the opposite. -->
+<!-- Every count in this file was re-measured 2026-09-16 at `442473337`; the command sits beside the
+     number, because two of them had drifted enough to change the work: see T3-3. -->
 
 ## Legend
 - `[ ]` not started
@@ -19,7 +25,7 @@
 |---|---|---|
 | T3-1 | Crate library renames — `Cargo.toml` + directory renames | 17 crates × 2–4 files |
 | T3-2 | Binary / lib-crate target names | 5 targets in 4 Cargo.toml files |
-| T3-3 | `use oz_*` imports across all Rust source | 412 `.rs` files |
+| T3-3 | `use oz_*` imports across all Rust source | 413 `.rs` files (`git grep -l "use oz_" -- "*.rs" \| wc -l`) |
 | T3-4 | `oz_core::ozpkg` module + `OzpkgPayload` struct + `export_ozpkg`/`import_ozpkg` fn names | ~15 `.rs` files |
 | T3-5 | CLI subcommand names `export-ozpkg` / `import-ozpkg` → `export` / `import` (with deprecation) | `oz-cli` crate |
 | T3-6 | `deny.toml` + workspace `Cargo.toml` metadata | 2 files |
@@ -105,12 +111,26 @@ Files to touch per crate:
 - [ ] `oz_pos_tablet_lib::run()` → `kasirmu_tablet_lib::run()`
 
 ### Scripts / CI
+> **Rebuilt from the tree.** The original list named 4 files; `git grep -c -E "oz-pos-app|oz-pos-tablet|oz_pos_app_lib|oz_pos_tablet_lib" -- scripts/ packaging/ install/` at `442473337` returns **16 files**, and every one of them would reference a binary that no longer exists.
+
 - [ ] `scripts/check.sh:115` — `--exclude oz-pos-app --exclude oz-pos-tablet` → `--exclude kasirmu-app --exclude kasirmu-tablet`
+- [ ] `scripts/check.ps1:116,117` — the same `--exclude` pair on the PowerShell twin (the original list had only the `.sh`)
 - [ ] `scripts/release.sh:62,65` — same `--exclude` flags
+- [ ] `scripts/coverage.sh:70,71`, `scripts/coverage.ps1:60,61` — same `--exclude` flags in the coverage runners
 - [ ] `.github/workflows/release.yml:149` — same `--exclude` flags
 - [ ] `.github/workflows/release.yml:243`
   `--exe apps/desktop-client/target/release/oz-pos-app.exe` → `kasirmu-app.exe`
+- [ ] `scripts/setup-cache.sh`, `scripts/setup-cache.ps1` (2 each) — cache-key/warm paths naming the app target
+- [ ] `scripts/setup-dev.ps1:1` — dev bootstrap
+- [ ] `scripts/build-exe-release.ps1:193,211` — `target\release\oz-pos-app.exe` / `target\$config\oz-pos-app.exe`: the release-exe builder
+- [ ] `scripts/dev-code-sign.ps1:61` — `-Exe "..., apps\desktop-client\target\release\oz-pos-app.exe"`
+- [ ] `scripts/profile.sh:17,27`, `scripts/profile.ps1:14` — `--bin oz-pos-app` help text + examples
+- [ ] `scripts/gates.json` (2) — `_note` prose naming `oz-pos-app`
+- [ ] `scripts/architecture-cargo-metadata.json:1` — **generated**: regenerate rather than hand-edit; confirm the generator is one of the scripts above
 - [ ] `.agents/verify-lane.sh:225–231` — `-p oz-pos-tablet`, `-p oz-pos-app` → new names
+- [ ] `packaging/linux/oz-pos.desktop:3,4,5,10` — `Name=OZ-POS`, **`Exec=oz-pos-app`** (a hard dependency on the binary name), `Icon=oz-pos`, `MimeType=application/x-ozpkg`. Also decide the file's own name (`oz-pos.desktop`) — `install/uninstall.sh` references that exact filename
+- [ ] `packaging/mobile/README.md:11,105,154,155,175,182` — `oz-pos-tablet.xcodeproj` / `.apk` / `.aab` / `.ipa` artifact names
+- [ ] `.github/workflows/dev-ci.yml` — **verified to contain none of these names** (`git grep -n -E "oz-pos-app|oz-pos-tablet|oz-cloud-server" -- .github/workflows/dev-ci.yml` → no output at this tip). It is in this phase's pathspec; do not go looking for a change that isn't there. Its nextest step also carries **no `--exclude` flags**, unlike `check.sh`.
 
 ### `apps/cloud-server/`
 - [ ] `apps/cloud-server/build.rs:7` — comment `oz-cloud-server.exe` → `kasirmu-cloud.exe`
@@ -120,24 +140,51 @@ Files to touch per crate:
 
 ---
 
-## T3-3 — `use oz_*` imports across all Rust source (412 files)
+## T3-3 — `use oz_*` imports across all Rust source (413 files)
 
-**Commit strategy:** split by import root, one commit per crate being imported:
-- `use oz_core::` → `use kasirmu_core::` — largest, ~200 files
-- `use oz_bridge::` → `use kasirmu_bridge::`
-- `use oz_api::` → `use kasirmu_api::`
-- `use oz_hal::` → `use kasirmu_hal::`
-- `use oz_cli::` → `use kasirmu_cli::` (internal use only, likely few)
-- `use oz_lan::` → `use kasirmu_lan::`
-- `use oz_crypto::` → `use kasirmu_crypto::`
-- `use oz_lua::` → `use kasirmu_lua::`
-- `use oz_media::` → `use kasirmu_media::`
-- `use oz_payment::` → `use kasirmu_payment::`
-- `use oz_plugin::` → `use kasirmu_plugin::`
-- `use oz_reporting::` → `use kasirmu_reporting::`
-- `use oz_security::` → `use kasirmu_security::`
-- `use oz_logging::` → `use kasirmu_logging::`
-- `use oz_notification::` → `use kasirmu_notification::`
+**Commit strategy:** split by import root, one commit per crate being imported.
+
+> **Rebuilt from the tree at `442473337`; the previous list was wrong in both directions.** It named
+> four roots that have no `use oz_x::` site, and omitted one that does. Two commands, because a crate
+> can be reached by a `use` import or by an inline path, and only the first is what the old list counted:
+>
+> ```
+> git grep -o -h -E "use oz_[a-z_]+" -- "*.rs" | sort -u          # roots in `use` form
+> git grep -o "oz_x::" -- "*.rs" | wc -l                          # inline `crate::`-qualified sites
+> ```
+
+| Root | `use` sites (files) | Inline `oz_x::` occurrences | In the old list? |
+|---|---|---|---|
+| `oz_core` | **344** | 2681 | yes — but it said "~200 files" |
+| `oz_bridge` | 92 | — | yes |
+| `oz_hal` | 27 | — | yes |
+| `oz_security` | 15 | — | yes |
+| `oz_payment` | 13 | — | yes |
+| `oz_plugin` | 7 | — | yes |
+| `oz_notification` | 4 | — | yes |
+| `oz_api` | 3 | — | yes |
+| `oz_lan` | 3 | — | yes |
+| `oz_lua` | 2 | — | yes |
+| `oz_local_api` | **1** | 3 | **NO — omitted, and it is a real root** |
+| `oz_crypto` | 1 | — | yes |
+| `oz_reporting` | none | 13 | yes |
+| `oz_cli` | none | 7 | yes |
+| `oz_logging` | none | 7 | yes |
+| `oz_media` | **none** | **0** | listed, but has no `.rs` site at all — its rename is a `Cargo.toml`/workspace-dep concern (T3-1), not a T3-3 sub-commit |
+
+- [ ] `use oz_core::` → `use kasirmu_core::` — the largest sub-commit by far (**344 files**, not ~200)
+- [ ] `use oz_bridge::` → `use kasirmu_bridge::`
+- [ ] `use oz_api::` → `use kasirmu_api::`
+- [ ] `use oz_hal::` → `use kasirmu_hal::`
+- [ ] `use oz_local_api::` → `use kasirmu_local_api::` **(was missing from the list)**
+- [ ] `use oz_lan::` → `use kasirmu_lan::`
+- [ ] `use oz_crypto::` → `use kasirmu_crypto::`
+- [ ] `use oz_lua::` → `use kasirmu_lua::`
+- [ ] `use oz_payment::` → `use kasirmu_payment::`
+- [ ] `use oz_plugin::` → `use kasirmu_plugin::`
+- [ ] `use oz_security::` → `use kasirmu_security::`
+- [ ] `use oz_notification::` → `use kasirmu_notification::`
+- [ ] Inline-path sub-commits (no `use` line to catch — a `use`-only sweep leaves these broken): `oz_cli::` (7), `oz_reporting::` (13), `oz_logging::` (7), `oz_local_api::` (3)
 
 Affected source areas (directories containing `use oz_*`):
 ```
@@ -169,7 +216,7 @@ platform/sync/src/crdt/          platform/sync/tests/
 ## T3-4 — `oz_core::ozpkg` module + internal symbols
 
 **Commit:** `refactor(core): rename ozpkg module and its public symbols`
-**Pathspec:** `crates/kasirmu-core/src/ozpkg.rs crates/kasirmu-core/src/lib.rs crates/kasirmu-bridge/src/data.rs crates/kasirmu-bridge/src/data_tests.rs crates/kasirmu-cli/src/commands/ozpkg.rs crates/kasirmu-cli/src/commands/mod.rs crates/kasirmu-cli/src/cli_tests.rs`
+**Pathspec:** `crates/kasirmu-core/src/ozpkg.rs crates/kasirmu-core/src/ozpkg_tests.rs crates/kasirmu-core/src/ozpkg_password_tests.rs crates/kasirmu-core/src/lib.rs crates/kasirmu-bridge/src/data.rs crates/kasirmu-bridge/src/data_tests.rs crates/kasirmu-cli/src/commands/ozpkg.rs crates/kasirmu-cli/src/commands/ozpkg_tests.rs crates/kasirmu-cli/src/commands/mod.rs crates/kasirmu-cli/src/cli_tests.rs fuzz/fuzz_targets/ozpkg_parse.rs fuzz/Cargo.toml`
 
 ### Module rename
 - [ ] `crates/kasirmu-core/src/ozpkg.rs` → rename file to `kasirpkg.rs`
@@ -192,6 +239,14 @@ platform/sync/src/crdt/          platform/sync/tests/
 ### Test fixtures
 - [ ] `crates/kasirmu-bridge/src/data_tests.rs` — update function/struct names, keep `.kasirpkg` extension tests from Phase 6
 - [ ] `crates/kasirmu-cli/src/cli_tests.rs` — `cli_parse_export_ozpkg()` → `cli_parse_export_kasirpkg()`, `cli_parse_import_ozpkg()` → `cli_parse_import_kasirpkg()`
+- [ ] `crates/kasirmu-core/src/ozpkg_tests.rs` — **was missing from the pathspec.** Renames with `ozpkg.rs` (§3 new-file chain) and imports the renamed symbols, so leaving it out reds the crate's own tests
+- [ ] `crates/kasirmu-core/src/ozpkg_password_tests.rs` — same; the module's password-path suite
+- [ ] `crates/kasirmu-cli/src/commands/ozpkg_tests.rs` — same; calls `run_export_ozpkg` at `:150`
+
+### Fuzz target (unlisted in the original)
+- [ ] `fuzz/Cargo.toml:86,87` — `[[bin]] name = "ozpkg_parse"` / `path = "fuzz_targets/ozpkg_parse.rs"`, and the comment at `:34` that names it. Renaming the file without this entry breaks `cargo fuzz`
+- [ ] `fuzz/fuzz_targets/ozpkg_parse.rs:1,18,32` — header/binary name in the doc comment and its `--features oz-plugin-fuzz ozpkg_parse` invocation
+- [ ] **Decide separately:** this target exercises `oz_plugin::package::OzpkArchive` (5 sites in `crates/oz-plugin/src/package.rs`, 32 in `package_tests.rs`, 2 here), a *different* symbol family — `Ozpk`-prefixed, no `g`. It is not in the rename table above and `.ozpkg` → `.kasirpkg` does not require touching it. Record the decision (rename or leave) rather than letting it be discovered mid-phase.
 
 ---
 
@@ -217,8 +272,8 @@ platform/sync/src/crdt/          platform/sync/tests/
 **Commit:** `chore(workspace): update deny.toml crate entries and Cargo.toml metadata for new names`
 **Pathspec:** `deny.toml Cargo.toml`
 
-### `deny.toml` — crate skip entries (lines 88–173 and beyond)
-Each `name = "oz-…"` entry under `[bans.skip]` must be updated:
+### `deny.toml` — crate skip entries (lines 88–178)
+**19 entries**, not 18: `git grep -n 'name = "oz-' -- deny.toml`. Each `name = "oz-…"` entry under `[bans.skip]`: the original list stopped at `oz-reporting` and **omitted `oz-security` (deny.toml:178)**, which would have left one skip entry naming a crate that no longer exists.
 - [ ] `oz-api` → `kasirmu-api`
 - [ ] `oz-bridge` → `kasirmu-bridge`
 - [ ] `oz-cli` → `kasirmu-cli`
@@ -237,6 +292,7 @@ Each `name = "oz-…"` entry under `[bans.skip]` must be updated:
 - [ ] `oz-pos-app` → `kasirmu-app`
 - [ ] `oz-pos-tablet` → `kasirmu-tablet`
 - [ ] `oz-reporting` → `kasirmu-reporting`
+- [ ] `oz-security` → `kasirmu-security` **(was missing)**
 
 ### Root `Cargo.toml` — profile section
 - [ ] `[profile.release.package.oz-pos-app]` → `[profile.release.package.kasirmu-app]`
@@ -259,7 +315,12 @@ Each `name = "oz-…"` entry under `[bans.skip]` must be updated:
 ### Step 2: Update hard-coded URLs (code commits after the move)
 
 **Commit:** `chore(config): update GitHub repo URLs to kasirmu/kasir.mu`
-**Pathspec:** (list all files below explicitly)
+**Pathspec:** `Cargo.toml README.md CHANGELOG.md apps/desktop-client/tauri.conf.json install/README.md install/install.sh install/uninstall.sh install/win/README.md install/win/install.ps1 install/win/uninstall.ps1 website/src/pages/[locale]/download.astro website/src/content/docs/en/installation.md website/src/content/docs/id/installation.md docs/guides/QUICKSTART.md docs/guides/android-install-test.md docs/guides/ios-build-guide.md docs/guides/ios-install-test.md docs/guides/linux-launch-test.md docs/decisions/2026-07-16-desktop-app-updater.md docs/decisions/2026-07-16-release-automation.md`
+
+> **The original pathspec said "(list all files below explicitly)" and then listed only `Cargo.toml`,
+> `README.md`, `CHANGELOG.md`, `tauri.conf.json` and the `docs/` guides — omitting the two surfaces
+> that actually *use* the URL at runtime.** Both were found with
+> `git grep -n "kardelitaitu/oz-pos" -- install/ packaging/ website/`.
 
 #### `Cargo.toml:44`
 - [ ] `repository = "https://github.com/kardelitaitu/oz-pos"` → `"https://github.com/kasirmu/kasir.mu"`
@@ -274,6 +335,16 @@ Each `name = "oz-…"` entry under `[bans.skip]` must be updated:
 - [ ] Updater `pubkey` endpoint URLs:
   `https://github.com/kardelitaitu/oz-pos/releases/latest/download/beta.json` → new URL
   `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` → new URL
+
+#### `website/` — **missing from the original plan, and this is the live download path**
+- [ ] `website/src/pages/[locale]/download.astro:11` — `const releaseUrl = 'https://github.com/kardelitaitu/oz-pos/releases'` feeds the **download button on the live site**. The 12-month redirect would keep it working, which is exactly why a stale URL here can go unnoticed for a year
+- [ ] `website/src/content/docs/en/installation.md:31` and `website/src/content/docs/id/installation.md:31` — the `[releases page]` link in the install docs (deliberately left as a live link when the website was rebranded; this phase is where it belongs)
+
+#### `install/` — **missing from the original plan**
+- [ ] `install/install.sh:19,46` — the one-line `curl … | bash` URL and the `REPO="kardelitaitu/oz-pos"` default that fetches the release manifest
+- [ ] `install/win/install.ps1:26,58` — the `irm … | iex` example and `[string]$Repo = 'kardelitaitu/oz-pos'`
+- [ ] `install/uninstall.sh:15`, `install/win/uninstall.ps1:14` — uninstall one-liners
+- [ ] `install/README.md:3,20,25` and `install/win/README.md:3,14,49` — documented install commands (the `:3` audit stamps additionally assert that the URL "matches git remote", so they need re-stating, not just re-writing)
 
 #### `docs/guides/QUICKSTART.md:54`
 - [ ] `git clone https://github.com/kardelitaitu/oz-pos.git` → new URL
@@ -341,6 +412,10 @@ cargo fmt --all -- --check
 
 ## Notes
 
+- **`install/**` and `packaging/**` are covered by NEITHER plan, and this note is the only place that says so.** T3-7 above picks up their *repo URLs* only. Two other families live in the same files and belong to `todo-rebrand.md`, not here:
+  - **identifier paths → Phase 4.** `install/uninstall.sh:55,56,59,96` removes `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`; `install/win/uninstall.ps1:97,98` removes `%APPDATA%\com.ozpos.app` and `%LOCALAPPDATA%\com.ozpos.app`; `install/win/README.md:58` documents both. After the identifier change these paths are stale and an uninstall leaves the new data dirs behind. **`todo-rebrand.md` Phase 4 lists neither file.**
+  - **artifact names → Phase 3.** `install/install.sh` (18 sites) uses `OZ-POS.app`, `/opt/oz-pos/OZ-POS.AppImage`, `~/.local/bin/oz-pos.AppImage`, `/usr/local/bin/oz-pos`, `/usr/share/applications/oz-pos.desktop` and `dpkg -s oz-pos`; `install/win/install.ps1`/`uninstall.ps1` use `Programs\OZ-POS\OZ-POS.exe` and `DisplayName -like 'OZ-POS*'`. These follow `productName`, so they break in Phase 3 — **whose file list also omits them.**
+  - Verified with `git grep -n "com\.ozpos" -- install/` and `git grep -n -E "OZ-POS\.(exe|app|AppImage)|oz-pos\.(AppImage|desktop)|dpkg -s oz-pos" -- install/`.
 - **`qris-core`** is not an oz-brand crate (payment protocol, not brand-named). Leave as-is.
 - **The `oz` CLI binary name** (defined in `crates/oz-cli/Cargo.toml [[bin]] name = "oz"`) is user-facing. Renaming it to `kasir` is a breaking change for any user with `oz` in their PATH or scripts. Coordinate with a release note.
 - **`Cargo.lock`** regenerates automatically — do not edit by hand. Commit the updated lockfile alongside the final crate-rename commit.
