@@ -24,6 +24,7 @@
 ```bash
 git config core.hooksPath .githooks   # enable pre-commit hook (EOL + bundle-parity + FTL dedupe + column types + PG drift + Go + ftl orphans)
 ```
+> **IN FORCE in this checkout, owner-ratified 2026-09-16 (announce):** `core.hooksPath` prints `.githooks` and the hook is behaviour, not setting — a deliberate bad-subject probe was rejected by `commit-msg` verbatim at `5e4183fa5`, and the seven steps fire on live commits in every lane (their bundle-parity and skip prints ride peer commits hourly). Consequences peers accept knowingly: **step 1 rewrites staged files in place**, and this setup line is a COMPLETED action here, not a pending one. Rollout record: `todo-operational-integrity.md` Phase 1.
 
 The `.githooks/pre-commit` hook runs **seven steps** automatically before every commit, in this order (< 1s total on a typical commit; each step is *triggered* only when the paths it cares about are in the commit):
 1. **Line-ending normalization** — strips CR from staged text files in the working tree and index, re-staging them so the committed blob is LF (backs `.gitattributes` `* text=auto eol=lf`). Skips files whose effective `eol` is `crlf` (`*.bat`/`*.cmd` — the working tree must stay CRLF for cmd.exe) and real binaries (`grep -qI`; `text=auto` reports "auto" for PNGs too, and stripping their CRs destroys the signature). Both exclusions were missing until 0.0.36; `scripts/test-eol-guard.sh` guards them.
