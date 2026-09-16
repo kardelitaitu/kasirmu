@@ -3,7 +3,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { withFluent } from '@/locales/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import { CartLineItem } from '@/features/sales/components/CartLineItem';
-import { formatMoney, type CartLine, type LineId, type Sku } from '@/types/domain';
+import {
+  formatMoney,
+  COURSES,
+  type CartLine,
+  type CourseId,
+  type LineId,
+  type Sku,
+} from '@/types/domain';
 
 // ── CartLineItem behavioural tests ───────────────────────────────────
 //
@@ -18,11 +25,15 @@ import { formatMoney, type CartLine, type LineId, type Sku } from '@/types/domai
 // 'cart-panel-line-item' appears 0 times as a CSS selector anywhere in the
 // sales stylesheets. Case 1 pins all three facts.
 //
-// Also measured: this component has NO modifier, discount, or coursing props
-// at all (CartLineItem.tsx:33-45 is the whole input surface). The optional
-// render slots are exactly three — onOverride, line.category, line.name — and
-// case 6 asserts what an absent one does (nothing), because the doc's
-// "modifier rows render here" reading would otherwise survive this file.
+// Also measured: this component has NO modifier or discount props, and
+// modifiers still have no data path anywhere in the app (see F1 in
+// .agents/resto-pos-ui-review.md). COURSING IS now a prop surface —
+// onAssignCourse / courseMenuLine / onCourseMenuLineChange — added so a line
+// can be given a courseId; until then the restaurant firing bar had nothing
+// to fire. The remaining optional render slots are onOverride, line.category
+// and line.name, and case 6 asserts what an absent one does (nothing),
+// because the doc's "modifier rows render here" reading would otherwise
+// survive this file.
 //
 // triggerInteraction is mocked: the sound/vibration it schedules is not this
 // component's contract, and jsdom has no HTMLMediaElement.play. What IS
@@ -64,6 +75,9 @@ function renderItem(props: {
   line?: CartLine;
   onOverride?: (line: CartLine) => void;
   registerRef?: (lineId: LineId, el: HTMLDivElement | null) => void;
+  onAssignCourse?: (lineId: LineId, courseId: CourseId) => void;
+  courseMenuLine?: LineId | null;
+  onCourseMenuLineChange?: (lineId: LineId | null) => void;
 } = {}) {
   const line = props.line ?? makeLine();
   const onRemove = vi.fn();
@@ -78,6 +92,12 @@ function renderItem(props: {
         onIncreaseQty={onIncreaseQty}
         {...(props.onOverride ? { onOverride: props.onOverride } : {})}
         {...(props.registerRef ? { registerRef: props.registerRef } : {})}
+        // Coursing is opt-in: no onAssignCourse, no chip — see the cases below.
+        {...(props.onAssignCourse ? {
+          onAssignCourse: props.onAssignCourse,
+          courseMenuLine: props.courseMenuLine ?? null,
+          onCourseMenuLineChange: props.onCourseMenuLineChange ?? vi.fn(),
+        } : {})}
       />,
       salesFtl,
     ),
@@ -250,5 +270,93 @@ describe('CartLineItem', () => {
     fireEvent.click(override);
     expect(onOverride).toHaveBeenCalledTimes(1);
     expect(onOverride).toHaveBeenCalledWith(full.line);
+  });
+});
+
+describe('CartLineItem — course assignment (restaurant coursing)', () => {
+  // The chip is how a line acquires a courseId, which is what the firing bar
+  // counts. Before this existed the restaurant stack could fire courses but
+  // never assign one, so every hold count was structurally zero.
+  //
+  // The open/closed state lives in CartPanel (so only one dropdown can be open
+  // at a time), which is why the tests below pass `courseMenuLine` directly
+  // instead of clicking the chip and waiting for it to appear.
+
+  it('renders no course chip at all when onAssignCourse is absent', () => {
+    renderItem();
+
+    expect(screen.queryByTestId('cart-line-course-chip')).toBeNull();
+    expect(screen.queryByTestId('cart-line-course-dropdown')).toBeNull();
+  });
+
+  it('renders a closed chip when coursing is available', () => {
+    renderItem({ onAssignCourse: vi.fn() });
+
+    const chip = screen.getByTestId('cart-line-course-chip');
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    // Closed means no options in the a11y tree, not merely hidden ones.
+    expect(screen.queryByRole('option')).toBeNull();
+  });
+
+  it('asks the panel to open this line, rather than opening itself', () => {
+    const onCourseMenuLineChange = vi.fn();
+    const { line } = renderItem({ onAssignCourse: vi.fn(), onCourseMenuLineChange });
+
+    fireEvent.click(screen.getByTestId('cart-line-course-chip'));
+
+    expect(onCourseMenuLineChange).toHaveBeenCalledTimes(1);
+    expect(onCourseMenuLineChange).toHaveBeenCalledWith(line.id);
+  });
+
+  it('closes again when the chip is clicked while already open', () => {
+    const onCourseMenuLineChange = vi.fn();
+    const line = makeLine();
+    renderItem({ line, onAssignCourse: vi.fn(), onCourseMenuLineChange, courseMenuLine: line.id });
+
+    fireEvent.click(screen.getByTestId('cart-line-course-chip'));
+
+    expect(onCourseMenuLineChange).toHaveBeenCalledWith(null);
+  });
+
+  it('offers every course plus a None option, and reports the choice with the line id', () => {
+    const onAssignCourse = vi.fn();
+    const onCourseMenuLineChange = vi.fn();
+    const line = makeLine({ name: 'Espresso' });
+    renderItem({
+      line,
+      onAssignCourse,
+      onCourseMenuLineChange,
+      courseMenuLine: line.id,
+    });
+
+    expect(screen.getByTestId('cart-line-course-dropdown').getAttribute('role')).toBe('listbox');
+    // The four COURSES plus the explicit "no course" entry.
+    expect(screen.getAllByRole('option')).toHaveLength(COURSES.length + 1);
+
+    fireEvent.click(screen.getByTestId('cart-line-course-option-dessert'));
+
+    expect(onAssignCourse).toHaveBeenCalledTimes(1);
+    expect(onAssignCourse).toHaveBeenCalledWith(line.id, 'dessert');
+    // Choosing closes the menu.
+    expect(onCourseMenuLineChange).toHaveBeenCalledWith(null);
+  });
+
+  it('clears the course when None is chosen', () => {
+    const onAssignCourse = vi.fn();
+    const line = { ...makeLine(), courseId: 'main' as CourseId };
+    renderItem({ line, onAssignCourse, courseMenuLine: line.id });
+
+    fireEvent.click(screen.getByTestId('cart-line-course-option-none'));
+
+    expect(onAssignCourse).toHaveBeenCalledWith(line.id, '');
+  });
+
+  it('shows the assigned course on the chip instead of the prompt', () => {
+    const line = { ...makeLine(), courseId: 'main' as CourseId };
+    renderItem({ line, onAssignCourse: vi.fn() });
+
+    const chip = screen.getByTestId('cart-line-course-chip');
+    expect(chip.className).toContain('pos-cart-course-chip--set');
+    expect(chip.textContent).toContain('Main Course');
   });
 });

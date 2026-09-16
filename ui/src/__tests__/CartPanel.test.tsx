@@ -85,6 +85,9 @@ function makeCartPanelProps(
     handleOpenSettings: noop, handleLock: noop, showTableNumberSetting: false,
     tableNumber: '', setTableNumber: noop, shiftErrorExit: NO_EXIT,
     closeShiftError: null, fireCourse: noop, fireAllCourses: noop,
+    // null is PosScreen's pre-load value: coursing stays on until an
+    // explicit `false` arrives, which is what CartPanel gates on.
+    courseFiringEnabled: null,
     handleRemoveLine: noop, handleDecreaseQty: noop, handleIncreaseQty: noop,
     setCartLineRef: noop, isManager: false, setOverrideTarget: noop,
     ensureCart: async () => null, animatedUndoStack: EMPTY_UNDO,
@@ -251,5 +254,50 @@ describe('CartPanel (smoke)', () => {
     expect(
       within(retail.panel).getByRole('button', { name: 'View open bills' }).querySelector('.pos-cart-held-count')?.textContent,
     ).toBe('1');
+  });
+});
+
+describe('CartPanel — course assignment wiring', () => {
+  // The firing bar above this panel counts lines whose courseId is set and
+  // whose coursingStatus is 'hold'. Assigning is the missing half, so these
+  // cases pin the two gates that decide whether the chip exists at all:
+  // the caller must supply assignCourse AND the workspace must be restaurant.
+
+  it('renders no course chip when assignCourse is not supplied', () => {
+    renderPanel({ activeWorkspace: 'restaurant-pos', lines: [makeLine('Espresso')] });
+
+    expect(screen.queryByTestId('cart-line-course-chip')).toBeNull();
+  });
+
+  it('renders no course chip outside the restaurant workspace, even with assignCourse', () => {
+    renderPanel({
+      activeWorkspace: 'store-pos',
+      lines: [makeLine('Espresso')],
+      assignCourse: noop,
+    });
+
+    expect(screen.queryByTestId('cart-line-course-chip')).toBeNull();
+  });
+
+  it('gives every line a course chip in the restaurant workspace', () => {
+    renderPanel({
+      activeWorkspace: 'restaurant-pos',
+      lines: [makeLine('Espresso'), makeLine('Latte')],
+      assignCourse: noop,
+    });
+
+    expect(screen.getAllByTestId('cart-line-course-chip')).toHaveLength(2);
+  });
+
+  it('routes the chosen course to assignCourse with the owning line id', async () => {
+    const assignCourse = vi.fn();
+    const line = makeLine('Espresso');
+    renderPanel({ activeWorkspace: 'restaurant-pos', lines: [line], assignCourse });
+
+    fireEvent.click(screen.getByTestId('cart-line-course-chip'));
+    fireEvent.click(await screen.findByTestId('cart-line-course-option-dessert'));
+
+    expect(assignCourse).toHaveBeenCalledTimes(1);
+    expect(assignCourse).toHaveBeenCalledWith(line.id, 'dessert');
   });
 });

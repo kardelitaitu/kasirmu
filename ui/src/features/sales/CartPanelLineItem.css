@@ -376,6 +376,97 @@
   outline-offset: 2px;
 }
 
+/* ── Course chip + dropdown (restaurant coursing) ─────────────
+ * This file's header claimed ownership of `.pos-cart-line-course`
+ * long before any markup used it — the rules simply did not exist.
+ * The chip is how a line acquires its `courseId`, which is what the
+ * firing bar counts (CourseSelectorBar), so without it the
+ * restaurant stack could fire courses but never assign one.
+ * Shaped after the retail cart's chip, re-tokened for this panel. */
+
+.pos-cart-line-course {
+  position: relative;
+  display: inline-flex;
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+
+.pos-cart-course-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0) var(--space-2);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+
+.pos-cart-course-chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+/* A line that already carries a course reads as set, not as a prompt. */
+.pos-cart-course-chip--set {
+  border-style: solid;
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-fg);
+}
+
+.pos-cart-course-chip:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.pos-cart-course-dropdown {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  /* Token, not a literal: themeTokenCompliance rejects a raw rgb() here. */
+  box-shadow: var(--shadow-md);
+}
+
+.pos-cart-course-option {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-fg-primary);
+  font-size: var(--text-xs);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pos-cart-course-option:hover {
+  background: var(--color-accent-alpha);
+}
+
+.pos-cart-course-option--active {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent-fg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.pos-cart-course-option:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
 /* ── Responsive: tablet thumbnail shrink ────────────────────
  * On narrower viewports the right-side panel reflows below the
  * menu (see CartPanel.css @media) and we trim the thumbnail so

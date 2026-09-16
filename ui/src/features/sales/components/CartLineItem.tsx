@@ -3,7 +3,15 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Localized } from '@/components/Localized';
 import { useLocalization } from '@fluent/react';
-import { formatMoney, type CartLine, type LineId } from '@/types/domain';
+import {
+  formatMoney,
+  COURSES,
+  courseEmoji,
+  courseLabel,
+  type CartLine,
+  type CourseId,
+  type LineId,
+} from '@/types/domain';
 import { animDuration } from '@/utils/animation';
 import { triggerInteraction } from '@/utils/interaction';
 import { useSwipe } from '@/hooks/useSwipe';
@@ -37,6 +45,19 @@ export interface CartLineItemProps {
   onIncreaseQty: (line: CartLine) => void;
   onOverride?: (line: CartLine) => void;
   /**
+   * Assign a course to this line (restaurant coursing).
+   *
+   * When omitted the course chip is not rendered at all, so the retail path
+   * and every unit test that does not care about coursing are unaffected.
+   */
+  onAssignCourse?: (lineId: LineId, courseId: CourseId) => void;
+  /**
+   * Id of the line whose course dropdown is open. Held by the panel rather
+   * than per line so only one dropdown can be open at a time.
+   */
+  courseMenuLine?: LineId | null;
+  onCourseMenuLineChange?: (lineId: LineId | null) => void;
+  /**
    * Registers the line DOM node so the parent can move focus during
    * keyboard navigation (↑ / ↓). When omitted the line is rendered
    * focusless (e.g. in unit-test environments that don't render a DOM).
@@ -50,6 +71,9 @@ export function CartLineItem({
   onDecreaseQty,
   onIncreaseQty,
   onOverride,
+  onAssignCourse,
+  courseMenuLine = null,
+  onCourseMenuLineChange,
   registerRef,
 }: CartLineItemProps) {
   const { l10n } = useLocalization();
@@ -63,6 +87,9 @@ export function CartLineItem({
   });
   // Compute once per render.
   const thumbnail = lineThumbnail(String(line.sku));
+  // Only meaningful when the caller passed onAssignCourse; the chip renders
+  // on that condition too, so a line without coursing never reaches here.
+  const courseOpen = !!onAssignCourse && courseMenuLine === line.id;
 
   const MS_200 = animDuration(200);
 
@@ -115,7 +142,68 @@ export function CartLineItem({
 
         {/* 2 — Name + price */}
         <div className="pos-cart-line-info">
-          <div className="pos-cart-line-name">{line.name ?? line.sku}</div>
+          <div className="pos-cart-line-name">
+            {line.name ?? line.sku}
+            {onAssignCourse && (
+              <span className="pos-cart-line-course">
+                <button
+                  type="button"
+                  className={`pos-cart-course-chip${line.courseId ? ' pos-cart-course-chip--set' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCourseMenuLineChange?.(courseOpen ? null : line.id);
+                  }}
+                  aria-label={l10n.getString('retail-cart-course-aria', { name: line.name ?? line.sku })}
+                  aria-expanded={courseOpen}
+                  data-testid="cart-line-course-chip"
+                >
+                  {line.courseId ? `${courseEmoji(line.courseId)} ${courseLabel(line.courseId)}` : 'Course'}
+                </button>
+                {courseOpen && (
+                  <span
+                    className="pos-cart-course-dropdown"
+                    role="listbox"
+                    aria-label={l10n.getString('select-course-aria')}
+                    data-testid="cart-line-course-dropdown"
+                  >
+                    <button
+                      type="button"
+                      className={`pos-cart-course-option${!line.courseId ? ' pos-cart-course-option--active' : ''}`}
+                      role="option"
+                      aria-selected={!line.courseId}
+                      data-testid="cart-line-course-option-none"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAssignCourse(line.id, '' as CourseId);
+                        onCourseMenuLineChange?.(null);
+                      }}
+                    >
+                      <Localized id="retail-course-none">
+                        <span>None</span>
+                      </Localized>
+                    </button>
+                    {COURSES.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`pos-cart-course-option${line.courseId === c.id ? ' pos-cart-course-option--active' : ''}`}
+                        role="option"
+                        aria-selected={line.courseId === c.id}
+                        data-testid={`cart-line-course-option-${c.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAssignCourse(line.id, c.id);
+                          onCourseMenuLineChange?.(null);
+                        }}
+                      >
+                        {c.emoji} {c.label}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
           <div className="pos-cart-line-price">
             <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
           </div>
