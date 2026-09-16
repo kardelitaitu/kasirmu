@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import pathlib
 import re
 import subprocess
@@ -254,6 +255,23 @@ def main() -> int:
     # and read it through the gate's own function rather than a forked parser: the fork is
     # what produced the shape mismatch above.
     allowlist_lines = vip.read_allowlist_text().splitlines()
+    # The two kinds of allowlist presence are not the same fact, and conflating them cost a
+    # round: an ENTRY is a parsed member of `desktop`/`tablet`/`scoped_orphans`/`dev_mock`,
+    # while a MENTION is the name appearing in the file's free text -- usually the giant
+    # `_comment`, which records commands kept on purpose. A stale entry is stale data someone
+    # should delete; a mention is a sentence a decision may hang on. Both still require `--only`
+    # to proceed (weakening the gate was considered and rejected: this file's prose has
+    # repeatedly carried a real keep-decision), but the signal must say which it is looking at,
+    # because the round-23 apply was stopped by a comment this lane had written itself, hours
+    # after cleaning the entries.
+    try:
+        _al = json.loads((REPO / "scripts" / "ipc-parity-allowlist.json").read_text(encoding="utf-8"))
+        al_entries = {(e.get("name") if isinstance(e, dict) else e)
+                      for sec in ("desktop", "tablet", "scoped_orphans", "dev_mock")
+                      for e in (_al.get(sec) or [])}
+    except (OSError, ValueError) as exc:  # a gate file that will not parse is itself a finding
+        print(f"abort: cannot read the parity allowlist as JSON ({exc}); refusing to grade it")
+        return 2
 
     text = mod.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
@@ -305,17 +323,20 @@ def main() -> int:
         keep = [f"ipc-parity-allowlist.json:{i}: {ln.strip()[:100]}"
                 for i, ln in enumerate(allowlist_lines, 1)
                 if re.search(r"(?<![\w:.])" + re.escape(name) + r"\b(?!_scoped)", ln)]
+        is_entry = name in al_entries
         for k in keep[:2]:
-            print(f"    KEEP MENTION (the parity allowlist names this command, often in its "
-                  f"_comment as a deliberate fallback): {k}")
+            print(f"    KEEP {'ENTRY -- a live member of a parsed allowlist section' if is_entry
+                  else 'MENTION -- free text (usually _comment), not a list entry'}: {k}")
         if keep and not (args.only and name in wanted):
             decision_hits.append(f"{name} -> {', '.join(keep[:2])}")
         tref = vip.fn_call_sites(name, tests)
         if tref:
             test_hits.append(f"{name} ({','.join(sorted({t.split(':')[0] for t in tref}))})")
+        al_sig = ("no" if not keep and not is_entry else
+                  ("ENTRY" if is_entry else "mention-only") + f" ({len(keep)} line(s))")
         print(f"  {name:34s} lines {sp[0] + 1}-{sp[1] + 1}  "
               f"tests={'yes:' + ','.join(sorted({t.split(':')[0] for t in tref})) if tref else 'no'}"
-              f"  allowlist={'YES (' + str(len(keep)) + ' line(s))' if keep else 'no'}  "
+              f"  allowlist={al_sig}  "
               f"plan={'yes' if plan else 'no'}")
     if path_hits and args.apply and not args.force:
         print(f"abort: {len(path_hits)} path mention(s) of a candidate name -- a bare "
