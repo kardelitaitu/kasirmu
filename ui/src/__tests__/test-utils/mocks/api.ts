@@ -217,8 +217,6 @@ export function createHardwareApiMock() {
     listDisplays: vi.fn(() => Promise.resolve([])),
     displayShow: vi.fn(() => Promise.resolve()),
     displayClear: vi.fn(() => Promise.resolve()),
-    openCashDrawer: vi.fn(),
-    printReceipt: vi.fn(),
     startScanner: vi.fn(),
     stopScanner: vi.fn(),
     onBarcodeScanned: vi.fn(),

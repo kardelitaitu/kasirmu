@@ -18,9 +18,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 import {
-  openCashDrawer,
   openCashDrawerScoped,
-  printReceipt,
   printSalesReceiptScoped,
   listScanners,
   startScanner,
@@ -37,26 +35,17 @@ describe('hardware.ts IPC contract', () => {
 
   // ── Cash Drawer ───────────────────────────────────────────
 
-  it('openCashDrawer → open_cash_drawer with default empty args', async () => {
-    mockInvoke.mockResolvedValue({ opened: true });
-    await openCashDrawer();
-    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: {} });
-  });
-
   // `OpenCashDrawerArgs` on the Rust side has no `#[serde(rename_all)]`, so the
   // wire key is `device_id`. The field is `#[serde(default)] Option<String>`,
   // so the camelCase key would NOT error — it would silently open the
   // "default" drawer. Pin input-camelCase → invoke-snake_case (tax.ts shape).
-  it('openCashDrawer with deviceId → open_cash_drawer with args.device_id', async () => {
-    mockInvoke.mockResolvedValue({ opened: true });
-    await openCashDrawer({ deviceId: 'drawer-1' });
-    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', {
-      args: {
-        device_id: 'drawer-1',
-      },
-    });
-  });
-
+  //
+  // These two cases used to sit on the unscoped `openCashDrawer` as well. That wrapper was
+  // deleted on 2026-09-16 (T22) because no screen, hook or client facade imported it, and the
+  // command it invoked is registered in neither shell -- so it could not have caught a real
+  // regression. The pin itself stays, and it is the same code path: both wrappers call the
+  // module-private `cashDrawerWireArgs`, so mapping and omission are still graded where they
+  // are actually shipped.
   it('openCashDrawerScoped with deviceId → open_cash_drawer_scoped with args.device_id', async () => {
     mockInvoke.mockResolvedValue({ opened: true });
     await openCashDrawerScoped('tok', { deviceId: 'drawer-1' });
@@ -68,19 +57,16 @@ describe('hardware.ts IPC contract', () => {
     });
   });
 
-  it('openCashDrawer with no deviceId omits device_id (Rust defaults to "default")', async () => {
+  it('openCashDrawerScoped with no deviceId omits device_id (Rust defaults to "default")', async () => {
     mockInvoke.mockResolvedValue({ opened: true });
-    await openCashDrawer({});
-    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer', { args: {} });
+    await openCashDrawerScoped('tok', {});
+    expect(mockInvoke).toHaveBeenCalledWith('open_cash_drawer_scoped', {
+      sessionToken: 'tok',
+      args: {},
+    });
   });
 
   // ── Receipt Printing ──────────────────────────────────────
-
-  it('printReceipt → print_receipt with body', async () => {
-    mockInvoke.mockResolvedValue({ printedLines: 5 });
-    await printReceipt({ body: 'Hello World' });
-    expect(mockInvoke).toHaveBeenCalledWith('print_receipt', { args: { body: 'Hello World' } });
-  });
 
   it('printSalesReceiptScoped → print_sales_receipt_scoped with sessionToken', async () => {
     mockInvoke.mockResolvedValue({ printed: true });

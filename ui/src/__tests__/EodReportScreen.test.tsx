@@ -266,7 +266,7 @@ describe('EodReportScreen', () => {
   });
 
   // ── Print functionality with shifts ──
-  it('calls printReceipt with shift data when shifts provided', async () => {
+  it('calls printReceiptScoped with shift data when shifts provided', async () => {
     mockEodReportScoped.mockResolvedValue(makeEodReport());
     const today = new Date().toISOString().slice(0, 10);
     mockListShifts.mockResolvedValue([

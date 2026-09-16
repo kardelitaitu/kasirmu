@@ -28,9 +28,6 @@ export interface OpenCashDrawerResult {
   opened: boolean;
 }
 
-/** Open a cash drawer. */
-export const openCashDrawer = (args: OpenCashDrawerArgs = {}): Promise<OpenCashDrawerResult> =>
-  loggedInvoke<OpenCashDrawerResult>('open_cash_drawer', { args: cashDrawerWireArgs(args) });
 
 // ── Receipt Printing (raw) ───────────────────────────────────────
 
@@ -44,9 +41,6 @@ export interface PrintReceiptResult {
   printedLines: number;
 }
 
-/** Print a raw text receipt on the configured printer. */
-export const printReceipt = (args: PrintReceiptArgs): Promise<PrintReceiptResult> =>
-  loggedInvoke<PrintReceiptResult>('print_receipt', { args });
 
 /**
  * Arguments for printing a structured sales receipt.
