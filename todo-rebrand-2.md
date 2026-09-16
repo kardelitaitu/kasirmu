@@ -424,7 +424,7 @@ cargo fmt --all -- --check
 
 ## Notes
 
-- **Persisted client keys — the one item here that can lose user state, and it has no phase above.**
+- **Persisted client keys — the one item here that can lose user state; now assigned to Phase 2b in `todo-rebrand.md`.**
   Renaming any of these logs every existing user out or resets their preferences, so each needs a
   read-old/write-new migration like `todo-rebrand.md` Phase 4's DB copy, not a find-and-replace:
   - ui: `oz-pos-locale` (`ui/src/utils/storage.ts:8`, `ui/src/i18n/LocaleContext.tsx:44`),
@@ -439,9 +439,10 @@ cargo fmt --all -- --check
     would chase the survivors as outstanding debt. (Moved here from `todo-rebrand.md`'s Tier 3
     section, which is now a pointer to this file; it was the only item in that duplicate list that
     this file did not already carry.)
-- **`install/**` and `packaging/**` are covered by NEITHER plan, and this note is the only place that says so.** T3-7 above picks up their *repo URLs* only. Two other families live in the same files and belong to `todo-rebrand.md`, not here:
-  - **identifier paths → Phase 4.** `install/uninstall.sh:55,56,59,96` removes `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`; `install/win/uninstall.ps1:97,98` removes `%APPDATA%\com.ozpos.app` and `%LOCALAPPDATA%\com.ozpos.app`; `install/win/README.md:58` documents both. After the identifier change these paths are stale and an uninstall leaves the new data dirs behind. **`todo-rebrand.md` Phase 4 lists neither file.**
-  - **artifact names → Phase 3.** `install/install.sh` (18 sites) uses `OZ-POS.app`, `/opt/oz-pos/OZ-POS.AppImage`, `~/.local/bin/oz-pos.AppImage`, `/usr/local/bin/oz-pos`, `/usr/share/applications/oz-pos.desktop` and `dpkg -s oz-pos`; `install/win/install.ps1`/`uninstall.ps1` use `Programs\OZ-POS\OZ-POS.exe` and `DisplayName -like 'OZ-POS*'`. These follow `productName`, so they break in Phase 3 — **whose file list also omits them.**
+- **`install/**` and `packaging/**`:** T3-7 above picks up their *repo URLs* only. Two other families
+  live in the same files and belong to `todo-rebrand.md`, not here — both are now covered there:
+  - **identifier paths → Phase 4.** `install/uninstall.sh:55,56,59,96` removes `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`; `install/win/uninstall.ps1:97,98` removes `%APPDATA%\com.ozpos.app` and `%LOCALAPPDATA%\com.ozpos.app`; `install/win/README.md:58` documents both. After the identifier change these paths are stale and an uninstall leaves the new data dirs behind. `todo-rebrand.md` Phase 4 lists all three files in its pathspec (`install/uninstall.sh install/win/uninstall.ps1 install/win/README.md`) with the specific lines enumerated.
+  - **artifact names → Phase 3.** `install/install.sh` (18 sites) uses `OZ-POS.app`, `/opt/oz-pos/OZ-POS.AppImage`, `~/.local/bin/oz-pos.AppImage`, `/usr/local/bin/oz-pos`, `/usr/share/applications/oz-pos.desktop` and `dpkg -s oz-pos`; `install/win/install.ps1`/`uninstall.ps1` use `Programs\OZ-POS\OZ-POS.exe` and `DisplayName -like 'OZ-POS*'`. These follow `productName` and break in Phase 3 — all four install files are in Phase 3's pathspec with the specific lines enumerated.
   - Verified with `git grep -n "com\.ozpos" -- install/` and `git grep -n -E "OZ-POS\.(exe|app|AppImage)|oz-pos\.(AppImage|desktop)|dpkg -s oz-pos" -- install/`.
 - **`qris-core`** is not an oz-brand crate (payment protocol, not brand-named). Leave as-is.
 - **The `oz` CLI binary name** (defined in `crates/oz-cli/Cargo.toml [[bin]] name = "oz"`) is user-facing. Renaming it to `kasir` is a breaking change for any user with `oz` in their PATH or scripts. Coordinate with a release note.

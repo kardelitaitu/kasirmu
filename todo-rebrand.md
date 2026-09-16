@@ -126,6 +126,41 @@
 
 ---
 
+## Phase 2b — Client storage key migrations
+**Commit:** `feat(ui): migrate persisted storage keys from oz-pos-* to kasirmu brand`
+**Pathspec:** `ui/src/utils/storage.ts ui/src/i18n/LocaleContext.tsx ui/src/frontend/shell/ThemeProvider.tsx website/src/layouts/Base.astro website/worker.ts ui/src/__tests__/storageKeyPins.test.ts ui/src/__tests__/storage.test.ts ui/src/__tests__/LocaleContext.test.tsx ui/src/__tests__/ThemeProvider.test.tsx ui/src/__tests__/themeRegression.test.tsx website/src/__tests__/apply-theme.test.ts`
+
+> ⚠️ Each key below requires a **read-old/write-new migration**, NOT a find-and-replace. On first load
+> after upgrade: if the old key exists and the new key does not, copy the value to the new key (and
+> optionally clear the old key). A bare rename orphans every existing user's preferences.
+
+### UI (localStorage — `ui/src/utils/storage.ts`)
+- [ ] `oz-pos-locale` (`:8`) → `kasirmu-locale`
+  - Migration in `ui/src/i18n/LocaleContext.tsx:44` — read `oz-pos-locale`, write `kasirmu-locale`
+- [ ] `oz-pos-decimal-sep` (`:9`) → `kasirmu-decimal-sep`
+  - Migration inline in whichever hook/context reads this key on startup
+- [ ] `oz-pos-theme-v4` (`ui/src/frontend/shell/ThemeProvider.tsx:41`) → `kasirmu-theme-v4`
+  - Migration in `ThemeProvider.tsx` — read old key on mount, write new key, remove old key
+
+### Website
+- [ ] `oz_theme` (`website/src/layouts/Base.astro` inline pre-paint script) → `kasirmu_theme`
+  - Pre-paint script runs before React hydration; old key must be read as fallback until cleared
+- [ ] `oz_session` cookie (`website/worker.ts`) → `kasirmu_session`
+  - ⚠️ Cookie rename logs every user out unless the worker accepts both old and new cookies during a
+    transition window, or migrates on the next authenticated request
+
+### Test fixtures (must move in the same commit)
+- [ ] `ui/src/__tests__/storageKeyPins.test.ts:44,45` — pinned key values
+- [ ] `ui/src/__tests__/storage.test.ts:10,14` — key constant assertions
+- [ ] `ui/src/__tests__/LocaleContext.test.tsx:17` — locale key reference
+- [ ] `ui/src/__tests__/ThemeProvider.test.tsx:11` — theme key reference
+- [ ] `ui/src/__tests__/themeRegression.test.tsx:10` — regression fixture
+- [ ] `website/src/__tests__/apply-theme.test.ts` — website theme key
+
+**Pre-commit gate:** `cd ui && npm run test -- --run storageKeyPins storage LocaleContext ThemeProvider themeRegression` after editing.
+
+---
+
 ## Phase 3 — Tauri display names (productName / title only)
 **Commit:** `refactor(config): rename productName and window title to kasir.mu`
 **Pathspec:** `apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json install/install.sh install/win/install.ps1 install/win/uninstall.ps1 install/uninstall.sh`
