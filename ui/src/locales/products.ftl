@@ -4,6 +4,8 @@
 restaurant-menu-search-placeholder = Search Menu
 restaurant-menu-hamburger-aria = Menu
 restaurant-menu-back-aria = Back to workspaces
+restaurant-menu-close = Close
+restaurant-menu-close-aria = Close menu
 restaurant-size-decrease-aria = Decrease size
 restaurant-size-increase-aria = Increase size
 restaurant-font-size-decrease-aria = Decrease font size

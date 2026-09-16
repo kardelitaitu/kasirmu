@@ -88,12 +88,16 @@
 
 .restaurant-sidebar,
 .restaurant-hamburger-dropdown {
+  /* Pinned to the panel, not the viewport: the only positioned ancestor is
+     `.restaurant-menu`, and the panel must scroll WITH the menu chrome
+     (header + pills are sticky within the same box) rather than float over
+     the viewport. `max-height` keeps a tall panel inside the visible pane. */
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
   width: 18rem;
-  height: 100%;
+  max-height: 100%;
   box-sizing: border-box;
   opacity: 1;
   border: none;
