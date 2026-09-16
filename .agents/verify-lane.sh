@@ -58,6 +58,11 @@ run() {
   if [ "$code" -ne 0 ]; then
     FAIL=1
     grep -aE '^(error|error\[|error:)' "$LOG" | tail -8 | sed 's/^/   | /'
+    # A test failure carries no `--> path:line` marker, so the attribution loop below finds
+    # nothing and the receipt says only "exit=101 -- test failed", which is true and useless: the
+    # first real use of --head mode produced exactly that and could not name the failing case.
+    # Compilable errors point at a file; a failed assertion points at a TEST, so print both kinds.
+    grep -aE 'FAILED$|^failures:$|panicked at|^---- ' "$LOG" | tail -12 | sed 's/^/   | /'
     # Attribution, the half that took two false accusations to write. On 2026-09-16 this lane
     # read four unused-import errors in `commands/staff.rs` as a finding about its own work and
     # 66 changed lines in `hardware.rs` as its own edit; both belonged to another session's
