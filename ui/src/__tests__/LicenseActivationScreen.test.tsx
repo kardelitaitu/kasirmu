@@ -36,10 +36,6 @@ vi.mock('@/components/ConnectionStatus', () => ({
   default: ({ label }: { label: string }) => <div data-testid="connection-status">{label}</div>,
 }));
 
-vi.mock('@/components/MachineIdStatus', () => ({
-  default: () => <div data-testid="machine-id-status" />,
-}));
-
 vi.mock('@/frontend/shell/ThemeToggle', () => ({
   default: () => <div data-testid="theme-toggle" />,
 }));
