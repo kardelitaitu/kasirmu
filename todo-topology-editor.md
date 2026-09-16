@@ -409,8 +409,8 @@ Production (`topologyCard.ts:220-226`) is exactly that expression. The test asse
 - [x] M4: either narrow the three helpers' visibility to the module, or write the contract ("callers must gate; these are not safe to call directly") next to each. Pick one and record why.
       - **DISPOSITION 2026-09-15 ~13:15 at tip `960d00568` · CLASS: ACTIONABLE NOW** on the narrow branch only. Referee that can disagree: changing a helper to `pub(crate)`/`fn` and running `cargo check -p oz-bridge` -- an out-of-module caller turns it red, and silence means the narrowing was safe. **Measured caution:** `grep -rn 'pub fn ' crates/oz-bridge/src/topology/*.rs | wc -l` -> **44**, so "the three helpers" is not a grep-derivable set; the row must name them by signature or the next lane narrows the wrong three. The prose branch ("write the contract") has no referee at all.
       - **PAID ON THE CONTRACT BRANCH, NOT ON THE NARROW BRANCH — 2026-09-15 ~19:05 at tip `3981e8916` · TICKED, with the third leg stated open in the tree even though the row is closed.** `aba4836a0 refactor(bridge): narrow validate_apply_gate to pub(crate) and write the gate contract on its two save-side helpers` (+18/-13 `crates/oz-bridge/src/topology/persistence.rs`) and `3981e8916 refactor(topology): delete the dead desktop quota adapter, narrow validate_warehouse_quota to pub(crate)` (+43/-1 `crates/oz-bridge/src/topology/persistence.rs`, 0/9 out of `apps/desktop-client/src/commands/topology/persistence.rs`). **End state read off the files just now, not inferred from the commit subjects: 2 of the 3 M4 helpers are now unreachable from outside `oz-bridge`** — `validate_apply_gate` is `pub(crate)` at `persistence.rs:684` and `validate_warehouse_quota` is `pub(crate)` at `:722` after its desktop adapter was deleted (`grep -rn validate_warehouse_quota apps/desktop-client | wc -l` -> **0**; all 19 remaining refs are inside `crates/`). **The third, `save_topology_json_at_key_with_revision` at `crates/oz-bridge/src/topology/persistence.rs:275`, stays `pub` because a chain was found that is live in the desktop TEST build — not a dead shim, and not a production path either.** The chain, walked link by link this pass: `topology_command_tests.rs:55`/`:84`/`:92` call `save_topology(` (10 call sites in that file); the harness is `#[cfg(test)] pub(crate) async fn save_topology` at `commands/topology/commands.rs:235-236`, whose own doc calls it a *Test-only compatibility harness for the retired direct topology writer*; it reaches `#[cfg(test)] pub(crate) fn save_topology_json_at_key` at `apps/desktop-client/src/commands/topology/persistence.rs:211-212` ("Test convenience wrapper"), which calls at `:218` the adapter `pub(crate) fn save_topology_json_at_key_with_revision` at `:154` — an adapter that carries `#[allow(dead_code)]` at `:153`, so production never reaches it — which calls the bridge helper at `:165`. **That `#[allow(dead_code)]` is the whole finding: the only thing keeping the third helper `pub` is test-build reachability, which is precisely why it cannot be narrowed from inside the crate.** The row demands ONE branch picked and recorded, and the branch satisfied is the contract — `CONTRACT — callers must gate; this is not safe to call directly` at `persistence.rs:253` above the save-side helper and at `:708` above the quota helper, with the gate prose on `validate_apply_gate` at `:676-683` — so this tick is on the contract branch and is NOT a claim that visibility was narrowed across the board. **The contrast between the two siblings is inked at `:262-274` exactly so `pub` cannot be re-read as `needed`:** it names the chain, names the quota helper's missing chain, and says this one cannot follow until the round-trip harness is rehomed. **RESIDUAL, written as its own requirement rather than as this row half-done: finishing the narrow branch is an `apps/**` test-rehoming job with its own owner** — re-express or move that `#[cfg(test)]` save round-trip harness so nothing outside the crate reaches the helper, then narrow it and the `#[allow(dead_code)]` adapter goes with it. Nothing here narrows the third helper. One pointer in the code needs the next reader: `persistence.rs:680` cites this row as `:407`, which is the `### Boxes` heading at this tip — the row is `:408`.
-- [ ] M5: decide whether a filesystem path in an error crossing to the renderer is acceptable. If yes, say so; if no, map the error to a path-free variant at the three sites.
-      - **DISPOSITION 2026-09-15 ~13:15 at tip `960d00568` · CLASS: NEEDS RULING.** Section 5 item 3, the third sentence of `docs/plans/notes.md` item 16 ("may a filesystem path cross into the renderer"), unanswered; the row's own verb is "decide".
+- [x] M5: decide whether a filesystem path in an error crossing to the renderer is acceptable. If yes, say so; if no, map the error to a path-free variant at the three sites.
+      - **R3 RULED + LANDED 2026-09-16: NOT acceptable — fixed.** `a718dd1e4 fix(topology): map every open_store cause out of the IPC error text at all four sites, logged not returned (M5/R3)`. **The row's "three sites" was a stale count**: re-grep found FOUR interpolating `open_store` map_errs — `:555` gate, `:678` CRUD, `:938` save, `:1022` audit (the plan cited `:679-681/:940-942/:1022-1024`; the gate site was missed). All four now log the full cause via `tracing::error!` and return a path-free `Internal` naming only the store id — which was already public to the UI by construction. The `store db lock` `{e}` interpolations were left: a poison message carries no path; grepping them is the next reader's call, not this ruling's. Acceptance (the phase's own command): `cargo test -p oz-bridge topology` → **314 passed; 0 failed; 0 ignored** (1003 filtered; 5.70s) — baseline held exactly; and `rg 'opening store db.*\{e\}'` now exits 1 (no interpolations remain). Note the discipline kept: the edits change only error TEXT — the gate and save sites still open `session.store_id`, which is Phase 1's open question, not M5's to answer.
 - [x] Run the acceptance command and commit.
       - **DISPOSITION 2026-09-15 ~13:15 at tip `960d00568` · CLASS: ACTIONABLE NOW, NOT RUN HERE** (`cargo test -p oz-bridge topology`, no build run tonight) -- and contingent on `:364`, so a green now would be a green over an undecided question.
       - **RUN by this lane 2026-09-15 ~18:55 at tip `3981e8916` · TICKED — the row asked for a run and a commit, and it got both.** `cargo test -p oz-bridge topology` -> **exit 0**, `test result: ok. 314 passed; 0 failed; 0 ignored; 0 measured; 1000 filtered out; finished in 5.32s`. That 314/0 is already attributed twice in this file — the table at `:28` and the ticked row at `:198` with its PAID note at `:200` (tip `b3a46feb4`) — so a third citation would have been a copy of someone else's print; this lane ran it, and the line above is this pass reproducing 314 passed / 0 failed exactly. The commit carrying this line is this one. **What the green does NOT close is the section:** the M5 row directly above it (its own text: decide whether a filesystem path in an error crossing to the renderer is acceptable) is still NEEDS RULING - may a filesystem path cross into the renderer — `docs/plans/notes.md` item 16 unanswered), and this row was marked contingent on it at 13:15; that contingency governs whether the section may be called finished, not whether the suite passes, and the suite passes.
@@ -486,6 +486,42 @@ Two structural facts worth carrying into the review:
 ---
 
 ## 5. Rulings needed from the owner — blocking
+
+> **ALL FOUR RULED 2026-09-16, by the owner, on the recommendation text this lane put forward at
+> the 07:1x report and ratified verbatim ("we go with your recommendation"). Each answer below is
+> the ratified form, kept in the order the questions were asked; the four blocked phases are now
+> dispatchable. Execution order this lane adopted: the ruling's smallest phase first (6/M5),
+> then 3, then 2, then 1 — ascending blast radius, and Phase 1's test-first box benefits from the
+> three earlier lands proving the fences compile.**
+>
+> - **R1 (item 1, Phase 2) — NOT intended: REQUIRE a session on `load_topology`.** Rationale
+>   adopted from the file's own logic: it justifies sessioning the TEMPLATE read because reading
+>   reveals a branch's configuration; the diagram reveals strictly more, so the asymmetry was an
+>   oversight, not a choice. The fix is the three-layer pass-through; the parity gate confirms
+>   the registration. Phase 2's "write a comment" branch is hereby cancelled.
+> - **R2 (item 2, Phase 3) — LOCATION-SCOPED.** The write path is the authoritative half; the
+>   probe and the pin move to it, not vice versa. Pin's own comment ("the same gate Apply itself
+>   needs") already argues this way; the probe takes the branch it probes for. One decision,
+>   applied at both sites plus the agreement test the phase demands.
+> - **R3 (item 3, Phase 6/M5) — NOT acceptable: map to path-free errors at the three sites.**
+>   An install path and user home surfacing in a dev-mode toast is a leak whose debuggability is
+>   replaceable by logging; the fix is behavior-neutral at the three `format!` sites
+>   (`commands.rs:679-681`, `:940-942`, `:1022-1024`).
+> - **R4 (item 4, Phase 1/F1) — YES, the diagram's store may select the target store — and the
+>   blast radius is bounded by making every gate layer resolve against THAT store.** Concretely,
+>   the ratified reading of the swap-hold at `:189`: (a) the scoped permission check at
+>   `:476-482` must be confirmed to demand the grant on the NAMED store — an unscoped or global
+>   grant does not authorise writes into any store a diagram happens to mention; (b)
+>   `validate_apply_gate` is handed the EFFECTIVE store's registry alongside the global one —
+>   `[global, effective]`, never `[global, session]` alone — which retires F1's false-accept
+>   without recreating the fresh-create false-reject the `:547-552` comment guards; (c) the
+>   comment is then rewritten to state the design that the code will finally match. The
+>   two-store harness (`32dcef1d3`) exists; Phase 1 proceeds test-first per its own boxes.
+>
+> Sub-question (b) of item 4 was already CLOSED BY EVIDENCE at `7d8213f24` before the ruling; the
+> ruling governs (a) and the gate alignment, not the key structure. Nothing in this block
+> resolves the two NO-REFEREE review rows (`:468` handler-source-of-truth sweep; `:466` canvas
+> beyond-topology-files sweep) — those need a reviewer's judgement, not a ruling.
 
 These are **decisions, not tasks.** A subagent cannot resolve them and must not guess. Phase 2 is fully blocked; Phases 3 and 6 are partially blocked.
 
