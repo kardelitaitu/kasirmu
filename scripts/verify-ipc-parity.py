@@ -1613,6 +1613,63 @@ def stale_orphan_message(
     )
 
 
+def _balanced_body(text: str, start: int) -> str:
+    """The `{...}` block starting at or after `start`, brace-balanced."""
+    open_idx = text.find("{", start)
+    if open_idx < 0:
+        return ""
+    depth, j = 0, open_idx
+    while j < len(text):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:j + 1]
+        j += 1
+    return ""
+
+
+GATE_TOKEN_RE = re.compile(r"require_\w*permission|ctx\.require_session_permission", re.I)
+
+
+def gate_in_body(body: str) -> str | None:
+    """The permission a body enforces, or None when it enforces no check.
+
+    `require_\\w*permission`, because the shells call `require_permission` and
+    `require_permission_for_session` while `BridgeCtx` exposes `require_session_permission` --
+    which the literal substring `require_permission` does NOT match. Any body that delegates to
+    the bridge and is graded by a check looking for the narrow spelling reads as ungated.
+    """
+    if not body or not GATE_TOKEN_RE.search(body):
+        return None
+    p = re.search(r"permissions::([A-Z_]+)", body)
+    return p.group(1) if p else "UNKNOWN"
+
+
+def _bridge_fn_body(fn_name: str, cache={}) -> str:
+    """The body of a `pub async fn` in `crates/oz-bridge`, "" when there is none.
+
+    Walked once per process and cached by name: this is called for every shell command that looks
+    ungated, and re-reading the crate each time would make the gate slower than the thing it
+    checks. Only the bridge is followed, one level -- a delegation that itself delegates is rare
+    enough that reporting `None` for it is honest, while the one-level case is the repo's dominant
+    shape since the shells became thin.
+    """
+    if not cache:
+        root = REPO_ROOT / "crates" / "oz-bridge" / "src"
+        for rs in sorted(root.rglob("*.rs")) if root.is_dir() else []:
+            text = rs.read_text(encoding="utf-8", errors="replace")
+            for m in re.finditer(r"\bfn\s+(\w+)\s*\(", text):
+                if m.group(1) in cache:
+                    continue
+                cache[m.group(1)] = _balanced_body(text, m.start())
+    return cache.get(fn_name, "")
+
+
+DELEGATION_RE = re.compile(r"\boz_bridge::[a-z_0-9]+::([a-z_0-9]+)\s*\(")
+
+
 def orphan_permission(command: str) -> str | None:
     """The permission a scoped command enforces, or None if it enforces no check.
 
@@ -1644,23 +1701,21 @@ def orphan_permission(command: str) -> str | None:
             m = re.search(r"\bfn\s+" + re.escape(command) + r"\s*\(", text)
             if not m:
                 continue
-            open_idx = text.find("{", m.end())
-            if open_idx < 0:
+            body = _balanced_body(text, m.start())
+            if not body:
                 continue
-            depth, j = 0, open_idx
-            while j < len(text):
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            body = text[m.start():j + 1]
-            if "require_permission" not in body:
-                return None
-            p = re.search(r"permissions::([A-Z_]+)", body)
-            return p.group(1) if p else "UNKNOWN"
+            direct = gate_in_body(body)
+            if direct is not None:
+                return direct
+            # No gate in the shell's own body. In a thin shell that is the normal shape: the gate
+            # lives in the bridge fn this line delegates to (ADR #49), so `None` used to mean
+            # "redundant twin, wire a caller or allowlist it as host-only" for commands that are
+            # gated two crates away. Follow the delegation one level before saying so.
+            for target in DELEGATION_RE.findall(body):
+                via_bridge = gate_in_body(_bridge_fn_body(target))
+                if via_bridge is not None:
+                    return via_bridge
+            return None
     return None
 
 
@@ -2990,6 +3045,21 @@ def self_test() -> int:
     # would read cleaner than the truth, so the code below the block is the load-bearing half.
     case("call   prose inside a block comment is not a call, and code after it still is",
          "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
+    # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
+    # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
+    # allowlisted as "host-only", while `crates/oz-bridge/src/pos.rs:505` gates it on
+    # SALES_PROCESS one line below the shell's `oz_bridge::pos::set_line_course_scoped(&ctx, ...)`.
+    thin = "pub async fn x_scoped(t: String) -> R {\n    oz_bridge::pos::x_scoped(&ctx, &t, a).await\n}"
+    ungated = "pub async fn y_scoped(t: String) -> R {\n    load(&t)\n}"
+    case("gate   a shell body that delegates is not judged by its own text alone",
+         gate_in_body(thin) is None and DELEGATION_RE.findall(thin) == ["x_scoped"])
+    case("gate   ctx.require_session_permission counts as a gate the old literal missed",
+         gate_in_body("async fn f() {\n    ctx.require_session_permission(&s, permissions::SALES_PROCESS).await?;\n}")
+         == "SALES_PROCESS")
+    case("gate   a body with neither gate nor delegation is honestly ungated",
+         gate_in_body(ungated) is None and not DELEGATION_RE.findall(ungated))
+    case("gate   the real command that was misreported is now read as gated",
+         orphan_permission("set_line_course_scoped") == "SALES_PROCESS")
     # The sixth exclusion, earned on 2026-09-16: `offline_tests.rs` opens a case with
     # `fn pending_offline_count()` and its body calls `store.pending_offline_count()`. The
     # first is a test title, the second a Store method, so the command had NO caller and the
