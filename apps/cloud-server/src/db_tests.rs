@@ -719,7 +719,87 @@ async fn pg_integration_rls_fails_closed() {
 async fn pg_integration_rls_force_blocks_owner() {
     let url = std::env::var("OZ_TEST_PG_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
-    let pool = match DbPool::connect_postgres(&url, false, 20, true).await {
+    // Run in a throwaway database, not in the shared base one.
+    //
+    // This test passes `apply_schema = true` (4th arg, `db.rs:169`-`:174`), so it
+    // applies the full 123-table PG_INIT on connect, and it then runs the real
+    // production cutover script twice over that schema -- cluster-wide
+    // `ALTER TABLE … FORCE ROW LEVEL SECURITY` DDL. Two processes doing that in
+    // one database deadlock, which was not theoretical: this test failed with
+    // `E40P01 deadlock detected … AccessExclusiveLock … of database 5` (5 =
+    // `postgres`, per `SELECT oid, datname FROM pg_database`), rescued silently
+    // by CI's `retries = 2`.
+    //
+    // The `#[serial(pg_rls_cutover)]` above does not cover this. It is an
+    // in-process lock and CI runs nextest, which forks a process per test -- as a
+    // peer already recorded at `prune_tests.rs:443`-`:445`: "nextest runs each
+    // test in its own process, so #[serial(pg_rls_cutover)] never serialized".
+    // 13 sites carry that guard across 4 files.
+    let db_name = format!("oz_rls_force_{}", std::process::id());
+    {
+        // Admin connection with apply_schema = false, for the same reason
+        // `:377`-`:380` gives: it must not re-apply PG_INIT to the shared base DB.
+        let admin_pool = match DbPool::connect_postgres(&url, false, 20, false).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("PG integration test skipped: {e}");
+                return;
+            }
+        };
+        let admin = admin_pool
+            .pg_client()
+            .await
+            .expect("pg_client should succeed");
+        // Sweep every stale throwaway from an earlier crashed run, not just this
+        // process's. This is required, not tidy: the role this test creates is
+        // cluster-global while the tables it owns live inside the throwaway, so a
+        // leftover `oz_rls_force_<pid>` makes the run-start sweep at `:838` die on
+        // `E2BP01 role "oz_rls_owner_<pid>" cannot be dropped because some objects
+        // depend on it -- 2 objects in database oz_rls_force_<pid>`, which then
+        // fails every subsequent run, not just the crashed one. Measured here: two
+        // databases left by an interrupted earlier version of this change turned
+        // the next three runs red at a line none of them had touched. Same shape
+        // as the stale sweep in `sync_store_tests.rs:25`-`:40`, which this block
+        // originally omitted.
+        let stale: Vec<String> = admin
+            .query(
+                "SELECT datname FROM pg_database WHERE datname LIKE 'oz_rls_force_%'",
+                &[],
+            )
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|r| r.get::<_, String>(0))
+            .collect();
+        for d in &stale {
+            let _ = admin
+                .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
+                .await;
+        }
+        admin
+            .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+            .await
+            .expect("drop stale database should succeed");
+        if let Err(e) = admin
+            .execute(&format!("CREATE DATABASE {db_name}"), &[])
+            .await
+        {
+            eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+            return;
+        }
+    }
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b, Some(q)),
+        None => (url.as_str(), None),
+    };
+    let (head, _old_db) = base
+        .rsplit_once('/')
+        .expect("URL must have a database path");
+    let db_url = match query {
+        Some(q) => format!("{head}/{db_name}?{q}"),
+        None => format!("{head}/{db_name}"),
+    };
+    let pool = match DbPool::connect_postgres(&db_url, false, 20, false).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
@@ -727,6 +807,21 @@ async fn pg_integration_rls_force_blocks_owner() {
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
+    // PG_INIT is applied here, explicitly, rather than by passing
+    // `apply_schema = true` on the connect above. Measured, not inferred: the
+    // first version of this change did pass it, and the test then reported
+    // `1 passed` in 80.09s after printing `failed to connect to PostgreSQL after
+    // 5 attempts: pool.get() failed: Timeout occurred while creating a new
+    // object` -- the schema path does not finish inside that helper's own connect
+    // budget on a freshly created database, so the error arm fired, the test
+    // returned, and 220 lines of assertions silently did not run. Same shape as
+    // `pg_ddl_guard`'s continue-unserialized fallback at
+    // `crates/oz-api/src/pg_tests.rs:78`-`:82`: an error path that yields a PASS
+    // is worse than one that yields a failure. `expect` here fails loudly.
+    client
+        .batch_execute(oz_core::migrations::PG_INIT)
+        .await
+        .expect("PG_INIT should apply to the throwaway database");
     let ns = format!("rls-force-{}", std::process::id());
     let tenant = format!("{ns}-alpha");
     let table = format!("rls_force_probe_{}", std::process::id());
@@ -855,7 +950,14 @@ async fn pg_integration_rls_force_blocks_owner() {
 
     // Act as the owner on a dedicated connection so SET ROLE never leaks
     // onto a pooled connection another test might reuse.
-    let (owner, conn) = tokio_postgres::connect(&url, tokio_postgres::NoTls)
+    //
+    // `db_url`, not `url`: the role this session assumes owns a table that now
+    // lives in the throwaway database, and roles are cluster-global while
+    // relations are not. Pointing this at the base URL made the owner's INSERT
+    // fail with `E42P01 relation "rls_force_probe_<pid>" does not exist` -- the
+    // table was real, the owner was simply standing in the other database. `url`
+    // remains only as the administrative endpoint for CREATE / DROP DATABASE.
+    let (owner, conn) = tokio_postgres::connect(&db_url, tokio_postgres::NoTls)
         .await
         .expect("dedicated owner connection should succeed");
     tokio::spawn(async move {
@@ -939,6 +1041,20 @@ async fn pg_integration_rls_force_blocks_owner() {
         ))
         .await
         .expect("probe cleanup should succeed");
+
+    // Release the database. The role was dropped above (roles are cluster-global,
+    // so that part had to stay); the tables never left this database.
+    drop(client);
+    drop(pool);
+    let admin_pool = match DbPool::connect_postgres(&url, false, 20, false).await {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    if let Ok(admin) = admin_pool.pg_client().await {
+        let _ = admin
+            .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
+            .await;
+    }
 }
 
 /// A connection killed server-side (PG addon idle-timeout, restart,
