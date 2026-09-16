@@ -43,6 +43,7 @@ import argparse
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -435,6 +436,148 @@ test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 """
 
 
+# ── The nextest channel: JUnit XML, because the retry signal is not in stdout ──
+#
+# grade() refuses a nextest stdout log, and that refusal was the whole truth only
+# until this section existed. A test rescued on its second attempt prints no
+# `skipped:` line, so neither the SOURCE census nor the LOG channel above can see
+# it; nextest's own summary does say `2 tests run: 2 passed (1 flaky)`, but that
+# string belongs to a runner whose shape these libtest regexes deliberately do not
+# parse. The signal is in the JUnit report instead.
+#
+# Everything in this section was measured against a scratch crate built for the
+# purpose -- one test that panics on attempt 1 and passes on attempt 2, `retries =
+# 1` -- because the alternative was reasoning from the schema's documentation,
+# which is how this file got the numbers it later retracted. The run printed
+# `TRY 1 FAIL`, `TRY 2 PASS`, `Summary ... 2 passed (1 flaky)`, exit 0, and wrote
+# a report whose relevant lines were:
+#
+#   <testsuites tests="2" failures="0" errors="0">            <-- zero
+#     <testsuite tests="2" failures="0" errors="0">           <-- zero
+#       <testcase name="flaky_on_first_attempt">
+#         <flakyFailure message="... panicked at src\lib.rs:8:9">   <-- the only copy
+#
+# So both aggregate attributes AND the conventional <failure> element report a
+# clean run for a test that failed and was then talked into passing. A consumer
+# written against the JUnit shape everyone knows -- count <failure>, read
+# testsuites@@failures -- reads a rescued flake as green. Same shape as the rest of
+# this file: the evidence exists, in an element nobody is looking at, under a name
+# that sounds like the thing you asked for.
+#
+# Path resolution, also measured: `path` is relative to the profile's artifact
+# directory, so `[profile.default] path = "junit.xml"` wrote
+# target/nextest/default/junit.xml in the probe. That is why the repo's
+# `.config/nextest.toml:21`-`:22` -- which says `target/nextest/ci/junit.xml`,
+# under a comment reading "JUnit XML output for CI reporting" -- actually writes
+# target/nextest/default/target/nextest/ci/junit.xml, and why the only file that
+# ever referenced the undoubled path is `.github/workflows/ci.yml.bak:433`, a
+# retired workflow GitHub does not execute.
+FLAKY_JUNIT = """<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="2" failures="0" errors="0">
+  <testsuite name="flake_probe" tests="2" disabled="0" errors="0" failures="0">
+    <testcase name="always_passes" classname="flake_probe" time="0.024">
+    </testcase>
+    <testcase name="flaky_on_first_attempt" classname="flake_probe" time="0.015">
+      <flakyFailure timestamp="2026-09-16T10:39:46.988+07:00" time="0.031" message="thread 'flaky_on_first_attempt' (23816) panicked at src\\lib.rs:8:9" type="test failure with exit code 101">
+        <system-out>test result: FAILED. 0 passed; 1 failed</system-out>
+      </flakyFailure>
+    </testcase>
+  </testsuite>
+</testsuites>
+"""
+
+CLEAN_JUNIT = """<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="2" failures="0" errors="0">
+  <testsuite name="flake_probe" tests="2" disabled="0" errors="0" failures="0">
+    <testcase name="always_passes" classname="flake_probe" time="0.024">
+    </testcase>
+    <testcase name="second_test" classname="flake_probe" time="0.011">
+    </testcase>
+  </testsuite>
+</testsuites>
+"""
+
+HARDFAIL_JUNIT = """<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="nextest-run" tests="2" failures="1" errors="0">
+  <testsuite name="flake_probe" tests="2" disabled="0" errors="0" failures="1">
+    <testcase name="always_passes" classname="flake_probe" time="0.024">
+    </testcase>
+    <testcase name="pg_tenant_isolation" classname="flake_probe" time="0.011">
+      <failure message="deadlock detected" type="test failure with exit code 101">
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+"""
+
+
+def parse_junit(xml_text: str) -> dict:
+    """Split a nextest JUnit report into what it records and where it hides it."""
+    root = ET.fromstring(xml_text)
+    rep = {
+        "cases": 0, "flaky": [], "failed": [], "skipped": 0,
+        "attrs": {k: root.get(k, "?") for k in ("tests", "failures", "errors")},
+    }
+    for tc in root.iter("testcase"):
+        rep["cases"] += 1
+        cls, name = tc.get("classname") or "", tc.get("name") or "?"
+        label = f"{cls}::{name}" if cls else name
+        for key, tag in (("flaky", "flakyFailure"), ("failed", "failure")):
+            for node in tc.findall(tag):
+                msg = re.sub(r"\s+", " ", (node.get("message") or "").strip())[:150]
+                rep[key].append((label, msg))
+        rep["skipped"] += len(tc.findall("skipped"))
+    return rep
+
+
+def grade_junit(xml_text: str, *, source: str) -> int:
+    """Grade a nextest JUnit report. Returns a process exit code."""
+    try:
+        rep = parse_junit(xml_text)
+    except ET.ParseError as exc:
+        print(f"FAIL  JUNIT: {source} is not well-formed XML ({exc}).")
+        print("        Refusing to read a report I cannot parse: a truncated XML file")
+        print("        is precisely how a green gets invented out of an aborted red run.")
+        return 1
+
+    print(f"ok    JUNIT: parsed {rep['cases']} <testcase> element(s) from {source}")
+    a = rep["attrs"]
+    print(f"      the report's own totals: tests={a['tests']} failures={a['failures']}"
+          f" errors={a['errors']}  (these count rescued flakes as passes)")
+
+    ok = True
+    if rep["failed"]:
+        print(f"FAIL  JUNIT: {len(rep['failed'])} hard failure(s) -- every attempt failed:")
+        for label, msg in rep["failed"]:
+            print(f"        {label}" + (f"  {msg}" if msg else ""))
+        ok = False
+
+    if rep["flaky"]:
+        # The reason this function exists. None of these appear in `failures` above,
+        # none of them carry a <failure> element, and none of them failed the run.
+        print(f"FAIL  JUNIT: {len(rep['flaky'])} test(s) failed and were then rescued by a"
+              " retry. nextest calls these `flaky`; the report totals and the <failure>"
+              " element both count them as passes:")
+        for label, msg in rep["flaky"]:
+            print(f"        {label}" + (f"  {msg}" if msg else ""))
+        ok = False
+
+    if ok:
+        print("ok    JUNIT: no <flakyFailure> and no <failure> in this report.")
+        # The boundary of that sentence. A rescued flake with retries on lands in
+        # <flakyFailure>; the same failure with retries off lands in <failure>. Both
+        # are counted above, so the residual gap is not the retry budget at all --
+        # it is the population the report covers.
+        print("      Caveat: a report records one run of whatever population nextest"
+              " reached before it stopped. `[profile.default] fail-fast = { max-fail = 1 }`"
+              " (.config/nextest.toml:12) aborts after the first hard failure, so a small"
+              " `tests=` count is not evidence the suite is small, and this PASS says"
+              " nothing about any case that never ran.")
+    print()
+    print("PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
 def self_test() -> int:
     fails = 0
 
@@ -683,6 +826,37 @@ def self_test() -> int:
     expect("the default harness is named too, never left implicit",
            "harness: parallel" in buf.getvalue())
 
+    # (9) the nextest JUnit channel, both directions. Fixtures are transcribed from
+    #     the scratch-crate run described above, not from the schema's docs.
+    rep_flaky = parse_junit(FLAKY_JUNIT)
+    expect("the flake is in <flakyFailure> and in NOTHING else",
+           len(rep_flaky["flaky"]) == 1 and len(rep_flaky["failed"]) == 0)
+    expect("  ...which is why reading the aggregate attribute would invent a green",
+           rep_flaky["attrs"]["failures"] == "0")
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_flaky = grade_junit(FLAKY_JUNIT, source="<fixture>")
+    out = buf.getvalue()
+    expect("a rescued flake is graded FAIL, not pass", rc_flaky == 1)
+    expect("  ...and the rescued test is named", "flaky_on_first_attempt" in out)
+    expect("  ...and the contradicting totals are printed, not hidden",
+           "failures=0" in out)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_jclean = grade_junit(CLEAN_JUNIT, source="<fixture>")
+    out = buf.getvalue()
+    expect("a report with nothing rescued PASSes", rc_jclean == 0)
+    expect("  ...and PASSes out loud about how narrow that is",
+           "no <flakyFailure>" in out and "fail-fast" in out)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_jfail = grade_junit(HARDFAIL_JUNIT, source="<fixture>")
+    expect("a real <failure> is FAIL, and is not confused with a flake", rc_jfail == 1)
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc_jbad = grade_junit("<testsuites><not closed", source="<fixture>")
+    expect("a truncated XML report is refused rather than read as clean", rc_jbad == 1)
+
     print(f"\nself-test: {'PASS' if fails == 0 else f'FAIL ({fails})'}")
     return 0 if fails == 0 else 1
 
@@ -702,11 +876,23 @@ def main(argv: list[str] | None = None) -> int:
                     help="run with --test-threads=1; one cloud-server base-DB test skips "
                          "under the default parallel harness on every run, so a zero-event "
                          "result is only meaningful once the harness that produced it is named")
+    ap.add_argument("--nextest-junit", type=Path, metavar="PATH",
+                    help="grade a nextest JUnit report instead of a cargo-test log. This is"
+                         " the only channel on which a retry-rescued flake exists at all:"
+                         " <flakyFailure> carries it, while the testsuites `failures=`"
+                         " attribute, the testsuite attribute and the conventional"
+                         " <failure> element all record the test as passed")
     ap.add_argument("--self-test", action="store_true", help="prove both directions failable")
     ns = ap.parse_args(argv)
 
     if ns.self_test:
         return self_test()
+
+    if ns.nextest_junit:
+        if ns.log:
+            print("note  --nextest-junit takes precedence; --log was ignored")
+        return grade_junit(ns.nextest_junit.read_text(encoding="utf-8", errors="replace"),
+                           source=str(ns.nextest_junit))
 
     arms, per_file = count_source_arms()
     if ns.census_only:

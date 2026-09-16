@@ -17,9 +17,31 @@ retries = { backoff = "exponential", count = 2, delay = "1s" }
 # Per-test timeout: 2 minutes (prevents hung tests blocking CI)
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# JUnit XML output for CI reporting
+# JUnit XML output. This is the ONLY machine-readable record of a retry-rescued
+# flake. nextest writes it as <flakyFailure> inside the <testcase>, while the
+# `failures=` attribute on both <testsuites> and <testsuite>, and the conventional
+# <failure> element, all record that same test as PASSED. Measured against a
+# scratch crate built to answer exactly this (one test panicking on attempt 1 and
+# passing on attempt 2, retries = 1): the run printed `2 passed (1 flaky)` and
+# exit 0, and its report said failures="0" with one <flakyFailure> and zero
+# <failure>. A consumer written against the JUnit shape people know reads that as
+# green.
+#   read it with: python scripts/verify-pg-tests-ran.py --nextest-junit <path>
+#
+# `path` resolves relative to the PROFILE'S OWN ARTIFACT DIRECTORY, not to the
+# workspace root -- measured: `path = "junit.xml"` wrote
+# target/nextest/default/junit.xml. The value this block carried until 2026-09-16
+# was "target/nextest/ci/junit.xml", so the file really landed at
+# target/nextest/default/target/nextest/ci/junit.xml for [profile.default] (what
+# dev-ci.yml:244 runs, no --profile passed) and at
+# target/nextest/ci/target/nextest/ci/junit.xml for [profile.ci], which inherits
+# this block and is what release.yml:149 and scripts/release.sh:65 run. Neither is
+# the path written in the comment, and the only reference to the single-fold form
+# anywhere in the repo is .github/workflows/ci.yml.bak:433 -- a retired workflow
+# GitHub never executes. The report has been produced on every CI run and read by
+# nothing, at a location nobody was told.
 [profile.default.junit]
-path = "target/nextest/ci/junit.xml"
+path = "junit.xml"
 report-name = "oz-pos-test"
 
 # CI profile: stricter settings
