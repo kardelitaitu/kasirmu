@@ -574,6 +574,9 @@ export const kdsHandlers: Record<string, MockHandler> = {
   },
   'create_kds_order_from_sale': () => [],
   'create_kds_order_from_sale_scoped': () => [],
+  // Restaurant coursing: fire-and-forget publish at checkout — the mock
+  // answers success so E2E checkout never blocks on the event.
+  'publish_course_fired_scoped': () => undefined,
   'get_kds_order': () => null,
   'get_kds_order_scoped': () => null,
   'get_kds_order_lines': (args) => {

@@ -7,7 +7,7 @@ import { requiredLocalized } from '@/frontend/shared';
 import { Localized, useLocalization } from '@fluent/react';
 import { Skeleton } from '@/components/Skeleton';
 import { startSaleScoped, addLineScoped, completeSaleScoped, printSalesReceipt, getSale, getSaleScoped, setCartDiscountScoped, holdCartScoped, finalizeSale, voidPendingSale, previewPromotedTotalFromLinesScoped, type SetCartDiscountScopedArgs, type CompleteSaleScopedArgs, type PaymentSplitArg, type SerialNumberArg, type PartialStockResult, type PreviewPromotedTotalResult } from '@/api/sales';
-import { createKdsOrderFromSaleScoped } from '@/api/kds';
+import { createKdsOrderFromSaleScoped, publishCourseFiredScoped } from '@/api/kds';
 import { Button } from '@/components/Button';
 import { formatMoney, minorUnitExponent, parseMinorUnits, type Money } from '@/types/domain';
 import { useFeatures, FEATURES } from '@/hooks/useFeatures';
@@ -577,6 +577,41 @@ export default function PaymentModal({
     [tipMinor, serviceChargeMinor, cartCurrency, total.currency, total.minor_units, effectiveRateInfo],
   );
 
+  // Restaurant coursing: publish one `order.course_fired` per course the
+  // waiter fired, after the KDS fan-out created the tickets. Grouped from
+  // the local lines' `coursingStatus` (the backend cart is materialized at
+  // checkout, so there is no pre-checkout fire to publish). Best-effort:
+  // the sale is already committed — a publish failure warns, never fails
+  // the checkout. `displayNumber` comes from the fan-out ticket; when no
+  // ticket exists for the sale it stays null.
+  const publishFiredCourses = useCallback(
+    async (saleId: string, orders: { display_number: number | null }[]) => {
+      const fired = lineItems.filter((l) => l.coursingStatus === 'fired' && l.courseId);
+      if (fired.length === 0 || !sessionToken) return;
+      const byCourse = new Map<string, typeof fired>();
+      for (const line of fired) {
+        const list = byCourse.get(line.courseId!);
+        if (list) list.push(line);
+        else byCourse.set(line.courseId!, [line]);
+      }
+      const displayNumber = orders.length > 0 ? (orders[0]?.display_number ?? null) : null;
+      for (const [courseId, courseLines] of byCourse) {
+        try {
+          await publishCourseFiredScoped(sessionToken, {
+            saleId,
+            courseId,
+            displayNumber,
+            items: courseLines.map((l) => ({ sku: l.sku, qty: l.qty, name: l.name ?? l.sku })),
+          });
+        } catch (fireErr) {
+          console.error('publishCourseFired failed', fireErr);
+          addToast({ message: requiredLocalized(l10nRef.current, 'payment-toast-kds-failed'), type: 'warning' });
+        }
+      }
+    },
+    [lineItems, sessionToken, addToast, l10nRef],
+  );
+
   // Shared gateway-tender front half (manual QRIS, Auto QRIS, EDC card):
   // cart -> discount -> lines -> complete. The caller's split metadata
   // decides the settlement story: manual QRIS passes its cashier-asserted
@@ -604,6 +639,9 @@ export default function PaymentModal({
           // backend can reject a mismatch instead of silently re-stamping
           // it to the cart currency.
           unitPriceCurrency: line.unit_price.currency,
+          // Restaurant coursing: carry the assignment so `sale_lines.course`
+          // reaches the KDS fan-out. Normalized backend-side.
+          ...(line.courseId ? { course: line.courseId } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -697,7 +735,8 @@ export default function PaymentModal({
       }
 
       try {
-        await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // KDS may not be configured — but a swallowed failure here meant a
         // paid sale silently produced NO kitchen ticket (retried zoned
@@ -744,7 +783,8 @@ export default function PaymentModal({
       setDone(true);
     },
     [sessionToken, lineItemsInCartCurrency, cartCurrency, tableNumber, addToast,
-     loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency],
+     loyaltyAccount, redeemPoints, loyaltyDiscount, selectedCustomer, effectiveTotalInCartCurrency,
+     publishFiredCourses],
   );
 
   // ── Manual QRIS (gateway tender, cashier-asserted reference) ─────────
@@ -869,6 +909,10 @@ export default function PaymentModal({
             name: l.name,
             qty: l.qty,
             unit_price: l.unit_price,
+            // Restaurant coursing: an open bill resumes through the same
+            // checkout push, so the assignment must survive the hold.
+            ...(l.courseId ? { courseId: l.courseId } : {}),
+            ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
           })),
           discountPercent,
           discountLabel,
@@ -906,6 +950,9 @@ export default function PaymentModal({
           // backend can reject a mismatch instead of silently re-stamping
           // it to the cart currency.
           unitPriceCurrency: line.unit_price.currency,
+          // Restaurant coursing: carry the assignment so `sale_lines.course`
+          // reaches the KDS fan-out. Normalized backend-side.
+          ...(line.courseId ? { course: line.courseId } : {}),
         };
         await addLineScoped(sessionToken!, lineArgs);
       }
@@ -1019,7 +1066,8 @@ export default function PaymentModal({
       }
 
       try {
-        await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        const orders = await createKdsOrderFromSaleScoped(sessionToken!, saleResult.saleId);
+        await publishFiredCourses(saleResult.saleId, orders);
       } catch (kdsErr) {
         // See the QR path: a failed kitchen ticket must not stay silent.
         console.error('createKdsOrderFromSale failed', kdsErr);
@@ -1061,7 +1109,7 @@ export default function PaymentModal({
     } finally {
       setProcessing(false);
     }
-  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated]);
+  }, [method, customerName, lineItems, discountPercent, discountLabel, promotionIds, splitMode, splits, otherLabel, change, sessionToken, selectedCustomer, loyaltyAccount, redeemPoints, loyaltyDiscount, serialNumbers, tableNumber, addToast, classifyError, l10n, cartCurrency, effectiveTotalInCartCurrency, lineItemsInCartCurrency, tenderedMinorInCartCurrency, total.currency, total.minor_units, tenderSnapshot, taxEstimated, publishFiredCourses]);
 
   useEffect(() => {
     if (!done) return;
@@ -1220,6 +1268,9 @@ export default function PaymentModal({
             // FRONTEND-03 follow-up: carry the line's own currency so the
             // backend can enforce it on reconstruction.
             unitPriceCurrency: l.unit_price.currency,
+            // Restaurant coursing: the retry rebuilds the sale from these
+            // lines, so carry the assignment or the retried sale loses it.
+            ...(l.courseId ? { course: l.courseId } : {}),
           }))}
           // PROMO-3: the retry total must be the UNPROMOTED one — the
           // backend shortfall command re-applies the promotions itself

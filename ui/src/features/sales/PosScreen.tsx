@@ -17,7 +17,7 @@ import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
 } from '@/api/sales';
-import { getReceiptSettingsScoped } from '@/api/settings';
+import { getReceiptSettingsScoped, getSettingScoped } from '@/api/settings';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
@@ -177,6 +177,11 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [discountName, setDiscountName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
   const [showTableNumberSetting, setShowTableNumberSetting] = useState(false);
+  // Restaurant coursing: `restaurant.course_firing` gates the firing bar +
+  // per-line course chip. Defaults to the workspace check alone until the
+  // setting loads, so a slow settings read never hides coursing that the
+  // workspace implies; an explicit "false" hides it.
+  const [courseFiringEnabled, setCourseFiringEnabled] = useState<boolean | null>(null);
   const [restaurantSidebarOpen, setRestaurantSidebarOpen] = useState(false);
 
   // ── Cart panel resize ──────────────────────────────────
@@ -485,6 +490,16 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       .catch(() => addToast({ message: requiredLocalized(l10nRef.current, 'pos-toast-receipt-settings-failed'), type: 'error' }));
   }, [addToast, sessionToken]); // l10n via ref — stable dep chain
 
+  // ── Load restaurant course-firing flag on mount ─────────────────
+  // Best-effort display gate only: a failed read leaves the workspace
+  // check as the gate (null), so coursing never disappears on a
+  // settings-fetch failure.
+  useEffect(() => {
+    getSettingScoped(sessionToken || null, 'restaurant.course_firing')
+      .then((raw) => setCourseFiringEnabled(raw === 'true'))
+      .catch(() => setCourseFiringEnabled(null));
+  }, [sessionToken]);
+
   // ── Sub-screen: Table Management ─────────────────────────────
   if (showTables) {
     return (
@@ -600,6 +615,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleRemoveLine, handleDecreaseQty, handleIncreaseQty,
     isManager, setOverrideTarget, ensureCart,
     animatedUndoStack, handleUndoRemove, handleDismissUndo,
+    courseFiringEnabled,
   };
   const discountEditor = {
     discountPercent, discountLabel, discountAmount, showOptions, setShowOptions,

@@ -124,6 +124,13 @@ export interface CartPanelProps {
   fireCourse: (courseId: CourseId) => void;
   fireAllCourses: () => void;
   /**
+   * Restaurant `course_firing` setting (null = not yet loaded). The firing
+   * bar and per-line chip require the restaurant workspace AND (null or
+   * true) here — an explicit `false` hides coursing while a slow or failed
+   * settings read never does.
+   */
+  courseFiringEnabled: boolean | null;
+  /**
    * Assign a course to a single line (restaurant coursing). Optional: when it
    * is omitted the per-line course chip is not rendered, so the retail path
    * and every caller without coursing are unaffected.
@@ -210,6 +217,7 @@ export function CartPanel({
   closeShiftError,
   fireCourse,
   fireAllCourses,
+  courseFiringEnabled,
   assignCourse,
   handleRemoveLine,
   handleDecreaseQty,
@@ -545,7 +553,7 @@ export function CartPanel({
         )}
 
         {/* ── Course firing bar ──────────────────────── */}
-        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && (
+        {lines.length > 0 && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false && (
           <CourseSelectorBar
             lines={lines}
             fireCourse={fireCourse}
@@ -582,7 +590,7 @@ export function CartPanel({
                     ensureCart(l.unit_price.currency);
                   },
                 } : {})}
-                {...(assignCourse && activeWorkspace === 'restaurant-pos' ? {
+                {...(assignCourse && activeWorkspace === 'restaurant-pos' && courseFiringEnabled !== false ? {
                   onAssignCourse: assignCourse,
                   courseMenuLine,
                   onCourseMenuLineChange: setCourseMenuLine,

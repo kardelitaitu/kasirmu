@@ -46,6 +46,14 @@ describe('sales.ts API contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('add_line_scoped', { sessionToken: 'tok', args: { cartId: 'c1', sku: 'SKU-1', qty: 1, unitPriceMinor: 1000, unitPriceCurrency: 'EUR' } });
   });
 
+  // Restaurant coursing: the checkout push carries the assignment so
+  // `sale_lines.course` reaches the KDS fan-out.
+  it('addLineScoped passes course through to the backend', async () => {
+    mockInvoke.mockResolvedValue({ lineId: 'l1' });
+    await addLineScoped('tok', { cartId: 'c1' as CartId, sku: 'SKU-1', qty: 1, unitPriceMinor: 1000, course: 'main' });
+    expect(mockInvoke).toHaveBeenCalledWith('add_line_scoped', { sessionToken: 'tok', args: { cartId: 'c1', sku: 'SKU-1', qty: 1, unitPriceMinor: 1000, course: 'main' } });
+  });
+
   it('completeSaleScoped calls correct command', async () => {
     mockInvoke.mockResolvedValue({ saleId: 's1' });
     await completeSaleScoped('tok', { cartId: 'c1' as CartId, paymentMethod: 'card', tenderedMinor: 5000 });

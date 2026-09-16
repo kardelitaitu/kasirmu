@@ -13,16 +13,19 @@ vi.mock('@/utils/interaction', () => ({
 // ── Course domain type tests ──────────────────────────────────────────
 
 describe('Course domain types', () => {
-  it('defines all 4 courses with labels and emojis', () => {
-    expect(COURSES).toHaveLength(4);
-    expect(COURSES.map((c) => c.id)).toEqual(['appetizer', 'main', 'dessert', 'drinks']);
+  it('defines all 5 courses with labels and emojis', () => {
+    expect(COURSES).toHaveLength(5);
+    expect(COURSES.map((c) => c.id)).toEqual(['appetizer', 'main', 'side', 'dessert', 'beverage']);
   });
 
   it('courseLabel returns the correct display label', () => {
     expect(courseLabel('appetizer')).toBe('Appetizer');
     expect(courseLabel('main')).toBe('Main Course');
+    expect(courseLabel('side')).toBe('Side');
     expect(courseLabel('dessert')).toBe('Dessert');
-    expect(courseLabel('drinks')).toBe('Drinks');
+    expect(courseLabel('beverage')).toBe('Beverage');
+    // Legacy POS value normalizes to the beverage label.
+    expect(courseLabel('drinks')).toBe('Beverage');
   });
 
   it('courseLabel returns the id itself for unknown courses', () => {
@@ -38,8 +41,9 @@ describe('Course domain types', () => {
   it('courseEmoji returns emoji for each course', () => {
     expect(courseEmoji('appetizer').length).toBeGreaterThan(0);
     expect(courseEmoji('main').length).toBeGreaterThan(0);
+    expect(courseEmoji('side').length).toBeGreaterThan(0);
     expect(courseEmoji('dessert').length).toBeGreaterThan(0);
-    expect(courseEmoji('drinks').length).toBeGreaterThan(0);
+    expect(courseEmoji('beverage').length).toBeGreaterThan(0);
   });
 });
 
@@ -82,7 +86,7 @@ describe('usePosState course methods', () => {
     const steakId = ref.current.lines.find((l) => l.sku === 'STEAK')!.id;
     const colaId = ref.current.lines.find((l) => l.sku === 'COLA')!.id;
 
-    act(() => { ref.current.assignCourse(steakId, 'main'); ref.current.assignCourse(colaId, 'drinks'); });
+    act(() => { ref.current.assignCourse(steakId, 'main'); ref.current.assignCourse(colaId, 'beverage'); });
     act(() => { ref.current.fireCourse('main'); });
 
     expect(ref.current.lines.find((l) => l.sku === 'STEAK')!.coursingStatus).toBe('fired');
@@ -99,7 +103,7 @@ describe('usePosState course methods', () => {
     const steakId = ref.current.lines.find((l) => l.sku === 'STEAK')!.id;
     const colaId = ref.current.lines.find((l) => l.sku === 'COLA')!.id;
 
-    act(() => { ref.current.assignCourse(steakId, 'main'); ref.current.assignCourse(colaId, 'drinks'); });
+    act(() => { ref.current.assignCourse(steakId, 'main'); ref.current.assignCourse(colaId, 'beverage'); });
     act(() => { ref.current.fireAllCourses(); });
 
     expect(ref.current.lines.every((l) => l.coursingStatus === 'fired')).toBe(true);

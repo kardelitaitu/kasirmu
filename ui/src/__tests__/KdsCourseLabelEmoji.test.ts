@@ -14,8 +14,12 @@ describe('courseLabel', () => {
     expect(courseLabel('dessert')).toBe('Dessert');
   });
 
-  it('returns "Drinks" for drinks', () => {
-    expect(courseLabel('drinks')).toBe('Drinks');
+  it('returns "Beverage" for beverage', () => {
+    expect(courseLabel('beverage')).toBe('Beverage');
+  });
+
+  it('resolves legacy "drinks" to the beverage label', () => {
+    expect(courseLabel('drinks')).toBe('Beverage');
   });
 
   it('returns the raw id for unknown course', () => {
@@ -40,7 +44,11 @@ describe('courseEmoji', () => {
     expect(courseEmoji('dessert')).toBe('🍰');
   });
 
-  it('returns drink emoji for drinks', () => {
+  it('returns drink emoji for beverage', () => {
+    expect(courseEmoji('beverage')).toBe('🥤');
+  });
+
+  it('resolves legacy "drinks" to the beverage emoji', () => {
     expect(courseEmoji('drinks')).toBe('🥤');
   });
 
@@ -54,8 +62,8 @@ describe('courseEmoji', () => {
 });
 
 describe('COURSES constant', () => {
-  it('has exactly 4 courses', () => {
-    expect(COURSES).toHaveLength(4);
+  it('has exactly 5 courses', () => {
+    expect(COURSES).toHaveLength(5);
   });
 
   it('every course has id, label, and emoji', () => {
