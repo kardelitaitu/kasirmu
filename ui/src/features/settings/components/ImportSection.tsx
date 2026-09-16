@@ -59,7 +59,7 @@ export function ImportSection({ importState, flashRows, showImportPw, onFileSele
                 <Localized id="data-mgmt-import-desc">
                   <p className="data-mgmt-section-desc">
                     Choose an encrypted .kasirpkg file to import. The file must have been
-                    created by kasir.mu export.
+                    created by kasir.mu export. Legacy .ozpkg files are also accepted.
                   </p>
                 </Localized>
 

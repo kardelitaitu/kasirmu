@@ -2,7 +2,7 @@
 //!
 //! Three sections:
 //! - **Export wizard**: pick data types to export, date range, password field, progress indicator
-//! - **Import wizard**: pick a .ozpkg file, preview metadata, dry-run diff table, confirm
+//! - **Import wizard**: pick a .kasirpkg file, preview metadata, dry-run diff table, confirm
 //! - **Backup status**: last backup timestamp, one-click snapshot
 
 import { useState } from 'react';

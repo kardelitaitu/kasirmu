@@ -67,7 +67,7 @@ pub enum Command {
         #[arg(short, long)]
         input: String,
     },
-    /// Export data to an encrypted .ozpkg file.
+    /// Export data to an encrypted .kasirpkg file (also accepts legacy .ozpkg files).
     ExportOzpkg {
         /// Output file path.
         #[arg(short, long)]
@@ -79,9 +79,9 @@ pub enum Command {
         #[arg(short, long)]
         password: String,
     },
-    /// Import data from an encrypted .ozpkg file.
+    /// Import data from an encrypted .kasirpkg file (also accepts legacy .ozpkg files).
     ImportOzpkg {
-        /// Input .ozpkg file path.
+        /// Input .kasirpkg file path.
         #[arg(short, long)]
         input: String,
         /// Decryption password.

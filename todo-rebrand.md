@@ -258,28 +258,24 @@
 > CLI subcommands export-ozpkg/import-ozpkg) are Tier 3 — deferred. Only user-visible extension
 > strings and file dialog filters change here.
 
-- [ ] `apps/desktop-client/src/commands/data.rs:1` — doc comment `.ozpkg` → `.kasirpkg`
-- [ ] `apps/tablet-client/src/commands/features.rs:535`
-  `"Data export/import in .ozpkg format"` → `"Data export/import in .kasirpkg format"`
-- [ ] `crates/oz-bridge/src/data.rs:1,2` — doc comments
-- [ ] File dialog filter in export command — add `.kasirpkg` as primary, `.ozpkg` as legacy alias:
-  ```rust
-  .add_filter("kasir.mu Package", &["kasirpkg"])
-  .add_filter("Legacy OZ-POS Package", &["ozpkg"])
-  ```
-- [ ] `crates/oz-cli/src/cli.rs:70,82,84`
+- [x] `apps/desktop-client/src/commands/data.rs:1` — doc comment `.ozpkg` → `.kasirpkg`
+- [x] `apps/tablet-client/src/commands/features.rs:535`
+  `"Data export/import in .kasirpkg format"`
+- [x] `crates/oz-bridge/src/data.rs:1,2` — doc comments
+- [x] File dialog filter in export command — `.kasirpkg` as primary, `.ozpkg` as legacy alias:
+  `ui/src/api/data.ts:pickExportPath/pickImportFile` now use `kasir.mu Package` with extensions `['kasirpkg', 'ozpkg']`
+- [x] `crates/oz-cli/src/cli.rs:70,82,84`
   `--help` text: `.ozpkg file` → `.kasirpkg file (also accepts legacy .ozpkg files)`
-- [ ] FTL strings: already covered in Phase 1 (`data-mgmt-import-desc`)
-- [ ] `ui/src/api/data.ts:66,67,75` — ⚠️ **the dialog the user actually sees, and the original phase listed no `ui/` file at all.** `pickExportPath`/`pickImportFile` build it:
-  - `:66` `defaultPath: \`ozpos_export_${date}.ozpkg\`` → `kasir_export_${date}.kasirpkg` (the default filename carries both the old brand and the old extension)
-  - `:67`, `:75` `filters: [{ name: 'OZ-POS Export', extensions: ['ozpkg'] }]` → name `kasir.mu Package`, extensions `['kasirpkg', 'ozpkg']` so the legacy alias is selectable in the picker
-  - Also update the doc comments at `:1,21,37,72,112,122,133` which say `.ozpkg`, and `ui/src/features/settings/components/ImportSection.tsx:2,61` and `ui/src/features/settings/DataManagementScreen.tsx:5` (the import wizard's own copy)
-  - Referee that can disagree: `cd ui && npx vitest run src/__tests__/DataManagementBackup.test.tsx` plus whichever suite asserts the dialog filter shape
+- [x] FTL strings: already covered in Phase 1 (`data-mgmt-import-desc`)
+- [x] `ui/src/api/data.ts:66,67,75` — the dialog the user actually sees:
+  - `:66` `defaultPath: \`kasir_export_${date}.kasirpkg\``
+  - `:67`, `:75` `filters: [{ name: 'kasir.mu Package', extensions: ['kasirpkg', 'ozpkg'] }]`
+  - Also updated the doc comments at `:1,21,37,72,112,122,133` which say `.ozpkg`, and `ui/src/features/settings/components/ImportSection.tsx:2,61` and `ui/src/features/settings/DataManagementScreen.tsx:5` (the import wizard's own copy)
 
 **Test fixtures:**
-- [ ] `crates/oz-bridge/src/data_tests.rs:313,339,350,363,365,423,425`
+- [x] `crates/oz-bridge/src/data_tests.rs:313,339,350,363,365,423,425`
   Primary cases → `.kasirpkg`; keep at least one `.ozpkg` case to cover the legacy alias
-- [ ] `crates/oz-cli/src/cli_tests.rs:142–174,292–308`
+- [x] `crates/oz-cli/src/cli_tests.rs:142–174,292–308`
   Primary cases → `.kasirpkg`; keep one `.ozpkg` legacy case
 
 ---

@@ -129,7 +129,7 @@ fn cli_parse_restore() {
 #[test]
 fn cli_parse_default_db() {
     let cli = Cli::try_parse_from(["oz", "migrate"]).unwrap();
-    assert_eq!(cli.db, "oz-pos.db");
+    assert_eq!(cli.db, "kasir.db");
 }
 
 #[test]
@@ -141,12 +141,12 @@ fn cli_parse_custom_db() {
 #[test]
 fn cli_parse_export_ozpkg() {
     let cli =
-        Cli::try_parse_from(["oz", "export-ozpkg", "-o", "data.ozpkg", "-p", "secret123"]).unwrap();
+        Cli::try_parse_from(["oz", "export-ozpkg", "-o", "data.kasirpkg", "-p", "secret123"]).unwrap();
     match cli.command {
         Some(Command::ExportOzpkg {
             output, password, ..
         }) => {
-            assert_eq!(output, "data.ozpkg");
+            assert_eq!(output, "data.kasirpkg");
             assert_eq!(password, "secret123");
         }
         _ => panic!("expected ExportOzpkg"),
@@ -159,7 +159,7 @@ fn cli_parse_import_ozpkg() {
         "oz",
         "import-ozpkg",
         "-i",
-        "data.ozpkg",
+        "data.kasirpkg",
         "-p",
         "secret123",
         "--dry-run",
@@ -171,7 +171,7 @@ fn cli_parse_import_ozpkg() {
             password,
             dry_run,
         }) => {
-            assert_eq!(input, "data.ozpkg");
+            assert_eq!(input, "data.kasirpkg");
             assert_eq!(password, "secret123");
             assert!(dry_run);
         }

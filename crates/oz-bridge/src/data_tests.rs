@@ -310,7 +310,7 @@ fn backup_result_serialize() {
 
 #[test]
 fn export_data_args_deserialize() {
-    let json = r#"{"types":["products","categories"],"password":"secret","output_path":"/out/export.ozpkg"}"#;
+    let json = r#"{"types":["products","categories"],"password":"secret","output_path":"/out/export.kasirpkg"}"#;
     let args: ExportDataArgs = serde_json::from_str(json).unwrap();
     assert_eq!(args.types, vec!["products", "categories"]);
     assert_eq!(args.password, "secret");
@@ -336,7 +336,7 @@ fn export_data_args_debug() {
 #[test]
 fn export_data_result_debug() {
     let result = ExportDataResult {
-        path: "/out/export.ozpkg".into(),
+        path: "/out/export.kasirpkg".into(),
         size_bytes: 512,
         types: vec!["products".into(), "sales".into()],
     };
@@ -420,9 +420,9 @@ fn import_preview_result_serialize() {
 
 #[test]
 fn import_data_args_deserialize() {
-    let json = r#"{"file_path":"/data/import.ozpkg","password":"pw"}"#;
+    let json = r#"{"file_path":"/data/import.kasirpkg","password":"pw"}"#;
     let args: ImportDataArgs = serde_json::from_str(json).unwrap();
-    assert_eq!(args.file_path, "/data/import.ozpkg");
+    assert_eq!(args.file_path, "/data/import.kasirpkg");
 }
 
 #[test]

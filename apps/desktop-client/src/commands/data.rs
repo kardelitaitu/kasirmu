@@ -1,4 +1,4 @@
-//! Data management commands: backup, restore, export .ozpkg, import .ozpkg.
+//! Data management commands: backup, restore, export .kasirpkg, import .kasirpkg.
 //!
 //! Wave F: the bodies now live in the headless `oz_bridge::data` module. Each
 //! `#[tauri::command]` below keeps its exact name, attribute set, parameter list
