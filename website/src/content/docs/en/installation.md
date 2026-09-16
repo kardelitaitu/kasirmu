@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install OZ-POS on Windows, macOS, or Linux.
+description: Install kasir.mu on Windows, macOS, or Linux.
 category: gettingStarted
 order: 2
 updated: "2026-08-17"

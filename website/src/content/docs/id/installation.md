@@ -1,6 +1,6 @@
 ---
 title: Instalasi
-description: Pasang OZ-POS di Windows, macOS, atau Linux.
+description: Pasang kasir.mu di Windows, macOS, atau Linux.
 category: gettingStarted
 order: 2
 updated: "2026-08-17"
