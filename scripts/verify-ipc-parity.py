@@ -380,6 +380,17 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
       module named like a type, and this tree has none.
     * a `///`, `//` or `*` line -> prose. Two earlier probes in this programme were
       contaminated exactly that way.
+    * any line inside a `/* ... */` block -> prose too, and this exclusion was MISSING until
+      2026-09-16. The audit stamps this repo leaves at the top of many modules carry a `next:`
+      clause naming commands as work items -- `next: consider soft-delete or referential guard on
+      delete_customer (COR-23)` -- and a scanner reading for calls cannot tell that sentence from
+      a call site. `PROSE_LINE_RE` only knows line PREFIXES (`//`, `*`), so a bare prose line
+      inside a block comment slipped through as a caller. Found by this lane's cross-crate audit
+      of retired names, whose four "true suspects" were all this one shape.
+      `retire-legacy-commands.py` has tracked block interiors since round 20 for its own
+      stale-prose check; the gate is the instrument that fell behind its tool. Nesting is not
+      modelled (Rust allows `/* /* */ */`), which can only over-exclude -- the conservative
+      direction here, and why no depth counter is attempted.
     * a line starting `pub fn` / `pub async fn` -> the definition itself.
     * the match sitting immediately after `fn` on the same line -> a definition of `name` under
        any visibility. Earned 2026-09-16: the bullet above is anchored on `pub`, so a Rust test
@@ -397,7 +408,18 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
     pattern = re.compile(r"(?<!\w)" + re.escape(name) + r"\s*\(")
     hits: list[str] = []
     for label, text in sources:
+        # Per-file, not per-scan: a flag shared across sources would let one file's open block
+        # silence a real call in the next file, which is the same leak in a louder shape.
+        in_block = False
         for number, line in enumerate(text.splitlines(), 1):
+            stripped = line.strip()
+            if in_block:
+                if stripped.endswith("*/"):
+                    in_block = False
+                continue
+            if stripped.startswith("/*") and not stripped.endswith("*/"):
+                in_block = True
+                continue
             if PROSE_LINE_RE.match(line) or DEF_LINE_RE.match(line):
                 continue
             for match in pattern.finditer(line):
@@ -2949,6 +2971,10 @@ def self_test() -> int:
             "    crate::commands::bundles::create_bundle(&x);",
             "fn create_bundle() {",
             "async fn create_bundle() -> Result<(), E> {",
+            "/*",
+            "next: consider soft-delete on create_bundle (COR-23)",
+            "*/",
+            "let after_block = create_bundle(&y);",
         ]))])
     case("call   a free call is counted", "m.rs:1" in call_sites)
     case("call   a same-named method is NOT (this is the bug the census had)",
@@ -2957,8 +2983,13 @@ def self_test() -> int:
          "m.rs:3" not in call_sites and "m.rs:4" in call_sites)
     case("call   prose is not a call", "m.rs:5" not in call_sites)
     case("call   the signature itself is not a call", "m.rs:6" not in call_sites)
-    case("call   the whole answer is exactly the three real calls",
-         call_sites == ["m.rs:1", "m.rs:4", "m.rs:9"])
+    case("call   the whole answer is exactly the four real calls",
+         call_sites == ["m.rs:1", "m.rs:4", "m.rs:9", "m.rs:15"])
+    # The seventh exclusion, both halves in one case: a name inside a `/* */` audit stamp is prose,
+    # AND the block must CLOSE -- an exclusion that swallowed everything after the first `/*`
+    # would read cleaner than the truth, so the code below the block is the load-bearing half.
+    case("call   prose inside a block comment is not a call, and code after it still is",
+         "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
     # The sixth exclusion, earned on 2026-09-16: `offline_tests.rs` opens a case with
     # `fn pending_offline_count()` and its body calls `store.pending_offline_count()`. The
     # first is a test title, the second a Store method, so the command had NO caller and the
