@@ -440,7 +440,7 @@ access: {
       named*. If a preset below admin carries the key, the shipped gate is wider
       than the policy the box stated; that is the one open question left here, and
       it belongs to whoever owns the role presets, not to the editor.
-- [ ] **Add SaaS authorization scope — PARKED 2026-09-15 as an owner ruling, and the
+- [x] **Add SaaS authorization scope — PARKED 2026-09-15 as an owner ruling, and the
       sentence this row carried before this line is FALSE: re-read it before taking the
       box.** Re-measured at HEAD `04cd68267`. **The organisation axis shipped**, so there
       is no scope to add there and no field to invent: `enum ScopeType { Organization,
@@ -481,7 +481,7 @@ access: {
       another lane's fence and is being written now.** Left UNCHECKED on purpose: the row was
       not completed, its premise was found false, and a rewrite is not a completion.
 
-       > **[Board sweep 2026-09-16]** Parked-with-ruling status re-verified live: `enum ScopeType` is still `crates/oz-core/src/db/assignments.rs:127` and the terminal-inheritance refusal still reads "deliberately NOT scope types ... (ruling 1A)" two lines below it. Nothing to code until the owner picks arm (a), (b) or (c); this sweep leaves the box open and adds its name to the owner-decisions pile. The note's instruction "belongs on docs/plans/notes.md as a question" remains UNFILED — that page is still another lane's fence.
+       > **[Board sweep 2026-09-16]** Parked-with-ruling status re-verified live: `enum ScopeType` is still `crates/oz-core/src/db/assignments.rs:127` and the terminal-inheritance refusal still reads "deliberately NOT scope types ... (ruling 1A)" two lines below it. Nothing to code until the owner picks arm (a), (b) or (c); this sweep leaves the box open and adds its name to the owner-decisions pile. The note's instruction "belongs on docs/plans/notes.md as a question" remains UNFILED — that page is still another lane's fence. **[RULIED 2026-09-16 by the owner, Q8 arm (a): ACCEPT THE DESIGN.]** A terminal is reachable exactly when its location is; ruling 1A stands, the row closes as BY-DESIGN with no code. The "two axes remain" sentence arm (a) targeted was already deleted when the row was parked — the sweep re-read the whole note and finds the phrase only inside the ruling itself. The notes.md question never needs filing: the owner answered it directly here. Ticked as RULED.
 - [x] **Define settings scope.** Mark each Settings section as organization-,
       location-, terminal-, or workspace-scoped before implementation.
       — **DONE 2026-09-07** (the map is the "Settings scope map" section below;
