@@ -13,15 +13,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{State, command};
 
 use oz_core::auth::hash_pin;
-use oz_core::availability::UsageCounts;
 use oz_core::db::Store;
 use oz_core::db::audit_security::{
-    SECURITY_ACTION_USER_CREATE, SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_ACCOUNT_CREATED,
-    SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED, SecurityEvent,
+    SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED,
+    SecurityEvent,
 };
-use oz_core::entitlements::Entitlements;
 use oz_core::permissions;
-use oz_core::subscription::TenantSubscription;
 
 use oz_core::Role;
 
@@ -40,7 +37,21 @@ use crate::state::AppState;
 // `enforce_role_assignment_policy` re-export as-is (their error type is the
 // bridge's `BridgeError`, which the tablet converts via the `From<BridgeError>`
 // seam); the shell keeps two thin `AppError` adapters that the sibling test
-// modules call directly. Command bodies stay tablet-native.
+// modules call directly.
+//
+// ADR #49: `list_staff_scoped`, `list_roles_scoped`, `list_permission_keys_scoped`,
+// `delete_role_scoped`, `list_role_holders_scoped` and `create_staff_scoped`
+// delegate — their bodies are statement-identical to the bridge twins.
+//
+// The other five are PENDING, not refused. The parity instrument flags them,
+// but each difference is spelling, not behaviour: `bootstrap_owner` qualifies
+// `SystemTime`/`sign_picker_ticket` where the bridge imports them;
+// `get_staff_profile_scoped` takes `user_id: String` where the bridge takes
+// `&str` and allocates; `update_staff_scoped` calls
+// `invalidate_user_sessions_except` as a `BridgeCtx` method where the shell
+// has a free fn. `create_role_scoped` and `update_role_scoped` need the shell
+// to compute `grants_json` and pass it as a parameter — ADR #49 §Decision 2's
+// own pattern, and the bridge module doc names it as the one exception.
 pub use oz_bridge::staff::{
     AssignmentArgs, AssignmentDto, BootstrapOwnerArgs, BootstrapOwnerResult, CreateRoleArgs,
     CreateStaffScopedArgs, PermissionKeyDto, ProfileArgs, ProfileViewDto, RoleDto, RoleHolderDto,
@@ -81,22 +92,10 @@ pub async fn list_staff_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<StaffMemberDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
-    let users = store.list_users()?;
-    let roles = store.list_roles()?;
-    let dtos = users
-        .iter()
-        .map(|u| {
-            let profile = store.get_user_profile(&u.id).ok().flatten();
-            let assignment = store.assignment_for_user(&u.id).ok().flatten();
-            to_staff_dto(u, &roles, profile.as_ref(), assignment.as_ref())
-        })
-        .collect();
-    drop(db);
-    Ok(dtos)
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::list_staff_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Load a staff member's full profile as the session user sees it (ADR #35
@@ -128,17 +127,10 @@ pub async fn list_roles_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<RoleDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
-    let roles = store.list_roles()?;
-    let dtos = roles
-        .into_iter()
-        .map(|r| role_dto(&store, r))
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(db);
-    Ok(dtos)
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::list_roles_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Role authoring (ADR #47 ruling 4) ──────────────────────────────
@@ -155,17 +147,10 @@ pub async fn list_permission_keys_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<PermissionKeyDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::STAFF_READ).await?;
-    Ok(oz_core::permission_registry::REGISTRY
-        .iter()
-        .map(|entry| PermissionKeyDto {
-            key: entry.key.to_string(),
-            family: entry.family.to_string(),
-            sensitive: entry.sensitive,
-            description: entry.description.to_string(),
-        })
-        .collect())
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::list_permission_keys_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create a custom role: a named key-set row in the same vocabulary
@@ -232,11 +217,10 @@ pub async fn delete_role_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::STAFF_MANAGE_ROLES).await?;
-    let db = state.db.lock().await;
-    Store::new(&db).delete_role(&id)?;
-    Ok(())
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::delete_role_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// List the accounts that hold one role, org-wide.
@@ -260,16 +244,10 @@ pub async fn list_role_holders_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<RoleHoldersDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::STAFF_READ)?;
-    let (holders, total) = store.role_holders(&id, oz_core::db::roles::ROLE_HOLDERS_MAX)?;
-    Ok(RoleHoldersDto {
-        holders: holders.into_iter().map(RoleHolderDto::from).collect(),
-        total,
-        cap: oz_core::db::roles::ROLE_HOLDERS_MAX,
-    })
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::list_role_holders_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 /// Create a staff member. Caller identity is resolved from the session token.
@@ -282,68 +260,10 @@ pub async fn create_staff_scoped(
     args: CreateStaffScopedArgs,
     state: State<'_, AppState>,
 ) -> Result<StaffMemberDto, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    let username = args.username.trim().to_lowercase();
-    let display_name = args.display_name.trim();
-
-    validate_not_empty("username", &username).map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("display_name", display_name)
-        .map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_min_length("pin", &args.pin, 4).map_err(|e| AppError::Invalid(e.to_string()))?;
-    validate_not_empty("role_id", &args.role_id).map_err(|e| AppError::Invalid(e.to_string()))?;
-
-    let pin_hash =
-        hash_pin(&args.pin).map_err(|e| AppError::Internal(format!("hashing PIN: {e}")))?;
-
-    let db = state.db.lock().await;
-    let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::STAFF_CREATE)?;
-    enforce_role_assignment_policy(&store, &session.user_id, None, &args.role_id, true)?;
-    // C1.1: enforce the subscription tier's staff-user limit (Free 1 / Plus 5 /
-    // Pro 20) before creating — the count runs against the global identity DB
-    // that also holds the tenant_subscription row.
-    let sub = TenantSubscription::load(&db, "default")?
-        .ok_or_else(|| AppError::Internal("default tenant subscription not found".into()))?;
-    sub.verify_signature()?;
-    store
-        .enforce_staff_quota(&Entitlements::from_subscription(&sub, UsageCounts::default()).tier)?;
-    let profile = args.profile.into_profile();
-    let assignment = args.assignment.as_ref().map(assignment_spec).transpose()?;
-    let user = store.create_user_with_profile(
-        &username,
-        &pin_hash,
-        display_name,
-        &args.role_id,
-        &profile,
-        assignment.as_ref(),
-    )?;
-    let roles = store.list_roles()?;
-    let assignment = store.assignment_for_user(&user.id)?;
-    // Creating a staff account is a security event: it is how an attacker
-    // with a stolen admin session installs persistence. Actor goes in
-    // `user_id`, the new account in `target_id` — the same split
-    // `staff.identity.read` already uses. `create_user_with_profile` commits
-    // its own transaction, so this row is written just after the account
-    // exists rather than inside it; a failure here loses the event but can
-    // never strand the account.
-    record_security_event(
-        &store,
-        &SecurityEvent::staff_change(
-            &session.user_id,
-            &user.id,
-            &user.username,
-            SECURITY_ACTION_USER_CREATE,
-            SECURITY_REASON_ACCOUNT_CREATED,
-        ),
-    );
-    drop(db);
-
-    Ok(to_staff_dto(
-        &user,
-        &roles,
-        Some(&profile),
-        assignment.as_ref(),
-    ))
+    let ctx = state.bridge_ctx();
+    oz_bridge::staff::create_staff_scoped(&ctx, &session_token, &args)
+        .await
+        .map_err(Into::into)
 }
 
 /// Update a staff member. Caller identity is resolved from the session token.
