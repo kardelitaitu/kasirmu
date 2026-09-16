@@ -112,3 +112,32 @@ $ git status --porcelain -- ui/src/features/locations/ ui/src/__tests__/NodeTopo
 **checker, before:** `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` → exit **1**, tail: `indexed 8875 files / 1148 dirs; scanned 411 markdown files (1 live with hits)` … `check-dead-refs: 8 unresolved reference(s) in 1 live doc(s).` The one live doc is `.agents/manager-journal-open-debt-program-review-waves.md`, not this file.
 **checker, after the repair:** same command → exit **1**, `indexed 8876 files / 1148 dirs; scanned 412 markdown files (1 live with hits)` … `check-dead-refs: 8 unresolved reference(s) in 1 live doc(s).` Identical totals to the BEFORE run: the scanned count moved 411 → 412 because this file joined the set, and this file contributes **0** items. The exit stayed 1 throughout, on another lane's doc — **this pass neither fixed nor caused it**. It caused and fixed one of its own first, which is the second half of the `:418` path note above.
 **plan file:** `git status --porcelain -- todo-topology-editor.md` → clean, **not edited by this pass**. The 12,257 → 12,260 repair is already recorded inside the plan at this box's own disposition line by `a5222df23` and this measurement reproduces it, so an edit would duplicate a recorded correction; the 547-vs-`[carried]`-549 delta sits in a row the plan itself flags as carried; and re-classifying a box belongs to the lane that dispositioned it an hour ago.
+
+
+## Follow-up 2026-09-16 — the `:473` third-implementation check, executed with the concrete claim attached
+
+**Written by the devmock-router lane** (tip `93ed08fc5`+; every path cited below clean at its read moment). The review pass above correctly declined to run this box without "the concrete claim attached (which of the three implementations diverges, and against what)" — here it is, attached. Read in full: `ui/src/dev-mock/handlers/topology.ts` (211 lines), `ui/src/dev-mock/handlers/topology-state.ts` (86 lines). Compared against: `ui/src/api/topology.ts`, `ui/src/features/locations/topologyApply.ts`, `crates/oz-bridge/src/topology/commands.rs` + `persistence.rs` (targeted greps, cited per claim). No file was modified by this section — Phase 7 is read-only; the findings land here and the fixes are the plan's to phase.
+
+### T-1 — LIVE divergence: the diagram is per-branch in the real backend and global in the mock
+
+The real path keys EVERY read and write through `topology_setting_key(branch_id)` (`persistence.rs:101`; called at `commands.rs:69-84` for the envelope, `:107` for template reads, `:494` for recovery) — one diagram, one revision counter, **per branch**. The mock keeps ONE global `mockTopology` slice under `MOCK_TOPOLOGY_KEY` (`topology.ts:66`): `load_topology` ignores its `branchId` argument entirely (`:79-84`), `apply_topology_diff` bumps and persists the single shared revision (`:145-146`), while the REVISION HISTORY IS branch-scoped — rows carry `branchId` (`topology-state.ts:44`), the KEEP-deflate filters by it (`:73-78`), and `list`/`load` filter by it (`topology.ts:175`, `:187`).
+
+Consequence, in one sentence a browser-preview user can trigger: **editing branch A moves branch B's canvas and burns a number B's history will show as a gap** — a state the real backend cannot produce, because its envelopes and counters are branch-keyed like the mock's history already is. The mock is internally inconsistent in a direction the split *between its two files* hides: `topology-state.ts` got the branch scoping right (it mirrors `revisions.rs`, its header says so); `topology.ts`'s envelope did not.
+
+This is exactly the "plausible place for the next divergence" the review §7 flagged — found, stated, not fixed (read-only fence). Severity: dev-preview only; no production path touches this file. The honest fix, whenever the plan wants it, is scoping the envelope slice by branchId in `topology.ts` — three functions, one key change (`readSlice`/`writeSlice` accept a computed key; `mockDatabase` already keys strings).
+
+### T-2 — LAXNESS, unreachable by the live UI: the mock's revision gate is opt-in
+
+`apply_topology_diff` rejects only `if (baseRevision !== undefined && …)` (`topology.ts:107`); the real command's `base_revision: u64` is a REQUIRED parameter (`commands.rs:398`) and the gate always fires (`:530`). Not a live divergence: the only UI call site always sends it (`topologyApply.ts:144`, `ctx.baseRevision ?? 0`) and the api wrapper's default is a number, never absent (`api/topology.ts:271`) — so `!== undefined` holds for every app-driven Apply. Only a hand-rolled `invoke('apply_topology_diff', …)` omitting the field can observe the hole; the mock's own comment (`:101-105`) knows and says so. Record, do not fix: widening a dev-mock guard to a signature error the TS call sites never make buys nothing.
+
+### T-3 — UNMODELED by design: the requestId ledger
+
+The real Apply holds an idempotency ledger — replay returns the original revision (`commands.rs:445`, `:508-514`), same-id-different-payload refuses (`:503-506`), the pre-fingerprint entry removal path exists (`:516-519`) — all three branches are now pinned by the Phase-4 tests (`32dcef1d3`/`e13ee0fe4`). The mock DROPS requestId without reading it (`topology.ts:90-100` destructure has no such field) and every call increments. Why that is HARMLESS: the UI mints a fresh `crypto.randomUUID()` per Apply (`topologyApply.ts:145`), so the ledger's real purpose — protecting a TRANSPORT retry of the same payload — has no analog in browser mode, where `invoke()` is a direct function call with no retry layer. Caveat for the future: anyone writing a dev-mode double-submit E2E will get revision+2 from the mock where the backend answers revision+1 idempotently — the preview cannot demonstrate the F4 property, in either direction.
+
+### T-4 — One line for completeness: `can_save_topology: () => true` (`topology.ts:78`)
+
+The mock models no permission layer anywhere; this is the global mock convention, not a topology divergence. Recorded so the next reader does not re-file it.
+
+### What this section did NOT examine
+
+The `pin_topology_revision` stub in `handlers/staff.ts` (imported state, same module family — unchecked), the node/wire PAYLOAD shapes against `topologyContract.ts` (the ADR #46 keep-rule above is the only shape compared), and localStorage seed drift (`readSlice` failure modes). T-1 is the finding; the rest is inventory.
