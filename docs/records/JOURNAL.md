@@ -11331,3 +11331,17 @@ consequence of those commands being real and gated, not of that mistake.
 **Commit:** single pathspec commit touching the gate file and this file together — the assertion
 asks for one deliberate pass, so splitting the const from its record would reproduce the exact
 failure mode the message describes. Never push without a direct user order.
+
+
+## 2026-09-16 — T-1 executed: the dev-mock's topology envelope is branch-keyed like the backend it previews
+
+**Context:**
+The one open ruling from the topology program's Phase-6 review (`.agents/topology-canvas-review.md` §T-1): the mock's diagram envelope + revision counter were one global object while its history was already branch-keyed — so an apply at branch A answered branch B's load, and the reviewer pass had already caught a TEST relying on the wrong shape. Owner order today: "for T-1 lets fix it."
+
+**Change:**
+`ui/src/dev-mock/handlers/topology.ts`: one write-through slice per branch (`topologySliceKey`, mirroring `topology_setting_key`), the seeded first-run canvas now lives ONLY in the legacy unscoped slot, and `load_topology` answers a never-saved named branch with `null` — the real command's `Ok(None)` — which routes the preview through the editor's documented preset fallback. The dependent scaffold from the reviewer record is fixed in the same commit: the revision-browser deploy helper now snapshots the branch it deploys to. Three new parity cases in `dev-mock-stores.test.ts` pin what the global envelope made unobservable: never-saved answers null; an apply at one branch is invisible to another and to legacy; counters are per branch (B's fresh base-0 apply succeeds while A's stale base-0 rejects).
+
+**Verification:**
+`npx vitest run` over dev-mock-stores + TopologyRevisionBrowser + NodeTopologyEditorDevMock -> **21/21**; api topology+ipc contracts -> **55/55**; TopologyApplyConfirm characterization -> **22/22**. Registered-handler digest re-derived before and after via the throwaway dump test: **682 / `0afa39b2126b` byte-identical** — no command name entered or left the mock, exactly what a state-shape fix must not do (and the count moved 681->682 from a sibling's commit since morning, which is why the house rule says re-derive, never remember). Typecheck: one error, foreign and owned (a sibling's deliberate red in `CartPanel.test.tsx`, named in their own commit message).
+
+**Commit:** `ec7b63175`; this entry rides its own docs(journal) commit -- never push without a direct user order.
