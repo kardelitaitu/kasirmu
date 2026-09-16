@@ -129,18 +129,45 @@ The Rust test suite is fully offline — no browser, no network, no hardware. Mo
 # Format
 cargo fmt --all
 
-# Lint (must pass with zero warnings)
+# Lint — `-D warnings` at the end is what makes this command fail on a warning
 cargo clippy --all-targets --all-features -- -D warnings
 
-# UI lint
+# UI lint — plain `eslint .`, no --max-warnings 0: it REPORTS warnings and still exits 0
 cd ui && npm run lint
+
+# UI types — this one does fail on what it finds
 cd ui && npm run typecheck
 ```
 
-`AGENTS.md` makes formatting and `cargo clippy -- -D warnings` mandatory. The pre-commit
-hook runs `cargo fmt --all` and **re-stages** what it changed, so a commit never carries
-unformatted Rust; `cargo fmt --all -- --check` is the non-mutating form to run yourself.
-CI's `cargo-check` job runs fmt → check → clippy and rejects a PR that fails either.
+`AGENTS.md` makes formatting and `cargo clippy -- -D warnings` mandatory — as policy, on you.
+The commit path will not do either one for you. **The pre-commit hook runs seven steps and none
+of them formats Rust**: line-ending normalization, bundle parity, FTL dedupe, migration
+column types, PG schema drift, the Go gate, and FTL orphans
+(`grep -c '^# ──' .githooks/pre-commit` → 7, and `grep -n 'cargo fmt\|rustfmt' .githooks/pre-commit`
+returns nothing). A whole-workspace `cargo fmt --all` step did live there until **2026-09-13,
+when it was removed** — and the reason it was removed is the reason it must stay out: it fired
+whenever any `.rs` file was staged but formatted the *entire* workspace in the working tree, so
+with several sessions in the checkout at once it rewrote other people's in-flight, unstaged,
+unrecoverable `.rs` files. Format your own files (`cargo fmt --all` before you stage, or
+`cargo fmt` scoped to what you touched); never re-add a workspace-wide format to a hook.
+
+Formatting is still enforced — check-only, and after the commit. `cargo fmt --all -- --check`
+runs in CI, in `pre-push`, in `scripts/check.sh` and in `scripts/release.sh`:
+`grep -c 'cargo fmt --all -- --check' .github/workflows/dev-ci.yml scripts/check.sh scripts/release.sh`
+prints `1` for each, and `grep -n 'cargo fmt --check' scripts/run-pre-push.py` names the push task.
+
+CI's `cargo-check` job runs **fmt → check**, and that is all. Its two steps are `Cargo fmt check`
+then `Cargo check workspace` — `cargo fmt --all -- --check`, then
+`cargo check --workspace --all-targets --all-features` — so what a PR is rejected for is
+unformatted Rust, or a workspace that fails to compile across every target and every feature.
+**It runs no Clippy, and no live workflow does** — re-measure with
+`grep -c clippy .github/workflows/dev-ci.yml .github/workflows/release.yml`
+and it prints `0` for both files. Clippy is local policy —
+`scripts/check.sh` runs it in the step named `clippy workspace`, and `scripts/release.sh` runs it
+too (`grep -n 'clippy workspace' scripts/check.sh`, `grep -n 'cargo clippy' scripts/release.sh`;
+cite them by those names, not by line number, because lines move whenever a step is inserted
+above them). A green PR is therefore not proof Clippy passed — running
+`cargo clippy --all-targets --all-features -- -D warnings` yourself before you push is the only thing that makes it so.
 
 ---
 
