@@ -12,6 +12,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { testAuthConnection } from '@/api/license';
 import { fromWireHealth, type ConnectionHealth } from '@/hooks/connectionHealth';
+import { isUnaskableCommandError } from '@/utils/app-error';
 
 /**
  * Connection state to the auth server. An alias onto the shared vocabulary
@@ -54,9 +55,12 @@ const RETRY_INTERVAL_MS = 5_000;
  * Returns `{ state, latencyMs, cause, retryNow }` suitable for rendering a
  * connection indicator in the StatusBar.
  *
- * - `'checking'` — initial state before the first ping resolves.
+ * - `'checking'` — UNKNOWN: the state before the first ping resolves, and also
+ *   the TERMINAL state when this shell cannot ask at all (the command is not
+ *   registered here, so no ping was ever sent). Not re-polled; the two cases
+ *   share a tone deliberately — neither is a claim about the server.
  * - `'connected'` — last ping succeeded (`ok: true`).
- * - `'disconnected'` — last ping failed (network error or `ok: false`).
+ * - `'disconnected'` — a ping ran and failed (network error or `ok: false`).
  * - `'degraded'` — the server answered but named a broken subsystem.
  */
 export function useAuthConnection(): AuthConnectionStatus {
@@ -111,8 +115,34 @@ export function useAuthConnection(): AuthConnectionStatus {
           setLatencyMs(result.latencyMs);
         }
         nextDelay = result.ok || health === 'degraded' ? POLL_INTERVAL_MS : RETRY_INTERVAL_MS;
-      } catch {
+      } catch (err) {
         if (!mountedRef.current || seq !== probeSeqRef.current) return;
+
+        // TWO different facts arrive through this catch and only one of them is
+        // an outage. On a shell that never registered the command — the tablet
+        // registers no license commands at all — `testAuthConnection` is
+        // rejected by the IPC boundary before a request exists, so
+        // `disconnected` there is a claim about a server we never reached: it
+        // paints the pill red forever and the 5 s band below re-issued the same
+        // impossible call each cycle, every one of them costing a real failed
+        // invoke, one `emitIpcError` and one `recordIpcTiming` sample for a
+        // probe that cannot run. `isUnaskableCommandError` asks `classifyRetry`
+        // first — its `not found` branch already says re-asking cannot change
+        // this — so the class is the registry miss alone and the verdict has one
+        // owner. It lands on the union's UNKNOWN, whose tone is not red, with
+        // nothing measured to report, and returns BEFORE the re-arm: a missing
+        // capability is a property of the binary, not a condition that recovers
+        // on a timer. `retryNow` still re-probes on demand, so a build that
+        // gains the command is picked up without a reload. A throw that is not
+        // this class — a real transport failure — falls through to the outage
+        // branch below and keeps both the red pill and the 5 s band.
+        if (isUnaskableCommandError(err)) {
+          setState('checking');
+          setLatencyMs(null);
+          setCause(null);
+          return;
+        }
+
         setState('disconnected');
         setLatencyMs(null);
         setCause(null);
