@@ -87,6 +87,29 @@ function formatRelativeTime(iso: string | null): { fluentKey: string; fluentArgs
 // ── Component ───────────────────────────────────────────────────────
 
 /** Offline queue screen — view pending, synced, and failed offline operations with retry and delete capabilities. */
+/**
+ * One settled read: `ok: false` records UNKNOWN — never a borrowed fact.
+ *
+ * Copied from the sanctioned shape at ui/src/frontend/shell/AppShell.tsx:87-94.
+ * The point is not the try/catch, it is what the CALLER is allowed to write
+ * afterwards: on `ok: false` there is no value, so a failure cannot be stored
+ * as — or rendered as — an answer the call was never able to produce. The
+ * console line is what makes the two cases tellable apart later; a swallowed
+ * throw and a pending read look identical from the screen, and only one of
+ * them is a fact about the queue.
+ */
+async function settleRead<T>(
+  label: string,
+  read: Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await read };
+  } catch (err) {
+    console.error(`[offline-queue] ${label} read failed — recording unknown:`, err);
+    return { ok: false };
+  }
+}
+
 export default function OfflineQueueScreen() {
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
@@ -108,7 +131,12 @@ export default function OfflineQueueScreen() {
   // lets operators see free/pro and the upgrade prompt without syncing.
   const [syncPlan, setSyncPlan] = useState<SyncPlanResult | null>(null);
   // SYNC-11: remote items quarantined after repeated pull-application failures.
-  const [failures, setFailures] = useState<RemoteSyncFailureDto[]>([]);
+  // null = UNKNOWN: the read has not answered, or answered by failing. An
+  // EMPTY ARRAY is a different fact — "the server has nothing quarantined" —
+  // and only a read that returned one may write it. Collapsing the two is
+  // what made a failed read render as a clean queue on the one screen whose
+  // job is to show sync trouble.
+  const [failures, setFailures] = useState<RemoteSyncFailureDto[] | null>(null);
   const [requeueError, setRequeueError] = useState<string | null>(null);
   // ERR-07: generation guard + last-refresh tracking for the poll loop.
   // A late poll response after unmount/supersession is ignored, and repeated
@@ -126,9 +154,14 @@ export default function OfflineQueueScreen() {
         listAllOfflineScoped(sessionToken),
         pendingOfflineCountScoped(sessionToken),
         getOfflineQueueStatusSummaryScoped(sessionToken).catch(() => null),
-        // Tolerate a dead-letter read failure: the local queue must not
-        // blank out because the quarantine listing is unavailable.
-        listRemoteFailuresScoped(sessionToken).catch(() => [] as RemoteSyncFailureDto[]),
+        // A dead-letter read must not blank out the LOCAL queue — but it may
+        // not answer FOR the quarantine either. `.catch(() => [])` did
+        // exactly that: it turned a failure into an empty list, which the
+        // section below renders as "No quarantined items.". Settled instead,
+        // so the failure arrives at the caller as `{ ok: false }` with no
+        // value to mistake for an answer. Promise.all still resolves, so the
+        // queue itself keeps rendering either way.
+        settleRead('offline_remote_failures', listRemoteFailuresScoped(sessionToken)),
       ]);
       setItems(data);
       setPendingCount(count);
@@ -139,7 +172,12 @@ export default function OfflineQueueScreen() {
       // Best-effort plan read — never fail the screen if the server is
       // unreachable or sync isn't configured.
       getSyncPlanScoped(sessionToken).then(setSyncPlan).catch(() => setSyncPlan(null));
-      setFailures(remoteFailures);
+      // Write a value ONLY when the call produced one. A failed read sets
+      // null — UNKNOWN, rendered by the section's own error path below —
+      // because a stale list is not a current one either. The next
+      // successful read (Retry, pull-to-refresh, requeue reload) replaces it
+      // with what the server actually said.
+      setFailures(remoteFailures.ok ? remoteFailures.value : null);
     } catch {
       setError(l10n.getString('offline-queue-error'));
     } finally {
@@ -592,7 +630,25 @@ export default function OfflineQueueScreen() {
             </div>
           )}
 
-          {failures.length === 0 ? (
+          {failures === null ? (
+            /* The read never answered. Rendered through the degraded path
+               this file already owns — the same `offline-queue-error` copy and
+               `offline-queue-retry` affordance the phase==='error' branch uses
+               above, in the same `offline-queue-error` alert container the
+               requeue failure already uses inside this section — so "we could
+               not ask" is visible without inventing copy or a new Fluent key.
+               What it must never reach is the branch below. */
+            <div className="offline-queue-error" role="alert">
+              <Localized id="offline-queue-error">
+                <span>Failed to load queue. Please try again.</span>
+              </Localized>
+              <Localized id="offline-queue-retry">
+                <Button variant="secondary" onClick={load}>Retry</Button>
+              </Localized>
+            </div>
+          ) : failures.length === 0 ? (
+            /* Reachable ONLY from a read that returned an empty list: this is
+               the assertion "nothing is quarantined", and it now has evidence. */
             <Localized id="offline-queue-quarantine-empty">
               <p className="offline-queue-quarantine-empty">No quarantined items.</p>
             </Localized>
