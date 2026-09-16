@@ -128,7 +128,7 @@
 
 ## Phase 3 — Tauri display names (productName / title only)
 **Commit:** `refactor(config): rename productName and window title to kasir.mu`
-**Pathspec:** `apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json`
+**Pathspec:** `apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json install/install.sh install/win/install.ps1 install/win/uninstall.ps1 install/uninstall.sh`
 
 - [ ] `apps/desktop-client/tauri.conf.json`
   - `"productName": "OZ-POS"` → `"productName": "kasir.mu"`
@@ -136,12 +136,18 @@
   - **identifier stays `com.ozpos.app` in this commit — moved in Phase 4**
 - [ ] `apps/tablet-client/tauri.conf.json`
   - `"productName": "OZ-POS"` → `"productName": "kasir.mu"`
+- [ ] `install/**` — **added after review; this phase's original list omitted every file that consumes the artifact name.** `productName` drives the installer output, so these break here (not in the Tier-3 plan, which only takes their repo URLs):
+  - `install/install.sh` — `OZ-POS.app` (`:224`), `/opt/oz-pos/OZ-POS.AppImage` (`:275,279,280,281,287,291`), `~/.local/bin/oz-pos.AppImage` (`:297,302,309,315,317`), `/usr/local/bin/oz-pos` (`:281`), `/usr/share/applications/oz-pos.desktop` (`:282,304,314`), and `dpkg -s oz-pos` (`:268,269,271`)
+  - `install/win/install.ps1` — `Programs\OZ-POS\OZ-POS.exe`
+  - `install/win/uninstall.ps1` — `DisplayName -like 'OZ-POS*'`, `Get-Process -Name 'OZ-POS'`
+  - `install/uninstall.sh` — `/Applications/OZ-POS.app`, `~/Library/Caches/…`, `~/.local/bin/oz-pos.AppImage`
+  - Decision to record: whether the Linux launcher and `/usr/local/bin/oz-pos` symlink keep the old short name (a user-visible PATH change, same class as the `oz` CLI binary in T3-2)
 
 ---
 
 ## Phase 4 — Bundle identifier + data-dir migration ⚠️
 **Commit:** `feat(app): change bundle identifier to mu.kasir.app/tablet and add data-dir migration`
-**Pathspec:** `apps/desktop-client/tauri.conf.json apps/desktop-client/src/state.rs apps/tablet-client/tauri.conf.json apps/tablet-client/src/state.rs apps/tablet-client/gen/android/app/build.gradle.kts apps/tablet-client/gen/android/app/src/main/java/com/ozpos/tablet/MainActivity.kt`
+**Pathspec:** `apps/desktop-client/tauri.conf.json apps/desktop-client/src/state.rs apps/tablet-client/tauri.conf.json apps/tablet-client/src/state.rs apps/tablet-client/gen/android/app/build.gradle.kts apps/tablet-client/gen/android/app/src/main/java/com/ozpos/tablet/MainActivity.kt install/uninstall.sh install/win/uninstall.ps1 install/win/README.md`
 
 > ⚠️ The data-dir migration in state.rs MUST ship in the same commit as the identifier change.
 > On first launch after update: if old path (com.ozpos.*/oz-pos.db) exists and new path does not,
@@ -158,6 +164,9 @@
   `package com.ozpos.tablet` → `package mu.kasir.tablet`
   Also rename the Java directory tree: `com/ozpos/tablet/` → `mu/kasir/tablet/`
   (new files — use §3 one-line new-file chain for the directory move)
+- [ ] `install/uninstall.sh:55,56,59,96` — **added after review; the original list had no `install/` file.** The uninstaller removes the *old* identifiers' data dirs: `~/Library/Application Support/com.ozpos.app`, `~/Library/Caches/com.ozpos.app`, `~/Library/Preferences/com.ozpos.app.plist`, `~/.local/share/com.ozpos.app`, `~/.config/com.ozpos.app`. After the identifier change these are stale, so an uninstall leaves `mu.kasir.app` data behind. Point them at the new identifier, and decide whether to also remove the legacy path (a separate, deliberate choice — deleting the old dir destroys the user's pre-migration data)
+- [ ] `install/win/uninstall.ps1:97,98` — `%APPDATA%\com.ozpos.app`, `%LOCALAPPDATA%\com.ozpos.app`; same decision as above
+- [ ] `install/win/README.md:58` — documents both paths
 
 ### Data-dir migration in state.rs
 - [ ] `apps/desktop-client/src/state.rs:757–762` — `resolve_db_path()`
