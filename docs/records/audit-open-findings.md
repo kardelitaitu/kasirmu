@@ -1606,6 +1606,55 @@ sed -n '730,732p' todo-tools.md
 **Nothing in the tree was changed to measure this** — every line above was read, not written, and the
 three files it names were clean in `git status --porcelain` at the time of reading.
 
+### New verified finding (2026-09-16, 11:24) — the tablet's manual sync retry pushes to the server and then writes the outcomes to the wrong database
+
+`retry_offline_sync_scoped` (`apps/tablet-client/src/commands/offline.rs`) is a three-phase command: read
+the pending queue, push it over HTTP with no lock held, then write the outcomes back. **Phase 1 and Phase
+3 do not use the same database.**
+
+| phase | tablet shell | bridge twin (`crates/oz-bridge/src/offline.rs:317-380`) |
+|---|---|---|
+| 1 — read pending | `state.resolve_scope(&session_token)` → **store** db | `ctx.resolve_scope(session_token)` → store db |
+| 3 — write outcomes | `state.db.lock().await` → **global identity** db | `ctx.resolve_scope(...)` again → store db |
+
+`AppState.db` is the global identity database, not the store. `AppState::new` opens
+`<app_data_dir>/oz-pos.db` (`apps/tablet-client/src/state.rs:153-170`), and `BridgeCtx.db` is
+`&AppState.db` — the very field `BridgeCtx::lock_global` documents as *"Lock the global identity DB (the
+authz path)"* (`crates/oz-bridge/src/ctx.rs:374`). The store is a separate file,
+`<data_dir>/store-<store_id>.sqlite` (`platform/core/src/database/manager.rs:167`), reached through
+`resolve_scope` → `StoreDatabaseManager::open_store`. Two different files, and the comment on
+`AppState.db` (`state.rs:51`, "SQLite connection for the local store") is what makes this easy to
+misread.
+
+**Why it is a defect and not merely a fork.** `apply_sync_outcomes` calls `store.mark_offline_synced`
+per accepted item (`crates/oz-core/src/sync_client.rs:307`), and that method returns
+`CoreError::NotFound` when its `UPDATE offline_queue … WHERE id = ?1` affects zero rows
+(`crates/oz-core/src/db/offline.rs:421-433`). Run against `oz-pos.db`, where no such queue row exists,
+the update affects zero rows, the `?` propagates, and the command returns an error — **after Phase 2 has
+already transmitted the batch**. The store's rows therefore stay `pending`, so every subsequent retry
+re-sends the same items to the server.
+
+**Reachability.** `ui/src/features/offline/OfflineQueueScreen.tsx:216` calls `retryOfflineSyncScoped`,
+which invokes this command; it is registered on both shells (`apps/tablet-client/src/lib.rs:699`,
+`apps/desktop-client/src/lib.rs:1246`). The bridge twin, by contrast, has no desktop caller
+(`.agents/review-backlog-codebase-review.md:114` — *"no desktop UI calls retryOfflineSync"*), so the
+tablet is the shell where the wrong-database write actually runs.
+
+**Not fixed here.** ADR #49 §4 preserves pre-existing defects inside an extraction and reports them; the
+door is refused on the storage-source ground, so the body stays tablet-native and carries an
+`ADR #49 NOT APPLIED` block naming this finding.
+
+**Re-derive, verbatim:**
+
+```bash
+grep -n "state.db.lock().await" apps/tablet-client/src/commands/offline.rs
+sed -n '153,170p' apps/tablet-client/src/state.rs
+sed -n '374p' crates/oz-bridge/src/ctx.rs
+sed -n '166,168p' platform/core/src/database/manager.rs
+sed -n '421,433p' crates/oz-core/src/db/offline.rs
+sed -n '216p' ui/src/features/offline/OfflineQueueScreen.tsx
+```
+
 ## How to close these
 
 Each finding's original remediation guidance lives in git history under
