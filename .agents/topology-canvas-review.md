@@ -141,3 +141,35 @@ The mock models no permission layer anywhere; this is the global mock convention
 ### What this section did NOT examine
 
 The `pin_topology_revision` stub in `handlers/staff.ts` (imported state, same module family — unchecked), the node/wire PAYLOAD shapes against `topologyContract.ts` (the ADR #46 keep-rule above is the only shape compared), and localStorage seed drift (`readSlice` failure modes). T-1 is the finding; the rest is inventory.
+
+## Reviewer pass 2026-09-16 — Phase 7's two NO-REFEREE rows, executed read-only
+
+Per the plan's own prescription (`todo-topology-editor.md:473`): *"what would make it gradable is a written finding per handler naming both consumers and the file each reads — a table, not an exit code."* Nothing was fixed; the fence held (this section and its plan ticks are the pass's only diff).
+
+### F5 sweep over the canvas sub-surface (plan `:470`) — PAID, zero live hits
+
+Population: 53 files (`Get-ChildItem ui/src/__tests__` filtered `topolog|Topology|canvasState|Inspector`). Three shape families grepped, then every hit read:
+
+| Shape | Live hits | Reading |
+|---|---|---|
+| `\|\| !` / `expect(true)` / self-equal | **0** | The topology-named files' single cited hit is STILL the `topologyExport.test.ts:356` COMMENT documenting the tautology `c442feecd` deleted (confirmed by that file's git log) — it is the fix's receipt, not a finding. |
+| expected computed by a production call (`toEqual(X(` / `toBe(x(`) | 7 candidates | All seven are cross-consumer EQUIVALENCE properties, each falsifiable: `topologyCard.test.ts:77/:105` (two INPUTS of `settingsCardForTypeKey` asserted equal = fallback law), `nodeTopologyLayout.test.ts:52-53` (median preserved between two DATASETS), `topologyKindRegistry.test.ts:129-130` (`nodeKindToken` vs `cardKindToken` AGREE — the healthy inverse of F1), `:206-211` (renderer's `visiblePortsForNode` ⇄ data's `leftPortVariants.length>0` agree exactly — this suite ASSERTS the two-consumers-one-scope property F1 violates), `topologyContract.test.ts:1367` (two diagrams share an error CODE), `NodeTopologyEditor.test.tsx:8123` (DOM attribute ⇄ DOM element). |
+
+Verdict: the F5 class is empty across the canvas sub-surface, not merely across the topology-named files the earlier measurement covered. The 12k-line monolith's share contains none.
+
+**Measurement self-caught, recorded because it would fool the next sweeper:** the first re-run printed 0 because PowerShell passed `ui/src/__tests__/topology*.test.ts` as a LITERAL file argument (no glob expansion for native commands) — rg erroring on a nonexistent literal, `2>$null` swallowing it, and a "clean sweep" meaning "nothing ran". Corrected to an explicit file list before the numbers above were taken. A green from a command that saw no files is the loudest kind of silence.
+
+### F1 pattern over pointer/drag/keyboard/touch (plan `:472`) — no divergence; structurally excluded
+
+Six handler files, six greps (`storeProfileId|store_id|sessionStore|branchLocation|selectedBranch|instanceId`): pointer (1,100ln) 0, keyboard (591ln) 0, drag-state (86ln) 0, editor-touch (322ln) 0, touch (43ln) 0, bend-drag (207ln) 0. **The handler family reads ZERO tenant scope** — it is geometry-only; every scope read lives one layer up, so the F1 shape (two consumers, same scope, different sources) has no habitat here. The consumers table, for the layer that does read scope:
+
+| Consumer | File | Branch/store key it reads |
+|---|---|---|
+| Canvas load | `nodeTopologyEditorLoadLifecycle.ts` (via `NodeTopologyEditor` `useWorkspace`) | `branchId` prop; session from `useWorkspace` (R1-threaded) |
+| Apply | `topologyApply.ts:35/:143` + `:206` | `ctx.branchId`; store is the diagram's `store_profile_id` — the R4-ratified design, backend resolves effective |
+| Compare | `TopologyScreen.tsx:333-334`, gated `:843` `stores.length >= 2 && selectedBranchId` | live `selectedBranchId` — truthy by the button's own gate |
+| History snapshot | `TopologyScreen.tsx:861`, gated `:848` `&& selectedBranchId` | same key as the browser itself renders under (`:880`) |
+| Revision fetch | `TopologyScreen.tsx:208` | same key |
+| Null-branch view | `TopologyScreen.tsx:475/:484` (unfiltered instances) | default slot — LOAD and SAVE agree on that meaning; one source, not two |
+
+No two rows disagree about any scope. **One second-order finding, test-scaffold:** `TopologyRevisionBrowser.test.tsx:74` snapshots `baseRevision` via `api.loadTopology(TOKEN)` with NO branchId while `deploy()` may apply WITH a branchId — against the real backend those are different keys, and the helper would read the wrong slot. It passes only because the mock's envelope is global (exactly the T-1 divergence), so this is live evidence that T-1 has already taught a test to rely on the wrong shape. Not a production defect; it is a consequence of the one open mock ruling — if T-1 is ever fixed, this helper must key by branch in the same commit.
