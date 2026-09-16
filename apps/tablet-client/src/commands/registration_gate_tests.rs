@@ -665,15 +665,55 @@ fn drift_pin_debt_ceilings_only_shrink() {
         .filter(|(_, st)| *st == State::NoSessionResolution)
         .count();
     let assume = ungated - no_session;
+    // Name the movers, in the same shape as the desktop file's copy of this leg so the two can be
+    // read against each other. This half matters MORE here: the tablet ledger sits exactly at its
+    // ceilings, so the first crossing fires immediately and this message has never once been
+    // displayed -- an arm nobody has seen fire is an arm nobody can trust. It was therefore proved
+    // by planting: one ledger row relabelled to a class its own sweep disagrees with, the leg run,
+    // the name read out of the output, and the file restored byte-identical.
+    let label_of = |n: &str| {
+        debt::DEBT_LEDGER
+            .iter()
+            .find(|(k, _)| *k == n)
+            .map(|(_, v)| *v)
+    };
+    let want = "resolves_session_names_no_permission";
+    let (mut homeless, mut migrated) = (Vec::new(), Vec::new());
+    for (name, st) in &s.ungated {
+        if *st != State::ResolvesSessionNamesNoPermission {
+            continue;
+        }
+        match label_of(name) {
+            None => homeless.push(name.clone()),
+            Some(old) if old != want => migrated.push(format!("{name} (ledger says {old})")),
+            Some(_) => {}
+        }
+    }
     assert!(
         no_session <= debt::NO_SESSION_RESOLUTION
             && assume <= debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
         "a per-state ceiling was crossed: measured {no_session} no_session_resolution \
          (ceiling {}) and {assume} resolves_session_names_no_permission (ceiling {}). The \
          second class is authenticate-then-assume and is the largest here; it moved \
-         without a decision.",
+         without a decision. Migrants into that class: {}. Names in it with no ledger row \
+         at all: {}. A migrant means a command whose measured state changed under a row \
+         that still describes the old one -- usually a session parameter that arrived \
+         without a permission check, which is a class-1 door becoming a class-2 door and \
+         empties one ceiling while filling the other. Either gate it, or move its ledger \
+         row to the true class AND raise that ceiling deliberately, naming the decision in \
+         docs/records/JOURNAL.md.",
         debt::NO_SESSION_RESOLUTION,
         debt::RESOLVES_SESSION_NAMES_NO_PERMISSION,
+        if migrated.is_empty() {
+            "none".to_string()
+        } else {
+            migrated.join(", ")
+        },
+        if homeless.is_empty() {
+            "none".to_string()
+        } else {
+            homeless.join(", ")
+        },
     );
 }
 
