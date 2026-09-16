@@ -28,7 +28,6 @@ export interface OpenCashDrawerResult {
   opened: boolean;
 }
 
-
 // ── Receipt Printing (raw) ───────────────────────────────────────
 
 /** Arguments for printing a raw receipt. */
@@ -40,7 +39,6 @@ export interface PrintReceiptArgs {
 export interface PrintReceiptResult {
   printedLines: number;
 }
-
 
 /**
  * Arguments for printing a structured sales receipt.
@@ -196,8 +194,6 @@ export interface UsbDeviceInfo {
 }
 
 // ── Scoped variants (ADR #7) ───────────────────────────────────────
-
-/** Discover all connected USB hardware devices (scoped). */
 
 /** Open a cash drawer (scoped). */
 export const openCashDrawerScoped = (sessionToken: string, args: OpenCashDrawerArgs = {}): Promise<OpenCashDrawerResult> =>
