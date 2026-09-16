@@ -209,7 +209,7 @@ If the fast loop is broken (script missing, nextest not installed, profile absen
 | `scripts/wtree-guard.sh` | Detect concurrent drift in files you claimed (`own`, `verify`, `check`, `status`, `release`) |
 | `scripts/test-changed.sh` | Runs tests only for crates whose files changed vs `origin/main` (`--all`, `--check`, `--vanilla`) |
 | `scripts/test-ui-changed.sh` | `vitest --changed` — only UI tests affected by changed files (`--all`, `--check`) |
-| `scripts/check.sh` | The FULL local matrix, run by hand. NOT what `git push` runs — `.githooks/pre-push` invokes `scripts/run-pre-push.py`, a subset of these steps that never calls check.sh — and it mirrors no workflow: `.github/workflows/ci.yml` was retired to `ci.yml.bak` at `23c96330`, so the live pair is `dev-ci.yml` and `release.yml` |
+| `scripts/check.sh` | The FULL local matrix, run by hand. NOT what `git push` runs — `.githooks/pre-push` invokes `scripts/run-pre-push.py`, a subset of these steps that never calls check.sh — and it mirrors no workflow: the `ci.yml` workflow under `.github/workflows/` was retired to `ci.yml.bak` at `23c96330`, so the live pair is `dev-ci.yml` and `release.yml` |
 
 ### UI loop
 
