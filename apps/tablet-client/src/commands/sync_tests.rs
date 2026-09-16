@@ -474,14 +474,23 @@ fn update_sync_settings_data_clear_url_writes_empty_row() {
 }
 
 #[tokio::test]
-async fn sync_run_plan_required_keeps_items_pending() {
-    // ADR sync-plan-gating: a 403 plan_required from the server must
-    // keep queued items `pending` (never mark them failed) and flag
-    // plan_required so the UI can show an upgrade prompt.
+async fn sync_run_scoped_plan_required_keeps_store_items_pending() {
+    // ADR sync-plan-gating, ported off the unscoped `sync_run` on 2026-09-16 (T27): a 403
+    // plan_required from the server must keep queued items `pending` (never mark them failed)
+    // and flag plan_required so the UI can show an upgrade prompt.
+    //
+    // It used to run against a command registered in neither shell, so the invariant was
+    // graded through a door no real build can open while the door the tablet actually calls
+    // -- this one, SYNC_MANAGE-gated -- had no plan-gate case. The two bodies are separate
+    // copies of the same three-phase logic, so passing here says something the old test could
+    // not: that the shipped path gates the plan the same way.
     use crate::state::AppState;
     use oz_core::Store;
+    use oz_core::auth;
     use oz_core::migrations;
     use oz_core::offline::OfflineQueueStatus;
+    use oz_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
     use tauri::Manager as _;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -504,15 +513,45 @@ async fn sync_run_plan_required_keeps_items_pending() {
     });
 
     let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "plan-gate-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
     let app = tauri::test::mock_builder()
-        .manage(AppState::for_test_with_conn(conn))
+        .manage(state)
         .build(tauri::generate_context!())
         .unwrap();
+
+    // Settings and the queued item go through the STORE db, which is the queue the scoped
+    // push reads (see `sync_run_scoped_marks_store_queue_and_leaves_global_untouched`).
     {
         let state = app.state::<AppState>();
-        let db = state.db.lock().await;
+        let conn_arc = state.resolve_store("plan-gate-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
         update_sync_settings_data(
-            &db,
+            &db_guard,
             &UpdateSyncSettingsArgs {
                 server_url: Some(server_url),
                 api_key: Some("test-jwt".into()),
@@ -520,26 +559,35 @@ async fn sync_run_plan_required_keeps_items_pending() {
             },
         )
         .unwrap();
-        Store::new(&db)
-            .enqueue_offline("complete_sale", r#"{"id":"tablet-plan-gate"}"#)
+        Store::new(&db_guard)
+            .enqueue_offline("complete_sale", r#"{"id":"tablet-plan-gate-scoped"}"#)
             .unwrap();
     }
 
-    let result = sync_run(app.state()).await.unwrap();
+    let result = sync_run_scoped("plan-gate-token".into(), app.state())
+        .await
+        .unwrap();
     task.await.unwrap();
 
     assert!(result.plan_required, "must flag plan_required for the UI");
-    assert_eq!(result.synced, 0);
+    assert_eq!(result.synced, 0, "a plan gate syncs nothing");
     assert_eq!(result.failed, 0, "a plan gate is not a failure");
 
     let state = app.state::<AppState>();
-    let db = state.db.lock().await;
-    let items = Store::new(&db).list_all_offline().unwrap();
+    let conn_arc = state.resolve_store("plan-gate-token").unwrap();
+    let db_guard = conn_arc.lock().unwrap();
+    let store = Store::new(&db_guard);
+    let items = store.list_all_offline().unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(
         items[0].status,
         OfflineQueueStatus::Pending,
         "plan-gated items must stay pending so they sync after upgrade"
+    );
+    assert_eq!(
+        store.pending_offline_count().unwrap(),
+        1,
+        "the queue must still be offered on the next cycle"
     );
 }
 
