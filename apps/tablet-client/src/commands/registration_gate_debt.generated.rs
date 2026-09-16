@@ -93,7 +93,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("settings::get_store_settings", "no_session_resolution"),
     ("settings::get_credit_settings", "no_session_resolution"),
     ("settings::get_hardware_settings", "no_session_resolution"),
-    ("settings::set_hardware_settings", "no_session_resolution"),
     (
         "settings::get_user_preferences_scoped",
         "resolves_session_names_no_permission",
@@ -271,13 +270,22 @@ pub const REGISTERED_TOTAL: usize = 319;
 /// number. It is the only one of the seven `hardware::*` rows with a gate to
 /// copy — the other six are ungated in the bridge too, so they stay as debt
 /// until an owner rules on what permission they should carry.
-pub const DEBT_CEILING: usize = 89;
+pub const DEBT_CEILING: usize = 88;
+
+/// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
+/// not by gating. Its only argument beyond the DTO was a renderer-supplied `user_id` --
+/// the actor the permission check asks about -- and the session-scoped twin was already
+/// registered, so once the UI stopped naming the unscoped door (`7b756b9c7`) the shell
+/// kept the one that derives identity from the session and dropped the one that took it
+/// on faith. This retires a REGISTERED command, which `scripts/retire-legacy-commands.py`
+/// refuses to do by design: it deletes unregistered leftovers, and a live door needs the
+/// call sites moved first.
 
 /// Names that never resolve a session at all.
-pub const NO_SESSION_RESOLUTION: usize = 42;
+pub const NO_SESSION_RESOLUTION: usize = 41;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
-/// 47 + 42 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+/// 47 + 41 = 88 = `DEBT_CEILING`, as the class counts must sum to the ledger.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 47;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

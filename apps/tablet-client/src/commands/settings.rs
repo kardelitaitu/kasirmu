@@ -62,7 +62,7 @@ use crate::state::AppState;
 /// fifteen keys (scale connection / path / baud / zero-on-boot / auto-zero,
 /// kitchen printer connection / path, sound volume, dark mode, schema version)
 /// while this shell's type — and both of its command bodies — carry five. A
-/// re-export here would let `set_hardware_settings[_scoped]` ACCEPT ten keys
+/// re-export here would let `set_hardware_settings_scoped` ACCEPT ten keys
 /// it then never writes, converting a visible absence into a silent drop. The
 /// two shells also read different stores for the same screen (this one reads
 /// the `settings` KV table through `Settings::get_printer_*`; the bridge reads
@@ -219,26 +219,6 @@ pub async fn get_hardware_settings(
         scanner_device_id: Settings::get_scanner_device_id(&conn)?,
         scanner_input_mode: Settings::get_scanner_input_mode(&conn)?,
     })
-}
-
-#[command]
-/// Set hardware settings.
-pub async fn set_hardware_settings(
-    args: HardwareSettingsDto,
-    user_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
-    let conn = state.db.lock().await;
-    let store = oz_core::db::Store::new(&conn);
-    require_permission_for_user(&store, &user_id, permissions::SETTINGS_EDIT)?;
-    let tx = conn.unchecked_transaction()?;
-    Settings::set_printer_connection(&tx, &args.printer_connection)?;
-    Settings::set_printer_device_path(&tx, &args.printer_device_path)?;
-    Settings::set_printer_paper_size(&tx, &args.printer_paper_size)?;
-    Settings::set_scanner_device_id(&tx, &args.scanner_device_id)?;
-    Settings::set_scanner_input_mode(&tx, &args.scanner_input_mode)?;
-    tx.commit()?;
-    Ok(())
 }
 
 // ── User preferences ───────────────────────────────────────────
@@ -693,7 +673,9 @@ pub async fn get_hardware_settings_scoped(
     })
 }
 
-/// Session-scoped variant of `set_hardware_settings`.
+/// Session-scoped hardware write: the only one. The unscoped `set_hardware_settings`
+/// this used to sit beside took `user_id` from the renderer, which is the actor the
+/// permission check asks about, so it was retired with T11 rather than repaired.
 #[command]
 pub async fn set_hardware_settings_scoped(
     session_token: String,

@@ -578,7 +578,6 @@ pub fn run() {
                 commands::settings::get_store_settings,
                 commands::settings::get_credit_settings,
                 commands::settings::get_hardware_settings,
-                commands::settings::set_hardware_settings,
                 commands::settings::get_user_preferences_scoped,
                 commands::settings::set_user_preferences_scoped,
                 commands::settings::get_setting,
