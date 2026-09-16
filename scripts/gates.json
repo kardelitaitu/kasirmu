@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Single source of truth for CI/local-runner gate names and status (AUDIT-27 CI-08). scripts/verify-ci-docs-drift.py enforces that docs/ci-pipeline.md, .github/workflows/*.yml, scripts/check.sh, and scripts/check-ui.mjs all agree with this file. Adding a gate here is the ONLY way to add a gate; renaming/removing one here (plus its runner/CI declarations) is the only way to remove it.",
+  "description": "Single source of truth for CI/local-runner gate names and status (AUDIT-27 CI-08). scripts/verify-ci-docs-drift.py enforces that docs/operations/ci-pipeline.md, .github/workflows/*.yml, scripts/check.sh, and scripts/check-ui.mjs all agree with this file. Adding a gate here is the ONLY way to add a gate; renaming/removing one here (plus its runner/CI declarations) is the only way to remove it.",
   "gates": [
     {
       "id": "ui-lint",

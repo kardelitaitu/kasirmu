@@ -147,7 +147,7 @@ step "migration smoke test" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli
 step "migration idempotency" "cargo run -p oz-cli -- migrate" cargo run -p oz-cli -- migrate
 rm -f oz-pos.db oz-pos.db-wal oz-pos.db-shm
 
-# ── Skill drift guard (extra local guard; CI doesn't run this) ────────────
+# ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
 if command -v bash &>/dev/null; then
     step "skill-drift-guard" "bash .agents/skills/skill-drift-guard/scripts/detect.sh --report" bash .agents/skills/skill-drift-guard/scripts/detect.sh --report
 else
