@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
-import { getVersion } from '@/api/tauri';
-import type { Update } from '@tauri-apps/plugin-updater';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { createBackup } from '@/api/data';
 import { getSetting, setSetting } from '@/api/settings';
 import { plainErrorMessage } from '@/utils/app-error';
@@ -45,63 +44,14 @@ function parseMinVersionFromNotes(notes: string | undefined): string | null {
   return null;
 }
 
-// ── Types ──────────────────────────────────────────────────────────
-
-interface UpdateInfo {
-  available: boolean;
-  version?: string;
-  notes?: string | undefined;
-  mandatory?: boolean;
-  /** Minimum supported version for this update (from manifest or notes). */
-  minVersion?: string | undefined;
-}
-
-// ── Hook to check for updates ──────────────────────────────────────
-
-interface UpdateState {
-  info: UpdateInfo;
-  instance: Update | null;
-}
-
-function useUpdateCheck(): UpdateState {
-  const [state, setState] = useState<UpdateState>({
-    info: { available: false },
-    instance: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const updater = await import('@tauri-apps/plugin-updater');
-        const update = await updater.check();
-        if (!cancelled && update) {
-          // Try to parse min_version from the raw manifest.
-          // Tauri's Update type doesn't expose raw manifest fields directly,
-          // but we can embed it in the `body` (notes) as JSON metadata.
-          const notes = update.body ?? undefined;
-          const minVersion = parseMinVersionFromNotes(notes);
-
-          setState({
-            info: {
-              available: true,
-              version: update.version,
-              notes,
-              mandatory: false,
-              minVersion: minVersion ?? undefined,
-            },
-            instance: update,
-          });
-        }
-      } catch {
-        // Tauri updater plugin not available (dev mode or browser).
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  return state;
-}
+// ── Update source ──────────────────────────────────────────────────
+//
+// Availability comes from `useVersionStatus` — the ONE shared updater probe
+// for the app. This banner used to call `updater.check()` for itself, so
+// with the status bar's version pill also mounted (and StrictMode doubling
+// both in dev) a single answer cost several identical rounds of endpoint
+// errors in the log. Consuming the hook also means the banner and the pill
+// can never disagree about whether an update exists.
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -116,7 +66,18 @@ function useUpdateCheck(): UpdateState {
  */
 export default function UpdateBanner() {
   const { l10n } = useLocalization();
-  const { info: update, instance: updateInstance } = useUpdateCheck();
+  const {
+    state: versionState,
+    currentVersion,
+    availableVersion,
+    instance: updateInstance,
+  } = useVersionStatus();
+
+  // The manifest's `body` doubles as the release notes; `min_version` may be
+  // embedded there as JSON metadata (the Update type exposes no raw fields).
+  const notes = updateInstance?.body ?? undefined;
+  const minVersion = parseMinVersionFromNotes(notes) ?? undefined;
+  const updateAvailable = versionState === 'update';
 
   // ── State ─────────────────────────────────────────────────────
   const [dismissed, setDismissed] = useState(false);
@@ -124,49 +85,48 @@ export default function UpdateBanner() {
   const [backingUp, setBackingUp] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [versionBlocked, setVersionBlocked] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
 
   // ── Rollback recovery state ───────────────────────────────────
   const [previousVersion, setPreviousVersion] = useState<string | null>(null);
   const [showRollback, setShowRollback] = useState(false);
 
-  // ── On mount: detect failed update (rollback recovery) ────────
+  // ── Detect a failed update (rollback recovery) ────────────────
   useEffect(() => {
+    // Wait for the shared probe to settle: `currentVersion` is the '0.0.0'
+    // fallback until then, and comparing a stored version against that would
+    // either miss a real update or invent a rollback that never happened.
+    if (versionState === 'checking') return;
+    if (currentVersion === '0.0.0') return;
+
     let cancelled = false;
 
     (async () => {
       try {
-        // Get current app version
-        const ver = await getVersion();
-        if (!cancelled) setCurrentVersion(ver);
-
-        // Check if there's a stored previous version (from before an update)
+        // A stored previous version that differs from the running one means
+        // an update landed — offer the old release in case it went wrong.
         const prev = await getSetting(PREVIOUS_VERSION_KEY);
-        if (!cancelled && prev && prev !== ver) {
-          // A previous version was stored and it differs from current,
-          // meaning an update happened. Show rollback recovery banner
-          // so the user can download the old version if something is wrong.
+        if (!cancelled && prev && prev !== currentVersion) {
           setPreviousVersion(prev);
           setShowRollback(true);
         }
       } catch {
-        // App API not available (browser mode).
+        // Settings API not available (browser mode).
       }
     })();
 
     return () => { cancelled = true; };
-  }, []);
+  }, [versionState, currentVersion]);
 
   // ── Version compatibility check ───────────────────────────────
   useEffect(() => {
-    if (update.available && update.minVersion && currentVersion) {
-      const cmp = compareVersions(currentVersion, update.minVersion);
+    if (updateAvailable && minVersion && currentVersion) {
+      const cmp = compareVersions(currentVersion, minVersion);
       if (cmp < 0) {
         // Current version is BELOW the minimum required for this update.
         setVersionBlocked(true);
       }
     }
-  }, [update.available, update.minVersion, currentVersion]);
+  }, [updateAvailable, minVersion, currentVersion]);
 
   // ── Install handler ───────────────────────────────────────────
   const handleInstall = useCallback(async () => {
@@ -290,9 +250,9 @@ async function persistUpdaterSetting(key: string, value: string): Promise<void> 
             <Localized id="update-banner-version-blocked-title"><strong>Update not available:</strong></Localized>{' '}
             <Localized
               id="update-banner-version-blocked-desc"
-              vars={{ current: currentVersion || '?', minimum: update.minVersion || DEFAULT_MIN_VERSION }}
+              vars={{ current: currentVersion || '?', minimum: minVersion || DEFAULT_MIN_VERSION }}
             >
-              <span>Your version {currentVersion} is below minimum {update.minVersion}. Please reinstall from the website.</span>
+              <span>Your version {currentVersion} is below minimum {minVersion}. Please reinstall from the website.</span>
             </Localized>
           </span>
         </div>
@@ -311,7 +271,7 @@ async function persistUpdaterSetting(key: string, value: string): Promise<void> 
   }
 
   // Priority 3: Update available banner (existing + backup improvements)
-  if (!update.available || dismissed) {
+  if (!updateAvailable || dismissed) {
     return null;
   }
 
@@ -339,8 +299,8 @@ async function persistUpdaterSetting(key: string, value: string): Promise<void> 
         </svg>
         <span className="update-banner-text">
           <Localized id="update-banner-title"><strong>Update available:</strong></Localized>{' '}
-          {update.version ? `v${update.version}` : l10n.getString('update-banner-new-version')}
-          {update.notes && <span className="update-banner-notes"> — {update.notes}</span>}
+          {availableVersion ? `v${availableVersion}` : l10n.getString('update-banner-new-version')}
+          {notes && <span className="update-banner-notes"> — {notes}</span>}
         </span>
       </div>
       <div className="update-banner-actions">
