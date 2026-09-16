@@ -3,9 +3,12 @@
 # This file is the REVIEWED BASELINE referenced by docs/ci-pipeline.md and
 # the audit/27-ci-pipeline.md required/advisory policy. Every ignore entry
 # below must carry an owner/review date, a severity, and a justification.
-# Do not add entries casually — the CI `audit` job is REQUIRED on main pushes
-# and `security-pr` is fail-closed, so an unignored high/critical finding
-# blocks the pipeline by design.
+# Do not add entries casually: nothing polices this file. `cargo audit` runs in
+# neither live workflow, and scripts/gates.json files both `audit` and
+# `security-pr` as retired with runners: null — docs/operations/ci-pipeline.md
+# records both as "Runs nowhere". The tool is installed on developer machines
+# only, so an ignore entry is unenforced and a new finding of this class stays
+# invisible until someone types the command.
 
 [advisories]
 # RUSTSEC-2023-0071 — Marvin Attack (rsa crate, medium 5.9)
