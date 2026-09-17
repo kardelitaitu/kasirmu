@@ -148,7 +148,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     // the Worker proxy), not the marketing host.
     expect(res.headers.get('Location')).toBe('https://admin.kasir.mu/');
     const setCookie = res.headers.get('Set-Cookie');
-    expect(setCookie).toContain('oz_session=;');
+    expect(setCookie).toContain('kasirmu_session=;');
     expect(setCookie).toContain('Max-Age=0');
     expect(setCookie).toContain('HttpOnly');
   });
@@ -201,7 +201,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Location')).toBe('/settings?theme=dark');
     // The httpOnly cookie carries the exchanged token.
     const setCookie = res.headers.get('Set-Cookie');
-    expect(setCookie).toContain('oz_session=exchanged.jwt.token');
+    expect(setCookie).toContain('kasirmu_session=exchanged.jwt.token');
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Secure');
   });
@@ -302,7 +302,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('Location')).toBe('https://kasir.mu/en/login');
     const setCookie = res.headers.get('Set-Cookie');
-    expect(setCookie).toContain('oz_session=;');
+    expect(setCookie).toContain('kasirmu_session=;');
     expect(setCookie).toContain('Max-Age=0');
     expect(setCookie).toContain('HttpOnly');
   });
@@ -323,7 +323,7 @@ describe('Cloudflare Worker — worker.ts', () => {
     // Code stripped, other params kept, same-origin account path.
     expect(res.headers.get('Location')).toBe('/en/account?theme=dark');
     const setCookie = res.headers.get('Set-Cookie');
-    expect(setCookie).toContain('oz_session=exchanged.cookie.token');
+    expect(setCookie).toContain('kasirmu_session=exchanged.cookie.token');
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Secure');
     // The exchange must hit the license server, not the static assets.
