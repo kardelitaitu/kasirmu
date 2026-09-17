@@ -1,4 +1,4 @@
-<!-- TODO: update badge URLs after repo rename -->
+<!-- TODO: update badge URLs after repo rename — rebrand Tier 3 item T3-7 (kardelitaitu/oz-pos → kasirmu/kasir.mu). The URLs below still resolve today; the GitHub repo move has NOT happened, so do not pre-empt it. -->
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/oz-pos?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/oz-pos?style=flat-square) [![Dev CI](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml/badge.svg)](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml)
 
 
@@ -29,7 +29,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 
 - **Offline-first** — Operates without internet connectivity; sync when available
 - **Modular by design** — Independent modules for inventory, CRM, reporting, etc.
-- **Secure by default** — Encrypted `.ozpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
+- **Secure by default** — Encrypted `.kasirpkg` snapshots (whole-file `.db` backups are unencrypted), PAN masking, platform keychains
 - **Hardware abstraction** — Vendor-independent drivers for printers, scanners, displays, payment terminals, scales
 - **Enterprise-grade code quality** — 8,355 Rust `#[test]` functions and 593 front-end test files (measured 2026-09-18: `grep -rn --include='*.rs' -o '#\[test\]' . | wc -l` → 8,355; `find ui/src/__tests__ -type f | wc -l` → 593); strict Clippy (a project standard that developers and `scripts/check.sh` enforce, not CI); typed Money; transactional DB. The Vitest case total is not measured — it exists only in a run, and none is recorded here.
 
@@ -43,7 +43,7 @@ Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cl
 | **Inventory** | Product management, categories, stock adjustments, purchase tracking, movement history |
 | **Customer Management** | Profiles, purchase history, loyalty support, CRM (dedicated module) |
 | **Reporting** | Daily sales, product performance, cash reconciliation, inventory reports, export |
-| **Security** | Encrypted `.ozpkg` snapshots (Argon2id + AES-256-GCM; whole-file `.db`/`.backup.db` backups are unencrypted), PAN masking, TLS, platform keychain, audit logging |
+| **Security** | Encrypted `.kasirpkg` snapshots (Argon2id + AES-256-GCM; whole-file `.db`/`.backup.db` backups are unencrypted), PAN masking, TLS, platform keychain, audit logging |
 | **Hardware** | Receipt printers, barcode scanners, cash drawers, customer displays, EDC payment terminals, weight scales — USB, Bluetooth, TCP, serial, plus mock drivers for testing |
 
 ---
@@ -174,11 +174,11 @@ kasir.mu/
 | Desktop Shell | Tauri v2 | Native window, IPC bridge, updater |
 | Mobile Shell | Tauri v2 | Native window, IPC bridge, updater (Android) |
 | Frontend | React 18 + TypeScript + Vite 6 | POS UI |
-| Database | SQLite (rusqlite) | On-device persistence, 59 migration files (2026-09-13: `ls crates/oz-core/migrations/*.sql \| wc -l` = 59, of which 58 are SQLite and one is the generated `20260813_init.pg.sql`; the 131 pre-Aug-2026 ones squashed into `20260813_init.sql`) |
+| Database | SQLite (rusqlite) | On-device persistence, 59 migration files (2026-09-13: `ls crates/kasirmu-core/migrations/*.sql \| wc -l` = 59, of which 58 are SQLite and one is the generated `20260813_init.pg.sql`; the 131 pre-Aug-2026 ones squashed into `20260813_init.sql`) |
 | Localization | @fluent/react | All UI strings in `.ftl` files (54 files, shared-ui/locales/) |
 | Hardware | kasirmu-hal traits | USB/TCP/BT/serial/mock drivers |
 | Money | `i64` minor units | Never `f32`/`f64` — Currency, Money structs |
-| Security | Argon2id + AES-256-GCM + zstd | Encrypted `.ozpkg` snapshots |
+| Security | Argon2id + AES-256-GCM + zstd | Encrypted `.kasirpkg` snapshots |
 | Automation | Lua (mlua) | Discount, tax, validation rules |
 
 ---
@@ -186,9 +186,9 @@ kasir.mu/
 ## Quick Start
 
 ```bash
-# TODO: update URLs after repo rename
+# TODO: update URLs after repo rename — rebrand T3-7
 git clone https://github.com/kardelitaitu/oz-pos.git
-cd oz-pos  # TODO: will be "kasir.mu" after repo rename
+cd oz-pos  # TODO: will be "kasir.mu" after repo rename (T3-7)
 cargo build --workspace
 cd ui && npm ci --no-audit --no-fund && cd ..  # see ui/README.md#install-script-approvals
 cd apps/desktop-tauri && cargo tauri dev
@@ -223,7 +223,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 
 | Command | Action |
 |---|---|
-| `cargo fmt --all` | Format Rust code (CI checks it: `dev-ci.yml:195` runs `cargo fmt --all -- --check`) |
+| `cargo fmt --all` | Format Rust code (CI checks it: the `Cargo fmt check` step in `dev-ci.yml` runs `cargo fmt --all -- --check` — cited by step name, not line number, because lines move) |
 | `cargo clippy --all-targets -- -D warnings` | Lint — **local only**: `grep -c clippy` over the two live workflows (`dev-ci.yml`, `release.yml`) returns 0, so this gate is run by `scripts/release.sh` and by the step NAMED `clippy workspace` inside `scripts/check.sh` — re-find it by that name with `grep -n 'clippy workspace' scripts/check.sh`, because the `:44` this row carried predates `ee5aacd46`, which moved the step, and a pointer verified today is false the next time anyone inserts a leg above it — never by CI |
 | `cargo test --workspace` | Run tests (8,355 `#[test]` fns — `grep -rn --include='*.rs' -o '#\[test\]' . \| wc -l`, 2026-09-18; 8,280 on 2026-09-15) |
 | `bash scripts/check.sh` | The FULL local matrix (Rust + UI + migrations), run by hand — **not** what `git push` runs. `.githooks/pre-push` invokes `scripts/run-pre-push.py` and nothing else (one call site, re-find it with `grep -n 'run-pre-push.py \$FLAGS' .githooks/pre-push`; the `:83-84` this row carried moved to a lower line inside the hour when `f5ec19201` widened the hook, which is the reason it is cited by pattern and not by number), and that script never calls `check.sh` (`grep -n check.sh .githooks/pre-push scripts/run-pre-push.py` exits 1, on the working copy and on the `HEAD` blob). What a push does run is a SUBSET of this matrix: the always-on static gates, then path-routed `cargo check --workspace`, `cargo fmt --check`, `ui typecheck`, `ui vite… |
@@ -240,7 +240,7 @@ See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup 
 | **Frontend** | Component tests, feature tests, localization validation, accessibility checks |
 | **Coverage** | LLVM source-based (Rust) + v8 (UI) — HTML + JSON in `coverage/` |
 
-Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before merge — as policy. As enforcement only three of the four fail a build: `cargo fmt --all -- --check` is CI (`dev-ci.yml:195`), typecheck and Vitest are CI (`dev-ci.yml#ui-test`), and **Clippy runs in no live workflow** — `grep -c clippy .github/workflows/dev-ci.yml .github/workflows/release.yml` prints `:0` for both files and exits 1 (2026-09-14); the only clippy left anywhere under `.github/workflows/` is inside the inert `ci.yml.bak`, which `grep -rln clippy .github/workflows/` names alone (lines 5, 230, 251) — so it is local policy: it runs in `scripts/release.sh` and in the step NAMED `clippy workspace` inside `scripts/check.sh` (`grep -n 'clippy workspace' scripts/check.sh` — ci…
+Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before merge — as policy. As enforcement only three of the four fail a build: `cargo fmt --all -- --check` is CI (the `Cargo fmt check` step in `dev-ci.yml`), typecheck and Vitest are CI (`dev-ci.yml#ui-test`), and **Clippy runs in no live workflow** — `grep -c clippy .github/workflows/dev-ci.yml .github/workflows/release.yml` prints `:0` for both files and exits 1 (re-verified 2026-09-18); the only clippy left anywhere under `.github/workflows/` is inside the retired `.github/workflows/attic/ci.yml.bak` (moved to `attic/` in P4 of the folder restructure), which `grep -rln clippy .github/workflows/` names alone (3 matches) — so it is local policy: it runs in `scripts/release.sh` and in the step NAMED `clippy workspace` inside `scripts/check.sh` (`grep -n 'clippy workspace' scripts/check.sh` — ci…
 
 ---
 
@@ -251,13 +251,13 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 | Phase (ROADMAP) | State | What's real | What's still open |
 |---|---|---|---|
 | 1 — Foundation & MVP | Done | Scan → cart → pay → receipt, setup wizard, feature flags, Money/CRUD core | Windows/Linux launch box unchecked |
-| 2 — Hardening | Done | oz-security, oz-logging, backup/restore, updaters, packaging | Log sinks exist but are never wired (no log file on any shipped binary); security/nightly CI retired to `.bak` |
+| 2 — Hardening | Done | kasirmu-security, kasirmu-logging, backup/restore, updaters, packaging | Log sinks exist but are never wired (no log file on any shipped binary); security/nightly CI retired to `.bak` |
 | 3 — Transactions & Staff | Done | Void/refund/hold/split, PIN auth + RBAC, shifts + EOD, tax engine, Lua runtime | — |
 | 4 — Scaling | Done, 2 gaps | Cloud sync (outbox → PG/HTTP), multi-store + terminals, Stripe/Square/QRIS, Android tablet build, responsive UI | Exchange-rate auto-sync daemon never starts (rates are manager-entered); receipt carries charge currency only, no base-currency line |
 | 5 — Intelligence | Done, 1 gap | Daily/weekly/monthly + EOD reporting, revenue/COGS/gross-profit, dashboards, en+id i18n | Custom report builder + cloud-warehouse export never built |
 | 6 — Ecosystem | Done, 1 gap | Loyalty, promotions, bundles, KDS, kiosk, table management, plugin sandbox, theming | Voice checkout (research, deferred) |
 
-Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings`, `staff`, `terminal`, `currency`, `sales`, `reporting`, `loyalty`), 4 still stubs with no domain logic (`purchasing`, `promotions`, `giftcards`, `kitchen` — the KDS UI in `ui/src/features/kds/` is frontend-only; the PROMO-3 engine lives in `oz-core`, not `modules/promotions`; gift-card types still sit in `modules/loyalty`). There is **no accounting module** — no chart of accounts, journal, or expense tracking exists anywhere in `modules/`, migrations, or UI. What the platform does have is sales accounting's raw material: revenue/COGS/gross-profit reporting (`crates/oz-core/src/db/reports/revenue.rs`), shift cash reconciliation, and purchase-order history.
+Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings`, `staff`, `terminal`, `currency`, `sales`, `reporting`, `loyalty`), 4 still stubs with no domain logic (`purchasing`, `promotions`, `giftcards`, `kitchen` — the KDS UI in `ui/src/features/kds/` is frontend-only; the PROMO-3 engine lives in `kasirmu-core`, not `modules/promotions`; gift-card types still sit in `modules/loyalty`). There is **no accounting module** — no chart of accounts, journal, or expense tracking exists anywhere in `modules/`, migrations, or UI. What the platform does have is sales accounting's raw material: revenue/COGS/gross-profit reporting (`crates/kasirmu-core/src/db/reports/revenue.rs`), shift cash reconciliation, and purchase-order history.
 
 Latest release: **v0.0.39** (on branch `0.0.39`).
 
