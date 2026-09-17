@@ -34,7 +34,7 @@ fuzz_target!(|data: &[u8]| {
     // Only fuzz valid UTF-8 strings (Lua source is text).
     if let Ok(s) = std::str::from_utf8(data) {
         // Create a fresh sandboxed Lua VM per input.
-        let lua = match oz_lua::LuaRuntime::new() {
+        let lua = match kasirmu_lua::LuaRuntime::new() {
             Ok(lua) => lua,
             Err(_) => return, // VM init failure is not a bug we're testing for
         };
@@ -110,7 +110,7 @@ fuzz_target!(|data: &[u8]| {
 
         // Also fuzz the apply_discount hook with the current sandbox state.
         // Even if load_str failed, the VM should be in a recoverable state.
-        let lines = oz_lua::CartLineData {
+        let lines = kasirmu_lua::CartLineData {
             sku: s.chars().take(50).collect(),
             qty: 1,
             unit_price_minor: 100,

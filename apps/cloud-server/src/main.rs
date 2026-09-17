@@ -209,10 +209,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // ── Logging ──────────────────────────────────────────────────────
     match config.log_format {
         config::LogFormat::Json => {
-            oz_logging::try_init_json().map_err(|e| format!("logging init_json failed: {e}"))?;
+            kasirmu_logging::try_init_json().map_err(|e| format!("logging init_json failed: {e}"))?;
         }
         config::LogFormat::Plain => {
-            oz_logging::try_init().map_err(|e| format!("logging init failed: {e}"))?;
+            kasirmu_logging::try_init().map_err(|e| format!("logging init failed: {e}"))?;
         }
     }
 

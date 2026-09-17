@@ -189,23 +189,23 @@ pub fn init_module_system(
         // ── WhatsApp notification handlers (opt-in via feature flag + env vars) ─
         #[cfg(feature = "whatsapp-notifications")]
         {
-            use oz_notification::NotificationClient;
+            use kasirmu_notification::NotificationClient;
 
-            match oz_notification::whatsapp::WhatsAppClient::from_env() {
+            match kasirmu_notification::whatsapp::WhatsAppClient::from_env() {
                 Ok(whatsapp) => {
                     let client: std::sync::Arc<dyn NotificationClient> =
                         std::sync::Arc::new(whatsapp);
 
                     bus.subscribe::<oz_core::events::SaleCompleted>(
                         "sale.completed",
-                        Box::new(oz_notification::handlers::OrderConfirmationHandler::new(
+                        Box::new(kasirmu_notification::handlers::OrderConfirmationHandler::new(
                             client.clone(),
                             std::env::var("WHATSAPP_STORE_PHONE").ok(),
                         )),
                     );
                     bus.subscribe::<oz_core::events::SaleCompleted>(
                         "sale.completed",
-                        Box::new(oz_notification::handlers::PaymentReceiptHandler::new(
+                        Box::new(kasirmu_notification::handlers::PaymentReceiptHandler::new(
                             client.clone(),
                             std::env::var("WHATSAPP_RECEIPT_PHONE")
                                 .unwrap_or_else(|_| "+15550000000".into()),
@@ -220,7 +220,7 @@ pub fn init_module_system(
                         .unwrap_or_else(|_| "+15550000000".into());
                     bus.subscribe::<oz_core::events::StockAdjusted>(
                         "stock.adjusted",
-                        Box::new(oz_notification::handlers::StockLowAlertHandler::new(
+                        Box::new(kasirmu_notification::handlers::StockLowAlertHandler::new(
                             client,
                             threshold,
                             manager_phone,

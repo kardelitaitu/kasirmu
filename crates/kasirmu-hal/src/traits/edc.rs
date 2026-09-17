@@ -51,7 +51,7 @@ impl TerminalStatus {
 /// The outcome of a card-present operation on a terminal.
 ///
 /// Named `EdcPaymentResult` rather than `PaymentResult` on purpose: the
-/// gateway-side `oz_payment::types::PaymentResult` is a different shape,
+/// gateway-side `kasirmu_payment::types::PaymentResult` is a different shape,
 /// and the two sharing a name made the EDC type shadow it at every import
 /// (PAY-11).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

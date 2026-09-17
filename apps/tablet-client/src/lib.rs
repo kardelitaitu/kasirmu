@@ -66,7 +66,7 @@ pub fn run() {
 
     // Use try_init so test builds that lack WebView2Loader.dll don't
     // panic when logging is already initialised by the test harness.
-    let _ = oz_logging::try_init();
+    let _ = kasirmu_logging::try_init();
     #[cfg(not(test))]
     {
         let result: Result<(), AppError> = tauri::Builder::default()

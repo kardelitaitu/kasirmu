@@ -99,7 +99,7 @@ pub fn run() {
     // Initialise structured logging early so the very first line of Tauri
     // output is captured. Uses try_init so a second invocation (e.g.
     // by a plugin or test harness) does not panic.
-    let _ = oz_logging::try_init();
+    let _ = kasirmu_logging::try_init();
 
     let result: Result<(), AppError> = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())

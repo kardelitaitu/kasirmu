@@ -46,12 +46,12 @@ tauri = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 console-subscriber = { workspace = true, optional = true }
-oz-notification = { workspace = true, optional = true }
+kasirmu-notification = { workspace = true, optional = true }
 
 [features]
 default = []
 console = ["dep:console-subscriber"]
-whatsapp-notifications = ["dep:oz-notification"]
+whatsapp-notifications = ["dep:kasirmu-notification"]
 
 [dev-dependencies]
 serial_test = { workspace = true }

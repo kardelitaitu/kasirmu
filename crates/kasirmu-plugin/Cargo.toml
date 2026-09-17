@@ -13,7 +13,7 @@ workspace = true
 
 [dependencies]
 chrono = { workspace = true }
-oz-lua = { workspace = true }
+kasirmu-lua = { workspace = true }
 serde_json = { workspace = true }
 mlua = { workspace = true }
 serde = { workspace = true }

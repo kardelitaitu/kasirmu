@@ -36,7 +36,7 @@ oz-bridge = { workspace = true }
 reqwest = { workspace = true }
 rand = { workspace = true }
 oz-hal = { workspace = true }
-oz-logging = { workspace = true }
+kasirmu-logging = { workspace = true }
 oz-security = { workspace = true }
 # ADR #49 Slice 0: `AppState::bridge_ctx` has to name `PluginManager` to own the
 # `BridgeCtx::plugins` leg (its type is `&Mutex<Option<PluginManager>>`), so the
@@ -50,7 +50,7 @@ modules-tax = { workspace = true }
 modules-sales = { workspace = true }
 modules-staff = { workspace = true }
 modules-reporting = { workspace = true }
-oz-reporting = { workspace = true }
+kasirmu-reporting = { workspace = true }
 modules-terminal = { workspace = true }
 modules-currency = { workspace = true }
 platform-core = { workspace = true }

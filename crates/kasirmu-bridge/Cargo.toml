@@ -26,9 +26,9 @@ lettre = { workspace = true }
 modules-currency = { workspace = true }
 oz-core = { workspace = true }
 oz-hal = { workspace = true }
-oz-lua = { workspace = true }
+kasirmu-lua = { workspace = true }
 oz-plugin = { workspace = true }
-oz-reporting = { workspace = true }
+kasirmu-reporting = { workspace = true }
 oz-security = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }

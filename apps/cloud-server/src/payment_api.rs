@@ -44,9 +44,9 @@ use axum::{
 };
 use foundation::{Currency, Money};
 use oz_api::auth::{ApiTokenClaims, auth_middleware};
-use oz_payment::PaymentProcessor as _;
-use oz_payment::drivers::qris::QrisPaymentProcessor;
-use oz_payment::types::PaymentRequest;
+use kasirmu_payment::PaymentProcessor as _;
+use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
+use kasirmu_payment::types::PaymentRequest;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 

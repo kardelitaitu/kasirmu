@@ -63,7 +63,7 @@ pub async fn get_menu_engineering_scoped(
     start_date: String,
     end_date: String,
     state: State<'_, AppState>,
-) -> Result<oz_reporting::menu_engineering::MenuEngineeringResult, AppError> {
+) -> Result<kasirmu_reporting::menu_engineering::MenuEngineeringResult, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::reports::get_menu_engineering_scoped(&ctx, &session_token, &start_date, &end_date)
         .await
@@ -74,12 +74,12 @@ pub async fn get_menu_engineering_scoped(
 /// Get per-line cost and margin for a single sale (HPP exposure).
 ///
 /// Enriches every line of the sale with the product's current cost, the
-/// line margin, and the margin percentage (see `oz_reporting::margin`).
+/// line margin, and the margin percentage (see `kasirmu_reporting::margin`).
 pub async fn get_sale_line_margins_scoped(
     session_token: String,
     sale_id: String,
     state: State<'_, AppState>,
-) -> Result<Vec<oz_reporting::margin::SaleLineMargin>, AppError> {
+) -> Result<Vec<kasirmu_reporting::margin::SaleLineMargin>, AppError> {
     let ctx = state.bridge_ctx();
     oz_bridge::reports::get_sale_line_margins_scoped(&ctx, &session_token, &sale_id)
         .await

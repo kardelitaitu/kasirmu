@@ -39,8 +39,8 @@ reqwest = { workspace = true }
 oz-hal = { workspace = true }
 oz-lan = { workspace = true }
 oz-local-api = { workspace = true }
-oz-logging = { workspace = true }
-oz-lua = { workspace = true }
+kasirmu-logging = { workspace = true }
+kasirmu-lua = { workspace = true }
 oz-plugin = { workspace = true }
 oz-security = { workspace = true }
 modules-crm = { workspace = true }
@@ -52,12 +52,12 @@ modules-staff = { workspace = true }
 modules-reporting = { workspace = true }
 modules-terminal = { workspace = true }
 modules-currency = { workspace = true }
-oz-reporting = { workspace = true }
+kasirmu-reporting = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
 platform-sync = { workspace = true }
-oz-notification = { workspace = true }
+kasirmu-notification = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-dialog = { workspace = true }

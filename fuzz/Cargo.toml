@@ -42,7 +42,7 @@ lua-fuzz       = []
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 foundation = { path = "../foundation" }
-oz-lua = { path = "../crates/oz-lua" }
+kasirmu-lua = { path = "../crates/kasirmu-lua" }
 oz-core   = { path = "../crates/oz-core",   optional = true }
 oz-plugin = { path = "../crates/oz-plugin", optional = true }
 # oz-lua migrated from rlua to mlua 0.9; the lua_sandbox target inspects

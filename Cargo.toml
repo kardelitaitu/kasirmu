@@ -53,15 +53,15 @@ kasirmu-crypto = { path = "crates/kasirmu-crypto" }
 oz-lan = { package = "kasirmu-lan", path = "crates/kasirmu-lan" }
 oz-local-api = { package = "kasirmu-local-api", path = "crates/kasirmu-local-api" }
 oz-hal = { package = "kasirmu-hal", path = "crates/kasirmu-hal" }
-oz-lua = { package = "kasirmu-lua", path = "crates/kasirmu-lua" }
+kasirmu-lua = { path = "crates/kasirmu-lua" }
 oz-plugin = { package = "kasirmu-plugin", path = "crates/kasirmu-plugin" }
 oz-security = { package = "kasirmu-security", path = "crates/kasirmu-security" }
-oz-notification = { package = "kasirmu-notification", path = "crates/kasirmu-notification" }
-oz-payment = { package = "kasirmu-payment", path = "crates/kasirmu-payment" }
-oz-reporting = { package = "kasirmu-reporting", path = "crates/kasirmu-reporting" }
-oz-logging = { package = "kasirmu-logging", path = "crates/kasirmu-logging" }
+kasirmu-notification = { path = "crates/kasirmu-notification" }
+kasirmu-payment = { path = "crates/kasirmu-payment" }
+kasirmu-reporting = { path = "crates/kasirmu-reporting" }
+kasirmu-logging = { path = "crates/kasirmu-logging" }
 kasirmu-media = { path = "crates/kasirmu-media" }
-oz-cli = { package = "kasirmu-cli", path = "crates/kasirmu-cli" }
+kasirmu-cli = { path = "crates/kasirmu-cli" }
 qris-core = { path = "crates/qris-core" }
 foundation = { path = "foundation" }
 platform-core = { path = "platform/core" }

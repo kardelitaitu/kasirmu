@@ -2057,10 +2057,10 @@ pub async fn complete_sale_scoped(
     {
         let plugins = ctx.plugins.lock().await;
         if let Some(ref plugins) = *plugins {
-            let lines: Vec<oz_lua::CartLineData> = cart
+            let lines: Vec<kasirmu_lua::CartLineData> = cart
                 .lines()
                 .iter()
-                .map(|cl| oz_lua::CartLineData {
+                .map(|cl| kasirmu_lua::CartLineData {
                     sku: cl.sku.as_str().to_owned(),
                     qty: cl.qty,
                     unit_price_minor: cl.unit_price.minor_units,

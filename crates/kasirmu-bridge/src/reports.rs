@@ -145,9 +145,9 @@ pub async fn get_menu_engineering(
     ctx: &BridgeCtx<'_>,
     start_date: &str,
     end_date: &str,
-) -> Result<oz_reporting::menu_engineering::MenuEngineeringResult, BridgeError> {
+) -> Result<kasirmu_reporting::menu_engineering::MenuEngineeringResult, BridgeError> {
     let db = ctx.db.lock().await;
-    let result = oz_reporting::menu_engineering::query_menu_engineering(&db, start_date, end_date)?;
+    let result = kasirmu_reporting::menu_engineering::query_menu_engineering(&db, start_date, end_date)?;
     drop(db);
     Ok(result)
 }
@@ -158,12 +158,12 @@ pub async fn get_menu_engineering_scoped(
     session_token: &str,
     start_date: &str,
     end_date: &str,
-) -> Result<oz_reporting::menu_engineering::MenuEngineeringResult, BridgeError> {
+) -> Result<kasirmu_reporting::menu_engineering::MenuEngineeringResult, BridgeError> {
     let conn = resolve_report_scope(ctx, session_token, permissions::REPORTS_VIEW).await?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    Ok(oz_reporting::menu_engineering::query_menu_engineering(
+    Ok(kasirmu_reporting::menu_engineering::query_menu_engineering(
         &db, start_date, end_date,
     )?)
 }
@@ -171,17 +171,17 @@ pub async fn get_menu_engineering_scoped(
 /// Get per-line cost and margin for a single sale (HPP exposure).
 ///
 /// Enriches every line of the sale with the product's current cost, the
-/// line margin, and the margin percentage (see oz_reporting::margin).
+/// line margin, and the margin percentage (see kasirmu_reporting::margin).
 pub async fn get_sale_line_margins_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
     sale_id: &str,
-) -> Result<Vec<oz_reporting::margin::SaleLineMargin>, BridgeError> {
+) -> Result<Vec<kasirmu_reporting::margin::SaleLineMargin>, BridgeError> {
     let conn = resolve_report_scope(ctx, session_token, permissions::REPORTS_VIEW).await?;
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    Ok(oz_reporting::margin::query_sale_lines_with_margin(
+    Ok(kasirmu_reporting::margin::query_sale_lines_with_margin(
         &db, sale_id,
     )?)
 }
