@@ -6,7 +6,7 @@ publish = false
 description = "Replicates tauri-plugin-updater's verify_signature against real minisign-verify to prove the OZ-POS release scripts emit client-compatible updater signatures (AUDIT-28 RELEASE-04)."
 
 # Standalone crate — deliberately NOT a member of the root workspace (mirrors
-# the fuzz/ crate pattern), so this check does not perturb the workspace lock.
+# the tools/fuzz/ crate pattern), so this check does not perturb the workspace lock.
 [workspace]
 
 [dependencies]

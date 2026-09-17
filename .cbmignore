@@ -29,7 +29,7 @@ test-results/
 *.ttf
 
 # Misc
-fuzz/
+tools/fuzz/
 nul
 nul.txt
 

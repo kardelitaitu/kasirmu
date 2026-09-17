@@ -140,7 +140,7 @@ oz.register_hook("sale.before_complete", "apply_tuesday_discount")
 ```
 
 Requires `required_permissions = ["cart:read", "cart:write", "system:time", "log:write"]`
-in `plugin.toml` (see `plugins/example-discount/` for a complete example).
+in `plugin.toml` (see `scripts/examples/example-discount/` for a complete example).
 
 ## HAL Driver API Surface
 
@@ -199,7 +199,7 @@ Key requirements:
 ## Testing Plugins
 
 The `kasirmu-plugin` crate includes an integration test that loads the real
-`plugins/example-discount` plugin end-to-end:
+`scripts/examples/example-discount` plugin end-to-end:
 
 ```bash
 cargo test -p kasirmu-plugin --lib

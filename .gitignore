@@ -44,16 +44,16 @@ lighthouse*
 # src-tauri/) so the lockfile is committed for reproducible builds.
 # Do NOT add a per-crate `Cargo.lock` line — they don't exist and the
 # pattern would never match.
-# Exception: the fuzz/ crate is a standalone cargo-fuzz workspace (its own
+# Exception: the tools/fuzz/ crate is a standalone cargo-fuzz workspace (its own
 # `[workspace]` table + nightly toolchain pin), so it builds its own
 # target/ and Cargo.lock locally; both are dev-only artifacts.
-/fuzz/target/
-/fuzz/Cargo.lock
+/tools/fuzz/target/
+/tools/fuzz/Cargo.lock
 
-# fuzz/hfuzz/ — honggfuzz campaign crate (stable-toolchain sibling of the
+# tools/fuzz/hfuzz/ — honggfuzz campaign crate (stable-toolchain sibling of the
 # cargo-fuzz crate). Entirely local/dev-only: instrumented build artifacts,
 # growing corpora, workspaces, and crash reports all live under it.
-/fuzz/hfuzz/
+/tools/fuzz/hfuzz/
 
 # Local state
 *.db
@@ -189,7 +189,7 @@ node_modules/
 /package-lock.json
 /.vite/
 
-# AUDIT-28 RELEASE-04: standalone updater-compat harness (mirrors /fuzz/
+# AUDIT-28 RELEASE-04: standalone updater-compat harness (mirrors /tools/fuzz/
 # exception) — its own workspace, so target/ + Cargo.lock are dev-only.
 /scripts/updater-compat-check/target/
 /scripts/updater-compat-check/Cargo.lock

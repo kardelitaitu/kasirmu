@@ -87,10 +87,10 @@ jobs:
           fi
 
           # Rust: every workspace member (crates/*, modules/*, platform/*,
-          # foundation, the three apps, fuzz, the updater compat check) plus
+          # foundation, the three apps, tools/fuzz, the updater compat check) plus
           # anything that changes how cargo resolves the build.
           printf '%s\n' "$files" | grep -qE \
-            '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
+            '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
 
           # UI: ui/src has zero imports reaching outside ui/, so ui/ is a sound

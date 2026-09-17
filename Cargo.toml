@@ -28,8 +28,8 @@ members = [
 # `[workspace]` table; listing them here documents the intent and keeps
 # `cargo package`/path-dependency discovery from pulling them back in.
 exclude = [
-    "fuzz",
-    "fuzz/hfuzz",
+    "tools/fuzz",
+    "tools/fuzz/hfuzz",
     "scripts/updater-compat-check",
 ]
 

@@ -6,7 +6,7 @@
 //! Percentages sit in the discount/tax path, so the checked-mul/div overflow
 //! boundaries here are payment-adjacent — the same class of bug the
 //! `money_parse` target hunts. Mirrors the honggfuzz target at
-//! fuzz/hfuzz/fuzz_targets/percentage_parse.rs.
+//! tools/fuzz/hfuzz/fuzz_targets/percentage_parse.rs.
 
 #![no_main]
 

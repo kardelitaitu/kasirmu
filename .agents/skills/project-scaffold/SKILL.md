@@ -281,7 +281,7 @@ Run these before pushing. The CI workflow is the merge gate, but a local pass ca
 - `*.db`, `*.sqlite`, `*.sqlite3` — local databases.
 - `target/` and per-crate `target/` trees, `dist/` outputs (including the ui build outputs), `node_modules/` — build artifacts.
 - `*.key`, `*.pem`, `secrets/` — credentials.
-- **Cargo.lock:** the workspace keeps a **single `Cargo.lock` at the root and it is committed** (kasir.mu ships binaries — `kasirmu-cli`, the Tauri app). Do not add per-crate lockfiles; the only exception is the standalone `fuzz/` workspace, whose lockfile is a dev-only artifact and is ignored.
+- **Cargo.lock:** the workspace keeps a **single `Cargo.lock` at the root and it is committed** (kasir.mu ships binaries — `kasirmu-cli`, the Tauri app). Do not add per-crate lockfiles; the only exception is the standalone `tools/fuzz/` workspace, whose lockfile is a dev-only artifact and is ignored.
 
 A `.gitignore` template (matches the repo's real one):
 
@@ -358,7 +358,7 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 ## Common pitfalls
 
 1. **Adding a new crate to the wrong place** (e.g., `src/` instead of `crates/`). The workspace `members` list must include it, and it should follow the `oz-<name>` naming.
-2. **Adding a per-crate `Cargo.lock`.** The workspace keeps one root lockfile, committed. Only the standalone `fuzz/` workspace has its own (ignored).
+2. **Adding a per-crate `Cargo.lock`.** The workspace keeps one root lockfile, committed. Only the standalone `tools/fuzz/` workspace has its own (ignored).
 3. **Using `git commit --no-verify`** to skip pre-commit hooks. Fix the issue, don't bypass it.
 4. **Renaming a branch after pushing.** The PR link changes, CI re-runs needlessly. Pick the name right the first time.
 5. **Squash-merging a multi-commit feature branch** — fine, but the squash message must be a clean Conventional Commit, not the WIP history.

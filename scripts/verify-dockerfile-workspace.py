@@ -51,9 +51,9 @@ DOCKERFILES: dict[str, set[str]] = {
 # Docker build context by .dockerignore), so they are checked separately.
 INLINE_DUMMY_MEMBERS = {"apps/desktop-client", "apps/tablet-client"}
 
-# These workspace members are standalone fuzz/workspaces that are NOT
-# part of the cloud-server build and not included in the Docker context.
-SKIP_MEMBERS = {"fuzz", "fuzz/hfuzz"}
+# These workspace members are standalone fuzz workspaces under tools/fuzz/ that
+# are NOT part of the cloud-server build and not included in the Docker context.
+SKIP_MEMBERS = {"tools/fuzz", "tools/fuzz/hfuzz"}
 
 
 def workspace_members() -> list[str]:

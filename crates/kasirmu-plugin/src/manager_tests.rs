@@ -291,7 +291,7 @@ fn plugin_manager_new_with_invalid_lua_syntax() {
 #[test]
 fn plugin_manager_new_with_real_example_discount_plugin() {
     // Use the real example-discount plugin from the workspace.
-    let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/examples");
     let mgr = PluginManager::new(&plugins_dir).unwrap();
     // The example-discount registers a hook, no top-level discount push.
     let discounts = mgr.drain_pending_discounts();
@@ -305,7 +305,7 @@ fn real_example_plugin_hook_executes_without_error() {
     // The plugin applies a 10% discount on Tuesdays (wday == 3),
     // so the discount may or may not be created depending on the
     // current day — this test verifies the hook machinery works.
-    let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins");
+    let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/examples");
     let mgr = PluginManager::new(&plugins_dir).unwrap();
 
     let lines = [line("TEST", 1, 1000, "USD")];

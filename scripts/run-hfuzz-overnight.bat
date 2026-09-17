@@ -23,10 +23,10 @@ REM    tail-hfuzz.bat  - watch the campaign log live (safe to open anytime)
 REM    stop-hfuzz.bat  - stop the running campaign (kills WSL processes +
 REM                      closes the minimized console)
 REM
-REM  Both modes run fuzz/hfuzz/run_overnight.sh (the "run while you sleep"
+REM  Both modes run tools/fuzz/hfuzz/run_overnight.sh (the "run while you sleep"
 REM  fuzzing campaign) inside WSL. Equivalent to:
 REM
-REM      cd fuzz/hfuzz && ./run_overnight.sh > /tmp/hfuzz-overnight.out 2>&1
+REM      cd tools/fuzz/hfuzz && ./run_overnight.sh > /tmp/hfuzz-overnight.out 2>&1
 REM
 REM  Why a minimized console instead of `nohup ... &`? On WSL2, background
 REM  processes are killed when the wsl.exe session that spawned them exits,
@@ -37,7 +37,7 @@ REM  open; closing it stops the campaign. All output goes to
 REM  /tmp/hfuzz-overnight.out.
 REM
 REM  Why WSL: honggfuzz does not build or run on native Windows — the whole
-REM  fuzz/hfuzz/ crate is Linux/macOS/WSL-only (see fuzz/hfuzz/README.md).
+REM  tools/fuzz/hfuzz/ crate is Linux/macOS/WSL-only (see tools/fuzz/hfuzz/README.md).
 REM
 REM  PREREQS (once):
 REM    - WSL2 with a distro that has Rust + `cargo honggfuzz` installed
@@ -55,8 +55,8 @@ REM    HFUZZ_NO_NOTIFY=1 - skip desktop notifications (markers still written)
 REM
 REM  RESULTS:
 REM    - campaign log:  /tmp/hfuzz-overnight.out (inside WSL)
-REM    - crash reports: fuzz/hfuzz/crash_reports/<timestamp>/
-REM    - next morning:  cd fuzz/hfuzz && ./triage_crashes.sh
+REM    - crash reports: tools/fuzz/hfuzz/crash_reports/<timestamp>/
+REM    - next morning:  cd tools/fuzz/hfuzz && ./triage_crashes.sh
 REM
 REM  DO NOT remove `pause`: the console closes on exit and hides errors.
 REM ============================================================================
@@ -103,14 +103,14 @@ echo   campaign log (inside WSL): /tmp/hfuzz-overnight.out
 if "%MODE%"=="foreground" (
     REM Foreground: run in this window with live output. Closing the
     REM window kills wsl.exe and stops the fuzzing.
-    wsl.exe %DISTRO_ARGS% bash -lc "!EXPORTS! cd '!WSL_ROOT!/fuzz/hfuzz' && ./run_overnight.sh"
+    wsl.exe %DISTRO_ARGS% bash -lc "!EXPORTS! cd '!WSL_ROOT!/tools/fuzz/hfuzz' && ./run_overnight.sh"
     echo [OK] Campaign finished - this window can be closed.
 ) else (
     REM Launcher: hand off to a minimized wsl.exe console, return now.
-    start "OZ-POS hfuzz overnight" /min wsl.exe %DISTRO_ARGS% bash -lc "!EXPORTS! cd '!WSL_ROOT!/fuzz/hfuzz' && ./run_overnight.sh > /tmp/hfuzz-overnight.out 2>&1"
+    start "OZ-POS hfuzz overnight" /min wsl.exe %DISTRO_ARGS% bash -lc "!EXPORTS! cd '!WSL_ROOT!/tools/fuzz/hfuzz' && ./run_overnight.sh > /tmp/hfuzz-overnight.out 2>&1"
     echo [OK] Launched. This window can be closed.
     echo   watch progress from WSL:  tail -f /tmp/hfuzz-overnight.out
 )
-echo   next morning:             cd fuzz/hfuzz ^&^& ./triage_crashes.sh
+echo   next morning:             cd tools/fuzz/hfuzz ^&^& ./triage_crashes.sh
 pause
 endlocal

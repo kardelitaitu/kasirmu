@@ -128,13 +128,13 @@ The `PluginManager` loads all scripts into the same shared `LuaRuntime` — ther
 
 ### Finding #6: Dual API Surface Confusion 🟡 Medium
 
-**Location:** `scripts/examples/discount_bulk.lua`, `tax_overrides.lua`, `validate_order.lua` vs `plugins/example-discount/discount.lua`
+**Location:** `scripts/examples/discount_bulk.lua`, `tax_overrides.lua`, `validate_order.lua` vs `scripts/examples/example-discount/discount.lua`
 
 **Description:** There are two incompatible plugin API patterns in the codebase:
 
 1. **Old API** (in `scripts/examples/`): Global Lua functions (`apply_discount`, `calc_line_tax`, `validate_order`) that are called directly by `LuaRuntime`. Return Lua tables with specific fields. No access to `oz.*` API.
 
-2. **New API** (in `plugins/example-discount/`): Uses `oz.register_hook()` to register named functions, then `oz.apply_discount()` to push discounts. The example script in `plugins/` is the **only** script using this pattern.
+2. **New API** (in `scripts/examples/example-discount/`): Uses `oz.register_hook()` to register named functions, then `oz.apply_discount()` to push discounts. The example script in `scripts/examples/example-discount/` is the **only** script using this pattern.
 
 These APIs are **incompatible and can conflict**. If a plugin defines both a global `apply_discount` function AND uses `oz.register_hook("sale.before_complete", ...)`, both paths are invoked.
 
@@ -144,7 +144,7 @@ These APIs are **incompatible and can conflict**. If a plugin defines both a glo
 - `discount_bulk.lua` defines `apply_discount(lines)` — old API
 - `tax_overrides.lua` defines `calc_line_tax(sku, qty, price, currency)` — old API
 - `validate_order.lua` defines `validate_order(lines, total, currency)` — old API
-- `discount.lua` (in plugins/) uses `oz.register_hook()` + `oz.apply_discount()` — new API
+- `discount.lua` (in scripts/examples/example-discount/) uses `oz.register_hook()` + `oz.apply_discount()` — new API
 - No deprecation notice on the old API
 
 **Fix:** Deprecate the old global-function API and remove example scripts that use it. Add a migration guide.

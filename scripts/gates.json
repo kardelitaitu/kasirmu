@@ -363,7 +363,7 @@
       "label": "Fuzz",
       "status": "retired",
       "_note": "cargo-fuzz ran in ci.yml#fuzz only. The RUSTC_WRAPPER='' note recorded below is still accurate for whoever restores it.",
-      "note": "The fuzz job deliberately sets RUSTC_WRAPPER: '' in its job env. The ubuntu runner image globally wraps rustc with sccache, which breaks cargo-fuzz's --target build (its rustc version probe execs the resolved nightly toolchain path directly and dies with 'could not execute process sccache .../bin/rustc -vV'). The fuzz job is the only job affected (nightly + --target), so sccache must stay disabled there — do NOT re-add it. Caching is instead handled by Swatinem/rust-cache@v2 with `workspaces: fuzz` (cargo-fuzz builds into fuzz/target/, which default workspace discovery misses)."
+      "note": "The fuzz job deliberately sets RUSTC_WRAPPER: '' in its job env. The ubuntu runner image globally wraps rustc with sccache, which breaks cargo-fuzz's --target build (its rustc version probe execs the resolved nightly toolchain path directly and dies with 'could not execute process sccache .../bin/rustc -vV'). The fuzz job is the only job affected (nightly + --target), so sccache must stay disabled there — do NOT re-add it. Caching is instead handled by Swatinem/rust-cache@v2 with `workspaces: tools/fuzz` (cargo-fuzz builds into tools/fuzz/target/, which default workspace discovery misses)."
     },
     {
       "id": "flaky-quarantine",

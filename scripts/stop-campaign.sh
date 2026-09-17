@@ -42,8 +42,8 @@ fi
 
 # Fallback: if the campaign's TERM trap did not get to write DONE (e.g. it
 # was force-killed), mark the newest campaign dir as interrupted ourselves.
-# Note: assumes the default report root (fuzz/hfuzz/crash_reports).
-latest=$(ls -dt fuzz/hfuzz/crash_reports/*/ 2>/dev/null | head -1)
+# Note: assumes the default report root (tools/fuzz/hfuzz/crash_reports).
+latest=$(ls -dt tools/fuzz/hfuzz/crash_reports/*/ 2>/dev/null | head -1)
 if [ -n "$latest" ] && [ ! -f "$latest/DONE" ]; then
     {
         echo "status:   interrupted (stopped by stop-hfuzz.bat)"
@@ -53,6 +53,6 @@ if [ -n "$latest" ] && [ ! -f "$latest/DONE" ]; then
         echo "Note: the campaign was stopped externally; run"
         echo "triage_crashes.sh for whatever was captured before the stop."
     } > "$latest/DONE"
-    printf '%s\n' "$latest" > fuzz/hfuzz/crash_reports/LATEST
+    printf '%s\n' "$latest" > tools/fuzz/hfuzz/crash_reports/LATEST
     echo "  [WARN] wrote interrupted DONE marker (campaign trap did not fire)"
 fi
