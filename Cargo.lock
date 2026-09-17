@@ -3316,6 +3316,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kasirmu-crypto"
+version = "0.0.39"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "hex",
+ "hmac 0.12.1",
+ "rand 0.8.6",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "kasirmu-media"
 version = "0.0.39"
 dependencies = [
@@ -4679,6 +4692,7 @@ dependencies = [
  "criterion",
  "foundation",
  "hex",
+ "kasirmu-crypto",
  "lettre",
  "mdns-sd",
  "modules-crm",
@@ -4689,7 +4703,6 @@ dependencies = [
  "modules-staff",
  "modules-tax",
  "modules-terminal",
- "oz-crypto",
  "platform-core",
  "proptest",
  "rand 0.8.6",
@@ -4706,19 +4719,6 @@ dependencies = [
  "tracing",
  "uuid",
  "zstd",
-]
-
-[[package]]
-name = "oz-crypto"
-version = "0.0.39"
-dependencies = [
- "aes-gcm",
- "base64 0.22.1",
- "hex",
- "hmac 0.12.1",
- "rand 0.8.6",
- "sha2 0.10.9",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5231,7 +5231,7 @@ dependencies = [
  "argon2",
  "chrono",
  "hex",
- "oz-crypto",
+ "kasirmu-crypto",
  "rusqlite",
  "serde",
  "serde_json",
