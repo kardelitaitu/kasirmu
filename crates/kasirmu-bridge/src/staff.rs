@@ -1,5 +1,5 @@
 //! Staff command bodies (Wave B / B5) — the tauri-free half of
-//! `apps/desktop-client/src/commands/staff.rs`.
+//! `apps/desktop-tauri/src/commands/staff.rs`.
 //!
 //! Key functions: the session-scoped staff reads/writes ([`list_staff_scoped`],
 //! [`get_staff_profile_scoped`], [`create_staff_scoped`],

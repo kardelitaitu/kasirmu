@@ -1,5 +1,5 @@
 //! Role-holder reads on the staff surface (Wave-B test relocation: moved
-//! out of `apps/desktop-client/src/commands/staff_role_holders_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/staff_role_holders_tests.rs`).
 //!
 //! Mounted at the foot of `staff.rs` beside `staff_tests.rs` (multi-mount
 //! ruling). The desktop file drove the shell command through `AppState` + a

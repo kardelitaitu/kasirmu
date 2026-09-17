@@ -1,5 +1,5 @@
 //! Shift command bodies (Wave D / D4a) — the tauri-free half of
-//! `apps/desktop-client/src/commands/shifts.rs`.
+//! `apps/desktop-tauri/src/commands/shifts.rs`.
 //!
 //! Open/close cashier shifts, active-shift lookup, shift listing, cash
 //! payouts, and shift reports, each consuming a [`BridgeCtx`]. There is no

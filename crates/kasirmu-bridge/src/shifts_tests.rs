@@ -1,5 +1,5 @@
 //! Unit tests for the shift command bodies (Wave-D test relocation:
-//! moved out of `apps/desktop-client/src/commands/shifts_tests.rs`).
+//! moved out of `apps/desktop-tauri/src/commands/shifts_tests.rs`).
 //!
 //! Mounted at the foot of `shifts.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs and args directly. The desktop file

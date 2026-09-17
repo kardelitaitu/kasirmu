@@ -1,5 +1,5 @@
 //! Security-event wiring on the staff-management paths (Wave-B test
-//! relocation: moved out of `apps/desktop-client/src/commands/staff_security_events_tests.rs`).
+//! relocation: moved out of `apps/desktop-tauri/src/commands/staff_security_events_tests.rs`).
 //!
 //! Mounted at the foot of `staff.rs` beside `staff_tests.rs` (multi-mount
 //! ruling). The desktop file drove the shell commands through `AppState` + a
