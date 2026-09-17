@@ -1,3 +1,4 @@
+<!-- TODO: update badge URLs after repo rename -->
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/oz-pos?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/oz-pos?style=flat-square) [![Dev CI](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml/badge.svg)](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml)
 
 
@@ -11,21 +12,21 @@
 
 <!-- dead-ref-prefix-ok: docs/guides/API.md · scoped to that one filename: the Repository Structure block below cites it in order to say it does NOT exist ("the name `API` this line carried until 2026-09-16 matched no file — `ls docs/guides/API.md` fails, the page is `api-reference.md`"), which is a correct sentence the checker cannot tell from a stale link. Declared at the page head, where `check-dead-refs.py` reads this opt-out (first 40 lines), by the 2026-09-16 census pass so `python .agents/skills/docs-auditor/scripts/check-dead-refs.py README.md` exits 0; every other path reference on this page is still checked · -->
 
-# OZ-POS
+# kasir.mu
 
 > **A modular, offline-first Point-of-Sale platform built with Rust and Tauri v2.**
 
-OZ-POS is a Point-of-Sale platform designed for **retail, restaurants, cafés, and specialty businesses** that require reliability, performance, and long-term maintainability.
+kasir.mu is a Point-of-Sale platform designed for **retail, restaurants, cafés, and specialty businesses** that require reliability, performance, and long-term maintainability.
 
-Unlike traditional monolithic POS applications, OZ-POS is built around a modular architecture where business capabilities are implemented as independent modules. Organizations can deploy only the features they need while developers can extend the platform without modifying the core.
+Unlike traditional monolithic POS applications, kasir.mu is built around a modular architecture where business capabilities are implemented as independent modules. Organizations can deploy only the features they need while developers can extend the platform without modifying the core.
 
 ---
 
-## Why OZ-POS?
+## Why kasir.mu?
 
-Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cloud dependency, limited customization, and difficult maintenance. OZ-POS addresses these challenges through a modern software architecture.
+Modern POS systems often suffer from vendor lock-in, expensive subscriptions, cloud dependency, limited customization, and difficult maintenance. kasir.mu addresses these challenges through a modern software architecture.
 
-| Traditional POS | OZ-POS |
+| Traditional POS | kasir.mu |
 |---|---|
 | Monolithic | Modular architecture |
 | Cloud required | Offline-first |
@@ -101,7 +102,7 @@ Business logic, UI, hardware drivers, and platform services are isolated — new
 ## Repository Structure
 
 ```
-oz-pos/
+kasir.mu/
 ├── apps/
 │   ├── desktop-client/     # Tauri v2 shell: IPC commands, app state, plugins
 │   ├── tablet-client/      # Tablet-optimised Tauri shell
@@ -111,7 +112,7 @@ oz-pos/
 ├── crates/                 # 17 libraries (`ls -d crates/*/ | wc -l` = 17, 2026-09-16; = 16 when this line was last measured on 2026-09-14 — the crate that moved it, `qris-core`, landed at `c7009520d` and had never been listed here)
 │   ├── oz-api/             # HTTP API server (axum)
 │   ├── oz-bridge/          # Command bodies behind the desktop/tablet IPC shims — tauri-free (BridgeCtx, BridgeError)
-│   ├── oz-cli/             # CLI tool (backup, export/import .ozpkg, migrations)
+│   ├── oz-cli/             # CLI tool (backup, export/import .kasirpkg, migrations)
 │   ├── oz-core/            # Domain models, SQLite Store, migrations, settings
 │   ├── oz-crypto/          # Cryptographic primitives (secret encryption at rest)
 │   ├── oz-hal/             # Hardware Abstraction Layer (printer, scanner, drawer, display, scale, EDC terminal)
@@ -162,8 +163,9 @@ oz-pos/
 ## Quick Start
 
 ```bash
+# TODO: update URLs after repo rename
 git clone https://github.com/kardelitaitu/oz-pos.git
-cd oz-pos
+cd oz-pos  # TODO: will be "kasir.mu" after repo rename
 cargo build --workspace
 cd ui && npm ci --no-audit --no-fund && cd ..  # see ui/README.md#install-script-approvals
 cd apps/desktop-client && cargo tauri dev
@@ -251,9 +253,9 @@ New contributors are encouraged to start with documentation improvements, UI pol
 
 ## License & Commercial Use
 
-**Proprietary and Confidential — Copyright (c) 2024-2026 OZ-POS Contributors / All Rights Reserved.**
+**Proprietary and Confidential — Copyright (c) 2024-2026 kasir.mu Contributors / All Rights Reserved.**
 
-This software (`oz-pos`) is **NOT open source**. No part of this codebase, associated binaries, or documentation may be copied, modified, distributed, sublicensed, hosted, or deployed in any commercial, non-commercial, or production setting without explicit written permission and a valid executed Commercial License Agreement.
+This software (`kasir.mu`) is **NOT open source**. No part of this codebase, associated binaries, or documentation may be copied, modified, distributed, sublicensed, hosted, or deployed in any commercial, non-commercial, or production setting without explicit written permission and a valid executed Commercial License Agreement.
 
 See [LICENSE](./LICENSE) for terms and restrictions. For commercial licensing and pricing inquiries, contact: **adikaradwiatmaja@gmail.com**.
 

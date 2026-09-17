@@ -526,9 +526,9 @@ step "release workflow self-test" "python3 scripts/verify-release-workflow.py --
 # ── Docker build smoke test (optional: --docker-dry-run) ──────────────────
 if [ "${1:-}" = "--docker-dry-run" ]; then
     if command -v docker &>/dev/null; then
-        step "docker build" "docker build -f Dockerfile.server -t oz-pos-cloud:local ." docker build -f Dockerfile.server -t oz-pos-cloud:local .
+        step "docker build" "docker build -f Dockerfile.server -t kasir-cloud:local ." docker build -f Dockerfile.server -t kasir-cloud:local .
 
-        SIZE=$(docker run --rm --entrypoint stat oz-pos-cloud:local --format=%s /app/oz-cloud-server 2>/dev/null || echo "0")
+        SIZE=$(docker run --rm --entrypoint stat kasir-cloud:local --format=%s /app/oz-cloud-server 2>/dev/null || echo "0")
         if [ "$SIZE" -gt "0" ]; then
             MAX=$((50 * 1024 * 1024))
             if [ "$SIZE" -gt "$MAX" ]; then

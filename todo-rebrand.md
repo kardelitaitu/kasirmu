@@ -342,24 +342,16 @@ Key files with functional (not just prose) brand references:
 **Commit:** `chore: rebrand root config, scripts, and CI defaults to kasir.mu`
 **Pathspec:** `Cargo.toml README.md CHANGELOG.md .github/workflows/dev-ci.yml scripts/check.sh`
 
-- [ ] `Cargo.toml:43` — `authors = ["OZ-POS contributors"]` → `["kasir.mu contributors"]`
-- [ ] `Cargo.toml:44` — add `<!-- TODO: update after repo rename -->` alongside the repo URL
-- [ ] `README.md` — all prose `OZ-POS` → `kasir.mu`; directory tree `oz-pos/` → `kasir.mu/`
-  Badge URLs and clone URL stay (live links) — add TODO markers
-- [ ] `CHANGELOG.md:5` — `All notable changes to OZ-POS` → `kasir.mu`
-  CHANGELOG compare/tag URLs stay unchanged (live git history links)
-- [ ] `.github/workflows/dev-ci.yml:763–764`
-  `NF_PROJECT_ID` fallback `'oz-pos'` → `'kasir-mu'`
-  `NF_SERVICE_ID` fallback `'oz-pos-cloud'` → `'kasir-cloud'`
-  > ⚠️ **These fallbacks must match the LIVE Northflank names, not the desired ones.** They resolve only
-  > when the repo variable is unset, and the deployed project/service are still `oz-pos` / `oz-pos-cloud`
-  > (`website/worker.ts:54-55` uses `NF_PROJECT='oz-pos'` / `NF_SERVICE='cloud'` against the same API).
-  > Renaming the fallback alone breaks the deploy on any run where the variable is unset. Either rename
-  > the Northflank project first and land both together, or leave the fallback and mark it Tier 3.
-- [ ] `scripts/check.sh:529,531`
-  Docker image tag `oz-pos-cloud:local` → `kasir-cloud:local`
-- [ ] `.github/workflows/release.yml:149,243` — leave `oz-pos-app` / `oz-pos-tablet` references (binary names, Tier 3). *(Path corrected: the original cited bare `release.yml`, which is also the filename of the retired `.github/workflows/release.yml.bak` sibling — ambiguous in a directory that holds both.)*
-- [ ] `scripts/release.sh` — prose/comments only; `--exclude oz-pos-app` stays (Tier 3)
+- [x] `Cargo.toml:43` — `authors = ["kasir.mu contributors"]`
+- [x] `Cargo.toml:44` — added `# TODO: update after repo rename` alongside the repo URL (TOML comment, not HTML)
+- [x] `README.md` — all prose `OZ-POS` → `kasir.mu`; directory tree `oz-pos/` → `kasir.mu/`; `.ozpkg` → `.kasirpkg`
+  - Badge URLs and clone URL stay (live links) — added TODO markers
+- [x] `CHANGELOG.md:5` — `All notable changes to kasir.mu`
+  - CHANGELOG compare/tag URLs and historical entries stay unchanged (live git history links)
+- [x] `.github/workflows/dev-ci.yml:763–764` — **LEFT as Tier 3**: NF_PROJECT_ID fallback `'oz-pos'` and NF_SERVICE_ID fallback `'oz-pos-cloud'` must match the LIVE Northflank names, not the desired ones. Renaming the fallback alone breaks the deploy; mark for simultaneous rename after the Northflank project is renamed.
+- [x] `scripts/check.sh:529,531` — Docker image tag `oz-pos-cloud:local` → `kasir-cloud:local`
+- [x] `.github/workflows/release.yml:149,243` — left `oz-pos-app` / `oz-pos-tablet` references (binary names, Tier 3)
+- [x] `scripts/release.sh` — prose/comments only; `--exclude oz-pos-app` stays (Tier 3)
 
 ---
 
