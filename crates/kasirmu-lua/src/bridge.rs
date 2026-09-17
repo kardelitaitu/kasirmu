@@ -21,8 +21,8 @@ next: none | perf: N/A
 //! # Example (Rust)
 //!
 //! ```no_run
-//! # use oz_lua::bridge::LuaEventBridge;
-//! # use oz_lua::LuaRuntime;
+//! # use kasirmu_lua::bridge::LuaEventBridge;
+//! # use kasirmu_lua::LuaRuntime;
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let bridge = LuaEventBridge::new();
 //! let lua = LuaRuntime::new()?;

@@ -1,5 +1,5 @@
 [package]
-name = "oz-lua"
+name = "kasirmu-lua"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ authors.workspace = true
 license.workspace = true
 publish.workspace = true
 repository.workspace = true
-description = "mlua runtime and script bindings for OZ-POS — sandboxed Lua plugins and extension scripts."
+description = "mlua runtime and script bindings for kasir.mu — sandboxed Lua plugins and extension scripts."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
