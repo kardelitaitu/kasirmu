@@ -211,7 +211,7 @@ impl Store<'_> {
     /// the settlement transaction. This one cannot: the legacy `complete_sale`
     /// command completes a sale across THREE separate transactions - create_sale
     /// here, then `update_sale_status(Active)`, then
-    /// `update_sale_status(Completed)` (apps/tablet-client/src/commands/pos.rs
+    /// `update_sale_status(Completed)` (apps/mobile-tauri/src/commands/pos.rs
     /// :978-982) - so no transaction spans completion and there is no commit
     /// point to hang the row on. Restructuring it is a different change with a
     /// different risk, on the deprecated path. It keeps relying on

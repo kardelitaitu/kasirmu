@@ -577,7 +577,7 @@ const UI_ROOT = resolve(UI_SRC, '..');
 /** Boot documents that paint before any chunk or stylesheet has loaded. */
 const HTML_ENTRIES: string[] = [
   join(UI_ROOT, 'index.html'),
-  join(UI_ROOT, 'index.tablet.html'),
+  join(UI_ROOT, 'index.mobile.html'),
 ];
 
 const ABSOLUTE_URL_RE = /https?:\/\//i;
@@ -1545,7 +1545,7 @@ describe('font-reference portability', () => {
 
   it('rule 6: the boot documents agree on one splash font-family', () => {
     // There are TWO boot documents (HTML_ENTRIES: index.html and
-    // index.tablet.html), and they render the same pre-CSS splash for two
+    // index.mobile.html), and they render the same pre-CSS splash for two
     // shells. Every rule above grades a document on its own, so a divergence
     // between them is structurally invisible: the desktop fallback lost an
     // unsatisfiable first position while the tablet one kept it, and rule 1
@@ -1584,18 +1584,18 @@ describe('font-reference portability', () => {
     const a = bootFontDeclarations('index.html', doc(shared));
     expect(a.length).toBe(1);
     expect(a[0]?.line).toBe(2);
-    const identical = bootFontDeclarations('index.tablet.html', doc(shared));
+    const identical = bootFontDeclarations('index.mobile.html', doc(shared));
     expect(new Set([...a, ...identical].map((d) => d.value)).size).toBe(1);
     // The historical defect, restated: an unsatisfiable first position added to
     // one shell only. Everything else byte-identical.
     const diverged = bootFontDeclarations(
-      'index.tablet.html',
+      'index.mobile.html',
       doc("  font-family: var(--font-sans, 'Inter', -apple-system, system-ui, sans-serif);"),
     );
     expect(new Set([...a, ...diverged].map((d) => d.value)).size).toBe(2);
     // An HTML comment naming a face must not count -- blankComments blanks it.
     const commented = bootFontDeclarations(
-      'index.tablet.html',
+      'index.mobile.html',
       doc(shared, '  <!-- font-family: Georgia, serif; -->'),
     );
     expect(commented.length).toBe(1);

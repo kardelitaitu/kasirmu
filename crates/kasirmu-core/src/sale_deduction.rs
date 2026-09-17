@@ -7,7 +7,7 @@
 //! to render either a success toast or the Stock Shortfall panel.
 //!
 //! These types belong in `kasirmu-core` because both the desktop-client and
-//! tablet-client Tauri command layers deserialize and forward them to the
+//! mobile-tauri Tauri command layers deserialize and forward them to the
 //! front-end without further transformation.
 
 use serde::{Deserialize, Serialize};

@@ -14,7 +14,7 @@
 //!   converts it back variant-for-variant so the wire shape stays identical.
 //!
 //! Consumers are the `#[tauri::command]` shims in `apps/desktop-client` and
-//! `apps/tablet-client`: a shim builds a `BridgeCtx`, calls the bridge body,
+//! `apps/mobile-tauri`: a shim builds a `BridgeCtx`, calls the bridge body,
 //! and maps the result. Later waves add one module per command domain
 //! (catalog: `categories`, `products`, `product_variants`, `products_images`;
 //! fiscal: `tax`, `fiscal`, `regional`; money: `currencies`, `exchange_rates`;

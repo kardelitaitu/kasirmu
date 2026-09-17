@@ -146,7 +146,7 @@ jobs:
       # commit before shipping (matches the original workflow's behavior).
       - name: Run tests (desktop targets)
         if: matrix.tauri
-        run: cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet --profile ci
+        run: cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile --profile ci
 
       - name: Install system deps (Linux)
         if: runner.os == 'Linux' && matrix.tauri

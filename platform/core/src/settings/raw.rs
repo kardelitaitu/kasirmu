@@ -686,7 +686,7 @@ impl IngestPolicyKind for IngestPolicy {
             // THE ASYMMETRY IS THE DEBT, stated so it does not read as a rule:
             // these names still leave this install in a .kasirpkg, and the egress
             // gate in crates/kasirmu-bridge/src/settings.rs and
-            // apps/tablet-client/src/commands/settings.rs asks admits(), so
+            // apps/mobile-tauri/src/commands/settings.rs asks admits(), so
             // either list can still be OFFERED to the network and is now simply
             // refused on arrival. Closing the namespace is the paired allow-list,
             // not this arm.
@@ -732,7 +732,7 @@ impl IngestPolicyKind for IngestPolicy {
 ///   than the bare predicate — non-credential but manager-owned rows like
 ///   `local_api.enabled` and `lan_server.bind` therefore travel in neither a
 ///   CLI package nor a GUI one.
-/// * Tablet write funnel — `apps/tablet-client/src/commands/settings.rs` calls
+/// * Tablet write funnel — `apps/mobile-tauri/src/commands/settings.rs` calls
 ///   this predicate directly and refuses a manager-owned key with it.
 /// * Desktop write funnel — `crates/kasirmu-bridge/src/settings.rs` refuses with
 ///   this predicate too, through its `managed_key_owner`, which adds ONLY the

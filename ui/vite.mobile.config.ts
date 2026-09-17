@@ -20,9 +20,9 @@ export default defineConfig({
 
   // Use the tablet entry point.
   build: {
-    outDir: 'dist-tablet',
+    outDir: 'dist-mobile',
     rollupOptions: {
-      input: fileURLToPath(new URL('./index.tablet.html', import.meta.url)),
+      input: fileURLToPath(new URL('./index.mobile.html', import.meta.url)),
       output: {
         // PERF-05: isolate vendor libraries so they cache independently
         // of app code and stay out of the tablet entry bundle.

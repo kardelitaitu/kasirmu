@@ -386,7 +386,7 @@ fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
         .map_err(|e| AppError::Internal(format!("resolving app data dir: {e}")))?;
 
     // ── Data-dir migration ─────────────────────────────────────────────
-    // Before the bundle identifier change (com.ozpos.tablet → mu.kasir.tablet),
+    // Before the bundle identifier change (com.ozpos.tablet → mu.kasir.mobile),
     // the DB lived at <base>/com.ozpos.tablet/oz-pos.db. After the change,
     // app_data_dir() returns the new path. Copy (not move) the old DB to
     // the new location so existing installs keep their data.

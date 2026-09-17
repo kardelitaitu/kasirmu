@@ -423,7 +423,7 @@ Also: `trace_path` does **not** take `name` — the parameter is `function_name`
   strings. Filter by `file_pattern` and by `is_test` before calling anything dead —
   and treat a dead-code claim as needing three greps, per AGENTS.md, because features
   register lazily.
-- **Generated artifacts are indexed.** `apps/tablet-client/gen/schemas/android-schema.json`
+- **Generated artifacts are indexed.** `apps/mobile-tauri/gen/schemas/android-schema.json`
   shows up as a high-degree `Variable`; so do Go stdlib types from
   `apps/license-server`. `file_pattern` **matches, it does not exclude** — scope
   positively to the tree you want rather than trying to subtract `gen/`.

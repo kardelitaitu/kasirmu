@@ -1,5 +1,5 @@
 [package]
-name = "kasirmu-tablet"
+name = "kasirmu-mobile"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,11 +8,11 @@ publish.workspace = true
 description = "kasir.mu tablet-optimised shell (Tauri v2 mobile). Touch-optimised UI for Android/iOS."
 
 [lib]
-name = "kasirmu_tablet_lib"
+name = "kasirmu_mobile_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "kasirmu-tablet"
+name = "kasirmu-mobile"
 path = "src/main.rs"
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).

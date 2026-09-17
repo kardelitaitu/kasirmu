@@ -23,7 +23,7 @@ const POLL_INTERVAL_MS = 60_000;
  * `get_setting('stripe.api_key')`, and that read is refused: `stripe.api_key`
  * is on `SECRET_KEY_DENY_LIST`, so the read door answers `Ok(None)` before it
  * touches the table (`run_get_setting` in both shells —
- * apps/tablet-client/src/commands/settings.rs, and crates/kasirmu-bridge/src/settings.rs
+ * apps/mobile-tauri/src/commands/settings.rs, and crates/kasirmu-bridge/src/settings.rs
  * for the desktop lane). `Ok(None)` is not an error, so the call SUCCEEDED with
  * `null` and this indicator read `configured:false, online:false` forever, on
  * every device, including one holding a live Stripe key. Its consumer renders

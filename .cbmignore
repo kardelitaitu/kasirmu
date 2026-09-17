@@ -1,7 +1,7 @@
 # Build artifacts
 target/
 ui/dist/
-ui/dist-tablet/
+ui/dist-mobile/
 
 # Dependencies
 node_modules/

@@ -73,7 +73,7 @@ pub fn is_secret_key(key: &str) -> bool {
 /// Whether a key is manager-owned is not decided here. It is answered by the
 /// one shared predicate, [`platform_core::settings::is_manager_owned_key`] — the
 /// same call the tablet write funnel refuses at
-/// (`apps/tablet-client/src/commands/settings.rs`) and the same one the sealed
+/// (`apps/mobile-tauri/src/commands/settings.rs`) and the same one the sealed
 /// ingest policy admits against (`IngestPolicy::PortablePackage`,
 /// `IngestPolicy::RemoteSync`). This lane used to carry its own `starts_with`
 /// pair: two definitions of one ownership rule, and the drift hazard is

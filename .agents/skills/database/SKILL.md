@@ -43,7 +43,7 @@ are named and enforced, and how the PostgreSQL replica is generated.
 | The generated PostgreSQL schema | `crates/kasirmu-core/migrations/20260813_init.pg.sql` |
 | The `Store` facade over all domain tables | `crates/kasirmu-core/src/db/` |
 | Per-store database files | `platform/core/src/database/manager.rs` |
-| Desktop/tablet connection + path resolution | `apps/desktop-client/src/state.rs`, `apps/tablet-client/src/state.rs` |
+| Desktop/tablet connection + path resolution | `apps/desktop-client/src/state.rs`, `apps/mobile-tauri/src/state.rs` |
 | Cloud (SQLite + PostgreSQL) | `apps/cloud-server/src/db.rs` |
 | The column-type lint | `scripts/verify-migration-column-types.py` |
 | The PG generator | `scripts/generate-pg-migration.py` |
@@ -58,7 +58,7 @@ Two different resolution stories, and they do not share code:
 - **Desktop and tablet clients** — `<app_data_dir>/kasir.db`, unconditionally.
   `resolve_db_path` (`apps/desktop-client/src/state.rs:757-763`) joins the Tauri
   app-data directory with the literal file name. The tablet twin is
-  `apps/tablet-client/src/state.rs`. **There is no env-var override and no dev/prod
+  `apps/mobile-tauri/src/state.rs`. **There is no env-var override and no dev/prod
   variant on this path** — if you need a different file in a test, construct the state
   directly rather than looking for a switch that does not exist.
 - **Server and CLI processes** — the `OZ_DB_PATH` environment variable, defaulting to
@@ -78,7 +78,7 @@ entry point must set the PRAGMAs itself. The full set observed in the repository
 |---|---|
 | `kasirmu_core::migrations::run` (`crates/kasirmu-core/src/migrations.rs:352-362`) | `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `foreign_keys=ON` |
 | Desktop `AppState::new` (`apps/desktop-client/src/state.rs:225-227`) | `foreign_keys=ON`, `journal_mode=WAL` |
-| Tablet `AppState::new` (`apps/tablet-client/src/state.rs:112-114`) | `foreign_keys=ON`, `journal_mode=WAL` |
+| Tablet `AppState::new` (`apps/mobile-tauri/src/state.rs:112-114`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `platform/startup` (`platform/startup/src/lib.rs:62-63`, `:293-294`) | `foreign_keys=ON`, `journal_mode=WAL` |
 | `Pool::open` (`platform/core/src/database/pool.rs:42-43`) | `journal_mode=WAL`, `foreign_keys=ON` |
 | `Pool::open_in_memory` (`platform/core/src/database/pool.rs:52`) | `foreign_keys=ON` only — no WAL |

@@ -1876,7 +1876,7 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
         ("platform/core/src/settings/raw.rs", RAW_RS),
         ("crates/kasirmu-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
         (
-            "apps/tablet-client/src/commands/settings.rs",
+            "apps/mobile-tauri/src/commands/settings.rs",
             TABLET_SETTINGS_RS,
         ),
     ] {
@@ -1922,7 +1922,7 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
             2usize,
         ),
         (
-            "apps/tablet-client/src/commands/settings.rs",
+            "apps/mobile-tauri/src/commands/settings.rs",
             TABLET_SETTINGS_RS,
             "AppError::Invalid(refusal)",
             1usize,

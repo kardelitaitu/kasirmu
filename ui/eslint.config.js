@@ -124,7 +124,7 @@ export default ts.config(
     ignores: [
       'dist',
       'dist-ssr',
-      'dist-tablet',
+      'dist-mobile',
       'node_modules',
       'coverage',
       'playwright-report',

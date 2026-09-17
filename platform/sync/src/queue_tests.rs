@@ -1506,7 +1506,7 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 ///
 /// None of the six is ever a queue producer on the paths that matter, so refusing
 /// them at the ingest door drops no working traffic: sync_server_url's four writers
-/// are crates/kasirmu-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
+/// are crates/kasirmu-bridge/src/sync.rs:71, apps/mobile-tauri/src/commands/sync.rs:87,
 /// apps/desktop-client/src/sync_bootstrap.rs:83 and platform/sync/src/daemon_tick.rs:83,
 /// none of which calls Store::enqueue_settings_update_superseding
 /// (crates/kasirmu-core/src/db/offline.rs:194). That is what makes this set safe to
@@ -1685,7 +1685,7 @@ fn remote_settings_refusal_legs_stay_closed_beside_the_hazard_set() {
 /// census of what someone thought to TRACE, not of what a caller can SEND. Both
 /// shells' setters take an arbitrary key string from the renderer
 /// (crates/kasirmu-bridge/src/settings.rs run_set_setting / set_setting_scoped /
-/// set_settings_scoped, apps/tablet-client/src/commands/settings.rs) and hand it to
+/// set_settings_scoped, apps/mobile-tauri/src/commands/settings.rs) and hand it to
 /// the one enqueue funnel, so the reachable egress surface is every setting the UI
 /// can write - see .agents/egress-surface.md for the enumeration and the size. A
 /// full allow-list must be built against THAT number, not against the twelve.

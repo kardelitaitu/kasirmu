@@ -68,7 +68,7 @@ if [[ "$target" == "all" || "$target" == "rust" ]]; then
             --workspace \
             --all-features \
             --exclude kasirmu-app \
-            --exclude kasirmu-tablet \
+            --exclude kasirmu-mobile \
             --text \
             --output-dir "$ROOT/coverage/rust"
         step "rust done → coverage/rust/index.html (text summary above)"

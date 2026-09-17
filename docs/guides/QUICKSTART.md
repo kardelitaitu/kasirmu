@@ -1,6 +1,6 @@
 # Quickstart
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 command-level errors fixed, 1 config bug flagged) · FIXED 08-09: (a) the page told you to run bare `cargo tauri dev` from the repo root and `npm run tauri dev` from ui/ — there is no `tauri` script in ui/package.json (the UI scripts are dev, dev:tablet, build, build:tablet and none of them start the Tauri shell); (b) setup-dev.ps1 was described as six steps, it runs seven, and the list now comes from the script's own step -Label calls; (c) "the CI matrix runs on Linux, Windows and macOS" was false — every dev-ci.yml job is ubuntu-latest, and Windows/macOS exist only in release.yml on v* tags, so a platform-specific bug is not caught before merge; (d) `cargo fmt --check` was attributed to AGENTS.md, which says `cargo fmt --all` and re-stages. FLAGGED NOT FIXED: apps/desktop-client/tauri.conf.json beforeDevCommand is `npm run dev --prefix ../ui`, which resolves to apps/ui and does not exist — proved with npm (ENOENT on apps\ui\package.json, versus ../../ui which reaches package.json). Its own frontendDist and the tablet config both use ../../ui from the same depth, so desktop is the outlier; the workaround is documented in the page. That is a config change, not a doc change. Every bash line now carries the WSL-vs-Git-bash warning from AGENTS.md. · HISTORY 2026-08-31: removed the false 'mock feature gate' claim (mocks always compile), corrected the crate list to 13 and the HAL driver list · verified accurate this pass: rust-version 1.88 and edition 2024 in Cargo.toml, engines node>=22/npm>=11 in ui/package.json, all 13 crates, the five payment drivers, the onboarding-guide #first-time-setup anchor, and every relative link on the page -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (4 command-level errors fixed, 1 config bug flagged) · FIXED 08-09: (a) the page told you to run bare `cargo tauri dev` from the repo root and `npm run tauri dev` from ui/ — there is no `tauri` script in ui/package.json (the UI scripts are dev, dev:mobile, build, build:mobile and none of them start the Tauri shell); (b) setup-dev.ps1 was described as six steps, it runs seven, and the list now comes from the script's own step -Label calls; (c) "the CI matrix runs on Linux, Windows and macOS" was false — every dev-ci.yml job is ubuntu-latest, and Windows/macOS exist only in release.yml on v* tags, so a platform-specific bug is not caught before merge; (d) `cargo fmt --check` was attributed to AGENTS.md, which says `cargo fmt --all` and re-stages. FLAGGED NOT FIXED: apps/desktop-client/tauri.conf.json beforeDevCommand is `npm run dev --prefix ../ui`, which resolves to apps/ui and does not exist — proved with npm (ENOENT on apps\ui\package.json, versus ../../ui which reaches package.json). Its own frontendDist and the tablet config both use ../../ui from the same depth, so desktop is the outlier; the workaround is documented in the page. That is a config change, not a doc change. Every bash line now carries the WSL-vs-Git-bash warning from AGENTS.md. · HISTORY 2026-08-31: removed the false 'mock feature gate' claim (mocks always compile), corrected the crate list to 13 and the HAL driver list · verified accurate this pass: rust-version 1.88 and edition 2024 in Cargo.toml, engines node>=22/npm>=11 in ui/package.json, all 13 crates, the five payment drivers, the onboarding-guide #first-time-setup anchor, and every relative link on the page -->
 
 This guide gets kasir.mu building and running on your machine in under 15 minutes. It's aimed at first-time contributors — for the deeper project conventions, see `CONTRIBUTING.md`, `AGENTS.md`, and the skills under `.agents/skills/`.
 
@@ -66,7 +66,7 @@ cd ..
 # 4. Run the Tauri app in development mode — from the app directory, not the root
 cd apps/desktop-client && cargo tauri dev
 # tablet shell:
-cd apps/tablet-client && cargo tauri dev
+cd apps/mobile-tauri && cargo tauri dev
 ```
 
 > ⚠️ **The desktop dev command currently fails at its own pre-dev step.**
@@ -83,7 +83,7 @@ cd apps/tablet-client && cargo tauri dev
 > ```
 >
 > The same file's `frontendDist` is `../../ui/dist` and the tablet config uses
-> `npm run dev:tablet --prefix ../../ui` — both two levels up, from the same directory
+> `npm run dev:mobile --prefix ../../ui` — both two levels up, from the same directory
 > depth. Desktop's `../ui` is the outlier and is almost certainly a missing `../`.
 > Until it is fixed, blank the hook with a config merge and start Vite yourself.
 > Verified against this tree — with the override the ENOENT disappears and the CLI goes
@@ -102,8 +102,8 @@ cd apps/tablet-client && cargo tauri dev
 > merged over `tauri.conf.json`, which is what actually sidesteps the bad path.
 >
 > There is **no `npm run tauri` script** in `ui/package.json` (an earlier revision of
-> this page told you to run one). The UI scripts are `dev`, `dev:tablet`, `build`,
-> `build:tablet` — they start Vite only, not the Tauri shell.
+> this page told you to run one). The UI scripts are `dev`, `dev:mobile`, `build`,
+> `build:mobile` — they start Vite only, not the Tauri shell.
 
 The first build will take several minutes (Rust crates + Tauri binaries). Subsequent builds are fast.
 

@@ -205,7 +205,7 @@ pub const UI_LOCALE: &str = "ui.locale";
 //
 // The two deny lists at the foot of this module are the ONE shared source of
 // truth for both shells: the desktop lane re-exports them through
-// `kasirmu_bridge::settings` and `apps/tablet-client` imports them directly. They
+// `kasirmu_bridge::settings` and `apps/mobile-tauri` imports them directly. They
 // are built FROM the constants declared here — never from retyped literals —
 // so renaming a key value moves the guard with it instead of silently
 // dropping coverage (the original `sync.terminal_secret` typo left the
@@ -331,7 +331,7 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 ///
 /// Each name here is refused at the door AND is never a queue producer, so
 /// refusing it drops no working traffic. The four writers of `sync_server_url`
-/// are crates/kasirmu-bridge/src/sync.rs:71, apps/tablet-client/src/commands/sync.rs:87,
+/// are crates/kasirmu-bridge/src/sync.rs:71, apps/mobile-tauri/src/commands/sync.rs:87,
 /// apps/desktop-client/src/sync_bootstrap.rs:83 and
 /// platform/sync/src/daemon_tick.rs:83 - none calls
 /// `Store::enqueue_settings_update_superseding`

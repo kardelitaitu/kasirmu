@@ -134,10 +134,10 @@ Describe 'tauri.conf.json identifier patching' {
     }
 
     It 'replaces tablet identifier separately' {
-        $raw   = '{ "identifier": "mu.kasir.tablet" }'
-        $tabletId = 'mu.kasir.tablet.beta-retail'
+        $raw   = '{ "identifier": "mu.kasir.mobile" }'
+        $tabletId = 'mu.kasir.mobile.beta-retail'
         $result = $raw -replace $identifierPattern, "`"$tabletId`""
-        $result | Should -Be '{ "identifier": "mu.kasir.tablet.beta-retail" }'
+        $result | Should -Be '{ "identifier": "mu.kasir.mobile.beta-retail" }'
     }
 
     It 'matches compact JSON with no space after colon' {
@@ -203,18 +203,18 @@ Describe 'Multi-field patching simulation' {
     }
 
     It 'replicates the tablet config patching logic' {
-        $raw   = '{ "productName": "kasir.mu", "identifier": "mu.kasir.tablet", "bundle": { "icon": ["icons/icon.ico"] } }'
+        $raw   = '{ "productName": "kasir.mu", "identifier": "mu.kasir.mobile", "bundle": { "icon": ["icons/icon.ico"] } }'
         $appName   = 'Beta Retail'
         $brandId   = 'beta-retail'
         $safeId    = $brandId -replace $safeIdBadChars, '-'
-        $tabletId  = 'mu.kasir.tablet.' + $safeId
+        $tabletId  = 'mu.kasir.mobile.' + $safeId
 
         $result = $raw -replace $productNamePattern, "`"$appName`""
         $result = $result -replace $identifierPattern, "`"$tabletId`""
 
         $result | Should -Match '"productName": "Beta Retail"'
-        $result | Should -Match '"identifier": "mu.kasir.tablet.beta-retail"'
-        $result | Should -Not -Match '"identifier": "mu.kasir.tablet","'
+        $result | Should -Match '"identifier": "mu.kasir.mobile.beta-retail"'
+        $result | Should -Not -Match '"identifier": "mu.kasir.mobile","'
     }
 
     It 'correctly identifies default brand as mu.kasir.app' {

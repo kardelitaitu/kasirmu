@@ -113,7 +113,7 @@ oz-pos/
 │   ├─ cloud-server/    Cloud HTTP API (axum, for hosted tenants)
 │   ├─ desktop-client/  Windows + Linux (keyboard/mouse, Tauri v2)
 │   ├─ license-server/  License activation & validation (Go)
-│   ├─ tablet-client/   Android + iPad (touch, Tauri v2)
+│   ├─ mobile-tauri/   Android + iPad (touch, Tauri v2)
 │   └─ unified/         Containerized all-in-one deployment (Caddy + supervisord)
 │
 ├─ platform/          System infrastructure
@@ -365,7 +365,7 @@ oz-pos/
 │   │       ├─ main.rs
 │   │       └─ state.rs
 │   ├─ license-server/  License activation & validation (Go)
-│   └─ tablet-client/   Android + iPad (touch-optimized shell)
+│   └─ mobile-tauri/   Android + iPad (touch-optimized shell)
 │       └─ src/
 │           ├─ commands/  (shared with desktop-client)
 │           └─ same structure
@@ -478,7 +478,7 @@ All 6 restructuring phases have been completed.
 - [x] Split `en-US.ftl` into 12 per-domain Fluent files
 
 ### Phase 5 — Tablet Client ✅
-- [x] Create `apps/tablet-client/` — Tauri v2 mobile target (oz-pos-tablet)
+- [x] Create `apps/mobile-tauri/` — Tauri v2 mobile target (oz-pos-tablet)
 - [x] Move `src-tauri/` → `apps/desktop-client/`
 - [x] Build touch-optimized shell (bottom nav, larger hit targets)
 - [x] Create `platform/startup/` — shared module registration + event wiring

@@ -1444,7 +1444,7 @@
 
 /* ── App boot splash (React stage) ───────────────────────────────
    Two-stage loading screen: the static stage lives inline in
-   index.html / index.tablet.html (visible before any JS), and this
+   index.html / index.mobile.html (visible before any JS), and this
    React stage renders the same localized label layout while
    AppShell's boot gate (license + setup restore) resolves. Keep the
    static copies synchronized. */

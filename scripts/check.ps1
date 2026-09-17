@@ -113,8 +113,8 @@ if ($Fast) {
 }
 
 if ($nextestAvailable) {
-    Step -Name "test workspace (nextest)" -RetryCommand "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet" -ScriptBlock {
-        cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet
+    Step -Name "test workspace (nextest)" -RetryCommand "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile" -ScriptBlock {
+        cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
     }
     Step -Name "test doctests" -RetryCommand "cargo test --doc --workspace" -ScriptBlock {
         cargo test --doc --workspace

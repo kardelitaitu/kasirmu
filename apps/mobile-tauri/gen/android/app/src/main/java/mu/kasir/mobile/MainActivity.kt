@@ -1,4 +1,4 @@
-package mu.kasir.tablet
+package mu.kasir.mobile
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

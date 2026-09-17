@@ -188,7 +188,7 @@ export default function TabletAppShell() {
 
   if (loading) {
     // Branded boot splash (stage 2) — mirrors the desktop shell gate
-    // and the static stage-1 splash from index.tablet.html.
+    // and the static stage-1 splash from index.mobile.html.
     return <AppBootSplash />;
   }
 

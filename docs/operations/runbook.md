@@ -501,7 +501,7 @@ All point at the unified host; each also has an env-var override:
 |------|--------|----------|
 | `crates/kasirmu-core/src/license_verification.rs` | `LICENSE_SERVER_URL` const | `OZ_LICENSE_SERVER_URL` |
 | `apps/desktop-client/tauri.conf.json` | CSP `connect-src` | — |
-| `apps/tablet-client/tauri.conf.json` | CSP `connect-src` | — |
+| `apps/mobile-tauri/tauri.conf.json` | CSP `connect-src` | — |
 | `ui/src/features/auth/LicenseActivationScreen.tsx` | `AUTH_SERVICE_URL` fallback | `VITE_AUTH_SERVICE_URL` |
 | `ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx` | pinned URL | — |
 
@@ -617,7 +617,7 @@ captures and surfaces in **Dashboard → service → Logs**.
 **Everything below is a hosted-service diagnostic, and that is a limitation of
 the clients, not of this page.** No shipped binary writes a persistent local
 log: both Tauri apps initialise logging with `kasirmu_logging::try_init()`
-(`apps/desktop-client/src/lib.rs:99`, `apps/tablet-client/src/lib.rs:69`),
+(`apps/desktop-client/src/lib.rs:99`, `apps/mobile-tauri/src/lib.rs:69`),
 which installs an `EnvFilter` + `fmt` subscriber and **no writer**
 (`crates/kasirmu-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
 — which for a double-clicked desktop build is nowhere. The two entry points
@@ -939,7 +939,7 @@ not before.
 
 **Which of those saves is wired today, measured at HEAD, because three are and two
 are not.** `set_sync_api_key` is called from command lanes both shells reach
-(`crates/kasirmu-bridge/src/sync.rs:76`, `apps/tablet-client/src/commands/sync.rs:92`), from
+(`crates/kasirmu-bridge/src/sync.rs:76`, `apps/mobile-tauri/src/commands/sync.rs:92`), from
 the sync daemon (`platform/sync/src/daemon.rs:170`), from terminal auth
 (`crates/kasirmu-core/src/sync_auth.rs:472`) and from desktop auto-provisioning
 (`apps/desktop-client/src/sync_bootstrap.rs:84`); `set_sync_terminal_secret` from the
@@ -962,7 +962,7 @@ after anything in this section — it is the only evidence either way.
 here is the chain instead of a sentence of prose to trust:
 `ui/src/features/settings/EmailReportSettings.tsx:163` (`setSettingScoped`) →
 `run_set_setting` in `crates/kasirmu-bridge/src/settings.rs:500` (batch door `:593`; tablet
-`apps/tablet-client/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
+`apps/mobile-tauri/src/commands/settings.rs:623`) → `Store::merged_smtp_password_json`
 (`crates/kasirmu-core/src/export/email_report.rs:316`) → `crate::crypto::encrypt_smtp_at_rest`
 at `:207` of that file. Note what that chain does and does not seal: it replaces the
 `password` **field of a JSON blob**, and only when a password was supplied

@@ -13,7 +13,7 @@ export interface OpenCashDrawerArgs {
 /**
  * Serialize [`OpenCashDrawerArgs`] for the wire. The Rust `OpenCashDrawerArgs`
  * (`crates/kasirmu-bridge/src/hardware.rs:46` and its tablet twin
- * `apps/tablet-client/src/commands/hardware.rs:30`) carries no
+ * `apps/mobile-tauri/src/commands/hardware.rs:30`) carries no
  * `#[serde(rename_all)]`, so its field is `device_id`. It is also
  * `#[serde(default)] Option<String>`, which makes a camelCase `deviceId` key
  * fail *silently*: serde drops the unknown field, the option stays `None` and
@@ -140,7 +140,7 @@ export interface DisplayShowArgs {
 /**
  * Serialize [`DisplayShowArgs`] for the wire. The Rust `DisplayShowArgs`
  * (`crates/kasirmu-bridge/src/hardware.rs:397` and its tablet twin
- * `apps/tablet-client/src/commands/hardware.rs:679`) carries no
+ * `apps/mobile-tauri/src/commands/hardware.rs:679`) carries no
  * `#[serde(rename_all)]`, so its field is `display_id` — a required
  * `String`, so a camelCase `displayId` key is a hard missing-field error on
  * both shells rather than a silent default.

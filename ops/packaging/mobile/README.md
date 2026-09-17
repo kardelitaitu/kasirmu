@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.tablet.config.ts, ui/src/main.tablet.tsx, ui/src/frontend/shell/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.tablet.html, .github/workflows/{android,ios}.yml, apps/mobile-tauri/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/mobile-tauri/AGENTS.md (linked) · observe: line 429 references ui/dist-tablet/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the mobile-tauri setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.mobile.config.ts, ui/src/main.mobile.tsx, ui/src/frontend/shell/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.mobile.html, .github/workflows/{android,ios}.yml, apps/mobile-tauri/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/mobile-tauri/AGENTS.md (linked) · observe: line 429 references ui/dist-mobile/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the mobile-tauri setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
 <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
@@ -8,7 +8,7 @@
 > contributors don't need the Tauri CLI installed to build"* — and Android follows that
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
-> The project filename is also not stable: this guide says `kasirmu-tablet.xcodeproj`
+> The project filename is also not stable: this guide says `kasirmu-mobile.xcodeproj`
 > while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
@@ -79,7 +79,7 @@ JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
 ```bash
 # 1. Install prerequisites (see above)
 # 2. Build the UI frontend
-cd ui && npx vite build --config vite.tablet.config.ts
+cd ui && npx vite build --config vite.mobile.config.ts
 
 # 3. Initialize the Android project (one time)
 cd apps/mobile-tauri && cargo tauri android init
@@ -96,13 +96,13 @@ cargo tauri android build --apk --target aarch64
 ```bash
 # 1. Install prerequisites (macOS + Xcode required)
 # 2. Build the UI frontend
-cd ui && npx vite build --config vite.tablet.config.ts
+cd ui && npx vite build --config vite.mobile.config.ts
 
 # 3. Initialize the iOS project (one time)
 cd apps/mobile-tauri && cargo tauri ios init
 
 # 4. Open in Xcode and configure signing
-open apps/mobile-tauri/gen/apple/kasirmu-tablet.xcodeproj
+open apps/mobile-tauri/gen/apple/kasirmu-mobile.xcodeproj
 #    Set Team + Bundle Identifier in Signing & Capabilities
 
 # 5. Run in iOS simulator
@@ -151,8 +151,8 @@ cd apps/mobile-tauri && cargo tauri android build --aab
 ### Output Locations
 
 ```
-APK:  apps/mobile-tauri/gen/android/app/build/outputs/apk/release/kasirmu-tablet-arm64-v8a.apk
-AAB:  apps/mobile-tauri/gen/android/app/build/outputs/bundle/release/kasirmu-tablet.aab
+APK:  apps/mobile-tauri/gen/android/app/build/outputs/apk/release/kasirmu-mobile-arm64-v8a.apk
+AAB:  apps/mobile-tauri/gen/android/app/build/outputs/bundle/release/kasirmu-mobile.aab
 ```
 
 ---
@@ -172,14 +172,14 @@ cd apps/mobile-tauri && cargo tauri ios build --release
 ### Output Location
 
 ```
-IPA:  apps/mobile-tauri/gen/apple/build/kasirmu-tablet.ipa
+IPA:  apps/mobile-tauri/gen/apple/build/kasirmu-mobile.ipa
 ```
 
 ### Code Signing Setup
 
 1. Open the Xcode project:
    ```bash
-   open apps/mobile-tauri/gen/apple/kasirmu-tablet.xcodeproj
+   open apps/mobile-tauri/gen/apple/kasirmu-mobile.xcodeproj
    ```
 2. Select the target → **Signing & Capabilities**
 3. Choose your **Team** from the dropdown
@@ -261,8 +261,8 @@ The tablet client (`apps/mobile-tauri`) shares most code with the desktop client
 | API layer | ✅ Full | `ui/src/api/*` — works with both desktop and tablet |
 | Hooks | ✅ Full | `useOrientation`, `useSwipe`, `usePosState`, etc. |
 | **Shell** | ❌ Tablet-only | `ui/src/frontend/shell/tablet/` — bottom tab bar layout |
-| **Entry point** | ❌ Tablet-only | `ui/src/main.tablet.tsx` |
-| **Build config** | ❌ Tablet-only | `ui/vite.tablet.config.ts` → `ui/index.tablet.html` |
+| **Entry point** | ❌ Tablet-only | `ui/src/main.mobile.tsx` |
+| **Build config** | ❌ Tablet-only | `ui/vite.mobile.config.ts` → `ui/index.mobile.html` |
 
 ### Key Differences from Desktop
 
@@ -440,11 +440,11 @@ the APK/AAB builds unsigned.
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | `cargo tauri build fails` | Tauri CLI version mismatch | `cargo install tauri-cli --version "^2" --locked` |
-| UI doesn't update after code change | Vite build cache stale | Delete `ui/dist-tablet/` and rebuild |
+| UI doesn't update after code change | Vite build cache stale | Delete `ui/dist-mobile/` and rebuild |
 | Orientation lock doesn't work | Browser blocks API | Only works in installed PWA / Tauri webview |
 | Touch events not working | Passive listener issue | Use `{ passive: true }` for scroll listeners, `{ passive: false }` for swipe |
 | Keyboard hides input field | No `useKeyboardAvoidance` | Ensure the hook is applied to the container |
-| Tablet shows desktop layout | Wrong `vite.config.ts` | Use `vite.tablet.config.ts` for tablet builds |
+| Tablet shows desktop layout | Wrong `vite.config.ts` | Use `vite.mobile.config.ts` for tablet builds |
 
 ---
 

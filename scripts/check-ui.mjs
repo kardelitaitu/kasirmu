@@ -167,14 +167,14 @@ function main() {
   // Two apps build from this one `ui/` tree and the tablet artifact is not the
   // desktop one under a new name: 59 stylesheets against 56, its own chunk
   // graph, its own content hashes, and its own ~296 KB font payload. The script
-  // for it (`npm run bundle:check:tablet`) has existed since 2b762b08f and had
+  // for it (`npm run bundle:check:mobile`) has existed since 2b762b08f and had
   // ZERO callers repo-wide, so a tablet-only size regression passed this runner
   // without a word -- recorded as notes.md item 38. Cost of closing it, measured rather
   // than assumed: 9.4s for this leg against the desktop leg's 9.6s in the same run
   // (`cd ui && npm run check:all`, whose summary prints both durations), so the second
   // build is not the tax it was written as if it would be. A red line now says which of
   // the two artifacts broke.
-  gate('Bundle budget (tablet)', 'npm run bundle:check:tablet', { timeout: 300_000 });
+  gate('Bundle budget (mobile)', 'npm run bundle:check:mobile', { timeout: 300_000 });
 
   // ── 7. E2E tests (optional — requires Docker) ──────────────────────────
   // AUDIT-27 CI-07: use `npm run e2e` (scripts/run-e2e.mjs) which

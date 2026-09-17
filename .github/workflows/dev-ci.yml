@@ -188,8 +188,8 @@ jobs:
       - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Prepare frontend dist stubs for Tauri macro
         run: |
-          mkdir -p ui/dist ui/dist-tablet ui/dist-desktop
-          touch ui/dist/index.html ui/dist-tablet/index.html ui/dist-desktop/index.html
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       # Runs before `cargo check` deliberately: it is ~2s warm, so a formatting
       # nit fails fast instead of after a multi-minute compile. Gate:
       # scripts/gates.json -> "rust-fmt".
@@ -236,8 +236,8 @@ jobs:
       - uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - name: Prepare frontend dist stubs for Tauri macro
         run: |
-          mkdir -p ui/dist ui/dist-tablet ui/dist-desktop
-          touch ui/dist/index.html ui/dist-tablet/index.html ui/dist-desktop/index.html
+          mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
+          touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       - name: Install cargo-nextest
         uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2
         with:
@@ -337,8 +337,8 @@ jobs:
       # Gate: scripts/gates.json -> "bundle-budget".
       - name: Bundle budget (desktop)
         run: cd ui && npm run bundle:check
-      - name: Bundle budget (tablet)
-        run: cd ui && npm run bundle:check:tablet
+      - name: Bundle budget (mobile)
+        run: cd ui && npm run bundle:check:mobile
 
   # ── 5. i18n: Fluent bundle quality gate ──────────────────────────────
   # Restored by the Fluent page audit. This step used to live in ci.yml, which

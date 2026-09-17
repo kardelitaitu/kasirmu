@@ -85,6 +85,11 @@ DOCS = ROOT / "docs" / "operations" / "ci-pipeline.md"
 # actually reads at ship time, and outside this script's scope until now.
 RELEASE_CHECKLIST = ROOT / "docs" / "releases" / "checklist.md"
 WORKFLOWS_DIR = ROOT / ".github" / "workflows"
+# Where retired (`.yml.bak`) workflows live. P4 of the folder restructure moved
+# them from the workflows directory itself into this subdirectory, so the
+# retirement set is enumerated from here; `.bak` files sitting directly in the
+# workflows directory are no longer part of the expected layout.
+RETIREMENT_DIR = WORKFLOWS_DIR / "attic"
 GATES_MANIFEST = ROOT / "scripts" / "gates.json"
 CHECK_SH = ROOT / "scripts" / "check.sh"
 PRE_COMMIT_HOOK = ROOT / ".githooks" / "pre-commit"
@@ -753,7 +758,7 @@ def main() -> int:
     # row naming one is recording history, not claiming current enforcement.
     # Needed here because both the Job Matrix and the inventory use it.
     retired_workflow_names = {
-        p.name[:-4] for p in WORKFLOWS_DIR.glob("*.yml.bak")
+        p.name[:-4] for p in RETIREMENT_DIR.glob("*.yml.bak")
     } - {wf.name for wf in workflow_files}
 
     # Fail-open protection: if a required section is renamed or emptied,
@@ -892,7 +897,7 @@ def main() -> int:
     # one. A name matching no file at all is still a genuine error.
     retired_files = sorted(
         f for f in inventory_files
-        if f not in live_files and (WORKFLOWS_DIR / f"{f}.bak").is_file()
+        if f not in live_files and (RETIREMENT_DIR / f"{f}.bak").is_file()
     )
     missing_files = sorted(
         f for f in inventory_files if f not in live_files and f not in retired_files

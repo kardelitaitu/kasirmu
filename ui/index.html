@@ -74,7 +74,7 @@
          very first frame is correct even before tokens.css lands; once
          the theme stylesheet loads the vars resolve to theme values.
          Keep values in sync with the React stage
-         (components/AppBootSplash.tsx) and index.tablet.html. -->
+         (components/AppBootSplash.tsx) and index.mobile.html. -->
     <style>
       .app-splash {
         position: fixed;
@@ -105,7 +105,7 @@
          on mount (ReactDOM.createRoot clears container children), so
          there is no manual removal to leak. Keep the inline styles
          synchronized with .app-splash in themes/components.css and
-         index.tablet.html. -->
+         index.mobile.html. -->
     <div id="boot-splash" aria-hidden="true">
       <div class="app-splash">
         <span class="app-splash__label" data-oz-locale-text>Loading…</span>

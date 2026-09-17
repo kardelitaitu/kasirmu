@@ -52,10 +52,10 @@ keytool -genkey -v -keystore oz-pos-release.keystore \
 
 Build the signed APK (the current CI pipeline produces **APKs only** — AAB/Play-bundle support is pending NDK stabilisation):
 ```powershell
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android build --apk --target aarch64
 ```
-- **Output Artifact**: `apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk`.
+- **Output Artifact**: `apps/mobile-tauri/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk`.
 
 ### Step 3: Create Play Store Release Submission
 1. Log into Google Play Console → Click **Create App**.
@@ -92,7 +92,7 @@ Only two GitHub Actions workflows are live, and **neither produces a mobile arti
 - **Android Automated Build — RETIRED: nothing builds an APK or AAB for you.** The Android workflow
   is inert (`.github/workflows/android.yml.bak`, renamed by `23c963303` on 2026-09-02, and GitHub never
   executes a `.bak` file), so a `v*` tag push yields desktop installers only. Build it locally instead
-  (`cargo tauri android build --apk|--aab`, see `apps/tablet-client/AGENTS.md`) and upload through
+  (`cargo tauri android build --apk|--aab`, see `apps/mobile-tauri/AGENTS.md`) and upload through
   Partner Center. iOS is in the identical state (`ios.yml.bak`, also retired, and the `gen/apple/`
   scaffold it needs has never been committed).
 - **Dev CI — LIVE but not a release path**: `.github/workflows/dev-ci.yml` validates a PR targeting

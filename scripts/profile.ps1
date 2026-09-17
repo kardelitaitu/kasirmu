@@ -11,7 +11,7 @@
     When omitted with no other target, lists available benchmarks.
 
 .PARAMETER Binary
-    Binary package name to profile (e.g. "kasirmu-app", "kasirmu-cloud", "kasirmu-tablet").
+    Binary package name to profile (e.g. "kasirmu-app", "kasirmu-cloud", "kasirmu-mobile").
 
 .PARAMETER PID
     Process ID of a running OZ-POS process to attach to. Requires Administrator privileges.

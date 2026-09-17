@@ -2,7 +2,7 @@
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Android 10+ physical tablets
-> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md) · [Linux Launch Test](./linux-launch-test.md)
+> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/mobile-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md) · [Linux Launch Test](./linux-launch-test.md)
 
 This guide covers building, installing, and testing the kasir.mu tablet app
 on a physical Android device (phone or tablet).
@@ -88,7 +88,7 @@ rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-andro
 ### One-Time: Initialize the Android Project
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android init
 cd ../..
 ```
@@ -96,7 +96,7 @@ cd ../..
 The scaffold under `gen/android/` is **committed** (`.gitignore:167-169`: "The
 generated scaffold under apps/*/gen/ is COMMITTED so CI and contributors don't
 need the Tauri CLI installed to build" — 49 tracked files under
-`apps/tablet-client/gen/`, including `app/build.gradle.kts` with its
+`apps/mobile-tauri/gen/`, including `app/build.gradle.kts` with its
 `signingConfigs` block). So `cargo tauri android init` is only needed if the
 directory is missing; if you see "already initialized", skip this step, and if
 you do change the scaffold, commit the change.
@@ -105,29 +105,29 @@ you do change the scaffold, commit the change.
 
 ```bash
 # Build the tablet frontend first
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
-# Build debug APK from tablet-client
-cd apps/tablet-client
+# Build debug APK from mobile-tauri
+cd apps/mobile-tauri
 cargo tauri android build --apk --target aarch64
 cd ../..
 ```
 
 Output location:
 ```
-apps/tablet-client/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
+apps/mobile-tauri/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
 ```
 
 ### Option B — Release Build (Signed, for Physical Testing)
 
 ```bash
 # Build the tablet frontend
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
 # Generate a keystore if you don't have one — same names the keystore guide
 # mandates (android-keystore-guide.md §1): oz-pos-release.keystore / oz-pos-key
 # / 1825 days
-cd apps/tablet-client
+cd apps/mobile-tauri
 keytool -genkey -v -keystore oz-pos-release.keystore \
   -alias oz-pos-key -keyalg RSA -keysize 2048 -validity 1825
 # You will be prompted for the keystore password, then the key password —
@@ -143,33 +143,33 @@ flags, so this file is the only signing route. When the file is absent the
 APK builds unsigned. Write it from PowerShell:
 
 ```powershell
-Set-Location apps/tablet-client/gen/android
+Set-Location apps/mobile-tauri/gen/android
 "password=<same-password>" | Out-File keystore.properties -Encoding ascii
 "keyAlias=oz-pos-key" | Add-Content keystore.properties
-"storeFile=<full path to>\apps\tablet-client\oz-pos-release.keystore" | Add-Content keystore.properties
+"storeFile=<full path to>\apps\mobile-tauri\oz-pos-release.keystore" | Add-Content keystore.properties
 ```
 
 or from a POSIX shell:
 
 ```bash
-cat > apps/tablet-client/gen/android/keystore.properties <<'EOF'
+cat > apps/mobile-tauri/gen/android/keystore.properties <<'EOF'
 password=<same-password>
 keyAlias=oz-pos-key
-storeFile=/abs/path/to/apps/tablet-client/oz-pos-release.keystore
+storeFile=/abs/path/to/apps/mobile-tauri/oz-pos-release.keystore
 EOF
 ```
 
 Then build:
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android build --apk --target aarch64
 cd ../..
 ```
 
 Output location:
 ```
-apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
+apps/mobile-tauri/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
 ```
 
 > ℹ️ `storeFile` is consumed as written by gradle — give it the keystore's
@@ -178,7 +178,7 @@ apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64
 ### Option C — Quick Dev (Hot Reload)
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri android dev
 cd ../..
 ```
@@ -198,14 +198,14 @@ adb devices
 # Expected: <device-id>  device
 
 # Install debug APK
-adb install -r apps/tablet-client/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
+adb install -r apps/mobile-tauri/gen/android/app/build/outputs/apk/debug/oz-pos-tablet-arm64-v8a-debug.apk
 
 # Or install release APK
-adb install -r apps/tablet-client/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
+adb install -r apps/mobile-tauri/gen/android/app/build/outputs/apk/release/oz-pos-tablet-arm64-v8a.apk
 
 # Verify installation
 adb shell pm list packages | grep ozpos
-# Expected: package:mu.kasir.tablet
+# Expected: package:mu.kasir.mobile
 ```
 
 ### Via USB Transfer (No ADB)
@@ -241,7 +241,7 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
 - **"App not installed"** — APK architecture mismatch. Ensure you built for
   `aarch64` (most modern devices) or `armeabi-v7a` (older 32-bit tablets).
 - **"INSTALL_FAILED_UPDATE_INCOMPATIBLE"** — Previous version installed.
-  Uninstall first: `adb uninstall mu.kasir.tablet`.
+  Uninstall first: `adb uninstall mu.kasir.mobile`.
 - **"App keeps stopping" on launch** — Missing Android SDK/NDK version mismatch.
   Rebuild with `cargo tauri android build --apk --target aarch64`.
 - **Black bars on sides** — orientation is locked in the UI layer
@@ -425,19 +425,19 @@ or visual corruption.
 
 1. Connect device via USB
 2. Open Android Studio → **View** → **Tool Windows** → **Profiler**
-3. Select `mu.kasir.tablet` from the device dropdown
+3. Select `mu.kasir.mobile` from the device dropdown
 4. Monitor **CPU**, **Memory**, **Network**, and **Energy** in real time
 
 **Using `adb`:**
 
 ```bash
 # Memory (RSS/PSS in KB)
-adb shell dumpsys meminfo mu.kasir.tablet
+adb shell dumpsys meminfo mu.kasir.mobile
 
 # Battery stats
-adb shell dumpsys batterystats --charged mu.kasir.tablet
+adb shell dumpsys batterystats --charged mu.kasir.mobile
 
-# CPU usage — the Android process name is the applicationId `mu.kasir.tablet`
+# CPU usage — the Android process name is the applicationId `mu.kasir.mobile`
 # (build.gradle.kts:34), so grep on `ozpos` WITHOUT the hyphen; `grep oz-pos`
 # silently returns nothing.
 adb shell top -n 1 | grep ozpos
@@ -456,7 +456,7 @@ adb logcat -b events | grep "am_proc_start"
 # Continuous log stream (filter by app)
 adb logcat -v time -s "oz-pos-tablet" "Tauri" "Rust" "chromium" "WebView"
 
-# Filter to only errors — match `ozpos` (the process is `mu.kasir.tablet`,
+# Filter to only errors — match `ozpos` (the process is `mu.kasir.mobile`,
 # the Rust lib is `oz_pos_tablet_lib`; neither contains "oz-pos")
 adb logcat -v time *:E | grep -i "ozpos\|oz_pos\|rust\|panic"
 
@@ -520,7 +520,7 @@ adb pull /sdcard/oz-pos-screenrecord.mp4
 ☐ Prerequisites: JDK 17+, Android SDK 34+, NDK 27, cargo-ndk, Rust targets
 
 ☐ BUILD
-   ☐ Frontend builds with vite.tablet.config.ts
+   ☐ Frontend builds with vite.mobile.config.ts
    ☐ Android project initialized (cargo tauri android init)
    ☐ Debug APK builds successfully
    ☐ APK size < 80 MB
@@ -632,7 +632,7 @@ Notes:
 ## Related
 
 - [Mobile Build & Deployment Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) — Full Android/iOS build pipeline
-- [Tablet Client Notes](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/AGENTS.md) — Android dev conventions
+- [Tablet Client Notes](https://github.com/kardelitaitu/oz-pos/blob/main/apps/mobile-tauri/AGENTS.md) — Android dev conventions
 - [iPad Launch Test](./ios-install-test.md) — iOS equivalent guide
 - [Windows Launch Test](./windows-launch-test.md) — Desktop equivalent guide
 - [Linux Launch Test](./linux-launch-test.md) — Linux equivalent guide

@@ -6,7 +6,7 @@ import { Localized } from '@fluent/react';
  * screen.
  *
  * Stage 1 is the static markup rendered by `index.html` /
- * `index.tablet.html` (visible from the very first paint, before any
+ * `index.mobile.html` (visible from the very first paint, before any
  * JS runs). This component renders the identical visual so the handoff
  * from static HTML to React is seamless: the same localized status
  * label occupies the same centered layout.

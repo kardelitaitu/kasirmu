@@ -695,7 +695,7 @@ fn census_covers_the_deny_list_except_the_documented_five() {
 /// whether to re-read a stored blob and re-merge its password compare a
 /// SEPARATE declaration of the same value —
 /// `email_report::SMTP_CONFIG_SETTINGS_KEY` — one in the tablet command
-/// (`apps/tablet-client/src/commands/settings.rs:604`), one in the desktop
+/// (`apps/mobile-tauri/src/commands/settings.rs:604`), one in the desktop
 /// funnel (`crates/kasirmu-bridge/src/settings.rs:484`). Nothing links the two
 /// constants but their text, so they are one rename apart from disagreeing:
 /// the funnel would keep excepting the key it names while the merge writes
@@ -711,7 +711,7 @@ fn smtp_config_exception_key_and_merge_key_hold_the_same_value() {
     let merge_key = kasirmu_core::export::email_report::SMTP_CONFIG_SETTINGS_KEY;
     assert_eq!(
         exception, merge_key,
-        "the cleartext-credential exception and the SMTP merge key drifted apart: keys::SMTP_CONFIG (platform/core/src/settings/keys.rs:220, compared by the tracked funnel) is {exception:?}, but SMTP_CONFIG_SETTINGS_KEY (crates/kasirmu-core/src/export/email_report.rs:112, compared by both merge seams in apps/tablet-client/src/commands/settings.rs and crates/kasirmu-bridge/src/settings.rs) is {merge_key:?} — reword either one and the merge writes under a key the exception no longer covers, so the passwordless blob overwrites the stored secret in silence"
+        "the cleartext-credential exception and the SMTP merge key drifted apart: keys::SMTP_CONFIG (platform/core/src/settings/keys.rs:220, compared by the tracked funnel) is {exception:?}, but SMTP_CONFIG_SETTINGS_KEY (crates/kasirmu-core/src/export/email_report.rs:112, compared by both merge seams in apps/mobile-tauri/src/commands/settings.rs and crates/kasirmu-bridge/src/settings.rs) is {merge_key:?} — reword either one and the merge writes under a key the exception no longer covers, so the passwordless blob overwrites the stored secret in silence"
     );
 }
 

@@ -77,7 +77,7 @@ fn resolve_session_expired_token_is_rejected_and_removed() {
 #[test]
 fn resolve_scope_isolates_store_databases() {
     let test_dir = std::env::temp_dir().join(format!(
-        "kasirmu-tablet-scope-test-{}",
+        "kasirmu-mobile-scope-test-{}",
         uuid::Uuid::now_v7()
     ));
     let manager = StoreDatabaseManager::new(test_dir.clone(), kasirmu_core::migrations::ALL);

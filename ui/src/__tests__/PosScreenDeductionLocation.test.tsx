@@ -187,7 +187,7 @@ describe('PosScreen – ADR-19 §17 deduction location', () => {
   });
 
   // ADR #7 + the desktop "command not found" bug. get_cart_deduction_location is registered by
-  // tablet-client only; desktop registers get_cart_deduction_location_scoped only. The screen called
+  // mobile-tauri only; desktop registers get_cart_deduction_location_scoped only. The screen called
   // the ambient name, so on desktop it threw, the outer catch toasted "Failed to create sale cart"
   // for a cart that had already been created, and returned null while setCartId had already run.
   describe('ADR #7: deduction-location lookup is session-scoped', () => {

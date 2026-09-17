@@ -345,7 +345,7 @@ Write-Host ""
 Write-Host "-- Tauri config (tablet) --" -ForegroundColor White
 $tabletConfigPath = "apps/mobile-tauri/tauri.conf.json"
 if (Test-Path $tabletConfigPath) {
-    $tabletId = if ($brandId -eq "default") { "mu.kasir.tablet" } else { "mu.kasir.tablet.$safeId" }
+    $tabletId = if ($brandId -eq "default") { "mu.kasir.mobile" } else { "mu.kasir.mobile.$safeId" }
     if (-not $DryRun) {
         $raw = Get-Content $tabletConfigPath -Raw
         $raw = $raw -replace '(?<="productName":\s*)"[^"]*"', "`"$appName`""

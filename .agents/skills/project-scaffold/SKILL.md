@@ -47,7 +47,7 @@ members = [
     "foundation",
     "apps/cloud-server",
     "apps/desktop-client",
-    "apps/tablet-client",
+    "apps/mobile-tauri",
     # apps/license-server is Go (no Cargo.toml) — excluded; a glob over
     # apps/* would break `cargo metadata`, so apps are listed explicitly
 ]
@@ -92,7 +92,7 @@ oz-pos/
 │       ├── commands/
 │       ├── error.rs
 │       └── state.rs
-├── apps/tablet-client/         # the mobile shell
+├── apps/mobile-tauri/         # the mobile shell
 ├── apps/cloud-server/          # the PostgreSQL cloud backend
 ├── ui/                         # React + TypeScript
 │   ├── package.json
@@ -294,7 +294,7 @@ A `.gitignore` template (matches the repo's real one):
 /platform/*/target/
 /foundation/target/
 /apps/*/target/
-# (plus the ui build outputs — dist, dist-tablet, playwright-report,
+# (plus the ui build outputs — dist, dist-mobile, playwright-report,
 #  test-results, e2e results — see the repo's real .gitignore)
 
 # Local state

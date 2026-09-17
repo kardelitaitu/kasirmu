@@ -160,7 +160,7 @@ const LOCAL_BUILD_CONTEXTS = [
     image: 'e2e-cloud-server:latest',
     // ops/docker/Dockerfile.server: Compose is given --project-directory, so
     // the context is still the repo root; .dockerignore drops
-    // ui/, docs/, apps/desktop-client and apps/tablet-client, and cargo only
+    // ui/, docs/, apps/desktop-client and apps/mobile-tauri, and cargo only
     // builds the kasirmu-cloud package — so apps/license-server and
     // apps/unified cannot change this binary.
     paths: [

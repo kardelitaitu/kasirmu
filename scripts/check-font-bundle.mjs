@@ -105,7 +105,7 @@ console.log('    closed. Its own report prints the threshold it enforces; run it
 console.log("    than trusting this sentence: `cd ui && node ../scripts/check-bundle.mjs`.");
 console.log('    Enforcement is now real, and moved twice in two rounds: `b89747b28` gave the');
 console.log('    local runner its tablet leg, and `d3ae1e201` added `Bundle budget (desktop)`');
-console.log('    and `Bundle budget (tablet)` steps to dev-ci.yml#ui-test -- the first CI steps');
+console.log('    and `Bundle budget (mobile)` steps to dev-ci.yml#ui-test -- the first CI steps');
 console.log('    to compile the UI at all. What still has no step is scripts/check.sh, whatever');
 console.log('    its header promises. One consequence worth knowing before a budget goes red:');
 console.log('    northflank-deploy lists ui-test in its `needs`, so a size breach now stops a');

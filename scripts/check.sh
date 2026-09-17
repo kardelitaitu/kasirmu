@@ -112,7 +112,7 @@ step "test shadow copies" "python3 scripts/verify-test-shadow-copies.py" python3
 # is not installed.
 cpu_count=$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2>&1; then
-    step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet" cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet
+    step "test workspace (nextest)" "cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile" cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile
     step "test doctests" "cargo test --doc --workspace" cargo test --doc --workspace
     # Grade the run's JUnit report, not its summary line. A retry-rescued flake is
     # invisible to every other reader: nextest turns a genuine failure into

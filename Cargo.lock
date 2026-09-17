@@ -3635,6 +3635,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "kasirmu-mobile"
+version = "0.0.39"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "foundation",
+ "hex",
+ "hmac 0.12.1",
+ "kasirmu-bridge",
+ "kasirmu-core",
+ "kasirmu-hal",
+ "kasirmu-logging",
+ "kasirmu-plugin",
+ "kasirmu-reporting",
+ "kasirmu-security",
+ "modules-crm",
+ "modules-currency",
+ "modules-inventory",
+ "modules-reporting",
+ "modules-sales",
+ "modules-settings",
+ "modules-staff",
+ "modules-tax",
+ "modules-terminal",
+ "platform-core",
+ "platform-kernel",
+ "platform-startup",
+ "rand 0.8.6",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-opener",
+ "tauri-plugin-window-state",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "kasirmu-notification"
 version = "0.0.39"
 dependencies = [
@@ -3723,52 +3769,6 @@ dependencies = [
  "windows-sys 0.59.0",
  "zbus",
  "zeroize",
-]
-
-[[package]]
-name = "kasirmu-tablet"
-version = "0.0.39"
-dependencies = [
- "anyhow",
- "chrono",
- "foundation",
- "hex",
- "hmac 0.12.1",
- "kasirmu-bridge",
- "kasirmu-core",
- "kasirmu-hal",
- "kasirmu-logging",
- "kasirmu-plugin",
- "kasirmu-reporting",
- "kasirmu-security",
- "modules-crm",
- "modules-currency",
- "modules-inventory",
- "modules-reporting",
- "modules-sales",
- "modules-settings",
- "modules-staff",
- "modules-tax",
- "modules-terminal",
- "platform-core",
- "platform-kernel",
- "platform-startup",
- "rand 0.8.6",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-opener",
- "tauri-plugin-window-state",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]

@@ -168,15 +168,15 @@ check('scripts/check.sh has no budget step (its header claims otherwise)', clean
 // calls it. A line mentioning a command is not a line running it, and that is true inside
 // code files as well as inside .md, so the row now separates the two numbers and shows the
 // surviving line rather than asking to be believed.
-const tabletHits = run(['git', '--no-optional-locks', 'grep', '-n', 'bundle:check:tablet', '--', ...WIRING]);
+const tabletHits = run(['git', '--no-optional-locks', 'grep', '-n', 'bundle:check:mobile', '--', ...WIRING]);
 const strip = (l) => l.replace(/^[^:]+:\d+:/, '');
 const allHits = tabletHits.out.trim() ? tabletHits.out.trim().split('\n').filter(Boolean) : [];
 const codeHits = allHits.filter((l) => !/^\s*(\/\/|\*|#)/.test(strip(l)));
-const tabletProse = run(['git', '--no-optional-locks', 'grep', '-l', 'bundle:check:tablet', '--', '.']);
+const tabletProse = run(['git', '--no-optional-locks', 'grep', '-l', 'bundle:check:mobile', '--', '.']);
 const proseCount = tabletProse.out.trim().split('\n').filter(Boolean).length;
 check('the tablet budget is called by the runner that exists', tabletHits.ran && codeHits.length >= 1,
   `${allHits.length} mention(s) in ${WIRING.join(', ')}, ${codeHits.length} outside comments${codeHits.length ? ` -- \`${strip(codeHits[0]).trim().replace(/\s+/g, ' ')}\`` : ''}; files repo-wide naming it: ${proseCount}`,
-  '>=1 non-comment call -- notes.md item 38, closed by b89747b28. If this drifts the leg was deleted, and the `bundle budget (tablet)` needle in scripts/gates.json has become a lie as well');
+  '>=1 non-comment call -- notes.md item 38, closed by b89747b28. If this drifts the leg was deleted, and the `bundle budget (mobile)` needle in scripts/gates.json has become a lie as well');
 
 const gateRows = run(['node', '-e', "const g=require('./scripts/gates.json').gates;const r=g.find(x=>x.id==='bundle-budget');console.log(JSON.stringify({found:!!r,status:r&&r.status,runners:r&&r.runners,ci:(r&&r.ci)??'absent'}))"]);
 let gj = {};

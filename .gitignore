@@ -13,7 +13,7 @@
 /ui/e2e-results
 /ui/.e2e-auth.json
 /ui/dist/
-/ui/dist-tablet/
+/ui/dist-mobile/
 /website/dist/
 /website/.astro/
 .wrangler/

@@ -1,9 +1,9 @@
 # iPad (iOS) Install Test — kasir.mu
 <!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings) · Both were the same retirement: "Option D — Via CI" asserted that .github/workflows/ios.yml builds a signed IPA on tag or manual trigger, and the Related links pointed at the live blob URL for that file. Reality verified from the files: GitHub only executes *.yml, ios.yml has been .github/workflows/ios.yml.bak since 23c963303 on 2026-09-02 (git log --name-status shows the R100 rename), and the sole tag-triggered live workflow is release.yml, which is desktop-only by its own admission at .github/workflows/release.yml:24 · Repaired by marking Option D unavailable, keeping the secret manifest as revival documentation (cited at .github/workflows/ios.yml.bak:13-19) and retargeting the link to the .bak path, which is the only one that resolves · NOT WEAKENED: no claim here was upgraded — the guide's own 08-09-26 prerequisite note at the top still stands (no gen/apple/ scaffold is committed), and that is the deeper reason this option cannot work: even restoring the workflow needs the scaffold first · LEFT ALONE: Options A–C, TestFlight and provisioning steps — third-party Xcode/Apple behaviour, unverifiable from this Windows workstation, so they were not re-checked and must not be read as verified. -->
-<!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+<!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
-> `apps/tablet-client/gen/` contains only `android/` (49 tracked files) and `schemas/`.
+> `apps/mobile-tauri/gen/` contains only `android/` (49 tracked files) and `schemas/`.
 > There is no `apple/` directory, committed or on disk. `.gitignore` states the policy
 > explicitly — *"the generated scaffold under `apps/*/gen/` is COMMITTED so CI and
 > contributors don't need the Tauri CLI installed to build"* — and Android follows that
@@ -12,11 +12,11 @@
 > The project filename is also not stable: this guide says `oz-pos-tablet.xcodeproj`
 > while `docs/guides/ios-build-guide.md` says `kasir.mu.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
-> `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
+> `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on iPadOS 16+ physical iPads
-> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Android Install Test](./android-install-test.md) · [Windows Launch Test](./windows-launch-test.md)
+> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/mobile-tauri/tauri.conf.json) · [Android Install Test](./android-install-test.md) · [Windows Launch Test](./windows-launch-test.md)
 
 This guide covers building, installing, and testing the kasir.mu tablet app
 on a physical iPad device via TestFlight or direct sideloading.
@@ -100,7 +100,7 @@ Then add it at [developer.apple.com](https://developer.apple.com/account/resourc
 ### One-Time: Initialize the iOS Project
 
 ```bash
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri ios init
 cd ../..
 ```
@@ -108,16 +108,16 @@ cd ../..
 This generates `gen/apple/` (do **not** commit — it is .gitignored).
 
 > **Important:** If you see "already initialized", delete it first:
-> `rm -rf apps/tablet-client/gen/apple/` then re-run. <!-- dead-ref: ok: that dir is created by `tauri ios init` on the reader's machine; the command exists to remove it -->
+> `rm -rf apps/mobile-tauri/gen/apple/` then re-run. <!-- dead-ref: ok: that dir is created by `tauri ios init` on the reader's machine; the command exists to remove it -->
 
 ### Option A — Quick Simulator Test (No Physical Device)
 
 ```bash
 # Build frontend first
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
 # Launch in iOS simulator
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri ios dev
 cd ../..
 ```
@@ -129,27 +129,27 @@ Useful for initial layout verification before deploying to a physical device.
 
 ```bash
 # Build frontend
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
 # Build debug IPA
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri ios build
 cd ../..
 ```
 
 Output location:
 ```
-apps/tablet-client/gen/apple/build/oz-pos-tablet.ipa
+apps/mobile-tauri/gen/apple/build/oz-pos-tablet.ipa
 ```
 
 ### Option C — Release IPA (Signed, for TestFlight)
 
 ```bash
 # Build frontend
-cd ui && npx vite build --config vite.tablet.config.ts && cd ..
+cd ui && npx vite build --config vite.mobile.config.ts && cd ..
 
 # Open the Xcode project to configure signing first
-cd apps/tablet-client
+cd apps/mobile-tauri
 cargo tauri ios init  # if not done already
 open gen/apple/oz-pos-tablet.xcodeproj
 ```
@@ -169,13 +169,13 @@ cargo tauri ios build --release
 
 Output location:
 ```
-apps/tablet-client/gen/apple/build/oz-pos-tablet.ipa
+apps/mobile-tauri/gen/apple/build/oz-pos-tablet.ipa
 ```
 
 > ℹ️ The exact IPA output path may vary by Tauri CLI version and project name.
 > If the file is not at the expected path, run:
 > ```bash
-> find apps/tablet-client/gen/apple -name "*.ipa" 2>/dev/null
+> find apps/mobile-tauri/gen/apple -name "*.ipa" 2>/dev/null
 > ```
 
 ### Option D — Via CI (GitHub Actions): **not available, nothing builds an IPA**
@@ -197,7 +197,7 @@ names are the ones its retired header declares
    | Secret | Purpose |
    |--------|---------|
    | `APPLE_TEAM_ID` | Your Apple Developer Team ID |
-   | `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `mu.kasir.tablet`) |
+   | `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `mu.kasir.mobile`) |
    | `APPLE_PROV_PROFILE_BASE64` | Base64-encoded provisioning profile |
    | `APPLE_CERT_BASE64` | Base64-encoded distribution certificate p12 |
    | `APPLE_CERT_PASSWORD` | Certificate password |
@@ -230,7 +230,7 @@ manual UDID registration.
 3. Fill in:
    - **Platform:** iOS
    - **Name:** kasir.mu Tablet
-   - **Bundle ID:** `mu.kasir.tablet` (must match Xcode)
+   - **Bundle ID:** `mu.kasir.mobile` (must match Xcode)
     - **SKU:** `KASIRMU_TABLET_001`
 4. Submit (app does not need to be "complete" for TestFlight)
 
@@ -247,7 +247,7 @@ open ~/Library/Developer/Xcode/Archives/
 
 # Option C: Using notarytool or altool (CLI)
 xcrun altool --upload-app \
-  -f apps/tablet-client/gen/apple/build/oz-pos-tablet.ipa \
+  -f apps/mobile-tauri/gen/apple/build/oz-pos-tablet.ipa \
   -t ios \
   -u "your-apple-id@example.com" \
   -p "@keychain:AC_PASSWORD"
@@ -277,12 +277,12 @@ For developers without a paid account, you can sideload with a 7-day expiry:
 cargo tauri ios build
 
 # Install directly via Xcode
-open apps/tablet-client/gen/apple/oz-pos-tablet.xcodeproj
+open apps/mobile-tauri/gen/apple/oz-pos-tablet.xcodeproj
 # Xcode → select your iPad from the device dropdown → Run (▶)
 
 # Or install via iOS Console.app and ideviceinstaller
 brew install ideviceinstaller
-ideviceinstaller -i apps/tablet-client/gen/apple/build/oz-pos-tablet.ipa
+ideviceinstaller -i apps/mobile-tauri/gen/apple/build/oz-pos-tablet.ipa
 ```
 
 ### Update Existing Build
@@ -494,7 +494,7 @@ Data integrity maintained through suspend/resume. Accessibility features work.
 **Using Xcode Debug Navigator:**
 
 1. Connect iPad via USB
-2. Open the Xcode project: `open apps/tablet-client/gen/apple/oz-pos-tablet.xcodeproj`
+2. Open the Xcode project: `open apps/mobile-tauri/gen/apple/oz-pos-tablet.xcodeproj`
 3. Select your iPad from the device dropdown
 4. Build and run (▶)
 5. The **Debug Navigator** (⌘7) shows CPU, Memory, and Energy in real time
@@ -503,7 +503,7 @@ Data integrity maintained through suspend/resume. Accessibility features work.
 
 ```bash
 # Launch Instruments from command line
-xcodebuild -project apps/tablet-client/gen/apple/oz-pos-tablet.xcodeproj \
+xcodebuild -project apps/mobile-tauri/gen/apple/oz-pos-tablet.xcodeproj \
   -scheme "oz-pos-tablet" \
   -destination "platform=iOS,id=<device-udid>" \
   profile

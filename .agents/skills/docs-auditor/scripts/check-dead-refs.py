@@ -130,7 +130,7 @@ def build_index():
 # wrong. The distinction that matters is the other one: a doc pointing at a gitignored
 # path describes something you are meant to CREATE, while a doc pointing at a
 # NON-ignored missing path describes something that should have been committed.
-# (That second case is a live finding: apps/tablet-client/gen/apple/ is not ignored,
+# (That second case is a live finding: apps/mobile-tauri/gen/apple/ is not ignored,
 # and .gitignore states the gen/ scaffold policy IS committed - so the iOS guides point
 # at a scaffold that was never generated.)
 
@@ -257,7 +257,7 @@ def check_file(path, files, dirs, basenames, include_bare=False):
     lines = text.split(chr(10))
 
     # File-level, prefix-scoped opt-out, declared once near the top of the page:
-    #   <!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+    #   <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
     # A page whose entire subject is generated output (an iOS build guide) should say so
     # once, visibly, instead of carrying a dozen inline pragmas. It stays grep-able, and
     # the exemption is scoped to a prefix so the rest of the page is still checked.

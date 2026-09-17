@@ -79,7 +79,7 @@ handles retry — the wakeup path does not change failure handling.
 
 **Wiring:** `apps/desktop-client/src/commands/pos.rs` calls `nudge()` after a
 successful `complete_sale_scoped`. The tablet uses an `Arc<Notify>` field on
-`AppState` (`sync_wakeup`) that the inline sync daemon in `apps/tablet-client/src/lib.rs`
+`AppState` (`sync_wakeup`) that the inline sync daemon in `apps/mobile-tauri/src/lib.rs`
 selects on.
 
 > last audited 29-08-26 by docs-auditor

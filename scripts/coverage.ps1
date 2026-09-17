@@ -58,7 +58,7 @@ try {
                 --workspace `
                 --all-features `
                 --exclude kasirmu-app `
-                --exclude kasirmu-tablet `
+                --exclude kasirmu-mobile `
                 --html `
                 --json `
                 --output-dir (Join-Path $root "coverage/rust")

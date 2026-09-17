@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  *
  * Verifies the auth + sale happy-path tests render correctly on the
  * tablet viewport (1024×1366 portrait). The webServer starts a
- * separate Vite instance for tablet (vite.tablet.config.ts) or
+ * separate Vite instance for tablet (vite.mobile.config.ts) or
  * we use the same dev server and just resize the viewport.
  *
  * This test uses the `tablet` Playwright project which sets the

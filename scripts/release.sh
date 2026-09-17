@@ -59,10 +59,10 @@ echo "  cargo fmt..."
 cargo fmt --all -- --check || { echo "  FAILED"; exit 1; }
 
 echo "  cargo clippy..."
-cargo clippy --workspace --all-targets --all-features --exclude kasirmu-app --exclude kasirmu-tablet -- -D warnings || { echo "  FAILED"; exit 1; }
+cargo clippy --workspace --all-targets --all-features --exclude kasirmu-app --exclude kasirmu-mobile -- -D warnings || { echo "  FAILED"; exit 1; }
 
 echo "  cargo nextest run..."
-cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-tablet --profile ci || { echo "  FAILED"; exit 1; }
+cargo nextest run --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile --profile ci || { echo "  FAILED"; exit 1; }
 
 echo "  Pre-release checks PASSED"
 

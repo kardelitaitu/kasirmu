@@ -20,7 +20,7 @@ next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe dec
 //!
 //! # Wiring status — read this before scoring a bug's severity
 //!
-//! Nothing in `apps/desktop-client` or `apps/tablet-client` constructs a
+//! Nothing in `apps/desktop-client` or `apps/mobile-tauri` constructs a
 //! [`PaymentRequest`] or calls [`authorize`](PaymentProcessor::authorize).
 //! An earlier version of this doc said "the cashier's flow uses the trait",
 //! which is not true today — and a sentence like that is what makes a reader
