@@ -1,5 +1,5 @@
 //! Legal-entity command bodies (Wave F) — the tauri-free half of
-//! `apps/desktop-client/src/commands/legal_entities.rs`.
+//! `apps/desktop-tauri/src/commands/legal_entities.rs`.
 //!
 //! Legal Entities are Organization-level resources, so these commands read and
 //! write the global identity database rather than a per-Location database. The

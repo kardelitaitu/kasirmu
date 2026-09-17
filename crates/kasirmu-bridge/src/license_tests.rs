@@ -1,5 +1,5 @@
 //! Unit tests for the license command bodies (relocated from
-//! `apps/desktop-client/src/commands/license_tests.rs`).
+//! `apps/desktop-tauri/src/commands/license_tests.rs`).
 //!
 //! Mounted at the foot of `license.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs, the machine-id / hardware-fingerprint

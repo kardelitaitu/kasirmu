@@ -1,5 +1,5 @@
 //! License activation and status command bodies (Wave E / E3) - the tauri-free half
-//! of apps/desktop-client/src/commands/license.rs.
+//! of apps/desktop-tauri/src/commands/license.rs.
 //!
 //! Key functions: the activation, renewal, pause and resume round-trips to the license
 //! server, the locally-derived verdict, the server-authoritative status probe, the

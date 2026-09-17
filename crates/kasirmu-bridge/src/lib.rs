@@ -13,7 +13,7 @@
 //! - [`error::BridgeError`] — the tauri-free mirror of `AppError`; each shim
 //!   converts it back variant-for-variant so the wire shape stays identical.
 //!
-//! Consumers are the `#[tauri::command]` shims in `apps/desktop-client` and
+//! Consumers are the `#[tauri::command]` shims in `apps/desktop-tauri` and
 //! `apps/mobile-tauri`: a shim builds a `BridgeCtx`, calls the bridge body,
 //! and maps the result. Later waves add one module per command domain
 //! (catalog: `categories`, `products`, `product_variants`, `products_images`;
