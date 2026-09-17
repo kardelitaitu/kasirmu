@@ -1,7 +1,7 @@
 //! Local payment-method command bodies (the market rail surface).
 //!
 //! Wave F: extracted byte-for-byte from
-//! `apps/desktop-client/src/commands/local_payment.rs`. Only the mechanical
+//! `apps/desktop-tauri/src/commands/local_payment.rs`. Only the mechanical
 //! `state.*` → `ctx.*` receiver swaps and `AppError::` → `BridgeError::`
 //! renames were applied; gate kind and order (session gate then the
 //! ADR #47 location-resource gate), the single store lock with no drop

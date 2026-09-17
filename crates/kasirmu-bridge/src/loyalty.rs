@@ -1,5 +1,5 @@
 //! Loyalty command bodies (Wave B / B2) — the tauri-free half of
-//! `apps/desktop-client/src/commands/loyalty.rs`.
+//! `apps/desktop-tauri/src/commands/loyalty.rs`.
 //!
 //! Key functions: the session-scoped [`get_loyalty_account_scoped`],
 //! [`list_loyalty_accounts_scoped`], [`earn_loyalty_points_scoped`],

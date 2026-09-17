@@ -1,5 +1,5 @@
 //! Location-profile commands (Wave E / E7) — the tauri-free half of
-//! `apps/desktop-client/src/commands/locations.rs`.
+//! `apps/desktop-tauri/src/commands/locations.rs`.
 //!
 //! Every operation talks to the [`kasirmu_core::Store`] facade over the session's
 //! store-scoped connection, exactly as the shell did: the store DB is opened

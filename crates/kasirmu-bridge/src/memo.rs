@@ -1,5 +1,5 @@
 //! Memo command bodies (Wave F) — the tauri-free half of
-//! `apps/desktop-client/src/commands/memo.rs`.
+//! `apps/desktop-tauri/src/commands/memo.rs`.
 //!
 //! Memos are a tenant-level resource (Organization Memos span every location;
 //! Location Memos target one), stored in the global identity database

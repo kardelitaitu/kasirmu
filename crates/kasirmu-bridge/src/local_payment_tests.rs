@@ -1,6 +1,6 @@
 //! Tests for the local payment method commands (slice 6).
 //!
-//! Relocated from `apps/desktop-client/src/commands/local_payment_tests.rs`
+//! Relocated from `apps/desktop-tauri/src/commands/local_payment_tests.rs`
 //! (Wave F); the tauri `flow_state`/`mock_app` pair becomes `TestBridge`
 //! with an isolated store-db manager over a unique temp directory.
 
