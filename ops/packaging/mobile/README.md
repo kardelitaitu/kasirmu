@@ -291,7 +291,7 @@ apps/tablet-client/         # Rust + Tauri configuration
     ├── android/            # Gradle project
     └── apple/              # Xcode project
 
-packaging/mobile/README.md  # This file
+ops/packaging/mobile/README.md  # This file
 ```
 
 ---

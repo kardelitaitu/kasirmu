@@ -1271,7 +1271,7 @@ consumed → every release APK/AAB was effectively UNSIGNED.
   write `keystore.properties` from `KEYSTORE_PASSWORD`/`KEY_ALIAS`, then
   build without CLI flags.
 - Docs corrected (tablet AGENTS.md, first-release-runbook,
-  android-keystore-guide, android-install-test, packaging/mobile/README);
+  android-keystore-guide, android-install-test, ops/packaging/mobile/README);
   `KEY_PASSWORD` secret dropped (single-password schema).
 
 **Also found:** local `gen/android/app/tauri.properties` +

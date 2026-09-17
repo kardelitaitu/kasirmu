@@ -29,7 +29,7 @@
 > | Workflow | Live? | What it produces |
 > |---|---|---|
 > | `release.yml` | ✅ **LIVE** (`v*` tags) | Signed desktop installers + `latest.json`/`beta.json` updater manifests + provenance |
-> | `android.yml` | ❌ retired `.bak` | nothing — APK/AAB is a manual build (`packaging/mobile/`) |
+> | `android.yml` | ❌ retired `.bak` | nothing — APK/AAB is a manual build (`ops/packaging/mobile/`) |
 > | `ios.yml` | ❌ retired `.bak` | nothing — IPA is a manual build |
 >
 > A stale "this does not work" warning is not the safe kind of stale: an operator who
@@ -59,7 +59,7 @@ live:
 | Gate | `release.yml` · `release-validate` | Tag ↔ version parity (`check-release-version.mjs`) + updater client compat check (`check-updater-compat.mjs`) |
 | Build | `release.yml` · `release-build` | Matrix: Linux AppImage+deb, Windows NSIS+MSI, macOS DMG, Docker cloud + license images; per-artifact existence gate; blocking Trivy scans |
 | Publish | `release.yml` · `release-publish` | Toolchain self-tests → signed `latest.json` + `beta.json` → signature verification → `SHA256SUMS.txt` → **draft release** → inventory gate → **auto-publish** → provenance attestation |
-| Mobile | ~~`android.yml` / `ios.yml`~~ **retired `.bak`** | ~~Signed APK/AAB + IPA uploaded into the same release~~ — nothing runs. Build mobile by hand per `packaging/mobile/README.md` and upload with `gh release upload --clobber` (poll up to 60 min for the release to exist) |
+| Mobile | ~~`android.yml` / `ios.yml`~~ **retired `.bak`** | ~~Signed APK/AAB + IPA uploaded into the same release~~ — nothing runs. Build mobile by hand per `ops/packaging/mobile/README.md` and upload with `gh release upload --clobber` (poll up to 60 min for the release to exist) |
 
 `release-publish` is gated by `environment: release` (see §2).
 

@@ -16,7 +16,7 @@
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on iPadOS 16+ physical iPads
-> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Android Install Test](./android-install-test.md) · [Windows Launch Test](./windows-launch-test.md)
+> **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/tablet-client/tauri.conf.json) · [Android Install Test](./android-install-test.md) · [Windows Launch Test](./windows-launch-test.md)
 
 This guide covers building, installing, and testing the kasir.mu tablet app
 on a physical iPad device via TestFlight or direct sideloading.
@@ -710,7 +710,7 @@ Notes:
 
 ## Related
 
-- [Mobile Build & Deployment Guide](https://github.com/kardelitaitu/oz-pos/tree/main/packaging/mobile) — Full Android/iOS build pipeline
+- [Mobile Build & Deployment Guide](https://github.com/kardelitaitu/oz-pos/tree/main/ops/packaging/mobile) — Full Android/iOS build pipeline
 - [Android Install Test](./android-install-test.md) — Android equivalent guide
 - [Windows Launch Test](./windows-launch-test.md) — Desktop equivalent guide
 - [Linux Launch Test](./linux-launch-test.md) — Linux equivalent guide

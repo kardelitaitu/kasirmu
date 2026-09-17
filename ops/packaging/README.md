@@ -1,4 +1,4 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths verified) · all referenced paths exist: packaging/linux/oz-pos.desktop, packaging/linux/deb/postinst, packaging/linux/deb/prerm, packaging/mobile/, oz-pos-updater.key, .github/workflows/release.yml; bundle list (deb,appimage,msi,nsis,dmg) and /var/lib/oz-pos/ DB path consistent with release workflow + Tauri defaults -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths verified) · all referenced paths exist: ops/packaging/linux/oz-pos.desktop, ops/packaging/linux/deb/postinst, ops/packaging/linux/deb/prerm, ops/packaging/mobile/, oz-pos-updater.key, .github/workflows/release.yml; bundle list (deb,appimage,msi,nsis,dmg) and /var/lib/oz-pos/ DB path consistent with release workflow + Tauri defaults -->
 
 # OZ-POS Packaging
 
@@ -7,7 +7,7 @@ Platform installer metadata for Tauri bundler output.
 ## Structure
 
 ```
-packaging/
+ops/packaging/
 ├── linux/
 │   ├── oz-pos.desktop    # Freedesktop .desktop entry
 │   └── deb/

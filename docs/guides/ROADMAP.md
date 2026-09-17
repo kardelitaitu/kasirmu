@@ -299,10 +299,10 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Windows: MSI installer (WiX configured via `bundle.targets: "all"`)
 - [x] Linux: `.deb` + `.AppImage` packages
 - [x] macOS: `.dmg` package
-- [x] `packaging/README.md` — packaging overview and build guide
-- [x] `packaging/linux/oz-pos.desktop` — freedesktop entry
-- [x] `packaging/linux/deb/postinst` — Debian post-install script
-- [x] `packaging/linux/deb/prerm` — Debian pre-removal script
+- [x] `ops/packaging/README.md` — packaging overview and build guide
+- [x] `ops/packaging/linux/oz-pos.desktop` — freedesktop entry
+- [x] `ops/packaging/linux/deb/postinst` — Debian post-install script
+- [x] `ops/packaging/linux/deb/prerm` — Debian pre-removal script
 
 ### UI / UX — Data Management & Feature Toggle Screens
 - [x] **Data Management screen** (Settings → Data)
@@ -455,7 +455,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Android tablet build (Tauri mobile → APK, signed) — CI **no longer** builds it: `android.yml` and `ios.yml` are retired `.bak`, and `release.yml` covers desktop only. The build path exists (`cargo tauri android build`); the automation does not.; physical-device testing still needs infra
 - [ ] iPad build (Tauri mobile → `.ipa`, TestFlight distribution)
 - [x] Touch-optimised UI layout for tablet screen sizes (tablet shell + responsive breakpoints + touch targets)
-- [x] `packaging/mobile/README.md` — Tauri v2 mobile build guide for Android & iOS
+- [x] `ops/packaging/mobile/README.md` — Tauri v2 mobile build guide for Android & iOS
 
 ### UI / UX — Responsive, Mobile & Multi-Store Screens
 
