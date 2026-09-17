@@ -51,6 +51,12 @@ Legend: `←` marks where a directory's contents come from. `(Pnn)` names the ph
 move. Directory names shown are the **target** names, i.e. after the phase that renames them.
 Everything unmarked stays exactly where it is.
 
+**Reconciled 2026-09-18 against the landed tree.** Where a phase's final decision differed from this
+file's first draft — P12 moved `fuzz/` into `tools/` rather than leaving it at the root, and P13 renamed
+the mobile package and both mobile entry points — the tree below states the decision that **landed**, and
+names both phases. A reader checking "is the target achieved" against the draft would otherwise get the
+wrong answer in six places.
+
 ```
 kasir.mu/
 ├─ apps/                     # deployable PROCESSES + UI shells
@@ -60,7 +66,7 @@ kasir.mu/
 │   │   ├─ icons/            #     .ico + .icns + png ladder        ← per-OS asset
 │   │   ├─ gen/schemas/      #     committed Tauri schema (no CLI needed to build)
 │   │   └─ tauri.conf.json   #     bundle.targets="all" → MSI/NSIS + .deb/.AppImage + .dmg/.app
-│   ├─ mobile-tauri/         # ← tablet-client/   — Tauri v2, pkg `kasirmu-tablet`  (P11)
+│   ├─ mobile-tauri/         # ← tablet-client/   — Tauri v2, pkg `kasirmu-mobile`  (P11, P13)
 │   │   ├─ src/              #     thin shims → kasirmu-bridge
 │   │   ├─ capabilities/     #     default.json + mobile.json (split into android.json +
 │   │   │                    #       ios.json when iOS lands, per P11)
@@ -86,13 +92,13 @@ kasir.mu/
 ├─ crates/                   # unchanged — the 17 libraries
 │
 ├─ shared-ui/                # NEW — assets no UI toolkit owns (P9)
-│   ├─ locales/              # ← ui/src/locales/  (56 .ftl, ~9,841 message definitions, en+id)
-│   └─ tokens/               # ← token VALUES lifted out of tokens.css (deferred half of P9)
+│   ├─ locales/              # ← ui/src/locales/  (54 .ftl, ~9,841 message definitions, en+id)  (P9a)
+│   └─ tokens/               # ← token VALUES lifted out of tokens.css (DEFERRED — P9b)
 │                            #   (NOT created empty — see P9 staging and principle 2)
 │
 ├─ ui/                       # the React + Vite binding (one toolkit's frontend)
 │   ├─ index.html            # unchanged — <script src="/src/main.tsx">  (so main.tsx stays put)
-│   ├─ index.tablet.html     # unchanged — <script src="/src/main.tablet.tsx">
+│   ├─ index.mobile.html     # ← index.tablet.html   — <script src="/src/main.mobile.tsx">   (P13)
 │   └─ src/
 │       ├─ app/              # ← frontend/shell/        (11 files + 1 subdir)
 │       ├─ components/       # ← components/ (55, survives) MERGED WITH frontend/shared/ (22)
@@ -103,7 +109,7 @@ kasir.mu/
 │       ├─ hooks/ utils/ contexts/ types/ i18n/ test-utils/ dev-mock/ __tests__/
 │       ├─ App.tsx           # unchanged
 │       ├─ main.tsx          # unchanged — Vite entry, referenced by index.html
-│       └─ main.tablet.tsx   # unchanged — referenced by index.tablet.html
+│       └─ main.mobile.tsx   # ← main.tablet.tsx — referenced by index.mobile.html  (P13)
 │       #   DELETED: frontend/ · platform/   (both emptied by the moves above)
 │       #   MOVED OUT: locales/ → shared-ui/locales/ (P9a) — the .ftl corpus serves any toolkit.
 │       #   i18n/ STAYS: it is the @fluent/react binding, which is React-specific.
@@ -124,10 +130,12 @@ kasir.mu/
 │
 ├─ website/                  # unchanged (separate Cloudflare deploy, 208 tracked files)
 ├─ scripts/                  # unchanged (165 tracked files)
-├─ assets/  fuzz/            # unchanged — fuzz/ stays workspace-excluded on purpose
+├─ assets/                   # unchanged
+├─ tools/                    # ← fuzz/ (P12) + updater-compat-check — every crate that is deliberately
+│                            #   OUTSIDE the workspace lives here, together, instead of scattered
 │
 ├─ .github/workflows/        # 2 live: dev-ci.yml, release.yml
-│   └─ attic/                # ← the 13 inert *.yml.bak files
+│   └─ attic/                # ← the inert *.yml.bak files (11 as measured by P4, not the 13 first listed)
 │
 └─ <root files>              # see §5 — only what a tool looks up BY NAME at the project root,
                              # plus the four human entry points
@@ -769,8 +777,9 @@ folder move in this plan — and the fix is two-fold: remove the dependency (P10
 
 > **Root holds only files a tool discovers by name at the project root, plus the four human entry points (README, CHANGELOG, CONTRIBUTING, LICENSE). Everything else lives in a directory.**
 
-There are **35 tracked root-level files** (`git ls-files --directory | grep -v '/' | wc -l`), and they
-are four different piles needing opposite treatment.
+There were **35 tracked root-level files** (`git ls-files --directory | grep -v '/' | wc -l`) when this
+policy was written; P8 and P12 took it to **29**, and `verify-root-policy.py` now holds that line as a
+gate rather than a census. The files fall into four piles needing opposite treatment.
 
 **Pile A — load-bearing, do not move.** Cargo, gitleaks, Trivy, cargo-deny, the MCP client and git
 all do a *root lookup by filename*: `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`
@@ -804,7 +813,7 @@ still carrying the old brand. It also slips past `.gitignore`'s `*.key` rule bec
 
 **What it actually is (verified 2026-09-17):** the 152-byte file holds the *base64* of the minisign
 key, and that same base64 string is **inlined verbatim** as `pubkey` in
-`apps/desktop-client/tauri.conf.json:72`. So the running updater does **not** read this file — deleting
+`apps/desktop-tauri/tauri.conf.json:72`. So the running updater does **not** read this file — deleting
 it would not break signature verification. It is the human-readable record of which key signs releases,
 which is worth keeping and worth renaming; it is not load-bearing.
 
@@ -838,7 +847,7 @@ looks, though, because most entries are immutable:
 
 | Class | Count | Entries | Treatment |
 |---|---|---|---|
-| **Tool discovery contracts** — looked up *by name at the repo root* | 6 | `.github/`, `.githooks/`, `.cargo/` (`config.toml`, `audit.toml`), `.config/` (`nextest.toml`), `.vscode/`, `.agents/` | **Keep.** Cargo, cargo-nextest, git, GitHub and VS Code each resolve these by location; moving one breaks the tool silently |
+| **Tool discovery contracts** — looked up *by name at the repo root* | 5 | `.github/`, `.githooks/`, `.cargo/` (`config.toml`, `audit.toml`), `.config/` (`nextest.toml`), `.agents/` | **Keep.** Cargo, cargo-nextest, git, GitHub and the agent harness each resolve these by location; moving one breaks the tool silently. (`.vscode/` was in this row until the owner removed it — `3b2f55d8d`.) |
 | Tool-owned and gitignored | 3 | `.commandcode/`, `.freebuff/`, `.workbuddy-ai/` | Not ours to move |
 | Build output, gitignored | 2 | `target/`, `target-release/` | Not structure |
 | **Source tiers** | 5 | `apps/`, `crates/`, `foundation/`, `modules/`, `platform/` | **Keep** — collapsing them is blocked by `UI_VOCABULARY_ROOTS` (§4, design B) |
