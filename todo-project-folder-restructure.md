@@ -199,7 +199,7 @@ is referenced by `apps/unified/Caddyfile`.
 **Acceptance:** `test ! -f docker-compose.yml && test ! -f Dockerfile.server` ·
 `bash scripts/verify-docker-all.sh` · `python scripts/verify-dockerfile-workspace.py` · `npm run e2e`
 
-### [ ] P4 — Move the inert workflows to `attic/`
+### [x] P4 — Move the inert workflows to `attic/`
 
 **Commit:** `chore(ci): move retired workflow backups into attic/`
 
@@ -207,7 +207,7 @@ is referenced by `apps/unified/Caddyfile`.
 files (`android`, `ci`, `deploy`, `docker-digest-drift`, `docker-persistence`, `e2e-pr`, `ios`,
 `nightly`, `release`, `security`, `website`…). 87% of the directory is retired, which makes any
 audit of "what does CI run" start with a wrong answer.
-**Acceptance:** `ls .github/workflows/*.yml | wc -l` → 2 · `ls .github/workflows/attic/*.bak | wc -l` → 13
+**Acceptance:** `ls .github/workflows/*.yml | wc -l` → 2 · `ls .github/workflows/attic/*.bak | wc -l` → 11 (as measured at line 509 — two of the 13 names this phase originally listed never existed on disk)
 
 ### [x] P5 — WITHDRAWN: the root `.md` files stay where they are
 
