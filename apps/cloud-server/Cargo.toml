@@ -16,7 +16,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-oz-api = { workspace = true }
+kasirmu-api = { workspace = true }
 oz-core = { workspace = true }
 kasirmu-logging = { workspace = true }
 # agents-1: the Midtrans QRIS driver behind /api/payment/midtrans/qris.

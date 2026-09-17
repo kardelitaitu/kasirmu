@@ -80,7 +80,7 @@ async fn mint_uses_persisted_secret_stably() {
     // Both validate under the same per-install secret.
     for t in [&first.token, &second.token] {
         assert!(
-            oz_api::auth::validate_token_with_secret(t, Some(&secret))
+            kasirmu_api::auth::validate_token_with_secret(t, Some(&secret))
                 .await
                 .is_ok()
         );
@@ -238,7 +238,7 @@ async fn rotate_secret_swaps_key_and_keeps_server_up() {
     // rotated persisted secret (the running server now uses the new one).
     let stale = local_api::mint_token(&old_secret, "stale", Some(1)).unwrap();
     assert!(
-        oz_api::auth::validate_token_with_secret(&stale.token, Some(&new_secret))
+        kasirmu_api::auth::validate_token_with_secret(&stale.token, Some(&new_secret))
             .await
             .is_err()
     );

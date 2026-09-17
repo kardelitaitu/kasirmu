@@ -3,7 +3,7 @@
 //!
 //! Both builders moved out of `openapi.rs` unchanged; `openapi_spec` is their
 //! only caller, and it merges their output into the shared `oz-api` document
-//! and stamps the cloud scope (`oz_api::spec::annotate_scope`) itself, so
+//! and stamps the cloud scope (`kasirmu_api::spec::annotate_scope`) itself, so
 //! nothing here knows about scopes, tags, or the base spec.
 //!
 //! Both functions are named by the parent, so both are `pub(super)` and

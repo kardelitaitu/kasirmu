@@ -1,7 +1,7 @@
 //! OpenAPI 3.1 API documentation for the OZ-POS cloud server.
 //!
 //! The shared surface (`x-oz-scope: "both"`) lives in
-//! `oz_api::spec::base_spec()` — the single source of truth also served
+//! `kasirmu_api::spec::base_spec()` — the single source of truth also served
 //! by the desktop local API. This module merges the cloud-only paths
 //! (`x-oz-scope: "cloud"`: host health/metrics, sync, webhooks, docs
 //! UI) and cloud-only schemas on top, and provides the docs handlers:
@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 /// scan of the router files, and every operation must carry a valid
 /// `x-oz-scope` (base paths `"both"`, cloud paths `"cloud"`).
 pub fn openapi_spec() -> Value {
-    let mut spec = oz_api::spec::base_spec();
+    let mut spec = kasirmu_api::spec::base_spec();
     spec["info"]["title"] = json!("OZ-POS Cloud Server API");
     spec["info"]["description"] = json!(
         "REST API for the OZ-POS point-of-sale cloud sync server.\n\n\
@@ -83,7 +83,7 @@ pub fn openapi_spec() -> Value {
     }
     // Cloud-only paths, annotated with their scope before merging.
     let mut cloud_paths = build_cloud_paths();
-    oz_api::spec::annotate_scope(&mut cloud_paths, oz_api::spec::SCOPE_CLOUD);
+    kasirmu_api::spec::annotate_scope(&mut cloud_paths, kasirmu_api::spec::SCOPE_CLOUD);
     if let Some(dst) = spec["paths"].as_object_mut()
         && let Some(src) = cloud_paths.as_object()
     {

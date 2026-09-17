@@ -401,7 +401,7 @@ async fn handle_subscription_event(
     };
 
     if let Some(pool) = &state.pg {
-        oz_api::pg::set_tenant_plan(pool, &tenant_id, plan)
+        kasirmu_api::pg::set_tenant_plan(pool, &tenant_id, plan)
             .await
             .map_err(|e| {
                 (

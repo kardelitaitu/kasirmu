@@ -5,6 +5,6 @@
 //! pulling in the Tauri shell. This module exists only so the pre-existing
 //! `crate::local_api::…` call sites in `lib.rs` and
 //! `commands/local_api.rs` keep resolving unchanged; new code should
-//! depend on `oz_local_api` directly.
+//! depend on `kasirmu_local_api` directly.
 
-pub use oz_local_api::*;
+pub use kasirmu_local_api::*;

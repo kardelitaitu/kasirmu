@@ -54,14 +54,14 @@ async fn rotate_secret_replaces_persisted_value_and_invalidates_old_tokens() {
     // new one (this is why the UI warns before rotating).
     let stale = mint_token(&original, "stale", Some(1)).unwrap();
     assert!(
-        oz_api::auth::validate_token_with_secret(&stale.token, Some(&rotated))
+        kasirmu_api::auth::validate_token_with_secret(&stale.token, Some(&rotated))
             .await
             .is_err(),
         "rotated secret must invalidate previously minted tokens"
     );
     let fresh = mint_token(&rotated, "fresh", Some(1)).unwrap();
     assert!(
-        oz_api::auth::validate_token_with_secret(&fresh.token, Some(&rotated))
+        kasirmu_api::auth::validate_token_with_secret(&fresh.token, Some(&rotated))
             .await
             .is_ok()
     );
@@ -71,14 +71,14 @@ async fn rotate_secret_replaces_persisted_value_and_invalidates_old_tokens() {
 async fn mint_token_roundtrip_and_clamp() {
     let secret = "a".repeat(32);
     let resp = mint_token(&secret, "my-script", Some(2)).unwrap();
-    let claims = oz_api::auth::validate_token_with_secret(&resp.token, Some(&secret))
+    let claims = kasirmu_api::auth::validate_token_with_secret(&resp.token, Some(&secret))
         .await
         .unwrap();
     assert_eq!(claims.sub, "my-script");
 
     // Out-of-range expiry is clamped, not rejected.
     let long = mint_token(&secret, "x", Some(999_999)).unwrap();
-    let claims = oz_api::auth::validate_token_with_secret(&long.token, Some(&secret))
+    let claims = kasirmu_api::auth::validate_token_with_secret(&long.token, Some(&secret))
         .await
         .unwrap();
     let hours = (claims.exp as i64 - claims.iat as i64) / 3600;
@@ -86,7 +86,7 @@ async fn mint_token_roundtrip_and_clamp() {
 
     // Blank label falls back.
     let blank = mint_token(&secret, "   ", None).unwrap();
-    let claims = oz_api::auth::validate_token_with_secret(&blank.token, Some(&secret))
+    let claims = kasirmu_api::auth::validate_token_with_secret(&blank.token, Some(&secret))
         .await
         .unwrap();
     assert_eq!(claims.sub, "local-script");
@@ -97,7 +97,7 @@ async fn minted_token_rejected_under_wrong_secret() {
     let secret = "b".repeat(32);
     let resp = mint_token(&secret, "t", Some(1)).unwrap();
     assert!(
-        oz_api::auth::validate_token_with_secret(&resp.token, Some(&"c".repeat(32)))
+        kasirmu_api::auth::validate_token_with_secret(&resp.token, Some(&"c".repeat(32)))
             .await
             .is_err()
     );
@@ -187,7 +187,7 @@ async fn server_serves_health_protected_routes_and_stops() {
 
     // A token forged with the known dev constant is rejected — the
     // per-install secret is the whole point of the stateful middleware.
-    let forged = oz_api::auth::create_token("forged", Some(1), None, None)
+    let forged = kasirmu_api::auth::create_token("forged", Some(1), None, None)
         .unwrap()
         .token;
     let resp = client

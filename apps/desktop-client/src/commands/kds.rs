@@ -11,7 +11,7 @@
 //! stay reachable from here (and from the sibling test mount) through `pub use`.
 //!
 //! kds-sync: the kitchen-transition shims are also the publish seam for the
-//! [`oz_lan`] `KdsSyncEvent` LAN protocol (bridge/core must not depend on
+//! [`kasirmu_lan`] `KdsSyncEvent` LAN protocol (bridge/core must not depend on
 //! oz-lan, so the events are published here) and keep
 //! [`AppState::kds_queue_cache`] fresh for reconnecting peers.
 
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 
 use oz_core::KdsOrder;
-use oz_lan::{
+use kasirmu_lan::{
     KdsLineItemBumped, KdsOrderPlaced, KdsOrderReady, KdsOrderRecalled, KdsQueueSnapshot,
     KdsQueueTicket, KdsSyncEvent,
 };

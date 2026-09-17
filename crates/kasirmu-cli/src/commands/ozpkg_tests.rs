@@ -41,7 +41,7 @@ const MUST_TRAVEL: &[&str] = &[keys::STORE_NAME, keys::DEFAULT_CURRENCY];
 /// platform-core predicate the CLI called directly did NOT, which is the
 /// asymmetry this lane closes. `local_api.enabled` / `local_api.port` /
 /// `local_api.store_id` have no `keys::` constant (they are declared in
-/// `oz_local_api`, which `oz-cli` must not depend on), so they are literals
+/// `kasirmu_local_api`, which `oz-cli` must not depend on), so they are literals
 /// here and the prefix rule is what is actually under test.
 const MANAGER_OWNED: &[&str] = &[
     "local_api.enabled",

@@ -313,7 +313,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             // Start the background image GC loop (spec 0046b §3.4/§3.7) —
             // sweeps orphaned `image_refs` (refcount = 0, 24h grace) and
             // deletes the corresponding files from the image volume.
-            image_gc::start_image_gc_loop(conn.clone(), oz_api::image_dir_from_env());
+            image_gc::start_image_gc_loop(conn.clone(), kasirmu_api::image_dir_from_env());
 
             // P55-3: Start the scheduled report sender loop.
             email::start_report_sender_loop(conn.clone());
@@ -651,11 +651,11 @@ pub fn build_router(
     // CORS allowlist shared with the oz-api router
     // (docs/archived/2026-08-15-unify-auth-and-sync.md
     // §11): documented defaults, overridable via OZ_CORS_ORIGINS.
-    let cors_origins = oz_api::cors_origins_from_env();
-    let cors = oz_api::build_cors(&cors_origins);
+    let cors_origins = kasirmu_api::cors_origins_from_env();
+    let cors = kasirmu_api::build_cors(&cors_origins);
 
     // Build the oz-api router (products, categories, sales, health, tokens).
-    let api_state = oz_api::AppState {
+    let api_state = kasirmu_api::AppState {
         db: state.db.clone(),
         // Phase 1.2: the REST handlers read/write Postgres on the cloud
         // branch instead of the in-memory SQLite fallback.
@@ -670,9 +670,9 @@ pub fn build_router(
         cors_origins: cors_origins.clone(),
         // Spec 0046b §3.4: content-addressed image store on the Northflank
         // volume (default `/data/images` in prod, `./data/images` in dev).
-        image_dir: oz_api::image_dir_from_env(),
+        image_dir: kasirmu_api::image_dir_from_env(),
     };
-    let api_router = oz_api::router(api_state);
+    let api_router = kasirmu_api::router(api_state);
 
     // P8-3: Rate-limit token minting per client IP. This needs its own clone
     // of the limiter because /api/v1/tokens runs BEFORE auth (it mints the
@@ -746,7 +746,7 @@ pub fn build_router(
         // The Rust CompressionLayer was removed to save ~0.01 core CPU.
         .layer(cors)
         .layer(axum::middleware::from_fn(
-            oz_api::security_headers_middleware,
+            kasirmu_api::security_headers_middleware,
         ))
         .layer(axum::middleware::from_fn(request_id_middleware))
 } // ── Tests ─────────────────────────────────────────────────────────────────

@@ -43,7 +43,7 @@ use axum::{
     routing::{get, post},
 };
 use foundation::{Currency, Money};
-use oz_api::auth::{ApiTokenClaims, auth_middleware};
+use kasirmu_api::auth::{ApiTokenClaims, auth_middleware};
 use kasirmu_payment::PaymentProcessor as _;
 use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
 use kasirmu_payment::types::PaymentRequest;

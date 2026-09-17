@@ -717,7 +717,7 @@ pub async fn push_memos_to_server(
 
 /// One active memo served by the cloud (`GET /api/v1/memos/active`).
 ///
-/// Wire-mirrors `oz_api::pg::ActiveMemoPg` (snake_case field names —
+/// Wire-mirrors `kasirmu_api::pg::ActiveMemoPg` (snake_case field names —
 /// that struct carries no serde rename), so the tablet can map it into
 /// its display DTO without a serde rename on either side.
 #[derive(Debug, Clone, Deserialize)]

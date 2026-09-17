@@ -27,7 +27,7 @@ use serde::Deserialize;
 use sha2::Digest;
 use tokio::sync::Mutex;
 
-use oz_api::auth::{ApiTokenClaims, auth_middleware};
+use kasirmu_api::auth::{ApiTokenClaims, auth_middleware};
 use platform_sync::transport::{PullRequest, PullResponse, PushOutcome, PushResponse};
 
 use crate::metrics;
@@ -229,7 +229,7 @@ pub async fn plan_middleware(
 
     let tenant_id = request
         .extensions()
-        .get::<oz_api::auth::ApiTokenClaims>()
+        .get::<kasirmu_api::auth::ApiTokenClaims>()
         .and_then(|claims| claims.tenant_id.as_deref())
         .unwrap_or("default");
 

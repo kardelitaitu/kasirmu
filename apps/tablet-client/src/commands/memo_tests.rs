@@ -93,7 +93,7 @@ fn memo_dto_org_scope_serializes_location_id_null() {
 // ── Cloud-first read (2026-09-07 cloud-read ruling) ────────────────
 
 /// A cloud `ActiveMemoPg` body as the wire actually carries it —
-/// snake_case, because `oz_api::pg::ActiveMemoPg` carries no serde
+/// snake_case, because `kasirmu_api::pg::ActiveMemoPg` carries no serde
 /// rename. Decoding this shape is the tablet's entire mapping contract.
 fn cloud_wire_json() -> serde_json::Value {
     serde_json::json!({

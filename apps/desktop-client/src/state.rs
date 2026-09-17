@@ -206,8 +206,8 @@ pub struct AppState {
     /// pointer swap, never across an await. Starts as the empty default;
     /// first populated when this terminal executes a KDS transition.
     ///
-    /// [`KdsQueueProvider`]: oz_lan::KdsQueueProvider
-    pub kds_queue_cache: Arc<RwLock<oz_lan::KdsQueueSnapshot>>,
+    /// [`KdsQueueProvider`]: kasirmu_lan::KdsQueueProvider
+    pub kds_queue_cache: Arc<RwLock<kasirmu_lan::KdsQueueSnapshot>>,
 }
 
 impl AppState {
@@ -381,7 +381,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
-            kds_queue_cache: Arc::new(RwLock::new(oz_lan::KdsQueueSnapshot::default())),
+            kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
         })
     }
 }
@@ -864,7 +864,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             local_api: Mutex::new(None),
             local_api_op: Mutex::new(()),
-            kds_queue_cache: Arc::new(RwLock::new(oz_lan::KdsQueueSnapshot::default())),
+            kds_queue_cache: Arc::new(RwLock::new(kasirmu_lan::KdsQueueSnapshot::default())),
         }
     }
 

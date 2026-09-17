@@ -760,7 +760,7 @@ async fn pg_integration_webhooks_read_write_postgres() {
         .expect("handle_subscription_event");
     assert_eq!(resp.0["plan"], "pro");
     assert_eq!(
-        oz_api::pg::get_tenant_plan(&pool, &tenant)
+        kasirmu_api::pg::get_tenant_plan(&pool, &tenant)
             .await
             .expect("get_tenant_plan"),
         Some(oz_core::TenantPlan::Pro)
@@ -1075,7 +1075,7 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
     assert_eq!(json["plan"], "pro");
     assert_eq!(
-        oz_api::pg::get_tenant_plan(&schema_pool, &tenant)
+        kasirmu_api::pg::get_tenant_plan(&schema_pool, &tenant)
             .await
             .expect("get_tenant_plan"),
         Some(oz_core::TenantPlan::Pro)

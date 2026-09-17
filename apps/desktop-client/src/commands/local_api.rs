@@ -360,7 +360,7 @@ pub async fn local_api_mint_token_scoped(
     label: String,
     expiry_hours: Option<i64>,
     state: tauri::State<'_, AppState>,
-) -> Result<oz_api::auth::TokenResponse, AppError> {
+) -> Result<kasirmu_api::auth::TokenResponse, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let secret = {

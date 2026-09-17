@@ -11,7 +11,7 @@ description = "Headless loopback REST API server for the register: embeds the ka
 workspace = true
 
 [dependencies]
-oz-api = { workspace = true }
+kasirmu-api = { workspace = true }
 oz-core = { workspace = true }
 platform-core = { workspace = true }
 axum = { workspace = true }

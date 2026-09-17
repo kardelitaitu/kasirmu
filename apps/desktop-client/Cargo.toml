@@ -32,13 +32,13 @@ tempfile = { workspace = true }
 
 [dependencies]
 foundation = { workspace = true }
-oz-api = { workspace = true }
+kasirmu-api = { workspace = true }
 oz-core = { workspace = true }
 oz-bridge = { workspace = true }
 reqwest = { workspace = true }
 oz-hal = { workspace = true }
-oz-lan = { workspace = true }
-oz-local-api = { workspace = true }
+kasirmu-lan = { workspace = true }
+kasirmu-local-api = { workspace = true }
 kasirmu-logging = { workspace = true }
 kasirmu-lua = { workspace = true }
 oz-plugin = { workspace = true }

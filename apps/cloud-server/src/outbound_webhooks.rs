@@ -667,7 +667,7 @@ fn unauthorized() -> axum::response::Response {
 }
 
 fn admin_ok(headers: &HeaderMap, state: &OutboundState) -> bool {
-    oz_api::routes::tokens::admin_key_authorised(headers, state.admin_key.as_deref())
+    kasirmu_api::routes::tokens::admin_key_authorised(headers, state.admin_key.as_deref())
 }
 
 async fn list_handler(

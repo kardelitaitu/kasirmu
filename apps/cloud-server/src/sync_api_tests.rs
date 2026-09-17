@@ -13,7 +13,7 @@ fn fresh_db() -> Connection {
 
 /// Create a test JWT token scoped to the given tenant.
 fn test_token(tenant_id: Option<&str>) -> String {
-    oz_api::auth::create_token("test", Some(24), tenant_id, None)
+    kasirmu_api::auth::create_token("test", Some(24), tenant_id, None)
         .unwrap()
         .token
 }

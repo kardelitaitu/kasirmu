@@ -213,7 +213,7 @@ pub const UI_LOCALE: &str = "ui.locale";
 // exportable in a `.ozpkg` for exactly that reason).
 
 /// Per-install Local API JWT signing secret. Mirrors
-/// `oz_local_api::SETTINGS_SECRET`; declared as a literal here because
+/// `kasirmu_local_api::SETTINGS_SECRET`; declared as a literal here because
 /// platform-core must not depend on the Local API crate.
 pub const LOCAL_API_SECRET: &str = "local_api.secret";
 /// Serialised SMTP account JSON, whose `password` field is encrypted at rest.

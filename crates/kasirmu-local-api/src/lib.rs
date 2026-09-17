@@ -32,7 +32,7 @@
 //! themselves live on the GLOBAL DB (device-level). CORS is
 //! fail-closed (empty allowlist): local scripts are curl/Python/Node,
 //! not browser pages. `GET /api/openapi.json` serves
-//! `oz_api::spec::local_spec()` — the shared contract with every
+//! `kasirmu_api::spec::local_spec()` — the shared contract with every
 //! operation tagged `x-oz-scope: "both"`.
 
 use std::path::PathBuf;
@@ -146,7 +146,7 @@ pub fn resolve_store_id(global: &Connection) -> String {
 /// Goes through `db_manager.open_store` first so the file exists and is
 /// migrated (the manager caches its own std-Mutex connection — the UI's
 /// path), then opens a SECOND connection to the same file wrapped in a
-/// tokio Mutex, which is what `oz_api::AppState` requires. WAL mode
+/// tokio Mutex, which is what `kasirmu_api::AppState` requires. WAL mode
 /// makes the two connections safe to share the file; `busy_timeout`
 /// absorbs write contention between API and UI instead of surfacing
 /// `SQLITE_BUSY` to scripts.
@@ -236,7 +236,7 @@ pub fn mint_token(
     secret: &str,
     label: &str,
     expiry_hours: Option<i64>,
-) -> Result<oz_api::auth::TokenResponse, String> {
+) -> Result<kasirmu_api::auth::TokenResponse, String> {
     let hours = expiry_hours
         .unwrap_or(DEFAULT_TOKEN_HOURS)
         .clamp(1, MAX_TOKEN_HOURS);
@@ -245,7 +245,7 @@ pub fn mint_token(
     } else {
         label.trim()
     };
-    oz_api::auth::create_token_full(label, Some(hours), None, None, None, Some(secret))
+    kasirmu_api::auth::create_token_full(label, Some(hours), None, None, None, Some(secret))
         .map_err(|e| format!("minting local API token: {e}"))
 }
 
@@ -274,7 +274,7 @@ pub async fn start_with_audit(
     image_dir: PathBuf,
     secret: String,
     port: u16,
-    audit: Option<Arc<dyn oz_api::api_audit::AuditSink>>,
+    audit: Option<Arc<dyn kasirmu_api::api_audit::AuditSink>>,
 ) -> Result<LocalApiHandle, String> {
     // Bind BEFORE building the router so the self-documenting
     // /api/openapi.json handler can advertise the actual port
@@ -287,7 +287,7 @@ pub async fn start_with_audit(
         .map_err(|e| format!("reading bound address: {e}"))?
         .port();
 
-    let api_state = oz_api::AppState {
+    let api_state = kasirmu_api::AppState {
         db,
         pg: None,
         // The per-install secret doubles as the operator admin key: token
@@ -316,7 +316,7 @@ pub async fn start_with_audit(
     // (review MED-4: routes appended to the returned Router escape the
     // CORS/security-headers/trace layers).
     let app =
-        oz_api::router_with_openapi(api_state, Some(oz_api::spec::local_spec(bound_port)), audit);
+        kasirmu_api::router_with_openapi(api_state, Some(kasirmu_api::spec::local_spec(bound_port)), audit);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {
@@ -378,8 +378,8 @@ impl StoreAuditSink {
     }
 }
 
-impl oz_api::api_audit::AuditSink for StoreAuditSink {
-    fn record(&self, event: &oz_api::api_audit::ApiWriteEvent) {
+impl kasirmu_api::api_audit::AuditSink for StoreAuditSink {
+    fn record(&self, event: &kasirmu_api::api_audit::ApiWriteEvent) {
         let store = self.store.clone();
         let store_id = self.store_id.clone();
         let event = event.clone();
