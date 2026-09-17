@@ -240,7 +240,7 @@ that exemption even in place.
 point into a prototype directory — those references should become a documentation link.
 **Acceptance:** `test ! -d dev` · `cd ui && npm run typecheck && npm run test`
 
-### [ ] P7 — Rewrite the two architecture docs against the final tree
+### [x] P7 — Rewrite the two architecture docs against the final tree
 
 **Commit:** `docs(agents): reconcile README and ARCHITECTURE with the current tree`
 
