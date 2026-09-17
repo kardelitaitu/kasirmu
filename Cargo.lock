@@ -5286,7 +5286,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
- "tauri",
  "tempfile",
  "tokio",
  "tracing",

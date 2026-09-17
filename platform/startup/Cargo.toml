@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Shared application startup logic: module registration, event wiring, background sync daemon for desktop and tablet Tauri clients."
+description = "Shared application startup logic: module registration, event wiring, background sync daemon for the application shells."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]
@@ -42,7 +42,10 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rusqlite = { workspace = true }
-tauri = { workspace = true }
+# No renderer or toolkit dependency belongs here: this crate is
+# renderer-agnostic by design (ADR #49, ADR #53) so a second shell can reuse
+# module registration and the daemon harness unchanged. Enforced by the
+# `bridge-toolkit-purity` rule in scripts/verify-architecture-boundaries.py.
 tokio = { workspace = true }
 tracing = { workspace = true }
 console-subscriber = { workspace = true, optional = true }

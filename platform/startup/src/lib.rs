@@ -251,11 +251,45 @@ pub fn init_module_system(
     Ok(())
 }
 
+/// The runtime daemons are spawned on when no ambient runtime is reachable.
+///
+/// [`spawn_daemon`] is called from each shell's synchronous `setup` hook, where
+/// no ambient runtime exists and a bare [`tokio::spawn`] would panic. The
+/// shell's own runtime cannot be named from here without depending on that
+/// shell's toolkit, which this crate must not do (ADR #49, ADR #53), so the
+/// daemon runtime is owned here and built lazily on first use.
+fn daemon_runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_name("kasirmu-daemon")
+            .build()
+            .expect("failed to build the daemon runtime")
+    })
+}
+
+/// Spawn a detached task on the ambient runtime when there is one, and on the
+/// daemon runtime otherwise.
+///
+/// Preferring the ambient handle means a caller that already has a runtime —
+/// including the watchdog spawned from inside [`spawn_daemon`] — keeps sharing
+/// it, so the fallback runtime is built only for the synchronous `setup` path.
+fn spawn_detached(fut: impl std::future::Future<Output = ()> + Send + 'static) {
+    // Dropping the returned handle detaches the task, which is what a daemon
+    // wants: nothing joins it and it lives until the process exits.
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => drop(handle.spawn(fut)),
+        Err(_) => drop(daemon_runtime().spawn(fut)),
+    }
+}
+
 /// Spawn a background daemon with a watchdog that logs on panic or
 /// unexpected exit.
 ///
-/// Uses `tauri::async_runtime::spawn` (which is available during
-/// synchronous Tauri `setup`, unlike bare `tokio::spawn`).  Panic
+/// Runs on the ambient runtime when the caller has one and on this crate's own
+/// daemon runtime otherwise, which is what makes the call safe from a
+/// synchronous `setup` hook — unlike a bare [`tokio::spawn`].  Panic
 /// detection is done via a `oneshot` channel: if the daemon future
 /// panics, the channel sender is dropped during unwind and the
 /// watchdog sees a `RecvError`.
@@ -263,11 +297,11 @@ pub fn spawn_daemon(
     name: &'static str,
     fut: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    tauri::async_runtime::spawn(async move {
+    spawn_detached(async move {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // Watchdog: fired when the daemon future resolves or panics.
-        tauri::async_runtime::spawn(async move {
+        spawn_detached(async move {
             match rx.await {
                 Ok(()) => tracing::warn!("{name} exited unexpectedly"),
                 Err(_) => tracing::error!("{name} panicked"),
