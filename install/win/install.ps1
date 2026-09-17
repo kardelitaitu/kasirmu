@@ -18,7 +18,7 @@
          fail — the checksum is the integrity guarantee.
       4. Runs the Tauri NSIS installer silently (/S). The installer is
          compiled with installMode=currentUser, so it installs to
-         %LOCALAPPDATA%\Programs\OZ-POS with no UAC prompt.
+         %LOCALAPPDATA%\Programs\kasir.mu with no UAC prompt.
       5. With -System, installs per-machine to Program Files via the MSI
          asset (msiexec /qn — a UAC prompt is expected there).
 
@@ -95,7 +95,7 @@ if ($Version) {
 $manifestUrl = "$releaseBase/$manifestFile"
 Write-Step "Resolving release manifest: $manifestUrl"
 
-$work = Join-Path $env:TEMP 'oz-pos-install'
+$work = Join-Path $env:TEMP 'kasirmu-install'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 try {

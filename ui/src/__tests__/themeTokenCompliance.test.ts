@@ -1474,7 +1474,7 @@ describe('font-reference portability', () => {
       "  --brand-font-family: 'Inter, sans-serif';",
       '  --brand-font-family-alt: "DM Sans", "Inter", sans-serif;',
       "  --font-mixed: 'Inter', system-ui;",
-      "  --brand-company: 'OZ POS Inc.';",
+      "  --brand-company: 'kasir.mu';",
       '  --kds-font-md: 15px;',
       '  --font-weight-normal: 400;',
       '}',

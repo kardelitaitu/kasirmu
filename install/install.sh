@@ -57,7 +57,7 @@ Options:
   -s, --system                Per-machine install (Linux: .deb or /opt;
                               requires elevation via sudo)
   -d, --dry-run               Download + verify everything, do not install
-  -n, --no-launch             Do not launch OZ-POS after install
+  -n, --no-launch             Do not launch kasir.mu after install
   -r, --repo owner/repo       Override the GitHub repository (forks)
   -h, --help                  Show this help
 EOF
@@ -95,14 +95,14 @@ OS="$(uname -s)"
 case "$OS" in
     Linux) ;;
     Darwin) ;;
-    *) die "Unsupported OS: $OS (OZ-POS ships Linux and macOS builds)." 2 ;;
+    *) die "Unsupported OS: $OS (kasir.mu ships Linux and macOS builds)." 2 ;;
 esac
 
 ARCH="$(uname -m)"
 case "$ARCH" in
     x86_64|amd64) ARCH_KEY="x86_64" ;;
     aarch64|arm64) ARCH_KEY="aarch64" ;;
-    *) die "Unsupported CPU architecture: $ARCH (OZ-POS ships x86_64 and aarch64 builds)." 2 ;;
+    *) die "Unsupported CPU architecture: $ARCH (kasir.mu ships x86_64 and aarch64 builds)." 2 ;;
 esac
 
 if [ "$OS" = "Linux" ]; then
@@ -136,7 +136,7 @@ fetch() { # <url> <outfile>
     fi
 }
 
-TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/oz-pos-install.XXXXXX")"
+TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/kasirmu-install.XXXXXX")"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 if ! fetch "$MANIFEST_URL" "$TMPDIR/manifest.json"; then
@@ -157,7 +157,7 @@ if [ -n "$VERSION" ] && [ "$MANIFEST_VERSION" != "$VERSION" ]; then
 fi
 
 ASSET_NAME="$(basename "$ASSET_URL")"
-echo "    Latest: OZ-POS $MANIFEST_VERSION ($PLATFORM_KEY)"
+echo "    Latest: kasir.mu $MANIFEST_VERSION ($PLATFORM_KEY)"
 
 # ── Checksums (SHA256SUMS.txt covers every release asset) ────────────────
 echo "==> Fetching SHA256SUMS.txt"
@@ -261,60 +261,60 @@ else
                 echo "    Dry run: would run '$SUDO dpkg -i $DEB_NAME' (per-machine, /opt via the .deb)."
                 exit 0
             fi
-            echo "==> Installing OZ-POS $MANIFEST_VERSION (.deb, per-machine)"
+            echo "==> Installing kasir.mu $MANIFEST_VERSION (.deb, per-machine)"
             if ! $SUDO dpkg -i "$DEB"; then
                 $SUDO apt-get install -f -y >/dev/null 2>&1 || true
             fi
-            if ! dpkg -s oz-pos >/dev/null 2>&1; then
-                die "dpkg did not register the oz-pos package — install failed." 5
+            if ! dpkg -s kasir.mu >/dev/null 2>&1; then
+                die "dpkg did not register the kasir.mu package — install failed." 5
             fi
-            echo "    Installed via dpkg (oz-pos)."
+            echo "    Installed via dpkg (kasir.mu)."
         else
             APPIMAGE="$(verify_asset "$ASSET_URL" "$ASSET_NAME")"
             if [ "$DRY_RUN" = 1 ]; then
-                echo "    Dry run: would install $ASSET_NAME to /opt/oz-pos and symlink /usr/local/bin/oz-pos."
+                echo "    Dry run: would install $ASSET_NAME to /opt/kasir.mu and symlink /usr/local/bin/kasir.mu."
                 exit 0
             fi
             echo "==> Installing kasir.mu $MANIFEST_VERSION (AppImage -> /opt)"
-            $SUDO mkdir -p /opt/oz-pos
-            $SUDO install -m755 "$APPIMAGE" /opt/oz-pos/kasir.mu.AppImage
-            $SUDO ln -sf /opt/oz-pos/kasir.mu.AppImage /usr/local/bin/oz-pos
-            $SUDO sh -c 'cat > /usr/share/applications/oz-pos.desktop' <<EOF
+            $SUDO mkdir -p /opt/kasir.mu
+            $SUDO install -m755 "$APPIMAGE" /opt/kasir.mu/kasir.mu.AppImage
+            $SUDO ln -sf /opt/kasir.mu/kasir.mu.AppImage /usr/local/bin/kasir.mu
+            $SUDO sh -c 'cat > /usr/share/applications/kasir.mu.desktop' <<EOF
 [Desktop Entry]
 Type=Application
 Name=kasir.mu
 Comment=kasir.mu point-of-sale
-Exec=/opt/oz-pos/kasir.mu.AppImage
+Exec=/opt/kasir.mu/kasir.mu.AppImage
 Terminal=false
 Categories=Office;Finance;
 EOF
-            echo "    Installed to /opt/oz-pos (launcher: oz-pos)."
+            echo "    Installed to /opt/kasir.mu (launcher: kasir.mu)."
         fi
     else
         # Per-user AppImage -> ~/.local/bin + .desktop entry, no elevation.
         APPIMAGE="$(verify_asset "$ASSET_URL" "$ASSET_NAME")"
         if [ "$DRY_RUN" = 1 ]; then
-            echo "    Dry run: would install $ASSET_NAME to $HOME/.local/bin/oz-pos.AppImage + .desktop entry."
+            echo "    Dry run: would install $ASSET_NAME to $HOME/.local/bin/kasir.mu.AppImage + .desktop entry."
             exit 0
         fi
         echo "==> Installing kasir.mu $MANIFEST_VERSION (AppImage, per-user)"
         mkdir -p "$HOME/.local/bin"
-        install -m755 "$APPIMAGE" "$HOME/.local/bin/oz-pos.AppImage"
+        install -m755 "$APPIMAGE" "$HOME/.local/bin/kasir.mu.AppImage"
         mkdir -p "$HOME/.local/share/applications"
-        cat > "$HOME/.local/share/applications/oz-pos.desktop" <<EOF
+        cat > "$HOME/.local/share/applications/kasir.mu.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=kasir.mu
 Comment=kasir.mu point-of-sale
-Exec=$HOME/.local/bin/oz-pos.AppImage
+Exec=$HOME/.local/bin/kasir.mu.AppImage
 Terminal=false
 Categories=Office;Finance;
 StartupWMClass=kasir.mu
 EOF
-        chmod +x "$HOME/.local/share/applications/oz-pos.desktop"
-        echo "    Installed to $HOME/.local/bin/oz-pos.AppImage (launcher menu: kasir.mu)."
+        chmod +x "$HOME/.local/share/applications/kasir.mu.desktop"
+        echo "    Installed to $HOME/.local/bin/kasir.mu.AppImage (launcher menu: kasir.mu)."
         if [ "$NO_LAUNCH" != 1 ]; then
-            nohup "$HOME/.local/bin/oz-pos.AppImage" >/dev/null 2>&1 &
+            nohup "$HOME/.local/bin/kasir.mu.AppImage" >/dev/null 2>&1 &
             echo "    Launching kasir.mu."
         fi
     fi

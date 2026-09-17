@@ -4,10 +4,10 @@
 # Mirrors install/win/uninstall.ps1: removes the footprints the installers
 # create, rather than guessing install paths:
 #
-#   Linux  per-user  ~/.local/bin/oz-pos.AppImage + ~/.local/share/applications/oz-pos.desktop
-#   Linux  system    dpkg -r oz-pos (Debian/Ubuntu), else /opt/oz-pos +
-#                    /usr/local/bin/oz-pos + /usr/share/applications/oz-pos.desktop
-#   macOS            /Applications/OZ-POS.app
+#   Linux  per-user  ~/.local/bin/kasir.mu.AppImage + ~/.local/share/applications/kasir.mu.desktop
+#   Linux  system    dpkg -r kasir.mu (Debian/Ubuntu), else /opt/kasir.mu +
+#                    /usr/local/bin/kasir.mu + /usr/share/applications/kasir.mu.desktop
+#   macOS            /Applications/kasir.mu.app
 #
 # Local app data (databases, settings) is preserved unless --purge is given.
 #
@@ -60,32 +60,32 @@ if [ "$OS" = "Darwin" ]; then
     fi
 else
     # Per-user footprint (no elevation).
-    for f in "$HOME/.local/bin/oz-pos.AppImage" "$HOME/.local/bin/OZ-POS.AppImage" \
-             "$HOME/.local/share/applications/oz-pos.desktop" \
-             "$HOME/.local/share/applications/OZ-POS.desktop"; do
+    for f in "$HOME/.local/bin/kasir.mu.AppImage" "$HOME/.local/bin/oz-pos.AppImage" \
+             "$HOME/.local/share/applications/kasir.mu.desktop" \
+             "$HOME/.local/share/applications/oz-pos.desktop"; do
         if [ -e "$f" ]; then rm -f "$f"; echo "Removing $f"; found=1; fi
     done
 
     # System footprint (Debian/Ubuntu .deb install).
-    if command -v dpkg >/dev/null 2>&1 && dpkg -s oz-pos >/dev/null 2>&1; then
-        echo "Removing oz-pos package"
-        if ! $SUDO dpkg -r oz-pos >/dev/null 2>&1; then
-            echo "ERROR: dpkg -r oz-pos failed (run it manually)." >&2
+    if command -v dpkg >/dev/null 2>&1 && dpkg -s kasir.mu >/dev/null 2>&1; then
+        echo "Removing kasir.mu package"
+        if ! $SUDO dpkg -r kasir.mu >/dev/null 2>&1; then
+            echo "ERROR: dpkg -r kasir.mu failed (run it manually)." >&2
             exit 2
         fi
         found=1
     fi
     # System footprint (AppImage -> /opt fallback install).
-    if [ -d /opt/oz-pos ]; then
-        echo "Removing /opt/oz-pos"
-        $SUDO rm -rf /opt/oz-pos || { echo "ERROR: could not remove /opt/oz-pos." >&2; exit 2; }
+    if [ -d /opt/kasir.mu ]; then
+        echo "Removing /opt/kasir.mu"
+        $SUDO rm -rf /opt/kasir.mu || { echo "ERROR: could not remove /opt/kasir.mu." >&2; exit 2; }
         found=1
     fi
     # Only invoke sudo when a system-level file actually exists — an
     # unconditional `sudo rm -f` prompts for a password even on purely
     # per-user installs.
-    for f in /usr/local/bin/oz-pos /usr/local/bin/OZ-POS \
-             /usr/share/applications/oz-pos.desktop /usr/share/applications/OZ-POS.desktop; do
+    for f in /usr/local/bin/kasir.mu /usr/local/bin/oz-pos \
+             /usr/share/applications/kasir.mu.desktop /usr/share/applications/oz-pos.desktop; do
         if [ -e "$f" ]; then
             $SUDO rm -f "$f" 2>/dev/null || true
             found=1

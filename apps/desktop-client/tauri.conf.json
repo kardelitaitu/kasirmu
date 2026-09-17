@@ -44,9 +44,9 @@
       "icons/icon.icns"
     ],
     "category": "Business",
-    "copyright": "Copyright (c) 2024-2026 OZ-POS Contributors. All Rights Reserved.",
-    "shortDescription": "OZ-POS point-of-sale framework",
-    "longDescription": "OZ-POS is a modular, extensible point-of-sale framework built on Rust and Tauri v2.",
+    "copyright": "Copyright (c) 2024-2026 kasir.mu contributors. All Rights Reserved.",
+    "shortDescription": "kasir.mu point-of-sale framework",
+    "longDescription": "kasir.mu is a modular, extensible point-of-sale framework built on Rust and Tauri v2.",
     "windows": {
       "nsis": {
         "installMode": "currentUser",
