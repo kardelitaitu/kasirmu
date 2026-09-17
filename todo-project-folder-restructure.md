@@ -182,7 +182,7 @@ actually are (`ui/src/platform/` vs the real `ui/src/platform/ui/`).
 **Acceptance:** `test ! -d ui/src/frontend && test ! -d ui/src/platform` ·
 `cd ui && npm run typecheck && npm run lint && npm run test`
 
-### [ ] P3 — Consolidate the build/ship surface into `ops/`
+### [x] P3 — Consolidate the build/ship surface into `ops/`
 
 **Commit:** `refactor(ops): move docker, install, packaging and gateway under ops/`
 
