@@ -1047,6 +1047,11 @@ pub async fn complete_sale_scoped(
         }
     }
 
+    // SYNC-EW: wake the inline sync daemon so the completed sale reaches the
+    // cloud portal within seconds rather than waiting up to 30 s for the next
+    // periodic tick.
+    state.sync_wakeup.notify_one();
+
     Ok(CompleteSaleResult {
         sale_id,
         total,

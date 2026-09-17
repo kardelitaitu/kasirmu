@@ -147,6 +147,14 @@ pub struct AppState {
     /// the process, so the secret is never persisted — a restart
     /// simply invalidates outstanding tickets.
     pub picker_ticket_secret: Vec<u8>,
+
+    /// Notifier for the inline sync daemon event-triggered wakeup (SYNC-EW).
+    ///
+    /// Calling [`tokio::sync::Notify::notify_one`] on this causes the inline
+    /// sync daemon (spawned in `lib.rs`) to debounce and run a sync cycle
+    /// immediately. Wired here so Tauri commands (e.g. `complete_sale_scoped`)
+    /// can fire it without reaching into the daemon's closure.
+    pub sync_wakeup: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -225,6 +233,7 @@ impl AppState {
             topology_apply_lock: Mutex::new(()),
             db_manager,
             picker_ticket_secret: uuid::Uuid::new_v4().as_bytes().to_vec(),
+            sync_wakeup: Arc::new(tokio::sync::Notify::new()),
         })
     }
 

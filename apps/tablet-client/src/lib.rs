@@ -300,11 +300,36 @@ pub fn run() {
                 // Uses the same 3-phase split as the Tauri commands:
                 // read DB → async HTTP → write DB, so the DB lock is never
                 // held during the network round-trip.
+                //
+                // SYNC-EW: the daemon also wakes on `state.sync_wakeup` so
+                // that `complete_sale_scoped` can trigger a near-immediate
+                // sync instead of waiting up to 30 s for the next tick.
                 let sync_app_handle = app_handle.clone();
+                let sync_wakeup = app_handle
+                    .state::<AppState>()
+                    .sync_wakeup
+                    .clone();
                 platform_startup::spawn_daemon("tablet sync daemon", async move {
-                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+                    let periodic = std::time::Duration::from_secs(30);
+                    const WAKEUP_DEBOUNCE: std::time::Duration =
+                        std::time::Duration::from_millis(1_500);
+
                     loop {
-                        interval.tick().await;
+                        // Wait for either the periodic interval or an
+                        // event-triggered wakeup (SYNC-EW).
+                        let woken_by_nudge = tokio::select! {
+                            _ = tokio::time::sleep(periodic) => false,
+                            _ = sync_wakeup.notified() => true,
+                        };
+
+                        if woken_by_nudge {
+                            tracing::debug!(
+                                debounce_ms = WAKEUP_DEBOUNCE.as_millis(),
+                                "tablet sync daemon woken by nudge — debouncing"
+                            );
+                            tokio::time::sleep(WAKEUP_DEBOUNCE).await;
+                        }
+
                         match sync_app_handle.try_state::<AppState>() {
                             Some(state) => {
                                 // Phase 1: Read config + pending items (brief lock).
@@ -398,6 +423,7 @@ pub fn run() {
                         }
                     }
                 });
+
 
                 // ── Background image download daemon (spec 0046b §3.7) ──
                 // Computes the missing-hash set at each cycle (referenced
