@@ -9,7 +9,7 @@
 //! - Top up (add value) to existing cards
 //! - Freeze/unfreeze cards (e.g., for fraud prevention)
 //!
-//! Shims in `apps/desktop-client/src/commands/gift_cards.rs` keep the
+//! Shims in `apps/desktop-tauri/src/commands/gift_cards.rs` keep the
 //! exact `#[tauri::command]` names/signatures/`Result<_, AppError>`
 //! wire contract and delegate here.
 

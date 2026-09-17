@@ -1,5 +1,5 @@
 //! HAL hardware-control command bodies (Wave D / D3a) — the tauri-free half
-//! of `apps/desktop-client/src/commands/hardware.rs`.
+//! of `apps/desktop-tauri/src/commands/hardware.rs`.
 //!
 //! Key functions: the cash-drawer, receipt-printing, barcode-scanner and
 //! pole-display operations, each consuming a [`BridgeCtx`]. Device access

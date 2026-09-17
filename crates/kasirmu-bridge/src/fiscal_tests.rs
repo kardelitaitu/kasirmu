@@ -1,5 +1,5 @@
 //! Unit tests for the fiscal command bodies (Wave-A test relocation: moved
-//! out of `apps/desktop-client/src/commands/fiscal_tests.rs`).
+//! out of `apps/desktop-tauri/src/commands/fiscal_tests.rs`).
 //!
 //! Mounted at the foot of `fiscal.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves `Store`, `run_upsert` and the write DTO. The desktop

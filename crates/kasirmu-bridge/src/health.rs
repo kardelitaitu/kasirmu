@@ -1,6 +1,6 @@
 //! Health-check command bodies (startup smoke test and About dialog).
 //!
-//! Wave F: extracted from `apps/desktop-client/src/commands/health.rs`.
+//! Wave F: extracted from `apps/desktop-tauri/src/commands/health.rs`.
 //! The runtime host probes (`std::env::var` COMPUTERNAME/HOSTNAME and the
 //! `UdpSocket` local-IP trick) moved VERBATIM — plain std, headless-safe.
 //! The compile-time identity fields are the one deliberate restructure:

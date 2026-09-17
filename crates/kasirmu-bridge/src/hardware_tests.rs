@@ -1,5 +1,5 @@
 //! Hardware command unit tests (Wave-D test relocation: moved out of
-//! `apps/desktop-client/src/commands/hardware_tests.rs`).
+//! `apps/desktop-tauri/src/commands/hardware_tests.rs`).
 //!
 //! Mounted at the foot of `hardware.rs` with `#[cfg(test)] #[path]`, so
 //! `use super::*` resolves the DTOs and the scanner-preference helper
