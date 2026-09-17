@@ -83,7 +83,7 @@ else
     # Cross-platform sed: use .bak extension then remove
     sed -i.bak "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml && rm -f Cargo.toml.bak
     sed -i.bak "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" ui/package.json && rm -f ui/package.json.bak
-    for conf in apps/desktop-client/tauri.conf.json apps/tablet-client/tauri.conf.json; do
+    for conf in apps/desktop-tauri/tauri.conf.json apps/mobile-tauri/tauri.conf.json; do
       if [ -f "$conf" ]; then
         sed -i.bak "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" "$conf" && rm -f "${conf}.bak"
       fi

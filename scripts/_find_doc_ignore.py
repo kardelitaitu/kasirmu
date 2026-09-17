@@ -26,8 +26,8 @@ files_to_check = [
     'platform/kernel/src/lib.rs',
     'platform/startup/src/lib.rs',
     'platform/sync/src/lib.rs',
-    'apps/desktop-client/src/commands/authz.rs',
-    'apps/desktop-client/src/lib.rs',
+    'apps/desktop-tauri/src/commands/authz.rs',
+    'apps/desktop-tauri/src/lib.rs',
 ]
 
 MARKER = '```ignore'

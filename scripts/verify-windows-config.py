@@ -413,7 +413,7 @@ def self_test() -> int:
 
     # 2. CONTROL: a populated walk must NOT refuse, or case 1 is an always-red
     #    print that guards nothing.
-    one = [ROOT / "apps" / "desktop-client" / "tauri.conf.json"]
+    one = [ROOT / "apps" / "desktop-tauri" / "tauri.conf.json"]
     check("control: one config in the population certifies normally",
           empty_population_exit(one, list(SOURCE_MANIFESTS)) is None)
 

@@ -1106,8 +1106,8 @@ function presentFaceUrls(block: string, baseDir: string): string[] {
 // configs and went red instead of passing on an empty population.
 const APPS_ROOT = resolve(__dirname, '..', '..', '..', 'apps');
 const SHELL_CONFIGS = [
-  { shell: 'desktop-client', file: join(APPS_ROOT, 'desktop-client', 'tauri.conf.json') },
-  { shell: 'tablet-client', file: join(APPS_ROOT, 'tablet-client', 'tauri.conf.json') },
+  { shell: 'desktop-tauri', file: join(APPS_ROOT, 'desktop-tauri', 'tauri.conf.json') },
+  { shell: 'mobile-tauri', file: join(APPS_ROOT, 'mobile-tauri', 'tauri.conf.json') },
 ];
 const CSP_KEYS = ['csp', 'devCsp'];
 /** Measured identically in all four clauses when this rule was written. */
@@ -2247,7 +2247,7 @@ describe('font-reference portability', () => {
     // And the real population is named, so a rule that quietly stopped finding a shell
     // is visible even though the case above already counts it.
     expect(shellFontSrc().map((r) => `${r.shell}.${r.key}`).sort()).toEqual([
-      'desktop-client.csp', 'desktop-client.devCsp', 'tablet-client.csp', 'tablet-client.devCsp',
+      'desktop-tauri.csp', 'desktop-tauri.devCsp', 'mobile-tauri.csp', 'mobile-tauri.devCsp',
     ]);
   });
 

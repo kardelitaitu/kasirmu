@@ -30,12 +30,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SHELLS = {
     "desktop": (
-        REPO_ROOT / "apps" / "desktop-client" / "src" / "lib.rs",
-        REPO_ROOT / "apps" / "desktop-client" / "src" / "commands",
+        REPO_ROOT / "apps" / "desktop-tauri" / "src" / "lib.rs",
+        REPO_ROOT / "apps" / "desktop-tauri" / "src" / "commands",
     ),
     "tablet": (
-        REPO_ROOT / "apps" / "tablet-client" / "src" / "lib.rs",
-        REPO_ROOT / "apps" / "tablet-client" / "src" / "commands",
+        REPO_ROOT / "apps" / "mobile-tauri" / "src" / "lib.rs",
+        REPO_ROOT / "apps" / "mobile-tauri" / "src" / "commands",
     ),
 }
 API_DIR = REPO_ROOT / "ui" / "src" / "api"
@@ -199,12 +199,12 @@ def self_test() -> int:
 
     def build(api_ts: str):
         td = Path(tempfile.mkdtemp())
-        (td / "apps" / "desktop-client" / "src" / "commands").mkdir(parents=True)
-        (td / "apps" / "tablet-client" / "src" / "commands").mkdir(parents=True)
-        (td / "apps" / "desktop-client" / "src" / "lib.rs").write_text(lib, encoding="utf-8")
-        (td / "apps" / "tablet-client" / "src" / "lib.rs").write_text(lib, encoding="utf-8")
-        dc = td / "apps" / "desktop-client" / "src" / "commands"
-        tc = td / "apps" / "tablet-client" / "src" / "commands"
+        (td / "apps" / "desktop-tauri" / "src" / "commands").mkdir(parents=True)
+        (td / "apps" / "mobile-tauri" / "src" / "commands").mkdir(parents=True)
+        (td / "apps" / "desktop-tauri" / "src" / "lib.rs").write_text(lib, encoding="utf-8")
+        (td / "apps" / "mobile-tauri" / "src" / "lib.rs").write_text(lib, encoding="utf-8")
+        dc = td / "apps" / "desktop-tauri" / "src" / "commands"
+        tc = td / "apps" / "mobile-tauri" / "src" / "commands"
         for d in (dc, tc):
             (d / "alpha.rs").write_text(alpha_rs, encoding="utf-8")
             (d / "delta.rs").write_text(delta_rs, encoding="utf-8")
@@ -213,8 +213,8 @@ def self_test() -> int:
         api.mkdir(parents=True)
         (api / "f.ts").write_text(api_ts, encoding="utf-8")
         shells = {
-            "desktop": (td / "apps" / "desktop-client" / "src" / "lib.rs", dc),
-            "tablet": (td / "apps" / "tablet-client" / "src" / "lib.rs", tc),
+            "desktop": (td / "apps" / "desktop-tauri" / "src" / "lib.rs", dc),
+            "tablet": (td / "apps" / "mobile-tauri" / "src" / "lib.rs", tc),
         }
         return shells, api, td
 
@@ -256,24 +256,24 @@ def self_test() -> int:
 
     # ── 7. Tablet-only token requirement is caught (union semantics) ─
     td = Path(tempfile.mkdtemp())
-    (td / "apps" / "desktop-client" / "src" / "commands").mkdir(parents=True)
-    (td / "apps" / "tablet-client" / "src" / "commands").mkdir(parents=True)
+    (td / "apps" / "desktop-tauri" / "src" / "commands").mkdir(parents=True)
+    (td / "apps" / "mobile-tauri" / "src" / "commands").mkdir(parents=True)
     d_lib = "tauri::generate_handler![\n  commands::beta::beta_plain,\n]"
     t_lib = "tauri::generate_handler![\n  commands::alpha::alpha_scoped,\n]"
-    (td / "apps" / "desktop-client" / "src" / "lib.rs").write_text(d_lib, encoding="utf-8")
-    (td / "apps" / "tablet-client" / "src" / "lib.rs").write_text(t_lib, encoding="utf-8")
-    (td / "apps" / "desktop-client" / "src" / "commands" / "beta.rs").write_text(
+    (td / "apps" / "desktop-tauri" / "src" / "lib.rs").write_text(d_lib, encoding="utf-8")
+    (td / "apps" / "mobile-tauri" / "src" / "lib.rs").write_text(t_lib, encoding="utf-8")
+    (td / "apps" / "desktop-tauri" / "src" / "commands" / "beta.rs").write_text(
         beta_rs, encoding="utf-8")
-    (td / "apps" / "tablet-client" / "src" / "commands" / "alpha.rs").write_text(
+    (td / "apps" / "mobile-tauri" / "src" / "commands" / "alpha.rs").write_text(
         alpha_rs, encoding="utf-8")
     api = td / "ui" / "api"
     api.mkdir(parents=True)
     (api / "f.ts").write_text(no_token_ts, encoding="utf-8")
     shells = {
-        "desktop": (td / "apps" / "desktop-client" / "src" / "lib.rs",
-                    td / "apps" / "desktop-client" / "src" / "commands"),
-        "tablet": (td / "apps" / "tablet-client" / "src" / "lib.rs",
-                   td / "apps" / "tablet-client" / "src" / "commands"),
+        "desktop": (td / "apps" / "desktop-tauri" / "src" / "lib.rs",
+                    td / "apps" / "desktop-tauri" / "src" / "commands"),
+        "tablet": (td / "apps" / "mobile-tauri" / "src" / "lib.rs",
+                   td / "apps" / "mobile-tauri" / "src" / "commands"),
     }
     v, _ = run_check(shells, api, td)
     check("tablet-only token requirement is caught (union)",

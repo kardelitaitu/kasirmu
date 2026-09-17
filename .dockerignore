@@ -21,8 +21,8 @@ docs
 # server build never touches the UI tree at all.
 ui
 node_modules
-apps/desktop-client
-apps/tablet-client
+apps/desktop-tauri
+apps/mobile-tauri
 
 # IDE / editor configs
 .vscode

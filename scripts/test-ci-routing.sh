@@ -125,9 +125,9 @@ check "updater compat"      "rust=false ui=false i18n=false website=false docs=f
 check "release version gate" "rust=false ui=false i18n=false website=false docs=false release=true" "scripts/check-release-version.mjs"
 check "manifest generator"  "rust=false ui=false i18n=false website=false docs=false release=true" "scripts/generate-latest-json.mjs"
 # The tauri.conf.json pubkey: rotate or typo it and every client rejects the
-# signature. It also matches the `rust` rule via apps/desktop-client/, so both
+# signature. It also matches the `rust` rule via apps/desktop-tauri/, so both
 # must be true -- a single-bucket assertion here would be wrong.
-check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=false release=true" "apps/desktop-client/tauri.conf.json"
+check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=false release=true" "apps/desktop-tauri/tauri.conf.json"
 check "release workflow"    "rust=false ui=false i18n=false website=false docs=true release=true"  ".github/workflows/release.yml"
 # The workflow gating everything must never be able to route itself away.
 check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true"     ".github/workflows/dev-ci.yml"

@@ -136,8 +136,8 @@ Update-File ".agents/AGENTS.md" "| **Version Lock** | **Version is locked at ``$
 Update-File ".agents/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
 Update-File "Cargo.toml" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "ops/docker/Dockerfile.server" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
-Update-File "apps/desktop-client/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
-Update-File "apps/tablet-client/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
+Update-File "apps/desktop-tauri/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
+Update-File "apps/mobile-tauri/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
 Update-File "ui/package.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
 Update-File "ui/package-lock.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
 

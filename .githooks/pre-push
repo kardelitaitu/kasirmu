@@ -73,7 +73,7 @@ FLAGS=""
 if [ "$ROUTE_ALL" = "1" ]; then
     FLAGS="--all"
 else
-    want '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' && FLAGS="$FLAGS --rust"
+    want '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' && FLAGS="$FLAGS --rust"
     want '^ui/' && FLAGS="$FLAGS --ui"
     want '^website/' && FLAGS="$FLAGS --website"
     want '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$' && FLAGS="$FLAGS --i18n"

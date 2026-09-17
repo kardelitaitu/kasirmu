@@ -47,7 +47,7 @@ own write did not happen (`AllowlistWriteRefused` -- the file moved under this r
 would not accept the rename, the swap failed outright). A write that did not happen is a WRITE
 problem and gets the refusal code; it says nothing about anybody's command names. A crash
 must never spend 1, because 1 is the number a reader (and
-`apps/tablet-client/src/commands/sync.rs:639`) treats as evidence about real commands. See
+`apps/mobile-tauri/src/commands/sync.rs:639`) treats as evidence about real commands. See
 `AllowlistUnusable`.
 """
 
@@ -78,8 +78,8 @@ UI_SCAN_DIRS = [
 ]
 
 SHELLS = {
-    "desktop": "apps/desktop-client/src/lib.rs",
-    "tablet": "apps/tablet-client/src/lib.rs",
+    "desktop": "apps/desktop-tauri/src/lib.rs",
+    "tablet": "apps/mobile-tauri/src/lib.rs",
 }
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "ipc-parity-allowlist.json"
@@ -1024,7 +1024,7 @@ class AllowlistUnusable(RuntimeError):
     (cd2b55fa3, ef2058f28, 683eb1eac, 4d1a85b15) print one `error:` line and exit 2.
 
     Never exit 1, because 1 here is the VERDICT code -- main() ends on
-    `FAIL: N IPC parity violation(s)` and returns 1 -- and `apps/tablet-client/src/commands/
+    `FAIL: N IPC parity violation(s)` and returns 1 -- and `apps/mobile-tauri/src/commands/
     sync.rs:639` already cites "verify-ipc-parity.py exit 1" as evidence about real commands.
     A file that never arrived cannot be evidence about anybody's IPC surface. 2 is already
     this file's refusal code: main() returns it for a missing shell lib.
@@ -1526,7 +1526,7 @@ class AllowlistWriteRefusal(RuntimeError):
 
     Until now all three came back through `update_allowlist` as a `list[str]` and were
     printed as `FAIL: N allowlist write problem(s)` at exit 1 -- the VERDICT
-    code, the one `apps/tablet-client/src/commands/sync.rs:639` and `scripts/gates.json` read
+    code, the one `apps/mobile-tauri/src/commands/sync.rs:639` and `scripts/gates.json` read
     as evidence about real command names. So a lock collision or a mid-commit sibling was
     reportable as a finding about somebody's keys, which is the confusion this file already
     closed at its read site (`e931220d9a`, `21da42e70f`) and the same one closed in

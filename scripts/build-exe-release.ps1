@@ -17,7 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WorkspaceRoot = Split-Path -Parent $ScriptDir
-$DesktopClientDir = Join-Path $WorkspaceRoot "apps\desktop-client"
+$DesktopClientDir = Join-Path $WorkspaceRoot "apps\desktop-tauri"
 
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host " Building OZ-POS Windows EXE (Release)" -ForegroundColor Cyan

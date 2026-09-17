@@ -71,7 +71,7 @@ check('remote hosts named under ui/', remotePaths.length === 1 && remotePaths[0]
 
 // ---- row: the CSP clause in both shells, both keys --------------------------------
 const csp = run(['git', '--no-optional-locks', 'grep', '-o', '-e', 'font-src [^;\"]*', '--',
-  'apps/desktop-client/tauri.conf.json', 'apps/tablet-client/tauri.conf.json']);
+  'apps/desktop-tauri/tauri.conf.json', 'apps/mobile-tauri/tauri.conf.json']);
 if (!csp.ran) { console.error('the CSP grep could not run (status ' + csp.status + ')'); process.exit(2); }
 const clauses = csp.out.trim().split('\n').filter(Boolean);
 const uniq = [...new Set(clauses.map((l) => l.split(':').slice(1).join(':').trim()))];

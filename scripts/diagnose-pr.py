@@ -35,7 +35,7 @@ REPRODUCTION_MAP: Dict[str, str] = {
     r"Rust Clippy": "cargo clippy --all-targets --all-features -- -D warnings",
     r"Rust Panic Inventory": "python scripts/scan-unwrap-panic.py",
     r"Rust Test Fast": "bash scripts/test-changed.sh",
-    r"Rust Test Apps": "cargo test -p desktop-client -p tablet-client",
+    r"Rust Test Apps": "cargo test -p desktop-tauri -p mobile-tauri",
     r"UI TypeCheck": "cd ui && npm run typecheck",
     r"UI Lint": "cd ui && npm run lint",
     r"UI Tests": "cd ui && npm run test",

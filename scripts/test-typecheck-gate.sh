@@ -46,11 +46,11 @@ git config user.email t@t; git config user.name t
 # core.autocrlf on the host would otherwise rewrite every fixture file and bury the output
 # in "LF will be replaced by CRLF" warnings.
 git config core.autocrlf false
-mkdir -p ui/src/features/kds ui/src/api apps/desktop-client/src .github/workflows docs
+mkdir -p ui/src/features/kds ui/src/api apps/desktop-tauri/src .github/workflows docs
 printf 'export const a = 1;\n'      > ui/src/features/kds/A.tsx
 printf 'export const b = 1;\n'      > ui/src/api/kds.ts
 printf '.x { color: red }\n'        > ui/src/features/kds/KdsScreen.css
-printf 'fn main() {}\n'             > apps/desktop-client/src/lib.rs
+printf 'fn main() {}\n'             > apps/desktop-tauri/src/lib.rs
 printf 'name: dev-ci\n'             > .github/workflows/dev-ci.yml
 printf '# d\n'                      > docs/x.md
 printf 'x\n'                        > README.md
@@ -108,7 +108,7 @@ expect ".ts must trigger" $([ "$LAST_RAN" = yes ] && echo 0 || echo 1)
 stage_and_run "staged CSS only" ui/src/features/kds/KdsScreen.css
 expect "CSS alone must NOT trigger" $([ "$LAST_RAN" = no ] && echo 0 || echo 1)
 
-stage_and_run "staged Rust + CI + docs" apps/desktop-client/src/lib.rs .github/workflows/dev-ci.yml docs/x.md
+stage_and_run "staged Rust + CI + docs" apps/desktop-tauri/src/lib.rs .github/workflows/dev-ci.yml docs/x.md
 expect "non-TS alone must NOT trigger" $([ "$LAST_RAN" = no ] && echo 0 || echo 1)
 
 git reset -q -- .

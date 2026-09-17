@@ -85,7 +85,7 @@ if (args.includes("--self-test")) {
   }
 
   const pubkey = JSON.parse(
-    readFileSync(join(ROOT, "apps/desktop-client/tauri.conf.json"), "utf8")
+    readFileSync(join(ROOT, "apps/desktop-tauri/tauri.conf.json"), "utf8")
   ).plugins.updater.pubkey;
   if (!pubkey) {
     console.error("tauri.conf.json::plugins.updater.pubkey is missing");

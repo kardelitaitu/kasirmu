@@ -238,7 +238,7 @@ try {
       check("signature keyid matches pubkey keyid", sigParts.keyid.equals(keyid));
       // The committed tauri.conf.json pubkey must parse (minisign format).
       const confPubkey = JSON.parse(
-        readFileSync(join(ROOT, "apps/desktop-client/tauri.conf.json"), "utf8")
+        readFileSync(join(ROOT, "apps/desktop-tauri/tauri.conf.json"), "utf8")
       ).plugins.updater.pubkey;
       let committedKeyid = null;
       try {

@@ -1,8 +1,8 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.tablet.config.ts, ui/src/main.tablet.tsx, ui/src/frontend/shell/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.tablet.html, .github/workflows/{android,ios}.yml, apps/tablet-client/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/tablet-client/AGENTS.md (linked) · observe: line 429 references ui/dist-tablet/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the tablet-client setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
-<!-- dead-ref-prefix-ok: apps/tablet-client/gen/ -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, 1 low-severity observe) · all concrete paths verified: ui/vite.tablet.config.ts, ui/src/main.tablet.tsx, ui/src/frontend/shell/tablet/, ui/src/hooks/{useOrientation,useSwipe,useKeyboardAvoidance}.ts, ui/index.tablet.html, .github/workflows/{android,ios}.yml, apps/mobile-tauri/Cargo.toml crate-type [staticlib,cdylib,rlib], apps/mobile-tauri/AGENTS.md (linked) · observe: line 429 references ui/dist-tablet/ as a stale build dir to delete — that is a gitignored vite build artifact, not in tree (expected; it is an instruction, not a claim the dir exists) · iOS/Android build commands + signing env vars match the mobile-tauri setup · WCAG 2.2 44x44 touch targets consistent with docs/a11y.md -->
+<!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
 
 > **Prerequisite — the iOS scaffold is not in this repository.** Verified 08-09-26:
-> `apps/tablet-client/gen/` contains only `android/` (49 tracked files) and `schemas/`.
+> `apps/mobile-tauri/gen/` contains only `android/` (49 tracked files) and `schemas/`.
 > There is no `apple/` directory, committed or on disk. `.gitignore` states the policy
 > explicitly — *"the generated scaffold under `apps/*/gen/` is COMMITTED so CI and
 > contributors don't need the Tauri CLI installed to build"* — and Android follows that
@@ -11,7 +11,7 @@
 > The project filename is also not stable: this guide says `kasirmu-tablet.xcodeproj`
 > while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
-> `find apps/tablet-client/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
+> `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
 # OZ-POS Mobile Build & Deployment Guide
 
@@ -82,7 +82,7 @@ JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
 cd ui && npx vite build --config vite.tablet.config.ts
 
 # 3. Initialize the Android project (one time)
-cd apps/tablet-client && cargo tauri android init
+cd apps/mobile-tauri && cargo tauri android init
 
 # 4. Run on connected device / emulator
 cargo tauri android dev
@@ -99,10 +99,10 @@ cargo tauri android build --apk --target aarch64
 cd ui && npx vite build --config vite.tablet.config.ts
 
 # 3. Initialize the iOS project (one time)
-cd apps/tablet-client && cargo tauri ios init
+cd apps/mobile-tauri && cargo tauri ios init
 
 # 4. Open in Xcode and configure signing
-open apps/tablet-client/gen/apple/kasirmu-tablet.xcodeproj
+open apps/mobile-tauri/gen/apple/kasirmu-tablet.xcodeproj
 #    Set Team + Bundle Identifier in Signing & Capabilities
 
 # 5. Run in iOS simulator
@@ -129,13 +129,13 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 
 ```bash
 # Debug build for testing
-cd apps/tablet-client && cargo tauri android build --apk
+cd apps/mobile-tauri && cargo tauri android build --apk
 
 # Release build (signed, requires keystore)
-cd apps/tablet-client && cargo tauri android build --apk --target aarch64
+cd apps/mobile-tauri && cargo tauri android build --apk --target aarch64
 
 # Android App Bundle (Google Play Store)
-cd apps/tablet-client && cargo tauri android build --aab
+cd apps/mobile-tauri && cargo tauri android build --aab
 ```
 
 ### Common Flags
@@ -151,8 +151,8 @@ cd apps/tablet-client && cargo tauri android build --aab
 ### Output Locations
 
 ```
-APK:  apps/tablet-client/gen/android/app/build/outputs/apk/release/kasirmu-tablet-arm64-v8a.apk
-AAB:  apps/tablet-client/gen/android/app/build/outputs/bundle/release/kasirmu-tablet.aab
+APK:  apps/mobile-tauri/gen/android/app/build/outputs/apk/release/kasirmu-tablet-arm64-v8a.apk
+AAB:  apps/mobile-tauri/gen/android/app/build/outputs/bundle/release/kasirmu-tablet.aab
 ```
 
 ---
@@ -163,23 +163,23 @@ AAB:  apps/tablet-client/gen/android/app/build/outputs/bundle/release/kasirmu-ta
 
 ```bash
 # Development (starts iOS simulator)
-cd apps/tablet-client && cargo tauri ios dev
+cd apps/mobile-tauri && cargo tauri ios dev
 
 # Release IPA (for TestFlight / App Store)
-cd apps/tablet-client && cargo tauri ios build --release
+cd apps/mobile-tauri && cargo tauri ios build --release
 ```
 
 ### Output Location
 
 ```
-IPA:  apps/tablet-client/gen/apple/build/kasirmu-tablet.ipa
+IPA:  apps/mobile-tauri/gen/apple/build/kasirmu-tablet.ipa
 ```
 
 ### Code Signing Setup
 
 1. Open the Xcode project:
    ```bash
-   open apps/tablet-client/gen/apple/kasirmu-tablet.xcodeproj
+   open apps/mobile-tauri/gen/apple/kasirmu-tablet.xcodeproj
    ```
 2. Select the target → **Signing & Capabilities**
 3. Choose your **Team** from the dropdown
@@ -252,7 +252,7 @@ Pipeline steps:
 
 ### Code Sharing
 
-The tablet client (`apps/tablet-client`) shares most code with the desktop client:
+The tablet client (`apps/mobile-tauri`) shares most code with the desktop client:
 
 | Layer | Shared? | Details |
 |-------|---------|---------|
@@ -277,7 +277,7 @@ The tablet client (`apps/tablet-client`) shares most code with the desktop clien
 ### Project Structure
 
 ```
-apps/tablet-client/         # Rust + Tauri configuration
+apps/mobile-tauri/         # Rust + Tauri configuration
 ├── Cargo.toml              # Crate type: ["staticlib", "cdylib", "rlib"] (mobile requirement)
 ├── tauri.conf.json         # Bundle config, minSdkVersion, iOS minimum version
 ├── build.rs                # Tauri build script
@@ -371,7 +371,7 @@ keytool -genkey -v -keystore oz-pos.keystore \
 - Best practice: rotate the keystore every 2 years
 
 **Signing (official Tauri v2 route):** the CLI has no keystore flags — the
-workflows decode the keystore into `apps/tablet-client/gen/android/` and
+workflows decode the keystore into `apps/mobile-tauri/gen/android/` and
 write `keystore.properties` (password / keyAlias / storeFile), which the
 tracked `build.gradle.kts` `signingConfigs` block reads. Without the file
 the APK/AAB builds unsigned.
@@ -455,7 +455,7 @@ the APK/AAB builds unsigned.
 - [Tauri iOS Build](https://v2.tauri.app/start/mobile/ios/)
 - [Android Developer Docs](https://developer.android.com/docs)
 - [iOS Developer Docs](https://developer.apple.com/documentation/)
-- [`apps/tablet-client/AGENTS.md`](../../apps/tablet-client/AGENTS.md) — Android-specific dev notes
+- [`apps/mobile-tauri/AGENTS.md`](../../apps/mobile-tauri/AGENTS.md) — Android-specific dev notes
 - [ADR #4: Frontend Restructure](../../docs/decisions/2026-03-01-frontend-restructure.md)
 
 > last audited 22-07-26 by Hermes-Agent

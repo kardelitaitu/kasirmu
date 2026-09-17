@@ -69,7 +69,7 @@ mkdir -p "$FIX" && cd "$FIX" || exit 1
 git init -q . 2>/dev/null
 git config user.email t@t; git config user.name t
 git config core.autocrlf false
-mkdir -p ui/src/features/kds ui/src/api docs apps/desktop-client/src
+mkdir -p ui/src/features/kds ui/src/api docs apps/desktop-tauri/src
 printf 'export const a = 1;\n' > ui/src/features/kds/A.tsx
 printf 'export const b = 1;\n' > ui/src/api/b.ts
 printf '# d\n' > docs/x.md
@@ -117,7 +117,7 @@ fire() { # fire <mode>: make a NEW ui/src TypeScript commit, then run the block.
 }
 
 echo "case 1 -- commit touching no TypeScript: writes nothing, runs nothing"
-printf 'more docs\n' >> docs/x.md; printf 'fn main() {}\n' > apps/desktop-client/src/lib.rs
+printf 'more docs\n' >> docs/x.md; printf 'fn main() {}\n' > apps/desktop-tauri/src/lib.rs
 git add -A && git commit -q -m "docs: no typescript here"
 run_block NPM_STUB_MODE=pass
 check "exit code" "$RC" "0"

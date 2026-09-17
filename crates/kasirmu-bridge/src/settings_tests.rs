@@ -1741,7 +1741,7 @@ fn license_writer_literals_are_swept_from_license_rs_not_from_a_transcription() 
 const RAW_RS: &str = include_str!("../../../platform/core/src/settings/raw.rs");
 const BRIDGE_SETTINGS_RS: &str = include_str!("settings.rs");
 const TABLET_SETTINGS_RS: &str =
-    include_str!("../../../apps/tablet-client/src/commands/settings.rs");
+    include_str!("../../../apps/mobile-tauri/src/commands/settings.rs");
 
 /// The source with comments removed, line for line, so a name mentioned in prose
 /// cannot be counted as a call.

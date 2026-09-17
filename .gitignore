@@ -170,7 +170,7 @@ temp_*
 # already excludes Gradle/Kotlin build junk (build/, .gradle/, .kotlin/,
 # captures/, local.properties, generated/ code, *.so, tauri.conf.json, ...);
 # only what that misses is listed here:
-apps/tablet-client/gen/android/buildSrc/.kotlin/
+apps/mobile-tauri/gen/android/buildSrc/.kotlin/
 # apps/*/icons/*.png   ← committed, do not ignore
 # apps/*/icons/*.ico   ← committed, do not ignore
 

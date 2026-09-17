@@ -19,8 +19,8 @@ members = [
     "platform/*",
     "foundation",
     "apps/cloud-server",
-    "apps/desktop-client",
-    "apps/tablet-client",
+    "apps/desktop-tauri",
+    "apps/mobile-tauri",
 ]
 
 # Standalone crates that pin their own dependency graph and must NOT
@@ -79,7 +79,7 @@ modules-loyalty = { path = "modules/loyalty" }
 # ── Planned verticals (stub modules) ──────────────────────────────────
 # Each already exists as a registered no-op Module implementing the
 # kernel lifecycle, owning its manifest.json + feature flag, with the
-# domain logic still living in kasirmu-core / desktop-client. See
+# domain logic still living in kasirmu-core / desktop-tauri. See
 # modules/README.md for the promotion path from stub to owning module.
 modules-purchasing = { path = "modules/purchasing" }
 modules-promotions = { path = "modules/promotions" }

@@ -33,8 +33,8 @@ const TAG_RE = /^v?(\d+)\.(\d+)\.(\d+)$/;
 const VERSION_FILES = [
   { path: "Cargo.toml", label: "Cargo workspace manifest", re: /^version\s*=\s*"([^"]+)"/m },
   { path: "ui/package.json", label: "UI package.json", re: /"version"\s*:\s*"([^"]+)"/ },
-  { path: "apps/desktop-client/tauri.conf.json", label: "Desktop tauri.conf.json", re: /"version"\s*:\s*"([^"]+)"/ },
-  { path: "apps/tablet-client/tauri.conf.json", label: "Tablet tauri.conf.json", re: /"version"\s*:\s*"([^"]+)"/ },
+  { path: "apps/desktop-tauri/tauri.conf.json", label: "Desktop tauri.conf.json", re: /"version"\s*:\s*"([^"]+)"/ },
+  { path: "apps/mobile-tauri/tauri.conf.json", label: "Tablet tauri.conf.json", re: /"version"\s*:\s*"([^"]+)"/ },
 ];
 
 const CHANGELOG_PATH = "CHANGELOG.md";
@@ -97,8 +97,8 @@ function selfTest() {
   const base = {
     "Cargo.toml": 'version = "0.0.24"',
     "ui/package.json": '{"version": "0.0.24"}',
-    "apps/desktop-client/tauri.conf.json": '{"version": "0.0.24"}',
-    "apps/tablet-client/tauri.conf.json": '{"version": "0.0.24"}',
+    "apps/desktop-tauri/tauri.conf.json": '{"version": "0.0.24"}',
+    "apps/mobile-tauri/tauri.conf.json": '{"version": "0.0.24"}',
     "CHANGELOG.md": "## [0.0.24] — 2026-01-01\n",
   };
   const cases = [

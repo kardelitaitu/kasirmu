@@ -90,7 +90,7 @@ jobs:
           # foundation, the three apps, tools/fuzz, the updater compat check) plus
           # anything that changes how cargo resolves the build.
           printf '%s\n' "$files" | grep -qE \
-            '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-client|tablet-client)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
+            '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
 
           # UI: ui/src has zero imports reaching outside ui/, so ui/ is a sound
@@ -128,7 +128,7 @@ jobs:
           # rotate or typo that key and every client auto-update rejects the
           # signature, which is precisely what check-updater-compat.mjs detects.
           printf '%s\n' "$files" | grep -qE \
-            '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-client/tauri\.conf\.json$|^apps/desktop-client/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
+            '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-tauri/tauri\.conf\.json$|^apps/desktop-tauri/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
             && echo "release=true" >> "$GITHUB_OUTPUT" || echo "release=false" >> "$GITHUB_OUTPUT"
 
       - name: Decisions

@@ -18,7 +18,7 @@ prime stage always failed, so every unified build paid the full compile.
 
 This script parses the workspace `members` list from the root Cargo.toml and
 asserts each member's manifest (or the inline dummy fallback for
-apps/desktop-client and apps/tablet-client) is present in EVERY Dockerfile's
+apps/desktop-tauri and apps/mobile-tauri) is present in EVERY Dockerfile's
 cache stage. For the inline dummies it also checks the `printf`-generated
 Cargo.toml carries the CURRENT `[workspace.package]` version and edition, so
 a version bump cannot silently leave a stale `0.0.34`/`2021` in the cache
@@ -49,7 +49,7 @@ DOCKERFILES: dict[str, set[str]] = {
 # These workspace members are NOT copied as manifests: the cache stage
 # synthesizes inline dummy Cargo.tomls for them (they are excluded from the
 # Docker build context by .dockerignore), so they are checked separately.
-INLINE_DUMMY_MEMBERS = {"apps/desktop-client", "apps/tablet-client"}
+INLINE_DUMMY_MEMBERS = {"apps/desktop-tauri", "apps/mobile-tauri"}
 
 # These workspace members are standalone fuzz workspaces under tools/fuzz/ that
 # are NOT part of the cloud-server build and not included in the Docker context.
