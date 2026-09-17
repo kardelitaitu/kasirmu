@@ -43,9 +43,17 @@ counts, moved locale directories, or repo-policy text. All the high-severity dri
 falls into those unpoliced classes.
 
 Liveness was confirmed rather than assumed (the guard's own pitfall #10): Check 1 fired
-correctly on an injected nonexistent crate path in a throwaway probe skill. `bats` was
-started but did not complete within the session (1 of 16 tests); `audit-date-stale`
-passed, so Check 8 is live.
+correctly on an injected nonexistent crate path in a throwaway probe skill, and the full
+`bats` suite passed **16/16, EXIT=0** — including the five `dead-check-regression` cases
+that each inject drift and assert a formerly-dead check fires, and the structural case
+that fails `detect.sh` if any `FINDINGS`-accumulating loop is ever pipeline-fed again.
+
+> **Correction.** An earlier revision of this paragraph claimed the suite "did not
+> complete within the session (1 of 16 tests)". That was wrong: I sampled the output file
+> while the run was still in flight and mistook a partial read for a reaped process. The
+> run finished green. Stated here because a reaped-suite claim would understate how much
+> liveness evidence exists — and because an audit that reports its own tooling as
+> unverified when it is verified is its own kind of drift.
 
 Two structural blind spots worth fixing:
 
