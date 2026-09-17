@@ -18,7 +18,21 @@ const downloadHref = getRelativeLocaleUrl(locale, 'download');
 const contactHref = 'mailto:adikaradwiatmaja@gmail.com';
 ---
 
-<Base title={pageTitle} description={t(locale, 'pageDesc.pricing')}>
+<Base title={pageTitle} description={t(locale, 'pageDesc.pricing')} offerPrice={locale === 'id' ? '49000' : '4.99'} offerCurrency={locale === 'id' ? 'IDR' : 'USD'}>
+  <script type="application/ld+json" is:inline set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "kasir.mu",
+    "description": t(locale, 'pricingPage.subtitle'),
+    "brand": { "@type": "Brand", "name": "kasir.mu" },
+    "offers": pricing.map((tier) => ({
+      "@type": "Offer",
+      "name": tier.name,
+      "price": tier.prices.monthly.price,
+      "priceCurrency": tier.currency,
+      "description": tier.description
+    }))
+  })} />
   <section class="mx-auto max-w-7xl px-4 py-16">
     <div data-reveal class="text-center">
       <h1 class="text-4xl font-bold">{t(locale, 'pricingPage.title')}</h1>
