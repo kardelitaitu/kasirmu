@@ -16,7 +16,8 @@ signing key, or a macOS/Windows runner:
 
   1. the file parses, and parses as a GitHub workflow with a `v*` tag trigger
   2. every `uses:` action is pinned to a full 40-hex commit SHA (CICD-05), and
-     that name@sha pair appears in another workflow in this repo -- so a typo'd
+     that name@sha pair appears in another workflow in this repo (retired
+     copies under .github/workflows/attic/ count) -- so a typo'd
      or fabricated commit is a finding rather than a tag-time failure
   3. every `scripts/...` and `ops/install/...` path it invokes exists
   4. no residue from the docker matrix targets that were cut when this was
@@ -93,7 +94,11 @@ def validate(text: str) -> list[str]:
 
     # ── Action pins ───────────────────────────────────────────────────
     known: set[tuple[str, str]] = set()
-    for p in sorted((ROOT / ".github" / "workflows").glob("*")):
+    # Retired workflows moved to attic/ (P4) still count as cross-references:
+    # a pin appearing only in a retired copy is weak evidence but not a typo
+    # invented out of thin air, which is what this check exists to catch.
+    workflow_dir = ROOT / ".github" / "workflows"
+    for p in sorted(workflow_dir.glob("*")) + sorted(workflow_dir.glob("attic/*")):
         if p == WF or not p.is_file():
             continue
         other = io.open(p, encoding="utf-8", errors="replace").read()

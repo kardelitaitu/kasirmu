@@ -78,9 +78,17 @@ def fixture(check_sh_text: str | None = None) -> Path:
     # matrix row as history rather than as a missing guard. Copying only *.yml
     # turned 27 legitimately-retired jobs into MISSING JOBS inside the fixture, so
     # the control disagreed with the repo for reasons unrelated to the test.
+    # Since P4 the retired files live in the attic/ subdirectory; mirroring that
+    # subdirectory keeps the fixture shaped like the repo the checker really sees.
     for w in (REPO / ".github/workflows").iterdir():
         if w.suffix in (".yml", ".bak"):
             (wf / w.name).write_bytes(w.read_bytes())
+    attic = REPO / ".github/workflows/attic"
+    if attic.is_dir():
+        (wf / "attic").mkdir()
+        for w in attic.iterdir():
+            if w.suffix in (".yml", ".bak"):
+                (wf / "attic" / w.name).write_bytes(w.read_bytes())
     return tmp
 
 
