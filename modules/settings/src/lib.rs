@@ -22,7 +22,7 @@ next: none | perf: N/A
 //! - Commands: `apps/desktop-client/src/commands/settings.rs`, `setup.rs`, `sync.rs`
 //! - Frontend: `ui/src/features/settings/` + `ui/src/features/setup/`
 //! - API: `ui/src/api/settings.ts`
-//! - Locale: `ui/src/locales/{en,fr,es,de,zh,ja}/settings.ftl`
+//! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/settings.ftl`
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/settings/` as the module system matures.

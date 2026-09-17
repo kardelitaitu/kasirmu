@@ -11,7 +11,7 @@ import { resolve } from 'path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import type { PriceOverrideModalProps } from '@/features/sales/PriceOverrideModal';
 

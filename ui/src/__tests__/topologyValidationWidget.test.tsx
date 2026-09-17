@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import { TopologyValidationWidget } from '@/features/locations/topologyValidationWidget';
 import type { TopologyValidationNodeIssue } from '@/features/locations/topologyValidationWidget';
 import type { TopologyValidationError } from '@/features/locations/topologyContract';

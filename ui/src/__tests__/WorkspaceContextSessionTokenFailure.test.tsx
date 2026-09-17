@@ -18,7 +18,7 @@ import type { ReactNode } from 'react';
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext';
 import type { LoginSessionDto, CreateSessionResult } from '@/api/staff';
 import type { WorkspaceDto } from '@/api/workspaces';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 
 // Opt out of the global WorkspaceContext stub installed by the setup file:
 // this file exercises the REAL provider.

@@ -3,7 +3,7 @@
 // Eliminates the repeated `wrap` + `withFluent` + `renderInAct` pattern
 // found across 38+ test files. Each file previously had:
 //
-//   import { withFluent } from '@/locales/test-utils';
+//   import { withFluent } from '@/i18n/test-utils';
 //   import { renderInAct } from '@/test-utils/renderInAct';
 //   const wrap = (children: ReactNode) => withFluent(children, fooFtl, barFtl);
 //   await renderInAct(wrap(<MyComponent />));
@@ -16,7 +16,7 @@
 import { type ReactNode, type ReactElement } from 'react';
 import { render, type RenderResult } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import { ThemeProvider } from '@/app/ThemeProvider';
 import { ZoomProvider } from '@/contexts/ZoomContext';
 import { ToastProvider } from '@/components/Toast';

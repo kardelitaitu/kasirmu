@@ -21,7 +21,7 @@ next: none | perf: N/A
 //! - Commands: `apps/desktop-client/src/commands/staff.rs` + `apps/desktop-client/src/commands/auth.rs`
 //! - Frontend: `ui/src/features/staff/` + `ui/src/features/auth/`
 //! - API: `ui/src/api/staff.ts`
-//! - Locale: `ui/src/locales/*/staff.ftl`
+//! - Locale: `shared-ui/locales/*/staff.ftl`
 //!
 //! The module boundary is intentionally transitional: these files remain in
 //! their original locations until the module system can own the Tauri command

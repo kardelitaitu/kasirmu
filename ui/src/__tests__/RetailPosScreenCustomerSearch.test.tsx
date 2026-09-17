@@ -36,7 +36,7 @@
  * nothing in RetailPosScreen.tsx or RetailModals.tsx was edited to make a case
  * pass. Selectors are the classes the screen already carries; the roster strings
  * are this file's own fixtures. The one piece of English asserted is 'No
- * customers found', read out of ui/src/locales/sales.ftl:774 (retail-customer-
+ * customers found', read out of shared-ui/locales/sales.ftl:774 (retail-customer-
  * search-empty). Note RetailPosScreen is NOT registered in
  * screenExtraction.test.ts, so a class added here would have passed that
  * dead-class check invisibly - which is exactly why none was added.

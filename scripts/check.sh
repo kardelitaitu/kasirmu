@@ -312,7 +312,7 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # BEFORE ui build (which is ~30s). Fail-fast on a ~1s lint check
     # so contributors don't pay the full build cost for a translation
     # gap. Detects translation gaps and Fluent key duplicates in
-    # `ui/src/locales/*.id.ftl` before they reach CI.
+    # `shared-ui/locales/*.id.ftl` before they reach CI.
     cd ..
     step "i18n lint" "bash scripts/lint-i18n.sh" bash scripts/lint-i18n.sh
     # AUDIT-27 CI-06: FTL dedupe — detect duplicate Fluent keys so local

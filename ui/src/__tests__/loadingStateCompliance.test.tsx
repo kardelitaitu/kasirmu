@@ -28,7 +28,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import fs from 'fs';
 import path from 'path';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import { LoadingStatus } from '@/components/LoadingStatus';
 import { Skeleton as ComponentSkeleton } from '@/components/Skeleton';
 import { Skeleton as SharedSkeleton } from '@/components/Skeleton';

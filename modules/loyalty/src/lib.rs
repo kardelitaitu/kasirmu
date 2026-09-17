@@ -24,7 +24,7 @@ next: none | perf: N/A
 //! - Commands: `apps/desktop-client/src/commands/` (TBD)
 //! - Frontend: `ui/src/features/loyalty/` (LoyaltyManagementScreen)
 //! - API: `ui/src/api/` (TBD)
-//! - Locale: `ui/src/locales/` (TBD)
+//! - Locale: `shared-ui/locales/` (TBD)
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/loyalty/` as the module system matures.

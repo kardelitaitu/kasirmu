@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 scripts/dedupe-ftl.py — Deduplicates Fluent (.ftl) key definitions in
-`ui/src/locales/`.
+`shared-ui/locales/`.
 
 WHY
 ====
@@ -18,7 +18,7 @@ canonical home file but the value drifts over time.
 THE FIX
 =======
 
-For every key across the 48 .ftl + .id.ftl files in `ui/src/locales/`,
+For every key across the 48 .ftl + .id.ftl files in `shared-ui/locales/`,
 keep only the FIRST definition and drop every subsequent one (along
 with its multi-line value continuations, attribute continuations, and
 trailing blank-line paragraph separator). This guarantees:
@@ -72,10 +72,10 @@ import re
 import sys
 from pathlib import Path
 
-LOCALE_DIR = Path(__file__).resolve().parent.parent / "ui" / "src" / "locales"
+LOCALE_DIR = Path(__file__).resolve().parent.parent / "shared-ui" / "locales"
 
 DESCRIPTION = (
-    "Deduplicate Fluent key definitions in ui/src/locales/ so that the "
+    "Deduplicate Fluent key definitions in shared-ui/locales/ so that the "
     "consolidated i18n quality gate (scripts/lint-i18n.sh, "
     ".github/workflows/ci.yml, .github/workflows/release.yml) finds zero "
     "'Attempt to override an existing message' warnings. See the module "

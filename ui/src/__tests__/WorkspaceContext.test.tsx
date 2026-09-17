@@ -10,7 +10,7 @@ import {
 } from '@/contexts/WorkspaceContext';
 import type { LoginSessionDto, CreateSessionResult } from '@/api/staff';
 import type { WorkspaceDto } from '@/api/workspaces';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 
 // ── Opt out of the global WorkspaceContext stub ──────────────────────
 // The setupFile installs a safe-default mock for useWorkspace and

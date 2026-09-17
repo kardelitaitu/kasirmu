@@ -26,7 +26,7 @@ next: Migrate DB CRUD + Tauri commands into this module | perf: N/A — no hot p
 //! - Backend: `crates/kasirmu-core/src/db/customers.rs` + `apps/desktop-client/src/commands/customers.rs`
 //! - Frontend: `ui/src/features/customers/`
 //! - API: `ui/src/api/customers.ts`
-//! - Locale: `ui/src/locales/{en,fr,es,de,zh,ja}/customers.ftl`
+//! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/customers.ftl`
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/crm/` as the module system matures.

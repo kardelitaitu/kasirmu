@@ -11,6 +11,10 @@ export default defineConfig({
 
   resolve: {
     alias: {
+      // P9a: the Fluent corpus lives at shared-ui/locales/, outside ui/. This entry
+      // MUST precede the generic '@' one below, which prefix-matches every `@/…`
+      // specifier and would otherwise resolve `@/locales/…` to ./src/locales/.
+      '@/locales/': fileURLToPath(new URL('../shared-ui/locales/', import.meta.url)),
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
@@ -40,6 +44,13 @@ export default defineConfig({
   server: {
     port: 1422,
     strictPort: true,
+    // P9a: same reason as vite.config.ts — the corpus is outside this package.
+    fs: {
+      allow: [
+        fileURLToPath(new URL('.', import.meta.url)),
+        fileURLToPath(new URL('../shared-ui', import.meta.url)),
+      ],
+    },
     host: host || false,
     hmr: host
       ? { protocol: 'ws', host, port: 1423 }

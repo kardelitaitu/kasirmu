@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LocalizationProvider } from '@fluent/react';
-import { createEnUsLocalization } from '@/locales';
+import { createEnUsLocalization } from '@/i18n/createEnUsLocalization';
 import MenuEngineeringScreen from '@/features/reports/MenuEngineeringScreen';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 import * as reportsApi from '@/api/reports';

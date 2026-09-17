@@ -160,8 +160,8 @@ Update-File "ui/src/features/design/TooltipPreview.tsx" "OZ-POS v$currentVersion
 
 # The status-bar version label lives in Fluent, not TSX (StatusBar.tsx renders the
 # `statusbar-version` key), so the FTL files are the real bump targets.
-Update-File "ui/src/locales/shared.ftl" "statusbar-version = v$currentVersion" "statusbar-version = v$TargetVersion"
-Update-File "ui/src/locales/shared.id.ftl" "statusbar-version = v$currentVersion" "statusbar-version = v$TargetVersion"
+Update-File "shared-ui/locales/shared.ftl" "statusbar-version = v$currentVersion" "statusbar-version = v$TargetVersion"
+Update-File "shared-ui/locales/shared.id.ftl" "statusbar-version = v$currentVersion" "statusbar-version = v$TargetVersion"
 
 # Website (marketing site): package version + i18n version strings. Single-quoted
 # format strings keep the em-dash out of the source; it is injected via [char]0x2014.

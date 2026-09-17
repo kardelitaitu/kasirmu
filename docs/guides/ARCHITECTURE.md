@@ -161,7 +161,7 @@ oz-pos/
   - `Cart` / `CartLine` — in-memory sale pipeline with currency matching.
   - `Sale` / `SaleLine` — transaction lifecycle state machine: `Pending → Active → Completed | Voided`.
   - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
-  - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/kasirmu-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (keys in `ui/src/locales/settings.ftl`, array in `ui/src/features/setup/SetupWizard.tsx:70`). This line said 5 until 08-09-26, the same stale count corrected in `docs/guides/admin-guide.md` the same day.
+  - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/kasirmu-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (keys in `shared-ui/locales/settings.ftl`, array in `ui/src/features/setup/SetupWizard.tsx:70`). This line said 5 until 08-09-26, the same stale count corrected in `docs/guides/admin-guide.md` the same day.
   - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
 - **Migrations**: 58 SQLite `.sql` files plus the generated PG file, 59 in all as measured
   2026-09-13 (`ls crates/kasirmu-core/migrations/*.sql | wc -l`), embedded by the

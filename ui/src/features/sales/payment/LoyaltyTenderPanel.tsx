@@ -79,8 +79,8 @@
  * panels, and no new key is introduced - payment-loyalty-points-label,
  * payment-loyalty-use-points, payment-loyalty-points-aria,
  * payment-loyalty-discount-label and payment-cancel are the five ids the page
- * already used, each defined in BOTH ui/src/locales/sales.ftl and
- * ui/src/locales/sales.id.ftl. Both Localized render paths are preserved: the
+ * already used, each defined in BOTH shared-ui/locales/sales.ftl and
+ * shared-ui/locales/sales.id.ftl. Both Localized render paths are preserved: the
  * element form (the two buttons) and the vars form (the discount read-out),
  * beside the requiredLocalized and getString reads exactly where they were.
  *

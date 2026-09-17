@@ -17,7 +17,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useMemo, useReducer } from 'react';
 import { WorkspaceProvider, useWorkspace } from '@/contexts/WorkspaceContext';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 
 // Opt out of the global setup mock (test-setup.ts keeps the real exports
 // but stubs the hooks) — this probe needs the REAL useWorkspace so the

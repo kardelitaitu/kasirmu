@@ -11,7 +11,7 @@
  *      tag and once for the totals-row tag in
  *      ui/src/features/sales/EodReportScreen.tsx (at :154 and :187). Two keys x
  *      two sites = four inline literals, no shared constant, while the keys
- *      themselves are declared once per bundle (ui/src/locales/sales.ftl:479 and
+ *      themselves are declared once per bundle (shared-ui/locales/sales.ftl:479 and
  *      sales.id.ftl:464). Four copies of a key is how a rename lands on three.
  *
  *   2. requiredPermission on every registerWidget call in
@@ -103,8 +103,8 @@ const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf
 
 const EOD_SCREEN = 'ui/src/features/sales/EodReportScreen.tsx';
 const WIDGETS = 'ui/src/features/sales/widgets/index.ts';
-const EN_BUNDLE = 'ui/src/locales/sales.ftl';
-const ID_BUNDLE = 'ui/src/locales/sales.id.ftl';
+const EN_BUNDLE = 'shared-ui/locales/sales.ftl';
+const ID_BUNDLE = 'shared-ui/locales/sales.id.ftl';
 
 /**
  * Every production UI source file, over the SAME universe the FTL orphan gate

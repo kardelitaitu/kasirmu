@@ -20,7 +20,7 @@ import {
 } from '@/features/audit/auditCatalog';
 
 // Load the shared FTL bundle and collect every declared message id.
-const SHARED_FTL = path.resolve(process.cwd(), 'src/locales/shared.ftl');
+const SHARED_FTL = path.resolve(process.cwd(), '../shared-ui/locales/shared.ftl');
 
 const ftlIds = new Set<string>();
 const content = fs.readFileSync(SHARED_FTL, 'utf-8');

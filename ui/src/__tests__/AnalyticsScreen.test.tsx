@@ -8,7 +8,7 @@ import {
   discriminatingStoreZone,
   expectedStoreDay,
 } from '@/__tests__/test-utils/storeZoneCase';
-import { withFluent, withFluentLocale } from '@/locales/test-utils';
+import { withFluent, withFluentLocale } from '@/i18n/test-utils';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import analyticsFtl from '@/locales/analytics.ftl?raw';
 import subscriptionFtl from '@/locales/subscription.ftl?raw';

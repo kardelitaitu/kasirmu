@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen, within, waitFor, fireEvent } from '@testing-library/react';
 import { renderInAct } from '@/test-utils/renderInAct';
 import { renderWithFluent } from '@/__tests__/test-utils/render';
-import { withFluentLocale } from '@/locales/test-utils';
+import { withFluentLocale } from '@/i18n/test-utils';
 import productsFtl from '@/locales/products.ftl?raw';
 import productsId from '@/locales/products.id.ftl?raw';
 import sharedId from '@/locales/shared.id.ftl?raw';

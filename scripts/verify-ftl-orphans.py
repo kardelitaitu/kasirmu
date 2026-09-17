@@ -44,7 +44,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCALES = ROOT / "ui" / "src" / "locales"
+LOCALES = ROOT / "shared-ui" / "locales"
 ALLOWLIST_PATH = ROOT / "scripts" / "ftl-orphan-allowlist.json"
 
 KEY_DECL = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", re.M)
@@ -100,7 +100,7 @@ def _read(path: Path, errors: str = "replace") -> str:
     microsecond a writer holds the file. Unhandled, that left the process at exit 1 with one
     Traceback and no `FAIL: N orphan problem(s)` line -- this file's failure code for a real
     orphan verdict, spent on a lock collision, and read downstream as a claim about somebody's
-    keys. Measured on the real tree against `ui/src/locales/kds.ftl`; recorded 2026-09-13 at
+    keys. Measured on the real tree against `shared-ui/locales/kds.ftl`; recorded 2026-09-13 at
     19:45.
 
     The mode decides what a failed read means, and `main()` sets that once:
@@ -248,7 +248,7 @@ def staged_diff() -> str | None:
     caller, which then printed a clean verdict over the empty string. This is the law this repo
     already states at scripts/verify-migration-column-types.py:204-222.
     """
-    cmd = ["git", "diff", "--cached", "-U0", "--", "ui/src/locales", "ui/src"]
+    cmd = ["git", "diff", "--cached", "-U0", "--", "shared-ui/locales", "ui/src"]
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -369,16 +369,16 @@ def hollow_root_reason() -> str | None:
     A zero key count is NOT the signal. A repository where every declared key is genuinely
     referenced legitimately reports 0 candidates, and refusing on that would reject a real result.
     The load-bearing shape is the one `staged_diff()` already uses: a named path this gate REQUIRES
-    is missing. In a checkout of this project `ui/src/locales` is a directory holding the `.ftl`
+    is missing. In a checkout of this project `shared-ui/locales` is a directory holding the `.ftl`
     bundles, so a tree without that surface is not this project and holds no orphan verdict either
     way. Same reasoning `verify-no-hardcoded-money-format.py` recorded at 13:51, where `scanned ==
     0` in its starve check is an unobservable disjunct: a census that declared zero files is not a
     census of zero orphans.
     """
     if not LOCALES.is_dir():
-        return "the required directory `ui/src/locales` is missing"
+        return "the required directory `shared-ui/locales` is missing"
     if not any(LOCALES.glob("*.ftl")):
-        return "`ui/src/locales` holds no `.ftl` bundle"
+        return "`shared-ui/locales` holds no `.ftl` bundle"
     return None
 
 
@@ -441,7 +441,7 @@ def check_staged() -> int:
         # An unreadable index is not an empty one, so this prints no verdict and does not
         # exit 0. The hook treats it as the hard fail it already treats a FAIL as.
         print("verify-ftl-orphans: REFUSED -- git could not produce the staged diff "
-              "(`git diff --cached -U0 -- ui/src/locales ui/src`), so the --staged-only "
+              "(`git diff --cached -U0 -- shared-ui/locales ui/src`), so the --staged-only "
               "scope is unknown, and an unknown scope is not an empty one. Nothing was "
               "checked here; git's own words, on stderr, name the command that failed.")
         return 2
@@ -533,7 +533,7 @@ def self_test() -> int:
 
     # Direction 1: an added key with no reference anywhere must be reported.
     synthetic = "\n".join([
-        "+++ b/ui/src/locales/shared.ftl",
+        "+++ b/shared-ui/locales/shared.ftl",
         "+selftest-orphan-key-zz = Never referenced anywhere",
     ])
     added_en, added_id, removed = changes_from_diff(synthetic)
@@ -553,7 +553,7 @@ def self_test() -> int:
     # English one. Without this split the reverse-parity check has no input at all, and a
     # parser that lumps both locales together would still pass direction 1.
     synthetic_id = "\n".join([
-        "+++ b/ui/src/locales/shared.id.ftl",
+        "+++ b/shared-ui/locales/shared.id.ftl",
         "+selftest-onesided-key-zz = Kunci tanpa padanan Inggris",
     ])
     a_en2, a_id2, _ = changes_from_diff(synthetic_id)

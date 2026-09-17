@@ -142,7 +142,7 @@ fi
 # Runs `scripts/dedupe-ftl.py --dry-run` when .ftl files are staged.
 # ~50ms cost; runs in-process without mutating any files.
 if [ -f scripts/dedupe-ftl.py ]; then
-    STAGED_FTL_DEDUPE=$(git diff --cached --name-only --diff-filter=ACM -- 'ui/src/locales/*.ftl' || true)
+    STAGED_FTL_DEDUPE=$(git diff --cached --name-only --diff-filter=ACM -- 'shared-ui/locales/*.ftl' || true)
     if [ -n "$STAGED_FTL_DEDUPE" ]; then
         if output=$("$PYTHON" scripts/dedupe-ftl.py --dry-run 2>&1); then
             : # clean — silently discard the "no duplicates" line
@@ -252,7 +252,7 @@ fi
 #
 # Runs last and only when the commit stages a .ftl file, so nothing else pays for it.
 if [ -f scripts/verify-ftl-orphans.py ]; then
-    STAGED_FTL=$(git diff --cached --name-only --diff-filter=ACMR -- 'ui/src/locales/*.ftl' || true)
+    STAGED_FTL=$(git diff --cached --name-only --diff-filter=ACMR -- 'shared-ui/locales/*.ftl' || true)
     if [ -n "$STAGED_FTL" ]; then
         if ! "$PYTHON" scripts/verify-ftl-orphans.py --staged-only; then
             echo "error: FTL orphan lint failed — a key was added with no reference, or the last reference to a key was removed. See message above." >&2

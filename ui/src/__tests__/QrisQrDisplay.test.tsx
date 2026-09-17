@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState } from 'react';
 import { act } from 'react';
 import { render, fireEvent, screen } from '@testing-library/react';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import salesFtl from '@/locales/sales.ftl?raw';
 import QrisQrDisplay from '@/components/QrisQrDisplay';
 

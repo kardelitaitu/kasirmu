@@ -107,7 +107,7 @@ check "rust crate"          "rust=true ui=false i18n=false website=false docs=fa
 check "rust lockfile"       "rust=true ui=false i18n=false website=false docs=false release=false" "Cargo.lock"
 check "ui tsx"              "rust=false ui=true i18n=true website=false docs=false release=false"  "ui/src/features/reports/DashboardScreen.tsx"
 check "ui lockfile"         "rust=false ui=true i18n=false website=false docs=false release=false" "ui/package-lock.json"
-check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "ui/src/locales/en/reports.ftl"
+check "ftl bundle"          "rust=false ui=true i18n=true website=false docs=false release=false"  "shared-ui/locales/en/reports.ftl"
 check "website only"        "rust=false ui=false i18n=false website=true docs=false release=false" "website/src/pages/index.astro"
 check "i18n script"         "rust=false ui=false i18n=true website=false docs=false release=false" "scripts/verify-bundle-parity.py"
 # Docs must route to the drift checker: a docs-only PR is precisely the change

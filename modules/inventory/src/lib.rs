@@ -21,7 +21,7 @@ next: none | perf: N/A
 //! - Backend: `crates/kasirmu-core/src/db/products.rs` + `apps/desktop-client/src/commands/products.rs`
 //! - Frontend: `ui/src/features/products/` + `ui/src/features/inventory/`
 //! - API: `ui/src/api/products.ts`
-//! - Locale: `ui/src/locales/{en,fr,es,de,zh,ja}/products.ftl` + `inventory.ftl`
+//! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/products.ftl` + `inventory.ftl`
 //!
 //! In subsequent phases, these files will be physically moved into
 //! `modules/inventory/` as the module system matures.

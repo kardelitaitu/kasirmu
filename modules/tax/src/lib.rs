@@ -22,7 +22,7 @@ next: none | perf: N/A
 //! - Backend: `crates/kasirmu-core/src/db/tax.rs` + `apps/desktop-client/src/commands/tax.rs`
 //! - Frontend: `ui/src/features/tax/`
 //! - API: `ui/src/api/tax.ts`
-//! - Locale: `ui/src/locales/{en,fr,es,de,zh,ja}/tax.ftl`
+//! - Locale: `shared-ui/locales/{en,fr,es,de,zh,ja}/tax.ftl`
 //!
 //! The boundary between this crate and the implementation layers is
 //! pinned by the cross-layer contract tests in

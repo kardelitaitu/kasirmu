@@ -112,7 +112,7 @@ def main():
     # Anchor to this script's location, not the caller's CWD, so the
     # conversion runs from any checkout path or worktree.
     locales_dir = (
-        Path(__file__).resolve().parent.parent / "ui" / "src" / "locales"
+        Path(__file__).resolve().parent.parent / "shared-ui" / "locales"
     )
     if not locales_dir.exists():
         print(f'Error: {locales_dir} not found', file=sys.stderr)

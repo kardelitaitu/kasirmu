@@ -54,7 +54,7 @@ describe('empty-state compliance — localized empty copy in both bundles (EMPTY
     'gift-cards': ['gift-cards-no-cards'],
   };
 
-  const LOCALES_DIR = path.resolve(__dirname, '../locales');
+  const LOCALES_DIR = path.resolve(__dirname, '../../../shared-ui/locales');
 
   for (const [bundle, keys] of Object.entries(EMPTY_KEYS)) {
     for (const key of keys) {

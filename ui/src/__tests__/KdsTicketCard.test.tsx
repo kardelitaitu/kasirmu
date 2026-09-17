@@ -4,7 +4,7 @@ import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import { KdsTicketCard } from '@/features/kds/components/KdsTicketCard';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import type { KdsOrder } from '@/api/kds';
 
 const mockPlayAlert = vi.fn();

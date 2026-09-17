@@ -61,7 +61,7 @@ def fold(p: Path) -> dict:
 def build(r: Path, locale: str):
     vals: dict[str, str] = {}
     pat = 'shared' + ('.id' if locale == 'id' else '')
-    for f in sorted((r / 'ui' / 'src' / 'locales').glob('*.ftl')):
+    for f in sorted((r / 'shared-ui' / 'locales').glob('*.ftl')):
         want = f.name.endswith('.id.ftl') if locale == 'id' else not f.name.endswith('.id.ftl')
         if not want:
             continue

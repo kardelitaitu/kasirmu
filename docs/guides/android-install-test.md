@@ -260,7 +260,7 @@ permission prompt to expect** — the tracked `AndroidManifest.xml` declares onl
 | 2.1 | Tap PIN pad digit 1 | Key highlights on touch (visual feedback) | ☐ |
 | 2.2 | Enter PIN digits | Each tap produces haptic feedback (if enabled) | ☐ |
 | 2.3 | Tap Submit/OK | Loading spinner; transitions to workspace picker | ☐ |
-| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`ui/src/locales/staff.ftl:121`); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
+| 2.4 | Wrong PIN (3 attempts) | Invalid-PIN error with an attempts counter — the Fluent string is `staff-login-attempts-remaining` = "(N attempts remaining)" (`shared-ui/locales/staff.ftl:121`); there is no single sentence "Invalid PIN. 3 attempts remaining." | ☐ |
 | 2.5 | Wrong PIN (5 attempts) | **Timed** lockout: `staff-login-lockout` = "Locked out. Try again in {seconds}s" (`staff.ftl:122`); on the session lock the variant is `session-lock-lockout` = "Wait {seconds}s." (`:143`). It self-expires — no "Contact administrator" string exists anywhere in the locales, so do NOT file a FAIL when the pad re-enables by itself | ☐ |
 | 2.6 | Empty PIN validation | Submit button is **disabled** while the PIN is empty (`StaffLoginScreen.tsx:430`) — no error message fires; "Please enter a PIN." does not exist. Sub-4-digit PINs get `staff-login-pin-min-length` = "PIN must be at least 4 digits." (`staff.ftl:118`) | ☐ |
 
@@ -286,7 +286,7 @@ smooth, back navigation works correctly.
 | 4.2 | Scroll product grid | Touch scroll works — smooth, no stutter | ☐ |
 | 4.3 | Search products | Tap search bar → keyboard opens → results filter in real-time | ☐ |
 | 4.4 | Category filter tabs | Tabs are ≥ 48px height. Tap reliably switches category. | ☐ |
-| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `ui/src/locales/sales.ftl:16`). | ☐ |
+| 4.5 | Cart panel | Right-side cart panel visible. Shows "Cart is empty" (`pos-cart-empty`, `shared-ui/locales/sales.ftl:16`). | ☐ |
 | 4.6 | Bottom navigation bar | Tabs are **workspace-driven**: nav items are filtered to the workspace's screen list and capped at 7 (`ui/src/app/tablet/TabletAppLayout.tsx:56-58`), and labels come from each feature's registry (e.g. route `sales` renders as "POS Terminal", `ui/src/features/sales/register.tsx`). A typical POS workspace shows POS Terminal / KDS / Settings; confirm ≥ 48px tap targets | ☐ |
 
 **Pass criteria:** All touch targets meet minimum size, scrolling is smooth,
@@ -340,7 +340,7 @@ is not implemented.
 | 7.1 | Tap **Pay** / **Checkout** | Payment screen opens | ☐ |
 | 7.2 | **Swipe left** on cart panel | Payment modal opens (gesture shortcut) | ☐ |
 | 7.3 | **Swipe right** on payment modal | Returns to cart (gesture shortcut) | ☐ |
-| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `ui/src/locales/sales.ftl:122`); there is no "Mixed" label. Each easy to tap | ☐ |
+| 7.4 | Select payment method | Cash / Card / Split options — the split entry is "Split Payments" (`payment-split-title`, `shared-ui/locales/sales.ftl:122`); there is no "Mixed" label. Each easy to tap | ☐ |
 | 7.5 | Cash: enter amount tendered | Numeric keypad is large enough to tap reliably | ☐ |
 | 7.6 | Complete payment | Sale completes. Success message. | ☐ |
 | 7.7 | Receipt preview | Receipt displays full details on screen | ☐ |

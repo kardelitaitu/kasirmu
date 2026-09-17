@@ -23,7 +23,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
-import { withFluent } from '@/locales/test-utils';
+import { withFluent } from '@/i18n/test-utils';
 import sharedFtl from '@/locales/shared.ftl?raw';
 import AppLayout from '@/app/AppLayout';
 import TabletAppLayout from '@/app/tablet/TabletAppLayout';

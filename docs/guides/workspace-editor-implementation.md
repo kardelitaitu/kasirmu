@@ -234,7 +234,7 @@ The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbe
 | 14. API wrapper | `ui/src/api/kds.ts` | Add `getKdsOrderLinesScoped()` |
 | 15. Course-grouped display | `ui/src/features/kds/components/KdsTicketCard.tsx` | Replace flat `<span>{order.items_summary}</span>` with course-grouped item list. Each course gets a header badge ("APPETIZER", "MAIN"). Modifiers shown as indented sub-lines below each item. |
 | 16. CSS for course groups | `ui/src/features/kds/KdsScreen.css` | New `kds-course-header`, `kds-item-modifier` classes |
-| 17. FTL keys | `ui/src/locales/kds.ftl` + `kds.id.ftl` | Course header labels, modifier prefix text |
+| 17. FTL keys | `shared-ui/locales/kds.ftl` + `kds.id.ftl` | Course header labels, modifier prefix text |
 | 18. Per-item status display | `ui/src/features/kds/components/KdsTicketCard.tsx` | Show per-item status badge when available (future: TODO 3e) |
 
 ### Phase 4 — POS Integration (Day 4)

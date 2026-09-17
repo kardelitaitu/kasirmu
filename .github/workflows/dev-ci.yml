@@ -101,7 +101,7 @@ jobs:
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
           # four scripts that implement the gates.
           printf '%s\n' "$files" | grep -qE \
-            '^ui/src/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
+            '^shared-ui/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
           printf '%s\n' "$files" | grep -qE '^website/' \

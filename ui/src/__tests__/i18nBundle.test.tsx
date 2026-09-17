@@ -24,7 +24,7 @@ import {
   scanAttributeOmissions,
   scanAttributeOnlyGetString,
 } from '@/i18n/barePlaceholderScan';
-import { withFluentLocale } from '@/locales/test-utils';
+import { withFluentLocale } from '@/i18n/test-utils';
 import sharedId from '@/locales/shared.id.ftl?raw';
 import sharedEn from '@/locales/shared.ftl?raw';
 import giftCardsEn from '@/locales/gift-cards.ftl?raw';

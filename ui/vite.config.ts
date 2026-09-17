@@ -43,6 +43,16 @@ export default defineConfig(({ command }) => ({
             },
           ]
         : []),
+      // P9a: the Fluent corpus no longer lives under ui/. It is plain data that any
+      // toolkit can consume (Fluent ships Rust bindings too), so it sits at
+      // shared-ui/locales/ beside the repo root. This entry MUST precede the generic
+      // `@/` rule below — Vite/rollup take the first matching alias, so `@/locales/…`
+      // would otherwise resolve to ./src/locales/ and every one of the 165 `?raw`
+      // imports would fail to resolve.
+      {
+        find: /^@\/locales\//,
+        replacement: `${fileURLToPath(new URL('../shared-ui/locales/', import.meta.url))}`,
+      },
       {
         find: /^@\//,
         replacement: `${fileURLToPath(new URL('./src/', import.meta.url))}/`,
@@ -79,6 +89,16 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 1420,
     strictPort: true,
+    // P9a: the Fluent corpus sits at shared-ui/locales/, OUTSIDE this package, so the
+    // dev server and Vitest both refuse to serve it ("Denied ID …/shared.ftl?raw")
+    // unless it is allowed here. Naming an entry REPLACES Vite's default (the
+    // workspace root), so the package root is listed too.
+    fs: {
+      allow: [
+        fileURLToPath(new URL('.', import.meta.url)),
+        fileURLToPath(new URL('../shared-ui', import.meta.url)),
+      ],
+    },
     host: host || false,
     hmr: host
       ? { protocol: 'ws', host, port: 1421 }
@@ -135,8 +155,9 @@ export default defineConfig(({ command }) => ({
         '**/*.test.{ts,tsx}',
         '**/__tests__/**',
         '**/test-setup.ts',
-        '**/locales/test-utils.tsx',
-        // Type-only modules (Fluent locale bundles are just strings).
+        '**/i18n/test-utils.tsx',
+        // Type-only modules (Fluent locale bundles are just strings). Path-agnostic,
+        // so it kept matching after P9a moved the corpus to shared-ui/locales/.
         '**/locales/**',
       ],
     },
