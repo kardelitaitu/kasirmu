@@ -1482,7 +1482,7 @@ describe('TopologyScreen', () => {
   // carries it (rbac_presets.rs:253), plus Owner implicitly via `permissions:
   // &["*"]` (rbac_presets.rs:46). Manager holds `staff:update`
   // (rbac_presets.rs:75) but NOT topology:write, and the kernel refuses a
-  // manager topology write (apps/desktop-client/.../topology_command_tests.rs:
+  // manager topology write (apps/desktop-tauri/.../topology_command_tests.rs:
   // 1399-1415 asserts exactly that). The gate used to test `staff:update`, so a
   // manager reached `#/settings/topology` — the route gate is role-based,
   // ui/src/features/settings/register.tsx:10 requiredRole 'manager' — and got

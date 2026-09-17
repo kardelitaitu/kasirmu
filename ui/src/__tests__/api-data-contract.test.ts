@@ -22,7 +22,7 @@ describe('data.ts API contract', () => {
 
   // The two cases below pin the GATED names. get_backup_status_scoped and
   // create_backup_scoped enforce permissions::DATA_EXPORT in Rust (added at
-  // 62e30fd7 for F-017, registered in apps/desktop-client/src/lib.rs:844 and :846);
+  // 62e30fd7 for F-017, registered in apps/desktop-tauri/src/lib.rs:844 and :846);
   // the unscoped commands check nothing, so a session without the data-export right
   // can still reach them. These assertions are what keeps the gated path from being
   // abandoned again by the next refactor.
